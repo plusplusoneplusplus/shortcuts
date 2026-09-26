@@ -1,4 +1,4 @@
-import type { editor as monacoEditor, ISelection } from 'monaco-editor';
+import type { ISelection } from 'monaco-editor';
 
 export const UNIFIED_PANEL_NAVIGATION_LIMIT = 50;
 export const UNIFIED_PANEL_NEARBY_LINE_THRESHOLD = 10;
@@ -10,7 +10,6 @@ export interface UnifiedPanelNavigationLocation {
     scopeWorkspaceId: string;
     tabId: string;
     selection: ISelection;
-    viewState: monacoEditor.ICodeEditorViewState;
 }
 
 export interface UnifiedPanelNavigationHistory {
@@ -49,8 +48,7 @@ export function navigationLocationsEqual(
     right: UnifiedPanelNavigationLocation,
 ): boolean {
     return sameNavigationLocationIdentity(left, right)
-        && selectionsEqual(left.selection, right.selection)
-        && JSON.stringify(left.viewState) === JSON.stringify(right.viewState);
+        && selectionsEqual(left.selection, right.selection);
 }
 
 function selectionStartLine(selection: ISelection): number {
@@ -90,12 +88,15 @@ export function recordNavigationLocation(
     const current = history.entries[history.index];
     if (current && navigationLocationsEqual(current, location)) return history;
 
-    const entries = history.entries.slice(0, history.index + 1);
+    // VS Code's `doReplace` overwrites the current entry in place and keeps the
+    // forward branch; only a new entry truncates it.
     if (current && shouldReplaceCurrent(current, location, reason)) {
-        entries[entries.length - 1] = location;
-        return { entries, index: entries.length - 1, replaying: false };
+        const entries = [...history.entries];
+        entries[history.index] = location;
+        return { entries, index: history.index, replaying: false };
     }
 
+    const entries = history.entries.slice(0, history.index + 1);
     entries.push(location);
     if (entries.length > UNIFIED_PANEL_NAVIGATION_LIMIT) entries.shift();
     return { entries, index: entries.length - 1, replaying: false };

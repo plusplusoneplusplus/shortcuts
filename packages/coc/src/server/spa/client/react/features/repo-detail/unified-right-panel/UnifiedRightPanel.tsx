@@ -451,7 +451,7 @@ export function UnifiedRightPanel({
         location: UnifiedPanelNavigationLocation,
         controller: EditorNavigationController,
     ) => {
-        controller.restore({ selection: location.selection, viewState: location.viewState });
+        controller.restore({ selection: location.selection });
         pendingReplay.current = null;
         setNavigationHistory(finishNavigationReplay(navigationHistoryRef.current));
     }, [setNavigationHistory]);

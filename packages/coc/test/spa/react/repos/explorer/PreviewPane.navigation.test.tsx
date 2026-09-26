@@ -51,18 +51,10 @@ const monacoStub = vi.hoisted(() => ({
             positionLineNumber: 3,
             positionColumn: 5,
         }),
-        saveViewState: () => ({
-            cursorState: [],
-            viewState: {
-                scrollLeft: 0,
-                scrollTop: 40,
-                firstPosition: { lineNumber: 2, column: 1 },
-                firstPositionDeltaTop: 0,
-            },
-            contributionsState: {},
-        }),
-        restoreViewState: () => undefined,
         setSelection: () => undefined,
+        revealRangeInCenterIfOutsideViewport: () => undefined,
+        getLayoutInfo: () => ({ height: 400 }),
+        onDidLayoutChange: () => ({ dispose: () => undefined }),
         onDidChangeCursorSelection: () => ({ dispose: () => undefined }),
         onDidChangeModelContent: () => ({ dispose: () => undefined }),
         onDidScrollChange: () => ({ dispose: () => undefined }),
@@ -209,17 +201,14 @@ describe('PreviewPane — surface-aware navigation (AC-03)', () => {
         });
 
         expect(calls).toEqual(['source', 'target']);
-        expect(onNavigationLocation).toHaveBeenCalledWith(expect.objectContaining({
+        expect(onNavigationLocation).toHaveBeenCalledWith({
             selection: {
                 selectionStartLineNumber: 3,
                 selectionStartColumn: 5,
                 positionLineNumber: 3,
                 positionColumn: 5,
             },
-            viewState: expect.objectContaining({
-                viewState: expect.objectContaining({ scrollTop: 40 }),
-            }),
-        }), 'jump');
+        }, 'jump');
     });
 
     it('lands at the top of the target when the server named no position', async () => {

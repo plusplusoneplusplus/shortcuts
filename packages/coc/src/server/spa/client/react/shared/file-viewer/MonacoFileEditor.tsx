@@ -36,9 +36,13 @@ export interface EditorModelMountContext {
 
 export type EditorNavigationReason = 'user' | 'navigation' | 'jump' | 'programmatic';
 
+/**
+ * A navigation location is the selection alone, as in VS Code's
+ * `TextEditorPaneSelection`: scroll is not part of history, and replay reveals
+ * the selection instead of restoring an old viewport.
+ */
 export interface EditorNavigationSnapshot {
     selection: monacoEditor.ISelection;
-    viewState: monacoEditor.ICodeEditorViewState;
 }
 
 export interface EditorNavigationController {
@@ -60,19 +64,19 @@ export function createEditorNavigationController(
     editor: Pick<
         monacoEditor.IStandaloneCodeEditor,
         | 'getSelection'
-        | 'saveViewState'
-        | 'restoreViewState'
         | 'setSelection'
+        | 'revealRangeInCenterIfOutsideViewport'
+        | 'getLayoutInfo'
+        | 'onDidLayoutChange'
         | 'onDidChangeCursorSelection'
-        | 'onDidScrollChange'
     >,
 ): EditorNavigationController {
     let restoreGeneration = 0;
     let restoring = false;
+    let pendingReveal: { dispose(): void } | null = null;
     const capture = (): EditorNavigationSnapshot | null => {
         const selection = editor.getSelection();
-        const viewState = editor.saveViewState();
-        if (!selection || !viewState) return null;
+        if (!selection) return null;
         return {
             selection: {
                 selectionStartLineNumber: selection.selectionStartLineNumber,
@@ -80,8 +84,11 @@ export function createEditorNavigationController(
                 positionLineNumber: selection.positionLineNumber,
                 positionColumn: selection.positionColumn,
             },
-            viewState,
         };
+    };
+    const reveal = () => {
+        const selection = editor.getSelection();
+        if (selection) editor.revealRangeInCenterIfOutsideViewport(selection);
     };
 
     return {
@@ -89,8 +96,23 @@ export function createEditorNavigationController(
         restore: snapshot => {
             restoring = true;
             const generation = ++restoreGeneration;
-            editor.restoreViewState(snapshot.viewState);
+            pendingReveal?.dispose();
+            pendingReveal = null;
             editor.setSelection(snapshot.selection);
+            // A tab that was just shown still has its hidden 0px layout until the
+            // wrapper's resize observer runs; centering against that would park
+            // the cursor at the top edge, so wait for a real layout.
+            if (editor.getLayoutInfo().height > 0) {
+                reveal();
+            } else {
+                const listener = editor.onDidLayoutChange(layout => {
+                    if (layout.height <= 0) return;
+                    listener.dispose();
+                    if (pendingReveal === listener) pendingReveal = null;
+                    reveal();
+                });
+                pendingReveal = listener;
+            }
             queueMicrotask(() => {
                 if (restoreGeneration === generation) restoring = false;
             });
@@ -101,14 +123,15 @@ export function createEditorNavigationController(
                 const snapshot = capture();
                 if (snapshot) listener(snapshot, reason);
             };
+            // Only cursor moves are history; scrolling and relayout never record.
             const selection = editor.onDidChangeCursorSelection(event => {
                 emit(navigationReason(event.source));
             });
-            const scroll = editor.onDidScrollChange(() => emit('user'));
             return {
                 dispose: () => {
                     selection.dispose();
-                    scroll.dispose();
+                    pendingReveal?.dispose();
+                    pendingReveal = null;
                 },
             };
         },

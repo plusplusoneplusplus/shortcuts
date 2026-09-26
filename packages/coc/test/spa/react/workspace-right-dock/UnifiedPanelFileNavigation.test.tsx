@@ -20,20 +20,6 @@ function snapshot(line: number, column = 1): EditorNavigationSnapshot {
             positionLineNumber: line,
             positionColumn: column,
         },
-        viewState: {
-            cursorState: [{
-                inSelectionMode: false,
-                selectionStart: { lineNumber: line, column },
-                position: { lineNumber: line, column },
-            }],
-            viewState: {
-                scrollLeft: 0,
-                scrollTop: line * 20,
-                firstPosition: { lineNumber: line, column: 1 },
-                firstPositionDeltaTop: 0,
-            },
-            contributionsState: {},
-        },
     };
 }
 
@@ -96,6 +82,18 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/P
                             }}
                         >
                             jump in file
+                        </button>
+                        <button
+                            data-testid="move-near-in-a"
+                            onClick={() => {
+                                const line = currentRef.current.selection.positionLineNumber + 2;
+                                const destination = snapshot(line, 1);
+                                currentRef.current = destination;
+                                setCurrent(destination);
+                                onNavigationLocation?.(destination, 'user');
+                            }}
+                        >
+                            move nearby
                         </button>
                     </>
                 )}
@@ -240,6 +238,35 @@ describe('unified panel file navigation history', () => {
             screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`),
         ).toHaveAttribute('aria-selected', 'true'));
         expect(controllers.get('b.ts')?.restore).toHaveBeenCalledWith(snapshot(30, 5));
+    });
+
+    // Regression: a nearby cursor move after Back replaced the current entry and
+    // truncated the forward branch, so Forward stopped working.
+    it('keeps Forward available after a nearby cursor move following Back', async () => {
+        seedFile();
+        renderPanel();
+        await screen.findByTestId('mock-file-a.ts');
+        fireEvent.click(screen.getByTestId('jump-to-b'));
+        const b = await screen.findByTestId('mock-file-b.ts');
+        act(() => b.focus());
+
+        expect(pressHistory('back').defaultPrevented).toBe(true);
+        await waitFor(() => expect(
+            screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
+        ).toHaveAttribute('aria-selected', 'true'));
+        await act(async () => { await Promise.resolve(); });
+        fireEvent.click(screen.getByTestId('move-near-in-a'));
+
+        act(() => screen.getByTestId('mock-file-a.ts').focus());
+        expect(pressHistory('forward').defaultPrevented).toBe(true);
+        await waitFor(() => expect(
+            screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`),
+        ).toHaveAttribute('aria-selected', 'true'));
+        expect(controllers.get('b.ts')?.restore).toHaveBeenLastCalledWith(snapshot(30, 5));
+
+        act(() => b.focus());
+        expect(pressHistory('back').defaultPrevented).toBe(true);
+        await waitFor(() => expect(controllers.get('a.ts')?.restore).toHaveBeenLastCalledWith(snapshot(3, 1)));
     });
 
     it('restores a same-file jump without creating replay visits', async () => {
