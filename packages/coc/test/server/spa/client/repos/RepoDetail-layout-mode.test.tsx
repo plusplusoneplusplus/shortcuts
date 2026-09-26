@@ -222,7 +222,19 @@ vi.mock('../../../../../src/server/spa/client/react/features/git/RepoGitTab', ()
             props.onViewChange?.(next);
         };
         return (
-            <div data-testid="repo-git-tab-split" data-detail-open={String(props.detailOpen)}>
+            <div
+                data-testid="repo-git-tab-split"
+                data-detail-open={String(props.detailOpen)}
+                data-restore-view={JSON.stringify(props.restoreView ?? null)}
+            >
+                {/* What RepoGitTab does once a restored commit is refetched. */}
+                <button
+                    data-testid="split-git-restore"
+                    onClick={() => {
+                        setView(props.restoreView.hash);
+                        props.onViewChange?.({ type: 'commit', commit: { hash: props.restoreView.hash } });
+                    }}
+                />
                 <button data-testid="split-git-list-item" onClick={() => select({ type: 'branch-range' }, 'branch-range')} />
                 <button data-testid="split-git-commit-a" onClick={() => select({ type: 'commit', commit: { hash: 'aaa' } }, 'aaa')} />
                 <button data-testid="split-git-commit-b" onClick={() => select({ type: 'commit', commit: { hash: 'bbb' } }, 'bbb')} />
@@ -254,6 +266,9 @@ vi.mock('../../../../../src/server/spa/client/react/tasks/TasksPanel', () => ({
 vi.mock('../../../../../src/server/spa/client/react/repos/repoGrouping', () => ({}));
 
 import { RepoDetail } from '../../../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
+import { openUnifiedPanelTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { activeTab, findTab } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { readUnifiedPanelState } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -753,6 +768,39 @@ describe('RepoDetail — split workspace panel', () => {
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
         await waitFor(() => expect(gitList.getAttribute('data-detail-open')).toBe('false'));
         expect(screen.queryAllByRole('tab').filter(t => t.getAttribute('data-kind') === 'git')).toHaveLength(0);
+    });
+
+    // AC-03: the Git tab persists the view it shows (hash only) and hands it
+    // back to RepoGitTab after a reload; restoring it does not steal focus.
+    it('flag ON (desktop): the Git tab persists its view and restores it after a reload', async () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        localStorage.clear();
+        const first = renderDetail();
+
+        fireEvent.click(screen.getByTestId('split-git-commit-a'));
+        fireEvent.click(screen.getByTestId('split-git-commit-b'));
+        await screen.findByTestId('unified-git-tab');
+        const gitTab = () => readUnifiedPanelState('ws-1').workspaceTabs.find(tab => tab.kind === 'git');
+        await waitFor(() => expect(gitTab()?.gitView).toEqual({ type: 'commit', hash: 'bbb' }));
+        const stored = localStorage.getItem(Object.keys(localStorage).find(key => localStorage.getItem(key)?.includes('"gitView"'))!)!;
+        expect(stored).toContain('"gitView":{"type":"commit","hash":"bbb"}');
+        expect(stored).not.toContain('"commit":{');
+        first.unmount();
+
+        // Another tab holds focus when the page comes back.
+        openUnifiedPanelTab('ws-1', { kind: 'notes', ownerWorkspaceId: 'ws-1', chatId: null, resourceId: 'notes', label: 'Notes' });
+        renderDetail();
+        const gitList = screen.getByTestId('repo-git-tab-split');
+        expect(JSON.parse(gitList.getAttribute('data-restore-view')!)).toEqual({ type: 'commit', hash: 'bbb' });
+        expect(gitList.getAttribute('data-detail-open')).toBe('true');
+
+        fireEvent.click(screen.getByTestId('split-git-restore'));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const state = readUnifiedPanelState('ws-1');
+        expect(activeTab(state, null)?.kind).toBe('notes');
+        expect(findTab(state, gitTab()!.id)?.gitView).toEqual({ type: 'commit', hash: 'bbb' });
     });
 
     it('flag ON (mobile): RepoGitTab gets no detailOpen signal (the shared pane owns git)', () => {

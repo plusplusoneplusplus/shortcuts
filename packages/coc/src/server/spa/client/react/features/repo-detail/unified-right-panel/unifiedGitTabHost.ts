@@ -16,7 +16,10 @@
 import { useSyncExternalStore } from 'react';
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
 import { useUnifiedPanelState } from './unifiedPanelStore';
-import { findTab, GIT_TAB_RESOURCE_ID, unifiedTabId, type OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import type { PersistedGitView } from '../../git/repoGitTab/types';
+import {
+    findTab, GIT_TAB_RESOURCE_ID, unifiedTabId, type OpenUnifiedTabInput, type UnifiedPanelTab,
+} from './unifiedPanelTabsModel';
 
 /** The strip label of every Git tab. */
 export const GIT_TAB_LABEL = 'Git';
@@ -76,6 +79,8 @@ export function unifiedGitTabInput(input: {
     ownerRoutingRef?: string | null;
     /** The chat the panel is showing, so the open focuses the tab in that view. */
     chatId: string | null;
+    /** What the tab now shows, persisted so a reload can restore it. */
+    gitView?: PersistedGitView;
 }): OpenUnifiedTabInput {
     return {
         kind: 'git',
@@ -84,6 +89,7 @@ export function unifiedGitTabInput(input: {
         chatId: input.chatId,
         resourceId: GIT_TAB_RESOURCE_ID,
         label: GIT_TAB_LABEL,
+        ...(input.gitView === undefined ? {} : { gitView: input.gitView }),
     };
 }
 
@@ -112,11 +118,19 @@ export function unifiedGitTabId(input: {
     });
 }
 
+/** This workspace's Git tab in `scopeWorkspaceId`'s panel, or null when closed. */
+export function useUnifiedGitTab(
+    scopeWorkspaceId: string,
+    input: Parameters<typeof unifiedGitTabId>[0],
+): UnifiedPanelTab | null {
+    const [state] = useUnifiedPanelState(scopeWorkspaceId);
+    return findTab(state, unifiedGitTabId(input));
+}
+
 /** Whether `scopeWorkspaceId`'s panel currently holds this workspace's Git tab. */
 export function useUnifiedGitTabOpen(
     scopeWorkspaceId: string,
     input: Parameters<typeof unifiedGitTabId>[0],
 ): boolean {
-    const [state] = useUnifiedPanelState(scopeWorkspaceId);
-    return findTab(state, unifiedGitTabId(input)) !== null;
+    return useUnifiedGitTab(scopeWorkspaceId, input) !== null;
 }

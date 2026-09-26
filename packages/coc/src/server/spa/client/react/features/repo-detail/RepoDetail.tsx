@@ -49,7 +49,8 @@ import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
 import { UnifiedPanelHostProvider } from './unified-right-panel/unifiedPanelHost';
-import { openUnifiedGitTab, useUnifiedGitTabHost, useUnifiedGitTabOpen } from './unified-right-panel/unifiedGitTabHost';
+import { openUnifiedGitTab, useUnifiedGitTab, useUnifiedGitTabHost } from './unified-right-panel/unifiedGitTabHost';
+import { persistGitView, persistedViewIdentity } from '../git/repoGitTab/selectionModel';
 import type { RightPanelView } from '../git/repoGitTab/types';
 import { ContentSearchOverlayHost } from './content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from './content-search/ContentSearchOverlay';
@@ -193,18 +194,27 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // focuses that tab — revealing the panel when it is collapsed.
     const gitTabHostNode = useUnifiedGitTabHost(ws.id);
     // Closing the Git tab hands back to RepoGitTab, which drops the selection.
-    const gitTabOpen = useUnifiedGitTabOpen(ws.id, {
+    // The tab also persists the view it shows, which RepoGitTab refetches after
+    // a reload.
+    const gitTab = useUnifiedGitTab(ws.id, {
         ownerWorkspaceId: ws.id,
         ownerRoutingRef: explorerRoutingRef,
     });
+    const gitTabOpen = gitTab !== null;
+    const gitTabViewIdentity = persistedViewIdentity(gitTab?.gitView);
     const handleSplitGitViewChange = useCallback((view: RightPanelView | null) => {
         if (!view) return;
+        const gitView = persistGitView(view);
+        // Restoring the tab's own view after a reload is not a new click: leave
+        // the panel's focus where the user left it.
+        if (gitTabOpen && persistedViewIdentity(gitView) === gitTabViewIdentity) return;
         openUnifiedGitTab(ws.id, {
             ownerWorkspaceId: ws.id,
             ownerRoutingRef: explorerRoutingRef,
             chatId: panelChatId,
+            gitView,
         });
-    }, [ws.id, explorerRoutingRef, panelChatId]);
+    }, [ws.id, explorerRoutingRef, panelChatId, gitTabOpen, gitTabViewIdentity]);
     const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
         if (!dockAvailable) {
             return Promise.resolve({
@@ -868,6 +878,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             onActivateDetail={dockAvailable ? undefined : () => setSplitLastClicked('git')}
                                             onViewChange={dockAvailable ? handleSplitGitViewChange : undefined}
                                             detailOpen={dockAvailable ? gitTabOpen : undefined}
+                                            restoreView={dockAvailable ? gitTab?.gitView : undefined}
                                             headerToolbarContainer={splitGitHeaderNode}
                                             active={activeSubTab === 'activity' || activeSubTab === 'chats'}
                                         />

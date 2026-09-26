@@ -31,7 +31,7 @@ import { buildGitRouteHash } from '../../../layout/gitRoute';
 import { isGitCommitLookupEnabled } from '../../../utils/config';
 import type { GitCommitItem } from '../commits/CommitList';
 import { selectedHashesOf } from './selectionModel';
-import type { HunkTarget, RightPanelView } from './types';
+import type { HunkTarget, PersistedGitView, RightPanelView } from './types';
 
 /** A 7–40 char hex string is the only thing worth sending to `getCommit`. */
 const SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
@@ -129,8 +129,14 @@ export interface UseRepoGitSelectionReturn {
     lookupCommit: (sha: string) => Promise<void>;
     /** Deep link the tab mounted with — drives CommitList's initial expansion. */
     initialCommitHash: string | null;
-    /** Resolve the mount-time deep link once the first commit page has landed. */
-    hydrateFromInitialLoad: (loaded: GitCommitItem[]) => void;
+    /**
+     * Resolve the mount-time deep link once the first commit page has landed.
+     * With no deep link, `restore` — a view a host persisted — is refetched
+     * instead: commits by hash, everything else re-read from current state.
+     */
+    hydrateFromInitialLoad: (loaded: GitCommitItem[], restore?: PersistedGitView | null) => void;
+    /** Set when a restored view's commit no longer exists; cleared by any selection. */
+    restoreNotFound: string | null;
 }
 
 export function useRepoGitSelection({
@@ -157,6 +163,7 @@ export function useRepoGitSelection({
     const [openedCommit, setOpenedCommit] = useState<GitCommitItem | null>(null);
     const [commitLookupLoading, setCommitLookupLoading] = useState(false);
     const [commitLookupError, setCommitLookupError] = useState<string | null>(null);
+    const [restoreNotFound, setRestoreNotFound] = useState<string | null>(null);
 
     // Seeded with the mount-time route so the "late deep link" effect doesn't
     // immediately re-handle the link the initial load is about to consume.
@@ -264,7 +271,10 @@ export function useRepoGitSelection({
 
     const selectWorkingTreeComments = useCallback(() => setView({ type: 'working-tree-comments' }), []);
     const selectBranchRangeComments = useCallback(() => setView({ type: 'branch-range-comments' }), []);
-    const clearSelection = useCallback(() => setView(null), []);
+    const clearSelection = useCallback(() => {
+        setView(null);
+        setRestoreNotFound(null);
+    }, []);
     const clearCommitLookupError = useCallback(() => setCommitLookupError(null), []);
 
     // ── Direct SHA lookup ─────────────────────────────────────────────────────
@@ -366,14 +376,68 @@ export function useRepoGitSelection({
         setView(null);
     }, [openCommitBySha]);
 
+    /**
+     * Refetch a persisted view. A commit outside the loaded page is looked up
+     * by hash; one that no longer exists leaves no view and a not-found notice
+     * rather than a blank detail. The URL is left alone — restoring is not a
+     * navigation.
+     */
+    const restorePersistedView = useCallback((persisted: PersistedGitView, loaded: GitCommitItem[]) => {
+        const loadedCommit = (hash: string) => loaded.find(c => c.hash === hash);
+        const withCommit = (hash: string, show: (commit: GitCommitItem) => RightPanelView) => {
+            const found = loadedCommit(hash);
+            if (found) {
+                setView(show(found));
+                return;
+            }
+            const generation = lookupGenerationRef.current += 1;
+            cloneClient.git.getCommit(workspaceId, hash)
+                .then(result => {
+                    if (lookupGenerationRef.current !== generation || viewRef.current) return;
+                    const commit = toCommitItem(result);
+                    setOpenedCommit(commit);
+                    setView(show(commit));
+                })
+                .catch(() => {
+                    if (lookupGenerationRef.current !== generation || viewRef.current) return;
+                    setRestoreNotFound(`Commit ${hash.slice(0, 7)} was not found. It may have been rewritten or removed.`);
+                });
+        };
+        switch (persisted.type) {
+            case 'commit':
+                withCommit(persisted.hash, commit => ({ type: 'commit', commit }));
+                return;
+            case 'commit-file':
+                withCommit(persisted.hash, commit => ({ type: 'commit-file', hash: commit.hash, filePath: persisted.filePath }));
+                return;
+            case 'multi-commit': {
+                const found = persisted.hashes.map(loadedCommit).filter((c): c is GitCommitItem => !!c);
+                if (found.length > 1) setView({ type: 'multi-commit', commits: found });
+                else withCommit(found[0]?.hash ?? persisted.hashes[0], commit => ({ type: 'commit', commit }));
+                return;
+            }
+            default:
+                setView(persisted);
+        }
+    }, [cloneClient, workspaceId]);
+
     /** Resolve the deep link the tab mounted with, once the first page landed. */
-    const hydrateFromInitialLoad = useCallback((loaded: GitCommitItem[]) => {
+    const hydrateFromInitialLoad = useCallback((loaded: GitCommitItem[], restore?: PersistedGitView | null) => {
         const { commitHash, filePath } = routeRef.current;
         const identity = gitRouteIdentity(pageWorkspaceId, workspaceId, commitHash, filePath);
         consumedRouteRef.current = identity;
         storeRouteRef.current = identity;
+        if (!commitHash && restore) {
+            restorePersistedView(restore, loaded);
+            return;
+        }
         applyRoute(commitHash, filePath, loaded);
-    }, [applyRoute, pageWorkspaceId, workspaceId]);
+    }, [applyRoute, restorePersistedView, pageWorkspaceId, workspaceId]);
+
+    // Any selection supersedes a restore that came up empty.
+    useEffect(() => {
+        if (view) setRestoreNotFound(null);
+    }, [view]);
 
     // Routed navigation after mount: Back/Forward, an activity-tab commit link,
     // a member switch, or a same-SHA file change. Every field of the route takes
@@ -414,6 +478,6 @@ export function useRepoGitSelection({
         selectWorkingTreeFile, navigateToWorkingTreeFile,
         selectWorkingTreeComments, selectBranchRangeComments, clearSelection,
         openedCommit, commitLookupLoading, commitLookupError, clearCommitLookupError,
-        lookupCommit, initialCommitHash: routeCommitHash, hydrateFromInitialLoad,
+        lookupCommit, initialCommitHash: routeCommitHash, hydrateFromInitialLoad, restoreNotFound,
     };
 }

@@ -235,6 +235,58 @@ describe('RepoGitTab — split-workspace layout', () => {
         expect(onViewChange.mock.calls[0][0]).toMatchObject({ type: 'commit', commit: { hash: 'abc123' } });
     });
 
+    describe('restoring a persisted view (AC-03)', () => {
+        const commit = { hash: 'abc123', shortHash: 'abc123', subject: 'a commit', author: 'a', date: '', parentHashes: [] };
+
+        // Each test gets its own workspace: the commit page is cached per id.
+        let restoreSeq = 0;
+        let workspaceId = '';
+        beforeEach(() => { workspaceId = `ws-restore-${++restoreSeq}`; });
+
+        async function renderRestored(restoreView: unknown, onViewChange = vi.fn()) {
+            const container = document.createElement('div');
+            document.body.appendChild(container);
+            await renderTab({ workspaceId, layout: 'split-workspace', detailContainer: container, detailActive: true, onViewChange, restoreView });
+            return { container, onViewChange };
+        }
+
+        it('refetches a commit view from the loaded page', async () => {
+            client.git.listCommits.mockResolvedValue({ commits: [commit], unpushedCount: 0 });
+            const { container, onViewChange } = await renderRestored({ type: 'commit', hash: 'abc123' });
+            await waitFor(() => expect(container.querySelector('[data-testid="stub-commit-detail"]')?.getAttribute('data-hash')).toBe('abc123'));
+            expect(onViewChange).toHaveBeenCalledWith(expect.objectContaining({ type: 'commit', commit: expect.objectContaining({ hash: 'abc123' }) }));
+            expect(client.git.getCommit).not.toHaveBeenCalled();
+        });
+
+        it('looks a commit up by hash when it is outside the loaded page', async () => {
+            client.git.getCommit.mockResolvedValue({ ...commit, hash: 'def456', shortHash: 'def456' });
+            const { container } = await renderRestored({ type: 'commit', hash: 'def456' });
+            await waitFor(() => expect(container.querySelector('[data-testid="stub-commit-detail"]')?.getAttribute('data-hash')).toBe('def456'));
+            expect(client.git.getCommit).toHaveBeenCalledWith(workspaceId, 'def456');
+        });
+
+        it('shows a not-found notice, not a blank tab, when the commit is gone', async () => {
+            client.git.getCommit.mockRejectedValue(new Error('404'));
+            const { container, onViewChange } = await renderRestored({ type: 'commit', hash: 'deadbeef' });
+            await waitFor(() => expect(container.querySelector('[data-testid="git-detail-restore-not-found"]')?.textContent)
+                .toContain('deadbee'));
+            expect(container.querySelector('[data-testid="git-detail-empty"]')).toBeNull();
+            expect(onViewChange).not.toHaveBeenCalled();
+
+            // A new click replaces the notice with that selection's detail.
+            fireEvent.click(screen.getByTestId('stub-commit-select'));
+            await waitFor(() => expect(container.querySelector('[data-testid="stub-commit-detail"]')).toBeTruthy());
+            expect(container.querySelector('[data-testid="git-detail-restore-not-found"]')).toBeNull();
+        });
+
+        it('restores a non-commit view as-is', async () => {
+            const { container, onViewChange } = await renderRestored({ type: 'branch-range-comments' });
+            await waitFor(() => expect(onViewChange).toHaveBeenCalledWith({ type: 'branch-range-comments' }));
+            // On the default branch there is no range left to show: say so, don't crash.
+            expect(container.querySelector('[data-testid="git-detail-no-branch-range"]')).toBeTruthy();
+        });
+    });
+
     it('keeps a fresh selection when the host was never open', async () => {
         await renderTab({ layout: 'split-workspace', detailOpen: false });
         fireEvent.click(screen.getByTestId('stub-commit-select'));

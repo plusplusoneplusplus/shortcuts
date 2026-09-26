@@ -639,7 +639,7 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain('export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, headerToolbarContainer, active = true }: RepoGitTabProps)');
+            expect(source).toContain('export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps)');
         });
 
         it('derives isSplitWorkspace from the layout prop', () => {
@@ -719,8 +719,10 @@ describe('RepoGitTab', () => {
             expect(splitBlock![0]).toContain('createPortal(');
             expect(splitBlock![0]).toContain('detailContainer,');
             expect(splitBlock![0]).toContain('data-testid="git-split-workspace-detail"');
-            // Reuses the same detail subtree the standalone layout renders.
-            expect(splitBlock![0]).toContain('{detailPanel}');
+            // Reuses the same detail subtree the standalone layout renders
+            // (swapped only for the not-found notice of a failed restore).
+            expect(splitBlock![0]).toContain(') : detailPanel}');
+            expect(splitBlock![0]).toContain('data-testid="git-detail-restore-not-found"');
         });
 
         it('list panel drops the fixed width style + mobile hide-toggle in split mode (shell owns layout — AC-06)', () => {
