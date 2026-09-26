@@ -82,6 +82,12 @@ all have their own `references/*.md`.
   (`ChatExecutorRuntime`/`LifecycleRuntime`/`DreamRuntime`) so tools do not leak
   into background executors. `test/server/executors/executor-runtime-wiring.test.ts`
   is table-driven over every capability and fails if a hop is dropped.
+- **Restored queues stay stopped until server activation.** Queue persistence may
+  create per-repo executors while the composition root is still wiring routes and
+  late-bound capabilities. `createExecutionServer` activates queue processing only
+  after the HTTP server is listening; activation starts every existing executor and
+  makes later lazy repo executors auto-start. Never replace this readiness boundary
+  with a timing delay.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Process mutation admission** uses the shared keyed coordinator in

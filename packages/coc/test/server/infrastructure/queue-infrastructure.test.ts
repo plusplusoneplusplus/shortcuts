@@ -23,6 +23,7 @@ import { createFixedQueueRuntimeConfig, DEFAULT_QUEUE_RUNTIME_CONFIG } from '../
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
+import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -46,11 +47,12 @@ describe('createQueueInfrastructure', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         store.close();
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    it('returns registry, bridge, queuePersistence and queueFacade', () => {
+    it('returns registry, bridge, queuePersistence, queueFacade and activation', () => {
         const result = createQueueInfrastructure(
             store,
             dataDir,
@@ -64,6 +66,7 @@ describe('createQueueInfrastructure', () => {
         expect(result.queuePersistence).toBeInstanceOf(SqliteQueuePersistence);
         expect(result.queueFacade).toBeDefined();
         expect(typeof result.queueFacade.enqueue).toBe('function');
+        expect(typeof result.activateQueueProcessing).toBe('function');
     });
 
     it('applies historyLimit option to registry maxHistorySize', () => {
@@ -128,19 +131,90 @@ describe('createQueueInfrastructure', () => {
         expect(result.bridge).toBeInstanceOf(MultiRepoQueueRouter);
     });
 
-    it('clears initialDelay after restore so lazy bridges get 0 delay', () => {
+    it('activates restored executors only after late-bound dependencies are wired', async () => {
+        const first = createQueueInfrastructure(
+            store,
+            dataDir,
+            { queue: { autoStart: false } },
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
+            getWsServer,
+        );
+        const repoPath = path.join(dataDir, 'restored-repo');
+        first.bridge.registerRepoId('restored-repo', repoPath);
+        first.bridge.getOrCreateBridge(repoPath);
+        first.registry.getQueueForRepo(repoPath).enqueue({
+            type: 'chat',
+            priority: 'normal',
+            repoId: 'restored-repo',
+            payload: {
+                kind: 'chat',
+                mode: 'ralph',
+                prompt: 'restored Ralph task',
+                context: { autoProviderRouting: { requested: true } },
+            },
+            config: {},
+        });
+        first.queuePersistence.dispose();
+        first.bridge.dispose();
+
+        let resolverWasWired = false;
+        const executeSpy = vi.spyOn(CLITaskExecutor.prototype, 'execute').mockImplementation(function () {
+            resolverWasWired = typeof (this as unknown as { resolveDefaultProvider?: unknown }).resolveDefaultProvider === 'function';
+            return Promise.resolve({ success: true, durationMs: 0 });
+        });
         const result = createQueueInfrastructure(
             store,
             dataDir,
-            { queue: { autoStart: false, restartPickupDelayMs: 30000 } },
+            {},
             DEFAULT_QUEUE_RUNTIME_CONFIG,
             getWsServer,
         );
 
-        // Create a new bridge after infrastructure init — should not have delay
-        const bridge = result.bridge;
-        const newBridge = bridge.getOrCreateBridge('/tmp/lazy-repo');
-        expect(newBridge).toBeDefined();
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(executeSpy).not.toHaveBeenCalled();
+
+        result.bridge.setResolveDefaultProvider(async () => ({
+            provider: 'copilot',
+            selectedByAuto: true,
+            fallbackUsed: false,
+            decisions: [],
+            warnings: [],
+        }));
+        result.activateQueueProcessing();
+
+        await vi.waitFor(() => expect(executeSpy).toHaveBeenCalledTimes(1));
+        expect(resolverWasWired).toBe(true);
+        result.queuePersistence.dispose();
+        result.bridge.dispose();
+    });
+
+    it('keeps existing and future executors stopped when autoStart is false', () => {
+        const result = createQueueInfrastructure(
+            store,
+            dataDir,
+            { queue: { autoStart: false } },
+            DEFAULT_QUEUE_RUNTIME_CONFIG,
+            getWsServer,
+        );
+        const firstPath = path.join(dataDir, 'first-repo');
+        result.bridge.getOrCreateBridge(firstPath);
+        const firstManager = result.registry.getQueueForRepo(firstPath);
+        const firstTaskId = firstManager.enqueue({
+            type: 'chat',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'first' },
+        });
+
+        result.activateQueueProcessing();
+        expect(result.bridge.findExecutorForTask(firstTaskId)?.isRunning()).toBe(false);
+
+        const secondPath = path.join(dataDir, 'second-repo');
+        result.bridge.getOrCreateBridge(secondPath);
+        const secondManager = result.registry.getQueueForRepo(secondPath);
+        const secondTaskId = secondManager.enqueue({
+            type: 'chat',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'second' },
+        });
+        expect(result.bridge.findExecutorForTask(secondTaskId)?.isRunning()).toBe(false);
     });
 
     it('creates in-memory DB when store is not SqliteProcessStore', () => {

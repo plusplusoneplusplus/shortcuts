@@ -28,6 +28,8 @@ export interface QueueInfrastructure {
     bridge: MultiRepoQueueRouter;
     queuePersistence: SqliteQueuePersistence;
     queueFacade: ReturnType<MultiRepoQueueRouter['createAggregateQueueFacade']>;
+    /** Start restored queues after the server finishes wiring late-bound dependencies. */
+    activateQueueProcessing: () => void;
 }
 
 // ============================================================================
@@ -106,8 +108,12 @@ export function createQueueInfrastructure(
         resolveAiServiceForProvider,
     };
 
+    const shouldAutoStart = options.queue?.autoStart !== false;
     const bridge = new MultiRepoQueueRouter(registry, store, {
-        autoStart: options.queue?.autoStart !== false,
+        // Queue restoration creates repo executors before routes and other
+        // late-bound dependencies exist. The composition root activates them
+        // only after the server is fully wired and listening.
+        autoStart: false,
         approvePermissions: true,
         dataDir,
         aiService: options.aiService,
@@ -124,10 +130,15 @@ export function createQueueInfrastructure(
     queuePersistence.restore();
     bridge.restorePrMergeWatchers();
 
-    // Clear the startup delay so lazily-created bridges after this point get no delay
-    bridge.clearInitialDelay();
-
     const queueFacade = bridge.createAggregateQueueFacade();
+    let activated = false;
+    const activateQueueProcessing = (): void => {
+        if (activated || !shouldAutoStart) {
+            return;
+        }
+        activated = true;
+        bridge.activateQueueProcessing();
+    };
 
-    return { registry, bridge, queuePersistence, queueFacade };
+    return { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing };
 }
