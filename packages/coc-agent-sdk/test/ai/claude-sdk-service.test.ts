@@ -662,6 +662,78 @@ describe('ClaudeSDKService.sendMessage', () => {
         expect(result.response).toBe('Hello world');
     });
 
+    describe('answer left only in thinking before suggest_follow_ups', () => {
+        const followUps = (id: string) => ({
+            type: 'assistant',
+            message: {
+                content: [{
+                    type: 'tool_use', id, name: 'mcp__coc_llm_tools__suggest_follow_ups',
+                    input: { suggestions: ['a', 'b', 'c'] },
+                }],
+            },
+        });
+        const thinking = (text: string) => ({
+            type: 'assistant',
+            message: { content: [{ type: 'thinking', thinking: text, signature: 'sig' }] },
+        });
+        const closing = {
+            type: 'assistant',
+            message: { content: [{ type: 'text', text: 'Suggested follow-ups are ready.' }], stop_reason: 'end_turn' },
+        };
+        const run = async (messages: object[]) => {
+            queryFn.mockReturnValueOnce(makeMessages([
+                ...messages,
+                { type: 'result', subtype: 'success', result: 'Suggested follow-ups are ready.' },
+            ]));
+            const chunks: string[] = [];
+            const result = await svc.sendMessage({
+                prompt: 'q',
+                onStreamingChunk: (c) => { if (c) chunks.push(c); },
+            });
+            return { result, chunks };
+        };
+
+        it('surfaces the thinking text as the answer', async () => {
+            const { result, chunks } = await run([
+                thinking('I found the bug: the tree recentres on click.'),
+                followUps('f1'),
+                closing,
+            ]);
+            expect(chunks).toEqual(['I found the bug: the tree recentres on click.', 'Suggested follow-ups are ready.']);
+            expect(result.response).toContain('I found the bug');
+        });
+
+        it('keeps thinking hidden when visible text was written before the tool call', async () => {
+            const { chunks } = await run([
+                thinking('private reasoning'),
+                { type: 'assistant', message: { content: [{ type: 'text', text: 'The answer.' }] } },
+                followUps('f1'),
+                closing,
+            ]);
+            expect(chunks).toEqual(['The answer.', 'Suggested follow-ups are ready.']);
+        });
+
+        it('keeps thinking hidden before other tool calls and ignores empty thinking', async () => {
+            const { chunks } = await run([
+                thinking('let me grep'),
+                { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }] } },
+                thinking(''),
+                followUps('f1'),
+                closing,
+            ]);
+            expect(chunks).toEqual(['Suggested follow-ups are ready.']);
+        });
+
+        it('ignores thinking from subagents', async () => {
+            const { chunks } = await run([
+                { ...thinking('subagent notes'), parent_tool_use_id: 'task-1' },
+                followUps('f1'),
+                closing,
+            ]);
+            expect(chunks).toEqual(['Suggested follow-ups are ready.']);
+        });
+    });
+
     it('maps append systemMessage to the claude_code preset systemPrompt without mutating the prompt', async () => {
         queryFn.mockReturnValueOnce(makeMessages([
             { type: 'result', subtype: 'success', result: 'ok' },

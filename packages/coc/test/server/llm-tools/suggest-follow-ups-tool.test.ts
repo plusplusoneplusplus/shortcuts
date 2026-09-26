@@ -16,6 +16,13 @@ describe('createSuggestFollowUpsTool', () => {
         expect(typeof tool.handler).toBe('function');
     });
 
+    it('tells the model to write its answer as visible text before calling', () => {
+        // Regression: Claude sometimes left the whole answer in thinking and only
+        // called this tool, so the chat showed nothing but a closing line.
+        const tool = createSuggestFollowUpsTool();
+        expect(tool.description).toMatch(/full answer as normal visible text before calling this tool/);
+    });
+
     it('parameters match the expected JSON schema', () => {
         const tool = createSuggestFollowUpsTool();
         const params = tool.parameters as Record<string, unknown>;

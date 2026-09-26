@@ -5,6 +5,7 @@
 
 import { READ_ONLY_SYSTEM_MESSAGE, SECURITY_PATTERNS_DESCRIPTION } from '@plusplusoneplusplus/forge';
 import { getAllPromptOverrides } from './admin-prompt-overrides';
+import { SUGGEST_FOLLOW_UPS_DESCRIPTION } from '../llm-tools/suggest-follow-ups-tool';
 
 export interface BuiltInPrompt {
     id: string;
@@ -97,7 +98,7 @@ The plan file should include:
             group: 'UI',
             source: 'coc/server/suggest-follow-ups-tool.ts',
             description: 'Tool description controlling when/how AI calls suggest_follow_ups',
-            text: 'After completing your response, call this tool to suggest 2-3 brief follow-up actions the user might want to take next. Each suggestion should be a short, direct action phrase (imperative, not a question) that continues the conversation — e.g., "Show an example", "Explain the config options", "Generate the fix". IMPORTANT: Never list follow-up suggestions in your response text. Always call this tool instead.',
+            text: SUGGEST_FOLLOW_UPS_DESCRIPTION,
         },
     };
 }

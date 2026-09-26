@@ -1044,6 +1044,7 @@ export class ClaudeSDKService implements ISDKService {
         options.onSessionCreated?.(sessionId);
 
         const chunks: string[] = [];
+        const answerFallback = createClaudeAnswerFallback();
         const toolCalls = new Map<string, ToolCall>();
         const startedToolCalls = new Set<string>();
         // Tool calls started but not yet answered by a `tool_result`. Drives
@@ -1353,11 +1354,20 @@ export class ClaudeSDKService implements ISDKService {
                 clearPostDrainSettle();
                 publishProviderSessionId(this.extractSessionId(msg));
                 if (this.isAssistantMessage(msg)) {
+                    const isMainAgent = !msg.parent_tool_use_id;
                     for (const block of msg.message.content) {
                         if (this.isClaudeTextBlock(block)) {
                             chunks.push(block.text);
                             options.onStreamingChunk?.(block.text);
+                            if (isMainAgent) answerFallback.onText();
+                        } else if (isMainAgent && isClaudeThinkingBlock(block)) {
+                            answerFallback.onThinking(block.thinking);
                         } else if (this.isClaudeToolUseBlock(block)) {
+                            const recovered = isMainAgent ? answerFallback.onToolUse(block.name) : undefined;
+                            if (recovered) {
+                                chunks.push(recovered);
+                                options.onStreamingChunk?.(recovered);
+                            }
                             this.handleClaudeToolUse(block, options, toolCalls, startedToolCalls, msg.parent_tool_use_id ?? undefined, activeToolCalls);
                             // A tool launched with run_in_background keeps the
                             // session alive until its task_notification settles.
@@ -2692,6 +2702,43 @@ function isClaudeBackgroundToolUse(block: ClaudeToolUseBlock): boolean {
         !Array.isArray(input) &&
         (input as Record<string, unknown>).run_in_background === true
     );
+}
+
+function isClaudeThinkingBlock(block: ClaudeContentBlock): block is { type: 'thinking'; thinking: string } {
+    return (
+        typeof block === 'object' &&
+        block !== null &&
+        (block as Record<string, unknown>).type === 'thinking' &&
+        typeof (block as Record<string, unknown>).thinking === 'string'
+    );
+}
+
+/**
+ * Recovers an answer the model wrote only as thinking. Claude sometimes puts
+ * its reply in a thinking block and goes straight to `suggest_follow_ups`,
+ * leaving no visible text for that step. When `suggest_follow_ups` arrives
+ * with no text since the previous tool call, the latest non-empty thinking
+ * text is returned so the caller can surface it as the answer.
+ */
+export function createClaudeAnswerFallback() {
+    let textSinceTool = false;
+    let lastThinking = '';
+    return {
+        onText(): void {
+            textSinceTool = true;
+        },
+        onThinking(thinking: string): void {
+            if (thinking.trim()) lastThinking = thinking;
+        },
+        onToolUse(name: string): string | undefined {
+            const recovered = !textSinceTool && normalizeClaudeToolName(name) === 'suggest_follow_ups'
+                ? lastThinking.trim() || undefined
+                : undefined;
+            textSinceTool = false;
+            lastThinking = '';
+            return recovered;
+        },
+    };
 }
 
 function normalizeClaudeToolName(name: string): string {

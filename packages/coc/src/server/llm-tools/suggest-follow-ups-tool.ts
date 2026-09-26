@@ -6,6 +6,10 @@
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 
+/** Tool description; also shown read-only in the admin prompt catalog. */
+export const SUGGEST_FOLLOW_UPS_DESCRIPTION =
+    'At the end of your response, call this to suggest exactly 3 follow-up actions. Write your full answer as normal visible text before calling this tool — never leave the answer only in your reasoning. Each suggestion is a short imperative action phrase, not a question. Never list follow-ups in your response text — always call this tool instead.';
+
 export interface FollowUpSuggestion {
     suggestions: string[];
 }
@@ -16,8 +20,7 @@ export interface FollowUpSuggestion {
  */
 export function createSuggestFollowUpsTool() {
     return defineTool<FollowUpSuggestion>('suggest_follow_ups', {
-        description:
-            'At the end of your response, call this to suggest exactly 3 follow-up actions. Each is a short imperative action phrase, not a question. Never list follow-ups in your response text — always call this tool instead.',
+        description: SUGGEST_FOLLOW_UPS_DESCRIPTION,
         parameters: {
             type: 'object',
             properties: {
