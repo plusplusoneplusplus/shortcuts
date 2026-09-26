@@ -40,6 +40,8 @@ export interface NotesViewProps {
      * unified right panel.
      */
     navigation?: 'url' | 'local';
+    /** Reports this instance's selection to an embedding host. */
+    onSelectedNotePathChange?: (notePath: string | null) => void;
     /** Default chat scope for the NoteChatPanel. Defaults to 'per-note'. */
     defaultScope?: ChatScope;
     /**
@@ -95,6 +97,7 @@ export function NotesView({
     sourceSelectionId,
     initialNotePath,
     navigation = 'url',
+    onSelectedNotePathChange,
     defaultScope,
     active = true,
     dockStatusFooter = false,
@@ -115,10 +118,13 @@ export function NotesView({
     }, [workspaceId]);
 
     const publishSelection = useCallback((path: string | null) => {
-        if (navigation === 'local') return;
+        onSelectedNotePathChange?.(path);
+        if (navigation === 'local') {
+            return;
+        }
         dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: path });
         updateHash(path);
-    }, [dispatch, navigation, updateHash]);
+    }, [dispatch, navigation, onSelectedNotePathChange, updateHash]);
 
     // ── Navigation history (pointer-based back/forward) ─────────────────────
     // A single linear history: `entries` holds every visited note in order and
@@ -642,6 +648,7 @@ export function NotesView({
                         onNoteRenamed={handleNoteRenamed}
                         onNoteCreated={handleNoteCreated}
                         onNoteDeleted={handleNoteDeleted}
+                        onSelectedNoteMissing={handleNoteDeleted}
                         canGoBack={canGoBack}
                         onGoBack={handleGoBack}
                         canGoForward={canGoForward}

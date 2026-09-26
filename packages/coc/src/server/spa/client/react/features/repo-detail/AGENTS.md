@@ -146,7 +146,9 @@ The Notes resource renders the shared `../notes/NotesView.tsx`, including its
 tree, editor, comments, and per-note chat. It is scoped to the panel workspace,
 not the current dock target. `navigation="local"` keeps its note selection
 inside that instance: selecting, creating, renaming, or deleting a panel note
-does not write the Notes route or the app-wide selected note.
+does not write the Notes route or the app-wide selected note. The selected path
+lives in the Notes tab descriptor and restores per panel scope. Tree validation
+clears a missing restored path without activating the Notes tab.
 
 ## Explorer lazy-load state
 

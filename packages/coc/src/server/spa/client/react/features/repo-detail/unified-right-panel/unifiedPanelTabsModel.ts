@@ -39,6 +39,11 @@
 
 import type { PersistedGitView } from '../../git/repoGitTab/types';
 
+/** The serializable selection owned by a panel-local Notes view. */
+export interface PersistedNotesView {
+    notePath: string;
+}
+
 /**
  * What a tab renders.
  *
@@ -188,6 +193,8 @@ export interface UnifiedPanelTab {
      * diff content. It is what a reload refetches to restore the tab.
      */
     gitView?: PersistedGitView;
+    /** A `notes` tab's panel-local selected note. */
+    notesView?: PersistedNotesView;
 }
 
 export interface UnifiedPanelState {
@@ -328,11 +335,16 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.revealNonce === b.revealNonce
         && a.symbolCandidate === b.symbolCandidate
         && a.preview === b.preview
-        && gitViewKey(a.gitView) === gitViewKey(b.gitView);
+        && gitViewKey(a.gitView) === gitViewKey(b.gitView)
+        && notesViewKey(a.notesView) === notesViewKey(b.notesView);
 }
 
 function gitViewKey(view: PersistedGitView | undefined): string {
     return view === undefined ? '' : JSON.stringify(view);
+}
+
+function notesViewKey(view: PersistedNotesView | undefined): string {
+    return view?.notePath ?? '';
 }
 
 function sameList(a: readonly UnifiedPanelTab[], b: readonly UnifiedPanelTab[]): boolean {
@@ -540,6 +552,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
             // line and is never kept without one.
             ...(input.line === undefined ? keptReveal(existing) : {}),
             ...(opened.gitView === undefined && existing.gitView !== undefined ? { gitView: existing.gitView } : {}),
+            ...(existing.notesView === undefined ? {} : { notesView: existing.notesView }),
         };
         const copy = [...list];
         copy[index] = sameTab(existing, merged) ? existing : merged;
@@ -549,6 +562,33 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
     }
 
     return withActive(withList(state, scopeKey, scope, nextList), input.chatId ?? WORKSPACE_SCOPE_KEY, id);
+}
+
+/**
+ * Persist a panel-local Notes selection without activating or otherwise
+ * changing the tab. A null path clears a stale/deleted selection.
+ */
+export function updateNotesView(
+    state: UnifiedPanelState,
+    id: string,
+    notePath: string | null,
+): UnifiedPanelState {
+    const index = state.workspaceTabs.findIndex(tab => tab.id === id && tab.kind === 'notes');
+    if (index < 0) {
+        return state;
+    }
+    const current = state.workspaceTabs[index];
+    if ((current.notesView?.notePath ?? null) === notePath) {
+        return state;
+    }
+    const workspaceTabs = [...state.workspaceTabs];
+    if (notePath === null) {
+        const { notesView: _notesView, ...cleared } = current;
+        workspaceTabs[index] = cleared;
+    } else {
+        workspaceTabs[index] = { ...current, notesView: { notePath } };
+    }
+    return { ...state, workspaceTabs };
 }
 
 /** What `openPreviewTab` needs. Preview is a file-tab notion, so no `kind`. */
@@ -777,10 +817,10 @@ export function moveTab(state: UnifiedPanelState, id: string, beforeId: string |
  * Bump when the descriptor shape changes. A payload whose version is neither
  * this one nor a listed legacy version is discarded wholesale.
  *
- * The current payload stores the concrete owner routing ref and the `preview`
- * bit, and has no `explorer` kind.
+ * The current payload stores the concrete owner routing ref, the `preview` bit,
+ * and the Notes tab's local selection, and has no `explorer` kind.
  */
-export const UNIFIED_PANEL_STATE_VERSION = 3;
+export const UNIFIED_PANEL_STATE_VERSION = 4;
 
 /**
  * Versions this build can still read. A v1 payload restores field-for-field —
@@ -789,7 +829,7 @@ export const UNIFIED_PANEL_STATE_VERSION = 3;
  * other unknown descriptor. `restoreUnifiedPanelState` reports that drop so the
  * caller can open the tree column instead, which is where the Explorer went.
  */
-const UNIFIED_PANEL_LEGACY_VERSIONS: readonly number[] = [1, 2];
+const UNIFIED_PANEL_LEGACY_VERSIONS: readonly number[] = [1, 2, 3];
 
 /** The `kind` a pre-v2 payload used for the Explorer tab this build dropped. */
 const LEGACY_EXPLORER_KIND = 'explorer';
@@ -885,6 +925,7 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),
         ...(kind === 'git' ? gitViewField(value.gitView) : {}),
+        ...(kind === 'notes' ? notesViewField(value.notesView) : {}),
     };
     return tab;
 }
@@ -936,6 +977,14 @@ export function parsePersistedGitView(raw: unknown): PersistedGitView | null {
 function gitViewField(raw: unknown): Pick<UnifiedPanelTab, 'gitView'> {
     const gitView = parsePersistedGitView(raw);
     return gitView ? { gitView } : {};
+}
+
+function notesViewField(raw: unknown): Pick<UnifiedPanelTab, 'notesView'> {
+    if (raw === null || typeof raw !== 'object') {
+        return {};
+    }
+    const notePath = (raw as Record<string, unknown>).notePath;
+    return isNonEmptyString(notePath) ? { notesView: { notePath } } : {};
 }
 
 function parseList(raw: unknown, expectedScopeKey: string): UnifiedPanelTab[] {

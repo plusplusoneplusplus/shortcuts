@@ -48,7 +48,7 @@ from same-id clones never merge into one tab.
 
 | File | Holds |
 |---|---|
-| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`inheritDraftTabs`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 3`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. There is no `explorer` kind: the file tree is a column, not a tab, and `external` tabs are filtered out of the codec along with any selection naming one. An open that names a `line` also mints a fresh `revealNonce` on the tab — that is what makes a repeat jump to a position the tab already stores re-centre the editor instead of being swallowed as a no-op. An open naming no line keeps the stored position *and* its nonce, so re-focusing a tab never scrolls it. The nonce is never persisted. |
+| `unifiedPanelTabsModel.ts` | Pure state: `visibleTabs`/`activeTab`/`openTab`/`openPreviewTab`/`inheritDraftTabs`/`promoteTab`/`activateTab`/`closeTab`/`moveTab`, plus the versioned localStorage codec (`UNIFIED_PANEL_STATE_VERSION = 4`). Every op returns the **same reference** on a no-op — it feeds `useSyncExternalStore`. The Notes descriptor's `notesView` contains only its panel-local selected path; `updateNotesView` changes it without activating the tab. There is no `explorer` kind: the file tree is a column, not a tab, and `external` tabs are filtered out of the codec along with any selection naming one. An open that names a `line` also mints a fresh `revealNonce` on the tab — that is what makes a repeat jump to a position the tab already stores re-centre the editor instead of being swallowed as a no-op. An open naming no line keeps the stored position *and* its nonce, so re-focusing a tab never scrolls it. The nonce is never persisted. |
 | `unifiedPanelStore.ts` | One localStorage entry per panel scope (`unifiedPanelStorageKey`), read through `useSyncExternalStore`; same pattern as `explorer/explorerStateStore`. `migrateUnifiedPanelState` rewrites an older entry at mount — it writes, so it runs in an effect, never in a `getSnapshot`. |
 | `unifiedPanelTree.ts` | The navigator column's open and width state per panel scope, in its own localStorage entry. Panel-level, not per-tab — it outlives tab/chat/mode switches, panel collapse, and reload. Owns the two width rules: the navigator is clamped so the view keeps `UNIFIED_PANEL_VIEW_MIN_WIDTH`, and a panel narrower than `UNIFIED_TREE_MIN_PANEL_WIDTH` hides the column until widening restores it. |
 | `useUnifiedPanelTabs.ts` | The in-tree hook. `chatId` selects a *view* over the stored state, not a session. |
@@ -76,7 +76,8 @@ There is no second editor, search backend, terminal manager, or canvas store.
 `file` renders the Explorer's own `PreviewPane` (the same buffer controller the
 Explorer sub-tab uses), `canvas` renders `CanvasPanel` (the panel is its ONLY
 host — the chat has no canvas column of its own), `note` renders
-`NoteEditor`, `notes` renders the shared `NotesView` with panel-local selection,
+`NoteEditor`, `notes` renders the shared `NotesView` with panel-local selection
+restored from its descriptor (a missing path clears after tree validation),
 `diff` renders the chat's `WhisperDiffPanel`, and `terminal` renders
 `TerminalView`. The file tree is not among them: it is
 the panel's own column (`ExplorerPanel` in sidebar mode), so no tab mounts a

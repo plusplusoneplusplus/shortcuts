@@ -35,6 +35,7 @@ import {
     previewTab,
     previewTabToReplace,
     promoteTab,
+    updateNotesView,
     visibleTabIds,
     visibleTabs,
     type OpenUnifiedPreviewTabInput,
@@ -75,6 +76,8 @@ export interface UnifiedPanelTabsApi {
     close(id: string): void;
     /** Reorder within a section: put `id` where `beforeId` is, or at the end. */
     move(id: string, beforeId: string | null): void;
+    /** Persist the Notes tab's local selection without changing panel focus. */
+    updateNotesSelection(id: string, notePath: string | null): void;
     /**
      * The preview tab `openPreview(input)` would evict, or null. Ask before
      * opening so an outgoing dirty buffer gets the unsaved-edits prompt first.
@@ -127,6 +130,10 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
         setState(prev => moveTab(prev, id, beforeId));
     }, [setState]);
 
+    const updateNotesSelection = useCallback((id: string, notePath: string | null) => {
+        setState(prev => updateNotesView(prev, id, notePath));
+    }, [setState]);
+
     const previewToReplace = useCallback(
         (input: OpenUnifiedPreviewTabInput) => previewTabToReplace(latest.current, latestChat.current, input),
         [],
@@ -142,9 +149,9 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
 
     return useMemo(() => ({
         state, tabs, activeId, active, preview,
-        open, openPreview, promote, activate, close, move,
+        open, openPreview, promote, activate, close, move, updateNotesSelection,
         previewToReplace, find, visibleIds,
     }), [state, tabs, activeId, active, preview,
-        open, openPreview, promote, activate, close, move,
+        open, openPreview, promote, activate, close, move, updateNotesSelection,
         previewToReplace, find, visibleIds]);
 }

@@ -104,6 +104,8 @@ export interface UnifiedTabViewProps {
         snapshot: EditorNavigationSnapshot,
         reason: EditorNavigationReason,
     ) => void;
+    /** Persist the panel-local Notes selection without activating its tab. */
+    onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
 }
 
 /** The last path segment — what the editor uses to pick a language. */
@@ -116,6 +118,7 @@ export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onTerminalSessionsChange, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation,
+    onNotesSelectionChange,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
@@ -167,11 +170,23 @@ export function UnifiedTabView({
         },
         [onFileNavigationLocation, tab.id],
     );
+    const handleNotesSelection = useCallback(
+        (notePath: string | null) => onNotesSelectionChange?.(tab.id, notePath),
+        [onNotesSelectionChange, tab.id],
+    );
     switch (tab.kind) {
         case 'terminal':
             return <TerminalView workspaceId={tab.ownerWorkspaceId} onSessionsChange={handleTerminalSessions} />;
         case 'notes':
-            return <NotesView workspaceId={scopeWorkspaceId} navigation="local" active={false} />;
+            return (
+                <NotesView
+                    workspaceId={scopeWorkspaceId}
+                    initialNotePath={tab.notesView?.notePath ?? null}
+                    navigation="local"
+                    active={false}
+                    onSelectedNotePathChange={handleNotesSelection}
+                />
+            );
         case 'file':
             return (
                 <PreviewPane

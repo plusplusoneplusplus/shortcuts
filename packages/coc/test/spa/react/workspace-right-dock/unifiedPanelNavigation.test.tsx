@@ -41,13 +41,14 @@ function fileTab(overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
     } as UnifiedPanelTab;
 }
 
-function renderTab(tab: UnifiedPanelTab, onOpenFile?: any) {
+function renderTab(tab: UnifiedPanelTab, onOpenFile?: any, onNotesSelectionChange?: any) {
     return render(
         <UnifiedTabView
             tab={tab}
             scopeWorkspaceId="group-1"
             onClose={() => undefined}
             {...(onOpenFile ? { onOpenFile } : {})}
+            {...(onNotesSelectionChange ? { onNotesSelectionChange } : {})}
         />,
     );
 }
@@ -96,18 +97,23 @@ describe('UnifiedTabView — language navigation (AC-03/AC-04)', () => {
     });
 
     it('renders the full Notes view with panel-local navigation for the panel scope', () => {
+        const onNotesSelectionChange = vi.fn();
         renderTab({
             id: 'notes',
             kind: 'notes',
             ownerWorkspaceId: 'member-b',
             resourceId: 'notes',
             label: 'Notes',
-        } as UnifiedPanelTab);
+            notesView: { notePath: 'Plans/Release.md' },
+        } as UnifiedPanelTab, undefined, onNotesSelectionChange);
 
         expect(viewProps.notes).toMatchObject({
             workspaceId: 'group-1',
+            initialNotePath: 'Plans/Release.md',
             navigation: 'local',
             active: false,
         });
+        viewProps.notes.onSelectedNotePathChange('Plans/Next.md');
+        expect(onNotesSelectionChange).toHaveBeenCalledWith('notes', 'Plans/Next.md');
     });
 });

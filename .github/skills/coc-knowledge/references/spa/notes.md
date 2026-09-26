@@ -7,7 +7,9 @@ The Notes view, its collection roots, the rich editor, and Notes Chat.
 `NotesView` is shared by the main Notes sub-tab and the unified right panel. Its
 `navigation` prop defaults to `url`, which publishes selection to the app state and
 the Notes route. The right panel passes `local`, so its tree and editor own an
-independent selection while remaining scoped to the panel workspace.
+independent selection while remaining scoped to the panel workspace. The panel stores
+that path in the Notes tab descriptor and restores it per workspace; if the loaded
+tree does not contain the path, the local selection clears without activating the tab.
 
 ## AI chat surface
 
