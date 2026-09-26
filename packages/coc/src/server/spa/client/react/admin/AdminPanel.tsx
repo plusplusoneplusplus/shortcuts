@@ -49,6 +49,7 @@ import { AiExecutionCard, AppearanceCard, ChatExperienceCard } from './configSet
 import { useAdminProviderSettings } from './useAdminProviderSettings';
 import { useDreamsAdminConfig } from './useDreamsAdminConfig';
 import { useServerRuntime } from './useServerRuntime';
+import { useAdminSaveShortcut, type AdminSaveShortcutTarget } from './useAdminSaveShortcut';
 import { DataOperationsPanel } from './DataOperationsPanel';
 import { ServerRuntimePanel } from './ServerRuntimePanel';
 
@@ -149,12 +150,10 @@ export function AdminPanel() {
 
     // Server name
     // Workspace Features card — registry-driven values, live search, dirty
-    // state, runtime-config patching, and the Ctrl/Cmd+S save shortcut all live
-    // in the controller hook.
+    // state, and runtime-config patching all live in the controller hook.
     const features = useAdminFeatureSettings({
         addToast,
         searchActive: settingsSubTab === 'features',
-        shortcutActive: activeTab === 'settings' && settingsSubTab === 'features' && !isToolEmbedded,
     });
     // The Chat Style section is gated on the composer style selector: with the
     // flag off there is no style to configure, so the sub-tab is hidden and a
@@ -193,6 +192,20 @@ export function AdminPanel() {
         addToast,
         activityActive: activeDashboardTab === 'dreams-admin' && !isContainerMode(),
     });
+
+    // Ctrl/Cmd+S saves the visible Settings section. Integrations and
+    // Providers persist on change, so they only suppress the browser dialog.
+    const saveShortcutTargets: Partial<Record<SettingsSubTab, AdminSaveShortcutTarget>> = {
+        ai: { dirty: configFormCtl.aiExecDirty, saving: configFormCtl.aiExecSaving, onSave: configFormCtl.handleSaveAiExec },
+        chat: { dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat },
+        'chat-style': { dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave },
+        appearance: { dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance },
+        features: { dirty: features.featuresDirty, saving: features.featuresSaving, onSave: features.handleSaveFeatures },
+    };
+    useAdminSaveShortcut(
+        activeTab === 'settings' && !isToolEmbedded && settingsSubTab !== 'advanced',
+        saveShortcutTargets[settingsSubTab] ?? null,
+    );
 
     // Link handlers — shared module-level state via hook
     const [linkHandlersConfig, setHandlerEnabled] = useLinkHandlers();

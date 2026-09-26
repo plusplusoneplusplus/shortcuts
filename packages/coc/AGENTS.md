@@ -426,9 +426,12 @@ all have their own `references/*.md`.
   or `namespace-registry.ts` for admin settings. Reserve `admin-handler.ts`
   changes for cross-field validation shared with config-file loading (see
   [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
-- **Admin Features save shortcut** is scoped to Admin -> Configure -> Features.
-  Ctrl+S and Command+S prevent the browser save action there, submit only dirty
-  feature values, and stay inactive in other admin sections.
+- **Admin Settings save shortcut** is one handler, `useAdminSaveShortcut`,
+  wired in `AdminPanel` with a per-section save target. Ctrl+S and Command+S
+  prevent the browser save action on every Settings section except Advanced;
+  AI & Execution, Chat, Chat Style, Appearance, and Features also save their
+  own card when dirty. Integrations and Providers persist on change, so they
+  only suppress the dialog. Do not add per-section keydown listeners.
 - **Queue config reads go through `QueueRuntimeConfig`**
   (`src/server/queue/queue-runtime-config.ts`), the one boundary between
   `RuntimeConfigService` and the executor graph. Never call `loadConfigFile()`
