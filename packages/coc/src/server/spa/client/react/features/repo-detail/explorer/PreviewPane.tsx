@@ -231,6 +231,19 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         setRawMarkdown(revealLine !== undefined);
     }, [repoId, routingRef, actualPath]);
     const showRendered = canPreviewMarkdown && !rawMarkdown;
+    const renderedNavigationController = useMemo<EditorNavigationController>(() => ({
+        capture: () => rawViewStateRef.current,
+        restore: snapshot => {
+            rawViewStateRef.current = snapshot;
+            setRawMarkdown(true);
+        },
+        subscribe: () => ({ dispose: () => undefined }),
+    }), []);
+    useEffect(() => {
+        if (!showRendered || !onNavigationMount) return;
+        onNavigationMount(renderedNavigationController);
+        return () => onNavigationMount(null);
+    }, [showRendered, onNavigationMount, renderedNavigationController]);
 
     const languageDocument = useLanguageDocument({
         workspaceId: repoId,
@@ -307,11 +320,11 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     const handleModelMount = useCallback(({ editor, monaco, model }: EditorModelMountContext) => {
         const navigationController = createEditorNavigationController(editor);
         navigationControllerRef.current = navigationController;
-        navigationMountRef.current?.(navigationController);
         if (rawViewStateRef.current) {
             navigationController.restore(rawViewStateRef.current);
             rawViewStateRef.current = null;
         }
+        navigationMountRef.current?.(navigationController);
         const initialLocation = navigationController.capture();
         if (initialLocation) navigationLocationRef.current?.(initialLocation, 'programmatic');
         const navigationListener = navigationController.subscribe((snapshot, reason) => {

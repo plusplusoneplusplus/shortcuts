@@ -309,6 +309,7 @@ editable `.md` and `.markdown` files show the shared rendered Markdown view
 by default. Their `PreviewPane` toolbar switches to Raw Monaco using the
 same in-memory edit buffer; line-targeted navigation opens Raw. The tab's
 workspace and concrete clone route continue to own file reads and saves.
+Rendered tabs keep a navigation handle for history replay into Raw.
 The standalone Explorer and the read-only source canvas are unaffected.
 
 The panel's file editors share one session-only navigation history per panel

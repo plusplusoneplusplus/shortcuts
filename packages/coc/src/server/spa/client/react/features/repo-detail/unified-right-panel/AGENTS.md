@@ -107,6 +107,8 @@ cursor reveal. Both modes use `useFileContent`'s single edit buffer, with
 the rendered view using the shared `useMarkdownPreview` pipeline and the
 raw view using the existing editable Monaco editor. A mounted tab retains
 its mode and unsaved text across tab switches; no mode preference is stored.
+Rendered mode keeps a lightweight file-navigation controller that can
+reopen Raw and restore a history destination's selection and scroll.
 The standalone Explorer and the read-only source canvas retain their own
 file-viewer behavior.
 
