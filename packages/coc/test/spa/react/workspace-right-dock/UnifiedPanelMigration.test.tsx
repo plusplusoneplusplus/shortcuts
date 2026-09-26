@@ -32,8 +32,8 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
         <div data-testid="mock-explorer" data-mode={mode}>explorer:{workspaceId}</div>
     ),
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
-    DockNotesPanel: ({ workspaceId }: { workspaceId: string }) => (
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: ({ workspaceId }: { workspaceId: string }) => (
         <div data-testid="mock-notes">notes:{workspaceId}</div>
     ),
 }));

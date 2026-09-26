@@ -34,6 +34,12 @@ export interface NotesViewProps {
     /** Clone-qualified identity of the repository that owns these notes. */
     sourceSelectionId?: string;
     initialNotePath?: string | null;
+    /**
+     * URL navigation is used by the main Notes sub-tab. Local navigation keeps
+     * this instance's selection private to an embedding host such as the
+     * unified right panel.
+     */
+    navigation?: 'url' | 'local';
     /** Default chat scope for the NoteChatPanel. Defaults to 'per-note'. */
     defaultScope?: ChatScope;
     /**
@@ -84,7 +90,15 @@ function hasFinePointerDevice(): boolean {
     }
 }
 
-export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, defaultScope, active = true, dockStatusFooter = false }: NotesViewProps) {
+export function NotesView({
+    workspaceId,
+    sourceSelectionId,
+    initialNotePath,
+    navigation = 'url',
+    defaultScope,
+    active = true,
+    dockStatusFooter = false,
+}: NotesViewProps) {
     const { dispatch } = useApp();
     const [selectedPathState, setSelectedPathState] = useState<string | null>(initialNotePath ?? null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -99,6 +113,12 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
             location.hash = target;
         }
     }, [workspaceId]);
+
+    const publishSelection = useCallback((path: string | null) => {
+        if (navigation === 'local') return;
+        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: path });
+        updateHash(path);
+    }, [dispatch, navigation, updateHash]);
 
     // ── Navigation history (pointer-based back/forward) ─────────────────────
     // A single linear history: `entries` holds every visited note in order and
@@ -199,9 +219,8 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
         const nextPath = workspaceChanged && initialPathChanged ? initialNotePath ?? null : null;
         setSelectedPath(nextPath);
         setNotesRoot(null);
-        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: nextPath });
-        updateHash(nextPath);
-    }, [dispatch, initialNotePath, selectedRootId, updateHash, workspaceId]);
+        publishSelection(nextPath);
+    }, [initialNotePath, publishSelection, selectedRootId, workspaceId]);
 
     const aiUnavailableReason = isDefaultRoot
         ? undefined
@@ -462,9 +481,8 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
         const target = entries[nextPointer];
         setNavState({ entries, pointer: nextPointer });
         setSelectedPath(target);
-        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: target });
-        updateHash(target);
-    }, [dispatch, updateHash, setNavState, setSelectedPath]);
+        publishSelection(target);
+    }, [publishSelection, setNavState, setSelectedPath]);
 
     const handleGoForward = useCallback(() => {
         const { entries, pointer } = navRef.current;
@@ -473,9 +491,8 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
         const target = entries[nextPointer];
         setNavState({ entries, pointer: nextPointer });
         setSelectedPath(target);
-        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: target });
-        updateHash(target);
-    }, [dispatch, updateHash, setNavState, setSelectedPath]);
+        publishSelection(target);
+    }, [publishSelection, setNavState, setSelectedPath]);
 
     const canGoBack = nav.pointer > 0;
     const canGoForward = nav.pointer >= 0 && nav.pointer < nav.entries.length - 1;
@@ -483,10 +500,9 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
     const handleSelectPage = useCallback((path: string) => {
         pushEntry(path);
         setSelectedPath(path);
-        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: path });
-        updateHash(path);
+        publishSelection(path);
         if (isMobile) setSidebarOpen(false);
-    }, [isMobile, dispatch, updateHash, pushEntry, setSelectedPath]);
+    }, [isMobile, publishSelection, pushEntry, setSelectedPath]);
 
     const handleNavigateToNote = useCallback((path: string, heading?: string) => {
         handleSelectPage(path);
@@ -502,24 +518,21 @@ export function NotesView({ workspaceId, sourceSelectionId, initialNotePath, def
                 ? newPath
                 : newPath + selectedPath.substring(oldPath.length);
             setSelectedPath(updated);
-            dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: updated });
-            updateHash(updated);
+            publishSelection(updated);
         }
-    }, [selectedPath, dispatch, updateHash]);
+    }, [selectedPath, publishSelection, setSelectedPath]);
 
     const handleNoteCreated = useCallback((path: string) => {
         setSelectedPath(path);
-        dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: path });
-        updateHash(path);
-    }, [dispatch, updateHash]);
+        publishSelection(path);
+    }, [publishSelection, setSelectedPath]);
 
     const handleNoteDeleted = useCallback((path: string) => {
         if (selectedPath === path || selectedPath?.startsWith(path + '/')) {
             setSelectedPath(null);
-            dispatch({ type: 'SET_SELECTED_NOTE_PATH', notePath: null });
-            updateHash(null);
+            publishSelection(null);
         }
-    }, [selectedPath, dispatch, updateHash]);
+    }, [selectedPath, publishSelection, setSelectedPath]);
 
     const handleRestoreEditorFocus = useCallback(() => {
         if (noteViewMode !== 'rich') return;

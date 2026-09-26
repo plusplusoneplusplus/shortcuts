@@ -4,7 +4,7 @@
  * Every kind maps onto a view that already exists elsewhere in the app; nothing
  * here is a second editor, a second file transport, or a second canvas store:
  *
- *  - `terminal` / `notes` — `TerminalView` and `DockNotesPanel`. There is no Explorer
+ *  - `terminal` / `notes` — `TerminalView` and the full editable `NotesView`. There is no Explorer
  *    tab: the file tree is the panel's own right-edge column, which the panel
  *    shell renders beside whichever view is active.
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
@@ -39,7 +39,7 @@
 
 import { useCallback } from 'react';
 import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
-import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
+import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
 import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
 import type {
@@ -171,7 +171,7 @@ export function UnifiedTabView({
         case 'terminal':
             return <TerminalView workspaceId={tab.ownerWorkspaceId} onSessionsChange={handleTerminalSessions} />;
         case 'notes':
-            return <DockNotesPanel workspaceId={scopeWorkspaceId} />;
+            return <NotesView workspaceId={scopeWorkspaceId} navigation="local" active={false} />;
         case 'file':
             return (
                 <PreviewPane

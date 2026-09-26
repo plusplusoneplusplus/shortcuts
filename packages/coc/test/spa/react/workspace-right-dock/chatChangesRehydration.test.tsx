@@ -36,8 +36,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffVi
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
     TerminalView: () => null,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
-    DockNotesPanel: () => null,
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: () => null,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', () => ({
     PreviewPane: () => null,

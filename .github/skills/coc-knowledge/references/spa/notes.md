@@ -2,6 +2,13 @@
 
 The Notes view, its collection roots, the rich editor, and Notes Chat.
 
+## Hosts and selection
+
+`NotesView` is shared by the main Notes sub-tab and the unified right panel. Its
+`navigation` prop defaults to `url`, which publishes selection to the app state and
+the Notes route. The right panel passes `local`, so its tree and editor own an
+independent selection while remaining scoped to the panel workspace.
+
 ## AI chat surface
 
 Notes inherits `features.commitChatLens` as the single source of truth for its AI chat

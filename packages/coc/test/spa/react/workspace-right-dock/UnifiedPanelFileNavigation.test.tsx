@@ -115,8 +115,8 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/e
         tree: async () => ({ entries: [] }),
     },
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
-    DockNotesPanel: () => <button data-testid="mock-notes">notes</button>,
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: () => <button data-testid="mock-notes">notes</button>,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({

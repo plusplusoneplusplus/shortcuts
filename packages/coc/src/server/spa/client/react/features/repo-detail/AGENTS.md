@@ -84,7 +84,7 @@ loaded and has no healthy member. Mobile publishes no live left width.
 
 **Scope vs. target.** `workspaceId` is the panel's *scope*: it owns the
 `split-workspace:<id>:dock-{open,width,target}` keys, the unified tab set, and
-the workspace `DockNotesPanel` is keyed on. The *target* is the workspace new
+the workspace `NotesView` is keyed on. The *target* is the workspace new
 terminals and file resources open against. They are the same value unless the
 caller passes `targets?: readonly DockTarget[]` (`{ workspaceId, label,
 disabled?, deprioritized? }`) to both `useWorkspaceDock` and the panel; that adds
@@ -142,15 +142,11 @@ stored open bit; only an accepted file selection opens Explorer mode. Ordinary
 repos still require an open panel or mounted Explorer owner, Ctrl/Cmd+O remains
 target-repo Exact Open, and mobile mounts no group panel listener.
 
-`../notes/dock/DockNotesPanel.tsx` is the Notes view: search + new-note row, a
-recency-ordered flat list (`dock/dockNotes.ts` holds the pure list/query/naming
-helpers), a read-only markdown preview, and the two hand-off actions. The preview
-is deliberately read-only — the full Notes tab can be mounted at the same time,
-and sharing dirty state between two editable surfaces is out of scope.
-"Insert into chat" reaches the composer through `../chat/composerInsert.ts`, a
-window-event bridge (`ChatDetail` and `NewChatArea` subscribe via
-`useComposerInsertListener`) because the panel is a sibling column with no React
-path to the composer.
+The Notes resource renders the shared `../notes/NotesView.tsx`, including its
+tree, editor, comments, and per-note chat. It is scoped to the panel workspace,
+not the current dock target. `navigation="local"` keeps its note selection
+inside that instance: selecting, creating, renaming, or deleting a panel note
+does not write the Notes route or the app-wide selected note.
 
 ## Explorer lazy-load state
 
