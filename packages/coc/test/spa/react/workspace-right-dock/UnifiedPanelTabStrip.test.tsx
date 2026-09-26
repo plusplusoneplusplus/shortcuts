@@ -101,6 +101,28 @@ describe('UnifiedPanelTabStrip', () => {
         expect(tabNode(tabs[0]).getAttribute('tabindex')).toBe('-1');
     });
 
+    it.each([
+        ['chat.md', 'M↓'],
+        ['canvas-types.ts', 'TS'],
+        ['native.cpp', 'C++'],
+        ['lib.rs', 'RS'],
+        ['AUTHORS', 'file'],
+    ])('uses the Explorer file-type icon for a %s tab', (label, iconLabel) => {
+        let state = EMPTY_UNIFIED_PANEL;
+        state = openTab(state, {
+            kind: 'file',
+            ownerWorkspaceId: WS,
+            chatId: CHAT,
+            resourceId: `src/${label}`,
+            label,
+        });
+        const [tab] = visibleTabs(state, CHAT);
+
+        renderStrip({ tabs: [tab], activeId: tab.id });
+        expect(screen.getByTestId(`unified-panel-tab-file-icon-${tab.id}`))
+            .toHaveAttribute('data-icon-label', iconLabel);
+    });
+
     it('activates on click and closes on the close button without activating', () => {
         const tabs = sampleTabs();
         const props = renderStrip({ tabs, activeId: tabs[0].id });

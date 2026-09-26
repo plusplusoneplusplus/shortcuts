@@ -33,6 +33,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
+import { FileNameIcon } from '../explorer/FileTypeIcon';
 import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
 import {
@@ -347,7 +348,11 @@ export function UnifiedPanelTabStrip({
                                     : 'text-[#616161] hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:text-white',
                             )}
                         >
-                            <span className="flex-shrink-0 opacity-80" aria-hidden="true">{KIND_ICONS[tab.kind]}</span>
+                            <span className="flex-shrink-0 opacity-80" aria-hidden="true">
+                                {tab.kind === 'file'
+                                    ? <FileNameIcon fileName={tab.label} showTitle={false} testId={`unified-panel-tab-file-icon-${tab.id}`} />
+                                    : KIND_ICONS[tab.kind]}
+                            </span>
                             {hasError && (
                                 <span aria-hidden="true" className="flex-shrink-0" data-testid={`unified-panel-tab-error-${tab.id}`}>⚠</span>
                             )}
