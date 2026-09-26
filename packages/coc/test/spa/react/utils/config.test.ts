@@ -10,6 +10,7 @@ import {
     getCommitChatLensDormantMode,
     isAutoAgentProviderRoutingEnabled,
     isCommitChatLensEnabled,
+    isComposerWordHintEnabled,
     isDreamsEnabled,
     isPullRequestsAutoClassifyTeamEnabled,
     isServersEnabled,
@@ -82,6 +83,20 @@ describe('isDreamsEnabled', () => {
     it('returns true when dreamsEnabled is explicitly true', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', dreamsEnabled: true };
         expect(isDreamsEnabled()).toBe(true);
+    });
+});
+
+describe('isComposerWordHintEnabled', () => {
+    it('defaults to true when composerWordHintEnabled is omitted', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws' };
+        expect(isComposerWordHintEnabled()).toBe(true);
+    });
+
+    it('returns false only when explicitly disabled', () => {
+        (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', composerWordHintEnabled: false };
+        expect(isComposerWordHintEnabled()).toBe(false);
+        applyRuntimeConfigPatch({ composerWordHintEnabled: true });
+        expect(isComposerWordHintEnabled()).toBe(true);
     });
 });
 

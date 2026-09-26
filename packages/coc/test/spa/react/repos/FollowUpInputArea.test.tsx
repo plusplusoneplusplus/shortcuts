@@ -46,6 +46,8 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isComposerWordHintEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isRalphEnabled: () => mockRalphEnabled.value,
     isForEachEnabled: () => mockForEachEnabled.value,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,

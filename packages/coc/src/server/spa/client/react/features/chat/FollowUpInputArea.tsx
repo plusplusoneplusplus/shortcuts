@@ -31,6 +31,8 @@ import { useContainerWidth } from './hooks/useContainerWidth';
 import { useModifierKey } from '../../hooks/ui/useModifierKey';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
+import { mergeGhostSources, useWordHint } from '../../hooks/useWordHint';
+import { useComposerWordHintEnabled } from '../../hooks/feature-flags/useComposerWordHintEnabled';
 import { useWarmClientStatus } from './hooks/useWarmClientStatus';
 import { useTypingPrewarmClient } from './hooks/useTypingPrewarmClient';
 import { WarmIndicatorDot } from './WarmIndicatorDot';
@@ -502,6 +504,18 @@ export function FollowUpInputArea({
         processId: task?.id,
         surface: 'follow-up',
     });
+    // Client-side English word hint; the server completion wins when present.
+    const composerWordHintEnabled = useComposerWordHintEnabled();
+    const wordHint = useWordHint({
+        text: followUpInput,
+        cursorPos: followUpCursorPos,
+        enabled:
+            composerWordHintEnabled
+            && !inputDisabled
+            && !slashCommands.menuVisible
+            && !(modelCommand?.modelMenuVisible ?? false),
+    });
+    const ghost = mergeGhostSources(followUpInput, autocomplete, wordHint);
 
     const pillOptions: ModePillOption[] = (() => {
         return [...getVisibleModePillOptions({
@@ -591,20 +605,20 @@ export function FollowUpInputArea({
         if (
             e.key === 'Tab'
             && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
-            && autocomplete.completion
+            && ghost.completion
         ) {
             e.preventDefault();
-            const next = autocomplete.accept();
+            const next = ghost.accept();
             skipNextSyncRef.current = true;
             setFollowUpInput(next);
             richTextRef.current?.setValue(next, next.length);
             setFollowUpCursorPos(next.length);
-            autocomplete.dismiss();
+            ghost.dismiss();
             return;
         }
-        if (e.key === 'Escape' && autocomplete.completion) {
+        if (e.key === 'Escape' && ghost.completion) {
             e.preventDefault();
-            autocomplete.dismiss();
+            ghost.dismiss();
             return;
         }
         // Priority 4: modified-arrow composer shortcuts.
@@ -1050,7 +1064,7 @@ export function FollowUpInputArea({
                             pillPaths
                             // Ghost text is suppressed while the file popup is open
                             // so Tab means exactly one thing (AC-05).
-                            ghostText={fileMentions.menuVisible ? undefined : (slashCommands.activeCommandHint ?? autocomplete.completion)}
+                            ghostText={fileMentions.menuVisible ? undefined : (slashCommands.activeCommandHint ?? ghost.completion)}
                             placeholder={stackedPlaceholder}
                             // border-transparent + focus:ring-transparent neutralize the
                             // base RichTextInput's 1px gray border and default blue

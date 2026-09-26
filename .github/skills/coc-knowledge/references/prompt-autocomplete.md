@@ -117,6 +117,10 @@ Errors are **never** propagated: any thrown exception in the handler returns `{ 
 | `usePromptAutocomplete` | Debounce typing, fire `GET /api/prompt-suggestions`, drop stale responses, expose `{ completion, accept, dismiss }`. |
 | `usePromptAutocompleteEnabled` | Module-level shared state seeded once from `GET /api/preferences`. Default `true`; flips `false` only when the server pref says so. |
 
+| `useWordHint` | Client-only English word hint. Lazy-`import()`s `data/english-words.ts` (google-10000-english, no-swears, frequency order) once, then `computeWordHint` (`utils/wordHint.ts`) runs synchronously: cursor at end, trailing `[A-Za-z]{3,}` after start/whitespace/`(`/`"`/`'`, not inside an open backtick span, not already a dictionary word, at most 2 dictionary matches, best-ranked match adds ≥ 2 letters; ALL-CAPS input gets an uppercase suffix. Exposes `{ completion, dismiss }`; dismissal holds until the text changes. Gated by admin flag `features.composerWordHint` (default on, runtime `composerWordHintEnabled`, `useComposerWordHintEnabled`), independent of `promptAutocomplete.enabled`. |
+
+Each composer merges both sources with `mergeGhostSources(text, autocomplete, wordHint)`: the server completion wins when non-empty, `accept()` returns `text + completion`, and `dismiss()` dismisses both. The word hint uses the same menu gates as server autocomplete.
+
 Stale-response handling: every render bumps an internal sequence number, and an in-flight response resolving with a stale id is dropped before `setCompletion`. A `dismissedForTextRef` blocks fetches for the exact current text after Escape until the user types more.
 
 ## Component wiring contract
@@ -179,14 +183,17 @@ Measured on Windows against `gpt-4.1` after pre-warm and warm-client reuse: cach
 | `packages/coc/test/server/preferences-handler.test.ts` | Validator round-trip and bounds for `promptAutocomplete.ai.*`. |
 | `packages/coc/test/spa/react/hooks/usePromptAutocomplete.test.ts` | Debounce, stale-response drop, Escape dismissal, cursor-at-end gating. |
 | `packages/coc/test/spa/react/RichTextInput.ghostText.test.tsx` | Overlay render condition, Tab acceptance, transparent-mirror sizing. |
-| `packages/coc/test/spa/react/repos/NewChatArea.test.tsx` | Tab accepts, Escape dismisses, no-op with no completion. |
+| `packages/coc/test/spa/react/repos/NewChatArea.test.tsx` | Tab accepts, Escape dismisses, no-op with no completion; word hint shows/accepts/dismisses, server completion wins, menus hide it. |
+| `packages/coc/test/spa/react/utils/wordHint.test.ts`, `hooks/useWordHint.test.ts` | Word-hint rules (prefix length, candidate cap, gain, context skips, casing), lazy load, dismissal, source merging. |
+| `packages/coc/test/spa/react/features/chat/file-mention-followup.test.tsx` | `FollowUpInputArea` word hint: show, Tab, Escape, server wins, menus and slash hint win, flag off. |
 | `packages/forge/test/sqlite-process-store-prompt-{completion,autocomplete-context}.test.ts` | `ProcessStore` history queries grounding both paths. |
 
 ## Sources
 
 - `packages/coc/src/server/processes/prompt-autocomplete-service.ts`, `prompt-suggestion-handler.ts`
 - `packages/coc/src/server/preferences-handler.ts` (`promptAutocomplete` schema + validator)
-- `.../spa/client/react/hooks/usePromptAutocomplete.ts`, `usePromptAutocompleteEnabled.ts`
+- `.../spa/client/react/hooks/usePromptAutocomplete.ts`, `usePromptAutocompleteEnabled.ts`, `useWordHint.ts`, `feature-flags/useComposerWordHintEnabled.ts`
+- `.../spa/client/react/utils/wordHint.ts`, `.../spa/client/react/data/english-words.ts`
 - `.../spa/client/react/shared/RichTextInput.tsx` (ghost overlay)
 - `.../spa/client/react/queue/EnqueueDialog.tsx`, `.../features/chat/NewChatArea.tsx`, `.../features/chat/FollowUpInputArea.tsx`
 - `packages/forge/src/sqlite-process-store.ts` (`getBestPromptCompletion`, `getPromptAutocompleteContext`)

@@ -59,6 +59,7 @@ const { mockState } = vi.hoisted(() => ({
 
 // Config
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isComposerWordHintEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '/api',
     getWsPath: () => '/ws',

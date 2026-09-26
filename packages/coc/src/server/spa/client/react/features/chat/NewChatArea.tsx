@@ -42,6 +42,8 @@ import type { EffortLevel } from './EffortPillSelector';
 import { useOnboardingPreferences } from '../../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../../hooks/usePromptAutocompleteEnabled';
+import { mergeGhostSources, useWordHint } from '../../hooks/useWordHint';
+import { useComposerWordHintEnabled } from '../../hooks/feature-flags/useComposerWordHintEnabled';
 import { useChatPromptHistory } from '../../hooks/useChatPromptHistory';
 import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isForEachEnabled, isMapReduceEnabled, isSentinelEnabled, isCanvasEnabled, isCronEnabled, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -872,6 +874,18 @@ export function InitialChatComposer({
         surface: 'queue',
         baseUrl: cloneBaseUrl,
     });
+    // Client-side English word hint; the server completion wins when present.
+    const composerWordHintEnabled = useComposerWordHintEnabled();
+    const wordHint = useWordHint({
+        text: input,
+        cursorPos,
+        enabled:
+            composerWordHintEnabled
+            && !sending
+            && !slashCommands.menuVisible
+            && !modelCommand.modelMenuVisible,
+    });
+    const ghost = mergeGhostSources(input, autocomplete, wordHint);
 
     // Bash-style up/down history navigation through past initial prompts.
     const promptHistory = useChatPromptHistory({
@@ -1774,7 +1788,7 @@ export function InitialChatComposer({
                         pillPaths
                         // Ghost text is suppressed while the file popup is open so
                         // Tab means exactly one thing (AC-05).
-                        ghostText={fileMentions.menuVisible ? undefined : (slashCommands.activeCommandHint ?? autocomplete.completion)}
+                        ghostText={fileMentions.menuVisible ? undefined : (slashCommands.activeCommandHint ?? ghost.completion)}
                         placeholder={placeholder}
                         // border-transparent + focus:ring-transparent neutralize the
                         // base RichTextInput's 1px gray border and default blue
@@ -1853,19 +1867,19 @@ export function InitialChatComposer({
                                 e.key === 'Tab'
                                 && !e.shiftKey
                                 && !e.ctrlKey && !e.metaKey && !e.altKey
-                                && autocomplete.completion
+                                && ghost.completion
                             ) {
                                 e.preventDefault();
-                                const next = autocomplete.accept();
+                                const next = ghost.accept();
                                 setInput(next);
                                 richTextRef.current?.setValue(next, next.length);
                                 setCursorPos(next.length);
-                                autocomplete.dismiss();
+                                ghost.dismiss();
                                 return;
                             }
-                            if (e.key === 'Escape' && autocomplete.completion) {
+                            if (e.key === 'Escape' && ghost.completion) {
                                 e.preventDefault();
-                                autocomplete.dismiss();
+                                ghost.dismiss();
                                 return;
                             }
                             // Priority 4: modified-arrow composer shortcuts.

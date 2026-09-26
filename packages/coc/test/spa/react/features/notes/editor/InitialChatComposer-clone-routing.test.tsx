@@ -148,6 +148,7 @@ vi.mock('../../../../../../src/server/spa/client/react/contexts/ReposContext', (
     useRepos: () => ({ repos: [{ workspace: { id: 'ws-1', name: 'repo', rootPath: '/repo' } }], loading: false, fetchRepos: () => {}, unseenCounts: {} }),
 }));
 vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({
+    isComposerWordHintEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '/api',
     getConfig: () => ({ apiBasePath: '/api' }),

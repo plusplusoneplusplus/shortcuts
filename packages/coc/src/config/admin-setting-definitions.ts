@@ -940,6 +940,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.composerWordHint', default: true, runtime: 'live', runtimeFlag: 'composerWordHintEnabled',
+        ui: {
+            group: 'aiModes', order: 45.5, label: 'Composer word hint',
+            hint: 'Shows a gray inline hint that finishes the English word you are typing in chat composers when only one or two common words match. Runs in the browser; Tab accepts, Esc dismisses. Enabled by default.',
+            testId: 'toggle-composer-word-hint-enabled',
+        },
+    }),
+    bool({
         key: 'features.chatProviderSwitching', default: false, runtime: 'live', runtimeFlag: 'chatProviderSwitchingEnabled',
         ui: {
             group: 'aiModes', order: 46, label: 'Follow-up provider switching', badge: 'experimental',
