@@ -1349,7 +1349,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             {dockedBanner && (
                 <div className="sticky top-0 z-20 h-0" data-testid="diff-file-banner-pinned-wrapper">
                     <div className="absolute inset-x-0 top-0">
-                        <FileBannerRow banner={dockedBanner} data-testid="diff-file-banner-pinned" />
+                        <FileBannerRow banner={dockedBanner} pinned data-testid="diff-file-banner-pinned" />
                     </div>
                 </div>
             )}
