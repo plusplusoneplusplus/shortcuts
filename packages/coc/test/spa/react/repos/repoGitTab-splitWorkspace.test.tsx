@@ -70,18 +70,44 @@ vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/Workt
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitList', () => ({
     // Exposes just enough to drive and observe selection: a button that selects
     // a commit, and the currently-selected hash reflected back into the DOM.
-    CommitList: ({ onSelect, selectedHash }: { onSelect?: (c: unknown) => void; selectedHash?: string }) => (
-        <div data-testid="stub-commit-list" data-selected={selectedHash ?? 'none'}>
+    CommitList: ({ onSelect, selectedHash, selectedFile, onFileSelect }: {
+        onSelect?: (c: unknown) => void;
+        selectedHash?: string;
+        selectedFile?: { hash: string; filePath: string } | null;
+        onFileSelect?: (hash: string, filePath: string) => void;
+    }) => (
+        <div
+            data-testid="stub-commit-list"
+            data-selected={selectedHash ?? 'none'}
+            data-selected-file={selectedFile ? `${selectedFile.hash}:${selectedFile.filePath}` : 'none'}
+        >
             <button
                 data-testid="stub-commit-select"
                 onClick={() => onSelect?.({ hash: 'abc123', subject: 'a commit', author: 'a', date: '', refs: [] })}
             >select commit</button>
+            <button
+                data-testid="stub-commit-file-select"
+                onClick={() => onFileSelect?.('abc123', 'src/a.ts')}
+            >select commit file</button>
         </div>
     ),
     isTouchOnly: () => false,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({
     CommitDetail: ({ hash }: { hash: string }) => <div data-testid="stub-commit-detail" data-hash={hash} />,
+}));
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({
+    // A file diff whose "next file" button walks to a fixed sibling, the way the
+    // real panel's hunk navigation crosses a file boundary.
+    FileDiffPanel: ({ filePath, onNavigateToFile, initialHunkTarget }: {
+        filePath: string;
+        onNavigateToFile?: (fp: string, target: 'first' | 'last') => void;
+        initialHunkTarget?: string;
+    }) => (
+        <div data-testid="stub-file-diff" data-file={filePath} data-hunk-target={initialHunkTarget ?? 'none'}>
+            <button data-testid="stub-file-diff-next" onClick={() => onNavigateToFile?.('src/b.ts', 'first')}>next file</button>
+        </div>
+    ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', () => ({
     GitPanelHeader: ({ onRefresh, repositorySelector }: { onRefresh: () => void; repositorySelector?: ReactNode }) => (
@@ -233,6 +259,27 @@ describe('RepoGitTab — split-workspace layout', () => {
         fireEvent.click(screen.getByTestId('stub-commit-select'));
         await waitFor(() => expect(onViewChange).toHaveBeenCalledTimes(1));
         expect(onViewChange.mock.calls[0][0]).toMatchObject({ type: 'commit', commit: { hash: 'abc123' } });
+    });
+
+    it('navigates to the next file inside the host tab and keeps the sidebar in sync (AC-05)', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const onViewChange = vi.fn();
+        await renderTab({ layout: 'split-workspace', detailContainer: container, detailActive: true, detailOpen: true, onViewChange });
+
+        fireEvent.click(screen.getByTestId('stub-commit-file-select'));
+        await waitFor(() => expect(container.querySelector('[data-testid="stub-file-diff"]')?.getAttribute('data-file')).toBe('src/a.ts'));
+        expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected-file')).toBe('abc123:src/a.ts');
+
+        // Crossing the file boundary from inside the tab swaps the tab's content…
+        fireEvent.click(container.querySelector('[data-testid="stub-file-diff-next"]')!);
+        await waitFor(() => expect(container.querySelector('[data-testid="stub-file-diff"]')?.getAttribute('data-file')).toBe('src/b.ts'));
+        expect(container.querySelector('[data-testid="stub-file-diff"]')?.getAttribute('data-hunk-target')).toBe('first');
+        expect(container.querySelectorAll('[data-testid="stub-file-diff"]')).toHaveLength(1);
+        // …moves the sidebar highlight to the new file…
+        expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected-file')).toBe('abc123:src/b.ts');
+        // …and reports the new view so the host tab's descriptor follows it.
+        expect(onViewChange).toHaveBeenLastCalledWith({ type: 'commit-file', hash: 'abc123', filePath: 'src/b.ts' });
     });
 
     describe('restoring a persisted view (AC-03)', () => {
