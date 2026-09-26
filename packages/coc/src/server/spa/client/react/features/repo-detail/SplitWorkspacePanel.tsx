@@ -60,6 +60,8 @@ export interface SplitWorkspacePanelProps {
     detail: ReactNode;
     /** Label for the chat section header. Defaults to `Chat`. */
     chatLabel?: string;
+    /** Optional action beside the chat section label. Desktop layout only. */
+    chatHeaderExtra?: ReactNode;
     /** Label for the git section header. Defaults to `Git`. */
     gitLabel?: string;
     /**
@@ -308,6 +310,7 @@ export function SplitWorkspacePanel({
     gitList,
     detail,
     chatLabel = 'Chat',
+    chatHeaderExtra,
     gitLabel = 'Git',
     gitHeaderExtra,
     footer,
@@ -611,6 +614,7 @@ export function SplitWorkspacePanel({
                         collapsed={chatCollapsed}
                         onToggle={toggleChat}
                         testId="split-workspace-chat-header"
+                        extra={chatHeaderExtra}
                     />
                     <div
                         className={cn('flex-1 min-h-0 overflow-hidden', chatCollapsed && 'hidden')}

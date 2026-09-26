@@ -18,7 +18,10 @@ import {
 } from '../../../../src/server/spa/client/react/layout/dashboardRoutes';
 
 const mockDispatch = vi.fn();
+const mockQueueDispatch = vi.fn();
 let mockAppState: any = {};
+let mockQueueMap: Record<string, { running: any[]; queued: any[] }> = {};
+let mockRemoteShellEnabled = false;
 let mockSplitPanelEnabled = true;
 const mockGetRepoGroup = vi.fn();
 
@@ -30,15 +33,18 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
     useReposOptional: () => ({ remoteGroupWorkspaces: [] }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
-    useQueue: () => ({ state: { selectedTaskIdByRepo: {} }, dispatch: vi.fn() }),
-    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: {} }, dispatch: vi.fn() }),
+    useQueue: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: mockQueueMap }, dispatch: mockQueueDispatch }),
+    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: mockQueueMap }, dispatch: mockQueueDispatch }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
     return { buildWorkspaceSubTabSuffix: routes.buildWorkspaceSubTabSuffix };
 });
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => false,
+    useRemoteShellEnabled: () => mockRemoteShellEnabled,
+}));
+vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
+    StatusActions: ({ variant }: { variant: string }) => <div data-testid="stub-status-actions" data-variant={variant} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
     useSplitWorkspacePanelEnabled: () => mockSplitPanelEnabled,
@@ -110,6 +116,9 @@ beforeEach(() => {
     localStorage.clear();
     location.hash = '';
     mockDispatch.mockReset();
+    mockQueueDispatch.mockReset();
+    mockQueueMap = {};
+    mockRemoteShellEnabled = false;
     mockGetRepoGroup.mockReset();
     mockGetRepoGroup.mockResolvedValue({
         id: GROUP_ID,
@@ -129,6 +138,47 @@ function click(testId: string): void {
 }
 
 describe('RepoGroupView — desktop split Workspace panel', () => {
+    it('shows the group running/queued counts and starts a new group chat from the collapsed rail', () => {
+        mockQueueMap = {
+            [GROUP_ID]: {
+                running: [{ type: 'chat' }, { type: 'chat', payload: { processId: 'followup' } }],
+                queued: [{ type: 'chat' }, { type: 'chat' }],
+            },
+            other: { running: [{ type: 'chat' }], queued: [{ type: 'chat' }] },
+        };
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        click('stub-git-row');
+        expect(screen.getByTestId('split-workspace-chat-header-extra')
+            .querySelector('[data-testid="repo-group-split-new-chat"]')).toBeTruthy();
+        click('repo-group-split-new-chat');
+        expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'SELECT_QUEUE_TASK', id: null, repoId: GROUP_ID });
+        expect(location.hash).toBe(`#repos/${GROUP_ID}/chats`);
+        expect(screen.getByTestId('split-workspace-detail-host')
+            .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
+
+        click('stub-git-row');
+        click('split-workspace-left-collapse');
+
+        expect(screen.getByTestId('split-workspace-left-running').getAttribute('aria-label')).toBe('1 running job');
+        expect(screen.getByTestId('split-workspace-left-queued').getAttribute('aria-label')).toBe('2 queued jobs');
+        click('split-workspace-left-new-chat');
+        expect(mockQueueDispatch).toHaveBeenCalledTimes(2);
+        expect(screen.getByTestId('split-workspace-detail-host')
+            .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
+    });
+
+    it('pins status actions to the split sidebar only in the remote desktop shell', () => {
+        mockRemoteShellEnabled = true;
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.getByTestId('split-workspace-footer')
+            .querySelector('[data-testid="stub-status-actions"]')?.getAttribute('data-variant')).toBe('sidebar');
+
+        cleanup();
+        mockRemoteShellEnabled = false;
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        expect(screen.queryByTestId('split-workspace-footer')).toBeNull();
+    });
+
     it('removes the desktop Git header tab and leaves only the embedded Git host', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 

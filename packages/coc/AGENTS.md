@@ -35,7 +35,9 @@ all have their own `references/*.md`.
   member as the Git data workspace. With `splitWorkspacePanel` on, desktop and
   mobile expose Git only inside the group's Chats tab; member/commit Git links
   open that tab and activate the shared git detail. With the flag off, the
-  standalone group Git tab remains.
+  standalone group Git tab remains. New Chat and the queue counts use the group
+  workspace, while the remote desktop shell docks its status actions under
+  the split left column.
 - **File search has exactly one backend.** `RepoTreeService` answers whole-repo
   listings and `/search` from the Rust index in `@plusplusoneplusplus/coc-native`,
   and there is no JavaScript path behind it: a missing or unloadable binary

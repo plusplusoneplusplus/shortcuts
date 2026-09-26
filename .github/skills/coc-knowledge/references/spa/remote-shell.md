@@ -273,7 +273,9 @@ notes root = the group's own workspace dir), and Settings
 (`repos/RepoGroupSettingsTab.tsx`, `Alt+C`). With `splitWorkspacePanel` off it
 also exposes a standalone Git tab (`RepoGroupGitTab`); with the flag on the
 group's Chats tab hosts the member git list in `SplitWorkspacePanel` and hides
-the Git header tab on desktop and mobile.
+the Git header tab on desktop and mobile. Its desktop split header and collapsed
+rail start group chats, the rail counts the group's running and queued tasks,
+and the remote-first shell pins status actions below the left column.
 `getRepoGroupHeaderConfig(workspaceId, label)` supplies the
 `VirtualWorkspaceHeaderConfig` (`testIdPrefix: 'repo-group'`, `defaultTab: 'chats'`, no
 actions), labeled with the registered workspace name (id fallback while loading).

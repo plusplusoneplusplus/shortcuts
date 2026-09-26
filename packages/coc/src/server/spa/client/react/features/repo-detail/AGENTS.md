@@ -73,11 +73,12 @@ The three-column desktop row budgets both side widths against the same viewport.
 resize handles, and the middle pane's 360px reserve from the dock maximum. The
 left column applies the matching reserve for the dock minimum. Both resizable
 panels keep their persisted pixel widths when a narrow viewport temporarily
-clamps them, so widening restores the user's chosen sizes. When the left column
-is collapsed, `RepoDetail` passes its workspace-scoped `useRepoQueueStats`
-counts into the rail. Separate running and queued controls appear only for
-nonzero counts and expand the left column when selected. Mobile publishes no
-live left width.
+clamps them, so widening restores the user's chosen sizes. `RepoDetail` and
+`RepoGroupView` pass workspace-scoped `useRepoQueueStats` counts into the
+collapsed rail. Separate running and queued controls appear only for nonzero
+counts and expand the left column when selected. The group supplies a compact
+New Chat control through `chatHeaderExtra` and pins the sidebar status footer
+in the remote desktop shell. Mobile publishes no live left width.
 
 **Scope vs. target.** `workspaceId` is the panel's *scope*: it owns the
 `split-workspace:<id>:dock-{open,width,target}` keys, the unified tab set, and

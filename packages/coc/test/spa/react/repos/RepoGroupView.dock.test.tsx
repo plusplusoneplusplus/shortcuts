@@ -30,8 +30,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
 }));
 let mockSelectedTaskIdByRepo: Record<string, string | null> = {};
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
-    useQueue: () => ({ state: { selectedTaskIdByRepo: mockSelectedTaskIdByRepo } }),
-    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: mockSelectedTaskIdByRepo } }),
+    useQueue: () => ({ state: { selectedTaskIdByRepo: mockSelectedTaskIdByRepo, repoQueueMap: {} } }),
+    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: mockSelectedTaskIdByRepo, repoQueueMap: {} } }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');

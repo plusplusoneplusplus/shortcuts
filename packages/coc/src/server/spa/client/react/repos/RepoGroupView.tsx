@@ -37,7 +37,9 @@ import { openContentSearchMatch } from '../features/repo-detail/content-search/c
 import { UnifiedPanelHostProvider } from '../features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
-import { useQueueOptional } from '../contexts/QueueContext';
+import { useQueue, useQueueOptional } from '../contexts/QueueContext';
+import { useRepoQueueStats } from '../queue/hooks/useRepoQueueStats';
+import { StatusActions } from '../layout/StatusActions';
 import { useReposOptional } from '../contexts/ReposContext';
 import { resolveRepoGroupName } from './repoGroupName';
 import type { RepoGroupMember } from './repoGroupService';
@@ -119,6 +121,8 @@ export interface RepoGroupViewProps {
 
 export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     const { state } = useApp();
+    const { dispatch: queueDispatch } = useQueue();
+    const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(workspaceId);
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
     const remoteShell = useRemoteShellEnabled();
@@ -195,6 +199,11 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
     const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null);
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
+    const handleSplitNewChat = useCallback(() => {
+        queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: workspaceId });
+        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chats';
+        setSplitLastClicked('chat');
+    }, [queueDispatch, workspaceId]);
     const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
         ? state.gitRouteScope.workspaceId
         : null;
@@ -251,11 +260,24 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                         {splitWorkspacePanelEnabled ? (
                             <SplitWorkspacePanel
                                 workspaceId={workspaceId}
+                                footer={headerInTopBar ? <StatusActions variant="sidebar" /> : undefined}
+                                onNewChat={handleSplitNewChat}
+                                runningCount={queueRunningCount}
+                                queuedCount={queueQueuedCount}
+                                chatHeaderExtra={
+                                    <button
+                                        type="button"
+                                        className="rounded px-1.5 text-[10px] font-medium hover:bg-[#d7deec] dark:hover:bg-[#353a46]"
+                                        onClick={handleSplitNewChat}
+                                        data-testid="repo-group-split-new-chat"
+                                    >
+                                        + New Chat
+                                    </button>
+                                }
                                 chatList={
                                     <RepoChatTab
                                         workspaceId={workspaceId}
                                         sourceSelectionId={groupRoutingRef ?? undefined}
-                                        dockStatusFooter
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
                                         detailActive={splitLastClicked === 'chat'}
