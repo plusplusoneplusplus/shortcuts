@@ -200,6 +200,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
 // ── Mock fetchApi ──────────────────────────────────────────────────────
 
 const mockFetchApi = vi.fn();
+const mockSetPinOrder = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
     fetchApi: (...args: any[]) => mockFetchApi(...args),
 }));
@@ -228,6 +229,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
         processes: {
             get: (processId: string) => mockFetchApi(`/processes/${encodeURIComponent(processId)}`),
             listGroupPins: (workspaceId: string) => mockFetchApi(`/workspaces/${encodeURIComponent(workspaceId)}/group-pins`),
+            setPinOrder: (workspaceId: string, entries: any[]) => mockSetPinOrder(workspaceId, entries),
             pinGroup: (workspaceId: string, type: string, groupId: string, pinned: boolean) => mockFetchApi(
                 `/workspaces/${encodeURIComponent(workspaceId)}/group-pins/${encodeURIComponent(type)}/${encodeURIComponent(groupId)}`,
                 { method: 'PATCH', body: { pinned } },
@@ -2385,5 +2387,102 @@ describe('RepoChatTab — dockStatusFooter', () => {
         await renderTab('ws-1', undefined, { dockStatusFooter: true });
         expect(screen.getByTestId('activity-list-collapsed')).toBeTruthy();
         expect(screen.queryByTestId('mock-docked-status-footer')).toBeNull();
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// PINNED REORDER
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('RepoChatTab — pinned reorder', () => {
+    const OLD_A = '2026-01-02T00:00:00.000Z';
+    const OLD_B = '2026-01-01T00:00:00.000Z';
+    const OLD_G = '2025-12-31T00:00:00.000Z';
+    const entries = [
+        { kind: 'chat', id: 'h-b' },
+        { kind: 'group', type: 'ralph-session', groupId: 'r1' },
+        { kind: 'chat', id: 'h-a' },
+    ];
+
+    function deferred<T>() {
+        let resolve!: (value: T) => void;
+        let reject!: (error: unknown) => void;
+        const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+        return { promise, resolve, reject };
+    }
+
+    const lastProps = () => mockListPane.mock.calls.at(-1)?.[0];
+    const pinnedAtOf = (id: string) => lastProps()?.history.find((h: any) => h.id === id)?.pinnedAt;
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockSetPinOrder.mockReset();
+        setupFetchMock({
+            history: [
+                makeHistoryTask('h-a', { pinnedAt: OLD_A }),
+                makeHistoryTask('h-b', { pinnedAt: OLD_B }),
+            ],
+            groupPins: [{ type: 'ralph-session', groupId: 'r1', pinnedAt: OLD_G }],
+        });
+    });
+
+    it('renders the new order at once, survives a stale refresh, then takes the server stamps', async () => {
+        const save = deferred<any>();
+        mockSetPinOrder.mockReturnValue(save.promise);
+        await renderTab('ws-1');
+
+        let pending!: Promise<void>;
+        act(() => { pending = lastProps().onReorderPins(entries); });
+
+        expect(mockSetPinOrder).toHaveBeenCalledWith('ws-1', entries);
+        const optimisticB = pinnedAtOf('h-b');
+        const optimisticG = lastProps().groupPins[0].pinnedAt;
+        const optimisticA = pinnedAtOf('h-a');
+        expect(optimisticB > optimisticG && optimisticG > optimisticA).toBe(true);
+
+        // A refresh that started before the save lands with the old stamps.
+        await act(async () => { await lastProps().fetchQueue(); });
+        expect(pinnedAtOf('h-b')).toBe(optimisticB);
+        expect(pinnedAtOf('h-a')).toBe(optimisticA);
+        expect(lastProps().groupPins[0].pinnedAt).toBe(optimisticG);
+
+        const server = {
+            chats: [{ id: 'h-b', pinnedAt: '2026-02-01T00:00:00.002Z' }, { id: 'h-a', pinnedAt: '2026-02-01T00:00:00.000Z' }],
+            groups: [{ type: 'ralph-session', groupId: 'r1', pinnedAt: '2026-02-01T00:00:00.001Z' }],
+        };
+        await act(async () => { save.resolve(server); await pending; });
+        expect(pinnedAtOf('h-b')).toBe('2026-02-01T00:00:00.002Z');
+        expect(pinnedAtOf('h-a')).toBe('2026-02-01T00:00:00.000Z');
+        expect(lastProps().groupPins).toEqual(server.groups);
+    });
+
+    it('rolls back chats and groups and shows a toast when the save fails', async () => {
+        mockSetPinOrder.mockRejectedValue(new Error('boom'));
+        const addToast = vi.fn();
+        let result: any;
+        await act(async () => {
+            result = renderWithProviders(React.createElement(RepoChatTab, { workspaceId: 'ws-1' }), { toastValue: { addToast } });
+        });
+        await waitFor(() => expect(pinnedAtOf('h-a')).toBe(OLD_A));
+
+        await act(async () => { await lastProps().onReorderPins(entries); });
+
+        expect(pinnedAtOf('h-a')).toBe(OLD_A);
+        expect(pinnedAtOf('h-b')).toBe(OLD_B);
+        expect(lastProps().groupPins).toEqual([{ type: 'ralph-session', groupId: 'r1', pinnedAt: OLD_G }]);
+        expect(addToast).toHaveBeenCalledWith(expect.any(String), 'error');
+        result.unmount();
+    });
+
+    it('does not carry a pending order into another workspace', async () => {
+        mockSetPinOrder.mockReturnValue(new Promise(() => {}));
+        const { rerender } = await renderTab('ws-1');
+        act(() => { void lastProps().onReorderPins(entries); });
+        expect(pinnedAtOf('h-b') > OLD_A).toBe(true);
+
+        await act(async () => { rerender(React.createElement(RepoChatTab, { workspaceId: 'ws-2' })); });
+        await waitFor(() => expect(lastProps().workspaceId).toBe('ws-2'));
+        await waitFor(() => expect(pinnedAtOf('h-b')).toBe(OLD_B));
+        expect(pinnedAtOf('h-a')).toBe(OLD_A);
     });
 });

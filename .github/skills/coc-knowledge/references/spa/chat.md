@@ -116,6 +116,16 @@ pinned chats by pin time. A pinned parent leaves its recency bucket without muta
 `pinnedAt`/`archived`, while running For Each / Map Reduce parents stay in the Running
 section. Parent pin actions call the workspace group-pin API, never child process state.
 
+Pin time is the Pinned section's sort key. Dragging a pinned row (chat or group parent)
+within the Pinned section, in both the Chats tab and Activity, reorders it: each entry is
+wrapped by `usePinnedReorderDragDrop`, and `RepoChatTab.handleReorderPins` sends the full
+pin order (including pins hidden by a filter or shown under Running) to
+`PUT /workspaces/:id/pin-order` through the clone-routed `setPinOrder` helper. The new
+order renders at once by restamping `pinnedAt` locally with the server's `now - i` scheme;
+`pin-order-pending.ts` re-applies those stamps to fetches that land before the server
+catches up, and a failed save restores the old stamps with an error toast. Touch devices
+get a grip on pinned rows that starts a finger drag without a long-press.
+
 Multi-select ranges follow *rendered* rows: a collapsed group counts as one row and
 expands to its real child process IDs when selected; an expanded group ranges over visible
 children. Shift-click on a parent uses it as a range endpoint without opening the detail
@@ -250,7 +260,9 @@ session-context attachment, so `chat-folder-drag.ts` writes a *second* MIME
 composer keeps reading the session-context MIME and is untouched; folder targets read only
 the folder MIME. Dragging a folder row is a distinct gesture with its own
 `CHAT_FOLDER_REORDER_MIME`, since a folder may be dropped between folders but never into
-one (nesting is v2). Queued rows deliberately carry no folder payload — their gesture
+one (nesting is v2). A pinned row's drag also carries `PINNED_REORDER_MIME`
+(`pinned-reorder-drag.ts`), written last by the Pinned-section wrapper; only those wrappers
+read it, and they ignore drags that lack it. Queued rows deliberately carry no folder payload — their gesture
 belongs to the queue's reorder drag, the same reason AC-06 left them out of the
 "Move to folder" menu.
 

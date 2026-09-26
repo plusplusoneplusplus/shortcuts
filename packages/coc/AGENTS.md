@@ -340,7 +340,7 @@ all have their own `references/*.md`.
   their workflow list from the per-server `/summary` fetch in
   `remoteWorkspaceAggregation`; the local queue WebSocket stays local.
 - **Chat list and chat-folder REST** is clone-routed: `queue/hooks/pinArchiveApi`
-  (pin/archive and their batch forms) and all three chat-folder hooks
+  (pin/archive, their batch forms, and `setPinOrder`) and all three chat-folder hooks
   (`useChatFolders`, `useChatFolderMutations`, `useChatFolderAssignment`) resolve
   their client with `getCocClientForWorkspace(workspaceId)`.
   `useChatFolderAssignment` takes `workspaceId` only to route — its own work is

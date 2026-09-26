@@ -11,6 +11,7 @@ interface StubClient {
         archive: ReturnType<typeof vi.fn>;
         archiveBatch: ReturnType<typeof vi.fn>;
         unarchiveBatch: ReturnType<typeof vi.fn>;
+        setPinOrder: ReturnType<typeof vi.fn>;
     };
 }
 
@@ -24,6 +25,7 @@ function makeStub(baseUrl: string): StubClient {
             archive: vi.fn(async () => ({})),
             archiveBatch: vi.fn(async () => undefined),
             unarchiveBatch: vi.fn(async () => undefined),
+            setPinOrder: vi.fn(async () => ({ chats: [], groups: [] })),
         },
     };
 }
@@ -55,6 +57,7 @@ import {
     archiveProcess,
     archiveProcesses,
     pinProcess,
+    setPinOrder,
     unarchiveProcess,
     unarchiveProcesses,
     unpinProcess,
@@ -109,6 +112,14 @@ describe('pinArchiveApi clone routing', () => {
         expect(remote.processes.unarchiveBatch).toHaveBeenCalledWith(['proc-3', 'proc-4']);
         expect(LOCAL.processes.archiveBatch).not.toHaveBeenCalled();
         expect(LOCAL.processes.unarchiveBatch).not.toHaveBeenCalled();
+    });
+
+    it('routes a remote pin reorder to the remote server', async () => {
+        const entries = [{ kind: 'chat' as const, id: 'proc-5' }, { kind: 'group' as const, type: 'ralph-session', groupId: 'r1' }];
+        await setPinOrder(REMOTE_WS, entries);
+
+        expect(clientFor(REMOTE_URL).processes.setPinOrder).toHaveBeenCalledWith(REMOTE_WS, entries);
+        expect(LOCAL.processes.setPinOrder).not.toHaveBeenCalled();
     });
 
     it('keeps local chat pin/archive actions on the default SPA client', async () => {

@@ -130,7 +130,10 @@ empty chat. See [rest-api.md](rest-api.md).
 ### Convenience Methods
 
 `pinProcess`/`unpinProcess`, `archiveProcess`/`unarchiveProcess`,
-`archiveProcesses`/`unarchiveProcesses`, `getPinnedProcesses`.
+`archiveProcesses`/`unarchiveProcesses`, `getPinnedProcesses`. `setPinOrder(workspaceId,
+entries)` rewrites `pinned_at` in one transaction for rows that are already pinned in that
+workspace (never pins, never crosses workspaces) and returns the ids it updated — `pinned_at`
+is the Pinned section's sort key.
 
 `softDeleteTurn` / `restoreTurn` / `hardDeleteTurn` and the `deleted_at` column exist on
 `SqliteProcessStore`, but no REST route deletes a message; read paths hide turns with
