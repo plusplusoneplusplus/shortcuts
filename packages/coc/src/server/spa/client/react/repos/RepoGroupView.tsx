@@ -135,13 +135,13 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
         () => resolveRepoGroupName(workspaceId, state.workspaces, remoteGroups),
         [state.workspaces, remoteGroups, workspaceId]
     );
-    // Mobile Workspace panel: on a phone the group's chat and git share ONE
-    // "Workspace" tab through the same `SplitWorkspacePanel` shell a repo uses —
-    // segmented control, one pane at a time, full-screen detail push (AC-06).
-    // Since git then lives inside that tab, the standalone Git tab drops off the
-    // mobile header so there is exactly one way in. Desktop is untouched: it
-    // keeps its separate Chats / Git tabs.
+    // Split Workspace panel: behind `splitWorkspacePanel` the group's chat and
+    // git share the Chats tab through the same `SplitWorkspacePanel` shell a repo
+    // uses — chat list on top, the member git list below, one shared detail pane
+    // (desktop), or a segmented control with a full-screen detail push (mobile).
     const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
+    // On mobile git then lives only inside that tab, so the standalone Git tab
+    // drops off the header — exactly one way in.
     const mobileWorkspaceSplit = splitWorkspacePanelEnabled && isMobile;
     const tabs = useMemo(
         () => (mobileWorkspaceSplit ? REPO_GROUP_TABS.filter(t => t.key !== 'git') : REPO_GROUP_TABS),
@@ -185,16 +185,16 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // Member repos, for the dock's target picker and the Git tab's host. The
     // Settings tab does its own read — it needs the descriptions too, and only
     // while it is the visible tab.
-    // The merged mobile panel mounts the git list with the Workspace tab, so it
-    // needs the members straight away rather than on first Git-tab visit.
-    const membersNeeded = dockAvailable || gitVisited || mobileWorkspaceSplit;
+    // The split panel mounts the git list with the Chats tab, so it needs the
+    // members straight away rather than on first Git-tab visit.
+    const membersNeeded = dockAvailable || gitVisited || splitWorkspacePanelEnabled;
     const members = useRepoGroupMembers(workspaceId, groupBaseUrl, membersNeeded);
     const dockTargets = useMemo(
         () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
         [dockAvailable, members, workspaceId]
     );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
-    // Slots for the merged mobile Workspace panel: which list last drove the
+    // Slots for the split Workspace panel: which list last drove the
     // shared detail, and the DOM nodes the two tabs portal into. State-backed
     // (not refs) so the portals mount once the nodes exist — same shape as
     // RepoDetail's split wiring.
@@ -246,7 +246,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
             <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
                 <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                     <div style={{ display: activeTab === 'chats' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                        {mobileWorkspaceSplit ? (
+                        {splitWorkspacePanelEnabled ? (
                             <SplitWorkspacePanel
                                 workspaceId={workspaceId}
                                 chatList={

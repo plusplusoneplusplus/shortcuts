@@ -193,16 +193,15 @@ describe('RepoGroupView — mobile Workspace panel (AC-06)', () => {
         expect(paneVisible('split-workspace-chat')).toBe(true);
     });
 
-    it('drops the standalone Git tab on the merged mobile path, and keeps it on desktop', () => {
+    it('drops the standalone Git tab on the merged mobile path', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('repo-group-tab-git')).toBeNull();
 
         cleanup();
         mockBreakpoint = 'desktop';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        // Desktop keeps the two separate tabs and never mounts the mobile shell.
-        expect(screen.queryByTestId('split-workspace-panel')).toBeNull();
-        expect(screen.getByTestId('repo-group-tab-git')).toBeTruthy();
+        // Desktop uses the same shell in its two-column (non-narrow) form.
+        expect(screen.getByTestId('split-workspace-panel').dataset.narrow).not.toBe('true');
     });
 
     it('falls back to the plain chat tab when the split flag is off', () => {
