@@ -66,6 +66,23 @@ describe('SplitWorkspacePanel', () => {
         expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
     });
 
+    it('gives chats the full left column when the Git list is null', () => {
+        render(
+            <SplitWorkspacePanel
+                workspaceId="ws-no-git"
+                chatList={<div data-testid="chat-content">chat</div>}
+                gitList={null}
+                detail={<div data-testid="detail-content">detail</div>}
+            />,
+        );
+        expect(screen.queryByTestId('split-workspace-git')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
+        expect(screen.getByTestId('split-workspace-chat').className).toContain('flex-1');
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('');
+        expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
+        expect(screen.getByTestId('detail-content')).toBeTruthy();
+    });
+
     it('exposes visible accessible resize handles for both split lines', () => {
         renderPanel();
         const divider = screen.getByTestId('split-workspace-divider');

@@ -10,7 +10,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, act, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 import { createPortal } from 'react-dom';
 import {
     resolveDashboardRoute,
@@ -138,6 +138,36 @@ function click(testId: string): void {
 }
 
 describe('RepoGroupView — desktop split Workspace panel', () => {
+    it.each([
+        ['empty', []],
+        ['all-stale', [{ workspaceId: 'r1', stale: true, name: 'shortcuts', rootPath: '/r/r1' }]],
+    ])('hides the Git half for an %s group and lets chats fill the left column', async (_label, members) => {
+        mockGetRepoGroup.mockResolvedValue({ id: GROUP_ID, name: 'AI Repos', members });
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+
+        await waitFor(() => expect(screen.queryByTestId('split-workspace-git')).toBeNull());
+        expect(screen.queryByTestId('stub-group-git-tab')).toBeNull();
+        expect(screen.queryByTestId('split-workspace-divider')).toBeNull();
+        expect(screen.getByTestId('split-workspace-chat').className).toContain('flex-1');
+        expect(screen.getByTestId('split-workspace-chat').style.height).toBe('');
+        expect(screen.getByTestId('split-workspace-detail-host')
+            .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
+    });
+
+    it('restores chat detail if the Git list disappears after membership loads', async () => {
+        let resolveGroup!: (group: { id: string; name: string; members: [] }) => void;
+        mockGetRepoGroup.mockReturnValue(new Promise(resolve => { resolveGroup = resolve; }));
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        click('stub-git-row');
+        expect(screen.getByTestId('split-workspace-detail-host')
+            .querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
+
+        await act(async () => { resolveGroup({ id: GROUP_ID, name: 'AI Repos', members: [] }); });
+        expect(screen.queryByTestId('split-workspace-git')).toBeNull();
+        expect(screen.getByTestId('split-workspace-detail-host')
+            .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
+    });
+
     it('shows the group running/queued counts and starts a new group chat from the collapsed rail', () => {
         mockQueueMap = {
             [GROUP_ID]: {

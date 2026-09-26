@@ -37,7 +37,8 @@ all have their own `references/*.md`.
   open that tab and activate the shared git detail. With the flag off, the
   standalone group Git tab remains. New Chat and the queue counts use the group
   workspace, while the remote desktop shell docks its status actions under
-  the split left column.
+  the split left column. A loaded group without healthy members hides the
+  desktop Git half so chats fill that column.
 - **File search has exactly one backend.** `RepoTreeService` answers whole-repo
   listings and `/search` from the Rust index in `@plusplusoneplusplus/coc-native`,
   and there is no JavaScript path behind it: a missing or unloadable binary

@@ -275,7 +275,9 @@ also exposes a standalone Git tab (`RepoGroupGitTab`); with the flag on the
 group's Chats tab hosts the member git list in `SplitWorkspacePanel` and hides
 the Git header tab on desktop and mobile. Its desktop split header and collapsed
 rail start group chats, the rail counts the group's running and queued tasks,
-and the remote-first shell pins status actions below the left column.
+and the remote-first shell pins status actions below the left column. Once
+membership loads, groups without a healthy member show chats across the full
+left column with no Git section.
 `getRepoGroupHeaderConfig(workspaceId, label)` supplies the
 `VirtualWorkspaceHeaderConfig` (`testIdPrefix: 'repo-group'`, `defaultTab: 'chats'`, no
 actions), labeled with the registered workspace name (id fallback while loading).

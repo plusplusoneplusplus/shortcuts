@@ -78,7 +78,9 @@ clamps them, so widening restores the user's chosen sizes. `RepoDetail` and
 collapsed rail. Separate running and queued controls appear only for nonzero
 counts and expand the left column when selected. The group supplies a compact
 New Chat control through `chatHeaderExtra` and pins the sidebar status footer
-in the remote desktop shell. Mobile publishes no live left width.
+in the remote desktop shell. A null `gitList` removes the desktop Git section
+and lets chats fill the left column; group views pass null when membership is
+loaded and has no healthy member. Mobile publishes no live left width.
 
 **Scope vs. target.** `workspaceId` is the panel's *scope*: it owns the
 `split-workspace:<id>:dock-{open,width,target}` keys, the unified tab set, and

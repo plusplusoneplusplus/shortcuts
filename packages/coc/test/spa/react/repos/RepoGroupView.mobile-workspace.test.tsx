@@ -12,7 +12,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, act, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 
 const mockDispatch = vi.fn();
 let mockAppState: any = {};
@@ -78,8 +78,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', async (
         '../../../../src/server/spa/client/react/features/repo-detail/mobileWorkspacePane'
     );
     return {
-        RepoGroupGitTab: ({ workspaceId, layout, headerToolbarContainer }: {
-            workspaceId: string; layout?: string; headerToolbarContainer?: HTMLElement | null;
+        RepoGroupGitTab: ({ workspaceId, layout, headerToolbarContainer, members }: {
+            workspaceId: string; layout?: string; headerToolbarContainer?: HTMLElement | null; members?: readonly unknown[];
         }) => {
             const pane = useMobileWorkspacePane();
             return (
@@ -88,6 +88,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', async (
                     data-workspace={workspaceId}
                     data-layout={layout ?? ''}
                     data-header-hoisted={headerToolbarContainer ? 'true' : 'false'}
+                    data-members={members?.length ?? 'loading'}
                 >
                     <button data-testid="stub-open-commit" onClick={() => pane?.setDetailOpen(true)}>open commit</button>
                 </div>
@@ -137,6 +138,14 @@ function paneVisible(testId: string): boolean {
 }
 
 describe('RepoGroupView — mobile Workspace panel (AC-06)', () => {
+    it('keeps the mobile Git segment for an empty group', async () => {
+        mockGetRepoGroup.mockResolvedValue({ id: GROUP_ID, name: 'AI Repos', members: [] });
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        await waitFor(() => expect(screen.getByTestId('stub-group-git-tab').dataset.members).toBe('0'));
+        expect(screen.getByTestId('split-workspace-mobile-pane-git')).toBeTruthy();
+        expect(screen.getByTestId('stub-group-git-tab')).toBeTruthy();
+    });
+
     it('renders the shared split shell with a Chats | Git switcher, one pane at a time', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 

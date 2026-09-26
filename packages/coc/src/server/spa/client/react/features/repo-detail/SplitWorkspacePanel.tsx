@@ -510,17 +510,14 @@ export function SplitWorkspacePanel({
         );
     }
 
-    // Only one half controls the shared resize divider, and only when both are
-    // open. If either is collapsed there is nothing to rebalance, so the divider
-    // is dropped and the open half simply fills the column.
-    const bothExpanded = !chatCollapsed && !gitCollapsed;
-    // Chat keeps its persisted fixed height when both are open; when git is
-    // collapsed the chat half fills the remaining space instead.
-    const chatFills = !chatCollapsed && gitCollapsed;
+    // A null git list leaves the whole left column to chats.
+    const hasGitList = gitList != null;
+    const bothExpanded = hasGitList && !chatCollapsed && !gitCollapsed;
+    const chatFills = !chatCollapsed && (!hasGitList || gitCollapsed);
     // When both halves are collapsed neither one carries `flex-1`, so nothing
     // fills the column and the docked footer would ride up under the git header
     // instead of staying pinned to the bottom-left. A spacer absorbs the slack.
-    const bothCollapsed = chatCollapsed && gitCollapsed;
+    const bothCollapsed = chatCollapsed && (!hasGitList || gitCollapsed);
 
     // While collapsed the column body floats out as an absolute overlay only
     // during a hover-peek; otherwise it is hidden (display:none) but stays mounted
@@ -650,29 +647,31 @@ export function SplitWorkspacePanel({
 
                 {/* BOTTOM — git half: compact header + body. Fills the remaining
                     height whenever it is open. */}
-                <div
-                    className={cn(
-                        'flex flex-col min-h-0',
-                        // overflow-visible while collapsed so the hoisted
-                        // toolbar's dropdown isn't clipped to the 22px header.
-                        gitCollapsed ? 'flex-shrink-0 overflow-visible' : 'flex-1 overflow-hidden',
-                    )}
-                    data-testid="split-workspace-git"
-                >
-                    <SectionHeader
-                        label={gitLabel}
-                        collapsed={gitCollapsed}
-                        onToggle={toggleGit}
-                        testId="split-workspace-git-header"
-                        extra={gitHeaderExtra}
-                    />
+                {hasGitList && (
                     <div
-                        className={cn('flex-1 min-h-0 overflow-hidden', gitCollapsed && 'hidden')}
-                        data-testid="split-workspace-git-body"
+                        className={cn(
+                            'flex flex-col min-h-0',
+                            // overflow-visible while collapsed so the hoisted
+                            // toolbar's dropdown isn't clipped to the 22px header.
+                            gitCollapsed ? 'flex-shrink-0 overflow-visible' : 'flex-1 overflow-hidden',
+                        )}
+                        data-testid="split-workspace-git"
                     >
-                        {gitList}
+                        <SectionHeader
+                            label={gitLabel}
+                            collapsed={gitCollapsed}
+                            onToggle={toggleGit}
+                            testId="split-workspace-git-header"
+                            extra={gitHeaderExtra}
+                        />
+                        <div
+                            className={cn('flex-1 min-h-0 overflow-hidden', gitCollapsed && 'hidden')}
+                            data-testid="split-workspace-git-body"
+                        >
+                            {gitList}
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Both halves collapsed: no half carries flex-1, so this
                     spacer grows to fill the column and keeps the footer pinned

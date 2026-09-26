@@ -187,6 +187,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // members straight away rather than on first Git-tab visit.
     const membersNeeded = dockAvailable || gitVisited || splitWorkspacePanelEnabled;
     const members = useRepoGroupMembers(workspaceId, groupBaseUrl, membersNeeded);
+    const splitGitAvailable = isMobile || members === undefined || members.some(member => !member.stale);
     const dockTargets = useMemo(
         () => (dockAvailable && members ? repoGroupDockTargets(workspaceId, members) : undefined),
         [dockAvailable, members, workspaceId]
@@ -280,11 +281,11 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                                         sourceSelectionId={groupRoutingRef ?? undefined}
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
-                                        detailActive={splitLastClicked === 'chat'}
+                                        detailActive={splitLastClicked === 'chat' || !splitGitAvailable}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                     />
                                 }
-                                gitList={
+                                gitList={splitGitAvailable ? (
                                     <RepoGroupGitTab
                                         workspaceId={workspaceId}
                                         members={members}
@@ -295,7 +296,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                                         headerToolbarContainer={splitGitHeaderNode}
                                         active={activeTab === 'chats'}
                                     />
-                                }
+                                ) : null}
                                 gitHeaderExtra={
                                     <div
                                         ref={setSplitGitHeaderNode}
