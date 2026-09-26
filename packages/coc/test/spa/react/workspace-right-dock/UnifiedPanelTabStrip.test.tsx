@@ -76,16 +76,19 @@ describe('UnifiedPanelTabStrip', () => {
         expect(screen.getByTestId('unified-panel-open-menu')).toBeTruthy();
     });
 
-    it('orders workspace tabs first and marks where the chat section starts', () => {
+    it('separates workspace tools from chat resources with a dedicated tab-strip divider', () => {
         const tabs = sampleTabs();
         renderStrip({ tabs });
         expect(screen.getAllByRole('tab').map(el => el.getAttribute('data-kind')))
             .toEqual(['terminal', 'file', 'file']);
-        // The divider is derived from the kinds, not passed in: exactly one tab
-        // opens the chat section.
+        // The boundary is derived from the kinds, not passed in: exactly one tab
+        // opens the chat section and the divider remains outside both tabs.
         const starts = screen.getAllByRole('tab').filter(el => el.getAttribute('data-section-start') === 'true');
         expect(starts).toHaveLength(1);
         expect(starts[0].getAttribute('data-tab-id')).toBe(tabs[1].id);
+        const divider = screen.getByTestId('unified-panel-tab-section-divider');
+        expect(divider.getAttribute('aria-hidden')).toBe('true');
+        expect(divider.nextElementSibling).toBe(starts[0]);
     });
 
     it('marks the active tab for assistive tech, not only with color', () => {

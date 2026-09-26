@@ -31,7 +31,7 @@
  * panel.
  */
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
 import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
@@ -267,12 +267,23 @@ export function UnifiedPanelTabStrip({
                     const isActive = tab.id === activeId;
                     const isDirty = dirtyIds?.has(tab.id) ?? false;
                     const hasError = errorIds?.has(tab.id) ?? false;
-                    // The divider marks where workspace ownership ends and the
-                    // selected chat's tabs begin — derived, never passed in.
+                    // The divider marks where workspace-owned tools (Terminal
+                    // and Notes) end and chat resources begin — derived, never
+                    // passed in.
                     const startsChatSection = index > 0
                         && scopeForKind(tab.kind) === 'chat'
                         && scopeForKind(tabs[index - 1].kind) === 'workspace';
                     return (
+                        <Fragment key={tab.id}>
+                            {startsChatSection && (
+                                <div
+                                    aria-hidden="true"
+                                    data-testid="unified-panel-tab-section-divider"
+                                    className="flex h-[35px] w-4 flex-shrink-0 items-center justify-center border-x border-[#c8c8c8] bg-[#e8e8e8] dark:border-[#3c3c3c] dark:bg-[#252526]"
+                                >
+                                    <span className="h-5 w-px bg-[#808080] dark:bg-[#858585]" />
+                                </div>
+                            )}
                         <div
                             key={tab.id}
                             ref={node => {
@@ -334,9 +345,6 @@ export function UnifiedPanelTabStrip({
                                 isActive
                                     ? 'bg-white text-[#1f1f1f] shadow-[inset_0_-2px_0_0_#0078d4] dark:bg-[#1e1e1e] dark:text-white dark:shadow-[inset_0_-2px_0_0_#3794ff]'
                                     : 'text-[#616161] hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:text-white',
-                                // The section divider: a heavier left border on the
-                                // first chat-owned tab.
-                                startsChatSection && 'border-l-2 border-l-[#d0d0d0] dark:border-l-[#3c3c3c]',
                             )}
                         >
                             <span className="flex-shrink-0 opacity-80" aria-hidden="true">{KIND_ICONS[tab.kind]}</span>
@@ -392,6 +400,7 @@ export function UnifiedPanelTabStrip({
                                 ✕
                             </button>
                         </div>
+                        </Fragment>
                     );
                 })}
             </div>
