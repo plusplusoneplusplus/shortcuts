@@ -88,7 +88,10 @@ vi.mock('@excalidraw/excalidraw', () => ({
     convertToExcalidrawElements: (elements: unknown) => (Array.isArray(elements) ? elements : []),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+// Partial mock: the Implement-plan banner mounts the launch dialog's AI
+// selection hooks, which read further config getters left at their defaults.
+vi.mock('../../../../src/server/spa/client/react/utils/config', async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
     isContainerMode: () => false,
     getApiBase: () => '/api',
     getWsPath: () => '/ws',
@@ -781,6 +784,92 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         dispatchSourceLink({ filePath: '/repos/main/src/app.ts', wsId: WS_ID });
 
         await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    });
+});
+
+describe('ChatDetail — Implement-plan path with the unified right panel', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+    });
+
+    /** Loads a finished Ask chat whose persisted plan is `planFilePath`. */
+    function serveAskChatWithPlan(planFilePath: string) {
+        const task = {
+            id: 'task-A',
+            type: 'chat',
+            status: 'completed',
+            processId: 'proc-A',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Plan it', workingDirectory: '/repos/main' },
+            metadata: { planFilePath },
+        };
+        const proc = {
+            id: 'proc-A',
+            status: 'completed',
+            metadata: { mode: 'ask', planFilePath },
+            conversationTurns: [
+                { role: 'user', content: 'Plan it', turnIndex: 0, timeline: [] },
+                { role: 'assistant', content: 'Done', turnIndex: 1, timeline: [] },
+            ],
+        };
+        fetchMock.mockImplementation(async (url: string) => {
+            const urlStr = typeof url === 'string' ? url : '';
+            if (urlStr.includes('/canvases')) return jsonResponse({ canvases: [] });
+            if (urlStr.includes('/skills/all')) return jsonResponse({ merged: [] });
+            if (urlStr.includes('/queue/')) return jsonResponse({ task });
+            if (urlStr.includes('/processes/')) return jsonResponse({ process: proc });
+            return jsonResponse({});
+        });
+    }
+
+    async function clickPlanPath() {
+        const button = await screen.findByTestId('implement-plan-card-path');
+        fireEvent.click(button);
+    }
+
+    it('opens the plan as an editable note tab in the hosting panel, not the docked canvas', async () => {
+        serveAskChatWithPlan('/repos/main/plans/feature.plan.md');
+        renderHostedChat('task-A');
+        await clickPlanPath();
+
+        await waitFor(() => {
+            const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
+            expect(tabs.map(t => t.kind)).toEqual(['note']);
+        });
+        const tab = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]!;
+        expect(tab.ownerWorkspaceId).toBe(WS_ID);
+        expect(tab.resourceId).toBe('auto||/repos/main/plans/feature.plan.md');
+        expect(tab).not.toHaveProperty('readOnly');
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+    });
+
+    it('keeps the docked note canvas when no panel hosts the chat', async () => {
+        serveAskChatWithPlan('/repos/main/plans/feature.plan.md');
+        renderChat('task-A');
+        await clickPlanPath();
+
+        const dock = await screen.findByTestId('source-canvas-dock');
+        expect(dock.getAttribute('data-kind')).toBe('note');
+        expect(dock.getAttribute('data-path')).toBe('/repos/main/plans/feature.plan.md');
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    });
+
+    it('falls back to the docked canvas when no known workspace owns the plan', async () => {
+        // The chat's source workspace is not in the resolvable list and the
+        // path is outside every known root, so `noteTabInput` cannot build a tab.
+        serveAskChatWithPlan('/elsewhere/feature.plan.md');
+        render(
+            <Wrap>
+                <UnifiedPanelHostProvider host={{ workspaceId: WS_ID, chatId: 'task-A' }}>
+                    <ChatDetail taskId="task-A" workspaceId="ws-unknown" />
+                </UnifiedPanelHostProvider>
+            </Wrap>,
+        );
+        await clickPlanPath();
+
+        const dock = await screen.findByTestId('source-canvas-dock');
+        expect(dock.getAttribute('data-kind')).toBe('note');
+        expect(dock.getAttribute('data-path')).toBe('/elsewhere/feature.plan.md');
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
     });
 });

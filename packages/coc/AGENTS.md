@@ -902,10 +902,11 @@ all have their own `references/*.md`.
   `.plan.md` files keep the full detected set in a shared banner/launch-panel
   selector even after the first path is persisted to metadata; explicit
   task-provided paths and canvas-backed plans remain single-plan. File-backed
-  plan paths in the card are native controls that open the docked source canvas
-  as `kind: 'note'` with the source workspace id, including remote workspaces;
-  canvas-backed plan labels remain non-interactive because they have no file
-  path.
+  plan paths in the card are native controls that use the same `kind: 'note'`
+  routing as in-chat links (`openFileRef`, source workspace id, remote
+  workspaces included): an editable note tab in the unified right panel when one
+  hosts the chat, otherwise the docked source canvas; canvas-backed plan labels
+  remain non-interactive because they have no file path.
 - **Mode-invariant tool block:** the `tools` array sent to a provider must not
   vary with chat mode. `ask_user` is registered for `ask` and `autopilot` alike,
   gated only on `chat.askUser.enabled`, and constructed in one place —

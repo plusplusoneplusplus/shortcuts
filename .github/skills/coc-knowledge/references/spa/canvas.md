@@ -223,10 +223,11 @@ GitHub-style `#L<line>` / `#L<start>-L<end>` hashes carry as line metadata, so t
 never treats a file URI as workspace-relative text. `ChatDetail` owns the listener, closes
 sibling right-side panels, and mounts `SourceCanvasPanel` as the desktop right column or a
 mobile bottom sheet; flag-off, user-message, and non-chat references route to
-`MarkdownReviewDialog` instead. File-backed plan paths in `ImplementPlanCard` use the same
-dock through `onOpenPlanFile`, opening an editable note scoped to the chat's source
-workspace including a remote clone; canvas-backed plan labels stay static because they name
-no on-disk file.
+`MarkdownReviewDialog` instead. File-backed plan paths in `ImplementPlanCard` go through
+`onOpenPlanFile` into the same `openFileRef` routing as in-chat links, as a `kind: 'note'`
+ref scoped to the chat's source workspace (remote clones included): an editable note tab in
+the unified right panel when one hosts the chat, otherwise the docked canvas; canvas-backed
+plan labels stay static because they name no on-disk file.
 
 Separately, the shared `MarkdownView` intercepts assistant-prose deep-links with
 `#/process/<id>`, `#/session/<id>`, or `#/processes/<id>` hrefs; the router resolves the
