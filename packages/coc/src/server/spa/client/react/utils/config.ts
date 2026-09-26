@@ -111,6 +111,8 @@ interface DashboardConfig {
     schedulesInScheduledSlideEnabled?: boolean;
     /** Whether user-created chat folders are shown in the chat list. Default false. */
     chatFoldersEnabled?: boolean;
+    /** Whether chat composers show the client-side English word hint. Default true. */
+    composerWordHintEnabled?: boolean;
     /** Whether the File Explorer shows VS Code-style multiple editor tabs. Default false. */
     explorerEditorTabsEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
@@ -571,6 +573,14 @@ export function isGitWorktreeExecutionEnabled(): boolean {
  */
 export function isChatFoldersEnabled(): boolean {
     return getConfig().chatFoldersEnabled === true;
+}
+
+/**
+ * Returns true when chat composers show the client-side English word hint
+ * (`features.composerWordHint`). Default on; only an explicit `false` disables it.
+ */
+export function isComposerWordHintEnabled(): boolean {
+    return getConfig().composerWordHintEnabled !== false;
 }
 
 /**

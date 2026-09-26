@@ -76,6 +76,31 @@ export class GroupPinStore {
         });
     }
 
+    /**
+     * Rewrite `pinnedAt` on existing pins only (never pins as a side effect).
+     * Returns the full, re-sorted pin list.
+     */
+    setPinOrder(
+        workspaceId: string,
+        entries: Array<{ type: GroupPinType; groupId: string; pinnedAt: string }>,
+        updatedAt: string,
+    ): GroupPin[] {
+        const state = this.readState(workspaceId);
+        const stamps = new Map(entries.map(entry => [groupPinStoreKey(entry.type, entry.groupId), entry.pinnedAt]));
+        let changed = false;
+        const pins = state.pins.map(pin => {
+            const pinnedAt = stamps.get(groupPinStoreKey(pin.type, pin.groupId));
+            if (pinnedAt === undefined) return pin;
+            changed = true;
+            return { ...pin, pinnedAt };
+        });
+        const sorted = sortPins(pins);
+        if (changed) {
+            this.writeState(workspaceId, { ...state, updatedAt, pins: sorted });
+        }
+        return sorted;
+    }
+
     private statePath(workspaceId: string): string {
         return getRepoDataPath(this.dataDir, workspaceId, GROUP_PINS_FILE);
     }
@@ -136,6 +161,10 @@ function validatePin(value: unknown): GroupPin {
         groupId,
         pinnedAt: pin.pinnedAt,
     };
+}
+
+function groupPinStoreKey(type: string, groupId: string): string {
+    return `${type}\u0000${groupId}`;
 }
 
 function sortPins(pins: GroupPin[]): GroupPin[] {

@@ -94,6 +94,14 @@ feature-enabled Sentinel conversation adds a **Check now** action that calls its
 workspace-scoped immediate-tick endpoint, disables while starting, and reports the result
 through the shared toast surface.
 
+The folder action uses `useUnifiedPanelHostForChat(taskId)` to open the hosted
+workspace right panel in Explorer mode with its navigator tree visible. Its
+pressed state follows the panel's open bit, mode, and tree state. A second click
+closes only the tree, preserving resource tabs and the panel. Repo-group chats
+use the group's panel scope and current dock target. Without a matching panel
+(mobile, pop-outs, embedded chats, or a background chat), the action toggles
+the chat's source-canvas directory tree instead.
+
 ### ConversationMetadataPopover
 
 Long identifiers get their own label/value rows (wrapping, log links); short categorical

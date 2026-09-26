@@ -135,6 +135,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => mockEffortLevelsEnabled.value,
     isChatStyleSelectorEnabled: () => mockChatStyleEnabled.value,
+    isComposerWordHintEnabled: () => true,
     getDefaultChatStyle: () => mockDefaultChatStyle.value,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled.value,
@@ -260,6 +261,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
                     props.onChange?.(e.target.value, e.target.selectionStart ?? 0);
                 },
                 onKeyDown: props.onKeyDown,
+                'data-ghost': props.ghostText ?? '',
             });
         }),
     };
@@ -1526,6 +1528,55 @@ describe('NewChatArea', () => {
             fireEvent.keyDown(input, { key: 'Tab' });
 
             expect(mockAutocomplete.accept).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('English word hint', () => {
+        async function typeHint(input: HTMLInputElement, text: string, expected: string) {
+            fireEvent.change(input, { target: { value: text, selectionStart: text.length } });
+            await waitFor(() => expect(input.getAttribute('data-ghost')).toBe(expected));
+        }
+
+        it('shows the word hint when the server completion is empty', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            await typeHint(input, 'see you tomo', 'rrow');
+        });
+
+        it('Tab accepts the word hint', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            await typeHint(input, 'see you tomo', 'rrow');
+            fireEvent.keyDown(input, { key: 'Tab' });
+            expect(input.value).toBe('see you tomorrow');
+        });
+
+        it('Escape dismisses the word hint', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            await typeHint(input, 'see you tomo', 'rrow');
+            fireEvent.keyDown(input, { key: 'Escape' });
+            expect(input.getAttribute('data-ghost')).toBe('');
+            expect(mockAutocomplete.dismiss).toHaveBeenCalled();
+        });
+
+        it('prefers the server completion when both exist', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            await typeHint(input, 'see you tomo', 'rrow');
+            mockAutocomplete.completion = 'row at noon';
+            mockAutocomplete.accept = vi.fn(() => 'see you tomorrow at noon');
+            await typeHint(input, 'see you tomor', 'row at noon');
+            fireEvent.keyDown(input, { key: 'Tab' });
+            expect(input.value).toBe('see you tomorrow at noon');
+        });
+
+        it('hides the word hint while the model menu is open', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const input = screen.getByTestId('new-chat-input') as HTMLInputElement;
+            await typeHint(input, 'see you tomo', 'rrow');
+            mockModelCommand.modelMenuVisible = true;
+            await typeHint(input, 'see you tomor', '');
         });
     });
 

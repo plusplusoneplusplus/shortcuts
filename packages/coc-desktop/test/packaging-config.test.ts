@@ -115,6 +115,15 @@ describe('electron-builder packaging config', () => {
             expect(buildConfig().asarUnpack ?? []).toContain('**/*.node');
         });
 
+        it('unpacks the coc-symbols-lsp executable from the asar so it can be spawned', () => {
+            // The C/C++ symbol index server is a standalone executable, not a
+            // .node addon, so the glob above does not cover it — and a file
+            // inside an asar archive cannot be spawned. The container build
+            // inherits this list.
+            expect(buildConfig().asarUnpack ?? []).toContain('**/coc-symbols-lsp*');
+            expect(containerBuildConfig().asarUnpack ?? []).toContain('**/coc-symbols-lsp*');
+        });
+
         it('declares coc-native as a production dependency of the server package', () => {
             const cocPkg = JSON.parse(
                 fs.readFileSync(path.resolve(__dirname, '../../coc/package.json'), 'utf8'),

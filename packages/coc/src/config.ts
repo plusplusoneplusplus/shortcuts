@@ -318,6 +318,8 @@ export interface CLIConfig {
         schedulesInScheduledSlide?: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
         chatFolders?: boolean;
+        /** Gray inline hint that finishes the English word being typed in chat composers. Enabled by default. */
+        composerWordHint?: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
         gitWorktreeExecution?: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
@@ -687,6 +689,8 @@ export interface ResolvedCLIConfig {
         schedulesInScheduledSlide: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
         chatFolders: boolean;
+        /** Gray inline hint that finishes the English word being typed in chat composers. Enabled by default. */
+        composerWordHint: boolean;
         /** Isolated Git worktree execution for Work Item / Ralph launches. Disabled by default. */
         gitWorktreeExecution: boolean;
         /** Async extension-canvas capabilities and the `host.complete` model call they get. Disabled by default. */
@@ -973,6 +977,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
         chatFolders: false,
+        composerWordHint: true,
         gitWorktreeExecution: false,
         canvasHostApis: false,
         explorerEditorTabs: false,

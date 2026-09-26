@@ -59,6 +59,7 @@ const {
         },
         mockConfig: {
             effortLevelsEnabled: false,
+            composerWordHintEnabled: true,
             ralphEnabled: false,
             forEachEnabled: false,
             cronEnabled: false,
@@ -187,6 +188,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isAutoAgentProviderRoutingEnabled: () => false,
     isEffortLevelsEnabled: () => mockConfig.effortLevelsEnabled,
     isChatStyleSelectorEnabled: () => false,
+    isComposerWordHintEnabled: () => mockConfig.composerWordHintEnabled !== false,
     getDefaultChatStyle: () => 'default',
     DASHBOARD_CONFIG_UPDATED_EVENT: 'dashboard-config-updated',
     isSessionContextAttachmentsEnabled: () => mockConfig.sessionContextAttachmentsEnabled,
@@ -369,6 +371,7 @@ beforeEach(() => {
     mockClient.preferences.getRepo.mockResolvedValue({});
     mockClient.preferences.patchRepo.mockResolvedValue({});
     mockConfig.effortLevelsEnabled = false;
+    mockConfig.composerWordHintEnabled = true;
     mockConfig.defaultProvider = 'copilot';
     mockAgentProviders.loading = false;
     mockModels.loading = false;
@@ -587,5 +590,79 @@ describe('FollowUpInputArea file mentions', () => {
 
         fireEvent.keyDown(editor(), { key: 'Enter' });
         expect(onSend).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('FollowUpInputArea English word hint', () => {
+    /** Type and wait for the lazily loaded dictionary to produce a hint. */
+    async function typeHint(text: string, expected: string) {
+        type(text);
+        await vi.waitFor(() => expect(richTextProps['activity-chat-input'].ghostText).toBe(expected));
+    }
+
+    it('shows the word hint when the server completion is empty', async () => {
+        renderFollowUp();
+        await typeHint('see you tomo', 'rrow');
+    });
+
+    it('Tab accepts the word hint', async () => {
+        renderFollowUp();
+        await typeHint('see you tomo', 'rrow');
+
+        fireEvent.keyDown(editor(), { key: 'Tab' });
+
+        expect(tracker.calls).toEqual([['see you tomorrow', 'see you tomorrow'.length]]);
+        expect(richTextProps['activity-chat-input'].value).toBe('see you tomorrow');
+    });
+
+    it('Escape dismisses the word hint until the text changes', async () => {
+        renderFollowUp();
+        await typeHint('see you tomo', 'rrow');
+
+        fireEvent.keyDown(editor(), { key: 'Escape' });
+        expect(richTextProps['activity-chat-input'].ghostText).toBe('');
+        expect(mockAutocomplete.dismiss).toHaveBeenCalled();
+
+        await typeHint('yest', 'erday');
+    });
+
+    it('prefers the server completion when both exist', async () => {
+        renderFollowUp();
+        await typeHint('see you tomo', 'rrow');
+
+        mockAutocomplete.completion = 'row at noon';
+        type('see you tomor');
+        expect(richTextProps['activity-chat-input'].ghostText).toBe('row at noon');
+    });
+
+    it('hides the word hint while the slash or model menu is open', async () => {
+        renderFollowUp();
+        await typeHint('see you tomo', 'rrow');
+
+        mockSlashCommands.menuVisible = true;
+        type('see you tomor');
+        expect(richTextProps['activity-chat-input'].ghostText).toBe('');
+
+        mockSlashCommands.menuVisible = false;
+        mockModelCommand.modelMenuVisible = true;
+        type('see you tomo');
+        expect(richTextProps['activity-chat-input'].ghostText).toBe('');
+    });
+
+    it('lets the active slash-command hint win over the word hint', async () => {
+        renderFollowUp();
+        await typeHint('see you tomo', 'rrow');
+
+        mockSlashCommands.activeCommandHint = ' <args>';
+        type('see you tomor');
+        expect(richTextProps['activity-chat-input'].ghostText).toBe(' <args>');
+    });
+
+    it('shows nothing when the feature flag is off', async () => {
+        mockConfig.composerWordHintEnabled = false;
+        renderFollowUp();
+        type('see you tomo');
+        await settle();
+        expect(richTextProps['activity-chat-input'].ghostText).toBe('');
     });
 });

@@ -38,6 +38,8 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
 });
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
+    isComposerWordHintEnabled: () => false,
+    DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isRalphEnabled: () => false,
     isForEachEnabled: () => false,
     // Deliberately off: an OS file drop is a plain text edit and must not

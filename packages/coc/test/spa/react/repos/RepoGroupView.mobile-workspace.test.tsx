@@ -12,7 +12,7 @@
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, act, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 
 const mockDispatch = vi.fn();
 let mockAppState: any = {};
@@ -28,8 +28,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
     useReposOptional: () => ({ remoteGroupWorkspaces: [] }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
-    useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
-    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: {} } }),
+    useQueue: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: {} } }),
+    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: {} } }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
@@ -78,8 +78,8 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', async (
         '../../../../src/server/spa/client/react/features/repo-detail/mobileWorkspacePane'
     );
     return {
-        RepoGroupGitTab: ({ workspaceId, layout, headerToolbarContainer }: {
-            workspaceId: string; layout?: string; headerToolbarContainer?: HTMLElement | null;
+        RepoGroupGitTab: ({ workspaceId, layout, headerToolbarContainer, members }: {
+            workspaceId: string; layout?: string; headerToolbarContainer?: HTMLElement | null; members?: readonly unknown[];
         }) => {
             const pane = useMobileWorkspacePane();
             return (
@@ -88,6 +88,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', async (
                     data-workspace={workspaceId}
                     data-layout={layout ?? ''}
                     data-header-hoisted={headerToolbarContainer ? 'true' : 'false'}
+                    data-members={members?.length ?? 'loading'}
                 >
                     <button data-testid="stub-open-commit" onClick={() => pane?.setDetailOpen(true)}>open commit</button>
                 </div>
@@ -137,6 +138,14 @@ function paneVisible(testId: string): boolean {
 }
 
 describe('RepoGroupView — mobile Workspace panel (AC-06)', () => {
+    it('keeps the mobile Git segment for an empty group', async () => {
+        mockGetRepoGroup.mockResolvedValue({ id: GROUP_ID, name: 'AI Repos', members: [] });
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        await waitFor(() => expect(screen.getByTestId('stub-group-git-tab').dataset.members).toBe('0'));
+        expect(screen.getByTestId('split-workspace-mobile-pane-git')).toBeTruthy();
+        expect(screen.getByTestId('stub-group-git-tab')).toBeTruthy();
+    });
+
     it('renders the shared split shell with a Chats | Git switcher, one pane at a time', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 
@@ -193,16 +202,15 @@ describe('RepoGroupView — mobile Workspace panel (AC-06)', () => {
         expect(paneVisible('split-workspace-chat')).toBe(true);
     });
 
-    it('drops the standalone Git tab on the merged mobile path, and keeps it on desktop', () => {
+    it('drops the standalone Git tab on the merged mobile path', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('repo-group-tab-git')).toBeNull();
 
         cleanup();
         mockBreakpoint = 'desktop';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        // Desktop keeps the two separate tabs and never mounts the mobile shell.
-        expect(screen.queryByTestId('split-workspace-panel')).toBeNull();
-        expect(screen.getByTestId('repo-group-tab-git')).toBeTruthy();
+        // Desktop uses the same shell in its two-column (non-narrow) form.
+        expect(screen.getByTestId('split-workspace-panel').dataset.narrow).not.toBe('true');
     });
 
     it('falls back to the plain chat tab when the split flag is off', () => {

@@ -258,6 +258,17 @@ export interface ProcessGroupPinsResponse {
   pins: ProcessGroupPin[];
 }
 
+/** One entry of a `PUT /workspaces/:id/pin-order` request, in display order (top first). */
+export type PinOrderEntry =
+  | { kind: 'chat'; id: string }
+  | { kind: 'group'; type: ProcessGroupPinType; groupId: string };
+
+/** Chats that were restamped, plus the full re-sorted group pin list. */
+export interface PinOrderResponse {
+  chats: Array<{ id: string; pinnedAt: string }>;
+  groups: ProcessGroupPin[];
+}
+
 export interface ProcessGroupPinResponse {
   pin: ProcessGroupPin | null;
 }

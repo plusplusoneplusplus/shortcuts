@@ -25,6 +25,7 @@ export interface MockProcessStore extends ProcessStore {
     unarchiveProcess(id: string): void;
     pinProcess(id: string, pinnedAt: string): void;
     unpinProcess(id: string): void;
+    setPinOrder(workspaceId: string, entries: Array<{ id: string; pinnedAt: string }>): string[];
     archiveProcesses(ids: string[]): void;
     unarchiveProcesses(ids: string[]): void;
     getPinnedProcesses(workspaceId: string): ProcessIndexEntry[];
@@ -284,6 +285,17 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             if (existing) {
                 processes.set(id, { ...existing, pinnedAt });
             }
+        }),
+        setPinOrder: vi.fn((workspaceId: string, entries: Array<{ id: string; pinnedAt: string }>) => {
+            const updated: string[] = [];
+            for (const { id, pinnedAt } of entries) {
+                const existing = processes.get(id);
+                if (existing?.pinnedAt && existing.metadata?.workspaceId === workspaceId) {
+                    processes.set(id, { ...existing, pinnedAt });
+                    updated.push(id);
+                }
+            }
+            return updated;
         }),
         unpinProcess: vi.fn((id: string) => {
             const existing = processes.get(id);

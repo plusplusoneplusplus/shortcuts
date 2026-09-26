@@ -577,6 +577,89 @@ paths:
                     items:
                       $ref: '#/components/schemas/ProcessIndexEntry'
 
+  /api/workspaces/{id}/pin-order:
+    put:
+      tags: [pin-archive]
+      operationId: setPinOrder
+      summary: Reorder the Pinned section
+      description: >-
+        Pin time is the sort key. Entry i (top first) is restamped to now - i ms.
+        Only entries already pinned in this workspace are updated; others are
+        skipped. Pinned entries left out of the request keep their pinnedAt.
+      parameters:
+        - $ref: '#/components/parameters/WorkspaceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entries]
+              properties:
+                entries:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [kind]
+                    properties:
+                      kind:
+                        type: string
+                        enum: [chat, group]
+                      id:
+                        type: string
+                        description: Process id (kind = chat)
+                      type:
+                        type: string
+                        description: Group pin type (kind = group)
+                      groupId:
+                        type: string
+                        description: Group id (kind = group)
+      responses:
+        '200':
+          description: Restamped chats and the full re-sorted group pin list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chats, groups]
+                properties:
+                  chats:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, pinnedAt]
+                      properties:
+                        id:
+                          type: string
+                        pinnedAt:
+                          type: string
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      required: [type, groupId, pinnedAt]
+                      properties:
+                        type:
+                          type: string
+                        groupId:
+                          type: string
+                        pinnedAt:
+                          type: string
+        '400':
+          description: Empty, oversized, duplicate, or malformed entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Workspace not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/processes/{id}/pin:
     patch:
       tags: [pin-archive]

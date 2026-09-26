@@ -14,6 +14,7 @@ const prefsMocks = vi.hoisted(() => ({
 
 // Mock getApiBase so fetch URLs are predictable.
 vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
+    isComposerWordHintEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isContainerMode: () => false,
     getApiBase: () => '',

@@ -40,19 +40,30 @@ export function symbolsLspBinaryName(
     return `coc-symbols-lsp.${nativeTriple(platform, arch)}${suffix}`;
 }
 
+/**
+ * Point a path inside a packaged Electron app's `app.asar` at its
+ * `app.asar.unpacked` twin. Electron's `fs` answers `stat` for a file inside
+ * the archive, but nothing can exec it, so the only copy worth finding is the
+ * one electron-builder unpacked. A no-op for a path with no asar segment.
+ */
+export function asarUnpackedPath(p: string): string {
+    return p.replace(/([\\/])app\.asar([\\/])/g, '$1app.asar.unpacked$2');
+}
+
 /** Every path the resolver will try, in order. */
 export function symbolsLspBinaryCandidates(
     packageRoot: string = PACKAGE_ROOT,
     platform: string = process.platform,
     arch: string = process.arch,
 ): string[] {
+    const root = asarUnpackedPath(packageRoot);
     const name = symbolsLspBinaryName(platform, arch);
     const triple = nativeTriple(platform, arch);
     const plain = platform === 'win32' ? 'coc-symbols-lsp.exe' : 'coc-symbols-lsp';
     return [
-        path.join(packageRoot, name),
-        path.join(packageRoot, 'prebuilt', triple, name),
-        path.join(packageRoot, 'prebuilt', triple, plain),
+        path.join(root, name),
+        path.join(root, 'prebuilt', triple, name),
+        path.join(root, 'prebuilt', triple, plain),
     ];
 }
 

@@ -4,7 +4,7 @@
  * Every task type, chat or not, goes through the one ChatDetailPane.
  */
 
-import { useState, useEffect, useMemo, useCallback, useRef, cloneElement } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, useContext, cloneElement } from 'react';
 import { createPortal } from 'react-dom';
 import { DockedStatusFooter } from '../../layout/DockedStatusFooter';
 import { cn } from '../../ui';
@@ -31,7 +31,11 @@ import { ChatPreferencesProvider, ChatPrefsSync } from '../../contexts/ChatPrefe
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useProcessSearch } from '../../processes/hooks/useProcessSearch';
 import { adaptSearchResults } from '../../utils/search-adapter';
-import type { ForEachRunSummary, MapReduceRunSummary, ProcessGroupPin, ProcessGroupPinType, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
+import type { ForEachRunSummary, MapReduceRunSummary, PinOrderEntry, ProcessGroupPin, ProcessGroupPinType, ProcessHistoryItem } from '@plusplusoneplusplus/coc-client';
+import { ToastContext } from '../../contexts/ToastContext';
+import { setPinOrder } from '../../queue/hooks/pinArchiveApi';
+import { applyPendingChatStamps, applyPendingGroupStamps, stampPinOrder, type PendingPinOrder } from './pin-order-pending';
+import { getGroupPinKey } from './group-pinning';
 import { TaskDefs } from '../../../../../tasks/task-types';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '../../utils/queue-process-id';
 import { mergeCompactingConversations, isCompactingProcess } from './compacting-conversations';
@@ -163,6 +167,10 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const [forEachRuns, setForEachRuns] = useState<ForEachRunSummary[]>([]);
     const [mapReduceRuns, setMapReduceRuns] = useState<MapReduceRunSummary[]>([]);
     const [groupPins, setGroupPins] = useState<ProcessGroupPin[]>([]);
+    // A drag-reordered Pinned section waiting for the server to catch up. Fetch
+    // results pass through it so a stale snapshot can't flash the old order back.
+    const pendingPinOrderRef = useRef<PendingPinOrder | null>(null);
+    const toast = useContext(ToastContext);
     const [loading, setLoading] = useState(!cachedHistory && !cachedQueue);
     const [hasMore, setHasMore] = useState<boolean>(cachedHistory?.hasMore ?? false);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -279,9 +287,25 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
     const [selectedTask, setSelectedTask] = useState<any>(null);
     const selectedTaskRef = useRef<any>(null);
 
+    const withPendingChatStamps = useCallback((items: ProcessHistoryItem[]): ProcessHistoryItem[] => {
+        const pending = pendingPinOrderRef.current;
+        if (!pending || pending.workspaceId !== workspaceId || pending.chats.size === 0) return items;
+        const result = applyPendingChatStamps(items, pending.chats);
+        if (result.settled && pending.confirmed) pending.chats = new Map();
+        return result.items;
+    }, [workspaceId]);
+
+    const withPendingGroupStamps = useCallback((pins: ProcessGroupPin[]): ProcessGroupPin[] => {
+        const pending = pendingPinOrderRef.current;
+        if (!pending || pending.workspaceId !== workspaceId || pending.groups.size === 0) return pins;
+        const result = applyPendingGroupStamps(pins, pending.groups);
+        if (result.settled && pending.confirmed) pending.groups = new Map();
+        return result.pins;
+    }, [workspaceId]);
+
     const fetchHistory = useCallback(async (offset = 0) => {
         const data = await cloneClient.workspaces.history(workspaceId, { limit: 100, offset }).catch(() => null);
-        const items = (data?.history as ProcessHistoryItem[]) || [];
+        const items = withPendingChatStamps((data?.history as ProcessHistoryItem[]) || []);
         const nextHasMore = data?.hasMore ?? false;
         if (offset === 0) {
             setHistory(items);
@@ -294,7 +318,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             });
         }
         setHasMore(nextHasMore);
-    }, [workspaceId, queueDispatch, cloneClient]);
+    }, [workspaceId, queueDispatch, cloneClient, withPendingChatStamps]);
 
     const fetchQueueAndHistory = useCallback(async () => {
         // In container mode, skip fetch if agent hasn't been resolved yet —
@@ -340,7 +364,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             }
 
             if (historyData) {
-                const items = (historyData.history as ProcessHistoryItem[]) || [];
+                const items = withPendingChatStamps((historyData.history as ProcessHistoryItem[]) || []);
                 const nextHasMore = historyData.hasMore ?? false;
                 setHistory(items);
                 setHasMore(nextHasMore);
@@ -363,14 +387,14 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
                 setMapReduceRuns([]);
             }
             if (groupPinsData) {
-                setGroupPins(Array.isArray(groupPinsData.pins) ? groupPinsData.pins : []);
+                setGroupPins(withPendingGroupStamps(Array.isArray(groupPinsData.pins) ? groupPinsData.pins : []));
             }
         } catch {
             // Both fetches already have inner `.catch(() => null)`; this outer catch is
             // defensive. Deliberately do NOT clear local lists — keep the cached view.
         }
         setLoading(false);
-    }, [workspaceId, queueDispatch, appState.currentAgentId, cloneClient]);
+    }, [workspaceId, queueDispatch, appState.currentAgentId, cloneClient, withPendingChatStamps, withPendingGroupStamps]);
 
     const fetchQueue = fetchQueueAndHistory;
 
@@ -388,6 +412,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         // If a cache hit seeded `history`/`running`, fetch silently in the
         // background so the user never sees a flash of "loading…" on revisit.
         setGroupPins([]);
+        pendingPinOrderRef.current = null;
         const hasCachedQueue = !!queueState.repoQueueMap[workspaceId];
         const hasCachedHistory = !!queueState.repoHistoryMap?.[workspaceId];
         if (!hasCachedQueue && !hasCachedHistory) {
@@ -800,6 +825,40 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         }
     }, [groupPins, workspaceId, cloneClient]);
 
+    /**
+     * Save a drag-reordered Pinned section. Pin time is the sort key, so the
+     * new order renders at once by restamping chats and group pins locally
+     * with the server's `now - i` scheme; the server's stamps replace them on
+     * success, and a failure puts the old stamps back.
+     */
+    const handleReorderPins = useCallback(async (entries: PinOrderEntry[]) => {
+        const previousChatStamps = new Map(history.map(item => [item.id, item.pinnedAt]));
+        const previousPins = groupPins;
+        const pending = stampPinOrder(workspaceId, entries, Date.now());
+        pendingPinOrderRef.current = pending;
+        setHistory(prev => applyPendingChatStamps(prev, pending.chats).items);
+        setGroupPins(prev => applyPendingGroupStamps(prev, pending.groups).pins);
+        try {
+            const result = await setPinOrder(workspaceId, entries);
+            if (pendingPinOrderRef.current !== pending) return;
+            pending.chats = new Map(result.chats.map(chat => [chat.id, chat.pinnedAt]));
+            pending.groups = new Map(result.groups
+                .filter(pin => pending.groups.has(getGroupPinKey(pin.type, pin.groupId)))
+                .map(pin => [getGroupPinKey(pin.type, pin.groupId), pin.pinnedAt]));
+            pending.confirmed = true;
+            setHistory(prev => applyPendingChatStamps(prev, pending.chats).items);
+            setGroupPins(result.groups);
+        } catch {
+            if (pendingPinOrderRef.current !== pending) return;
+            pendingPinOrderRef.current = null;
+            setHistory(prev => prev.map(item => (pending.chats.has(item.id) && previousChatStamps.has(item.id)
+                ? { ...item, pinnedAt: previousChatStamps.get(item.id) }
+                : item)));
+            setGroupPins(previousPins);
+            toast?.addToast('Could not save the pinned order', 'error');
+        }
+    }, [history, groupPins, workspaceId, toast]);
+
     const [selectedRalphSessionId, setSelectedRalphSessionId] = useState<string | null>(null);
     const [selectedRalphFileName, setSelectedRalphFileName] = useState<string | null>(null);
     const [selectedForEachRunId, setSelectedForEachRunId] = useState<string | null>(null);
@@ -1139,6 +1198,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             mapReduceRuns={mapReduceRuns}
             groupPins={groupPins}
             onSetGroupPin={handleSetGroupPin}
+            onReorderPins={handleReorderPins}
             selectedForEachRunId={selectedForEachRunId}
             onSelectForEachRun={handleOpenForEachRun}
             selectedMapReduceRunId={selectedMapReduceRunId}

@@ -946,6 +946,66 @@ function toolCall(partial: Partial<ToolCallLike> & { id: string }): ToolCallLike
 }
 
 describe('collectToolCallsFromTurns', () => {
+    it('detects a PR when a Copilot completion has output but only its start has the command', () => {
+        const turns: ToolCallBearingTurn[] = [{
+            timeline: [
+                { toolCall: { id: 'created-pr', name: 'bash', args: { command: 'python3 .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start HEAD' }, status: 'running' } },
+                { toolCall: { id: 'created-pr', name: 'bash', args: {}, status: 'completed', result: 'JSON: {"pr_url": "https://github.com/org/repo/pull/99", "status": "done"}' } },
+            ],
+        }];
+
+        const calls = collectToolCallsFromTurns(turns);
+        expect(calls).toHaveLength(1);
+        expect(calls[0].args).toEqual(turns[0].timeline![0].toolCall!.args);
+        expect(calls[0].status).toBe('completed');
+        expect(detectPullRequestsInToolGroup(calls, { remoteUrl: 'https://github.com/org/repo' }))
+            .toEqual([expect.objectContaining({ number: 99, toolCallId: 'created-pr' })]);
+    });
+
+    it.each(['Bash', 'shell'])('detects a PR from %s when completion repeats the command', name => {
+        const calls = collectToolCallsFromTurns([{
+            timeline: [
+                { toolCall: { id: 'created-pr', name, args: { command: 'gh pr create --fill' }, status: 'running' } },
+                { toolCall: { id: 'created-pr', name, args: { command: 'gh pr create --fill' }, status: 'completed', result: 'https://github.com/org/repo/pull/99' } },
+            ],
+        }]);
+
+        expect(detectPullRequestsInToolGroup(calls, { remoteUrl: 'https://github.com/org/repo' }))
+            .toEqual([expect.objectContaining({ number: 99 })]);
+    });
+
+    it('does not mistake a failed completion for a successful creation', () => {
+        const calls = collectToolCallsFromTurns([{
+            timeline: [
+                { toolCall: { id: 'failed-pr', name: 'bash', args: { command: 'gh pr create --fill' }, status: 'running' } },
+                { toolCall: { id: 'failed-pr', name: 'bash', args: {}, status: 'failed', result: 'https://github.com/org/repo/pull/99' } },
+            ],
+        }]);
+
+        expect(calls[0].status).toBe('failed');
+        expect(detectPullRequestsInToolGroup(calls)).toEqual([]);
+    });
+
+    it('recovers the command from a flat tool call when timeline completion lacks it', () => {
+        const calls = collectToolCallsFromTurns([{
+            timeline: [{ toolCall: { id: 'created-pr', name: 'bash', args: {}, status: 'completed', result: 'https://github.com/org/repo/pull/99' } }],
+            toolCalls: [{ id: 'created-pr', name: 'bash', args: { command: 'gh pr create --fill' }, status: 'completed', result: 'https://github.com/org/repo/pull/99' }],
+        }]);
+
+        expect(detectPullRequestsInToolGroup(calls)).toEqual([expect.objectContaining({ number: 99 })]);
+    });
+
+    it('does not infer creation from a PR URL when no event contains a command', () => {
+        const calls = collectToolCallsFromTurns([{
+            timeline: [
+                { toolCall: { id: 'read-pr', name: 'bash', args: {}, status: 'running' } },
+                { toolCall: { id: 'read-pr', name: 'bash', args: {}, status: 'completed', result: 'https://github.com/org/repo/pull/99' } },
+            ],
+        }]);
+
+        expect(detectPullRequestsInToolGroup(calls)).toEqual([]);
+    });
+
     it('flattens tool calls from timeline and legacy toolCalls, deduped by id within each turn', () => {
         const turns: ToolCallBearingTurn[] = [
             {

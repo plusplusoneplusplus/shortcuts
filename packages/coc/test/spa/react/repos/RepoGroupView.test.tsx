@@ -25,8 +25,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ReposContext', () => (
     useReposOptional: () => ({ remoteGroupWorkspaces: mockRemoteGroupWorkspaces }),
 }));
 vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => ({
-    useQueue: () => ({ state: { selectedTaskIdByRepo: {} } }),
-    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: {} } }),
+    useQueue: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: {} } }),
+    useQueueOptional: () => ({ state: { selectedTaskIdByRepo: {}, repoQueueMap: {} } }),
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');

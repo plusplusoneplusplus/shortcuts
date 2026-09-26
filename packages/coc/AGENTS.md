@@ -31,6 +31,14 @@ all have their own `references/*.md`.
 
 ## Local Invariants
 
+- **Repo-group split routing** keeps the group as the page workspace and a
+  member as the Git data workspace. With `splitWorkspacePanel` on, desktop and
+  mobile expose Git only inside the group's Chats tab; member/commit Git links
+  open that tab and activate the shared git detail. With the flag off, the
+  standalone group Git tab remains. New Chat and the queue counts use the group
+  workspace, while the remote desktop shell docks its status actions under
+  the split left column. A loaded group without healthy members hides the
+  desktop Git half so chats fill that column.
 - **File search has exactly one backend.** `RepoTreeService` answers whole-repo
   listings and `/search` from the Rust index in `@plusplusoneplusplus/coc-native`,
   and there is no JavaScript path behind it: a missing or unloadable binary
@@ -332,7 +340,7 @@ all have their own `references/*.md`.
   their workflow list from the per-server `/summary` fetch in
   `remoteWorkspaceAggregation`; the local queue WebSocket stays local.
 - **Chat list and chat-folder REST** is clone-routed: `queue/hooks/pinArchiveApi`
-  (pin/archive and their batch forms) and all three chat-folder hooks
+  (pin/archive, their batch forms, and `setPinOrder`) and all three chat-folder hooks
   (`useChatFolders`, `useChatFolderMutations`, `useChatFolderAssignment`) resolve
   their client with `getCocClientForWorkspace(workspaceId)`.
   `useChatFolderAssignment` takes `workspaceId` only to route — its own work is

@@ -73,11 +73,14 @@ The three-column desktop row budgets both side widths against the same viewport.
 resize handles, and the middle pane's 360px reserve from the dock maximum. The
 left column applies the matching reserve for the dock minimum. Both resizable
 panels keep their persisted pixel widths when a narrow viewport temporarily
-clamps them, so widening restores the user's chosen sizes. When the left column
-is collapsed, `RepoDetail` passes its workspace-scoped `useRepoQueueStats`
-counts into the rail. Separate running and queued controls appear only for
-nonzero counts and expand the left column when selected. Mobile publishes no
-live left width.
+clamps them, so widening restores the user's chosen sizes. `RepoDetail` and
+`RepoGroupView` pass workspace-scoped `useRepoQueueStats` counts into the
+collapsed rail. Separate running and queued controls appear only for nonzero
+counts and expand the left column when selected. The group supplies a compact
+New Chat control through `chatHeaderExtra` and pins the sidebar status footer
+in the remote desktop shell. A null `gitList` removes the desktop Git section
+and lets chats fill the left column; group views pass null when membership is
+loaded and has no healthy member. Mobile publishes no live left width.
 
 **Scope vs. target.** `workspaceId` is the panel's *scope*: it owns the
 `split-workspace:<id>:dock-{open,width,target}` keys, the unified tab set, and
@@ -127,6 +130,11 @@ for a concrete clone or a `group-*` selection. My Work / My Life have no panel.
 Search and Explorer are peer navigator controls inside the panel; selecting one
 opens or switches the navigator, and selecting the active one collapses it
 without closing the resource panel.
+The chat header's folder button also selects Explorer and opens the tree in
+this same panel when `useUnifiedPanelHostForChat` matches the selected chat.
+It uses the panel scope (the group id for a repo group), not the chat's member
+workspace id. Clicking again closes only the tree; chats without a matching
+panel use the source-canvas directory tree.
 
 On desktop, a repo group's mounted panel also owns Ctrl/Cmd+P while collapsed,
 from every group sub-tab. The Quick Open portal may appear without changing the

@@ -28,6 +28,8 @@ import type { PostAction } from '../../../task-types';
 import { useOnboardingPreferences } from '../hooks/useOnboardingPreferences';
 import { usePromptAutocomplete } from '../hooks/usePromptAutocomplete';
 import { usePromptAutocompleteEnabled } from '../hooks/usePromptAutocompleteEnabled';
+import { mergeGhostSources, useWordHint } from '../hooks/useWordHint';
+import { useComposerWordHintEnabled } from '../hooks/feature-flags/useComposerWordHintEnabled';
 import { useChatPromptHistory } from '../hooks/useChatPromptHistory';
 import { ModalJobAiControls, useModalJobAiSelection } from '../shared/ModalJobAiControls';
 import type { EnqueueTaskRequest } from '@plusplusoneplusplus/coc-client';
@@ -158,6 +160,14 @@ export function EnqueueDialog() {
         workspaceId: workspaceId || undefined,
         surface: 'queue',
     });
+    // Client-side English word hint; the server completion wins when present.
+    const composerWordHintEnabled = useComposerWordHintEnabled();
+    const wordHint = useWordHint({
+        text: prompt,
+        cursorPos: promptCursorPos,
+        enabled: composerWordHintEnabled && !submitting && !slashCommands.menuVisible,
+    });
+    const ghost = mergeGhostSources(prompt, autocomplete, wordHint);
 
     // Bash-style up/down history navigation through past initial prompts.
     const promptHistory = useChatPromptHistory({
@@ -527,19 +537,19 @@ export function EnqueueDialog() {
         if (
             e.key === 'Tab'
             && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
-            && autocomplete.completion
+            && ghost.completion
         ) {
             e.preventDefault();
-            const next = autocomplete.accept();
+            const next = ghost.accept();
             setPrompt(next);
             richTextRef.current?.setValue(next, next.length);
             setPromptCursorPos(next.length);
-            autocomplete.dismiss();
+            ghost.dismiss();
             return;
         }
-        if (e.key === 'Escape' && autocomplete.completion) {
+        if (e.key === 'Escape' && ghost.completion) {
             e.preventDefault();
-            autocomplete.dismiss();
+            ghost.dismiss();
             return;
         }
         // Bash-style up/down history navigation.
@@ -550,7 +560,7 @@ export function EnqueueDialog() {
             e.preventDefault();
             handleSubmit();
         }
-    }, [submitting, handleSubmit, slashCommands, handleSlashSelect, autocomplete, promptHistory]);
+    }, [submitting, handleSubmit, slashCommands, handleSlashSelect, ghost, promptHistory]);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -708,7 +718,7 @@ export function EnqueueDialog() {
                         <RichTextInput
                             ref={richTextRef}
                             value={prompt}
-                            ghostText={autocomplete.completion}
+                            ghostText={ghost.completion}
                             onChange={(text, cursorPos) => {
                                 setPrompt(text);
                                 setPromptCursorPos(cursorPos);

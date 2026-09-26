@@ -280,6 +280,8 @@ export interface RuntimeDashboardConfig {
     splitWorkspacePanelEnabled: boolean;
     /** Whether user-created chat folders are enabled in the chat list (feature flag, default off). */
     chatFoldersEnabled: boolean;
+    /** Whether chat composers show the client-side English word hint (feature flag, default on). */
+    composerWordHintEnabled: boolean;
     /**
      * Whether this CoC server supports isolated Git worktree execution for Work
      * Item / Ralph launches. Doubles as the remote-target capability signal.

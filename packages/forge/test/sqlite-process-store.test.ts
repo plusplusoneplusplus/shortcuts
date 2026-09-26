@@ -1553,6 +1553,28 @@ describe('SqliteProcessStore — Pin & Archive', () => {
         expect(pinned[0].pinnedAt).toBe('2026-04-02T12:00:00.000Z');
     });
 
+    it('setPinOrder rewrites pinned_at only for pinned processes in the workspace', async () => {
+        await store.addProcess(makeProcess('so1', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws1' } }));
+        await store.addProcess(makeProcess('so2', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws1' } }));
+        await store.addProcess(makeProcess('so3', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws1' } }));
+        await store.addProcess(makeProcess('so4', { status: 'completed', metadata: { type: 'ai', workspaceId: 'ws2' } }));
+        store.pinProcess('so1', '2026-04-01T12:00:00.000Z');
+        store.pinProcess('so2', '2026-04-02T12:00:00.000Z');
+        store.pinProcess('so4', '2026-04-03T12:00:00.000Z');
+
+        const updated = store.setPinOrder('ws1', [
+            { id: 'so1', pinnedAt: '2026-05-01T00:00:00.002Z' },
+            { id: 'so3', pinnedAt: '2026-05-01T00:00:00.001Z' },
+            { id: 'so4', pinnedAt: '2026-05-01T00:00:00.001Z' },
+            { id: 'so2', pinnedAt: '2026-05-01T00:00:00.000Z' },
+        ]);
+
+        expect(updated).toEqual(['so1', 'so2']);
+        expect(store.getPinnedProcesses('ws1').map(p => p.id)).toEqual(['so1', 'so2']);
+        expect((await store.getProcess('so3'))!.pinnedAt).toBeUndefined();
+        expect((await store.getProcess('so4'))!.pinnedAt).toBe('2026-04-03T12:00:00.000Z');
+    });
+
     it('getProcessSummaries includes pinnedAt and archived', async () => {
         await store.addProcess(makeProcess('sum1', { status: 'completed' }));
         store.pinProcess('sum1', '2026-04-01T12:00:00.000Z');

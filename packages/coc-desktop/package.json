@@ -49,6 +49,7 @@
     "asar": true,
     "asarUnpack": [
       "**/*.node",
+      "**/coc-symbols-lsp*",
       "**/@esbuild/**",
       "**/@anthropic-ai/claude-agent-sdk-*/**",
       "**/@openai/codex-*/**",

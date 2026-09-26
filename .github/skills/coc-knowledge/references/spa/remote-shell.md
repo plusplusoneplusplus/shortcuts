@@ -268,9 +268,16 @@ that same registry.
 
 **View.** A `group-<slug>` id renders `repos/RepoGroupView.tsx`, a branch in `ReposView`
 recognized by id **prefix** (unlike My Work / My Life's id-equality checks) with no
-feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Git
-(`RepoGroupGitTab`), Notes (`NotesView`, notes root = the group's own workspace dir),
-and Settings (`repos/RepoGroupSettingsTab.tsx`, `Alt+C`).
+feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Notes (`NotesView`,
+notes root = the group's own workspace dir), and Settings
+(`repos/RepoGroupSettingsTab.tsx`, `Alt+C`). With `splitWorkspacePanel` off it
+also exposes a standalone Git tab (`RepoGroupGitTab`); with the flag on the
+group's Chats tab hosts the member git list in `SplitWorkspacePanel` and hides
+the Git header tab on desktop and mobile. Its desktop split header and collapsed
+rail start group chats, the rail counts the group's running and queued tasks,
+and the remote-first shell pins status actions below the left column. Once
+membership loads, groups without a healthy member show chats across the full
+left column with no Git section.
 `getRepoGroupHeaderConfig(workspaceId, label)` supplies the
 `VirtualWorkspaceHeaderConfig` (`testIdPrefix: 'repo-group'`, `defaultTab: 'chats'`, no
 actions), labeled with the registered workspace name (id fallback while loading).
@@ -306,6 +313,9 @@ longer in the group renders `repo-group-git-unavailable-member`: the group stays
 open with a usable picker and no git request is made against another repo.
 Changing member is a navigation to that member's history route, so the previous
 commit/file is cleared before the keyed panel mounts.
+With the split flag on, group Git URLs select the Chats surface without
+discarding the member and commit route. A selected commit activates git detail
+in the split panel's shared detail host.
 
 ### Group settings
 
@@ -393,9 +403,8 @@ workspace the mobile skin repos already had. `RepoGroupView`, `MyWorkView` and
 `MyLifeView` render it instead of `VirtualWorkspaceInlineHeader` when `isMobile`:
 `MobileTabBar` with `config.tabs`, `config.actions` folded into the `···` sheet, and a
 leading back-to-scope-list slot (`<prefix>-name-back`) mirroring `repo-name-back`. A
-repo group pins `chats · git · notes` and keeps Settings in the overflow; My Work / My
-Life pin their first three visible tabs. Before this a mobile user who landed on a group
-had no way back.
+repo group pins `chats · notes · settings` with the split flag on and
+`chats · git · notes` otherwise; My Work / My Life pin their first three visible tabs.
 
 ## Remote workspace aggregation
 

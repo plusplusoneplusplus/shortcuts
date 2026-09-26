@@ -161,8 +161,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const groupHeaderConfig = useMemo(() => {
         if (!isOnReposTab || !isRepoGroupWorkspaceId(state.selectedRepoId)) return null;
         const id = state.selectedRepoId!;
-        return getRepoGroupHeaderConfig(id, resolveRepoGroupName(id, state.workspaces, remoteGroupWorkspaces));
-    }, [isOnReposTab, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces]);
+        return getRepoGroupHeaderConfig(
+            id,
+            resolveRepoGroupName(id, state.workspaces, remoteGroupWorkspaces),
+            splitWorkspacePanelEnabled,
+        );
+    }, [isOnReposTab, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces, splitWorkspacePanelEnabled]);
 
     // Virtual workspaces (My Work / My Life / repo groups) have no real repo, so
     // they never hit `showRemoteHeader`. Give them the same single-row shell via

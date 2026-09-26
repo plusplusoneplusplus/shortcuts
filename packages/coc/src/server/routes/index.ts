@@ -68,6 +68,7 @@ import { syncDreamRunToTaskGroup, syncForEachRunToTaskGroup, syncMapReduceRunToT
 import { registerRalphSessionChangeListener } from '../ralph/ralph-session-store';
 import { backfillTaskGroups } from '../task-groups/backfill';
 import { registerPinArchiveRoutes } from '../processes/pin-archive-handler';
+import { registerPinOrderRoutes } from '../processes/pin-order-handler';
 import { registerChatFolderRoutes } from '../processes/chat-folder-handler';
 import { GroupFolderStore } from '../processes/group-folder-store';
 import { registerGroupFolderRoutes } from '../processes/group-folder-handler';
@@ -655,6 +656,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerTaskGroupRoutes({ routes, store, taskGroupService });
     registerRalphSessionChangeListener(dataDir, record => syncRalphSessionToTaskGroup(taskGroupService, record));
     registerPinArchiveRoutes(routes, store as any);
+    registerPinOrderRoutes(routes, store, dataDir);
     const chatFolderStore = taskGroupService.getChatFolderStore();
     const groupFolderStore = new GroupFolderStore(dataDir);
     registerChatFolderRoutes(routes, store, chatFolderStore, groupFolderStore);

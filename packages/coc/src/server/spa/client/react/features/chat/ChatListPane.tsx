@@ -59,6 +59,8 @@ import { folderNameExists } from './chat-folder-mutations';
 import { useChatFolderMutations } from './hooks/useChatFolderMutations';
 import { useChatFolderAssignment } from './hooks/useChatFolderAssignment';
 import { useChatFolderDragDrop } from './hooks/useChatFolderDragDrop';
+import { usePinnedReorderDragDrop } from './hooks/usePinnedReorderDragDrop';
+import { buildPinnedFullOrder, pinnedEntryKey } from './pinned-reorder-drag';
 import { useChatListDragAutoScroll } from './hooks/useChatListDragAutoScroll';
 import { useChatFolderArchive } from './hooks/useChatFolderArchive';
 import { buildArchiveUndoMessage, canArchiveFolder } from './chat-folder-archive';
@@ -89,7 +91,7 @@ import { normalizeChatMode } from '../../repos/modeConfig';
 import { createRalphSessionContextDragPayload, createSessionContextDragPayload, writeSessionContextDragBundle, writeSessionContextDragData, type SessionContextDragPayload } from './sessionContextDrag';
 import { dataTransferHasSessionContext, readSessionContextDropPayloads } from './sessionContextDrop';
 import { pushNewChatSeedContext } from './newChatSeedContext';
-import type { AgentProvidersQuotaResponse, ForEachRunSummary, MapReduceRunSummary, ProcessGroupFolderType, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
+import type { AgentProvidersQuotaResponse, ForEachRunSummary, MapReduceRunSummary, PinOrderEntry, ProcessGroupFolderType, ProcessGroupPin, ProcessGroupPinType } from '@plusplusoneplusplus/coc-client';
 import { useAgentProvidersQuota } from '../../shared/useAgentProvidersQuota';
 import { formatQuotaTypeLabel, getMostConstrainedProviderQuota, getQuotaPercent, getQuotaRiskClass, getTightestFiniteQuotaType } from '../../shared/quotaUtils';
 
@@ -884,6 +886,11 @@ export interface ChatListPaneProps {
     groupPins?: ProcessGroupPin[];
     /** Toggle a workspace-scoped parent-row group pin without mutating child process pins. */
     onSetGroupPin?: (type: ProcessGroupPinType, groupId: string, pinned: boolean) => void;
+    /**
+     * Save a new Pinned-section order (every pinned entry, top first). When set,
+     * pinned rows can be dragged within the Pinned section to reorder them.
+     */
+    onReorderPins?: (entries: PinOrderEntry[]) => void;
     /** When set, the matching For Each run row is highlighted as selected. */
     selectedForEachRunId?: string | null;
     /** Called when the user clicks a For Each run row body (right-pane switch). */
@@ -1442,6 +1449,7 @@ export function ChatListPane({
     mapReduceRuns = [],
     groupPins = EMPTY_GROUP_PINS,
     onSetGroupPin,
+    onReorderPins,
     selectedForEachRunId,
     onSelectForEachRun,
     selectedMapReduceRunId,
@@ -1834,7 +1842,7 @@ export function ChatListPane({
     // the queued section stays a reorder-only target and its handlers, which
     // already require `QUEUE_DRAG_MIME`, never see a folder payload they would
     // act on.
-    const chatListAutoScroll = useChatListDragAutoScroll(containerRef, chatFoldersEnabled);
+    const chatListAutoScroll = useChatListDragAutoScroll(containerRef, chatFoldersEnabled || !!onReorderPins);
     const folderDnd = useChatFolderDragDrop({
         enabled: chatFoldersEnabled,
         workspaceId,
@@ -1848,6 +1856,28 @@ export function ChatListPane({
         reorderFolders: chatFolderMutations.reorderFolders,
         onDragFinished: chatListAutoScroll.stop,
     });
+
+    // ── Pinned reorder drag ────────────────────────────────────────────────
+    // Rides the same row drag as folder filing (one more MIME); only wrappers
+    // around Pinned-section entries answer it. The full order covers every pin,
+    // including ones hidden by a filter or shown under Running, so those keep
+    // their slots when the new order is saved.
+    const pinnedFullOrder = useMemo(() => {
+        if (!onReorderPins) return [];
+        const pinnedAtById = new Map<string, string | undefined>();
+        for (const task of [...running, ...history]) {
+            if (task && typeof task.id === 'string' && !pinnedAtById.has(task.id)) pinnedAtById.set(task.id, task.pinnedAt);
+        }
+        return buildPinnedFullOrder(pinnedChatIds ?? [], pinnedAtById, groupPins);
+    }, [onReorderPins, running, history, pinnedChatIds, groupPins]);
+    const pinnedDnd = usePinnedReorderDragDrop({
+        enabled: !!onReorderPins,
+        workspaceId,
+        fullOrder: pinnedFullOrder,
+        onReorder: (entries) => onReorderPins?.(entries),
+        onDragFinished: chatListAutoScroll.stop,
+    });
+
     /** Spread onto every region a chat can be dragged out of a folder into. */
     const unfiledDropProps = useMemo(() => (chatFoldersEnabled ? {
         onDragOver: folderDnd.handleUnfiledDragOver,
@@ -4263,18 +4293,66 @@ export function ChatListPane({
         );
     }, [chatFoldersEnabled, showFolders, toggleFolderCollapsed, renderFolderMember, openFolderMenu, chatFolderMutations, isDuplicateFolderName, handleCommitFolderCreate, handleCancelFolderCreate, folderDnd, collapseAllFolders, chatFolders.length, folderSearchQuery]);
 
-    const renderPinnedActivityEntry = useCallback((entry: PinnedListEntry) => {
+    /**
+     * Wrap an entry rendered in a Pinned section so it can be dragged to a new
+     * slot: the wrapper is the drag source (the row's own drag bubbles into it)
+     * and the drop target, and draws the drop line and the mobile grip.
+     */
+    const renderPinnedReorderable = useCallback((entry: PinnedListEntry, node: React.ReactNode) => {
+        const key = pinnedEntryKey(entry);
+        const multiSelected = !isPinnedGroupEntry(entry) && selectedHistoryIds.size > 1 && selectedHistoryIds.has(key);
+        const props = pinnedDnd.entryProps(key, { multiSelected });
+        if (!props) return node;
+        const dropPosition = props['data-pinned-drop'];
+        return (
+            <div
+                key={`pinned-reorder:${key}`}
+                {...props}
+                className={cn('relative', props['data-pinned-dragging'] && 'opacity-50')}
+            >
+                {node}
+                {dropPosition && (
+                    <div
+                        aria-hidden="true"
+                        className={cn(
+                            'absolute left-0 right-0 h-[2px] bg-[#0078d4] dark:bg-[#3794ff] pointer-events-none z-[3]',
+                            dropPosition === 'above' ? 'top-0' : 'bottom-0',
+                        )}
+                    />
+                )}
+                {isMobile && (
+                    <span
+                        role="button"
+                        aria-label="Drag to reorder"
+                        data-testid="pinned-reorder-grip"
+                        className="absolute left-0 top-0 bottom-0 w-4 flex items-center justify-center text-[10px] text-[#a0a0a0] touch-none select-none z-[3]"
+                        onTouchStart={pinnedDnd.gripTouchStart(key)}
+                    >
+                        ⋮⋮
+                    </span>
+                )}
+            </div>
+        );
+    }, [pinnedDnd, selectedHistoryIds, isMobile]);
+
+    /** One entry of a Pinned section (Chats tab or Activity). Running pins render under Running. */
+    const renderPinnedEntry = useCallback((entry: PinnedListEntry, listForRange: HistoryRangeInput[]) => {
         if (isPinnedGroupEntry(entry) && entry.kind === 'for-each-run') {
-            return renderForEachRunGroup(entry, activityRangeRows);
+            return renderPinnedReorderable(entry, renderForEachRunGroup(entry, listForRange));
         }
         if (isPinnedGroupEntry(entry) && entry.kind === 'map-reduce-run') {
-            return renderMapReduceRunGroup(entry, activityRangeRows);
+            return renderPinnedReorderable(entry, renderMapReduceRunGroup(entry, listForRange));
         }
         if (isPinnedGroupEntry(entry) && entry.kind === 'ralph-session') {
-            return renderRalphSessionGroup(entry, activityRangeRows);
+            return renderPinnedReorderable(entry, renderRalphSessionGroup(entry, listForRange));
         }
-        return renderChatListRow(entry, activityRangeRows, { taskStatus: 'completed' });
-    }, [activityRangeRows, renderChatListRow, renderForEachRunGroup, renderMapReduceRunGroup, renderRalphSessionGroup]);
+        return renderPinnedReorderable(entry, renderChatListRow(entry, listForRange, { taskStatus: 'completed' }));
+    }, [renderChatListRow, renderForEachRunGroup, renderMapReduceRunGroup, renderRalphSessionGroup, renderPinnedReorderable]);
+
+    const renderPinnedActivityEntry = useCallback(
+        (entry: PinnedListEntry) => renderPinnedEntry(entry, activityRangeRows),
+        [renderPinnedEntry, activityRangeRows],
+    );
 
     // When a server-side search is active, always render the main body so FTS5 results
     // can be displayed even when the locally-loaded history page is empty.
@@ -4548,7 +4626,8 @@ export function ChatListPane({
                                                         section.variant === 'running' ? 'text-[#0078d4] dark:text-[#3794ff] font-semibold' : 'text-[#848484] dark:text-[#a0a0a0]',
                                                     )}>{section.items.length}</span>
                                                  </div>
-                                                 {section.items.map((entry: RalphHistoryEntry | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry) => {
+                                                 {section.variant === 'pinned' && section.items.map(entry => renderPinnedEntry(entry as PinnedListEntry, chatRangeRows))}
+                                                 {section.variant !== 'pinned' && section.items.map((entry: RalphHistoryEntry | ForEachRunGroup | MapReduceRunGroup | SpawnedTreeEntry) => {
                                                        if (entry.kind === 'for-each-run') {
                                                            return renderForEachRunGroup(entry, chatRangeRows);
                                                        }

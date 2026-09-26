@@ -28,13 +28,15 @@ import { NotificationProvider } from '../../../../src/server/spa/client/react/co
 import { TaskProvider } from '../../../../src/server/spa/client/react/contexts/TaskContext';
 import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
 import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { workspaceDockModeStorageKey, workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
+import { readUnifiedTreeState, writeUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { clearUnifiedDiffSources, getUnifiedDiffSource } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedDiffSources';
 import { clearUnifiedCanvasEvents } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { clearUnifiedChatCanvasActions, getUnifiedChatCanvasActions } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { UnifiedTabView } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTabView';
 import { clearUnifiedChatChanges, getUnifiedChatChanges, getUnifiedChatChangesEntry } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatChanges';
-import { closeTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { closeTab, openTab, visibleTabs } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 
 // ── Hoisted mock state ──────────────────────────────────────────────────────
@@ -487,10 +489,10 @@ function rerenderChat(rerender: (ui: React.ReactElement) => void, taskId: string
  * `hostChatId`'s tabs — what `RepoDetail` / `RepoGroupView` publish with the
  * flag on. Defaults to hosting the rendered chat itself.
  */
-function renderHostedChat(taskId: string, hostChatId: string | null = taskId) {
+function renderHostedChat(taskId: string, hostChatId: string | null = taskId, panelWorkspaceId = WS_ID) {
     return render(
         <Wrap>
-            <UnifiedPanelHostProvider host={{ workspaceId: WS_ID, chatId: hostChatId }}>
+            <UnifiedPanelHostProvider host={{ workspaceId: panelWorkspaceId, chatId: hostChatId }}>
                 <ChatDetail taskId={taskId} workspaceId={WS_ID} />
             </UnifiedPanelHostProvider>
         </Wrap>,
@@ -621,6 +623,76 @@ describe('ChatDetail — no chat-owned AI canvas column', () => {
         // Toggle OFF → the dock closes again.
         fireEvent.click(screen.getByTestId('chat-explorer-toggle-btn'));
         await waitFor(() => expect(screen.queryByTestId('source-canvas-dock')).toBeNull());
+    });
+
+    it('opens the hosted right-panel Explorer without creating a source canvas or resource tab, then hides only the tree', async () => {
+        updateUnifiedPanelState(WS_ID, prev => openTab(prev, {
+            kind: 'terminal', ownerWorkspaceId: WS_ID, chatId: null,
+            resourceId: 'terminal', label: 'Terminal',
+        }));
+        const tabsBefore = readUnifiedPanelState(WS_ID);
+        renderHostedChat('task-A');
+        const toggle = await screen.findByTestId('chat-explorer-toggle-btn');
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+        fireEvent.click(toggle);
+        await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('true'));
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS_ID))).toBe('1');
+        expect(readUnifiedTreeState(WS_ID).open).toBe(true);
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+        expect(readUnifiedPanelState(WS_ID)).toBe(tabsBefore);
+
+        fireEvent.click(toggle);
+        await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('false'));
+        expect(readUnifiedTreeState(WS_ID).open).toBe(false);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS_ID))).toBe('1');
+        expect(readUnifiedPanelState(WS_ID)).toBe(tabsBefore);
+    });
+
+    it('reopens a collapsed hosted panel when Explorer mode and its tree were already selected', async () => {
+        localStorage.setItem(workspaceDockModeStorageKey(WS_ID), 'explorer');
+        writeUnifiedTreeState(WS_ID, { open: true, width: 220 });
+        renderHostedChat('task-A');
+        const toggle = await screen.findByTestId('chat-explorer-toggle-btn');
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+        fireEvent.click(toggle);
+        await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('true'));
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS_ID))).toBe('1');
+        expect(readUnifiedTreeState(WS_ID).open).toBe(true);
+    });
+
+    it('switches the hosted navigator from Search to Explorer without collapsing the right panel', async () => {
+        localStorage.setItem(workspaceDockOpenStorageKey(WS_ID), '1');
+        localStorage.setItem(workspaceDockModeStorageKey(WS_ID), 'search');
+        writeUnifiedTreeState(WS_ID, { open: true, width: 220 });
+        renderHostedChat('task-A');
+        const toggle = await screen.findByTestId('chat-explorer-toggle-btn');
+
+        fireEvent.click(toggle);
+        await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('true'));
+        expect(localStorage.getItem(workspaceDockModeStorageKey(WS_ID))).toBe('explorer');
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS_ID))).toBe('1');
+        expect(readUnifiedTreeState(WS_ID).open).toBe(true);
+    });
+
+    it('opens the group-scoped Explorer without changing the member workspace dock', async () => {
+        const groupId = 'group-example';
+        renderHostedChat('task-A', 'task-A', groupId);
+        fireEvent.click(await screen.findByTestId('chat-explorer-toggle-btn'));
+
+        await waitFor(() => expect(readUnifiedTreeState(groupId).open).toBe(true));
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(groupId))).toBe('1');
+        expect(readUnifiedTreeState(WS_ID).open).toBe(false);
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS_ID))).toBeNull();
+    });
+
+    it('keeps the source-canvas fallback when the panel hosts a different chat', async () => {
+        renderHostedChat('task-A', 'task-B');
+        fireEvent.click(await screen.findByTestId('chat-explorer-toggle-btn'));
+
+        expect((await screen.findByTestId('source-canvas-dock')).getAttribute('data-kind')).toBe('dir');
+        expect(localStorage.getItem(workspaceDockOpenStorageKey(WS_ID))).toBeNull();
     });
 
     it('replaces the active source canvas from its conversation candidates and preserves the selected workspace', async () => {

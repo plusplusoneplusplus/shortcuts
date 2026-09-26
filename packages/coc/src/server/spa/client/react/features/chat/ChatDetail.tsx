@@ -47,6 +47,8 @@ import { deriveOpenCanvasMemory, type OpenCanvasMemory } from './openCanvasMemor
 import { WhisperDiffDock, useWhisperDiffPanelState, useWhisperDiffState, WHISPER_DIFF_EVENT } from './whisper-diff';
 import type { WhisperDiffOpenContext } from './conversation/tool-calls/WhisperCollapsedGroup';
 import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/unifiedPanelHost';
+import { useWorkspaceDockToggle } from '../repo-detail/WorkspaceDockToggle';
+import { useUnifiedPanelTree } from '../repo-detail/unified-right-panel/unifiedPanelTree';
 import { openUnifiedPanelTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { publishUnifiedCanvasEvent, routeUnifiedCanvasUpdate } from '../repo-detail/unified-right-panel/unifiedCanvasEvents';
 import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type UnifiedChatCanvasActions } from '../repo-detail/unified-right-panel/unifiedChatCanvasActions';
@@ -1757,16 +1759,28 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         />
     ) : null;
 
-    // Persistent chat-header explorer toggle: opens the source canvas in folder
-    // (`kind: 'dir'`) mode rooted at the workspace root, so the file tree can be
-    // browsed anytime without a folder link. When a dir explorer is already
-    // showing, the toggle closes it. Gated on a resolved workspace. For remote
-    // clones `workspaceRootPath` is empty but the tree hook folds the remote
-    // workspace in, anchoring `.` against its own root and routing the fetch.
-    const explorerOpen = sourceCanvas.isOpen && sourceCanvasFileRef?.kind === 'dir';
+    // The dock host owns the panel scope (a group id for repo-group chats).
+    // Outside that host, keep the source-canvas tree for mobile and embedded chats.
+    const explorerDock = useWorkspaceDockToggle(unifiedPanelHost?.workspaceId ?? '');
+    const explorerTree = useUnifiedPanelTree(unifiedPanelHost?.workspaceId ?? '');
+    const sourceExplorerOpen = sourceCanvas.isOpen && sourceCanvasFileRef?.kind === 'dir';
+    const explorerOpen = unifiedPanelHost
+        ? explorerDock.isOpen && explorerDock.mode === 'explorer' && explorerTree.state.open
+        : sourceExplorerOpen;
     const canOpenExplorer = !!workspaceId;
     const handleToggleExplorer = useCallback(() => {
-        if (explorerOpen) {
+        if (unifiedPanelHost) {
+            if (explorerOpen) {
+                explorerTree.setOpen(false);
+            } else {
+                if (!explorerDock.isOpen || explorerDock.mode !== 'explorer') {
+                    explorerDock.selectMode('explorer');
+                }
+                explorerTree.setOpen(true);
+            }
+            return;
+        }
+        if (sourceExplorerOpen) {
             sourceCanvas.close();
             return;
         }
@@ -1775,7 +1789,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             kind: 'dir',
             wsId: workspaceId,
         });
-    }, [explorerOpen, sourceCanvas, workspaceRootPath, workspaceId]);
+    }, [unifiedPanelHost, explorerOpen, explorerTree, explorerDock, sourceExplorerOpen, sourceCanvas, workspaceRootPath, workspaceId]);
 
     // Transient read-only whisper diff: a full-height sibling column on desktop,
     // a full-height BottomSheet on mobile. Mutually exclusive with the agent
