@@ -188,15 +188,15 @@ describe('GET /api/agent-providers/:provider/effort-tiers', () => {
         };
         expect(data.provider).toBe('codex');
         expect(data.effortTiers).toEqual({
-            'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh',  source: 'default' },
+            'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh',  source: 'default' },
             low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh',  source: 'default' },
-            medium: { model: 'gpt-6-sol',     reasoningEffort: 'medium', source: 'default' },
+            medium: { model: 'gpt-5.6-sol',   reasoningEffort: 'medium', source: 'default' },
             high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium', source: 'default' },
         });
         expect(data.defaults).toEqual({
-            'very-low': { model: 'gpt-6-luna',    reasoningEffort: 'xhigh'  },
+            'very-low': { model: 'gpt-5.6-luna',  reasoningEffort: 'xhigh'  },
             low:    { model: 'gpt-5.6-terra', reasoningEffort: 'xhigh'  },
-            medium: { model: 'gpt-6-sol',     reasoningEffort: 'medium' },
+            medium: { model: 'gpt-5.6-sol',   reasoningEffort: 'medium' },
             high:   { model: 'gpt-6-astra',   reasoningEffort: 'medium' },
         });
     });
