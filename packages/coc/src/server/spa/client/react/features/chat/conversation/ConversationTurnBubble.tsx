@@ -81,6 +81,8 @@ interface ConversationTurnBubbleProps {
     onRetry?: () => void;
     /** Called when the user wants to continue or retry after an interrupted assistant turn. */
     onContinueInterrupted?: () => void;
+    /** Extra action (e.g. "Restart with…") shown in the interrupted-turn banner. */
+    interruptedAction?: React.ReactNode;
     /** Process type (e.g. 'run-script') — used to label non-AI responses differently. */
     processType?: string;
     /** Workspace ID — stamped as data-ws-id so file-path click handlers can route to the right workspace. */
@@ -1079,7 +1081,7 @@ function AssistantStatsBadge({ tokenUsage, costTimeMs }: { tokenUsage?: ClientTo
     );
 }
 
-function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onContinue?: () => void }) {
+function InterruptedTurnBanner({ reason, onContinue, action }: { reason?: string; onContinue?: () => void; action?: React.ReactNode }) {
     return (
         <aside
             className={cn(
@@ -1126,12 +1128,13 @@ function InterruptedTurnBanner({ reason, onContinue }: { reason?: string; onCont
                         <span>Continue / retry</span>
                     </button>
                 )}
+                {action && <div className="mt-2" data-testid="interrupted-turn-restart">{action}</div>}
             </div>
         </aside>
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const assistantProvider = turn.provider ?? provider;
     const assistantProviderLabel = getProviderLabel(assistantProvider);
@@ -1744,6 +1747,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         <InterruptedTurnBanner
                             reason={turn.interruptionReason}
                             onContinue={onContinueInterrupted}
+                            action={interruptedAction}
                         />
                     )}
                     {isUser && turn.skillNames && turn.skillNames.length > 0 && (

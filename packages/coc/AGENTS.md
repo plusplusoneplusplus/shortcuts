@@ -823,6 +823,16 @@ all have their own `references/*.md`.
   `retry-task-button`, gated by `ChatDetail.canRetryFailedTask`) that re-runs the
   original task payload as a brand-new conversation via `client.queue.retry` —
   distinct from resuming the dead session.
+- **Restart with another provider**: failed chats show a "Restart with… ▾"
+  split button (`features/chat/RestartWithProviderButton.tsx`) on the red
+  "Task failed" card, the "Partial response preserved" banner, and the
+  no-session notice. It calls `client.queue.retry(taskId, { provider })`
+  (`POST /api/queue/:id/retry`), which starts a new chat from the first
+  message only; model/effort are dropped so the new provider's defaults apply.
+  Menu options come from `useAgentProviders` + the quota cache (0% quota is
+  disabled); `isQuotaFailure` (`utils/quotaFailure.ts`) is advisory and only
+  pre-selects the other provider with the most quota. Chats are linked via
+  `metadata.restartedAs` (old) and `metadata.restartedFrom` (new).
 - **Follow-up delivery decisions** (steer vs buffer vs enqueue) live in
   `src/server/processes/process-message-delivery-service.ts`, not the
   `POST /api/processes/:id/message` route. The route resolves the process,

@@ -32,7 +32,7 @@ import {
 } from './queue-shared';
 import { NoteChatBindingStore } from '../notes/note-chat-binding-store';
 import { normalizeRelativeNotePath, noteSectionPath } from '../notes/note-chat-bindings-handler';
-import { isInheritedLensChatMode, type ChatProvider } from '../tasks/task-types';
+import { isInheritedLensChatMode, normalizeChatMode, resolveChatProvider, VALID_CHAT_PROVIDERS, type ChatProvider } from '../tasks/task-types';
 import type { AutoProviderResolutionResult } from '../agent-providers/auto-provider-router';
 import { claimSentinelOwnership } from '../sentinel/sentinel-ownership';
 
@@ -191,40 +191,74 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
     // ------------------------------------------------------------------
     // POST /api/queue/:id/retry — Re-run a failed/cancelled task
     //
-    // Recovery affordance for the case where the *very first* message of a
-    // chat task failed before any resumable session existed. Re-enqueues a
-    // brand-new task from the original's preserved payload/config rather than
-    // resuming, so it starts a fresh conversation.
+    // Re-enqueues a brand-new task from the original's preserved
+    // payload/config rather than resuming, so it starts a fresh conversation.
+    // An optional `{ provider }` body restarts a chat on another provider
+    // (e.g. when the original provider ran out of quota): nothing is handed
+    // over, only the original message is re-sent.
     // ------------------------------------------------------------------
     routes.push({
         method: 'POST',
         pattern: /^\/api\/queue\/([^/]+)\/retry$/,
-        handler: async (_req, res, match) => {
+        handler: async (req, res, match) => {
             const id = decodeURIComponent(match![1]);
             // The route id may arrive as either a bare task id or the
             // `queue_<taskId>` process id (activity-tab links use the latter).
             const bareId = isQueueProcessId(id) ? toTaskId(id) : id;
 
+            let body: Record<string, unknown> = {};
+            try {
+                const parsed = await parseBody(req);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) body = parsed;
+            } catch {
+                return sendError(res, 400, 'Invalid JSON');
+            }
+            if (body.provider !== undefined && body.provider !== null && !isChatProvider(body.provider)) {
+                return sendError(res, 400, `Invalid provider: must be one of ${[...VALID_CHAT_PROVIDERS].join(', ')}`);
+            }
+            const requestedProvider = isChatProvider(body.provider) ? body.provider : undefined;
+
+            const loadProcess = async (processOrTaskId: string) => store
+                ? (await store.getProcess(toQueueProcessId(processOrTaskId))) ?? (await store.getProcess(processOrTaskId))
+                : undefined;
+
             // Resolve the original task: prefer the in-memory record (full
             // payload/config preserved), then fall back to the persisted
             // process (survives server restarts).
             let source: Partial<QueuedTask> | undefined = bridge.findManagerForTask(bareId)?.getTask(bareId);
-            if (!source && store) {
-                const proc = (await store.getProcess(toQueueProcessId(bareId)))
-                    ?? (await store.getProcess(bareId));
-                if (proc) source = processToTaskDetail(proc);
-            }
+            let sourceProcess = await loadProcess(bareId);
+            if (!source && sourceProcess) source = processToTaskDetail(sourceProcess);
             if (!source) {
                 return sendError(res, 404, 'Task not found');
             }
 
-            // Only terminal failed/cancelled tasks can be retried — a running
-            // or queued task is still live and must not be duplicated.
-            if (source.status !== 'failed' && source.status !== 'cancelled') {
+            // A follow-up turn's failure restarts the chat's original task: its
+            // payload carries the first message and the chat's settings.
+            const followUpOf = (source.payload as Record<string, unknown> | undefined)?.processId;
+            if (typeof followUpOf === 'string' && followUpOf && followUpOf !== sourceProcess?.id) {
+                const rootId = isQueueProcessId(followUpOf) ? toTaskId(followUpOf) : followUpOf;
+                const rootProcess = await loadProcess(rootId);
+                const rootTask = bridge.findManagerForTask(rootId)?.getTask(rootId)
+                    ?? (rootProcess ? processToTaskDetail(rootProcess) : undefined);
+                if (rootTask) {
+                    source = { ...rootTask, status: source.status };
+                    sourceProcess = rootProcess;
+                }
+            }
+
+            // Only terminal failed/cancelled chats can be retried — a running
+            // or queued task is still live and must not be duplicated. The
+            // persisted process status wins over a completed first-turn task,
+            // since a later follow-up turn may be the one that failed.
+            const processStatus = sourceProcess ? processToTaskDetail(sourceProcess).status : undefined;
+            const isTerminalFailure = (status: unknown) => status === 'failed' || status === 'cancelled';
+            const isLive = (status: unknown) => status === 'queued' || status === 'running';
+            if (isLive(source.status) || isLive(processStatus)
+                || (!isTerminalFailure(source.status) && !isTerminalFailure(processStatus))) {
                 return sendError(
                     res,
                     409,
-                    `Cannot retry task in status '${source.status}'; only failed or cancelled tasks can be retried`,
+                    `Cannot retry task in status '${processStatus ?? source.status}'; only failed or cancelled tasks can be retried`,
                 );
             }
 
@@ -240,12 +274,48 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
             delete payload.imageTempDir;
             delete payload.attachments;
             delete payload.fileAttachmentMeta;
+            // Records rebuilt from a persisted process carry no payload kind.
+            if (source.type === 'chat' && !payload.kind) payload.kind = 'chat';
+            const config: Record<string, unknown> = { ...((source.config as Record<string, unknown>) ?? {}) };
+
+            const sourceProvider = resolveChatProvider(payload.provider)
+                ?? resolveChatProvider(sourceProcess?.metadata?.provider);
+            const switchProvider = requestedProvider !== undefined && requestedProvider !== sourceProvider;
+            if (switchProvider) {
+                const unsupported = getRestartUnsupportedReason(source.type, payload);
+                if (unsupported) {
+                    return sendJSON(res, 409, { error: unsupported, code: 'RESTART_UNSUPPORTED' });
+                }
+                try {
+                    await ctx.validateProvider?.(requestedProvider);
+                } catch (err) {
+                    return sendError(res, 400, err instanceof Error ? err.message : `Provider '${requestedProvider}' is unavailable`);
+                }
+                // Model and effort belong to the old provider; drop them so model
+                // resolution falls through to the per-repo/global defaults for
+                // the new one. A recorded Auto routing result is stale too.
+                payload.provider = requestedProvider;
+                delete payload.model;
+                delete payload.reasoningEffort;
+                delete config.model;
+                delete config.reasoningEffort;
+                delete config.effortTier;
+                delete config.afterEffortTier;
+                const context = payload.context as Record<string, unknown> | undefined;
+                if (context && typeof context === 'object' && 'autoProviderRouting' in context) {
+                    const { autoProviderRouting: _stale, ...rest } = context;
+                    if (Object.keys(rest).length > 0) payload.context = rest;
+                    else delete payload.context;
+                }
+            }
+            const sourceProcessId = sourceProcess?.id ?? toQueueProcessId(String(source.id ?? bareId));
+            if (payload.kind === 'chat') payload.restartedFrom = sourceProcessId;
 
             const taskSpec: Record<string, unknown> = {
                 type: source.type,
                 priority: source.priority ?? 'normal',
                 payload,
-                config: { ...((source.config as Record<string, unknown>) ?? {}) },
+                config,
                 displayName: source.displayName,
             };
             if (source.repoId) taskSpec.repoId = source.repoId;
@@ -263,16 +333,33 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
                 return;
             }
 
+            let taskId: string;
             try {
-                const taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
-                const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
-                process.stderr.write(`[Queue] retry source=${bareId} task=${taskId}\n`);
-                maybeBindNoteChat(validation.input!, taskId);
-                sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
+                taskId = await enqueueViaBridge(validation.input!, bridge, state, globalWorkspaceRootPath, store);
             } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to enqueue retry task';
                 return sendError(res, 400, message);
             }
+            const task = bridge.findManagerForTask(taskId)?.getTask(taskId);
+            const newProvider = resolveChatProvider((validation.input!.payload as Record<string, unknown>).provider);
+            process.stderr.write(`[Queue] retry source=${bareId} task=${taskId} provider=${newProvider ?? '-'}\n`);
+            maybeBindNoteChat(validation.input!, taskId);
+            if (store && sourceProcess && payload.kind === 'chat') {
+                try {
+                    await store.updateProcess(sourceProcess.id, {
+                        metadata: {
+                            ...(sourceProcess.metadata ?? {}),
+                            restartedAs: {
+                                processId: toQueueProcessId(taskId),
+                                ...(newProvider ? { provider: newProvider } : {}),
+                            },
+                        } as any,
+                    });
+                } catch (err) {
+                    getLogger().warn(LogCategory.AI, `[Queue] Failed to record restart link on ${sourceProcess.id}: ${err instanceof Error ? err.message : String(err)}`);
+                }
+            }
+            sendJSON(res, 201, { task: task ? serializeTask(task) : { id: taskId } });
         },
     });
 
@@ -466,6 +553,26 @@ export function registerQueueEnqueueRoutes(routes: Route[], ctx: QueueRouteConte
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Why a task can't be restarted on another provider, or `undefined` when it
+ * can. Only plain Ask/Autopilot chats qualify: orchestrated runs (Ralph,
+ * For Each, Map Reduce, workflow-owned children) and Sentinels carry state
+ * tied to the original run.
+ */
+export function getRestartUnsupportedReason(type: unknown, payload: Record<string, unknown>): string | undefined {
+    if (type !== 'chat' || payload.kind !== 'chat') return 'Only chat tasks can be restarted on another provider';
+    // Queue validation defaults a missing first-turn mode to autopilot.
+    const mode = payload.mode === undefined ? 'autopilot' : normalizeChatMode(payload.mode);
+    if (mode !== 'ask' && mode !== 'autopilot') {
+        return `Chats in '${String(payload.mode)}' mode can't be restarted on another provider`;
+    }
+    const context = payload.context as Record<string, unknown> | undefined;
+    if (context && (context.ralph || context.forEach || context.mapReduce || context.taskGroup)) {
+        return 'Orchestrated chats can\'t be restarted on another provider';
+    }
+    return undefined;
+}
 
 /**
  * @internal exported for tests

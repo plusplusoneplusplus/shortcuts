@@ -68,6 +68,21 @@ describe('ConversationTurnBubble — interrupted assistant turns', () => {
         expect(container.querySelector('[data-testid="error-strip"]')).toBeNull();
     });
 
+    it('renders the restart action inside the banner only when provided', () => {
+        const { getByTestId, queryByTestId, rerender } = render(<ConversationTurnBubble turn={makeTurn()} />);
+        expect(queryByTestId('interrupted-turn-restart')).toBeNull();
+
+        rerender(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                interruptedAction={<button data-testid="restart-action">Restart</button>}
+            />,
+        );
+        const restart = getByTestId('interrupted-turn-restart');
+        expect(getByTestId('interrupted-turn-banner').contains(restart)).toBe(true);
+        expect(restart.querySelector('[data-testid="restart-action"]')).toBeTruthy();
+    });
+
     it('keeps already emitted tool-call history visible with the interrupted turn', () => {
         const { getByTestId } = render(
             <ConversationTurnBubble

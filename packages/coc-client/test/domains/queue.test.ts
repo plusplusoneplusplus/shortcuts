@@ -80,6 +80,18 @@ describe('QueueClient', () => {
     expect(adapter.calls).toHaveLength(1);
     expect(adapter.calls[0].path).toBe('/queue/task%2F1/retry');
     expect(adapter.calls[0].options).toMatchObject({ method: 'POST' });
+    expect(adapter.calls[0].options?.body).toBeUndefined();
+  });
+
+  it('sends the restart provider in the retry body only when given', async () => {
+    const adapter = createMockAdapter({ task: { id: 'new-1', status: 'queued' } });
+    const client = new QueueClient(adapter);
+
+    await client.retry('task-1', { provider: 'claude' });
+    await client.retry('task-1', {});
+
+    expect(adapter.calls[0].options).toMatchObject({ method: 'POST', body: { provider: 'claude' } });
+    expect(adapter.calls[1].options?.body).toBeUndefined();
   });
 
   it('returns timed pause marker response duration', async () => {
