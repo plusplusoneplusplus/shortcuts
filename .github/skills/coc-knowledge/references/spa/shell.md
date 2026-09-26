@@ -263,6 +263,10 @@ the tab; stale membership, offline routing, and deleted files leave the overlay
 and existing panel state intact. Overlay controls persist per clone-qualified repo
 or group scope in localStorage, while results remain in memory; reopening restores
 both during the page lifetime, and a reload restores controls without searching.
+Repository and file groups use clone-qualified identities; files show their first
+ten matches until explicitly revealed, while counts include every returned hit.
+Collapse and reveal state reset on each result set, and keyboard navigation follows
+only visible rows.
 Result previews highlight the exact server-provided UTF-16 column span, including
 regex and multiline pieces, with malformed offsets clamped by the shared Explorer
 match-text splitter.

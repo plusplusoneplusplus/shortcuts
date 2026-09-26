@@ -27,6 +27,7 @@ import {
     toGroupResultState,
     describeContentSearchResults,
 } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchRequest';
+import { fileGroupKey } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchGrouping';
 
 const GROUP_ID = 'group-alpha';
 
@@ -169,8 +170,8 @@ describe('repo-group dispatch', () => {
             expect(repos[0].textContent).toContain('Alpha');
             expect(repos[1].textContent).toContain('Beta');
             // The same relative path in two members stays two file groups.
-            expect(screen.getByTestId('content-search-overlay-file-repo-a src/app.ts')).toBeTruthy();
-            expect(screen.getByTestId('content-search-overlay-file-repo-b src/app.ts')).toBeTruthy();
+            expect(screen.getByTestId(`content-search-overlay-file-${fileGroupKey('repo-a', 'src/app.ts', 'remote:hub')}`)).toBeTruthy();
+            expect(screen.getByTestId(`content-search-overlay-file-${fileGroupKey('repo-b', 'src/app.ts', 'remote:hub')}`)).toBeTruthy();
         });
     });
 

@@ -14,15 +14,14 @@
  *     tree with collapsed repositories and files skipped, so an arrow key never
  *     walks into a row that is not rendered.
  *
- * Identity is clone-qualified by construction: every key starts with the
- * match's member workspace id, so the same relative path in two members of a
- * group stays two distinct file groups.
+ * Identity includes the clone route and member workspace id, so equal paths
+ * from separate group members or clones stay in distinct file groups.
  */
 import type { ContentSearchOverlayMatch } from './ContentSearchOverlay';
 
 /** One file inside one repository. */
 export interface ContentSearchFileGroup {
-    /** Unique across the whole result set: member workspace id + path. */
+    /** Unique across the whole result set: clone + member workspace id + path. */
     key: string;
     workspaceId: string;
     path: string;
@@ -31,7 +30,7 @@ export interface ContentSearchFileGroup {
 
 /** One repository. A single-repo search produces exactly one of these. */
 export interface ContentSearchRepoGroup {
-    /** Unique across the whole result set: the member workspace id. */
+    /** Unique across the whole result set: clone + member workspace id. */
     key: string;
     workspaceId: string;
     /** Member display name; absent in a single-repo search. */
@@ -41,10 +40,15 @@ export interface ContentSearchRepoGroup {
 }
 
 const SEPARATOR = ' ';
+export const INITIAL_MATCH_LIMIT = 10;
 
-/** Key a file group by member workspace id + repo-relative path. */
-export function fileGroupKey(workspaceId: string, path: string): string {
-    return `${workspaceId}${SEPARATOR}${path}`;
+function repoGroupKey(workspaceId: string, routingRef?: string | null): string {
+    return routingRef ? `${encodeURIComponent(routingRef)}::${workspaceId}` : workspaceId;
+}
+
+/** Key a file group by its actual owner and repo-relative path. */
+export function fileGroupKey(workspaceId: string, path: string, routingRef?: string | null): string {
+    return `${repoGroupKey(workspaceId, routingRef)}${SEPARATOR}${path}`;
 }
 
 /**
@@ -59,21 +63,22 @@ export function groupOverlayMatches(
     const fileByKey = new Map<string, ContentSearchFileGroup>();
 
     for (const match of matches) {
-        let repo = repoByKey.get(match.workspaceId);
+        const repoKey = repoGroupKey(match.workspaceId, match.routingRef);
+        let repo = repoByKey.get(repoKey);
         if (repo === undefined) {
             repo = {
-                key: match.workspaceId,
+                key: repoKey,
                 workspaceId: match.workspaceId,
                 repoLabel: match.repoLabel ?? null,
                 files: [],
                 matchCount: 0,
             };
-            repoByKey.set(match.workspaceId, repo);
+            repoByKey.set(repoKey, repo);
             repos.push(repo);
         }
         repo.matchCount += 1;
 
-        const key = fileGroupKey(match.workspaceId, match.path);
+        const key = fileGroupKey(match.workspaceId, match.path, match.routingRef);
         let file = fileByKey.get(key);
         if (file === undefined) {
             file = { key, workspaceId: match.workspaceId, path: match.path, matches: [] };
@@ -94,13 +99,16 @@ export function groupOverlayMatches(
 export function visibleMatches(
     repos: readonly ContentSearchRepoGroup[],
     collapsed: ReadonlySet<string>,
+    revealed: ReadonlySet<string> = new Set(),
 ): ContentSearchOverlayMatch[] {
     const rows: ContentSearchOverlayMatch[] = [];
     for (const repo of repos) {
         if (collapsed.has(repo.key)) continue;
         for (const file of repo.files) {
             if (collapsed.has(file.key)) continue;
-            rows.push(...file.matches);
+            rows.push(...(revealed.has(file.key)
+                ? file.matches
+                : file.matches.slice(0, INITIAL_MATCH_LIMIT)));
         }
     }
     return rows;

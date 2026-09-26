@@ -84,7 +84,7 @@ export function describeContentSearchResults(results: ContentSearchResultState):
             return results.error ?? 'Search failed';
         case 'success': {
             const files = new Set(
-                results.matches.map(match => `${match.workspaceId}\u0000${match.path}`),
+                results.matches.map(match => JSON.stringify([match.routingRef ?? null, match.workspaceId, match.path])),
             ).size;
             const matches = results.matches.length;
             const summary = `${matches} ${matches === 1 ? 'result' : 'results'}`

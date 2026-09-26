@@ -34,6 +34,7 @@ import {
 } from './contentSearchControls';
 import {
     groupOverlayMatches,
+    INITIAL_MATCH_LIMIT,
     toggleCollapsed,
     visibleMatches,
     type ContentSearchRepoGroup,
@@ -166,15 +167,17 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
     const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
     const [selected, setSelected] = useState(QUERY_SELECTION);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(EMPTY_COLLAPSED);
+    const [revealed, setRevealed] = useState<ReadonlySet<string>>(EMPTY_COLLAPSED);
 
     const repos = useMemo(() => groupOverlayMatches(matches), [matches]);
     // The keyboard model walks only what is drawn, so collapsing a group
     // removes its matches from the selectable list as well as from the view.
-    const rows = useMemo(() => visibleMatches(repos, collapsed), [repos, collapsed]);
+    const rows = useMemo(() => visibleMatches(repos, collapsed, revealed), [repos, collapsed, revealed]);
     // A fresh result set starts fully expanded: the keys in `collapsed` belong
     // to the previous answer's groups and must not silently hide new ones.
     useEffect(() => {
         setCollapsed(EMPTY_COLLAPSED);
+        setRevealed(EMPTY_COLLAPSED);
     }, [matches]);
 
     // Opening, and every repeat of the shortcut, puts the caret in the query
@@ -401,9 +404,11 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                         repos,
                         scope,
                         collapsed,
+                        revealed,
                         selected,
                         rowRefs,
                         onToggleGroup,
+                        onReveal: key => setRevealed(current => new Set(current).add(key)),
                         onSelect: setSelected,
                         onOpenMatch,
                     })}
@@ -418,9 +423,11 @@ interface RenderGroupsArgs {
     repos: readonly ContentSearchRepoGroup[];
     scope: ContentSearchScope;
     collapsed: ReadonlySet<string>;
+    revealed: ReadonlySet<string>;
     selected: number;
     rowRefs: React.MutableRefObject<Array<HTMLButtonElement | null>>;
     onToggleGroup: (key: string) => void;
+    onReveal: (key: string) => void;
     onSelect: (index: number) => void;
     onOpenMatch: (match: ContentSearchOverlayMatch) => void;
 }
@@ -438,7 +445,7 @@ interface RenderGroupsArgs {
  * repository and no member label worth a row.
  */
 function renderGroups(args: RenderGroupsArgs): ReactNode[] {
-    const { repos, scope, collapsed, selected, rowRefs, onToggleGroup, onSelect, onOpenMatch }
+    const { repos, scope, collapsed, revealed, selected, rowRefs, onToggleGroup, onReveal, onSelect, onOpenMatch }
         = args;
     const showRepoLevel = scope === 'group';
     const fileLevel = showRepoLevel ? 2 : 1;
@@ -499,7 +506,9 @@ function renderGroups(args: RenderGroupsArgs): ReactNode[] {
             );
             if (!fileExpanded) continue;
 
-            for (const match of file.matches) {
+            for (const match of revealed.has(file.key)
+                ? file.matches
+                : file.matches.slice(0, INITIAL_MATCH_LIMIT)) {
                 const index = rowIndex;
                 rowIndex += 1;
                 const { before, hit, after } = splitMatchText({
@@ -539,6 +548,23 @@ function renderGroups(args: RenderGroupsArgs): ReactNode[] {
                             </mark>
                             {after}
                         </span>
+                    </button>,
+                );
+            }
+            if (file.matches.length > INITIAL_MATCH_LIMIT && !revealed.has(file.key)) {
+                nodes.push(
+                    <button
+                        key={`reveal:${file.key}`}
+                        type="button"
+                        {...{ [TOGGLE_ATTRIBUTE]: 'reveal' }}
+                        data-testid={`content-search-overlay-reveal-${file.key}`}
+                        className={cn(
+                            'w-full py-1 text-left text-xs text-[#005a9e] dark:text-[#75beff] hover:underline',
+                            showRepoLevel ? 'pl-10 pr-2' : 'pl-6 pr-2',
+                        )}
+                        onClick={() => onReveal(file.key)}
+                    >
+                        Show remaining {file.matches.length - INITIAL_MATCH_LIMIT}
                     </button>,
                 );
             }

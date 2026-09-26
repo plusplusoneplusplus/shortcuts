@@ -198,6 +198,16 @@ describe('describeContentSearchResults', () => {
             }),
         ).toMatch(/^3 results in 2 files \(/);
     });
+
+    it('counts equal workspace paths on different clones as separate files', () => {
+        const a = toOverlayMatches('repo-a', 'remote:one', [serverMatch('src/app.ts', 1, 'hit')]);
+        const b = toOverlayMatches('repo-a', 'remote:two', [serverMatch('src/app.ts', 2, 'hit')]);
+        expect(describeContentSearchResults({
+            ...EMPTY_CONTENT_SEARCH_RESULTS,
+            status: 'success',
+            matches: [...a, ...b],
+        })).toBe('2 results in 2 files');
+    });
 });
 
 describe('ContentSearchOverlayHost requests', () => {
