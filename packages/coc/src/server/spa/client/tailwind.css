@@ -3600,6 +3600,11 @@
     background: rgba(127, 127, 127, 0.12);
 }
 
+.content-search-overlay-dialog {
+    width: calc(100% - 2rem);
+    height: min(80vh, 760px);
+}
+
 .content-search-overlay-body {
     display: grid;
     grid-template-columns: minmax(0, 44%) minmax(0, 56%);
@@ -3637,7 +3642,8 @@
     .content-search-overlay-mobile {
         display: inline;
     }
-    .content-search-overlay-preview-pane {
+    .content-search-overlay-preview-pane,
+    .dark .content-search-overlay-preview-pane {
         border-left: 0;
     }
 }

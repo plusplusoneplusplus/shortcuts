@@ -11,9 +11,13 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act, fireEvent, waitFor } from '@testing-library/react';
 
 const searchContent = vi.fn();
+const readBlob = vi.fn();
 vi.mock(
     '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi',
-    () => ({ explorerApi: { searchContent: (...args: unknown[]) => searchContent(...args) } }),
+    () => ({ explorerApi: {
+        searchContent: (...args: unknown[]) => searchContent(...args),
+        readBlob: (...args: unknown[]) => readBlob(...args),
+    } }),
 );
 
 import { ContentSearchOverlayHost } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/ContentSearchOverlayHost';
@@ -35,6 +39,8 @@ beforeEach(() => {
     resetContentSearchMemoryForTests();
     searchContent.mockReset();
     searchContent.mockResolvedValue({ matches: [], truncated: false });
+    readBlob.mockReset();
+    readBlob.mockResolvedValue({ content: 'const needle = 1', encoding: 'utf-8', mimeType: 'text/plain' });
 });
 
 afterEach(() => {
@@ -374,7 +380,7 @@ describe('ContentSearchOverlayHost requests', () => {
             screen.getByTestId('content-search-overlay-match-coc src/a.ts 12 0'),
         ).toBeTruthy());
 
-        fireEvent.click(screen.getByTestId('content-search-overlay-match-coc src/a.ts 12 0'));
+        fireEvent.doubleClick(screen.getByTestId('content-search-overlay-match-coc src/a.ts 12 0'));
 
         await waitFor(() => expect(screen.queryByTestId('content-search-overlay')).toBeNull());
         expect(onOpenMatch).toHaveBeenCalledWith(
@@ -402,7 +408,7 @@ describe('ContentSearchOverlayHost requests', () => {
         submit();
         const row = await screen.findByTestId('content-search-overlay-match-coc src/a.ts 12 0');
 
-        fireEvent.click(row);
+        fireEvent.doubleClick(row);
 
         await waitFor(() => expect(screen.getByTestId('content-search-overlay-status').textContent)
             .toBe('This repository is no longer available. Run the search again.'));
@@ -426,7 +432,7 @@ describe('ContentSearchOverlayHost requests', () => {
         submit();
         const row = await screen.findByTestId('content-search-overlay-match-coc src/a.ts 12 0');
 
-        fireEvent.click(row);
+        fireEvent.doubleClick(row);
         const signal = onOpenMatch.mock.calls[0][1] as AbortSignal;
         fireEvent.keyDown(screen.getByTestId('content-search-overlay'), { key: 'Escape' });
 

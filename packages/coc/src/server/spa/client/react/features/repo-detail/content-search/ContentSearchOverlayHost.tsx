@@ -26,6 +26,9 @@ import {
 import { resolveContentSearchScope } from './contentSearchShortcut';
 import { useContentSearchShortcut } from './useContentSearchShortcut';
 import type { ContentSearchOpenOutcome } from './contentSearchOpen';
+import { explorerApi } from '../explorer/explorerApi';
+import { resolveCloneRoute } from '../../../repos/cloneRegistry';
+import { routingRefForPanelOwner } from '../unified-right-panel/unifiedPanelOwnerRouting';
 
 export interface ContentSearchOverlayHostProps {
     /** Selected repo or repo-group workspace. Decides whether we claim the key. */
@@ -131,10 +134,19 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
         submit();
     }, [submit]);
 
+    const loadPreview = useCallback(async (match: ContentSearchOverlayMatch, signal: AbortSignal) => {
+        const ownerRoute = routingRefForPanelOwner(match.routingRef, match.workspaceId);
+        if (resolveCloneRoute(ownerRoute).kind === 'unresolved-remote') {
+            return Promise.reject(new Error('The repository owner is offline.'));
+        }
+        return explorerApi.readBlob(match.workspaceId, match.path, { signal }, ownerRoute);
+    }, []);
+
     if (scope === null) return null;
 
     return (
         <ContentSearchOverlay
+            key={JSON.stringify([workspaceId, routingRef])}
             open={open}
             scope={scope}
             query={controls.query}
@@ -149,6 +161,7 @@ export function ContentSearchOverlayHost(props: ContentSearchOverlayHostProps) {
             busy={results.status === 'loading'}
             status={openError ?? describeContentSearchResults(results)}
             onOpenMatch={handleOpenMatch}
+            loadPreview={loadPreview}
             focusToken={focusToken}
         />
     );

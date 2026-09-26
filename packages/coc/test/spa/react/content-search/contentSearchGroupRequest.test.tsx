@@ -11,9 +11,13 @@ import { render, screen, cleanup, act, fireEvent, waitFor } from '@testing-libra
 
 const searchContent = vi.fn();
 const searchRepoGroupContent = vi.fn();
+const readBlob = vi.fn();
 vi.mock(
     '../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi',
-    () => ({ explorerApi: { searchContent: (...args: unknown[]) => searchContent(...args) } }),
+    () => ({ explorerApi: {
+        searchContent: (...args: unknown[]) => searchContent(...args),
+        readBlob: (...args: unknown[]) => readBlob(...args),
+    } }),
 );
 vi.mock(
     '../../../../src/server/spa/client/react/repos/repoGroupService',
@@ -28,6 +32,7 @@ import {
     describeContentSearchResults,
 } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchRequest';
 import { fileGroupKey } from '../../../../src/server/spa/client/react/features/repo-detail/content-search/contentSearchGrouping';
+import { registerCloneBaseUrls } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const GROUP_ID = 'group-alpha';
 
@@ -41,12 +46,14 @@ beforeEach(() => {
     resetContentSearchMemoryForTests();
     searchContent.mockReset();
     searchRepoGroupContent.mockReset();
+    readBlob.mockReset();
     searchRepoGroupContent.mockResolvedValue(groupResponse({}));
 });
 
 afterEach(() => {
     cleanup();
     document.body.innerHTML = '';
+    registerCloneBaseUrls([]);
 });
 
 function serverMatch(path: string, line: number, text: string) {
@@ -173,6 +180,57 @@ describe('repo-group dispatch', () => {
             expect(screen.getByTestId(`content-search-overlay-file-${fileGroupKey('repo-a', 'src/app.ts', 'remote:hub')}`)).toBeTruthy();
             expect(screen.getByTestId(`content-search-overlay-file-${fileGroupKey('repo-b', 'src/app.ts', 'remote:hub')}`)).toBeTruthy();
         });
+    });
+
+    it('previews a selected group member through its concrete clone without opening a tab', async () => {
+        registerCloneBaseUrls([{
+            workspaceId: 'repo-a',
+            serverId: 'hub',
+            baseUrl: 'https://hub.example',
+        }]);
+        searchRepoGroupContent.mockResolvedValue(groupResponse({
+            members: [{
+                workspaceId: 'repo-a',
+                repoName: 'Alpha',
+                matches: [serverMatch('src/app.ts', 3, 'needle one')],
+            }],
+        }));
+        readBlob.mockResolvedValue({
+            content: 'context\ncontext\nneedle one\ncontext',
+            encoding: 'utf-8',
+            mimeType: 'text/plain',
+        });
+        const onOpenMatch = vi.fn();
+        renderGroupHost({ routingRef: 'remote:hub:group-alpha', onOpenMatch });
+        pressShortcut();
+        type('content-search-overlay-query', 'needle');
+        submit();
+        fireEvent.click(await screen.findByTestId('content-search-overlay-match-repo-a src/app.ts 3 0'));
+
+        await waitFor(() => expect(readBlob).toHaveBeenCalledWith(
+            'repo-a', 'src/app.ts', { signal: expect.any(AbortSignal) }, 'remote:hub:repo-a',
+        ));
+        expect((await screen.findByTestId('content-search-overlay-source')).textContent).toContain('needle one');
+        expect(onOpenMatch).not.toHaveBeenCalled();
+    });
+
+    it('keeps group results visible when the selected owner is offline', async () => {
+        searchRepoGroupContent.mockResolvedValue(groupResponse({
+            members: [{
+                workspaceId: 'repo-a',
+                repoName: 'Alpha',
+                matches: [serverMatch('src/app.ts', 3, 'needle one')],
+            }],
+        }));
+        renderGroupHost({ routingRef: 'remote:offline:group-alpha' });
+        pressShortcut();
+        type('content-search-overlay-query', 'needle');
+        submit();
+        fireEvent.click(await screen.findByTestId('content-search-overlay-match-repo-a src/app.ts 3 0'));
+
+        expect((await screen.findByRole('alert')).textContent).toMatch(/owner is offline/i);
+        expect(readBlob).not.toHaveBeenCalled();
+        expect(screen.getByTestId('content-search-overlay-match-repo-a src/app.ts 3 0')).toBeTruthy();
     });
 
     it('names the members that could not be searched while keeping the rest', async () => {
