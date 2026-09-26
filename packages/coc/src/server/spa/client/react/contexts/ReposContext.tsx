@@ -261,7 +261,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             }
             const selectionStillPresent = selectedId
                 ? parseRemoteCloneKey(selectedId)
-                    ? Boolean(findRepoBySelectionId(remoteRepos, selectedId))
+                    ? Boolean(findRepoBySelectionId(remoteRepos, selectedId)
+                        || remoteAggregate.groupWorkspaces.some(ws => getWorkspaceSelectionId(ws) === selectedId))
                     : workspaces.some((ws: any) => ws.id === selectedId)
                         || Boolean(findRepoBySelectionId(remoteRepos, selectedId))
                 : true;
@@ -509,7 +510,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             // the two persisted "last workspace" hints stay mutually exclusive.
             clearPersistedLocalWorkspaceSelection();
         } else {
-            setActiveCloneForRouting(null);
+            setActiveCloneForRouting(selectedId);
             clearPersistedRemoteSelection();
             // Remember this local workspace as the last-active one so it survives a
             // reload onto a virtual scope (AC-03). Plain workspace id, not composite.

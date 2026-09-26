@@ -23,6 +23,7 @@ import { renderWithProviders } from '../test-utils';
 import { useQueue } from '../../../../src/server/spa/client/react/contexts/QueueContext';
 import { useApp } from '../../../../src/server/spa/client/react/contexts/AppContext';
 import { toQueueProcessId } from '../../../../src/server/spa/client/react/utils/queue-process-id';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 // ── Mock child components ──────────────────────────────────────────────
 
@@ -1829,6 +1830,16 @@ describe('RepoChatTab: reactive title updates from AppContext', () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('RepoChatTab: Ralph session and new chat', () => {
+    it('keeps a remote group server in chat and Ralph links while requests use the raw group id', async () => {
+        setupFetchMock();
+        const selectionId = buildRemoteCloneKey('box-b', 'group-xstore');
+        await renderTab('group-xstore', undefined, { sourceSelectionId: selectionId });
+        await act(async () => { fireEvent.click(screen.getByTestId('select-ralph-btn')); });
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/activity/ralph/ralph-session-1`);
+        await act(async () => { fireEvent.click(screen.getByTestId('new-chat-btn')); });
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/activity`);
+    });
+
     it('selecting a Ralph session shows the Ralph pane instead of ChatDetailPane', async () => {
         setupFetchMock();
         await renderTab();

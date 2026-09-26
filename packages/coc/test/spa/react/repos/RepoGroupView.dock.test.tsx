@@ -168,9 +168,9 @@ function pickRepo(workspaceId: string): void {
 }
 
 /** Render the group with its panel already open, the way a returning user sees it. */
-function renderOpen() {
+function renderOpen(selectionId = GROUP_ID) {
     localStorage.setItem(workspaceDockOpenStorageKey(GROUP_ID), '1');
-    return render(<RepoGroupView workspaceId={GROUP_ID} />);
+    return render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
 }
 
 describe('repoGroupDockTargets', () => {
@@ -352,7 +352,7 @@ describe('RepoGroupView right panel', () => {
             remote: { serverId: 'server-remote', cloneKey: `remote:server-remote:${GROUP_ID}` },
         }];
         mockAppState.workspaces = [];
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
+        render(<RepoGroupView workspaceId={GROUP_ID} selectionId={`remote:server-remote:${GROUP_ID}`} />);
         await waitFor(() => expect(mockGetRepoGroup).toHaveBeenCalledWith(GROUP_ID, 'http://remote:3000'));
     });
 
@@ -364,7 +364,7 @@ describe('RepoGroupView right panel', () => {
             remote: { serverId: 'server-remote', cloneKey: `remote:server-remote:${GROUP_ID}` },
         }];
         mockAppState.workspaces = [];
-        renderOpen();
+        renderOpen(`remote:server-remote:${GROUP_ID}`);
         await waitFor(() => expect(pickedRepo()).toBe('r1'));
         openMenu();
 

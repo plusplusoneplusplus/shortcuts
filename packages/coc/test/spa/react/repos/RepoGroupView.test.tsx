@@ -10,6 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 const mockDispatch = vi.fn();
 let mockAppState: any = {};
@@ -17,6 +18,7 @@ let mockRemoteShellEnabled = false;
 let mockBreakpoint = 'desktop';
 let mockRemoteGroupWorkspaces: any[] = [];
 let mockMembers: any[] | undefined = [{ workspaceId: 'r1', name: 'shortcuts', rootPath: '/r/r1' }];
+const mockMemberLookup = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: mockDispatch }),
@@ -67,8 +69,10 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', () => (
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/useRepoGroupMembers', () => ({
-    useRepoGroupMembers: (_id: string, _baseUrl: string | undefined, enabled: boolean) =>
-        (enabled ? mockMembers : undefined),
+    useRepoGroupMembers: (id: string, baseUrl: string | undefined, enabled: boolean) => {
+        mockMemberLookup(id, baseUrl, enabled);
+        return enabled ? mockMembers : undefined;
+    },
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab', () => ({
     RepoGroupSettingsTab: ({ workspaceId, active }: { workspaceId: string; active: boolean }) => (
@@ -83,6 +87,7 @@ const GROUP_ID = 'group-frontend';
 beforeEach(() => {
     cleanup();
     mockDispatch.mockReset();
+    mockMemberLookup.mockReset();
     mockRemoteShellEnabled = false;
     mockBreakpoint = 'desktop';
     mockRemoteGroupWorkspaces = [];
@@ -210,11 +215,25 @@ describe('RepoGroupView', () => {
 
     it('labels a remote group from the aggregated remote groups, not its raw id', () => {
         mockAppState.workspaces = [{ id: 'r1', name: 'shortcuts', rootPath: '/r/r1' }];
-        mockRemoteGroupWorkspaces = [{ id: 'group-svc', name: 'Services', remote: { serverLabel: 'Devbox' } }];
-        render(<RepoGroupView workspaceId="group-svc" />);
+        mockRemoteGroupWorkspaces = [{ id: 'group-svc', name: 'Services', baseUrl: 'http://devbox:4000', remote: { serverId: 'devbox', serverLabel: 'Devbox' } }];
+        render(<RepoGroupView workspaceId="group-svc" selectionId={buildRemoteCloneKey('devbox', 'group-svc')} />);
         const header = screen.getByTestId('repo-group-header').textContent ?? '';
-        expect(header).toContain('Services');
+        expect(header).toContain('Devbox · Services');
         expect(header).not.toContain('group-svc');
+    });
+
+    it('selects the right owner when a local and two remote groups share the id', () => {
+        mockRemoteGroupWorkspaces = ['box-a', 'box-b'].map(serverId => ({
+            id: GROUP_ID, name: 'Frontend',
+            baseUrl: `http://${serverId}:4000`,
+            remote: { serverId, serverLabel: serverId },
+        }));
+        const selectionId = buildRemoteCloneKey('box-b', GROUP_ID);
+        mockAppState.activeRepoSubTab = 'git';
+        render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
+        expect(mockMemberLookup).toHaveBeenCalledWith(GROUP_ID, 'http://box-b:4000', true);
+        fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
+        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/settings/members`);
     });
 
     it('falls back to the workspace id while the group is not in the registry yet', () => {

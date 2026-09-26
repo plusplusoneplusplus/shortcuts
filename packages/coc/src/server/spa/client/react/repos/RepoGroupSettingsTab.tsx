@@ -46,6 +46,7 @@ import { useRepoGroupMembers } from './useRepoGroupMembers';
 export interface RepoGroupSettingsTabProps {
     /** The `group-<slug>` workspace id whose settings these are. */
     workspaceId: string;
+    selectionId?: string;
     /** Base URL of the server owning the group; omit for a local group. */
     baseUrl?: string;
     /**
@@ -56,17 +57,17 @@ export interface RepoGroupSettingsTabProps {
     active: boolean;
 }
 
-export function RepoGroupSettingsTab({ workspaceId, baseUrl, active }: RepoGroupSettingsTabProps) {
+export function RepoGroupSettingsTab({ workspaceId, selectionId = workspaceId, baseUrl, active }: RepoGroupSettingsTabProps) {
     // Everything below fetches on mount, so stay empty until the tab is first
     // opened — and stay mounted afterwards so switching tabs keeps the state.
     const [visited, setVisited] = useState(active);
     useEffect(() => { if (active) setVisited(true); }, [active]);
 
     if (!visited) return <div data-testid="repo-group-settings-tab" data-workspace={workspaceId} />;
-    return <RepoGroupSettingsPane workspaceId={workspaceId} baseUrl={baseUrl} active={active} />;
+    return <RepoGroupSettingsPane workspaceId={workspaceId} selectionId={selectionId} baseUrl={baseUrl} active={active} />;
 }
 
-function RepoGroupSettingsPane({ workspaceId, baseUrl, active }: RepoGroupSettingsTabProps) {
+function RepoGroupSettingsPane({ workspaceId, selectionId = workspaceId, baseUrl, active }: RepoGroupSettingsTabProps) {
     const app = useAppOptional();
     const addToast = useContext(ToastContext)?.addToast;
     const allRepos = useReposOptional()?.repos;
@@ -80,8 +81,8 @@ function RepoGroupSettingsPane({ workspaceId, baseUrl, active }: RepoGroupSettin
     const setActiveSection = useCallback((section: SettingsSection) => {
         setLocalSection(section);
         app?.dispatch({ type: 'SET_SETTINGS_SECTION', section });
-        location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/settings/' + section;
-    }, [app, workspaceId]);
+        location.hash = '#repos/' + encodeURIComponent(selectionId) + '/settings/' + section;
+    }, [app, selectionId]);
 
     const skillsController = useWorkspaceSkillsController({
         workspaceId,

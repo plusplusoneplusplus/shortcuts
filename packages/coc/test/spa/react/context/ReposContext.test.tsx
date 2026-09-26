@@ -391,6 +391,30 @@ describe('ReposContext', () => {
         expect(screen.getByTestId('selected-repo').textContent).toBe('my_work');
     });
 
+    it('preserves a remote group selection when another server has the same group id', async () => {
+        const groupId = 'group-xstore';
+        const selected = buildRemoteCloneKey('box-b', groupId);
+        repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce([
+            { ...makeWorkspace(groupId, 'XStore'), virtual: true },
+        ]);
+        const groupWorkspaces = ['box-a', 'box-b'].flatMap(serverId =>
+            tagRemoteWorkspaces(
+                { id: serverId, label: serverId },
+                `http://${serverId}:4000`,
+                [{ ...makeWorkspace(groupId, 'XStore'), virtual: true }],
+                false,
+            ));
+        aggregateRemoteWorkspacesMock.mockResolvedValueOnce({
+            ...emptyAggregate(), groupWorkspaces,
+        });
+        render(<ProviderWithPreselectedRepo repoId={selected} />);
+        await waitFor(() => {
+            expect(screen.getByTestId('repo-loading').textContent).toBe('false');
+        });
+        expect(screen.getByTestId('selected-repo').textContent).toBe(selected);
+        expect(screen.getByTestId('last-workspace').textContent).toBe('none');
+    });
+
     it('clears selection when a non-virtual repo is removed', async () => {
         // The guard should still clear selection for repos that genuinely disappear
         repositoryServiceMocks.listWorkspaces.mockResolvedValueOnce(makeWorkspacesResponse([

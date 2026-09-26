@@ -22,12 +22,12 @@ import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
 import { RepoGroupView } from './RepoGroupView';
 import { isRepoGroupWorkspaceId } from './virtualWorkspaceIds';
-import { findRepoBySelectionId, getRepoSelectionId } from './cloneIdentity';
+import { findRepoBySelectionId, getRepoSelectionId, getWorkspaceIdFromSelectionId, getWorkspaceSelectionId, parseRemoteCloneKey } from './cloneIdentity';
 
 
 export function ReposView() {
     const { state, dispatch } = useApp();
-    const { repos, loading, fetchRepos } = useRepos();
+    const { repos, loading, fetchRepos, remoteGroupWorkspaces } = useRepos();
     const { breakpoint } = useBreakpoint();
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
@@ -79,6 +79,8 @@ export function ReposView() {
 
     // Repo-group virtual workspace — chat + notes across the member repos
     const isRepoGroup = isRepoGroupWorkspaceId(state.selectedRepoId);
+    const remoteGroupAvailable = !parseRemoteCloneKey(state.selectedRepoId)
+        || remoteGroupWorkspaces.some(ws => getWorkspaceSelectionId(ws) === state.selectedRepoId);
 
     // Container default session — smart routing chat
     const isContainerDefault = state.selectedRepoId === CONTAINER_DEFAULT_REPO_ID;
@@ -105,10 +107,18 @@ export function ReposView() {
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                     <MyLifeView />
                 </main>
+            ) : isRepoGroup && !remoteGroupAvailable ? (
+                <main className="flex-1 flex items-center justify-center text-sm text-[#848484]">
+                    {loading ? 'Loading repo group...' : 'This remote repo group is unavailable.'}
+                </main>
             ) : isRepoGroup ? (
                 // ── Repo group: chat + notes across the member repos ──
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
-                    <RepoGroupView workspaceId={state.selectedRepoId!} />
+                    <RepoGroupView
+                        key={state.selectedRepoId!}
+                        workspaceId={getWorkspaceIdFromSelectionId(state.selectedRepoId!)}
+                        selectionId={state.selectedRepoId!}
+                    />
                 </main>
             ) : isMobile ? (
                 // ── Mobile: master-detail ──

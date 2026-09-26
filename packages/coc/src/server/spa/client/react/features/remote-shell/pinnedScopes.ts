@@ -9,16 +9,17 @@
  *     `groupKey(group)` (a normalizedUrl like `github.com/acme/app`, or the
  *     `workspace:<id>` fallback for an un-remoted clone). This is what the
  *     picker's "Recent remotes" rows are.
- *   • a repo-*group virtual workspace* — a `group-*` workspace id, what the
- *     picker's "Repo groups" rows are.
+ * • a repo-*group virtual workspace* — a local `group-*` id or a remote
+ *   server-qualified selection id, what the picker's "Repo groups" rows are.
  * A pin is therefore a discriminated `{ kind, key }` pair, serialized with a
  * `repo:` / `group:` prefix so the two key spaces can never collide in storage.
- * `repo:` holds a `groupKey`; `group:` holds a workspace id.
+ * `repo:` holds a `groupKey`; `group:` holds a group selection id.
  *
  * Everything here is pure so it unit-tests without React, the dashboard
  * contexts, or the preferences client.
  */
-import { pickCloneForGroup } from '../../repos/cloneIdentity';
+import { getWorkspaceSelectionId, pickCloneForGroup } from '../../repos/cloneIdentity';
+import { resolveRepoGroupDisplayName } from '../../repos/repoGroupName';
 import { groupKey, type RepoGroup } from '../../repos/repoGrouping';
 import { summarizeRemote, type CloneStatus } from './shellModel';
 
@@ -118,7 +119,7 @@ export function movePinnedScope(
 }
 
 /** Anything with an id/name pair; both local and remote group workspaces qualify. */
-type NamedWorkspace = { id?: unknown; name?: unknown };
+type NamedWorkspace = { id?: unknown; name?: unknown; remote?: { serverId?: unknown; cloneKey?: unknown } | null };
 
 export interface PinnedScopeResolveContext {
     /** Git-remote clusters, for `repo:` pins. */
@@ -178,7 +179,7 @@ export function resolvePinnedScopes(
     // second, redundant input that could disagree with `groups`.
     const allRepos = ctx.groups.flatMap(g => g.repos);
     const workspacesById = new Map(
-        ctx.groupWorkspaces.map(ws => [String(ws?.id ?? ''), ws] as const),
+        ctx.groupWorkspaces.map(ws => [getWorkspaceSelectionId(ws), ws] as const),
     );
     const out: ResolvedPinnedScope[] = [];
     for (const ref of pins) {
@@ -205,7 +206,7 @@ export function resolvePinnedScopes(
         }
         const ws = workspacesById.get(ref.key);
         if (!ws) continue;
-        const name = typeof ws.name === 'string' && ws.name.length > 0 ? ws.name : ref.key;
+        const name = resolveRepoGroupDisplayName(ref.key, ctx.groupWorkspaces, []);
         out.push({
             ref,
             id,

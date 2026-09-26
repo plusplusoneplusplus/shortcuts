@@ -37,6 +37,7 @@ const cloneBaseUrlByKey = new Map<string, string>();
 /** workspaceId → cloneKeys. Multiple keys mean a legacy/cached collision exists. */
 const cloneKeysByWorkspace = new Map<string, Set<string>>();
 let activeCloneKey: string | null = null;
+let activeLocalWorkspaceId: string | null = null;
 
 interface CloneRouteSubscription {
     ref: string | CloneRegistryLookup | null | undefined;
@@ -101,6 +102,7 @@ export function registerCloneBaseUrls(entries: Iterable<CloneRegistryEntry>): vo
 export function setActiveCloneForRouting(selectionId: string | null | undefined): void {
     const parsed = parseRemoteCloneKey(selectionId);
     activeCloneKey = parsed ? buildRemoteCloneKey(parsed.serverId, parsed.workspaceId) : null;
+    activeLocalWorkspaceId = parsed ? null : selectionId ?? null;
     notifyCloneRouteSubscriptions();
 }
 
@@ -153,6 +155,7 @@ export function lookupCloneBaseUrl(ref: string | CloneRegistryLookup | null | un
     if (parsed) {
         return cloneBaseUrlByKey.get(buildRemoteCloneKey(parsed.serverId, parsed.workspaceId));
     }
+    if (activeLocalWorkspaceId === ref) return undefined;
     const keys = cloneKeysByWorkspace.get(ref);
     if (!keys || keys.size === 0) return undefined;
     if (activeCloneKey && keys.has(activeCloneKey)) {
@@ -178,6 +181,7 @@ export function resolveCloneRoute(
 
     if (typeof ref === 'string') {
         if (parseRemoteCloneKey(ref)) return { kind: 'unresolved-remote' };
+        if (activeLocalWorkspaceId === ref) return { kind: 'local' };
         const keys = cloneKeysByWorkspace.get(ref);
         return keys && keys.size > 0 ? { kind: 'unresolved-remote' } : { kind: 'local' };
     }
@@ -315,5 +319,6 @@ export function resetCloneRegistryForTests(): void {
     cloneBaseUrlByKey.clear();
     cloneKeysByWorkspace.clear();
     activeCloneKey = null;
+    activeLocalWorkspaceId = null;
     notifyCloneRouteSubscriptions();
 }

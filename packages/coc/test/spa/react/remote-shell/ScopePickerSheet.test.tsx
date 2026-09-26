@@ -75,6 +75,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/repositoryService', () =>
 import { ScopePickerSheet } from '../../../../src/server/spa/client/react/features/remote-shell/ScopePickerSheet';
 import { WorkspaceIdentityChip } from '../../../../src/server/spa/client/react/features/remote-shell/WorkspaceIdentityChip';
 import { useScopePickerModel } from '../../../../src/server/spa/client/react/features/remote-shell/useScopePickerModel';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 const SHORTCUTS = 'https://github.com/acme/shortcuts.git';
 const FORGE = 'https://github.com/acme/forge.git';
@@ -103,6 +104,29 @@ function sheetSections(): string[] {
 }
 
 describe('ScopePickerSheet', () => {
+    it('selects identical group ids from different servers independently on mobile', () => {
+        mockWorkspaces = [{ id: 'group-xstore', name: 'XStore' }];
+        mockRemoteGroupWorkspaces = ['box-a', 'box-b'].map(serverId => ({
+            id: 'group-xstore', name: 'XStore',
+            remote: { serverId, serverLabel: serverId, baseUrl: `http://${serverId}:4000` },
+        }));
+        const a = buildRemoteCloneKey('box-a', 'group-xstore');
+        const b = buildRemoteCloneKey('box-b', 'group-xstore');
+        mockSelectedRepoId = b;
+        render(<ScopePickerSheet open onClose={vi.fn()} repos={[] as any} />);
+        const rows = screen.getAllByTestId('repo-group-item');
+        expect(rows.map(row => row.getAttribute('data-remote-key'))).toEqual(['group-xstore', a, b]);
+        expect(rows.map(row => row.getAttribute('data-active'))).toEqual(['false', 'false', 'true']);
+        expect(rows.map(row => row.textContent)).toEqual([
+            expect.stringContaining('Repo group · Local'),
+            expect.stringContaining('Repo group · box-a'),
+            expect.stringContaining('Repo group · box-b'),
+        ]);
+        fireEvent.click(rows[1]);
+        fireEvent.click(rows[2]);
+        expect(mockSelectClone.mock.calls).toEqual([[a], [b]]);
+    });
+
     it('renders all four sections plus the add-repository footer', () => {
         mockWorkspaces = [{ id: 'group-frontend', name: 'Frontend' }];
         render(<ScopePickerSheet open onClose={vi.fn()} repos={[repo('a', 'shortcuts', SHORTCUTS)] as any} />);
@@ -154,6 +178,27 @@ describe('ScopePickerSheet', () => {
  * fails rather than the two shells silently disagreeing.
  */
 describe('useScopePickerModel parity with the desktop picker', () => {
+    it('shows distinct qualified group rows in both picker surfaces', () => {
+        mockRemoteGroupWorkspaces = ['box-a', 'box-b'].map(serverId => ({
+            id: 'group-xstore', name: 'XStore',
+            remote: { serverId, serverLabel: serverId },
+        }));
+        const repos = [repo('a', 'shortcuts', SHORTCUTS)];
+        render(<WorkspaceIdentityChip repo={repos[0] as any} repos={repos as any} />);
+        fireEvent.click(screen.getByTestId('remote-chip'));
+        const desktop = screen.getAllByTestId('repo-group-item').map(row => row.getAttribute('data-remote-key'));
+        expect(desktop).toEqual([
+            buildRemoteCloneKey('box-a', 'group-xstore'),
+            buildRemoteCloneKey('box-b', 'group-xstore'),
+        ]);
+        cleanup();
+
+        render(<ScopePickerSheet open onClose={vi.fn()} repos={repos as any} />);
+        expect(screen.getAllByTestId('repo-group-item').map(row => row.getAttribute('data-remote-key'))).toEqual(desktop);
+        fireEvent.change(screen.getByTestId('scope-picker-search'), { target: { value: 'box-b' } });
+        expect(screen.getAllByTestId('repo-group-item').map(row => row.getAttribute('data-remote-key'))).toEqual([desktop[1]]);
+    });
+
     function ModelProbe({ repos }: { repos: any[] }) {
         const model = useScopePickerModel(repos);
         return (

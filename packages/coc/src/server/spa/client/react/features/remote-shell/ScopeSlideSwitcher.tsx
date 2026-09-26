@@ -29,7 +29,7 @@ import { useScopeNavigation } from '../../hooks/useScopeNavigation';
 import { MY_WORK_WORKSPACE_ID } from '../../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID } from '../../repos/MyLifeView';
 import { isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
-import { resolveRepoGroupName } from '../../repos/repoGroupName';
+import { resolveRepoGroupDisplayName } from '../../repos/repoGroupName';
 import { getRepoSelectionId, isRepoSelected } from '../../repos/cloneIdentity';
 import { groupKey, groupReposByRemote, type RepoData } from '../../repos/repoGrouping';
 import { computeCloneStatusMap } from './shellModel';
@@ -247,7 +247,7 @@ export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     const groupIdentity = useMemo(() => {
         if (!groupScopeActive || activePin) return undefined;
         const id = state.selectedRepoId!;
-        return { id, name: resolveRepoGroupName(id, state.workspaces, remoteGroupWorkspaces) };
+        return { id, name: resolveRepoGroupDisplayName(id, state.workspaces, remoteGroupWorkspaces) };
     }, [groupScopeActive, activePin, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces]);
 
     // Whenever some *other* segment owns the active scope — a pinned repo, a

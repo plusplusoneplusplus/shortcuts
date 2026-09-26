@@ -134,6 +134,18 @@ describe('lookupCloneBaseUrl', () => {
         expect(lookupCloneBaseUrl('ws-shared')).toBe('http://127.0.0.1:4001');
     });
 
+    it('keeps a selected local group local when a remote group has the same id', () => {
+        const groupId = 'group-xstore';
+        const key = buildRemoteCloneKey('box', groupId);
+        registerCloneBaseUrls([{ workspaceId: groupId, serverId: 'box', cloneKey: key, baseUrl: 'http://127.0.0.1:4000' }]);
+        setActiveCloneForRouting(groupId);
+        expect(lookupCloneBaseUrl(groupId)).toBeUndefined();
+        expect(resolveCloneRoute(groupId)).toEqual({ kind: 'local' });
+        expect(lookupCloneBaseUrl(key)).toBe('http://127.0.0.1:4000');
+        setActiveCloneForRouting(key);
+        expect(lookupCloneBaseUrl(groupId)).toBe('http://127.0.0.1:4000');
+    });
+
     it('activates a colliding member only for the exact group-owner base URL', () => {
         const key1 = buildRemoteCloneKey('srv-1', 'ws-shared');
         const key2 = buildRemoteCloneKey('srv-2', 'ws-shared');
