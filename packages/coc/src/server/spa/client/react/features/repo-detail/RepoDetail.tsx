@@ -49,7 +49,7 @@ import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
 import { UnifiedPanelHostProvider } from './unified-right-panel/unifiedPanelHost';
-import { openUnifiedGitTab, useUnifiedGitTabHost } from './unified-right-panel/unifiedGitTabHost';
+import { openUnifiedGitTab, useUnifiedGitTabHost, useUnifiedGitTabOpen } from './unified-right-panel/unifiedGitTabHost';
 import type { RightPanelView } from '../git/repoGitTab/types';
 import { ContentSearchOverlayHost } from './content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from './content-search/ContentSearchOverlay';
@@ -192,6 +192,11 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // (null until the tab is mounted) and every new git selection opens and
     // focuses that tab — revealing the panel when it is collapsed.
     const gitTabHostNode = useUnifiedGitTabHost(ws.id);
+    // Closing the Git tab hands back to RepoGitTab, which drops the selection.
+    const gitTabOpen = useUnifiedGitTabOpen(ws.id, {
+        ownerWorkspaceId: ws.id,
+        ownerRoutingRef: explorerRoutingRef,
+    });
     const handleSplitGitViewChange = useCallback((view: RightPanelView | null) => {
         if (!view) return;
         openUnifiedGitTab(ws.id, {
@@ -862,6 +867,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             detailActive={dockAvailable || splitLastClicked === 'git'}
                                             onActivateDetail={dockAvailable ? undefined : () => setSplitLastClicked('git')}
                                             onViewChange={dockAvailable ? handleSplitGitViewChange : undefined}
+                                            detailOpen={dockAvailable ? gitTabOpen : undefined}
                                             headerToolbarContainer={splitGitHeaderNode}
                                             active={activeSubTab === 'activity' || activeSubTab === 'chats'}
                                         />

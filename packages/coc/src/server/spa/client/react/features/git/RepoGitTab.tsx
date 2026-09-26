@@ -102,6 +102,13 @@ interface RepoGitTabProps {
      */
     onViewChange?: (view: RightPanelView | null) => void;
     /**
+     * Whether the host still shows the detail — e.g. the right panel's Git tab
+     * is open. Going from true to false (the user closed that tab) clears the
+     * selection, so the list highlight drops and the same item can reopen it.
+     * Left undefined, the selection is never cleared this way.
+     */
+    detailOpen?: boolean;
+    /**
      * Portal target inside the split panel's "Git" section header. When set
      * (split-workspace only), the compact `GitPanelHeader` toolbar renders
      * there instead of as its own row, saving the toolbar's full height.
@@ -115,7 +122,7 @@ interface RepoGitTabProps {
     active?: boolean;
 }
 
-export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, headerToolbarContainer, active = true }: RepoGitTabProps) {
+export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, headerToolbarContainer, active = true }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -214,6 +221,15 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
         reportedViewIdentityRef.current = gitViewIdentity;
         onViewChangeRef.current?.(gitView);
     }, [gitViewIdentity, gitView]);
+
+    // Only a genuine open→closed transition means "the host dropped the
+    // detail"; a host that never opened it must not wipe a fresh selection.
+    const wasDetailOpenRef = useRef(detailOpen);
+    useEffect(() => {
+        const wasOpen = wasDetailOpenRef.current;
+        wasDetailOpenRef.current = detailOpen;
+        if (wasOpen === true && detailOpen === false) clearSelection();
+    }, [detailOpen, clearSelection]);
 
     const sourceWorkspace = useMemo(
         () => state.workspaces.find((w: any) => w.id === workspaceId),

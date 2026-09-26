@@ -210,6 +210,37 @@ describe('RepoGitTab — split-workspace layout', () => {
         expect(onViewChange).toHaveBeenCalledTimes(1);
     });
 
+    it('clears the selection when the host closes the detail, so the same commit re-opens', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const onViewChange = vi.fn();
+        const props = { layout: 'split-workspace', detailContainer: container, detailActive: true, onViewChange };
+        const { rerender } = await renderTab({ ...props, detailOpen: false });
+
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await waitFor(() => expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected')).toBe('abc123'));
+        // The host opens its tab in response; staying open keeps the selection.
+        rerender(<RepoGitTab workspaceId="ws-1" {...props} detailOpen={true} />);
+        expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected')).toBe('abc123');
+
+        // The user closes the host tab: the highlight drops.
+        rerender(<RepoGitTab workspaceId="ws-1" {...props} detailOpen={false} />);
+        await waitFor(() => expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected')).toBe('none'));
+        expect(onViewChange).toHaveBeenLastCalledWith(null);
+
+        // Re-clicking the same commit is a new selection again, so the host reopens.
+        onViewChange.mockClear();
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await waitFor(() => expect(onViewChange).toHaveBeenCalledTimes(1));
+        expect(onViewChange.mock.calls[0][0]).toMatchObject({ type: 'commit', commit: { hash: 'abc123' } });
+    });
+
+    it('keeps a fresh selection when the host was never open', async () => {
+        await renderTab({ layout: 'split-workspace', detailOpen: false });
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await waitFor(() => expect(screen.getByTestId('stub-commit-list').getAttribute('data-selected')).toBe('abc123'));
+    });
+
     it('marks git last-clicked when the user clicks in the list', async () => {
         const onActivateDetail = vi.fn();
         await renderTab({ layout: 'split-workspace', onActivateDetail });

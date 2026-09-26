@@ -891,7 +891,7 @@ describe('RepoDetail split-workspace panel wiring', () => {
 
     it('points the chat at the shared detail and git at the Git tab on desktop (AC-04 single pane)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 4000);
         // The chat always portals into the shared slot; git uses it only when
         // the right panel is unavailable (mobile), else the Git tab body.
         expect(block).toContain('detailContainer={splitDetailNode}');
@@ -901,12 +901,13 @@ describe('RepoDetail split-workspace panel wiring', () => {
 
     it('routes last-selection-wins only where the dock is unavailable (AC-04)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 4000);
         expect(block).toContain("detailActive={dockAvailable || splitLastClicked === 'chat'}");
         expect(block).toContain("onActivateDetail={() => setSplitLastClicked('chat')}");
         expect(block).toContain("detailActive={dockAvailable || splitLastClicked === 'git'}");
         expect(block).toContain("onActivateDetail={dockAvailable ? undefined : () => setSplitLastClicked('git')}");
         expect(block).toContain('onViewChange={dockAvailable ? handleSplitGitViewChange : undefined}');
+        expect(block).toContain('detailOpen={dockAvailable ? gitTabOpen : undefined}');
     });
 
     it('off-path is a strict no-op: standalone chat blocks are gated by !flag (AC-01)', () => {

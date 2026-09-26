@@ -6,10 +6,14 @@ import {
     getUnifiedGitTabHost,
     openUnifiedGitTab,
     setUnifiedGitTabHost,
+    unifiedGitTabId,
     useUnifiedGitTabHost,
+    useUnifiedGitTabOpen,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
 import { UnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedGitTab';
 import { readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { closeTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
 function HostProbe({ scope }: { scope: string }) {
     const node = useUnifiedGitTabHost(scope);
@@ -53,5 +57,25 @@ describe('unifiedGitTab host store', () => {
         expect(second).toBe(first);
         const state = readUnifiedPanelState('ws-d');
         expect(state.workspaceTabs.filter(tab => tab.kind === 'git')).toHaveLength(1);
+    });
+
+    it('names the opened tab with unifiedGitTabId', () => {
+        const id = openUnifiedGitTab('ws-e', { ownerWorkspaceId: 'ws-e', chatId: 'chat-1' });
+        expect(unifiedGitTabId({ ownerWorkspaceId: 'ws-e' })).toBe(id);
+    });
+
+    it('useUnifiedGitTabOpen tracks the tab being opened and closed', () => {
+        function OpenProbe() {
+            const open = useUnifiedGitTabOpen('ws-f', { ownerWorkspaceId: 'ws-f' });
+            return <div data-testid="open-probe" data-open={open ? 'yes' : 'no'} />;
+        }
+        render(<OpenProbe />);
+        const probe = screen.getByTestId('open-probe');
+        expect(probe.getAttribute('data-open')).toBe('no');
+        let id = '';
+        act(() => { id = openUnifiedGitTab('ws-f', { ownerWorkspaceId: 'ws-f', chatId: null }); });
+        expect(probe.getAttribute('data-open')).toBe('yes');
+        act(() => { updateUnifiedPanelState('ws-f', prev => closeTab(prev, id)); });
+        expect(probe.getAttribute('data-open')).toBe('no');
     });
 });

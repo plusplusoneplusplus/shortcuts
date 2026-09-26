@@ -15,7 +15,8 @@
 
 import { useSyncExternalStore } from 'react';
 import { openUnifiedPanelTab } from './unifiedPanelOpen';
-import { GIT_TAB_RESOURCE_ID, type OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { useUnifiedPanelState } from './unifiedPanelStore';
+import { findTab, GIT_TAB_RESOURCE_ID, unifiedTabId, type OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** The strip label of every Git tab. */
 export const GIT_TAB_LABEL = 'Git';
@@ -95,4 +96,27 @@ export function openUnifiedGitTab(
     input: Parameters<typeof unifiedGitTabInput>[0],
 ): string {
     return openUnifiedPanelTab(scopeWorkspaceId, unifiedGitTabInput(input));
+}
+
+/** The id of a workspace's one Git tab — the same for every chat. */
+export function unifiedGitTabId(input: {
+    ownerWorkspaceId: string;
+    ownerRoutingRef?: string | null;
+}): string {
+    return unifiedTabId({
+        kind: 'git',
+        ownerWorkspaceId: input.ownerWorkspaceId,
+        ownerRoutingRef: input.ownerRoutingRef,
+        chatId: null,
+        resourceId: GIT_TAB_RESOURCE_ID,
+    });
+}
+
+/** Whether `scopeWorkspaceId`'s panel currently holds this workspace's Git tab. */
+export function useUnifiedGitTabOpen(
+    scopeWorkspaceId: string,
+    input: Parameters<typeof unifiedGitTabId>[0],
+): boolean {
+    const [state] = useUnifiedPanelState(scopeWorkspaceId);
+    return findTab(state, unifiedGitTabId(input)) !== null;
 }
