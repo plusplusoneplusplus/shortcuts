@@ -160,7 +160,10 @@ hides the navigator until it widens without changing the user's open bit.
 
 The workspace header has one visibility toggle for the whole right panel. Search
 and Explorer live inside the panel as peer navigator controls, so changing or
-collapsing a navigator mode never closes the resource panel.
+collapsing a navigator mode never closes the resource panel. The selected chat's
+header folder button shares the panel-scope open/mode and tree stores: it opens
+the panel in Explorer mode, or closes only the tree if Explorer is already
+shown. A chat without a matching host uses its source-canvas tree.
 
 On initial mount and whenever the panel scope's selected chat changes,
 `UnifiedRightPanel` sets the dock open exactly when `visibleTabs` is non-empty.
@@ -435,10 +438,12 @@ surface untouched.
 | `+` menu | the panel itself | Reuses QuickOpen's search behavior: nothing before the first keystroke, debounce, abort the previous request. |
 | Chat-wide **Changes** | the `+` menu, via `unifiedChatChanges.ts` | See below. |
 
-`dir` refs, the chat header's explorer toggle, and conversation-candidate
-navigation stay on the docked source canvas by design. AI canvases do not: this
-panel is their only host, so a chat with no panel (a pop-out, an embedded chat)
-keeps inline previews and the standalone canvas window and opens no sidebar.
+`dir` refs and conversation-candidate navigation stay on the docked source
+canvas. The chat header's Explorer toggle uses this panel when it hosts the
+selected chat, falling back to the source canvas elsewhere. AI canvases use
+this panel as their only host; a chat with no panel (a pop-out or an embedded
+chat) keeps inline previews and the standalone canvas window and opens no
+sidebar for AI canvases.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 

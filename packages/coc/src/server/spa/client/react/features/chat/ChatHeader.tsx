@@ -93,12 +93,7 @@ export interface ChatHeaderProps {
     showScratchpadButton?: boolean;
     /** Called when the user clicks the "Open Scratchpad" button */
     onOpenScratchpad?: () => void;
-    /**
-     * Toggle the workspace file-tree explorer dock. When provided, a persistent
-     * header button opens the read-only source-canvas tree rooted at the
-     * workspace root (and closes it when already open). Omitted when no
-     * workspace is resolved.
-     */
+    /** Toggle Explorer in the hosted right panel, or the source-canvas tree when no panel hosts this chat. */
     onToggleExplorer?: () => void;
     /** Whether the explorer dock is currently open (for the toggle's active state). */
     explorerOpen?: boolean;
@@ -591,8 +586,7 @@ export function ChatHeader({
                   of horizontally overflowing.
                 */}
                 <div className="inline-flex items-center gap-0.5 flex-wrap justify-end flex-shrink-0">
-                {/* Explorer toggle — persistent (all tiers): opens the read-only
-                    workspace file tree in the right-side dock. */}
+                {/* Explorer toggle — persistent across header widths. */}
                 {onToggleExplorer && (
                     <button
                         title={explorerOpen ? 'Hide file explorer' : 'Browse workspace files'}

@@ -127,6 +127,11 @@ for a concrete clone or a `group-*` selection. My Work / My Life have no panel.
 Search and Explorer are peer navigator controls inside the panel; selecting one
 opens or switches the navigator, and selecting the active one collapses it
 without closing the resource panel.
+The chat header's folder button also selects Explorer and opens the tree in
+this same panel when `useUnifiedPanelHostForChat` matches the selected chat.
+It uses the panel scope (the group id for a repo group), not the chat's member
+workspace id. Clicking again closes only the tree; chats without a matching
+panel use the source-canvas directory tree.
 
 On desktop, a repo group's mounted panel also owns Ctrl/Cmd+P while collapsed,
 from every group sub-tab. The Quick Open portal may appear without changing the
