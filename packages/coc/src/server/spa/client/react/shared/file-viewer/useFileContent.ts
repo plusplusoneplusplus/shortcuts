@@ -47,6 +47,8 @@ export interface UseFileContent {
     onChange: (value: string) => void;
     /** Resolves true only when the write succeeded. */
     save: () => Promise<boolean>;
+    /** Drops unsaved edits, restoring the last read or saved text, and returns it. */
+    discard: () => string;
 }
 
 export function useFileContent({ key, read, write, onError }: UseFileContentOptions): UseFileContent {
@@ -64,6 +66,8 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
     onErrorRef.current = onError;
     const writeRef = useRef(write);
     writeRef.current = write;
+    // The text on disk as far as this buffer knows: the read, then each successful write.
+    const savedContentRef = useRef('');
     const canWrite = write !== undefined;
 
     const load = useCallback(() => {
@@ -76,6 +80,7 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         setBlob(null);
         setIsDirty(false);
         setEditedContent('');
+        savedContentRef.current = '';
 
         // No target to read — stay in `loading` without touching the transport.
         if (key === null) {
@@ -86,7 +91,10 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
             .then((data) => {
                 if (!controller.signal.aborted) {
                     setBlob(data);
-                    if (data.encoding === 'utf-8') setEditedContent(data.content);
+                    if (data.encoding === 'utf-8') {
+                        setEditedContent(data.content);
+                        savedContentRef.current = data.content;
+                    }
                 }
             })
             .catch((err: Error) => {
@@ -120,6 +128,7 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         setIsSaving(true);
         try {
             await writeFn(editedContent);
+            savedContentRef.current = editedContent;
             setIsDirty(false);
             return true;
         } catch (err) {
@@ -129,6 +138,13 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
             setIsSaving(false);
         }
     }, [editedContent]);
+
+    const discard = useCallback((): string => {
+        const saved = savedContentRef.current;
+        setEditedContent(saved);
+        setIsDirty(false);
+        return saved;
+    }, []);
 
     const isOversized = blob?.encoding === 'utf-8' && blob.content.length > MAX_FILE_VIEW_SIZE;
     const displayBlob = useMemo<FileBlob | null>(() => {
@@ -150,5 +166,6 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         isSaving,
         onChange,
         save,
+        discard,
     };
 }

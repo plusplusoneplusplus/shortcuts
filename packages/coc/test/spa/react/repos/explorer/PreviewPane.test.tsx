@@ -372,6 +372,60 @@ describe('PreviewPane', () => {
         expect(mockLanguageDocument.markSaved).toHaveBeenCalledWith('edited through shortcut');
     });
 
+    function typeInEditor(text: string) {
+        const textarea = screen.getByTestId('mock-monaco-textarea');
+        const setValue = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')!.set!;
+        setValue.call(textarea, text);
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    it('discard restores the loaded text, clears dirty state, and syncs the language document', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({ content: 'original', encoding: 'utf-8', mimeType: 'text/plain' });
+        const onDirtyChange = vi.fn();
+
+        render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" onDirtyChange={onDirtyChange} />);
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+        expect(screen.queryByTestId('discard-btn')).not.toBeInTheDocument();
+
+        await act(async () => { typeInEditor('modified'); });
+        expect(screen.getByTestId('discard-btn')).toBeInTheDocument();
+
+        await act(async () => { screen.getByTestId('discard-btn').click(); });
+
+        expect(screen.getByTestId('mock-monaco-editor')).toHaveAttribute('data-value', 'original');
+        expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('discard-btn')).not.toBeInTheDocument();
+        expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+        expect(mockLanguageDocument.handleChange).toHaveBeenLastCalledWith('original', undefined);
+        expect(mockExplorerApi.writeBlob).not.toHaveBeenCalled();
+    });
+
+    it('discard after a save restores the saved text, not the original read', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({ content: 'original', encoding: 'utf-8', mimeType: 'text/plain' });
+        mockExplorerApi.writeBlob.mockResolvedValue({ success: true });
+
+        render(<PreviewPane repoId="r1" filePath="a.ts" fileName="a.ts" />);
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+
+        await act(async () => { typeInEditor('saved'); });
+        await act(async () => { screen.getByTestId('save-btn').click(); });
+        await act(async () => { typeInEditor('saved plus more'); });
+        await act(async () => { screen.getByTestId('discard-btn').click(); });
+
+        expect(screen.getByTestId('mock-monaco-editor')).toHaveAttribute('data-value', 'saved');
+        expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument();
+    });
+
+    it('does not offer discard for read-only trusted files', async () => {
+        mockExplorerApi.readTrustedBlob.mockResolvedValue({ content: 'x', encoding: 'utf-8', mimeType: 'text/plain' });
+
+        render(<PreviewPane repoId="r1" filePath="__trusted__:/tmp/x.ts" fileName="x.ts" />);
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
+        await act(async () => { typeInEditor('changed'); });
+
+        expect(screen.queryByTestId('discard-btn')).not.toBeInTheDocument();
+    });
+
     it('floating toolbar is present when content is loaded', async () => {
         mockExplorerApi.readBlob.mockResolvedValue({
             content: 'hello',
