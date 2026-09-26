@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
-import type { editor as monacoEditor } from 'monaco-editor';
+import type { editor as monacoEditor, ISelection } from 'monaco-editor';
 import { useTheme } from '../../layout/ThemeProvider';
 // A constant, from a module with no runtime Monaco or React dependency: the
 // marker owner has to be the same string here and in the layer that builds the
@@ -42,7 +42,7 @@ export type EditorNavigationReason = 'user' | 'navigation' | 'jump' | 'programma
  * the selection instead of restoring an old viewport.
  */
 export interface EditorNavigationSnapshot {
-    selection: monacoEditor.ISelection;
+    selection: ISelection;
 }
 
 export interface EditorNavigationController {
