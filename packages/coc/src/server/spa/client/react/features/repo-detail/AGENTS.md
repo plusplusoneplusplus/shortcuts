@@ -277,11 +277,14 @@ The page-level Ctrl/Cmd+Shift+F overlay is a separate tracked-file surface under
 `content-search/`. `contentSearchStateStore` keys repo and group state by workspace
 plus concrete clone route. It persists only query/modes/globs/untracked controls;
 result payloads remain in memory, so close/reopen and same-page scope changes can
-restore them while a reload restores controls without searching. Results group by
-clone-qualified repository and file. Files with more than ten matches initially
-show ten rows and offer an in-memory reveal control; collapse and reveal never
-change total counts, and keyboard navigation visits only rendered match rows.
-Each new result set resets grouping state. Activating a row runs
+restore them while a reload restores controls without searching. The overlay
+keeps query/modes and filters above a two-pane results/preview view. Below 800px
+it switches between Results and Preview with the list still mounted, preserving
+scroll position and selection. Results group by clone-qualified repository and
+file. Files with more than ten matches initially show ten rows and offer an
+in-memory reveal control; collapse and reveal never change total counts, and
+keyboard navigation visits only rendered match rows. Each new result set resets
+grouping state. Activating a row runs
 `contentSearchOpen`: group results first refresh membership, every result
 preflights its repo-relative path through the clone-qualified owner route, and
 only then opens the unified panel's preview slot at the matching line. The panel

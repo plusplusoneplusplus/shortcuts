@@ -263,6 +263,9 @@ the tab; stale membership, offline routing, and deleted files leave the overlay
 and existing panel state intact. Overlay controls persist per clone-qualified repo
 or group scope in localStorage, while results remain in memory; reopening restores
 both during the page lifetime, and a reload restores controls without searching.
+The overlay keeps query controls and filters above a two-pane results/preview
+area. At narrow widths it switches between the panes without unmounting results
+or losing their scroll and selection.
 Repository and file groups use clone-qualified identities; files show their first
 ten matches until explicitly revealed, while counts include every returned hit.
 Collapse and reveal state reset on each result set, and keyboard navigation follows

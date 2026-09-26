@@ -299,4 +299,27 @@ describe('ContentSearchOverlay keyboard model', () => {
         expect(status.getAttribute('aria-live')).toBe('polite');
         expect(status.textContent).toContain('Searching');
     });
+
+    it('keeps filters, selected row, and list scroll while switching preview and back', () => {
+        const props = renderOverlay();
+        const dialog = screen.getByTestId('content-search-overlay');
+        const results = screen.getByTestId('content-search-overlay-results');
+        results.scrollTop = 144;
+        fireEvent.keyDown(dialog, { key: 'ArrowDown' });
+
+        const body = results.parentElement?.parentElement;
+        expect(body?.getAttribute('data-view')).toBe('results');
+        fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+        expect(body?.getAttribute('data-view')).toBe('preview');
+        expect(screen.getByTestId('content-search-overlay-match-m0').getAttribute('aria-selected'))
+            .toBe('true');
+        expect(screen.getByTestId('content-search-overlay-query')).toBeTruthy();
+        expect(screen.getByTestId('content-search-overlay-include')).toBeTruthy();
+        expect(screen.getByTestId('content-search-overlay-preview').textContent).toContain('src/file0.ts');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+        expect(body?.getAttribute('data-view')).toBe('results');
+        expect(results.scrollTop).toBe(144);
+        expect(props.onOpenMatch).not.toHaveBeenCalled();
+    });
 });

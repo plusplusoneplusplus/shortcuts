@@ -168,6 +168,7 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
     const [selected, setSelected] = useState(QUERY_SELECTION);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(EMPTY_COLLAPSED);
     const [revealed, setRevealed] = useState<ReadonlySet<string>>(EMPTY_COLLAPSED);
+    const [mobileView, setMobileView] = useState<'results' | 'preview'>('results');
 
     const repos = useMemo(() => groupOverlayMatches(matches), [matches]);
     // The keyboard model walks only what is drawn, so collapsing a group
@@ -178,6 +179,7 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
     useEffect(() => {
         setCollapsed(EMPTY_COLLAPSED);
         setRevealed(EMPTY_COLLAPSED);
+        setMobileView('results');
     }, [matches]);
 
     // Opening, and every repeat of the shortcut, puts the caret in the query
@@ -274,20 +276,47 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                 aria-modal="true"
                 aria-label={title}
                 data-testid="content-search-overlay"
-                className="w-full max-w-2xl max-h-[70vh] flex flex-col rounded-lg border border-[#c8c8c8] dark:border-[#555555] bg-white dark:bg-[#252526] shadow-xl overflow-hidden"
+                className="w-[calc(100%-2rem)] max-w-6xl h-[min(80vh,760px)] flex flex-col rounded-lg border border-[#c8c8c8] dark:border-[#555555] bg-white dark:bg-[#252526] shadow-xl overflow-hidden"
                 onKeyDown={onKeyDown}
             >
-                <div className="flex items-center gap-2 p-3 border-b border-[#e5e5e5] dark:border-[#3c3c3c]">
+                <div className="flex flex-wrap items-center gap-2 p-3">
                     <input
                         ref={queryRef}
                         type="text"
                         aria-label="Search query"
                         data-testid="content-search-overlay-query"
                         placeholder="Search tracked files"
-                        className="flex-1 px-2 py-1 text-sm bg-transparent border border-[#c8c8c8] dark:border-[#555555] rounded outline-none focus:border-[#0078d4]"
+                        className="flex-1 min-w-[12rem] px-2 py-1 text-sm bg-transparent border border-[#c8c8c8] dark:border-[#555555] rounded outline-none focus:border-[#0078d4]"
                         value={query}
                         onChange={(event) => onQueryChange(event.target.value)}
                     />
+                    {MODE_CONTROLS.map(mode => (
+                        <button
+                            key={mode.id}
+                            type="button"
+                            aria-label={mode.label}
+                            aria-pressed={controls.modes[mode.id]}
+                            data-testid={`content-search-overlay-mode-${mode.id}`}
+                            className={cn(
+                                'px-1.5 py-0.5 rounded border border-transparent font-mono text-xs',
+                                controls.modes[mode.id]
+                                    && 'border-[#0078d4] bg-[#e8e8e8] dark:bg-[#37373d]',
+                            )}
+                            onClick={() => onControlsChange?.(current => ({
+                                ...current,
+                                modes: { ...current.modes, [mode.id]: !current.modes[mode.id] },
+                            }))}
+                        >
+                            {mode.glyph}
+                        </button>
+                    ))}
+                    <button
+                        type="button"
+                        className="px-3 py-1 rounded bg-[#3165d7] text-white text-sm"
+                        onClick={onSubmit}
+                    >
+                        Search
+                    </button>
                     <button
                         type="button"
                         aria-label="Close search"
@@ -298,32 +327,7 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                         ✕
                     </button>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs">
-                    {MODE_CONTROLS.map(mode => (
-                        <button
-                            key={mode.id}
-                            type="button"
-                            aria-label={mode.label}
-                            aria-pressed={controls.modes[mode.id]}
-                            data-testid={`content-search-overlay-mode-${mode.id}`}
-                            className={cn(
-                                'px-1.5 py-0.5 rounded border border-transparent font-mono',
-                                controls.modes[mode.id]
-                                    && 'border-[#0078d4] bg-[#e8e8e8] dark:bg-[#37373d]',
-                            )}
-                            onClick={() =>
-                                onControlsChange?.(current => ({
-                                    ...current,
-                                    modes: {
-                                        ...current.modes,
-                                        [mode.id]: !current.modes[mode.id],
-                                    },
-                                }))
-                            }
-                        >
-                            {mode.glyph}
-                        </button>
-                    ))}
+                <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs border-b border-[#e5e5e5] dark:border-[#3c3c3c]">
                     <input
                         type="text"
                         aria-label="Files to include"
@@ -394,24 +398,60 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                         ))}
                     </ul>
                 ) : null}
-                <div
-                    role="tree"
-                    aria-label="Search results"
-                    data-testid="content-search-overlay-results"
-                    className="flex-1 overflow-auto"
-                >
-                    {renderGroups({
-                        repos,
-                        scope,
-                        collapsed,
-                        revealed,
-                        selected,
-                        rowRefs,
-                        onToggleGroup,
-                        onReveal: key => setRevealed(current => new Set(current).add(key)),
-                        onSelect: setSelected,
-                        onOpenMatch,
-                    })}
+                <div className="content-search-overlay-body min-h-0 flex-1" data-view={mobileView}>
+                    <div className="content-search-overlay-results-pane min-w-0 flex flex-col">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-[#e5e5e5] dark:border-[#3c3c3c]">
+                            <strong className="text-sm">Results</strong>
+                            <button
+                                type="button"
+                                className="content-search-overlay-mobile text-sm text-[#005a9e] dark:text-[#75beff] disabled:opacity-50"
+                                disabled={selected < 0 || !rows[selected]}
+                                onClick={() => setMobileView('preview')}
+                            >
+                                Preview
+                            </button>
+                        </div>
+                        <div
+                            role="tree"
+                            aria-label="Search results"
+                            data-testid="content-search-overlay-results"
+                            className="flex-1 min-h-0 overflow-auto"
+                        >
+                            {renderGroups({
+                                repos,
+                                scope,
+                                collapsed,
+                                revealed,
+                                selected,
+                                rowRefs,
+                                onToggleGroup,
+                                onReveal: key => setRevealed(current => new Set(current).add(key)),
+                                onSelect: setSelected,
+                                onOpenMatch,
+                            })}
+                        </div>
+                    </div>
+                    <section
+                        aria-label="Source preview"
+                        data-testid="content-search-overlay-preview"
+                        className="content-search-overlay-preview-pane min-w-0 flex flex-col"
+                    >
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e5e5e5] dark:border-[#3c3c3c]">
+                            <button
+                                type="button"
+                                className="content-search-overlay-mobile text-sm text-[#005a9e] dark:text-[#75beff]"
+                                onClick={() => setMobileView('results')}
+                            >
+                                Back
+                            </button>
+                            <strong className="text-sm">Preview</strong>
+                        </div>
+                        <div className="p-4 text-sm text-[#616161] dark:text-[#a0a0a0]">
+                            {selected >= 0 && rows[selected]
+                                ? `${rows[selected].repoLabel || rows[selected].workspaceId} / ${rows[selected].path}`
+                                : 'Select a match to preview its source.'}
+                        </div>
+                    </section>
                 </div>
             </div>
         </div>,
