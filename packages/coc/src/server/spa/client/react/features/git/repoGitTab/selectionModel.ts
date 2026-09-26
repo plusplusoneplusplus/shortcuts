@@ -27,6 +27,22 @@ export function selectedCommitHashOf(view: RightPanelView | null): string | null
     return null;
 }
 
+/**
+ * A string naming what a view shows — equal for two views of the same thing,
+ * even when one holds a refreshed commit object. `''` for no view.
+ */
+export function viewIdentity(view: RightPanelView | null): string {
+    switch (view?.type) {
+        case undefined: return '';
+        case 'commit': return `commit:${view.commit.hash}`;
+        case 'commit-file': return `commit-file:${view.hash}:${view.filePath}`;
+        case 'branch-file': return `branch-file:${view.filePath}`;
+        case 'working-tree-file': return `working-tree-file:${view.stage}:${view.filePath}`;
+        case 'multi-commit': return `multi-commit:${view.commits.map(c => c.hash).join(',')}`;
+        default: return view.type;
+    }
+}
+
 /** Every commit hash a view counts as selected (multi-select aware). */
 export function selectedHashesOf(view: RightPanelView | null): ReadonlySet<string> {
     if (view?.type === 'multi-commit') return new Set(view.commits.map(c => c.hash));

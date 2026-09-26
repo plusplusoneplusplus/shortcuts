@@ -7,7 +7,7 @@
  * of layout mode, causing duplicate API calls and WebSocket listeners.
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { createPortal } from 'react-dom';
 
 // jsdom doesn't implement scrollIntoView
@@ -22,6 +22,7 @@ let mockActiveRepoSubTab = 'chats';
 let mockUiLayoutMode = 'dev-workflow';
 let mockDreamsEnabled = false;
 let mockSplitWorkspacePanelEnabled = false;
+let mockIsMobile = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
@@ -68,7 +69,7 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useUiLayou
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
-    useBreakpoint: () => ({ isMobile: false, isTablet: false }),
+    useBreakpoint: () => ({ isMobile: mockIsMobile, isTablet: false }),
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({
@@ -217,7 +218,10 @@ vi.mock('../../../../../src/server/spa/client/react/features/git/RepoGitTab', ()
             <div data-testid="repo-git-tab-split">
                 <button
                     data-testid="split-git-list-item"
-                    onClick={() => props.onActivateDetail?.()}
+                    onClick={() => {
+                        props.onActivateDetail?.();
+                        props.onViewChange?.({ type: 'branch-range' });
+                    }}
                 />
                 {props.detailActive && props.detailContainer
                     ? createPortal(<div data-testid="git-detail-marker" />, props.detailContainer)
@@ -595,6 +599,7 @@ describe('RepoDetail — header action buttons by layout mode', () => {
 // AC-04 (one shared detail pane, last-selection-wins). Flag off = today's behavior.
 describe('RepoDetail — split workspace panel', () => {
     beforeEach(() => {
+        mockIsMobile = false;
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
         mockDreamsEnabled = false;
@@ -687,12 +692,34 @@ describe('RepoDetail — split workspace panel', () => {
         expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
     });
 
-    // End-to-end AC-04: clicking a list item in one half routes THAT half's detail
+    // Desktop: git detail never takes the middle pane — it lands in the right
+    // panel's one Git tab, and the chat stays where it was.
+    it('flag ON (desktop): a git click keeps the chat in the middle and opens the Git tab', async () => {
+        mockSplitWorkspacePanelEnabled = true;
+        mockUiLayoutMode = 'dev-workflow';
+        mockActiveRepoSubTab = 'chats';
+        localStorage.clear();
+        renderDetail();
+
+        const host = screen.getByTestId('split-workspace-detail-host');
+        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('split-git-list-item'));
+
+        const gitTab = await screen.findByTestId('unified-git-tab');
+        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')).toBeTruthy());
+        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
+        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
+        expect(screen.getAllByRole('tab').filter(tab => tab.getAttribute('data-kind') === 'git')).toHaveLength(1);
+    });
+
+    // End-to-end AC-04 (mobile, where the shared pane still holds git): clicking a list item in one half routes THAT half's detail
     // into the single shared pane and evicts the other's — driven by RepoDetail's own
     // `splitLastClicked` state and the mirrored detailActive/onActivateDetail wiring.
     // Both tabs point at the SAME detail host, so the pane never shows chat + git at once.
-    it('flag ON: last-selection-wins routes the clicked half into the ONE shared detail (AC-04)', () => {
+    it('flag ON (mobile): last-selection-wins routes the clicked half into the ONE shared detail (AC-04)', () => {
         mockSplitWorkspacePanelEnabled = true;
+        mockIsMobile = true;
         mockUiLayoutMode = 'dev-workflow';
         mockActiveRepoSubTab = 'chats';
         renderDetail();
@@ -713,7 +740,5 @@ describe('RepoDetail — split workspace panel', () => {
         expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
         expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
 
-        // The detail pane is always singular — exactly one shared region throughout.
-        expect(screen.getAllByTestId('split-workspace-detail')).toHaveLength(1);
     });
 });

@@ -56,7 +56,8 @@ import { buildGitContextMenuItems } from './repoGitTab/gitContextMenuModel';
 import { RepoGitListPane } from './repoGitTab/RepoGitListPane';
 import { RepoGitDetailPane } from './repoGitTab/RepoGitDetailPane';
 import { RepoGitOverlays } from './repoGitTab/RepoGitOverlays';
-import type { GitContextMenuState, SkillMenuContext } from './repoGitTab/types';
+import type { GitContextMenuState, RightPanelView, SkillMenuContext } from './repoGitTab/types';
+import { viewIdentity } from './repoGitTab/selectionModel';
 
 export { matchCommitsByIdentity } from './repoGitTab/commitIdentity';
 export { buildBranchRangeSkillPrompt } from './repoGitTab/gitPrompts';
@@ -94,6 +95,13 @@ interface RepoGitTabProps {
     /** Fired when the user clicks in the git list, so the parent marks git last-clicked. */
     onActivateDetail?: () => void;
     /**
+     * Fired when the detail view changes to show something else (a new commit,
+     * file, range, or working-tree entry) or is cleared, so a host can surface
+     * the portal target — e.g. open the right panel's Git tab. A refresh that
+     * re-selects the same thing does not fire it.
+     */
+    onViewChange?: (view: RightPanelView | null) => void;
+    /**
      * Portal target inside the split panel's "Git" section header. When set
      * (split-workspace only), the compact `GitPanelHeader` toolbar renders
      * there instead of as its own row, saving the toolbar's full height.
@@ -107,7 +115,7 @@ interface RepoGitTabProps {
     active?: boolean;
 }
 
-export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer, active = true }: RepoGitTabProps) {
+export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, headerToolbarContainer, active = true }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -194,6 +202,18 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
         if (!setMobileWorkspaceDetailOpen || mobileWorkspaceDetailOpen || !wasOpen) return;
         clearSelection();
     }, [setMobileWorkspaceDetailOpen, mobileWorkspaceDetailOpen, clearSelection]);
+
+    // Report what the detail shows, keyed by identity so a refresh handing back
+    // a fresh commit object for the same hash stays quiet.
+    const onViewChangeRef = useRef(onViewChange);
+    onViewChangeRef.current = onViewChange;
+    const gitViewIdentity = viewIdentity(gitView);
+    const reportedViewIdentityRef = useRef('');
+    useEffect(() => {
+        if (gitViewIdentity === reportedViewIdentityRef.current) return;
+        reportedViewIdentityRef.current = gitViewIdentity;
+        onViewChangeRef.current?.(gitView);
+    }, [gitViewIdentity, gitView]);
 
     const sourceWorkspace = useMemo(
         () => state.workspaces.find((w: any) => w.id === workspaceId),

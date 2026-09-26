@@ -49,20 +49,29 @@
  * column (`unifiedPanelTree`), not a tab, so it cannot be closed by accident,
  * duplicated per chat, or ordered among resources.
  *
+ * `git` is the workspace's single git detail view — the commit, file diff,
+ * branch range, or working-tree view the split workspace's git list last
+ * selected. Its `resourceId` is always `GIT_TAB_RESOURCE_ID`, so each workspace
+ * has one Git tab whose content is replaced rather than a tab per commit. It is
+ * opened by git clicks only, never from the "+" menu.
+ *
  * `external` is a read-only standard-library or dependency source a language
  * server named as a definition. Its `resourceId` is the opaque capability the
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'external';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Every kind, in the order the "+" menu and default strip present them. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'notes', 'file', 'note', 'canvas', 'diff',
+    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git',
 ];
+
+/** The fixed resource id of a workspace's one Git tab. */
+export const GIT_TAB_RESOURCE_ID = 'git';
 
 /**
  * Kinds that are never written to storage. An external source is addressed by a
@@ -72,7 +81,7 @@ export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
 const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'git']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
@@ -81,7 +90,7 @@ const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['t
 export const WORKSPACE_SCOPE_KEY = '@workspace';
 
 /**
- * Ownership rule (AC-02). Terminals, Notes, and note documents are
+ * Ownership rule (AC-02). Terminals, Notes, note documents, and the Git tab are
  * workspace-owned; specific files, canvases, and diffs follow the chat that
  * opened them. Files opened with no chat selected fall back to the workspace,
  * which `scopeKeyFor` handles.

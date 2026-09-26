@@ -80,6 +80,9 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitList
     ),
     isTouchOnly: () => false,
 }));
+vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({
+    CommitDetail: ({ hash }: { hash: string }) => <div data-testid="stub-commit-detail" data-hash={hash} />,
+}));
 vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', () => ({
     GitPanelHeader: ({ onRefresh, repositorySelector }: { onRefresh: () => void; repositorySelector?: ReactNode }) => (
         <div data-testid="stub-git-header">
@@ -187,6 +190,24 @@ describe('RepoGitTab — split-workspace layout', () => {
     it('renders nothing into a missing container even when active', async () => {
         await renderTab({ layout: 'split-workspace', detailContainer: null, detailActive: true });
         expect(screen.queryByTestId('git-split-workspace-detail')).toBeNull();
+    });
+
+    it('reports a new selection once through onViewChange and portals its detail', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const onViewChange = vi.fn();
+        await renderTab({ layout: 'split-workspace', detailContainer: container, detailActive: true, onViewChange });
+        expect(onViewChange).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await waitFor(() => expect(onViewChange).toHaveBeenCalledTimes(1));
+        expect(onViewChange.mock.calls[0][0]).toMatchObject({ type: 'commit', commit: { hash: 'abc123' } });
+        expect(container.querySelector('[data-testid="stub-commit-detail"]')?.getAttribute('data-hash')).toBe('abc123');
+
+        // Re-selecting the same commit is the same view: no second report.
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(onViewChange).toHaveBeenCalledTimes(1);
     });
 
     it('marks git last-clicked when the user clicks in the list', async () => {

@@ -93,6 +93,15 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
             <line x1="6.2" y1="10" x2="9.8" y2="10" />
         </svg>
     ),
+    git: (
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
+            <circle cx="5" cy="4" r="1.6" />
+            <circle cx="5" cy="12" r="1.6" />
+            <circle cx="11" cy="6" r="1.6" />
+            <line x1="5" y1="5.6" x2="5" y2="10.4" />
+            <path d="M11 7.6c0 2.2-2.4 2.4-4.6 3.4" />
+        </svg>
+    ),
 };
 
 export interface UnifiedPanelTabStripProps {

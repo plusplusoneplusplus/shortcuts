@@ -49,6 +49,8 @@ import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
 import { UnifiedPanelHostProvider } from './unified-right-panel/unifiedPanelHost';
+import { openUnifiedGitTab, useUnifiedGitTabHost } from './unified-right-panel/unifiedGitTabHost';
+import type { RightPanelView } from '../git/repoGitTab/types';
 import { ContentSearchOverlayHost } from './content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from './content-search/ContentSearchOverlay';
 import { openContentSearchMatch } from './content-search/contentSearchOpen';
@@ -185,6 +187,19 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // that global fallback can still name another workspace's chat, and filing
     // this workspace's tabs under it would leak them across repos.
     const panelChatId = queueState.selectedTaskIdByRepo?.[ws.id] ?? null;
+    // Desktop split view: git detail lives in the right panel's one Git tab, so
+    // the middle pane keeps the chat. `RepoGitTab` portals into the tab body
+    // (null until the tab is mounted) and every new git selection opens and
+    // focuses that tab — revealing the panel when it is collapsed.
+    const gitTabHostNode = useUnifiedGitTabHost(ws.id);
+    const handleSplitGitViewChange = useCallback((view: RightPanelView | null) => {
+        if (!view) return;
+        openUnifiedGitTab(ws.id, {
+            ownerWorkspaceId: ws.id,
+            ownerRoutingRef: explorerRoutingRef,
+            chatId: panelChatId,
+        });
+    }, [ws.id, explorerRoutingRef, panelChatId]);
     const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
         if (!dockAvailable) {
             return Promise.resolve({
@@ -811,7 +826,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                           Split "Workspace" view (feature flag `splitWorkspacePanel`): replaces
                           the Activity/Chats chat slot with a split left panel — chat list on top,
                           git list on the bottom — both feeding ONE shared detail pane (the
-                          `splitDetailNode` slot each tab portals its detail into). The standalone
+                          `splitDetailNode` slot each tab portals its detail into). On desktop the
+                          git detail goes to the right panel's Git tab instead, so the shared pane
+                          only ever shows the chat; mobile keeps the shared pane. The standalone
                           git block below is suppressed on this path (git now lives in the panel).
                           Kept mounted via the same display:none toggle so state survives tab
                           switches. Off-path is a strict no-op (the two blocks above render as today).
@@ -832,7 +849,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             mode={uiLayoutMode === 'dev-workflow' ? 'chats' : undefined}
                                             layout="split-workspace"
                                             detailContainer={splitDetailNode}
-                                            detailActive={splitLastClicked === 'chat'}
+                                            detailActive={dockAvailable || splitLastClicked === 'chat'}
                                             onActivateDetail={() => setSplitLastClicked('chat')}
                                         />
                                     }
@@ -841,9 +858,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             key={`${ws.id}-split-git`}
                                             workspaceId={ws.id}
                                             layout="split-workspace"
-                                            detailContainer={splitDetailNode}
-                                            detailActive={splitLastClicked === 'git'}
-                                            onActivateDetail={() => setSplitLastClicked('git')}
+                                            detailContainer={dockAvailable ? gitTabHostNode : splitDetailNode}
+                                            detailActive={dockAvailable || splitLastClicked === 'git'}
+                                            onActivateDetail={dockAvailable ? undefined : () => setSplitLastClicked('git')}
+                                            onViewChange={dockAvailable ? handleSplitGitViewChange : undefined}
                                             headerToolbarContainer={splitGitHeaderNode}
                                             active={activeSubTab === 'activity' || activeSubTab === 'chats'}
                                         />

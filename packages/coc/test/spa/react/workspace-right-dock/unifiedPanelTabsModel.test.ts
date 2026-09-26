@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     EMPTY_UNIFIED_PANEL,
+    GIT_TAB_RESOURCE_ID,
     UNIFIED_PANEL_STATE_VERSION,
     WORKSPACE_SCOPE_KEY,
     activateTab,
@@ -924,5 +925,34 @@ describe('unifiedPanelTabsModel — external definition sources', () => {
         const closed = closeTab(state, id);
 
         expect(visibleTabs(closed, CHAT_1).map(tab => tab.resourceId)).toEqual(['sess-1', 'notes', 'src/a.ts']);
+    });
+});
+
+describe('git tab kind', () => {
+    const gitInput = (chatId: string | null): OpenUnifiedTabInput => ({
+        kind: 'git',
+        ownerWorkspaceId: WS,
+        chatId,
+        resourceId: GIT_TAB_RESOURCE_ID,
+        label: 'Git',
+    });
+
+    it('is workspace-owned', () => {
+        expect(scopeForKind('git')).toBe('workspace');
+        expect(scopeKeyFor('git', CHAT_1)).toBe(WORKSPACE_SCOPE_KEY);
+    });
+
+    it('opening it twice keeps one tab, visible in every chat', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, gitInput(CHAT_1));
+        state = openTab(state, gitInput(CHAT_2));
+        expect(state.workspaceTabs.filter(tab => tab.kind === 'git')).toHaveLength(1);
+        expect(visibleTabs(state, CHAT_1).map(tab => tab.kind)).toEqual(['git']);
+        expect(activeTab(state, CHAT_2)?.kind).toBe('git');
+    });
+
+    it('survives a serialize/parse round trip', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, gitInput(null));
+        const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
+        expect(restored.workspaceTabs).toEqual(state.workspaceTabs);
     });
 });
