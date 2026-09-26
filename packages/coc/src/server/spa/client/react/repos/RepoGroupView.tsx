@@ -3,13 +3,12 @@
  *
  * A repo group is a virtual workspace (own root under `~/.coc/repos/<groupId>/`,
  * no git) that knows about a set of registered repo workspaces; chats started
- * here get the member repos injected server-side. The view shows the Workspace
- * (chat), Git, Notes and Settings tabs — the other git-dependent tabs (PRs,
- * Work Items, branches, …) stay hidden, same treatment as My Work / My Life.
+ * here get the member repos injected server-side. The view shows Workspace
+ * (chat), Notes and Settings; with `splitWorkspacePanel` off it also shows a
+ * Git tab. Other git-dependent tabs stay hidden.
  *
- * The Git tab is a host, not a group-wide git view: it picks ONE member repo and
- * renders the ordinary single-repo panel against it (`RepoGroupGitTab`). The
- * group's own root is never treated as a git repo.
+ * `RepoGroupGitTab` hosts ONE member repo, either in the split Workspace panel
+ * or in the standalone Git tab. The group's root is never treated as a git repo.
  *
  * In the remote-first desktop shell the header (identity + sub-tabs) lives in
  * the global TopBar (`VirtualWorkspaceShellHeader`); in the classic shell and on
@@ -72,14 +71,14 @@ const REPO_GROUP_TABS: VirtualWorkspaceHeaderConfig['tabs'] = [
 export function getRepoGroupHeaderConfig(
     workspaceId: string,
     label: string,
-    tabs: VirtualWorkspaceHeaderConfig['tabs'] = REPO_GROUP_TABS,
+    splitWorkspacePanelEnabled = false,
 ): VirtualWorkspaceHeaderConfig {
     return {
         workspaceId,
         icon: '🗂️',
         label,
         testIdPrefix: 'repo-group',
-        tabs,
+        tabs: splitWorkspacePanelEnabled ? REPO_GROUP_TABS.filter(tab => tab.key !== 'git') : REPO_GROUP_TABS,
         actions: [],
         defaultTab: 'chats',
     };
@@ -140,25 +139,20 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // uses — chat list on top, the member git list below, one shared detail pane
     // (desktop), or a segmented control with a full-screen detail push (mobile).
     const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
-    // On mobile git then lives only inside that tab, so the standalone Git tab
-    // drops off the header — exactly one way in.
+    // Mobile pins only the merged Workspace tab; with the flag on neither
+    // layout exposes a second, standalone Git tab.
     const mobileWorkspaceSplit = splitWorkspacePanelEnabled && isMobile;
-    const tabs = useMemo(
-        () => (mobileWorkspaceSplit ? REPO_GROUP_TABS.filter(t => t.key !== 'git') : REPO_GROUP_TABS),
-        [mobileWorkspaceSplit],
-    );
     const headerConfig = useMemo(
-        () => getRepoGroupHeaderConfig(workspaceId, groupName, tabs),
-        [workspaceId, groupName, tabs],
+        () => getRepoGroupHeaderConfig(workspaceId, groupName, splitWorkspacePanelEnabled),
+        [workspaceId, groupName, splitWorkspacePanelEnabled],
     );
 
     // Landing tab when the current sub-tab is not one of the group's tabs (e.g.
     // arriving from a repo's Git tab). Mirrors useVirtualWorkspaceHeader so the
     // highlighted header tab and the content pane always agree.
-    // A `git` deep link (or a leftover selection) on the merged mobile path has
-    // no tab of its own any more, so it lands on Workspace — the segmented
-    // control inside it is where git lives now.
-    const activeTab = tabs.some(t => t.key === state.activeRepoSubTab)
+    // A `git` deep link (or a leftover selection) in split mode lands on
+    // Workspace, while the git route stays intact for the embedded git host.
+    const activeTab = headerConfig.tabs.some(t => t.key === state.activeRepoSubTab)
         ? state.activeRepoSubTab
         : 'chats';
 
@@ -201,6 +195,14 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
     const [splitDetailNode, setSplitDetailNode] = useState<HTMLDivElement | null>(null);
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
+    const routedGitMember = state.gitRouteScope?.routeWorkspaceId === workspaceId
+        ? state.gitRouteScope.workspaceId
+        : null;
+    useEffect(() => {
+        if (splitWorkspacePanelEnabled && routedGitMember && state.selectedGitCommitHash) {
+            setSplitLastClicked('git');
+        }
+    }, [splitWorkspacePanelEnabled, routedGitMember, state.selectedGitCommitHash, state.selectedGitFilePath]);
     // The group's selected chat owns the panel's chat-scoped tabs. `RepoChatTab`
     // below runs against the group workspace id, so that is the key its
     // selection is filed under; the per-repo entry only, never the global
@@ -295,7 +297,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                             />
                         )}
                     </div>
-                    {!mobileWorkspaceSplit && (
+                    {!splitWorkspacePanelEnabled && (
                         <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                             {gitVisited && <RepoGroupGitTab workspaceId={workspaceId} members={members} active={activeTab === 'git'} />}
                         </div>

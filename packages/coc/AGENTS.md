@@ -31,6 +31,11 @@ all have their own `references/*.md`.
 
 ## Local Invariants
 
+- **Repo-group split routing** keeps the group as the page workspace and a
+  member as the Git data workspace. With `splitWorkspacePanel` on, desktop and
+  mobile expose Git only inside the group's Chats tab; member/commit Git links
+  open that tab and activate the shared git detail. With the flag off, the
+  standalone group Git tab remains.
 - **File search has exactly one backend.** `RepoTreeService` answers whole-repo
   listings and `/search` from the Rust index in `@plusplusoneplusplus/coc-native`,
   and there is no JavaScript path behind it: a missing or unloadable binary

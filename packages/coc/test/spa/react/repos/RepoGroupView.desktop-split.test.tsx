@@ -12,6 +12,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, act, fireEvent } from '@testing-library/react';
 import { createPortal } from 'react-dom';
+import {
+    resolveDashboardRoute,
+    type RouteContext,
+} from '../../../../src/server/spa/client/react/layout/dashboardRoutes';
 
 const mockDispatch = vi.fn();
 let mockAppState: any = {};
@@ -80,9 +84,13 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', () => (
             data-layout={layout ?? ''}
             data-active={String(!!active)}
             data-header-hoisted={headerToolbarContainer ? 'true' : 'false'}
+            data-member={mockAppState.gitRouteScope?.workspaceId ?? ''}
         >
             <button data-testid="stub-git-row" onClick={() => onActivateDetail?.()}>commit</button>
-            {detailContainer && detailActive && createPortal(<div data-testid="stub-git-detail" />, detailContainer)}
+            {detailContainer && detailActive && createPortal(
+                <div data-testid="stub-git-detail" data-commit={mockAppState.selectedGitCommitHash ?? ''} />,
+                detailContainer,
+            )}
         </div>
     ),
 }));
@@ -100,6 +108,7 @@ const GROUP_ID = 'group-ai-repos';
 beforeEach(() => {
     cleanup();
     localStorage.clear();
+    location.hash = '';
     mockDispatch.mockReset();
     mockGetRepoGroup.mockReset();
     mockGetRepoGroup.mockResolvedValue({
@@ -120,6 +129,54 @@ function click(testId: string): void {
 }
 
 describe('RepoGroupView — desktop split Workspace panel', () => {
+    it('removes the desktop Git header tab and leaves only the embedded Git host', () => {
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+
+        expect(screen.queryByTestId('repo-group-tab-git')).toBeNull();
+        expect(Array.from(screen.getByTestId('repo-group-header-tabs').querySelectorAll('[data-subtab]'))
+            .map(tab => tab.getAttribute('data-subtab'))).toEqual(['chats', 'notes', 'settings']);
+        expect(screen.getAllByTestId('stub-group-git-tab')).toHaveLength(1);
+    });
+
+    it('routes a member commit deep link to Chats and opens it in the shared detail host', () => {
+        const hash = `#repos/${GROUP_ID}/git/member/r1/abc1234`;
+        location.hash = hash;
+        const ctx: RouteContext = {
+            queueState: { selectedTaskIdByRepo: {} } as RouteContext['queueState'],
+            selectedRepoId: GROUP_ID,
+            repoRouteState: {},
+            repoTabState: {},
+            getUiLayoutMode: () => 'classic',
+            isSchedulesInSlide: () => false,
+        };
+        const { effects } = resolveDashboardRoute(hash, ctx);
+        for (const effect of effects) {
+            if (effect.kind !== 'app') continue;
+            if (effect.action.type === 'SET_REPO_SUB_TAB') {
+                mockAppState.activeRepoSubTab = effect.action.tab;
+            } else if (effect.action.type === 'SET_GIT_ROUTE') {
+                mockAppState.gitRouteScope = {
+                    routeWorkspaceId: effect.action.routeWorkspaceId,
+                    workspaceId: effect.action.workspaceId,
+                };
+                mockAppState.selectedGitCommitHash = effect.action.commitHash;
+            }
+        }
+        expect(mockAppState.activeRepoSubTab).toBe('git');
+        expect(mockAppState.gitRouteScope).toEqual({ routeWorkspaceId: GROUP_ID, workspaceId: 'r1' });
+        render(<RepoGroupView workspaceId={GROUP_ID} />);
+
+        expect(screen.queryByTestId('repo-group-tab-git')).toBeNull();
+        expect(screen.getByTestId('repo-group-tab-chats').querySelector('span')).toBeTruthy();
+        expect(screen.getByTestId('stub-chat-tab').parentElement?.style.display).not.toBe('none');
+        expect(screen.getByTestId('stub-group-git-tab').dataset.member).toBe('r1');
+        expect(screen.getByTestId('split-workspace-detail-host')
+            .querySelector('[data-testid="stub-git-detail"]')?.getAttribute('data-commit')).toBe('abc1234');
+        click('stub-chat-row');
+        expect(screen.getByTestId('split-workspace-detail-host')
+            .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
+    });
+
     it('renders the two-column split with the chat list, the group git list and one shared detail host', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 
@@ -158,5 +215,6 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('split-workspace-panel')).toBeNull();
         expect(screen.getByTestId('stub-chat-tab').dataset.layout).toBe('');
+        expect(screen.getByTestId('repo-group-tab-git')).toBeTruthy();
     });
 });
