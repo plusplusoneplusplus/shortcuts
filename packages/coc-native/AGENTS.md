@@ -130,6 +130,8 @@ The stdio language server is resolved the same way, from `symbols-lsp.ts`:
 3. `packages/coc-native/prebuilt/<triple>/coc-symbols-lsp.<triple>[.exe]`, then the unqualified name.
 4. nothing found — `symbolsLspStatus()` reports `loaded: false` with a reason; only `loadSymbolsLspBinary()` throws.
 
+When the package root sits inside a packaged Electron `app.asar`, candidates 2–3 are rewritten to `app.asar.unpacked`: Electron's `fs` stats a file inside the archive, but nothing can spawn it. The desktop build unpacks `**/coc-symbols-lsp*` for this.
+
 The split on failure is deliberate. The addon backs quick-open, notes search and git, so a server without it is dead on the first request and failing at load is the honest outcome. The language server backs one preset, and a workspace with no C code never starts it — so the preset asks for status, and only the code about to spawn the process asks for a path.
 
 Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI builds and publishes both binaries for `linux-x64-gnu`, `linux-arm64-gnu`, `darwin-arm64`, `darwin-x64`, `win32-x64-msvc`, and `win32-arm64-msvc`. Desktop packaging downloads only the binary matching the installer's architecture. Resolution is cached, so the same error object is rethrown on every call; `resetNativeAddonCache()` clears it for tests.

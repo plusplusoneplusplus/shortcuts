@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { nativeBinaryCandidates, nativeTriple } from '../src/loader';
 import {
+    asarUnpackedPath,
     loadSymbolsLspBinary,
     resetSymbolsLspCache,
     symbolsLspBinaryCandidates,
@@ -83,6 +84,33 @@ describe('candidate paths', () => {
         expect(dirs(symbolsLspBinaryCandidates(root, 'darwin', 'arm64'))).toEqual(
             dirs(nativeBinaryCandidates(root, 'darwin', 'arm64')),
         );
+    });
+
+    // A packaged desktop app loads this module from inside app.asar, where
+    // Electron's fs still stats the binary but nothing can spawn it.
+    it('looks in app.asar.unpacked when the package lives inside app.asar', () => {
+        const root = path.join('/Applications', 'CoC.app', 'Contents', 'Resources', 'app.asar', 'node_modules', 'pkg');
+        const unpacked = path.join('/Applications', 'CoC.app', 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules', 'pkg');
+        expect(symbolsLspBinaryCandidates(root, 'darwin', 'arm64')).toEqual([
+            path.join(unpacked, 'coc-symbols-lsp.darwin-arm64'),
+            path.join(unpacked, 'prebuilt', 'darwin-arm64', 'coc-symbols-lsp.darwin-arm64'),
+            path.join(unpacked, 'prebuilt', 'darwin-arm64', 'coc-symbols-lsp'),
+        ]);
+    });
+
+    it('rewrites app.asar on both path separators', () => {
+        expect(asarUnpackedPath('C:\\CoC\\resources\\app.asar\\node_modules\\pkg')).toBe(
+            'C:\\CoC\\resources\\app.asar.unpacked\\node_modules\\pkg',
+        );
+        expect(asarUnpackedPath('/opt/CoC/resources/app.asar/node_modules/pkg')).toBe(
+            '/opt/CoC/resources/app.asar.unpacked/node_modules/pkg',
+        );
+    });
+
+    it('leaves paths without an asar segment alone', () => {
+        expect(asarUnpackedPath('/repo/packages/coc-native')).toBe('/repo/packages/coc-native');
+        expect(asarUnpackedPath('/x/app.asar.unpacked/pkg')).toBe('/x/app.asar.unpacked/pkg');
+        expect(asarUnpackedPath('/x/my-app.asar/pkg')).toBe('/x/my-app.asar/pkg');
     });
 
     it('keeps the windows fallback name executable', () => {
