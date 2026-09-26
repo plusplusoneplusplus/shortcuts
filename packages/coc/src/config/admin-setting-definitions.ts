@@ -1001,6 +1001,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-explorer-editor-tabs-enabled',
         },
     }),
+    bool({
+        key: 'features.markdownPanelPreview', default: false, runtime: 'live', runtimeFlag: 'markdownPanelPreviewEnabled',
+        ui: {
+            group: 'dashboard', order: 71, label: 'Markdown panel preview', badge: 'experimental',
+            hint: 'Open Markdown file tabs in the unified right panel as rendered Markdown, with a switch to the raw editor. Disabled by default.',
+            testId: 'toggle-markdown-panel-preview-enabled',
+        },
+    }),
 
     bool({
         key: 'features.canvasHostApis', default: false, runtime: 'live',

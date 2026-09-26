@@ -215,6 +215,7 @@ features default off.
 | `features.gitCrossCloneCherryPick` | `gitCrossCloneCherryPickEnabled` | on |
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
+| `features.markdownPanelPreview` | `markdownPanelPreviewEnabled` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 

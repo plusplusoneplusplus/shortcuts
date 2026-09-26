@@ -326,6 +326,8 @@ export interface CLIConfig {
         canvasHostApis?: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
         explorerEditorTabs?: boolean;
+        /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
+        markdownPanelPreview?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector?: boolean;
         /** Switch concrete providers between idle follow-up turns. Disabled by default. */
@@ -697,6 +699,8 @@ export interface ResolvedCLIConfig {
         canvasHostApis: boolean;
         /** VS Code-style multiple editor tabs in the File Explorer. Disabled by default. */
         explorerEditorTabs: boolean;
+        /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
+        markdownPanelPreview: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector: boolean;
         /** Switch concrete providers between idle follow-up turns. Disabled by default. */
@@ -981,6 +985,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         gitWorktreeExecution: false,
         canvasHostApis: false,
         explorerEditorTabs: false,
+        markdownPanelPreview: false,
         chatStyleSelector: true,
         chatProviderSwitching: false,
         defaultChatStyle: 'default',

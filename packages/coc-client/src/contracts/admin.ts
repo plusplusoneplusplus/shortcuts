@@ -296,6 +296,8 @@ export interface RuntimeDashboardConfig {
     chatProviderSwitchingEnabled: boolean;
     /** VS Code-style multiple editor tabs in the File Explorer (`features.explorerEditorTabs`). */
     explorerEditorTabsEnabled: boolean;
+    /** Rendered Markdown preview in unified right-panel file tabs (`features.markdownPanelPreview`). */
+    markdownPanelPreviewEnabled: boolean;
     /**
      * Style new conversations start on, server-wide (`features.defaultChatStyle`).
      * `'default'` means "add no style instruction".
