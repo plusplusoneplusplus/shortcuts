@@ -29,6 +29,8 @@ import type {
   ProcessGroupFolderType,
   ProcessGroupFoldersResponse,
   ProcessGroupPinResponse,
+  PinOrderEntry,
+  PinOrderResponse,
   ProcessGroupPinsResponse,
   ProcessGroupPinType,
   ProcessResumeCliResponse,
@@ -292,6 +294,14 @@ export class ProcessesClient {
         body: { pinned },
       },
     );
+  }
+
+  /** Reorder the Pinned section: rewrites pin time so entries sort in the given order. */
+  setPinOrder(workspaceId: string, entries: PinOrderEntry[]): Promise<PinOrderResponse> {
+    return this.transport.request<PinOrderResponse>(`/workspaces/${encodePathSegment(workspaceId)}/pin-order`, {
+      method: 'PUT',
+      body: { entries: [...entries] },
+    });
   }
 
   /**

@@ -506,6 +506,20 @@ describe('ProcessesClient mock server contract', () => {
     expectJsonRequest(mock.requests[1], 'PATCH', '/api/processes/proc%2F1/pin', { pinned: false });
   });
 
+  it('sets the pinned order for a workspace', async () => {
+    mock = await startMockServer();
+    const response = { chats: [{ id: 'c1', pinnedAt: '2026-01-01T00:00:00.000Z' }], groups: [] };
+    mock.on('PUT', '/api/workspaces/ws%2F1/pin-order', { body: response });
+    const client = createClient(mock);
+    const entries = [
+      { kind: 'group' as const, type: 'ralph-session', groupId: 'r1' },
+      { kind: 'chat' as const, id: 'c1' },
+    ];
+
+    await expect(client.processes.setPinOrder('ws/1', entries)).resolves.toEqual(response);
+    expectJsonRequest(mock.requests[0], 'PUT', '/api/workspaces/ws%2F1/pin-order', { entries });
+  });
+
   it('archives and unarchives a process', async () => {
     mock = await startMockServer();
     const process = mockProcess({ id: 'proc/1' });

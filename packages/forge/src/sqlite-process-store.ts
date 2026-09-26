@@ -1175,6 +1175,27 @@ export class SqliteProcessStore implements ProcessStore {
         this.db.prepare('UPDATE processes SET pinned_at = NULL WHERE id = ?').run(id);
     }
 
+    /**
+     * Rewrite `pinned_at` for already-pinned processes in one workspace, in one
+     * transaction. Unpinned ids and ids from other workspaces are skipped.
+     * Returns the ids that were actually updated.
+     */
+    setPinOrder(workspaceId: string, entries: Array<{ id: string; pinnedAt: string }>): string[] {
+        const stmt = this.db.prepare(
+            'UPDATE processes SET pinned_at = ? WHERE id = ? AND workspace_id = ? AND pinned_at IS NOT NULL'
+        );
+        const txn = this.db.transaction(() => {
+            const updated: string[] = [];
+            for (const entry of entries) {
+                if (stmt.run(entry.pinnedAt, entry.id, workspaceId).changes > 0) {
+                    updated.push(entry.id);
+                }
+            }
+            return updated;
+        });
+        return txn();
+    }
+
     archiveProcess(id: string): void {
         this.db.prepare('UPDATE processes SET archived = 1 WHERE id = ?').run(id);
     }
