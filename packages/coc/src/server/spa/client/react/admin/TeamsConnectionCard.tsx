@@ -80,6 +80,9 @@ function timeline(detail: AttemptDetail): Array<{ at: string; label: string }> {
             at: event.at,
             label: `${event.type === 'send-accepted' ? 'MCP accepted reply' : event.type.replace(/-/g, ' ')}${event.category ? ` · ${event.category}` : ''}`,
         })),
+        ...(detail.endedAt && detail.result
+            ? [{ at: detail.endedAt, label: attemptLabel(detail) }]
+            : []),
     ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
