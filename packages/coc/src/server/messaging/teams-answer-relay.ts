@@ -411,15 +411,19 @@ export class TeamsAnswerRelay {
         const answer = requestTurns
             .filter(turn => turn.role === 'assistant' && !turn.interrupted && !turn.streaming && !turn.displayOnly)
             .at(-1);
-        if (binding.requestId && !binding.terminalStatus && !(answer && process?.status === 'completed')) return;
+        const persistedTerminal = binding.requestId && nextUser < 0
+            && (process?.status === 'failed' || process?.status === 'cancelled')
+            ? process.status : undefined;
+        if (binding.requestId && !binding.terminalStatus && !persistedTerminal
+            && !(answer && process?.status === 'completed')) return;
         let text: string;
         if (!binding.requestId && (task?.status ?? binding.terminalStatus ?? process?.status) === 'cancelled') {
             text = 'This request was cancelled.';
         } else if (!binding.requestId && (task?.status ?? binding.terminalStatus ?? process?.status) === 'failed') {
             text = 'This request could not be completed.';
-        } else if (binding.requestId && binding.terminalStatus === 'cancelled') {
+        } else if (binding.requestId && (binding.terminalStatus ?? persistedTerminal) === 'cancelled') {
             text = 'This request was cancelled.';
-        } else if (binding.requestId && binding.terminalStatus === 'failed') {
+        } else if (binding.requestId && (binding.terminalStatus ?? persistedTerminal) === 'failed') {
             text = 'This request could not be completed.';
         } else if (answer && typeof answer.content === 'string') {
             text = answer.content.trim() ? answer.content : 'This request completed without a text answer.';

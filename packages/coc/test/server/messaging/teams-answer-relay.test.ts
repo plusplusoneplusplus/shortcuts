@@ -535,6 +535,36 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[0][0]).not.toContain('old answer');
     });
 
+    it('recovers the last failed follow-up from persisted process status after queue history is lost', async () => {
+        const process = {
+            id: 'queue_failed_follow', status: 'running',
+            metadata: { workspaceId: 'workspace-a', queueTaskId: 'old-task' },
+            conversationTurns: [
+                { role: 'user', content: 'old request', turnIndex: 0 },
+                { role: 'assistant', content: 'old answer', turnIndex: 1 },
+            ],
+        };
+        processes.set(process.id, process);
+        const msg = message('failed-follow');
+        await relay.admitFollowUp(msg, process as any, async requestId => {
+            process.conversationTurns.push({ role: 'user', content: 'new request', turnIndex: 2, relayRequestId: requestId } as any);
+            return { taskId: 'lost-history' };
+        });
+        await relay.acknowledgedMessage(msg);
+        process.status = 'failed';
+        relay.dispose();
+        const restarted = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        await restarted.restore();
+        expect(send).toHaveBeenCalledExactlyOnceWith(
+            expect.stringContaining('This request could not be completed.'), 'failed-follow',
+        );
+        expect(send.mock.calls[0][0]).not.toContain('old answer');
+        restarted.dispose();
+    });
+
     it('retries only definite non-deliveries with capped attempts', async () => {
         const id = (await relay.admitNew(message('rejected-post'), 'workspace-a', async taskId => {
             tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
