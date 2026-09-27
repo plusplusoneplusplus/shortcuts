@@ -15,7 +15,14 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import type { Route } from '../../src/server/types';
 import { registerAllRoutes } from '../../src/server/routes/index';
 import type { RegisterRoutesOptions } from '../../src/server/routes/index';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { CreateTaskInput, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId } from '@plusplusoneplusplus/forge';
+import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsMessagingManager } from '../../src/server/messaging/teams-messaging-manager';
+import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
+import { isChatPayload } from '../../src/server/tasks/task-types';
+import { createMockProcessStore } from '../helpers/mock-process-store';
+import { createMockSDKService } from '../helpers/mock-sdk-service';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -176,7 +183,64 @@ describe('registerAllRoutes', () => {
     });
 
     afterEach(async () => {
+        vi.restoreAllMocks();
         await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('executes ordinary Teams messages as workspace-scoped chats with assistant turns', async () => {
+        const store = createMockProcessStore();
+        vi.mocked(store.getWorkspaces).mockResolvedValue([
+            { id: 'ws-first', name: 'First', rootPath: path.join(tmpDir, 'first') },
+            { id: 'ws-second', name: 'Second', rootPath: path.join(tmpDir, 'second') },
+        ]);
+        const sdk = createMockSDKService();
+        sdk.mockSendMessage.mockResolvedValue({
+            success: true, response: 'A reply', sessionId: 'session-1',
+        });
+        const executor = new CLITaskExecutor(store, { aiService: sdk.service, dataDir: tmpDir });
+        const bridge = makeBridge();
+        let taskNumber = 0;
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => {
+            const id = `teams-task-${++taskNumber}`;
+            const task: QueuedTask = { ...input, id, status: 'running', createdAt: Date.now() };
+            await executor.execute(task);
+            return id;
+        });
+
+        let inbound: Parameters<TeamsMessagingManager['setMessageHandler']>[0] | undefined;
+        vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => {
+            inbound = handler;
+        });
+        const send = vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
+        registerAllRoutes([], makeOpts({ store, bridge, dataDir: tmpDir }));
+        expect(inbound).toBeDefined();
+
+        const message = (text: string, senderAadId: string, messageId: string): InboundTeamsMessage =>
+            ({ text, senderAadId, messageId, channelId: 'channel-1' });
+        await inbound!(message('how many outgoing commits?', 'sender-first', 'message-1'), () => {});
+        await inbound!(message('/select repo 2', 'sender-second', 'message-2'), () => {});
+        await inbound!(message('check the build', 'sender-second', 'message-3'), () => {});
+
+        expect(bridge.enqueue).toHaveBeenCalledTimes(2);
+        for (const [index, workspaceId, prompt] of [
+            [0, 'ws-first', 'how many outgoing commits?'],
+            [1, 'ws-second', 'check the build'],
+        ] as const) {
+            const input = bridge.enqueue.mock.calls[index][0] as CreateTaskInput;
+            expect(input).toMatchObject({
+                type: 'chat', repoId: workspaceId, priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt, workspaceId },
+            });
+            expect(isChatPayload(input.payload)).toBe(true);
+            const process = await store.getProcess(toQueueProcessId(`teams-task-${index + 1}`), workspaceId);
+            expect(process?.status).toBe('completed');
+            expect(process?.conversationTurns).toEqual(expect.arrayContaining([
+                expect.objectContaining({ role: 'user', content: expect.stringContaining(prompt) }),
+                expect.objectContaining({ role: 'assistant', content: 'A reply' }),
+            ]));
+        }
+        expect(sdk.mockSendMessage).toHaveBeenCalledTimes(2);
+        expect(send).toHaveBeenCalledTimes(3);
     });
 
     it('populates the routes array with a large set of routes', () => {
