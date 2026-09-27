@@ -803,6 +803,7 @@ export const DEFAULT_BUNDLED_SKILLS: readonly string[] = [
     'ultra-ralph',
     'classify-diff',
     'dream',
+    'trace-callstack',
 ];
 
 export const DEFAULT_CONFIG: ResolvedCLIConfig = {

@@ -82,6 +82,8 @@ const monacoStub = vi.hoisted(() => ({
     },
     /** One model per mounted pane, so two surfaces are tellable apart. */
     models: [] as any[],
+    /** Re-runs the latest mount, as a queued handler change would. */
+    lastMount: null as null | (() => (() => void) | void),
     nextModel: (path: string) => ({
         uri: { toString: () => `coc-file://ws-1/${path}` },
         getWordUntilPosition: () => ({ startColumn: 1, endColumn: 1 }),
@@ -102,6 +104,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
             }, []);
             useEffect(() => {
                 if (!onModelMount) return;
+                monacoStub.lastMount = () => onModelMount({ editor: monacoStub.editor, monaco: monacoStub.namespace, model });
                 const cleanup = onModelMount({ editor: monacoStub.editor, monaco: monacoStub.namespace, model });
                 return () => { cleanup?.(); };
             }, [onModelMount, model]);
@@ -157,6 +160,7 @@ beforeEach(() => {
     resetLanguageDocumentStoresForTests();
     resetEditorNavigationForTests();
     monacoStub.models.length = 0;
+    monacoStub.lastMount = null;
     transport.client = new FakeClient();
     mockExplorerApi.readBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
     mockExplorerApi.readTrustedBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
@@ -225,6 +229,28 @@ describe('PreviewPane — surface-aware navigation (AC-03)', () => {
         const editor = await screen.findByTestId('mock-monaco-textarea');
         expect(editor).toHaveAttribute('data-reveal', '3:4');
         expect(monacoStub.editor.setSelection).not.toHaveBeenCalled();
+    });
+
+    it('keeps the raw selection when a queued model mount flushes while leaving raw', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({
+            content: '# One\nTwo\nThree', encoding: 'utf-8', mimeType: 'text/plain',
+        });
+        render(<PreviewPane repoId="ws-1" filePath="README.md" fileName="README.md"
+            markdownPreview revealLine={3} />);
+        await screen.findByTestId('mock-monaco-textarea');
+        const queuedMount = monacoStub.lastMount!;
+        fireEvent.click(screen.getByRole('button', { name: 'Rendered' }));
+        await screen.findByTestId('preview-markdown');
+        // A handler change committed just before the click re-runs the mount
+        // on the editor being left; it must not spend the saved raw state.
+        act(() => { (queuedMount() as (() => void) | undefined)?.(); });
+        expect(monacoStub.editor.setSelection).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Raw' }));
+        await screen.findByTestId('mock-monaco-textarea');
+        await waitFor(() => expect(monacoStub.editor.setSelection).toHaveBeenCalledWith({
+            selectionStartLineNumber: 3, selectionStartColumn: 5,
+            positionLineNumber: 3, positionColumn: 5,
+        }));
     });
 
     it('hands its surface the target path and one-based position', async () => {
