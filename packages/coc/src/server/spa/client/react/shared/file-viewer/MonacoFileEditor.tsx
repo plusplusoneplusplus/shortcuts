@@ -359,6 +359,8 @@ export function MonacoFileEditor({
     const decorationsRef = useRef<monacoEditor.IEditorDecorationsCollection | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+    const dimensionsRef = useRef(dimensions);
+    dimensionsRef.current = dimensions;
     // The mounted editor, as state rather than a ref, because the model-mount
     // effect below has to run once it exists.
     const [mounted, setMounted] = useState<{
@@ -447,6 +449,11 @@ export function MonacoFileEditor({
             });
         }
 
+        // Monaco starts at a placeholder size (0x0 or 5x5) and the layout effect
+        // below only runs after this handler. With word wrap on, revealing at that
+        // width scrolls to where the line sits when every line wraps into dozens
+        // of rows, which lands far from it once the real width arrives.
+        if (dimensionsRef.current) editor.layout(dimensionsRef.current);
         if (revealLine !== undefined) revealEditorLine(editor, revealLine, revealColumn);
         applyHighlight(editor);
         applyMarkers();

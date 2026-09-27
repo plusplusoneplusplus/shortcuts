@@ -442,6 +442,10 @@ because `@monaco-editor/react` defaults it to `true`. An inherited size observer
 would compete with the Peek widget's own `layout()` call over the same element
 and shrink the preview to its content height. `MonacoFileEditor` measures its
 wrapper and calls `editor.layout()` itself instead; the library never does.
+It also lays out at that measured size inside `onMount`, before the first
+`revealLine`: Monaco starts at a placeholder 0x0/5x5 size, and with word wrap
+on a reveal at that width lands far from the target line once the real width
+arrives.
 
 ## Tests
 
