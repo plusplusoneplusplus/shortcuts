@@ -103,6 +103,12 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(result.features.workItemsSyncEnabled).toBe(false);
         expect(result.features.workItemsWorkflowEnabled).toBe(false);
         expect(result.features.gitWorktreeExecutionEnabled).toBe(false);
+        expect(result.features.markdownPanelPreviewEnabled).toBe(false);
+    });
+
+    it('exposes the opt-in Markdown panel preview flag', () => {
+        const svc = createMockRuntimeConfigService({ features: { markdownPanelPreview: true } });
+        expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.markdownPanelPreviewEnabled).toBe(true);
     });
 
     it('reflects features.gitWorktreeExecution = true from config (AC-01 capability flag)', () => {

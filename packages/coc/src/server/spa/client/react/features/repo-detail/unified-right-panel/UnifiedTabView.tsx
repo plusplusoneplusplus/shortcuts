@@ -37,7 +37,7 @@
  * tab in turn.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
 import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
@@ -52,6 +52,7 @@ import { UnifiedDiffTab } from './UnifiedDiffTab';
 import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 
 export interface UnifiedTabViewProps {
     tab: UnifiedPanelTab;
@@ -120,6 +121,14 @@ export function UnifiedTabView({
     onFileNavigationMount, onFileNavigationLocation,
     onNotesSelectionChange,
 }: UnifiedTabViewProps) {
+    const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
+        () => isFeatureEnabled('markdownPanelPreviewEnabled'),
+    );
+    useEffect(() => {
+        const update = () => setMarkdownPreviewEnabled(isFeatureEnabled('markdownPanelPreviewEnabled'));
+        window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
+        return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, update);
+    }, []);
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
     // stable — `PreviewPane` re-registers its save handler whenever they change.
@@ -196,6 +205,7 @@ export function UnifiedTabView({
                     definitionPreviewOwners={definitionPreviewOwners}
                     filePath={tab.resourceId}
                     fileName={fileNameOf(tab)}
+                    markdownPreview={markdownPreviewEnabled}
                     revealLine={tab.line}
                     revealColumn={tab.column}
                     revealNonce={tab.revealNonce}

@@ -10,7 +10,7 @@
  */
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { render, waitFor, act } from '@testing-library/react';
+import { render, waitFor, act, fireEvent, screen } from '@testing-library/react';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 import { TRUSTED_PATH_PREFIX } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExactOpen';
 import {
@@ -51,8 +51,8 @@ const monacoStub = vi.hoisted(() => ({
             positionLineNumber: 3,
             positionColumn: 5,
         }),
-        setSelection: () => undefined,
-        revealRangeInCenterIfOutsideViewport: () => undefined,
+        setSelection: vi.fn(),
+        revealRangeInCenterIfOutsideViewport: vi.fn(),
         getLayoutInfo: () => ({ height: 400 }),
         onDidLayoutChange: () => ({ dispose: () => undefined }),
         onDidChangeCursorSelection: () => ({ dispose: () => undefined }),
@@ -169,6 +169,64 @@ afterEach(() => {
 });
 
 describe('PreviewPane — surface-aware navigation (AC-03)', () => {
+    it('restores a rendered tab history destination after reopening the raw editor', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({
+            content: '# One\nTwo\nThree', encoding: 'utf-8', mimeType: 'text/plain',
+        });
+        const onNavigationMount = vi.fn();
+        render(<PreviewPane repoId="ws-1" filePath="README.md" fileName="README.md"
+            markdownPreview onNavigationMount={onNavigationMount} />);
+        await screen.findByTestId('preview-markdown');
+        const renderedController = onNavigationMount.mock.calls.find(([controller]) => controller !== null)?.[0];
+        expect(renderedController).toBeDefined();
+        const target = {
+            selection: {
+                selectionStartLineNumber: 3, selectionStartColumn: 2,
+                positionLineNumber: 3, positionColumn: 2,
+            },
+        };
+        act(() => renderedController.restore(target));
+        await screen.findByTestId('mock-monaco-textarea');
+        await waitFor(() => expect(monacoStub.editor.setSelection).toHaveBeenCalledWith(target.selection));
+        expect(monacoStub.editor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalled();
+    });
+
+    it('restores the cursor on a manual mode round trip', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({
+            content: '# One\nTwo\nThree', encoding: 'utf-8', mimeType: 'text/plain',
+        });
+        render(<PreviewPane repoId="ws-1" filePath="README.md" fileName="README.md"
+            markdownPreview revealLine={3} />);
+        await screen.findByTestId('mock-monaco-textarea');
+        fireEvent.click(screen.getByRole('button', { name: 'Rendered' }));
+        await screen.findByTestId('preview-markdown');
+        fireEvent.click(screen.getByRole('button', { name: 'Raw' }));
+        await screen.findByTestId('mock-monaco-textarea');
+        await waitFor(() => expect(monacoStub.editor.setSelection).toHaveBeenCalledWith({
+            selectionStartLineNumber: 3, selectionStartColumn: 5,
+            positionLineNumber: 3, positionColumn: 5,
+        }));
+        expect(monacoStub.editor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalled();
+    });
+
+    it('lets a new line jump override the remembered raw selection', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({
+            content: '# One\nTwo\nThree', encoding: 'utf-8', mimeType: 'text/plain',
+        });
+        const pane = (line: number, nonce: number) => (
+            <PreviewPane repoId="ws-1" filePath="README.md" fileName="README.md"
+                markdownPreview revealLine={line} revealColumn={4} revealNonce={nonce} />
+        );
+        const { rerender } = render(pane(2, 1));
+        await screen.findByTestId('mock-monaco-textarea');
+        fireEvent.click(screen.getByRole('button', { name: 'Rendered' }));
+        await screen.findByTestId('preview-markdown');
+        rerender(pane(3, 2));
+        const editor = await screen.findByTestId('mock-monaco-textarea');
+        expect(editor).toHaveAttribute('data-reveal', '3:4');
+        expect(monacoStub.editor.setSelection).not.toHaveBeenCalled();
+    });
+
     it('hands its surface the target path and one-based position', async () => {
         const open = installOpener();
         const onNavigate = vi.fn();

@@ -215,6 +215,7 @@ features default off.
 | `features.gitCrossCloneCherryPick` | `gitCrossCloneCherryPickEnabled` | on |
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
+| `features.markdownPanelPreview` | `markdownPanelPreviewEnabled` | off |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
@@ -302,6 +303,14 @@ show source context without issuing per-result file reads.
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative
 search icon.
+
+With `features.markdownPanelPreview` enabled, unified-panel file tabs for
+editable `.md` and `.markdown` files show the shared rendered Markdown view
+by default. Their `PreviewPane` toolbar switches to Raw Monaco using the
+same in-memory edit buffer; line-targeted navigation opens Raw. The tab's
+workspace and concrete clone route continue to own file reads and saves.
+Rendered tabs keep a navigation handle for history replay into Raw.
+The standalone Explorer and the read-only source canvas are unaffected.
 
 The panel's file editors share one session-only navigation history per panel
 scope. Its pure model stores concrete tab identity and the Monaco selection (no

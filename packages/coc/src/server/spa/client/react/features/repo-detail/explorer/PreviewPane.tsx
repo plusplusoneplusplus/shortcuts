@@ -31,6 +31,7 @@ import {
 } from '../../../shared/file-viewer/MonacoFileEditor';
 import { mountNonEditableModel } from '../../../shared/file-viewer/nonEditableMonacoModel';
 import { useFileContent } from '../../../shared/file-viewer/useFileContent';
+import { useMarkdownPreview } from '../../../hooks/ui/useMarkdownPreview';
 import { toContentChanges } from '../../language-servers/monacoBridge';
 import { useLanguageDocument } from '../../language-servers/useLanguageDocument';
 import { LanguageStatusBadge } from '../../language-servers/LanguageStatusBadge';
@@ -68,6 +69,8 @@ export interface PreviewPaneProps {
     filePath: string;
     /** File name for language detection, e.g. "index.ts" */
     fileName: string;
+    /** Unified right-panel opt-in; standalone Explorer keeps its Monaco view. */
+    markdownPreview?: boolean;
     /**
      * One-based line to scroll to and highlight once the content is loaded. Set
      * when the file is opened from a content-search hit.
@@ -149,7 +152,22 @@ export interface PreviewPaneProps {
 /** What a buffer is doing, as reported to its owner through `onStatusChange`. */
 export type PreviewStatus = 'loading' | 'error' | 'ready';
 
-export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, revealLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
+function RenderedMarkdown({ content }: { content: string }) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const { html } = useMarkdownPreview({ content, containerRef, viewMode: 'review', stripFrontmatter: true });
+    return (
+        <div className="h-full overflow-auto pt-9" data-testid="preview-markdown-scroll">
+            <div
+                ref={containerRef}
+                className="markdown-body p-4 text-sm text-[#1e1e1e] dark:text-[#cccccc]"
+                data-testid="preview-markdown"
+                dangerouslySetInnerHTML={{ __html: html }}
+            />
+        </div>
+    );
+}
+
+export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
     const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
 
@@ -199,6 +217,33 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     // if it were complete, and a binary blob has no text to synchronize.
     const languageEnabled = !isTrusted && !loading && !error
         && blob?.encoding === 'utf-8' && !isOversized;
+    const canPreviewMarkdown = markdownPreview && !isTrusted && !isOversized
+        && displayBlob?.encoding === 'utf-8' && /\.(md|markdown)$/i.test(fileName);
+    const [rawMarkdown, setRawMarkdown] = useState(revealLine !== undefined);
+    const rawViewStateRef = useRef<EditorNavigationSnapshot | null>(null);
+    useEffect(() => {
+        if (revealLine === undefined) return;
+        rawViewStateRef.current = null;
+        setRawMarkdown(true);
+    }, [revealLine, revealColumn, revealNonce]);
+    useEffect(() => {
+        rawViewStateRef.current = null;
+        setRawMarkdown(revealLine !== undefined);
+    }, [repoId, routingRef, actualPath]);
+    const showRendered = canPreviewMarkdown && !rawMarkdown;
+    const renderedNavigationController = useMemo<EditorNavigationController>(() => ({
+        capture: () => rawViewStateRef.current,
+        restore: snapshot => {
+            rawViewStateRef.current = snapshot;
+            setRawMarkdown(true);
+        },
+        subscribe: () => ({ dispose: () => undefined }),
+    }), []);
+    useEffect(() => {
+        if (!showRendered || !onNavigationMount) return;
+        onNavigationMount(renderedNavigationController);
+        return () => onNavigationMount(null);
+    }, [showRendered, onNavigationMount, renderedNavigationController]);
 
     const languageDocument = useLanguageDocument({
         workspaceId: repoId,
@@ -275,6 +320,10 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     const handleModelMount = useCallback(({ editor, monaco, model }: EditorModelMountContext) => {
         const navigationController = createEditorNavigationController(editor);
         navigationControllerRef.current = navigationController;
+        if (rawViewStateRef.current) {
+            navigationController.restore(rawViewStateRef.current);
+            rawViewStateRef.current = null;
+        }
         navigationMountRef.current?.(navigationController);
         const initialLocation = navigationController.capture();
         if (initialLocation) navigationLocationRef.current?.(initialLocation, 'programmatic');
@@ -402,6 +451,10 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         }
         return ok;
     }, [editedContent, writeFile, markSaved]);
+    const switchToRendered = useCallback(() => {
+        rawViewStateRef.current = navigationControllerRef.current?.capture() ?? null;
+        setRawMarkdown(false);
+    }, []);
 
     // Monaco applies the restored `value` without firing onChange, so the
     // language document gets the full text here.
@@ -473,6 +526,25 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     {isDirty && !isTrusted && (
                         <span className="w-2 h-2 rounded-full bg-[#f59e0b] flex-shrink-0" title="Unsaved changes" data-testid="dirty-indicator" />
                     )}
+                    {canPreviewMarkdown && (
+                        <div role="group" aria-label="Markdown view" className="flex rounded border border-[#bcbcbc] bg-[#fafafa] text-xs dark:border-[#555] dark:bg-[#252525]">
+                            {(['Rendered', 'Raw'] as const).map(mode => (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    aria-pressed={(mode === 'Rendered') === showRendered}
+                                    onClick={mode === 'Rendered' ? switchToRendered : () => setRawMarkdown(true)}
+                                    className={`rounded px-2 py-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0078d4] ${
+                                        (mode === 'Rendered') === showRendered
+                                            ? 'bg-[#0078d4] text-white'
+                                            : 'text-[#555] hover:bg-black/5 dark:text-[#ccc] dark:hover:bg-white/10'
+                                    }`}
+                                >
+                                    {mode}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     {onClose && (
                         <button
                             className="w-5 h-5 flex items-center justify-center rounded text-[#848484] hover:text-[#1e1e1e] dark:hover:text-[#cccccc] hover:bg-black/5 dark:hover:bg-white/10 text-sm transition-colors"
@@ -496,6 +568,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     <Button variant="secondary" size="sm" onClick={retry} data-testid="preview-retry-btn">Retry</Button>
                 </div>
             ) : displayBlob ? (
+                showRendered ? <RenderedMarkdown content={displayBlob.content} /> :
                 <FileViewer
                     blob={displayBlob}
                     fileName={fileName}
