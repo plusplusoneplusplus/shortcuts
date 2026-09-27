@@ -38,6 +38,8 @@ TS glue (`npm run build`) needs no Rust; only `build:native` does, driving `@nap
 
 No CoC/forge deps. Core interface at the root (`@plusplusoneplusplus/coc-connector`), Teams at `/teams` (Graph API + MCP, used by `coc` and `coccontainer`), WhatsApp at `/whatsapp` (Baileys, lazy-loaded, used by `coccontainer` when `messaging.whatsapp.enabled` is true). Baileys and qrcode-terminal are `optionalDependencies`. Subpath exports avoid the `BotStatus` name collision; physical `teams/` + `whatsapp/` proxy `package.json` dirs let `moduleResolution: node10` consumers resolve the subpaths.
 
+Teams MCP channel posts, thread replies, and self-DMs escape backslashes in tool content so Windows workspace paths survive the MCP server's content parser. Tool-level errors reject the send without changing connection health; CoC's Teams manager records rejected sends separately from poll failures when bridge observability is enabled.
+
 ## Package Management & Publishing
 
 Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client`, `deep-wiki`, `coccontainer`, `coc-connector`) go to npm under the `@plusplusoneplusplus` scope with public access, coordinated by **`@changesets/cli`**. `.changeset/config.json`: independent versioning, public access, `main` base branch, `updateInternalDependencies: "patch"`.
