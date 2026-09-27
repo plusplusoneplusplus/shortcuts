@@ -13,7 +13,7 @@
  *   <msg>             — send message to the selected/last-active topic
  */
 
-import type { ProcessStore, AIProcess, ProcessFilter } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId, type ProcessStore, type AIProcess, type ProcessFilter } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsUserStateStore } from './teams-user-state';
 import type { TeamsEventType } from './teams-attempt-store';
@@ -27,6 +27,13 @@ export interface TeamsCommandRouterDeps {
     store: ProcessStore;
     /** Enqueue a new chat message. Returns the enqueued task ID. */
     enqueueChat: (workspaceId: string, message: string) => Promise<string>;
+    /** Admit a relay-enabled new chat with its Teams receipt persisted before enqueue. */
+    admitNewChat?: (msg: InboundTeamsMessage, workspaceId: string, message: string) => Promise<{ taskId: string; duplicate: boolean }>;
+    acknowledgeNewChat?: (taskId: string) => Promise<void>;
+    admitFollowUp?: (msg: InboundTeamsMessage, process: AIProcess, message: string) => Promise<{ duplicate: boolean }>;
+    admitPendingFollowUp?: (msg: InboundTeamsMessage, taskId: string, message: string) => Promise<{ duplicate: boolean } | null>;
+    acknowledgeFollowUp?: (msg: InboundTeamsMessage) => Promise<void>;
+    isAnswerRelayEnabled?: () => boolean;
     /** Send a follow-up message to an existing process. */
     executeFollowUp: (processId: string, message: string) => Promise<void>;
     /** Send a reply back to Teams. */
@@ -129,7 +136,11 @@ export class TeamsCommandRouter {
             }
         } catch (err: any) {
             observe?.('dispatch-failed');
-            await this.deps.sendReply(`❌ Error: ${err.message ?? 'Unknown error'}`, msg.messageId);
+            if (this.deps.isAnswerRelayEnabled?.() === true && (command.type === 'chat' || command.type === 'chat-explicit')) {
+                await this.deps.sendReply('❌ Unable to accept the request. Please try again later.', msg.replyToMessageId || msg.messageId);
+            } else {
+                await this.deps.sendReply(`❌ Error: ${err.message ?? 'Unknown error'}`, msg.messageId);
+            }
         }
     }
 
@@ -279,14 +290,17 @@ export class TeamsCommandRouter {
             return;
         }
 
-        await this.deps.executeFollowUp(chatId, message);
+        if (this.deps.admitFollowUp) {
+            const admission = await this.deps.admitFollowUp(msg, process, message);
+            if (admission.duplicate) return;
+        } else {
+            await this.deps.executeFollowUp(chatId, message);
+        }
         observe?.('dispatch-follow-up');
         this.userState.update(userKey, { lastActiveTopic: chatId });
 
-        await this.deps.sendReply(
-            `💬 Message sent to \`${chatId.slice(0, 8)}\``,
-            msg.messageId,
-        );
+        await this.sendAcceptance(`💬 Message sent to \`${chatId.slice(0, 8)}\``, msg, () =>
+            this.deps.acknowledgeFollowUp?.(msg));
     }
 
     private async handleChat(userKey: string, message: string, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
@@ -297,22 +311,38 @@ export class TeamsCommandRouter {
         // Determine target: selected topic > last active > create new
         let targetId = state.selectedTopic ?? state.lastActiveTopic;
 
+        let targetProcess: AIProcess | undefined;
         if (targetId) {
             // Verify the process still exists
-            const process = await this.deps.store.getProcess(targetId);
-            if (!process) {
+            targetProcess = await this.deps.store.getProcess(targetId)
+                ?? (this.deps.isAnswerRelayEnabled?.() === true && !targetId.startsWith('queue_')
+                    ? await this.deps.store.getProcess(toQueueProcessId(targetId)) : undefined);
+            if (targetProcess) {
+                targetId = targetProcess.id;
+            } else {
+                const pending = await this.deps.admitPendingFollowUp?.(msg, targetId, message);
+                if (pending) {
+                    if (pending.duplicate) return;
+                    observe?.('dispatch-follow-up');
+                    await this.sendAcceptance(`💬 Message sent to topic \`${targetId.slice(0, 8)}\``, msg, () =>
+                        this.deps.acknowledgeFollowUp?.(msg));
+                    return;
+                }
                 targetId = null;
             }
         }
 
         if (targetId) {
-            await this.deps.executeFollowUp(targetId, message);
+            if (this.deps.admitFollowUp && targetProcess) {
+                const admission = await this.deps.admitFollowUp(msg, targetProcess, message);
+                if (admission.duplicate) return;
+            } else {
+                await this.deps.executeFollowUp(targetId, message);
+            }
             observe?.('dispatch-follow-up');
             this.userState.update(userKey, { lastActiveTopic: targetId });
-            await this.deps.sendReply(
-                `💬 Message sent to topic \`${targetId.slice(0, 8)}\``,
-                msg.messageId,
-            );
+            await this.sendAcceptance(`💬 Message sent to topic \`${targetId.slice(0, 8)}\``, msg, () =>
+                this.deps.acknowledgeFollowUp?.(msg));
         } else {
             // No active topic — create new if repo is selected
             const repoId = state.selectedRepo;
@@ -327,25 +357,43 @@ export class TeamsCommandRouter {
                     return;
                 }
                 const firstRepo = workspaces[0];
-                const taskId = await this.deps.enqueueChat(firstRepo.id, message);
+                const admission = this.deps.admitNewChat
+                    ? await this.deps.admitNewChat(msg, firstRepo.id, message)
+                    : { taskId: await this.deps.enqueueChat(firstRepo.id, message), duplicate: false };
+                const { taskId } = admission;
+                if (admission.duplicate) return;
                 observe?.('dispatch-queued');
                 this.userState.update(userKey, {
                     selectedRepo: firstRepo.id,
-                    lastActiveTopic: taskId,
+                    lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
                 });
-                await this.deps.sendReply(
+                await this.sendAcceptance(
                     `💬 New topic created in **${firstRepo.name ?? firstRepo.id}**: \`${taskId.slice(0, 8)}\``,
-                    msg.messageId,
+                    msg, () => this.deps.acknowledgeNewChat?.(taskId),
                 );
             } else {
-                const taskId = await this.deps.enqueueChat(repoId, message);
+                const admission = this.deps.admitNewChat
+                    ? await this.deps.admitNewChat(msg, repoId, message)
+                    : { taskId: await this.deps.enqueueChat(repoId, message), duplicate: false };
+                const { taskId } = admission;
+                if (admission.duplicate) return;
                 observe?.('dispatch-queued');
-                this.userState.update(userKey, { lastActiveTopic: taskId });
-                await this.deps.sendReply(
-                    `💬 New topic created: \`${taskId.slice(0, 8)}\``,
-                    msg.messageId,
-                );
+                this.userState.update(userKey, {
+                    lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
+                });
+                await this.sendAcceptance(`💬 New topic created: \`${taskId.slice(0, 8)}\``, msg, () =>
+                    this.deps.acknowledgeNewChat?.(taskId));
             }
+
+        }
+    }
+
+    private async sendAcceptance(text: string, msg: InboundTeamsMessage, settle: () => Promise<void> | undefined): Promise<void> {
+        try {
+            await this.deps.sendReply(text,
+                this.deps.isAnswerRelayEnabled?.() === true ? msg.replyToMessageId || msg.messageId : msg.messageId);
+        } finally {
+            await settle();
         }
     }
 }

@@ -121,7 +121,7 @@ interface CloseHandlerDeps {
     triggerManager?: { shutdownAll(): void };
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
-    teamsMessagingManager?: { disconnect(): Promise<void> };
+    teamsMessagingManager?: { disconnect(): Promise<void>; dispose?(): void };
     syncEngines?: Map<string, SyncEngine>;
     autoPullManager?: { dispose(): void };
     workItemGitHubPullPoller?: { dispose(): void };
@@ -159,6 +159,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.triggerInfraDispose?.();
         deps.mcpOauthDispose?.();
         await deps.teamsMessagingManager?.disconnect();
+        deps.teamsMessagingManager?.dispose?.();
         deps.syncEngines?.forEach(e => e.stop());
         deps.autoPullManager?.dispose();
         deps.workItemGitHubPullPoller?.dispose();

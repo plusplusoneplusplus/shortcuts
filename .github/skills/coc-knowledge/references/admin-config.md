@@ -96,7 +96,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `ralphMultiAgentGrill` | off | Ralph grill question-planning card, separate grill-agent calls, dedupe/provenance metadata |
 | `nativeCliSessions` | off | Read-only CLI Sessions surface over native Copilot/Codex/Claude stores |
 | `teamsBridgeObservability` | off | Normal Teams channel-bridge connection history collection and inspection, independent of the container relay |
-| `teamsAiAnswerRelay` | off | Configuration gate reserved for normal Teams channel AI answer delivery; the bridge currently sends acknowledgements only |
+| `teamsAiAnswerRelay` | off | Normal Teams channel bridge saves per-workspace reply receipts and relays completed Ask answers or safe terminal notices to their originating threads; independent of connection observability |
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
 | `chatStyleSelector` | on | Chat Style chip (below) |
