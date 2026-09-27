@@ -6,6 +6,13 @@
 import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from './types';
 import { McpClient } from './mcp-client';
 
+export class TeamsMcpSendRejectedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'TeamsMcpSendRejectedError';
+    }
+}
+
 function escapeMcpContent(text: string): string {
     return text.replace(/\\/g, '\\\\');
 }
@@ -152,7 +159,7 @@ export class McpTransport implements TeamsTransport {
         console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
 
         if (result.isError || responseText.startsWith('Error:')) {
-            throw new Error(responseText || `${toolName} failed`);
+            throw new TeamsMcpSendRejectedError(responseText || `${toolName} failed`);
         }
 
         try {

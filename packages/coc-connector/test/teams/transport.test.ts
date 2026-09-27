@@ -300,7 +300,7 @@ describe('McpTransport', () => {
             }),
         } as any);
         await expect(transport.send('channel-1', 'plain text', { replyToId: 'root-message' }))
-            .rejects.toThrow('Send rejected');
+            .rejects.toMatchObject({ name: 'TeamsMcpSendRejectedError', message: 'Send rejected' });
     });
 
     it('should stop and nullify client', async () => {
