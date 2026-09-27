@@ -494,13 +494,15 @@ describe('Teams messaging routes (integration)', () => {
         try {
             const routes: any[] = [];
             registerTeamsMessagingRoutes(routes, { dataDir: tmpDir });
-            expect(routes.length).toBe(4);
+            expect(routes.length).toBe(6);
             expect(routes[0].method).toBe('GET');
             expect(routes[0].pattern).toEqual(/^\/api\/messaging\/teams\/status$/);
-            expect(routes[1].method).toBe('POST');
-            expect(routes[1].pattern).toEqual(/^\/api\/messaging\/teams\/server$/);
-            expect(routes[2].pattern).toEqual(/^\/api\/messaging\/teams\/config$/);
-            expect(routes[3].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
+            expect(routes[1].pattern).toEqual(/^\/api\/messaging\/teams\/attempts$/);
+            expect(routes[2].pattern).toEqual(/^\/api\/messaging\/teams\/attempts\/([^/]+)$/);
+            expect(routes[3].method).toBe('POST');
+            expect(routes[3].pattern).toEqual(/^\/api\/messaging\/teams\/server$/);
+            expect(routes[4].pattern).toEqual(/^\/api\/messaging\/teams\/config$/);
+            expect(routes[5].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

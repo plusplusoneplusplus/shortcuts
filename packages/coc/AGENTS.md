@@ -111,7 +111,8 @@ all have their own `references/*.md`.
   synchronized with the polling manager. `messaging/teams-attempt-store.ts`
   keeps server-global connection history in the CoC data directory; its
   persisted format allowlists safe stages, outcomes, and failure categories.
-  `features.teamsBridgeObservability` gates collection and defaults off.
+  `features.teamsBridgeObservability` gates collection and read-only history
+  routes and defaults off; history responses must project allowlisted fields.
 - **Process mutation admission** uses the shared keyed coordinator in
   `src/server/processes/process-operation-admission.ts`. Follow-up delivery and
   rewind share that section. Follow-up delivery re-reads process/task state

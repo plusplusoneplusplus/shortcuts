@@ -78,7 +78,7 @@ function timeline(detail: AttemptDetail): Array<{ at: string; label: string }> {
         ...detail.phases.map(phase => ({ at: phase.at, label: stageLabels[phase.stage] })),
         ...detail.events.map(event => ({
             at: event.at,
-            label: `${event.type === 'send-accepted' ? 'MCP accepted reply' : event.type.replace(/-/g, ' ')}${event.category ? ` · ${event.category}` : ''}`,
+            label: `${event.type === 'reply-accepted' ? 'MCP accepted reply' : event.type.replace(/-/g, ' ')}${event.category ? ` · ${event.category}` : ''}`,
         })),
         ...(detail.endedAt && detail.result
             ? [{ at: detail.endedAt, label: attemptLabel(detail) }]

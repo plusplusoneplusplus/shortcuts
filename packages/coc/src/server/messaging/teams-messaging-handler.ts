@@ -19,6 +19,26 @@ import type { McpOauthManager } from '../mcp-oauth/mcp-oauth-manager';
 import { TeamsMessagingManager } from './teams-messaging-manager';
 import { TeamsCommandRouter } from './teams-command-router';
 import { TeamsOAuthFlow } from './teams-oauth-flow';
+import type { TeamsAttempt } from './teams-attempt-store';
+
+function attemptSummary(attempt: TeamsAttempt) {
+    return {
+        id: attempt.id,
+        startedAt: attempt.startedAt,
+        ...(attempt.endedAt ? { endedAt: attempt.endedAt } : {}),
+        ...(attempt.result ? { result: attempt.result } : {}),
+        stage: attempt.stage,
+        ...(attempt.failureCategory ? { failureCategory: attempt.failureCategory } : {}),
+        degraded: attempt.degraded,
+    };
+}
+
+function parsePageNumber(value: string | null, fallback: number, maximum: number): number | null {
+    if (value === null) return fallback;
+    if (!/^(0|[1-9][0-9]*)$/.test(value)) return null;
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number <= maximum ? number : null;
+}
 
 export interface TeamsMessagingRoutesOptions {
     dataDir: string;
@@ -69,7 +89,98 @@ export function registerTeamsMessagingRoutes(
         method: 'GET',
         pattern: /^\/api\/messaging\/teams\/status$/,
         handler: (_req, res) => {
-            sendJSON(res, 200, { ...manager.getStatus(), oauthAvailable: opts.oauthAvailable ?? false, teamsOAuthAvailable: !!oauthFlow });
+            sendJSON(res, 200, {
+                ...manager.getStatus(), oauthAvailable: opts.oauthAvailable ?? false,
+                teamsOAuthAvailable: !!oauthFlow,
+                teamsBridgeObservabilityEnabled: opts.getObservabilityEnabled?.() === true,
+            });
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/messaging\/teams\/attempts$/,
+        handler: (req, res) => {
+            if (opts.getObservabilityEnabled?.() !== true) {
+                sendError(res, 404, 'Teams connection history is unavailable');
+                return;
+            }
+            const query = new URL(req.url ?? '', 'http://localhost').searchParams;
+            const offset = parsePageNumber(query.get('offset'), 0, Number.MAX_SAFE_INTEGER);
+            const limit = parsePageNumber(query.get('limit'), 20, 100);
+            if (offset === null || limit === null || limit === 0
+                || query.getAll('offset').length > 1 || query.getAll('limit').length > 1
+                || [...query.keys()].some(key => key !== 'offset' && key !== 'limit')) {
+                sendError(res, 400, 'Invalid Teams history pagination');
+                return;
+            }
+            try {
+                const attempts = manager.getAttemptHistory();
+                if (!attempts) {
+                    sendError(res, 503, 'Teams connection history is unavailable');
+                    return;
+                }
+                const page = attempts.slice(offset, offset + limit);
+                sendJSON(res, 200, {
+                    attempts: page.map(attemptSummary),
+                    total: attempts.length,
+                    nextOffset: offset + limit < attempts.length ? offset + limit : null,
+                });
+            } catch (err) {
+                console.error('[teams-history] Failed to read attempt history:', err);
+                sendError(res, 500, 'Teams connection history is unavailable');
+            }
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/messaging\/teams\/attempts\/([^/]+)$/,
+        handler: (_req, res, match) => {
+            if (opts.getObservabilityEnabled?.() !== true) {
+                sendError(res, 404, 'Teams connection history is unavailable');
+                return;
+            }
+            if (!match) {
+                sendError(res, 400, 'Invalid Teams attempt ID');
+                return;
+            }
+            const id = match[1];
+            if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)) {
+                sendError(res, 400, 'Invalid Teams attempt ID');
+                return;
+            }
+            try {
+                const history = manager.getAttemptHistory();
+                if (!history) {
+                    sendError(res, 503, 'Teams connection history is unavailable');
+                    return;
+                }
+                const attempt = history.find(item => item.id === id);
+                if (!attempt) {
+                    sendError(res, 404, 'Teams attempt not found');
+                    return;
+                }
+                sendJSON(res, 200, {
+                    attempt: {
+                        ...attemptSummary(attempt),
+                        phases: attempt.phases.map(phase => ({ stage: phase.stage, at: phase.at })),
+                        events: attempt.events.map(event => ({
+                            type: event.type, at: event.at,
+                            ...(event.category ? { category: event.category } : {}),
+                        })),
+                        totals: { ...attempt.totals },
+                        pollSuccessCount: attempt.pollSuccessCount,
+                        ...(attempt.lastPollSuccessAt ? { lastPollSuccessAt: attempt.lastPollSuccessAt } : {}),
+                        ...(attempt.lastSendSuccessAt ? { lastSendSuccessAt: attempt.lastSendSuccessAt } : {}),
+                        pollDegraded: attempt.pollDegraded,
+                        sendDegraded: attempt.sendDegraded,
+                    },
+                });
+            } catch (err) {
+                console.error('[teams-history] Failed to read attempt history:', err);
+                sendError(res, 500, 'Teams connection history is unavailable');
+            }
         },
     });
 
