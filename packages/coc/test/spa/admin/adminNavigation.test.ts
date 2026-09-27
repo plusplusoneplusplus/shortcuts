@@ -72,9 +72,11 @@ describe('buildAdminNavGroups', () => {
     const keys = (groups: ReturnType<typeof buildAdminNavGroups>, label: string) =>
         groups.find(g => g.label === label)?.items.map(i => i.key) ?? [];
 
-    it('web + servers disabled: no Connections group, no servers row, agents in Configure', () => {
+    it('web + servers disabled: Teams connection without container agents, no servers row', () => {
         const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false });
-        expect(labels(groups)).toEqual(['Configure', 'Knowledge', 'Operations', 'Developer / Internals']);
+        expect(labels(groups)).toEqual(['Configure', 'Knowledge', 'Connections', 'Operations', 'Developer / Internals']);
+        expect(keys(groups, 'Connections')).toEqual(['admin:messaging']);
+        expect(groups.find(g => g.label === 'Connections')?.items[0].label).toBe('Teams');
         expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:agents']);
         expect(keys(groups, 'Configure')).not.toContain('tool:servers');
     });

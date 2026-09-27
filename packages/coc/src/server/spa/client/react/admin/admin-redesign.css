@@ -2042,3 +2042,11 @@
     flex: 1;
   }
 }
+.admin-redesign .ar-teams { display: grid; gap: 12px; }
+.admin-redesign .ar-teams-hint { color: var(--ar-text-mute); font-size: 12px; }
+.admin-redesign .ar-teams-status { color: var(--ar-text-2); }
+.admin-redesign .ar-teams-error { color: var(--ar-danger); }
+.admin-redesign .ar-teams-warning { color: var(--ar-warning); font-size: 12px; }
+.admin-redesign .ar-teams-field { display: grid; gap: 5px; min-width: 0; }
+.admin-redesign .ar-teams-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.admin-redesign .ar-teams-actions { display: flex; flex-wrap: wrap; gap: 8px; }

@@ -83,11 +83,12 @@ const BASE_TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     prompts: 'Read-only view of the system prompts the assistant uses.',
     database: 'Browse the underlying SQLite tables that back CoC.',
     agents: '',
-    messaging: 'Configure container messaging integrations (e.g. WhatsApp).',
+    messaging: 'Configure messaging connections.',
 };
 
 export function getAdminTabLabel(tab: AdminSubTab, isContainer: boolean): string {
     if (tab === 'agents') return isContainer ? 'Agents' : 'AI Provider';
+    if (tab === 'messaging') return isContainer ? 'Messaging' : 'Teams';
     return BASE_TAB_LABELS[tab];
 }
 export function getAdminTabIcon(tab: AdminSubTab, isContainer: boolean): string {
@@ -96,6 +97,7 @@ export function getAdminTabIcon(tab: AdminSubTab, isContainer: boolean): string 
 }
 export function getAdminTabDescription(tab: AdminSubTab, isContainer: boolean): string {
     if (tab === 'agents') return isContainer ? 'View and manage agents connected to this container.' : '';
+    if (tab === 'messaging' && !isContainer) return 'Connect a Teams channel to CoC workspaces.';
     return BASE_TAB_DESCRIPTIONS[tab];
 }
 
@@ -205,7 +207,7 @@ export interface AdminNavContext {
  */
 export function buildAdminNavGroups({ isContainer, serversEnabled }: AdminNavContext): AdminNavGroup[] {
     const serversNavItems = serversEnabled ? [toolNavItem('servers')] : [];
-    const containerNavItems = isContainer ? [adminNavItem('messaging', isContainer)] : [];
+    const messagingNavItems = [adminNavItem('messaging', isContainer)];
     const containerAgentsNavItem = isContainer ? [adminNavItem('agents', isContainer)] : [];
     const nonContainerAgentsNavItem = !isContainer ? [adminNavItem('agents', isContainer)] : [];
 
@@ -235,7 +237,7 @@ export function buildAdminNavGroups({ isContainer, serversEnabled }: AdminNavCon
         {
             label: 'Connections',
             items: [
-                ...containerNavItems,
+                ...messagingNavItems,
                 ...containerAgentsNavItem,
             ],
         },

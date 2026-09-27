@@ -456,6 +456,10 @@ See [mcp-settings.md](mcp-settings.md).
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/mcp-config` | Effective + source-separated MCP servers. `?forceReload=true` bypasses cache |
 | PUT | `/api/workspaces/:id/mcp-config` | Partial patch of the MCP policy: `enabledMcpServers` and/or `enabledMcpTools`, applied by property presence. Returns the canonical resulting policy |
+| GET | `/api/messaging/teams/status` | Normal-CoC Teams channel bridge status, global MCP URL, OAuth cache status and availability |
+| POST | `/api/messaging/teams/server` | Register or update the global `Microsoft Teams` HTTP MCP endpoint; body `{url}` (HTTPS) |
+| POST | `/api/messaging/teams/config` | Save Teams channel bridge settings (`teamName`, `channelName`, `botName`, `enabled`); disabling stops polling |
+| POST | `/api/messaging/teams/reconnect` | Connect the enabled channel bridge using the cached MCP OAuth token; reports connection failures |
 
 ## Work Items
 

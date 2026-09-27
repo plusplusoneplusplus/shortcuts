@@ -158,6 +158,7 @@ import { registerRuntimeConfigRoutes } from '../config/runtime-config-handler';
 import { registerSyncRoutes } from '../sync/sync-handler';
 import type { SyncEngine } from '../sync/sync-engine';
 import { registerTeamsMessagingRoutes } from '../messaging/teams-messaging-handler';
+import { TeamsMessagingManager } from '../messaging/teams-messaging-manager';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
@@ -272,7 +273,7 @@ export interface RegisterRoutesOptions {
     notesSearchService: NotesSearchService;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -873,10 +874,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     }
 
-    // Teams messaging routes (container-mode)
-    registerTeamsMessagingRoutes(routes, {
+    const teamsMessagingManager = registerTeamsMessagingRoutes(routes, {
         dataDir,
         store,
+        oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         enqueueChat: async (workspaceId, message) => {
             const taskId = await bridge.enqueue({
                 type: 'chat',
@@ -1480,5 +1481,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
+    return { wikiManager, teamsMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
 }

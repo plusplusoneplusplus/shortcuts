@@ -121,6 +121,7 @@ interface CloseHandlerDeps {
     triggerManager?: { shutdownAll(): void };
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
+    teamsMessagingManager?: { disconnect(): Promise<void> };
     syncEngines?: Map<string, SyncEngine>;
     autoPullManager?: { dispose(): void };
     workItemGitHubPullPoller?: { dispose(): void };
@@ -157,6 +158,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.triggerManager?.shutdownAll();
         deps.triggerInfraDispose?.();
         deps.mcpOauthDispose?.();
+        await deps.teamsMessagingManager?.disconnect();
         deps.syncEngines?.forEach(e => e.stop());
         deps.autoPullManager?.dispose();
         deps.workItemGitHubPullPoller?.dispose();
@@ -778,7 +780,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
+    const { wikiManager, teamsMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -944,6 +946,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
+    if (teamsMessagingManager.getStatus().enabled) {
+        void teamsMessagingManager.connect().catch(err => {
+            process.stderr.write(`[TeamsMessaging] startup connection failed: ${err instanceof Error ? err.message : String(err)}\n`);
+        });
+    }
     activateQueueProcessing();
     // Say which native search capabilities are active. All are required and
     // were validated before composition; reporting them separately is what
@@ -1061,6 +1068,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             triggerManager: triggerInfra?.triggerManager,
             triggerInfraDispose: triggerInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
+            teamsMessagingManager,
             syncEngines,
             workItemGitHubPullPoller,
             workItemAzureBoardsPullPoller,

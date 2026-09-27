@@ -49,6 +49,10 @@ Moves a server between scopes. Body: `{ targetScope: "global"|"workspace" }`.
 
 The MCP server panel combines configured status with live tool discovery: a live failure overrides a configured `ok`, OAuth/401/token failures render as `auth`, and other initialization failures render as `err`. Every enabled HTTP/SSE server exposes an Authenticate/Re-authenticate action; explicit re-authentication sends `force: true`, removes every cache entry matching the exact server URL, and starts a fresh SDK OAuth flow.
 
+### Teams channel connection
+
+Normal CoC's Admin → Connections card registers the global `Microsoft Teams` HTTP MCP endpoint in `~/.copilot/mcp-config.json` and authenticates it through `POST /api/mcp-oauth/start` using that exact server name. The card checks `oauthAvailable` and the shared token-cache `authStatus`; when MCP OAuth is disabled or the SDK lacks `createClient`, it explains why authentication cannot start. The manager reads that same endpoint and cached token, resolves or creates the configured team and channel through MCP, then polls the channel with `TeamsBot`. Configuration stays server-wide; inbound `TeamsCommandRouter` lets each sender select a registered workspace. This is distinct from the container's self-chat messaging relay and OAuth exchange.
+
 ## OAuth Auto-Refresh (Background)
 
 When `mcpOauth.autoRefresh.enabled` is true (disabled by default, restart required; see [admin-config.md](admin-config.md)), a background loop runs every 5 minutes against `~/.copilot/mcp-oauth-config/`: it dedups the duplicate entries the SDK accumulates per `serverUrl` and refreshes AAD tokens within 10 minutes of expiry. Cached scopes pass through `sanitizeRequestScope`, which drops `<resource>/.default` when other scopes for the same resource exist (AAD rejects that combination with HTTP 400); `offline_access` is then appended so refresh tokens keep rolling.
