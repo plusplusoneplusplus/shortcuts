@@ -653,6 +653,11 @@ export interface UnifiedDiffViewerHandle {
      * line becomes visible; centers the row in the scroll viewport.
      */
     scrollLineIntoView: (lineIndex: number) => void;
+    /**
+     * False while hunks are still being computed (Monaco computes its diff
+     * asynchronously). Viewers that know their hunks synchronously omit it.
+     */
+    isHunkNavigationReady?: () => boolean;
 }
 
 /** Reusable up/down buttons for navigating between diff hunks. */
