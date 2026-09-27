@@ -148,6 +148,7 @@ export class TeamsAttemptStore {
     }
 
     list(): TeamsAttempt[] {
+        if (this.prune()) this.save();
         return this.attempts.map(a => ({
             id: a.id, startedAt: a.startedAt, phases: a.phases.map(p => ({ stage: p.stage, at: p.at })),
             stage: a.phases[a.phases.length - 1].stage,

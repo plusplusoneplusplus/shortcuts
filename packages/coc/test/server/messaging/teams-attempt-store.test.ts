@@ -93,6 +93,18 @@ describe('TeamsAttemptStore', () => {
         expect(loaded.list().some(a => a.id === old)).toBe(false);
     });
 
+    it('expires completed attempts on read even when no new connection starts', () => {
+        const f = fixture();
+        const store = new TeamsAttemptStore(f.dir, f.clock);
+        const old = store.start();
+        store.finish(old, 'disconnected');
+        const active = store.start();
+        f.advance(30 * 24 * 60 * 60 * 1000 + 1);
+        expect(store.list().map(a => a.id)).toEqual([active]);
+        expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'teams-attempts.json'), 'utf8'))
+            .map((attempt: { id: string }) => attempt.id)).toEqual([active]);
+    });
+
     it('retains attempts at the exact 30-day cutoff and prunes them one millisecond later', () => {
         const f = fixture();
         const store = new TeamsAttemptStore(f.dir, f.clock);
