@@ -9,10 +9,11 @@ export type TeamsEventType = 'poll-failed' | 'inbound-observed' | 'inbound-skipp
     | 'dispatch-command' | 'dispatch-queued' | 'dispatch-follow-up' | 'dispatch-failed'
     | 'reply-attempt' | 'reply-accepted' | 'reply-rejected';
 export type TeamsSkipReason = 'initial' | 'unchanged' | 'own' | 'empty' | 'bot';
+export type TeamsActivityFailureCategory = 'polling' | 'dispatch' | 'send';
 export interface TeamsAttemptEvent {
     at: string;
     type: TeamsEventType;
-    category?: TeamsSkipReason;
+    category?: TeamsSkipReason | TeamsActivityFailureCategory;
 }
 
 export interface TeamsAttempt {
@@ -41,6 +42,9 @@ const EVENTS: TeamsEventType[] = ['poll-failed', 'inbound-observed', 'inbound-sk
     'dispatch-command', 'dispatch-queued', 'dispatch-follow-up', 'dispatch-failed',
     'reply-attempt', 'reply-accepted', 'reply-rejected'];
 const SKIP_REASONS: TeamsSkipReason[] = ['initial', 'unchanged', 'own', 'empty', 'bot'];
+const FAILURE_EVENTS: Partial<Record<TeamsEventType, TeamsActivityFailureCategory>> = {
+    'poll-failed': 'polling', 'dispatch-failed': 'dispatch', 'reply-rejected': 'send',
+};
 const TOTAL_KEYS: string[] = ['poll-success', ...EVENTS];
 const MAX_EVENTS = 100;
 const MAX_COMPLETED = 200;
@@ -67,7 +71,9 @@ function readAttempt(value: unknown): StoredAttempt {
                 const e = event as Record<string, unknown>;
                 return typeof e.at !== 'string' || !Number.isFinite(Date.parse(e.at))
                     || !EVENTS.includes(e.type as TeamsEventType)
-                    || (e.category !== undefined && (!SKIP_REASONS.includes(e.category as TeamsSkipReason) || e.type !== 'inbound-skipped'))
+                    || (e.category !== undefined && !(e.type === 'inbound-skipped'
+                        ? SKIP_REASONS.includes(e.category as TeamsSkipReason)
+                        : FAILURE_EVENTS[e.type as TeamsEventType] === e.category))
                     || (e.reason !== undefined && (!SKIP_REASONS.includes(e.reason as TeamsSkipReason) || e.type !== 'inbound-skipped'));
             })))
         || (row.totals !== undefined && (!row.totals || typeof row.totals !== 'object' || Array.isArray(row.totals)
@@ -83,7 +89,8 @@ function readAttempt(value: unknown): StoredAttempt {
     }
     const events = (row.events as Array<TeamsAttemptEvent & { reason?: TeamsSkipReason }> | undefined ?? []).map(e => ({
         at: e.at, type: e.type,
-        ...((e.category ?? e.reason) ? { category: e.category ?? e.reason } : {}),
+        ...((e.category ?? e.reason ?? FAILURE_EVENTS[e.type])
+            ? { category: e.category ?? e.reason ?? FAILURE_EVENTS[e.type] } : {}),
     }));
     const totals: Record<string, number> = row.totals
         ? Object.fromEntries(Object.entries(row.totals))
@@ -212,7 +219,8 @@ export class TeamsAttemptStore {
     }
 
     private append(attempt: StoredAttempt, type: TeamsEventType, category?: TeamsSkipReason): void {
-        attempt.events.push({ at: this.now().toISOString(), type, ...(category ? { category } : {}) });
+        const safeCategory = category ?? FAILURE_EVENTS[type];
+        attempt.events.push({ at: this.now().toISOString(), type, ...(safeCategory ? { category: safeCategory } : {}) });
         this.increment(attempt, type);
         if (attempt.events.length > MAX_EVENTS) attempt.events.shift();
     }

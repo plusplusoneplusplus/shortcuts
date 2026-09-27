@@ -132,6 +132,10 @@ describe('TeamsAttemptStore', () => {
         const id = store.start();
         store.poll(id, 'failure');
         store.send(id, 'rejected');
+        expect(store.list()[0].events).toMatchObject([
+            { type: 'poll-failed', category: 'polling' },
+            { type: 'reply-rejected', category: 'send' },
+        ]);
         expect(store.list()[0]).toMatchObject({ pollDegraded: true, sendDegraded: true, degraded: true });
         for (let i = 0; i < 250; i++) store.poll(id, 'success');
         store.send(id, 'accepted');
@@ -192,7 +196,7 @@ describe('TeamsAttemptStore', () => {
             phases: [{ stage: 'started', at: f.clock().toISOString() }, { stage: 'connected', at: f.clock().toISOString() }],
             events: [
                 { type: 'inbound-skipped', at: f.clock().toISOString(), category: 'own' },
-                { type: 'poll-failed', at: f.clock().toISOString() },
+                { type: 'poll-failed', at: f.clock().toISOString(), category: 'polling' },
                 { type: 'reply-accepted', at: f.clock().toISOString() },
             ],
             totals: { 'inbound-skipped': 1, 'poll-success': 1, 'poll-failed': 1, 'reply-accepted': 1 },
