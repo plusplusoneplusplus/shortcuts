@@ -40,6 +40,12 @@ a user-clickable Microsoft sign-in link for the server-local PKCE flow. It polls
 shared MCP OAuth pending state and enables or reconnects the bridge after credentials
 are cached.
 
+With `features.teamsBridgeObservability` enabled, the normal Teams card loads
+server-global, newest-first connection attempts from the guarded messaging API.
+Its expandable native `<details>` rows show safe phase and activity timelines,
+poll/reply health, and aggregate counts. History fetch failures retain and mark
+the previous page stale; the existing connection/OAuth controls remain available.
+
 ## Admin as an overlay dialog
 
 Admin is a dialog, not a page. The gear (`#admin-toggle` in the topbar cluster,

@@ -2052,3 +2052,21 @@
 .admin-redesign .ar-teams-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .admin-redesign .ar-teams-auth-link { align-self: center; color: var(--ar-accent-fg); font-size: 12px; font-weight: 600; text-decoration: underline; }
 .admin-redesign .ar-teams-auth-link:focus-visible { outline: 2px solid var(--ar-accent); outline-offset: 2px; }
+.admin-redesign .ar-teams-history { border-top: 1px solid var(--ar-border); padding-top: 12px; display: grid; gap: 8px; min-width: 0; }
+.admin-redesign .ar-teams-history h4 { margin: 0; }
+.admin-redesign .ar-teams-history details { border: 1px solid var(--ar-border); border-radius: 6px; }
+.admin-redesign .ar-teams-attempt-summary { cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; padding: 8px 12px; }
+.admin-redesign .ar-teams-attempt-summary:focus-visible { outline: 2px solid var(--ar-accent); outline-offset: 2px; }
+.admin-redesign .ar-teams-attempt-summary time { color: var(--ar-text-mute); }
+.admin-redesign .ar-teams-attempt-detail { padding: 4px 12px 12px; border-top: 1px solid var(--ar-border); font-size: 12px; }
+.admin-redesign .ar-teams-timeline { border-left: 2px solid var(--ar-border); margin: 10px 0 12px 6px; padding-left: 18px; }
+.admin-redesign .ar-teams-timeline li { padding: 3px 0; }
+.admin-redesign .ar-teams-timeline time { color: var(--ar-text-mute); margin-right: 8px; }
+.admin-redesign .ar-teams-counts { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.admin-redesign .ar-teams-counts div { display: flex; gap: 6px; }
+.admin-redesign .ar-teams-counts dd { margin: 0; font-weight: 600; }
+.admin-redesign .ar-teams-pages { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+@container ar-main (max-width: 600px) {
+  .admin-redesign .ar-teams-attempt-summary { display: grid; grid-template-columns: 1fr auto; }
+  .admin-redesign .ar-teams-attempt-summary time { grid-column: 1 / -1; }
+}
