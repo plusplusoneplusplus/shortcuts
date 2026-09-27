@@ -108,7 +108,9 @@ all have their own `references/*.md`.
   handshake verification; verified tokens enter the shared Copilot OAuth cache
   for polling. It is separate from container `/container/messaging/*` and the
   container self-chat relay. Keep enable/disable, startup, and shutdown
-  synchronized with the polling manager.
+  synchronized with the polling manager. `messaging/teams-attempt-store.ts`
+  keeps server-global connection history in the CoC data directory; its
+  persisted format allowlists safe stages, outcomes, and failure categories.
 - **Process mutation admission** uses the shared keyed coordinator in
   `src/server/processes/process-operation-admission.ts`. Follow-up delivery and
   rewind share that section. Follow-up delivery re-reads process/task state
