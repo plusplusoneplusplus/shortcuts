@@ -342,32 +342,48 @@ describeWithRustTooling('real rust-analyzer runtime', () => {
 
 describeWithRustTooling('Rust language features over a real Cargo workspace', () => {
     it('hovers a cross-crate function with its resolved signature and docs', async () => {
-        const result = await session.sendRequest('textDocument/hover', {
-            textDocument: { uri: uriFor('app/src/lib.rs') },
-            position: positionAt(APP_RS, 'make_widget("one"', 2),
-        });
+        const result = await waitForRequest(
+            'textDocument/hover',
+            {
+                textDocument: { uri: uriFor('app/src/lib.rs') },
+                position: positionAt(APP_RS, 'make_widget("one"', 2),
+            },
+            (found) => hoverText(found).includes('Builds a widget from its parts.'),
+            'cross-crate hover',
+        );
         expect(hoverText(result)).toContain('fn make_widget');
         expect(hoverText(result)).toContain('Builds a widget from its parts.');
-    });
+    }, 120_000);
 
     it('goes to a definition in another workspace crate', async () => {
-        const result = await session.sendRequest('textDocument/definition', {
-            textDocument: { uri: uriFor('app/src/lib.rs') },
-            position: positionAt(APP_RS, 'make_widget("one"', 2),
-        });
+        const result = await waitForRequest(
+            'textDocument/definition',
+            {
+                textDocument: { uri: uriFor('app/src/lib.rs') },
+                position: positionAt(APP_RS, 'make_widget("one"', 2),
+            },
+            (found) => targetUris(found).map(fileUriKey).includes(fileUriKey(uriFor('core-fixture/src/lib.rs'))),
+            'cross-crate definition',
+        );
         expect(targetUris(result).map(fileUriKey)).toContain(fileUriKey(uriFor('core-fixture/src/lib.rs')));
-    });
+    }, 120_000);
 
     it('finds references to a type across workspace crates', async () => {
-        const result = await session.sendRequest('textDocument/references', {
-            textDocument: { uri: uriFor('core-fixture/src/lib.rs') },
-            position: positionAt(CORE_RS, 'struct Widget', 'struct '.length),
-            context: { includeDeclaration: true },
-        });
+        // rust-analyzer answers `content modified` while it is still re-indexing; retry until settled.
+        const result = await waitForRequest(
+            'textDocument/references',
+            {
+                textDocument: { uri: uriFor('core-fixture/src/lib.rs') },
+                position: positionAt(CORE_RS, 'struct Widget', 'struct '.length),
+                context: { includeDeclaration: true },
+            },
+            (found) => targetUris(found).map(fileUriKey).includes(fileUriKey(uriFor('app/src/lib.rs'))),
+            'cross-crate references',
+        );
         const targets = targetUris(result).map(fileUriKey);
         expect(targets).toContain(fileUriKey(uriFor('core-fixture/src/lib.rs')));
         expect(targets).toContain(fileUriKey(uriFor('app/src/lib.rs')));
-    });
+    }, 120_000);
 
     it('completes fields and derive-macro generated methods', async () => {
         const completionText = APP_RS
