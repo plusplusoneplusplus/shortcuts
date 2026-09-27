@@ -6,7 +6,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+vi.stubGlobal('fetch', (url: string, options?: RequestInit) => {
+    if (typeof options?.body === 'string'
+        && JSON.parse(options.body).method === 'notifications/initialized') {
+        return Promise.resolve({ ok: true, headers: new Map(), body: { cancel: async () => {} } });
+    }
+    return mockFetch(url, options);
+});
 
 import { TeamsBot } from '../../src/teams/bot';
 import type { InboundTeamsMessage } from '../../src/teams/types';
@@ -405,7 +411,7 @@ describe('TeamsBot', () => {
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     headers: new Map(),
-                    json: async () => ({ result: { serverInfo: { name: 'test' } } }),
+                    json: async () => ({ result: { protocolVersion: '2025-03-26', serverInfo: { name: 'test' } } }),
                 } as any);
 
                 const bot = new TeamsBot({
@@ -453,7 +459,7 @@ describe('TeamsBot', () => {
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     headers: new Map(),
-                    json: async () => ({ result: { serverInfo: { name: 'test' } } }),
+                    json: async () => ({ result: { protocolVersion: '2025-03-26', serverInfo: { name: 'test' } } }),
                 } as any);
 
                 const bot = new TeamsBot({
@@ -498,7 +504,7 @@ describe('TeamsBot', () => {
                 mockFetch.mockResolvedValueOnce({
                     ok: true,
                     headers: new Map(),
-                    json: async () => ({ result: { serverInfo: { name: 'test' } } }),
+                    json: async () => ({ result: { protocolVersion: '2025-03-26', serverInfo: { name: 'test' } } }),
                 } as any);
 
                 const bot = new TeamsBot({

@@ -5,7 +5,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const initialized = vi.fn();
+vi.stubGlobal('fetch', (url: string, options?: RequestInit) => {
+    const body = typeof options?.body === 'string' ? JSON.parse(options.body) : null;
+    if (body?.method === 'notifications/initialized') {
+        initialized(body);
+        return Promise.resolve({ ok: true, headers: new Map(), body: { cancel: async () => {} } });
+    }
+    return mockFetch(url, options);
+});
 
 import { createTransport } from '../../src/teams/bot';
 import { GraphTransport } from '../../src/teams/transport-graph';
@@ -189,6 +197,7 @@ describe('McpTransport', () => {
     beforeEach(() => {
         transport = new McpTransport('https://mcp.test.com/server');
         mockFetch.mockReset();
+        initialized.mockClear();
     });
 
     it('should initialize MCP session', async () => {
@@ -200,6 +209,7 @@ describe('McpTransport', () => {
         } as any);
 
         await transport.initialize('mcp-token', { teamId: 'team-1' });
+        expect(initialized).toHaveBeenCalledWith({ jsonrpc: '2.0', method: 'notifications/initialized' });
     });
 
     it('should send via MCP tool call', async () => {
@@ -207,7 +217,7 @@ describe('McpTransport', () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             headers: new Map([['mcp-session-id', 'session-1']]),
-            json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
         } as any);
         await transport.initialize('token', { teamId: 'team-1' });
 
@@ -237,7 +247,7 @@ describe('McpTransport', () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             headers: new Map([['mcp-session-id', 'session-1']]),
-            json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
         } as any);
         await transport.initialize('token', { teamId: 'team-1' });
 
@@ -270,7 +280,7 @@ describe('McpTransport', () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             headers: new Map([['mcp-session-id', 'session-1']]),
-            json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
         } as any);
         await transport.initialize('token', { teamId: 'team-1' });
 
@@ -357,7 +367,7 @@ describe('McpTransport', () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 headers: new Map([['mcp-session-id', 'session-dm']]),
-                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
             } as any);
             mockFetch.mockResolvedValueOnce({
                 ok: true,
@@ -406,7 +416,7 @@ describe('McpTransport', () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 headers: new Map([['mcp-session-id', 'session-dm']]),
-                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
             } as any);
             // listTools — has both SendMessageToSelf and ListChats
             mockFetch.mockResolvedValueOnce({
@@ -448,7 +458,7 @@ describe('McpTransport', () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 headers: new Map([['mcp-session-id', 'session-dm']]),
-                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
             } as any);
             mockFetch.mockResolvedValueOnce({
                 ok: true,
