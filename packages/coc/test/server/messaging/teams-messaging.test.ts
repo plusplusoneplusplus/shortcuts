@@ -200,6 +200,42 @@ describe('TeamsMessagingManager', () => {
             .not.toMatch(/private|example\.test|TestTeam|TestChannel/);
     });
 
+    it('closes unexpected bot lifecycle failures but keeps ordinary poll failures active', async () => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home'), getObservabilityEnabled: () => true });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        const first = vi.mocked(TeamsBot).mock.lastCall![0];
+        first.onPoll?.('failure');
+        first.onError?.('private exception and message ID');
+        expect(m2.getStatus().status).toBe('connected');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({ pollDegraded: true, events: [{ type: 'poll-failed' }] });
+        expect(m2.getAttemptHistory()?.[0].endedAt).toBeUndefined();
+
+        first.onStatusChange?.('error');
+        expect(m2.getStatus().status).toBe('error');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({
+            result: 'failed', failureCategory: 'polling', pollDegraded: true,
+        });
+        const closed = m2.getAttemptHistory()?.[0];
+        first.onPoll?.('success');
+        first.onStatusChange?.('connected');
+        expect(m2.getAttemptHistory()?.[0]).toEqual(closed);
+        expect(m2.getStatus().status).toBe('error');
+
+        await m2.connect();
+        const second = vi.mocked(TeamsBot).mock.lastCall![0];
+        second.onStatusChange?.('disconnected');
+        expect(m2.getStatus().status).toBe('disconnected');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({ result: 'disconnected' });
+        expect(m2.getAttemptHistory()?.[0].failureCategory).toBeUndefined();
+        second.onStatusChange?.('connected');
+        expect(m2.getStatus().status).toBe('disconnected');
+        expect(fs.readFileSync(path.join(tmpDir, 'teams-attempts.json'), 'utf8'))
+            .not.toMatch(/private|example\.test|TestTeam|TestChannel/);
+    });
+
     it('ignores late poll and inbound callbacks from superseded bots and in-flight dispatch', async () => {
         const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home'), getObservabilityEnabled: () => true });
         let release!: () => void;

@@ -207,6 +207,7 @@ export class TeamsMessagingManager {
         this._lastError = null;
         let failureCategory: TeamsFailureCategory = 'configuration';
         let connectedRecorded = false;
+        let terminal = false;
 
         try {
             const serverUrl = this.getServerUrl();
@@ -263,13 +264,20 @@ export class TeamsMessagingManager {
                     }
                 },
                 onStatusChange: (s) => {
-                    if (generation !== this.generation) return;
+                    if (generation !== this.generation || terminal) return;
                     this._status = s;
                     if (s === 'connected') {
                         this._lastError = null;
-                        if (attemptId && this.attemptId === attemptId && !connectedRecorded) {
+                        if (!connectedRecorded) {
                             connectedRecorded = true;
-                            history?.phase(attemptId, 'connected');
+                            if (attemptId && this.attemptId === attemptId) history?.phase(attemptId, 'connected');
+                        }
+                    } else if (connectedRecorded && (s === 'disconnected' || s === 'error')) {
+                        terminal = true;
+                        if (attemptId && this.attemptId === attemptId) {
+                            history?.finish(attemptId, s === 'error' ? 'failed' : 'disconnected',
+                                s === 'error' ? 'polling' : undefined);
+                            this.attemptId = null;
                         }
                     }
                 },
