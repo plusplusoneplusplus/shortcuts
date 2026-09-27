@@ -91,6 +91,49 @@ describe('UnifiedPanelTabStrip', () => {
         expect(divider.nextElementSibling).toBe(starts[0]);
     });
 
+    it('puts chat canvases on the tools side of the divider, before files', () => {
+        let state = EMPTY_UNIFIED_PANEL;
+        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
+        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        const tabs = visibleTabs(state, CHAT);
+        renderStrip({ tabs });
+        expect(screen.getAllByRole('tab').map(el => el.getAttribute('data-kind')))
+            .toEqual(['terminal', 'canvas', 'file']);
+        const divider = screen.getByTestId('unified-panel-tab-section-divider');
+        expect(divider.previousElementSibling?.getAttribute('data-kind')).toBe('canvas');
+        expect(divider.nextElementSibling?.getAttribute('data-kind')).toBe('file');
+        // The canvas keeps its chat ownership even on the tools side.
+        expect(screen.getAllByRole('tab')[1].getAttribute('data-scope')).toBe('chat');
+    });
+
+    it('draws no divider while only tools (including canvases) are open', () => {
+        let state = EMPTY_UNIFIED_PANEL;
+        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        renderStrip({ tabs: visibleTabs(state, CHAT) });
+        expect(screen.queryByTestId('unified-panel-tab-section-divider')).toBeNull();
+    });
+
+    it('stops Alt+Arrow at the divider between canvases and files', () => {
+        let state = EMPTY_UNIFIED_PANEL;
+        state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
+        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        const tabs = visibleTabs(state, CHAT);
+        const props = renderStrip({ tabs });
+        // tabs = [canvas, file]: neither may step across into the other group.
+        fireEvent.keyDown(tabNode(tabs[0]), { key: 'ArrowRight', altKey: true });
+        fireEvent.keyDown(tabNode(tabs[1]), { key: 'ArrowLeft', altKey: true });
+        expect(props.onMove).not.toHaveBeenCalled();
+    });
+
+    it('draws canvas tabs with the palette icon', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        const tabs = visibleTabs(state, CHAT);
+        renderStrip({ tabs });
+        expect(tabNode(tabs[0]).querySelector('svg[data-icon="canvas-palette"]')).toBeTruthy();
+    });
+
     it('marks the active tab for assistive tech, not only with color', () => {
         const tabs = sampleTabs();
         renderStrip({ tabs, activeId: tabs[1].id });

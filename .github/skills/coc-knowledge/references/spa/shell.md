@@ -267,8 +267,10 @@ Result previews highlight the exact server-provided UTF-16 column span, includin
 regex and multiline pieces, with malformed offsets clamped by the shared Explorer
 match-text splitter.
 
-The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs,
-with a searchable `+` menu and one right-edge navigator that switches between
+The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs.
+The strip's divider splits tools (workspace tabs plus the chat's canvases, which
+stay chat-owned) from resources (files, diffs, external); tabs never reorder
+across it. It has a searchable `+` menu and one right-edge navigator that switches between
 the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
 first use, share the panel-scope navigator width, and route through the selected
 dock target. The Search/Explorer pair moves between the file toolbar and tab strip,
@@ -307,7 +309,7 @@ untouched.
 Unified-panel tabs close on middle-click through the same dirty-buffer and live
 terminal guards as their close buttons. Their accessible context menu provides
 preview promotion, visible-strip bulk close commands, and file-only path copy and
-Explorer reveal. Bulk close targets span the workspace/selected-chat divider in
+Explorer reveal. Bulk close targets span the tools/resources divider in
 rendered order, exclude tabs hidden under other chats, and run each target through
 the protected close flow. File reveal retargets the dock to the owning clone and
 uses the existing Explorer active-file tracking path.

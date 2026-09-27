@@ -34,6 +34,12 @@ Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
+Display grouping is separate from ownership: `displayGroupForKind` puts
+`canvas` with the workspace kinds as `tools` and `file | diff | external` in
+`resources`. `visibleTabs` shows workspace tabs, then the chat's canvases, then
+its resources, keeping stored order inside each group; the strip draws its
+divider at the tools→resources boundary, and `moveTab` / Alt+Arrow never cross
+it.
 `external` is a read-only definition source outside every workspace; its
 resource id is the opaque capability the owning member's host issued, it has no
 entry in the "+" menu, and it is never persisted. `unifiedTabId`
@@ -58,7 +64,7 @@ from same-id clones never merge into one tab.
 | `unifiedPanelNavigationHistory.ts` | Pure in-memory file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, and closed-tab pruning. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | Session-only history keyed by panel scope, plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
-| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip and accessible VS Code-style tab menu. A dedicated visual divider in the tab row separates workspace tools from chat resources; the workspace below remains continuous. File tabs render Explorer's shared `FileNameIcon` from their filename, while other resource kinds use their fixed icons. The pure model owns per-kind action availability, path resolution, and visible-order bulk target selection. |
+| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip and accessible VS Code-style tab menu. A dedicated visual divider in the tab row separates tools (Terminal, Notes, notes, Git, and the chat's canvases) from resources (files, diffs, external); the workspace below remains continuous. File tabs render Explorer's shared `FileNameIcon` from their filename, while other resource kinds use their fixed icons. The pure model owns per-kind action availability, path resolution, and visible-order bulk target selection. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |

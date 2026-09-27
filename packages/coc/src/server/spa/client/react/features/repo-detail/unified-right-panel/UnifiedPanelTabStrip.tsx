@@ -38,7 +38,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
 import { FileNameIcon } from '../explorer/FileTypeIcon';
-import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
+import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
 import {
     unifiedPanelTabMenuItems,
@@ -85,9 +85,12 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
         </svg>
     ),
     canvas: (
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
-            <rect x="2.5" y="3" width="11" height="10" rx="1.2" />
-            <line x1="2.5" y1="6" x2="13.5" y2="6" />
+        // A painter's palette, matching the 🎨 the "+" menu shows for canvases.
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true" data-icon="canvas-palette">
+            <path d="M8 2.2C4.5 2.2 2 4.6 2 7.7c0 3.2 2.6 6.1 5.4 6.1 1 0 1.4-.6 1.1-1.4-.3-.9.1-1.7 1.1-1.7h1.5c1.8 0 2.9-1.2 2.9-2.9 0-3.2-2.7-5.6-6-5.6z" />
+            <circle cx="5.2" cy="7.6" r="0.8" fill="currentColor" stroke="none" />
+            <circle cx="7" cy="5" r="0.8" fill="currentColor" stroke="none" />
+            <circle cx="10.2" cy="5.4" r="0.8" fill="currentColor" stroke="none" />
         </svg>
     ),
     diff: (
@@ -193,10 +196,11 @@ export function UnifiedPanelTabStrip({
         if (originId) queueMicrotask(() => tabRefs.current.get(originId)?.focus());
     }, [contextMenu?.tabId]);
 
-    /** The contiguous run of tabs sharing `tab`'s scope — its own section. */
+    /** The contiguous run of tabs sharing `tab`'s scope and display group — its own section. */
     const sectionOf = (tab: UnifiedPanelTab) => {
         const scope = scopeForKind(tab.kind);
-        return tabs.filter(entry => scopeForKind(entry.kind) === scope);
+        const group = displayGroupForKind(tab.kind);
+        return tabs.filter(entry => scopeForKind(entry.kind) === scope && displayGroupForKind(entry.kind) === group);
     };
 
     /** Alt+Arrow: shift the focused tab one place inside its section. */
@@ -275,15 +279,15 @@ export function UnifiedPanelTabStrip({
                     const isActive = tab.id === activeId;
                     const isDirty = dirtyIds?.has(tab.id) ?? false;
                     const hasError = errorIds?.has(tab.id) ?? false;
-                    // The divider marks where workspace-owned tools (Terminal
-                    // and Notes) end and chat resources begin — derived, never
-                    // passed in.
-                    const startsChatSection = index > 0
-                        && scopeForKind(tab.kind) === 'chat'
-                        && scopeForKind(tabs[index - 1].kind) === 'workspace';
+                    // The divider marks where tools (Terminal, Notes, Git, and
+                    // the chat's canvases) end and resources (files, diffs)
+                    // begin — derived, never passed in.
+                    const startsResourceSection = index > 0
+                        && displayGroupForKind(tab.kind) === 'resources'
+                        && displayGroupForKind(tabs[index - 1].kind) === 'tools';
                     return (
                         <Fragment key={tab.id}>
-                            {startsChatSection && (
+                            {startsResourceSection && (
                                 <div
                                     aria-hidden="true"
                                     data-testid="unified-panel-tab-section-divider"
@@ -311,7 +315,7 @@ export function UnifiedPanelTabStrip({
                             data-active={isActive || undefined}
                             data-dirty={isDirty || undefined}
                             data-preview={tab.preview || undefined}
-                            data-section-start={startsChatSection || undefined}
+                            data-section-start={startsResourceSection || undefined}
                             onClick={() => onActivate(tab.id)}
                             onDoubleClick={() => onPromote?.(tab.id)}
                             onAuxClick={event => {
