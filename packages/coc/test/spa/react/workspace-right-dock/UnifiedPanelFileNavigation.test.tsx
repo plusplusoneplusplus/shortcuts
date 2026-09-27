@@ -133,6 +133,7 @@ import {
     clearUnifiedPanelState,
     writeUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { clearUnifiedPanelNavigationHistory } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelNavigationStore';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
@@ -342,17 +343,12 @@ describe('unified panel file navigation history', () => {
         expect(mouseHistory(notes, 3).down.defaultPrevented).toBe(false);
     });
 
-    it('prunes a closed destination instead of reopening it', async () => {
+    it('reopens a closed destination as a preview at its saved location', async () => {
         seedFile();
         renderPanel();
         await screen.findByTestId('mock-file-a.ts');
         fireEvent.click(screen.getByTestId('jump-to-b'));
-        const b = await screen.findByTestId('mock-file-b.ts');
-        act(() => b.focus());
-        pressHistory('back');
-        await waitFor(() => expect(
-            screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
-        ).toHaveAttribute('aria-selected', 'true'));
+        await screen.findByTestId('mock-file-b.ts');
 
         fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${fileId('b.ts')}`));
         await waitFor(() => expect(
@@ -360,7 +356,19 @@ describe('unified panel file navigation history', () => {
         ).not.toBeInTheDocument());
         act(() => screen.getByTestId('mock-file-a.ts').focus());
 
-        expect(pressHistory('forward').defaultPrevented).toBe(false);
+        // Closing B landed on A, which is itself a visit: [A, B, A].
+        expect(pressHistory('back').defaultPrevented).toBe(true);
+        const reopened = await screen.findByTestId(`unified-panel-tab-${fileId('b.ts')}`);
+        expect(reopened).toHaveAttribute('aria-selected', 'true');
+        expect(reopened).toHaveAttribute('data-preview', 'true');
+        await waitFor(() => expect(controllers.get('b.ts')?.restore).toHaveBeenCalledWith(snapshot(30, 5)));
+
+        await act(async () => { await Promise.resolve(); });
+        act(() => screen.getByTestId('mock-file-b.ts').focus());
+        expect(pressHistory('forward').defaultPrevented).toBe(true);
+        await waitFor(() => expect(
+            screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
+        ).toHaveAttribute('aria-selected', 'true'));
     });
 
     it('does not replay one workspace scope after switching to another', async () => {
@@ -382,6 +390,25 @@ describe('unified panel file navigation history', () => {
         act(() => otherFile.focus());
 
         expect(pressHistory('back').defaultPrevented).toBe(false);
+    });
+
+    it('restores a workspace history persisted before a reload', async () => {
+        seedFile();
+        const first = renderPanel();
+        await screen.findByTestId('mock-file-a.ts');
+        fireEvent.click(screen.getByTestId('jump-to-b'));
+        await screen.findByTestId('mock-file-b.ts');
+        first.unmount();
+        // A reload drops the in-memory cache; only localStorage survives.
+        const saved = { ...localStorage };
+        clearUnifiedPanelNavigationHistory();
+        for (const [key, value] of Object.entries(saved)) localStorage.setItem(key, value);
+
+        renderPanel();
+        const b = await screen.findByTestId('mock-file-b.ts');
+        act(() => b.focus());
+        expect(pressHistory('back').defaultPrevented).toBe(true);
+        await waitFor(() => expect(controllers.get('a.ts')?.restore).toHaveBeenCalledWith(snapshot(1, 3)));
     });
 
     it('keeps a workspace history in memory when its panel remounts', async () => {
