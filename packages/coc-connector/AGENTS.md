@@ -16,7 +16,7 @@ Consolidated messaging connectors behind one `MessagingConnector` contract. No C
 - **`SendOptions.mentions` are keyed by `id`.** `TeamsBot.send` maps `id → aadId` before calling its transport.
 - **MCP polling failures stay visible.** `TeamsBot` reports poll errors through `onError` and clears them after a successful poll; an unrecoverable token-refresh failure stops polling with error status until reconnect. Optional `onPoll` and `onInbound` observers receive only safe outcome/skip enums, and observer exceptions cannot interrupt polling or routing.
 - **MCP HTTP sessions complete initialization.** `McpClient` sends `notifications/initialized` after negotiating the protocol version and carries the session id and version on later requests, including `tools/list`.
-- **MCP sends escape content backslashes.** Channel posts, thread replies, and self-DMs double backslashes in tool content so Windows paths survive the Teams MCP parser. Tool results with `isError` or `Error:` text reject the send; send failures do not imply a lost connection.
+- **MCP sends escape content backslashes.** Channel posts, thread replies, and self-DMs double backslashes in tool content so Windows paths survive the Teams MCP parser. Channel tool results with `isError` or `Error:` text reject with `TeamsMcpSendRejectedError` so a caller can distinguish definite rejection from an unknown network outcome; send failures do not imply a lost connection.
 - Baileys + qrcode-terminal are `optionalDependencies` — installed but only loaded by WhatsApp use.
 
 ## Build / test
