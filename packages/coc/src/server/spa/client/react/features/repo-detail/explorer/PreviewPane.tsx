@@ -219,17 +219,25 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         && blob?.encoding === 'utf-8' && !isOversized;
     const canPreviewMarkdown = markdownPreview && !isTrusted && !isOversized
         && displayBlob?.encoding === 'utf-8' && /\.(md|markdown)$/i.test(fileName);
-    const [rawMarkdown, setRawMarkdown] = useState(revealLine !== undefined);
+    const [rawMarkdown, setRawMarkdownState] = useState(revealLine !== undefined);
+    // The mode the pane is heading to, set before React renders it. A model
+    // mount that React flushes while the raw editor is being left must not
+    // spend the snapshot saved for the way back.
+    const rawMarkdownRef = useRef(rawMarkdown);
+    const setRawMarkdown = useCallback((raw: boolean) => {
+        rawMarkdownRef.current = raw;
+        setRawMarkdownState(raw);
+    }, []);
     const rawViewStateRef = useRef<EditorNavigationSnapshot | null>(null);
     useEffect(() => {
         if (revealLine === undefined) return;
         rawViewStateRef.current = null;
         setRawMarkdown(true);
-    }, [revealLine, revealColumn, revealNonce]);
+    }, [revealLine, revealColumn, revealNonce, setRawMarkdown]);
     useEffect(() => {
         rawViewStateRef.current = null;
         setRawMarkdown(revealLine !== undefined);
-    }, [repoId, routingRef, actualPath]);
+    }, [repoId, routingRef, actualPath, setRawMarkdown]);
     const showRendered = canPreviewMarkdown && !rawMarkdown;
     const renderedNavigationController = useMemo<EditorNavigationController>(() => ({
         capture: () => rawViewStateRef.current,
@@ -238,7 +246,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             setRawMarkdown(true);
         },
         subscribe: () => ({ dispose: () => undefined }),
-    }), []);
+    }), [setRawMarkdown]);
     useEffect(() => {
         if (!showRendered || !onNavigationMount) return;
         onNavigationMount(renderedNavigationController);
@@ -320,7 +328,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     const handleModelMount = useCallback(({ editor, monaco, model }: EditorModelMountContext) => {
         const navigationController = createEditorNavigationController(editor);
         navigationControllerRef.current = navigationController;
-        if (rawViewStateRef.current) {
+        if (rawViewStateRef.current && rawMarkdownRef.current) {
             navigationController.restore(rawViewStateRef.current);
             rawViewStateRef.current = null;
         }
@@ -454,7 +462,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     const switchToRendered = useCallback(() => {
         rawViewStateRef.current = navigationControllerRef.current?.capture() ?? null;
         setRawMarkdown(false);
-    }, []);
+    }, [setRawMarkdown]);
 
     // Monaco applies the restored `value` without firing onChange, so the
     // language document gets the full text here.
