@@ -175,6 +175,44 @@ describe('server-side auto-pull over a real repository', { timeout: 120_000 }, (
         expect(manager!.isArmed(WORKSPACE_ID)).toBe(true);
     });
 
+    it('rolls back a pull that conflicts with a local commit instead of leaving a rebase', async () => {
+        // Regression: an unattended auto-pull once left the repo paused mid-rebase
+        // with a conflict while an agent loop was working in it.
+        enableAutoPull();
+        await startManager();
+
+        pushUpstreamCommit('upstream-edit');
+        fs.appendFileSync(path.join(workRoot, 'tracked.txt'), 'local-edit\n');
+        git(workRoot, 'commit', '--quiet', '-am', 'local-commit');
+        const localHead = git(workRoot, 'rev-parse', 'HEAD');
+        const branch = git(workRoot, 'rev-parse', '--abbrev-ref', 'HEAD');
+
+        fireLatestTimer();
+        await waitForOutcome('failed-conflict');
+
+        expect(fs.existsSync(path.join(workRoot, '.git', 'rebase-merge'))).toBe(false);
+        expect(fs.existsSync(path.join(workRoot, '.git', 'rebase-apply'))).toBe(false);
+        expect(git(workRoot, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(branch);
+        expect(git(workRoot, 'rev-parse', 'HEAD')).toBe(localHead);
+        expect(git(workRoot, 'status', '--porcelain')).toBe('');
+        expect(manager!.getStatus(WORKSPACE_ID).message).toContain('rolled back');
+    });
+
+    it('skips while a rebase is already in progress and leaves it alone', async () => {
+        enableAutoPull();
+        await startManager();
+
+        pushUpstreamCommit('should-not-land');
+        const rebaseDir = path.join(workRoot, '.git', 'rebase-merge');
+        fs.mkdirSync(rebaseDir);
+
+        fireLatestTimer();
+        await waitForOutcome('skipped-in-progress');
+
+        expect(fs.existsSync(rebaseDir)).toBe(true);
+        expect(git(workRoot, 'log', '-1', '--format=%s')).toBe('initial');
+    });
+
     it('pulls when the only local changes are untracked', async () => {
         enableAutoPull();
         await startManager();

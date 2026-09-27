@@ -13,9 +13,11 @@ import type { GitAutoPullOutcome, GitAutoPullStatusResponse } from '@plusplusone
 const OUTCOME_LABELS: Record<GitAutoPullOutcome, string> = {
     'success': 'pulled',
     'failed': 'failed',
+    'failed-conflict': 'rolled back — would conflict',
     'skipped-dirty': 'skipped — uncommitted changes',
     'skipped-precheck-error': 'skipped — could not check the working tree',
     'skipped-in-flight': 'skipped — a pull was already running',
+    'skipped-in-progress': 'skipped — rebase, merge, or cherry-pick in progress',
 };
 
 /**

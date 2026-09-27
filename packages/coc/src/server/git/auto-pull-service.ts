@@ -55,6 +55,8 @@ export function createAutoPullManager(options: CreateAutoPullManagerOptions): Au
             repoRoot: workspace.rootPath,
             isPullRunning: async () => (await gitOpsStore.getRunning(workspace.id, 'pull')).length > 0,
             getChanges: repoRoot => workingTreeService.getAllChanges(repoRoot),
+            getRepoOperation: async repoRoot => (await branchService.getRepoState(repoRoot)).operation,
+            abortRebase: repoRoot => branchService.rebaseAbort(repoRoot),
             pull: repoRoot => branchService.pullCurrentBranch(repoRoot, true),
             runner,
         }),

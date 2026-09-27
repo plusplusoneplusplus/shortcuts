@@ -26,13 +26,16 @@ refresh, and the two layouts. Everything else lives here.
   its client through `useCocClient(workspaceId)`. Git, queue and preferences
   traffic must target the selected clone's server — never the page-origin
   singleton, and never a client captured from a different workspace.
-- **Auto-pull runs on the server.** The timer, the dirty pre-check, the pull and
-  the persisted run state all live in `src/server/git/auto-pull-*.ts`, so a repo
-  pulls whether or not a tab is open and the schedule survives a reload. The
-  client is a reader over `GET /api/workspaces/:id/git/auto-pull`. Do not add a
-  browser timer that initiates a pull — that is exactly what was removed.
+- **Auto-pull runs on the server.** The timer, the dirty and in-progress
+  (rebase/merge/cherry-pick) pre-checks, the pull and the persisted run state all
+  live in `src/server/git/auto-pull-*.ts`, so a repo pulls whether or not a tab is
+  open and the schedule survives a reload. A `pull --rebase` that stops on a
+  conflict is aborted (`failed-conflict`); auto-pull never leaves a repo
+  mid-rebase. The client is a reader over `GET /api/workspaces/:id/git/auto-pull`.
+  Do not add a browser timer that initiates a pull — that is exactly what was removed.
 - **Auto-pull outcomes are informational, never the banner.** A background pull
-  that skipped (dirty tree) or failed (non-fast-forward) is reported in the
+  that skipped (dirty tree, operation in progress) or failed (non-fast-forward,
+  rolled-back conflict) is reported in the
   auto-pull dropdown. `actionError` is reserved for actions the user asked for.
 - **Data does not own selection.** `refreshAll` reads and writes the right panel
   only through the injected `selection` bridge, and decides *what* to select via

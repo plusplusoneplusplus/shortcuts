@@ -13,9 +13,14 @@
  *      staged/unstaged changes; a rebase/merge there could clobber local work or
  *      refuse outright. Untracked files do not block a pull, so they do not
  *      count as dirty. Skipped ticks retry on the next interval.
- *   3. Otherwise run the same pull the manual button runs, *through*
+ *   3. In-progress pre-check — never pull on top of a rebase, merge, or
+ *      cherry-pick someone else is in the middle of.
+ *   4. Otherwise run the same pull the manual button runs, *through*
  *      `GitOperationRunner`, so the job record, cache invalidation, and the
  *      `git-changed` broadcast all behave exactly as they do for a manual pull.
+ *      Nobody watches an automatic pull, so a `pull --rebase` that stops on a
+ *      conflict is aborted and the branch restored; only the manual Pull button
+ *      leaves a conflict for the user to resolve.
  *
  * `start()` returns as soon as the job record exists and settles the job in the
  * background, so the tick cannot read the pull's outcome from its return value.
@@ -26,7 +31,7 @@
  * promise can't kill the interval that scheduled it.
  */
 
-import type { GitChange } from '@plusplusoneplusplus/forge';
+import type { GitChange, RepoOperationType } from '@plusplusoneplusplus/forge';
 import type { GitOperationOutcome, GitOperationRunner } from './git-operation-runner';
 import { writeAutoPullState, type AutoPullOutcome } from './auto-pull-state';
 
@@ -34,6 +39,9 @@ import { writeAutoPullState, type AutoPullOutcome } from './auto-pull-state';
 export const AUTO_PULL_MESSAGES = {
     dirty: 'Skipped: uncommitted changes in the working tree.',
     precheckError: 'Skipped: could not check the working tree.',
+    inProgress: 'Skipped: a rebase, merge, or cherry-pick is in progress.',
+    conflictRolledBack: 'The pull conflicted with local commits and was rolled back. Pull manually to resolve.',
+    conflictStuck: 'The pull conflicted and the rollback failed; the repository is still mid-rebase.',
     genericFailure: 'The pull could not complete cleanly.',
 } as const;
 
@@ -50,6 +58,10 @@ export interface AutoPullTickDeps {
     isPullRunning: () => Promise<boolean>;
     /** Working-tree changes for the dirty pre-check. */
     getChanges: (repoRoot: string) => Promise<readonly GitChange[]>;
+    /** Git operation in progress (rebase/merge/cherry-pick), or `'none'`. */
+    getRepoOperation: (repoRoot: string) => Promise<RepoOperationType>;
+    /** Aborts the rebase a conflicted `pull --rebase` left behind. */
+    abortRebase: (repoRoot: string) => Promise<GitOperationOutcome>;
     /** The pull itself — same `BranchService` call the manual route makes. */
     pull: (repoRoot: string) => Promise<GitOperationOutcome>;
     /** Owns the job record, the 409 guard, cache invalidation, and the broadcast. */
@@ -114,7 +126,16 @@ export async function runAutoPullTick(deps: AutoPullTickDeps): Promise<AutoPullT
         return record('skipped-dirty', AUTO_PULL_MESSAGES.dirty);
     }
 
-    // 3. The real pull, through the runner. The wrapper around `run` is the only
+    // 3. In-progress pre-check.
+    try {
+        if ((await deps.getRepoOperation(deps.repoRoot)) !== 'none') {
+            return record('skipped-in-progress', AUTO_PULL_MESSAGES.inProgress);
+        }
+    } catch {
+        return record('skipped-precheck-error', AUTO_PULL_MESSAGES.precheckError);
+    }
+
+    // 4. The real pull, through the runner. The wrapper around `run` is the only
     //    place the terminal outcome is observable, so the state is written there.
     try {
         const { jobId } = await deps.runner.start({
@@ -122,15 +143,21 @@ export async function runAutoPullTick(deps: AutoPullTickDeps): Promise<AutoPullT
             op: 'pull',
             rejectIfRunning: 'A pull operation is already running',
             run: async () => {
+                let result: GitOperationOutcome;
                 try {
-                    const result = await deps.pull(deps.repoRoot);
-                    if (result.success) record('success');
-                    else record('failed', result.error || AUTO_PULL_MESSAGES.genericFailure);
-                    return result;
+                    result = await deps.pull(deps.repoRoot);
                 } catch (err) {
-                    record('failed', errorMessage(err));
+                    if (!(await rollBackConflict(deps, record))) record('failed', errorMessage(err));
                     throw err;
                 }
+                if (result.success) {
+                    record('success');
+                    return result;
+                }
+                const rolledBack = await rollBackConflict(deps, record);
+                if (rolledBack) return { success: false, error: rolledBack.message };
+                record('failed', result.error || AUTO_PULL_MESSAGES.genericFailure);
+                return result;
             },
         });
         return { outcome: 'started-job', jobId };
@@ -139,4 +166,30 @@ export async function runAutoPullTick(deps: AutoPullTickDeps): Promise<AutoPullT
         if (isConflictError(err)) return record('skipped-in-flight');
         return record('failed', errorMessage(err));
     }
+}
+
+/**
+ * If a failed pull left the repo mid-rebase, abort it and record
+ * `failed-conflict`. Returns the recorded result, or undefined when there was
+ * no rebase to roll back (a plain failure the caller records itself).
+ */
+async function rollBackConflict(
+    deps: AutoPullTickDeps,
+    record: (outcome: AutoPullOutcome, message: string) => AutoPullTickResult,
+): Promise<AutoPullTickResult | undefined> {
+    try {
+        if ((await deps.getRepoOperation(deps.repoRoot)) !== 'rebase') return undefined;
+    } catch {
+        return undefined;
+    }
+    let aborted = false;
+    try {
+        aborted = (await deps.abortRebase(deps.repoRoot)).success;
+    } catch {
+        // Recorded as stuck below.
+    }
+    return record(
+        'failed-conflict',
+        aborted ? AUTO_PULL_MESSAGES.conflictRolledBack : AUTO_PULL_MESSAGES.conflictStuck,
+    );
 }
