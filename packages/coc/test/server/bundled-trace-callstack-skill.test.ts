@@ -31,7 +31,7 @@ describe('bundled trace-callstack skill', () => {
 
     it('has a matching name and a parseable semver version in its frontmatter', () => {
         const content = fs.readFileSync(skillPath, 'utf-8');
-        expect(content).toMatch(/^---\nname: trace-callstack\n/);
+        expect(content).toMatch(/^---\r?\nname: trace-callstack\r?\n/);
         expect(parseBundledSkillVersion('trace-callstack')).toMatch(/^\d+\.\d+\.\d+$/);
     });
 
