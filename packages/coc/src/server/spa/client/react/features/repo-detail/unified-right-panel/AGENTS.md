@@ -127,6 +127,10 @@ records during replay, and keeps locations of closed tabs: replaying one reopens
 the file as a preview. A replayed file whose read fails is gone — every entry for
 it is dropped (`dropReplayedNavigationEntry`), a tab the replay reopened is closed
 again, and replay keeps stepping the same direction.
+File reads report missing files asynchronously, so the initiating Back/Forward
+keyboard or auxiliary mouse event is claimed before a closed destination's
+read failure is known. Once all missing entries are removed, subsequent
+history inputs fall through to native browser behavior.
 
 `MonacoFileEditor` exposes a navigation controller that captures and restores the
 selection. Restore sets the selection and reveals it centered only when it is

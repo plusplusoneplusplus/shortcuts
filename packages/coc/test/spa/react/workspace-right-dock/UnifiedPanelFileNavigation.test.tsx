@@ -234,6 +234,23 @@ function seedFile(path = 'a.ts', workspaceId = WS) {
     }));
 }
 
+function seedExhaustedHistory() {
+    const location = (path: string) => ({
+        scopeWorkspaceId: WS,
+        tabId: fileId(path),
+        file: { ownerWorkspaceId: WS, resourceId: path, label: path },
+        ...snapshot(1),
+    });
+    writeUnifiedPanelNavigationHistory(WS, {
+        entries: [location('c.ts'), location('b.ts'), location('a.ts')],
+        index: 2,
+        replaying: false,
+    });
+    missingFiles.add('b.ts');
+    missingFiles.add('c.ts');
+    seedFile();
+}
+
 function renderPanel(isOpen = true) {
     return render(<UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub(isOpen)} />);
 }
@@ -651,6 +668,38 @@ describe('unified panel file navigation history', () => {
             screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
         ).toHaveAttribute('aria-selected', 'true'));
         expect(screen.queryByTestId(`unified-panel-tab-${fileId('b.ts')}`)).not.toBeInTheDocument();
+    });
+
+    it('leaves a later keyboard Back unclaimed after exhausting missing files', async () => {
+        seedExhaustedHistory();
+        renderPanel();
+        const a = await screen.findByTestId('mock-file-a.ts');
+        act(() => a.focus());
+
+        // The read fails after this event returns; it cannot undo preventDefault.
+        expect(pressHistory('back').defaultPrevented).toBe(true);
+        await waitFor(() => expect(readUnifiedPanelNavigationHistory(WS).entries.map(entry => entry.file.resourceId)).toEqual(['a.ts']));
+        expect(screen.queryByTestId(`unified-panel-tab-${fileId('b.ts')}`)).not.toBeInTheDocument();
+        expect(screen.queryByTestId(`unified-panel-tab-${fileId('c.ts')}`)).not.toBeInTheDocument();
+        act(() => a.focus());
+        expect(pressHistory('back').defaultPrevented).toBe(false);
+        expect(screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`)).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('leaves later auxiliary mouse events unclaimed after exhausting missing files', async () => {
+        seedExhaustedHistory();
+        renderPanel();
+        const a = await screen.findByTestId('mock-file-a.ts');
+
+        const first = mouseHistory(a, 3);
+        expect(first.down.defaultPrevented).toBe(true);
+        expect(first.up.defaultPrevented).toBe(true);
+        await waitFor(() => expect(readUnifiedPanelNavigationHistory(WS).entries.map(entry => entry.file.resourceId)).toEqual(['a.ts']));
+        expect(screen.queryByTestId(`unified-panel-tab-${fileId('b.ts')}`)).not.toBeInTheDocument();
+        expect(screen.queryByTestId(`unified-panel-tab-${fileId('c.ts')}`)).not.toBeInTheDocument();
+        const next = mouseHistory(a, 3);
+        expect(next.down.defaultPrevented).toBe(false);
+        expect(next.up.defaultPrevented).toBe(false);
     });
 
     it('does not replay one workspace scope after switching to another', async () => {

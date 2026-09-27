@@ -324,6 +324,8 @@ its locations: replaying one reopens the file as a preview tab (through the
 preview slot's unsaved-edits guard) in the current chat's view and restores the
 saved selection. If the replayed file fails to read, all its entries are
 dropped, the reopened tab closes, and replay continues in the same direction.
+The initiating input is claimed before an asynchronous read failure is known;
+after missing entries are exhausted, subsequent inputs retain native behavior.
 Entries of another scope are never replayed.
 Alt+Left/Alt+Right (Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse buttons
 3/4 use the same replay path only when a visible panel owns the interaction,
