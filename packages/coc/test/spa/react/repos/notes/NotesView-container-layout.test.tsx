@@ -121,6 +121,34 @@ describe('NotesView layout="container"', () => {
         expect(window.localStorage.getItem(notesSidebarCollapsedStorageKey('ws1'))).toBeNull();
     });
 
+    it('narrow container: the sidebar overlay closes on a click outside it but not inside', async () => {
+        await renderView(400);
+
+        await waitFor(() => expect(screen.getByTestId('notes-view').dataset.compact).toBe('true'));
+        const sidebar = screen.getByTestId('responsive-sidebar');
+        const toggle = screen.getByTestId('notes-sidebar-overlay-toggle');
+
+        fireEvent.click(toggle);
+        expect(sidebar.classList.contains('hidden')).toBe(false);
+
+        // Presses inside the tree and on the rail keep it open.
+        fireEvent.mouseDown(sidebar);
+        expect(sidebar.classList.contains('hidden')).toBe(false);
+        fireEvent.mouseDown(screen.getByTestId('notes-sidebar-rail'));
+        expect(sidebar.classList.contains('hidden')).toBe(false);
+
+        // Regression: a press elsewhere (editor or outside the view) closes it.
+        fireEvent.mouseDown(screen.getByTestId('mock-chat-toggle'));
+        expect(sidebar.classList.contains('hidden')).toBe(true);
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+        fireEvent.click(toggle);
+        expect(sidebar.classList.contains('hidden')).toBe(false);
+        fireEvent.mouseDown(document.body);
+        expect(sidebar.classList.contains('hidden')).toBe(true);
+        expect(window.localStorage.getItem(notesSidebarCollapsedStorageKey('ws1'))).toBeNull();
+    });
+
     it('narrow container: chat starts collapsed even when persisted open, and the toggle reopens it', async () => {
         window.localStorage.setItem(CHAT_OPEN_KEY, 'true');
         await renderView(400);
