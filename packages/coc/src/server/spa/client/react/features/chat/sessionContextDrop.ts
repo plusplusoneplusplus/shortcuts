@@ -4,6 +4,8 @@ import { useCocClient } from '../../repos/cloneRouting';
 import { getOrFetchConfig, peekConfig, configCacheKey } from '../../api/staticConfigCache';
 import type { AttachedContextItem } from './hooks/useAttachedContext';
 import {
+    DIFF_SELECTION_CONTEXT_DRAG_KIND,
+    DIFF_SELECTION_CONTEXT_DRAG_MIME,
     FILE_PATH_DRAG_MIME,
     FILE_PATH_DRAG_KIND,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
@@ -16,6 +18,8 @@ import {
     SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_MIME,
     WORK_ITEM_CONTEXT_DRAG_KIND,
+    createDiffSelectionContextDragPayload,
+    type DiffSelectionContextDragPayload,
     type FilePathDragPayload,
     type GitCommitContextDragPayload,
     type GitRangeContextDragPayload,
@@ -75,7 +79,8 @@ type AttachedLogicalContextItem =
     | Extract<AttachedContextItem, { kind: 'work-item' }>
     | Extract<AttachedContextItem, { kind: 'commit' }>
     | Extract<AttachedContextItem, { kind: 'range' }>
-    | Extract<AttachedContextItem, { kind: 'pull-request' }>;
+    | Extract<AttachedContextItem, { kind: 'pull-request' }>
+    | Extract<AttachedContextItem, { kind: 'diff-selection' }>;
 
 function isLogicalSessionContextItem(item: AttachedContextItem): item is AttachedLogicalSessionContextItem {
     return item.kind === 'session' || item.kind === 'ralph-session';
@@ -86,7 +91,8 @@ function isLogicalContextItem(item: AttachedContextItem): item is AttachedLogica
         || item.kind === 'work-item'
         || item.kind === 'commit'
         || item.kind === 'range'
-        || item.kind === 'pull-request';
+        || item.kind === 'pull-request'
+        || item.kind === 'diff-selection';
 }
 
 function getLogicalContextItems(items: AttachedContextItem[]): AttachedLogicalContextItem[] {
@@ -349,6 +355,7 @@ export function dataTransferHasSessionContext(dataTransfer: SessionContextDataTr
     return types.includes(SESSION_CONTEXT_DRAG_MIME)
         || types.includes(RALPH_SESSION_CONTEXT_DRAG_MIME)
         || types.includes(POINTER_CONTEXT_DRAG_MIME)
+        || types.includes(DIFF_SELECTION_CONTEXT_DRAG_MIME)
         || types.includes(SESSION_CONTEXT_BUNDLE_DRAG_MIME);
 }
 
@@ -517,9 +524,28 @@ export function readPointerContextDragPayload(dataTransfer: SessionContextDataTr
     }
 }
 
+/** Re-validate a diff-selection drop through the same builder the drag source uses. */
+function normalizeDiffSelectionContextPayload(value: unknown): DiffSelectionContextDragPayload | null {
+    if (!value || typeof value !== 'object') return null;
+    const record = value as Partial<DiffSelectionContextDragPayload>;
+    if (record.kind !== DIFF_SELECTION_CONTEXT_DRAG_KIND || record.version !== 1) return null;
+    return createDiffSelectionContextDragPayload(record);
+}
+
+export function readDiffSelectionContextDragPayload(dataTransfer: SessionContextDataTransfer): DiffSelectionContextDragPayload | null {
+    const raw = dataTransfer.getData(DIFF_SELECTION_CONTEXT_DRAG_MIME);
+    if (!raw) return null;
+    try {
+        return normalizeDiffSelectionContextPayload(JSON.parse(raw));
+    } catch {
+        return null;
+    }
+}
+
 export function readSessionContextDropPayload(dataTransfer: SessionContextDataTransfer): SessionContextAttachmentDragPayload | null {
     return readRalphSessionContextDragPayload(dataTransfer)
         ?? readPointerContextDragPayload(dataTransfer)
+        ?? readDiffSelectionContextDragPayload(dataTransfer)
         ?? readSessionContextDragPayload(dataTransfer);
 }
 
@@ -529,6 +555,7 @@ function normalizeAttachmentDragPayload(value: unknown): SessionContextAttachmen
     const kind = (value as { kind?: unknown }).kind;
     if (kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return normalizeRalphSessionContextPayload(value);
     if (kind === SESSION_CONTEXT_DRAG_KIND) return normalizeSessionContextPayload(value);
+    if (kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) return normalizeDiffSelectionContextPayload(value);
     return normalizePointerContextPayload(value);
 }
 
@@ -595,8 +622,20 @@ export function getPayloadLogicalKey(payload: SessionContextAttachmentDragPayloa
     if (payload.kind === GIT_RANGE_CONTEXT_DRAG_KIND) {
         return `range\0${payload.sourceWorkspaceId}\0${payload.baseRef}\0${payload.headRef}`;
     }
+    if (payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) {
+        return diffSelectionLogicalKey(payload);
+    }
     const pullRequestRef = payload.number !== undefined ? `number:${payload.number}` : `id:${payload.pullRequestId}`;
     return `pull-request\0${payload.sourceWorkspaceId}\0${pullRequestRef}`;
+}
+
+/**
+ * Two diff selections are the same attachment when they cover the same lines of
+ * the same file in the same diff. The snippet itself is not part of the key.
+ */
+function diffSelectionLogicalKey(source: Pick<DiffSelectionContextDragPayload, 'sourceWorkspaceId' | 'filePath' | 'oldRange' | 'newRange' | 'ref'>): string {
+    const range = (r: { start: number; end: number } | undefined) => r ? `${r.start}-${r.end}` : '';
+    return `diff-selection\0${source.sourceWorkspaceId}\0${source.filePath}\0${range(source.oldRange)}\0${range(source.newRange)}\0${JSON.stringify(source.ref)}`;
 }
 
 function getItemLogicalKey(item: AttachedLogicalContextItem): string {
@@ -605,6 +644,7 @@ function getItemLogicalKey(item: AttachedLogicalContextItem): string {
     if (item.kind === 'work-item') return `work-item\0${item.sourceWorkspaceId}\0${item.workItemId}`;
     if (item.kind === 'commit') return `commit\0${item.sourceWorkspaceId}\0${item.commitHash}`;
     if (item.kind === 'range') return `range\0${item.sourceWorkspaceId}\0${item.baseRef}\0${item.headRef}`;
+    if (item.kind === 'diff-selection') return diffSelectionLogicalKey(item);
     const pullRequestRef = item.number !== undefined ? `number:${item.number}` : `id:${item.pullRequestId}`;
     return `pull-request\0${item.sourceWorkspaceId}\0${pullRequestRef}`;
 }
@@ -615,6 +655,7 @@ function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload):
     if (payload.kind === GIT_COMMIT_CONTEXT_DRAG_KIND) return 'This commit is already attached to the message.';
     if (payload.kind === GIT_RANGE_CONTEXT_DRAG_KIND) return 'This range is already attached to the message.';
     if (payload.kind === PULL_REQUEST_CONTEXT_DRAG_KIND) return 'This pull request is already attached to the message.';
+    if (payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) return 'This diff selection is already attached to the message.';
     return 'This session is already attached to the message.';
 }
 
@@ -624,6 +665,7 @@ function duplicateErrorForItem(item: AttachedLogicalContextItem): string {
     if (item.kind === 'commit') return 'This commit is already attached to the message.';
     if (item.kind === 'range') return 'This range is already attached to the message.';
     if (item.kind === 'pull-request') return 'This pull request is already attached to the message.';
+    if (item.kind === 'diff-selection') return 'This diff selection is already attached to the message.';
     return 'This session is already attached to the message.';
 }
 
@@ -653,7 +695,9 @@ export function validateSessionContextDrop(options: {
     if (!options.activeWorkspaceId) {
         return { ok: false, error: 'Open a workspace before attaching context.' };
     }
-    if (options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
+    // A diff selection carries its own text and names its source repo, so it
+    // can be dropped into a chat of any workspace (multi-repo).
+    if (options.payload.kind !== DIFF_SELECTION_CONTEXT_DRAG_KIND && options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
         return { ok: false, error: 'Only context from the active workspace can be attached.' };
     }
     if (payloadIncludesProcess(options.payload, options.currentProcessId)) {
@@ -699,7 +743,7 @@ export function validateSessionContextAttachmentsForSend(options: {
     if (!options.activeWorkspaceId) {
         return 'Open a workspace before attaching context.';
     }
-    if (contextItems.some(item => item.sourceWorkspaceId !== options.activeWorkspaceId)) {
+    if (contextItems.some(item => item.kind !== 'diff-selection' && item.sourceWorkspaceId !== options.activeWorkspaceId)) {
         return 'Only context from the active workspace can be attached.';
     }
     const selfAttachedItem = getSessionContextItems(options.items).find(item =>

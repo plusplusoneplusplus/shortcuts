@@ -38,8 +38,11 @@ import { AttachedContextPreviews } from '../ui/AttachedContextPreviews';
 import { formatAttachedContext, useAttachedContext } from '../features/chat/hooks/useAttachedContext';
 import { isSessionContextAttachmentsEnabled } from '../utils/config';
 import {
+    dataTransferHasSessionContext,
+    readSessionContextDropPayload,
     useConversationRetrievalCapability,
     validateSessionContextAttachmentsForSend,
+    validateSessionContextDrop,
 } from '../features/chat/sessionContextDrop';
 
 interface HookEntry {
@@ -578,10 +581,27 @@ export function EnqueueDialog() {
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
+        if (sessionContextAttachmentsEnabled && dataTransferHasSessionContext(e.dataTransfer)) {
+            const validation = validateSessionContextDrop({
+                payload: readSessionContextDropPayload(e.dataTransfer),
+                featureEnabled: sessionContextAttachmentsEnabled,
+                activeWorkspaceId: workspaceId || null,
+                currentProcessId: null,
+                existingItems: attachedContext.getItems(),
+                canRetrieveConversations,
+            });
+            if (!validation.ok) {
+                setAttachedContextError(validation.error);
+                return;
+            }
+            attachedContext.addSessionContext(validation.payload);
+            setAttachedContextError(null);
+            return;
+        }
         if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
             addFromFileInput(e.dataTransfer.files);
         }
-    }, [addFromFileInput]);
+    }, [addFromFileInput, sessionContextAttachmentsEnabled, workspaceId, attachedContext, canRetrieveConversations]);
 
     // When the dialog opens (or templates finish loading while open),
     // pick the default tab: Templates if mode-filtered templates exist, else Advanced.

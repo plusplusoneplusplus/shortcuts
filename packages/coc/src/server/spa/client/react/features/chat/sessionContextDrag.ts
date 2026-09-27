@@ -145,7 +145,8 @@ export type PointerContextDragPayload =
 export type SessionContextAttachmentDragPayload =
     | SessionContextDragPayload
     | RalphSessionContextDragPayload
-    | PointerContextDragPayload;
+    | PointerContextDragPayload
+    | DiffSelectionContextDragPayload;
 
 export interface CreateSessionContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
@@ -748,6 +749,8 @@ function writeSessionContextAttachmentDragData(
         writeSessionContextDragData(dataTransfer, payload);
     } else if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) {
         writeRalphSessionContextDragData(dataTransfer, payload);
+    } else if (payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) {
+        writeDiffSelectionContextDragData(dataTransfer, payload);
     } else {
         writePointerContextDragData(dataTransfer, payload);
     }
