@@ -33,6 +33,8 @@ const SESSION_HOLD_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Poll interval for noticing that the manager has resolved the pending entry. */
 const SESSION_HOLD_POLL_INTERVAL_MS = 1_500;
+const MCP_LOAD_TIMEOUT_MS = 10_000;
+const MCP_LOGIN_TIMEOUT_MS = 30_000;
 
 export interface InitiateMcpOAuthOptions {
     /** Logical server name as keyed in the MCP config (used by the SDK). */
@@ -43,6 +45,8 @@ export interface InitiateMcpOAuthOptions {
     workspaceId?: string;
     /** Working directory passed to the transient SDK session. */
     workingDirectory?: string;
+    /** Request a fresh authorization even if the SDK has other cached credentials. */
+    forceReauth?: boolean;
     /** The SDK facade used to spawn the session. */
     aiService: McpOauthSdkService;
     /** Manager that records the pending OAuth entry. */
@@ -53,14 +57,15 @@ export interface InitiateMcpOAuthResult {
     requestId: string;
     /** Authorization URL the user must open. Undefined if SDK is already authenticated. */
     authorizationUrl?: string;
-    /** True when the SDK reported no OAuth was required (already authenticated). */
+    /** True when a valid token is present in the shared MCP OAuth cache. */
     alreadyAuthenticated: boolean;
 }
 
 interface RpcShape {
     mcp?: {
+        list?: () => Promise<{ servers: Array<{ name: string; status: string }> }>;
         oauth?: {
-            login?: (params: { serverName: string }) => Promise<{ authorizationUrl?: string } | undefined>;
+            login?: (params: { serverName: string; forceReauth?: boolean }) => Promise<{ authorizationUrl?: string } | undefined>;
         };
     };
 }
@@ -93,7 +98,7 @@ export interface McpOauthSdkService extends ISDKService {
  */
 export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<InitiateMcpOAuthResult> {
     const log = getLogger();
-    const { serverName, serverConfig, workspaceId, workingDirectory, aiService, manager } = opts;
+    const { serverName, serverConfig, workspaceId, workingDirectory, forceReauth, aiService, manager } = opts;
 
     const transport = serverConfig.type;
     if (transport !== 'http' && transport !== 'sse') {
@@ -154,29 +159,59 @@ export async function initiateMcpOAuth(opts: InitiateMcpOAuthOptions): Promise<I
         }
 
         const rpc = (session as unknown as { rpc?: RpcShape }).rpc;
+        const listFn = rpc?.mcp?.list;
         const loginFn = rpc?.mcp?.oauth?.login;
+        if (typeof listFn !== 'function') {
+            throw new Error('SDK build does not expose mcp.list RPC — upgrade @github/copilot-sdk to enable in-app OAuth');
+        }
         if (typeof loginFn !== 'function') {
             throw new Error('SDK build does not expose mcp.oauth.login RPC — upgrade @github/copilot-sdk to enable in-app OAuth');
         }
 
+        const loadDeadline = Date.now() + MCP_LOAD_TIMEOUT_MS;
+        let serverStatus: string | undefined;
+        do {
+            const result = await listFn.call(rpc!.mcp);
+            serverStatus = result.servers.find(server => server.name === serverName)?.status;
+            if (serverStatus && serverStatus !== 'pending') break;
+            if (Date.now() >= loadDeadline) {
+                throw new Error(`MCP server "${serverName}" did not finish loading before OAuth login`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 250));
+        } while (true);
+        if (serverStatus !== 'connected' && serverStatus !== 'needs-auth') {
+            throw new Error(`MCP server "${serverName}" cannot start OAuth in state "${serverStatus}"`);
+        }
+
         let loginResult: { authorizationUrl?: string } | undefined;
+        let loginTimer: ReturnType<typeof setTimeout> | undefined;
         try {
-            loginResult = await loginFn.call(rpc!.mcp!.oauth, { serverName });
+            loginResult = await Promise.race([
+                loginFn.call(rpc!.mcp!.oauth, { serverName, ...(forceReauth ? { forceReauth: true } : {}) }),
+                new Promise<never>((_, reject) => {
+                    loginTimer = setTimeout(() => reject(new Error('timed out waiting for the SDK OAuth login response')), MCP_LOGIN_TIMEOUT_MS);
+                }),
+            ]);
         } catch (loginErr) {
             const msg = loginErr instanceof Error ? loginErr.message : String(loginErr);
             log.warn(LogCategory.MCP, `[McpOAuthInitiator] mcp.oauth.login RPC failed for server="${serverName}": ${msg}`);
             throw new Error(`OAuth login request failed: ${msg}`);
+        } finally {
+            if (loginTimer) clearTimeout(loginTimer);
         }
 
         const authorizationUrl = loginResult?.authorizationUrl;
 
-        // If no URL was returned and no reactive event fired, the SDK considers
-        // the server already authenticated. Don't register a pending entry —
-        // the UI just refreshes status and shows green.
+        // The SDK can return no URL even when the server requires authentication.
+        // Only the shared cache can confirm that the connector can use this session.
         if (!authorizationUrl && !earlyAuthEvent) {
+            const auth = readMcpServerAuthInfo(remoteUrl, transport);
+            if (auth.status !== 'authenticated') {
+                throw new Error(`MCP OAuth login returned no authorization URL for "${serverName}" and no valid token is cached. Check the SDK OAuth configuration and server authorization metadata.`);
+            }
             log.info(
                 LogCategory.MCP,
-                `[McpOAuthInitiator] Server "${serverName}" already authenticated — no flow required`,
+                `[McpOAuthInitiator] Server "${serverName}" has a valid cached token — no flow required`,
             );
             await safeDisconnect(session);
             return { requestId: '', alreadyAuthenticated: true };

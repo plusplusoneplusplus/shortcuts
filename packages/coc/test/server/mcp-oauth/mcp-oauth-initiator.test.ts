@@ -26,8 +26,9 @@ interface FakeSession {
     sessionId: string;
     rpc: {
         mcp?: {
+            list?: () => Promise<{ servers: Array<{ name: string; status: string }> }>;
             oauth?: {
-                login?: (params: { serverName: string }) => Promise<{ authorizationUrl?: string } | undefined>;
+                login?: (params: { serverName: string; forceReauth?: boolean }) => Promise<{ authorizationUrl?: string } | undefined>;
             };
         };
     };
@@ -41,20 +42,20 @@ function makeFakeAiService(opts: {
     loginResult?: { authorizationUrl?: string } | undefined;
     loginThrows?: Error;
     omitLoginRpc?: boolean;
+    serverStatus?: string;
 }): { service: any; session: FakeSession } {
     const session: FakeSession = {
         sessionId: 'sess-test',
-        rpc: opts.omitLoginRpc
-            ? {}
-            : {
-                  mcp: {
-                      oauth: {
-                          login: opts.loginThrows
-                              ? vi.fn().mockRejectedValue(opts.loginThrows)
-                              : vi.fn().mockResolvedValue(opts.loginResult),
-                      },
-                  },
-              },
+        rpc: {
+            mcp: {
+                list: vi.fn().mockResolvedValue({ servers: ['s', 'remote', 'local'].map(name => ({ name, status: opts.serverStatus ?? 'needs-auth' })) }),
+                oauth: opts.omitLoginRpc ? undefined : {
+                    login: opts.loginThrows
+                        ? vi.fn().mockRejectedValue(opts.loginThrows)
+                        : vi.fn().mockResolvedValue(opts.loginResult),
+                },
+            },
+        },
         on: vi.fn(),
         disconnect: vi.fn().mockResolvedValue(undefined),
     };
@@ -124,7 +125,8 @@ describe('initiateMcpOAuth', () => {
         expect(session.disconnect).toHaveBeenCalled();
     });
 
-    it('reports alreadyAuthenticated when login returns no URL', async () => {
+    it('reports alreadyAuthenticated when login returns no URL and the token is cached', async () => {
+        mockReadMcpServerAuthInfo.mockReturnValue({ status: 'authenticated' });
         const { service, session } = makeFakeAiService({ loginResult: {} });
         const result = await initiateMcpOAuth({
             serverName: 's',
@@ -137,6 +139,31 @@ describe('initiateMcpOAuth', () => {
         // Session is released eagerly when no flow is needed
         expect(session.disconnect).toHaveBeenCalled();
         expect(manager.listPending()).toHaveLength(0);
+    });
+
+    it.each(['required', 'expired', 'unknown'])('rejects an empty login result with %s cache status (regression)', async status => {
+        mockReadMcpServerAuthInfo.mockReturnValue({ status });
+        const { service, session } = makeFakeAiService({ loginResult: {} });
+        await expect(initiateMcpOAuth({
+            serverName: 'remote',
+            serverConfig: { type: 'http', url: 'https://remote' } as any,
+            aiService: service,
+            manager,
+        })).rejects.toThrow(/no authorization URL.*no valid token is cached/);
+        expect(mockReadMcpServerAuthInfo).toHaveBeenCalledWith('https://remote', 'http');
+        expect(session.disconnect).toHaveBeenCalled();
+        expect(manager.listPending()).toHaveLength(0);
+    });
+
+    it('rejects an undefined login result when the cache is empty', async () => {
+        const { service, session } = makeFakeAiService({});
+        await expect(initiateMcpOAuth({
+            serverName: 'remote',
+            serverConfig: { type: 'sse', url: 'https://remote' } as any,
+            aiService: service,
+            manager,
+        })).rejects.toThrow(/no authorization URL/);
+        expect(session.disconnect).toHaveBeenCalled();
     });
 
     it('registers a pending entry and returns the authorization URL on success', async () => {
@@ -159,6 +186,70 @@ describe('initiateMcpOAuth', () => {
         expect(pending?.authorizationUrl).toBe(authUrl);
         expect(pending?.workspaceId).toBe('ws-1');
         expect(pending?.status).toBe('pending');
+    });
+
+    it('passes forced re-authentication through to the SDK only when requested', async () => {
+        const { service, session } = makeFakeAiService({ loginResult: { authorizationUrl: 'https://login.example.com' } });
+        const config = { type: 'http', url: 'https://remote' } as any;
+        await initiateMcpOAuth({
+            serverName: 'remote', serverConfig: config, aiService: service, manager, forceReauth: true,
+        });
+        expect(session.rpc.mcp?.oauth?.login).toHaveBeenCalledWith({ serverName: 'remote', forceReauth: true });
+
+        const other = makeFakeAiService({ loginResult: { authorizationUrl: 'https://login.example.com' } });
+        await initiateMcpOAuth({
+            serverName: 'remote', serverConfig: config, aiService: other.service, manager,
+        });
+        expect(other.session.rpc.mcp?.oauth?.login).toHaveBeenCalledWith({ serverName: 'remote' });
+    });
+
+    it('waits until the SDK has loaded the server before requesting OAuth', async () => {
+        vi.useFakeTimers();
+        try {
+            const { service, session } = makeFakeAiService({ loginResult: { authorizationUrl: 'https://login.example.com' } });
+            const list = session.rpc.mcp!.list as ReturnType<typeof vi.fn>;
+            list.mockResolvedValueOnce({ servers: [{ name: 'remote', status: 'pending' }] });
+            const login = session.rpc.mcp!.oauth!.login as ReturnType<typeof vi.fn>;
+            const start = initiateMcpOAuth({
+                serverName: 'remote', serverConfig: { type: 'http', url: 'https://remote' } as any,
+                aiService: service, manager,
+            });
+            await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+            expect(login).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(250);
+            await expect(start).resolves.toMatchObject({ authorizationUrl: 'https://login.example.com' });
+            expect(list).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it.each(['failed', 'disabled', 'stopped', 'not_configured'])('does not request OAuth when the SDK server is %s', async serverStatus => {
+        const { service, session } = makeFakeAiService({ serverStatus });
+        await expect(initiateMcpOAuth({
+            serverName: 'remote', serverConfig: { type: 'http', url: 'https://remote' } as any,
+            aiService: service, manager,
+        })).rejects.toThrow(`cannot start OAuth in state "${serverStatus}"`);
+        expect(session.rpc.mcp?.oauth?.login).not.toHaveBeenCalled();
+        expect(session.disconnect).toHaveBeenCalled();
+    });
+
+    it('times out and releases the session when SDK login never returns', async () => {
+        vi.useFakeTimers();
+        try {
+            const { service, session } = makeFakeAiService({});
+            (session.rpc.mcp!.oauth!.login as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise(() => {}));
+            const start = initiateMcpOAuth({
+                serverName: 'remote', serverConfig: { type: 'http', url: 'https://remote' } as any,
+                aiService: service, manager,
+            });
+            const outcome = expect(start).rejects.toThrow(/timed out waiting for the SDK OAuth login response/);
+            await vi.advanceTimersByTimeAsync(30_000);
+            await outcome;
+            expect(session.disconnect).toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('surfaces login RPC failures with context', async () => {

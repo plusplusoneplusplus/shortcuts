@@ -45,9 +45,11 @@ Moves a server between scopes. Body: `{ targetScope: "global"|"workspace" }`.
 
 ## OAuth Routes
 
-`POST /api/mcp-oauth/start` is registered only when the active AI SDK service exposes `createClient`. It starts an OAuth flow for configured HTTP/SSE MCP servers, resolving workspace config first and then global. Pending-lifecycle endpoints (`/api/mcp-oauth/pending...`) are registered whenever the MCP OAuth manager is present.
+`POST /api/mcp-oauth/start` is registered only when the active AI SDK service exposes `createClient`. It starts an OAuth flow for configured HTTP/SSE MCP servers, resolving workspace config first and then global. Requests with `force: true` clear matching cache entries and pass `forceReauth` to the SDK login RPC. Pending-lifecycle endpoints (`/api/mcp-oauth/pending...`) are registered whenever the MCP OAuth manager is present.
 
-The MCP server panel combines configured status with live tool discovery: a live failure overrides a configured `ok`, OAuth/401/token failures render as `auth`, and other initialization failures render as `err`. Every enabled HTTP/SSE server exposes an Authenticate/Re-authenticate action; explicit re-authentication sends `force: true`, removes every cache entry matching the exact server URL, and starts a fresh SDK OAuth flow.
+The OAuth initiator waits for the SDK session's MCP server to finish loading before calling login and bounds that call to 30 seconds. An SDK login response without an authorization URL or OAuth-required event counts as authenticated only when the exact server URL has a valid token in the shared OAuth cache. Otherwise the start route reports an error rather than presenting an unauthenticated server as connected.
+
+The MCP server panel combines configured status with live tool discovery: a live failure overrides a configured `ok`, OAuth/401/token failures render as `auth`, and other initialization failures render as `err`. Every enabled HTTP/SSE server exposes an Authenticate/Re-authenticate action; explicit re-authentication sends `force: true` to start a fresh SDK OAuth flow.
 
 ### Teams channel connection
 
