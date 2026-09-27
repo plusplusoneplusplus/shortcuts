@@ -80,6 +80,7 @@ import {
     keyboardNavigationDirection,
     mouseNavigationDirection,
     panelOwnsFileNavigation,
+    tabStripClaimsKey,
 } from './fileNavigationRouting';
 import { explorerFileTabInput } from './unifiedExplorerFiles';
 import {
@@ -1146,7 +1147,7 @@ export function UnifiedRightPanel({
     }, [isOpen, active, activeId, requestClose]);
 
     // Alt+Left/Right belongs to the panel only when focus is inside a visible
-    // file view and the requested history destination can actually be restored.
+    // file view (a focused strip tab keeps Alt+Arrow for reordering) and the requested history destination can actually be restored.
     // Calling preventDefault after the successful step preserves browser
     // navigation at both boundaries and everywhere outside this panel.
     useEffect(() => {
@@ -1155,6 +1156,7 @@ export function UnifiedRightPanel({
             if (direction === null) return;
             const root = panelRootRef.current;
             const focused = document.activeElement;
+            if (tabStripClaimsKey(event, focused)) return;
             if (!panelOwnsFileNavigation({
                 panelVisible: isOpen && root?.offsetParent !== null,
                 interactionOwned: root !== null

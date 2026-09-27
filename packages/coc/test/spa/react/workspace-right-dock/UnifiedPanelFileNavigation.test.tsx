@@ -343,6 +343,36 @@ describe('unified panel file navigation history', () => {
         expect(mouseHistory(notes, 3).down.defaultPrevented).toBe(false);
     });
 
+    // Regression: the document-level capture handler stepped history before the
+    // focused tab's own Alt+Arrow reorder handler could run.
+    it('lets a focused strip tab keep Alt+Arrow for reordering and leaves history intact', async () => {
+        seedFile();
+        renderPanel();
+        await screen.findByTestId('mock-file-a.ts');
+        fireEvent.click(screen.getByTestId('jump-to-b'));
+        await screen.findByTestId('mock-file-b.ts');
+        const tabB = screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`);
+        const order = () => screen.getAllByRole('tab').map(tab => tab.getAttribute('data-tab-id'));
+        expect(order()).toEqual([fileId('a.ts'), fileId('b.ts')]);
+
+        act(() => tabB.focus());
+        const event = new KeyboardEvent('keydown', {
+            key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true,
+        });
+        act(() => { tabB.dispatchEvent(event); });
+
+        expect(order()).toEqual([fileId('b.ts'), fileId('a.ts')]);
+        expect(screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`)).toHaveAttribute('aria-selected', 'true');
+        expect(controllers.get('a.ts')?.restore).not.toHaveBeenCalled();
+
+        act(() => screen.getByTestId('mock-file-b.ts').focus());
+        expect(pressHistory('back').defaultPrevented).toBe(true);
+        await waitFor(() => expect(
+            screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
+        ).toHaveAttribute('aria-selected', 'true'));
+        expect(controllers.get('a.ts')?.restore).toHaveBeenCalledWith(snapshot(1, 3));
+    });
+
     it('reopens a closed destination as a preview at its saved location', async () => {
         seedFile();
         renderPanel();

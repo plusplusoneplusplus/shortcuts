@@ -141,6 +141,8 @@ Ctrl+-/Ctrl+Shift+- on macOS (where Alt+Arrow stays with Monaco for word
 movement). Mouse buttons 3/4 share the same replay operation. Keyboard ownership
 requires focus inside the visible panel; mouse ownership requires the button-down
 target inside it. Both also require an active file and an accessible destination.
+Alt+Arrow on a focused strip tab (or its close button) stays with the strip's
+tab reorder (`tabStripClaimsKey`) and never steps history.
 The handler prevents default and stops propagation only after a step succeeds,
 and a claimed mouse-down also claims its matching mouse-up.
 

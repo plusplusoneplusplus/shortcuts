@@ -326,7 +326,8 @@ saved selection. Entries of another scope are never replayed.
 Alt+Left/Alt+Right (Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse buttons
 3/4 use the same replay path only when a visible panel owns the interaction,
 its active tab is a file, and a destination exists; otherwise browser behavior
-is left untouched.
+untouched. Alt+Arrow on a focused strip tab reorders the tab instead of
+stepping history.
 
 Unified-panel tabs close on middle-click through the same dirty-buffer and live
 terminal guards as their close buttons. Their accessible context menu provides
