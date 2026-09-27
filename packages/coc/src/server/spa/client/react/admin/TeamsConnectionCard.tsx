@@ -329,8 +329,9 @@ export function TeamsConnectionCard() {
                                                 </li>)}
                                             </ol>
                                             {detail.failureCategory && <p>{guidance[detail.failureCategory] ?? guidance.unknown}</p>}
-                                            <p>Poll: {detail.pollDegraded ? 'Degraded' : 'Healthy'} · last success: {detail.lastPollSuccessAt ? localTime(detail.lastPollSuccessAt) : 'none'}</p>
-                                            <p>Reply send: {detail.sendDegraded ? 'Degraded' : 'Healthy'} · last MCP acceptance: {detail.lastSendSuccessAt ? localTime(detail.lastSendSuccessAt) : 'none'}</p>
+                                            {detail.events.some(event => event.type === 'reply-rejected') && <p>{guidance.send}</p>}
+                                            <p>Poll: {detail.pollDegraded ? 'Degraded' : detail.lastPollSuccessAt ? 'Healthy' : 'No successful poll yet'} · last success: {detail.lastPollSuccessAt ? localTime(detail.lastPollSuccessAt) : 'none'}</p>
+                                            <p>Reply send: {detail.sendDegraded ? 'Degraded' : detail.lastSendSuccessAt ? 'Healthy' : 'No MCP acceptance yet'} · last MCP acceptance: {detail.lastSendSuccessAt ? localTime(detail.lastSendSuccessAt) : 'none'}</p>
                                             <p>MCP acceptance does not confirm Teams displayed a reply.</p>
                                             <dl className="ar-teams-counts">
                                                 {Object.entries(detail.totals).map(([key, count]) => (

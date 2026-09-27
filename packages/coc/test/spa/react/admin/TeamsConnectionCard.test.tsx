@@ -28,7 +28,7 @@ describe('TeamsConnectionCard', () => {
     };
     const details = {
         ...active, phases: [{ stage: 'started', at: active.startedAt }, { stage: 'connected', at: active.startedAt }],
-        events: [{ type: 'failed', at: active.startedAt, category: 'send' }],
+        events: [{ type: 'reply-rejected', at: active.startedAt, category: 'send' }],
         totals: { pollsSucceeded: 12, sendAttempted: 1, failed: 1 },
         pollDegraded: false, sendDegraded: true,
         lastPollSuccessAt: active.startedAt,
@@ -72,6 +72,7 @@ describe('TeamsConnectionCard', () => {
         fireEvent.click(summary);
         expect(await screen.findByText(/MCP acceptance does not confirm/)).toBeDefined();
         expect(screen.getByText(/Reply send: Degraded/)).toBeDefined();
+        expect(screen.getByText('Check reply delivery through MCP.')).toBeDefined();
         expect(screen.getByText('polls Succeeded')).toBeDefined();
         expect(screen.getByText(/authentication failure/)).toBeDefined();
         expect(screen.getByText(/✕ Failed/)).toBeDefined();
