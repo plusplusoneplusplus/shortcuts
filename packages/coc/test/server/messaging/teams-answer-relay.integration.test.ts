@@ -56,10 +56,22 @@ describe('Teams answer relay through the real multi-repo queues', () => {
             };
             let result: unknown = {};
             if (body.method === 'initialize') result = { protocolVersion: '2025-03-26' };
-            else if (body.method === 'tools/list') result = { tools: [{ name: 'ReplyToChannelMessage' }] };
+            else if (body.method === 'tools/list') result = { tools: [
+                { name: 'ReplyToChannelMessage' }, { name: 'ListChannelMessageReplies' },
+            ] };
             else if (body.method === 'tools/call' && body.params?.name === 'ReplyToChannelMessage') {
                 calls.push({ name: body.params.name, arguments: body.params.arguments });
                 result = { content: [{ text: JSON.stringify({ id: `sent-${calls.length}` }) }] };
+            } else if (body.method === 'tools/call' && body.params?.name === 'ListChannelMessages') {
+                result = { content: [{ text: JSON.stringify([
+                    { id: 'root-b', body: { content: 'beta prompt' } },
+                ]) }] };
+            } else if (body.method === 'tools/call' && body.params?.name === 'ListChannelMessageReplies') {
+                if (body.params.arguments.messageId !== 'root-b') throw new Error('Unexpected thread root');
+                result = { content: [{ text: JSON.stringify([
+                    { id: 'thread-follow', body: { content: 'thread follow-up' },
+                        from: { user: { id: 'synthetic-user' } } },
+                ]) }] };
             } else if (body.method !== 'notifications/initialized') {
                 throw new Error(`Unexpected MCP method: ${body.method}`);
             }
@@ -67,7 +79,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
                 headers: { 'content-type': 'application/json' },
             });
         }));
-        const transport = new McpTransport(endpoint);
+        const transport = new McpTransport(endpoint, () => true);
         await transport.initialize('synthetic-token', { teamId, channelId });
 
         const ai = createMockSDKService();
@@ -209,6 +221,22 @@ describe('Teams answer relay through the real multi-repo queues', () => {
                 'Answer for running follow-up', 'Answer for first follow-up',
                 'Answer for second follow-up', 'Answer for selected follow-up',
             ]);
+        const polled = await transport.poll(channelId);
+        expect(polled.messages).toEqual([
+            expect.objectContaining({ messageId: 'root-b', replyToMessageId: undefined }),
+            expect.objectContaining({ messageId: 'thread-follow', replyToMessageId: 'root-b',
+                senderAadId: 'synthetic-user' }),
+        ]);
+        await handle(polled.messages[1]);
+        expect(repliesFor('root-b')).toHaveLength(3);
+        expect(repliesFor('root-b')[2]).toContain('Message sent');
+        await until(() => entered.includes('thread follow-up'));
+        gates.get('thread follow-up')!.resolve();
+        await until(() => repliesFor('root-b').length === 4);
+        expect(repliesFor('root-b')[3]).toContain('Answer for thread follow-up');
+        expect(repliesFor('thread-follow')).toHaveLength(0);
+        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').at(-1)?.relayRequestId).toMatch(/^[a-f0-9-]{36}$/);
         expect(calls.every(call => call.name === 'ReplyToChannelMessage'
             && call.arguments.teamId === teamId && call.arguments.channelId === channelId)).toBe(true);
         const terminalListeners = registry.listenerCount('taskCompleted');
