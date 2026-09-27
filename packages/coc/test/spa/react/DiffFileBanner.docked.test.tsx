@@ -95,6 +95,7 @@ describe.each(VIEWERS)('file-name banner docking — $name mode', ({ Viewer }) =
         scrollTo(container, { [FIRST]: PORT_TOP - 50, [SECOND]: PORT_TOP + 250 });
 
         expect(docked(container)!.getAttribute('data-file-path')).toBe(FIRST);
+        expect(docked(container)!.className).toContain('shadow-md');
     });
 
     it('hands the dock over when the next file reaches the edge', () => {

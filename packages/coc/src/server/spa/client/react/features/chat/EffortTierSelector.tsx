@@ -52,6 +52,8 @@ export interface EffortTierSelectorProps {
      * addition to the viewport `sm:` compaction driven by `mobileTapTarget`.
      */
     compact?: boolean;
+    /** Extra classes for the `Effort:` prefix span (e.g. a container-query hide). */
+    prefixClassName?: string;
     autoProviderMode?: boolean;
 }
 
@@ -63,6 +65,7 @@ export function EffortTierSelector({
     className,
     mobileTapTarget = false,
     compact = false,
+    prefixClassName,
     autoProviderMode = false,
     ...rest
 }: EffortTierSelectorProps) {
@@ -120,7 +123,8 @@ export function EffortTierSelector({
                     )}
                     data-testid="effort-tier-label"
                 >
-                    {compact ? selectedLabel : `Effort: ${selectedLabel}`}
+                    {!compact && <span className={prefixClassName}>Effort: </span>}
+                    {selectedLabel}
                 </span>
                 <svg
                     width="7" height="7"

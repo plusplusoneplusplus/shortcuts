@@ -396,7 +396,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         return options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
     };
 
-    const { registry, bridge, queuePersistence, queueFacade } = createQueueInfrastructure(
+    const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,
         () => wsServer,
         () => {
@@ -944,6 +944,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     await new Promise<void>((resolve, reject) => { server.on('error', reject); server.listen(port, host, resolve); });
+    activateQueueProcessing();
     // Say which native search capabilities are active. All are required and
     // were validated before composition; reporting them separately is what
     // exposes stale packaging.

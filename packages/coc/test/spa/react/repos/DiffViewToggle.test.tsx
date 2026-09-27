@@ -12,8 +12,19 @@ describe('DiffViewToggle', () => {
         render(<DiffViewToggle mode="unified" onChange={() => {}} />);
         expect(screen.getByTestId('diff-view-toggle-unified')).toBeTruthy();
         expect(screen.getByTestId('diff-view-toggle-split')).toBeTruthy();
-        expect(screen.getByText('☰ Unified')).toBeTruthy();
-        expect(screen.getByText('⬜ Split')).toBeTruthy();
+        expect(screen.getByTestId('diff-view-toggle-unified').textContent).toBe('☰Unified');
+        expect(screen.getByTestId('diff-view-toggle-split').textContent).toBe('⬜Split');
+    });
+
+    it('keeps an accessible name and tooltip when the label collapses to an icon', () => {
+        render(<DiffViewToggle mode="unified" onChange={() => {}} />);
+        for (const [value, name] of [['unified', 'Unified view'], ['split', 'Split view']]) {
+            const btn = screen.getByTestId(`diff-view-toggle-${value}`);
+            expect(btn.getAttribute('aria-label')).toBe(name);
+            expect(btn.getAttribute('title')).toBe(name);
+            expect(btn.className).toContain('whitespace-nowrap');
+            expect(screen.getByTestId(`diff-view-toggle-${value}-label`).className).toContain('[@container_(max-width:559px)]:hidden');
+        }
     });
 
     it('active button has aria-pressed="true", inactive has aria-pressed="false" (unified mode)', () => {

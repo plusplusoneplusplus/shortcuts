@@ -2695,6 +2695,194 @@ describe('Queue Handler', () => {
             expect(body.task.payload.mode).toBe('autopilot');
             expect(body.task.payload.context).toBeUndefined();
         });
+
+        /** Enqueue a paused task, cancel it, and return its id (a retryable source). */
+        async function cancelledTask(srv: ExecutionServer, overrides: Record<string, any> = {}): Promise<string> {
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask(overrides));
+            const taskId = JSON.parse(createRes.body).task.id;
+            await request(`${srv.url}/api/queue/${taskId}`, { method: 'DELETE' });
+            return taskId;
+        }
+
+        it('keeps provider and model when the body names the same provider', async () => {
+            const srv = await startServer();
+            const taskId = await cancelledTask(srv, {
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'p', provider: 'copilot' },
+                config: { model: 'gpt-5' },
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, { provider: 'copilot' });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.provider).toBe('copilot');
+            expect(body.task.config.model).toBe('gpt-5');
+        });
+
+        it('restarts on another provider, dropping model/effort/auto-routing and keeping images', async () => {
+            const srv = await startServer();
+            const images = ['data:image/png;base64,AAAA'];
+            const taskId = await cancelledTask(srv, {
+                repoId: 'ws-restart',
+                payload: {
+                    kind: 'chat',
+                    mode: 'ask',
+                    prompt: 'do the job',
+                    provider: 'claude',
+                    model: 'claude-sonnet-4',
+                    reasoningEffort: 'high',
+                    images,
+                    workspaceId: 'ws-restart',
+                    context: { autoProviderRouting: { requested: true, selectedByAuto: true, provider: 'claude' } },
+                },
+                config: { model: 'claude-sonnet-4', reasoningEffort: 'high' },
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, { provider: 'copilot' });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.id).not.toBe(taskId);
+            expect(body.task.payload.provider).toBe('copilot');
+            expect(body.task.payload.prompt).toBe('do the job');
+            expect(body.task.payload.mode).toBe('ask');
+            expect(body.task.payload.model).toBeUndefined();
+            expect(body.task.payload.reasoningEffort).toBeUndefined();
+            expect(body.task.config.model).toBeUndefined();
+            expect(body.task.config.reasoningEffort).toBeUndefined();
+            expect(body.task.payload.context).toBeUndefined();
+            expect(body.task.payload.processId).toBeUndefined();
+            expect(body.task.payload.restartedFrom).toBe(`queue_${taskId}`);
+            expect(body.task.repoId).toBe('ws-restart');
+            // serializeTask replaces the image data with a count.
+            expect(body.task.payload.imagesCount).toBe(images.length);
+        });
+
+        it('rejects an unknown provider with 400', async () => {
+            const srv = await startServer();
+            const taskId = await cancelledTask(srv);
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, { provider: 'gpt' });
+            expect(res.status).toBe(400);
+        });
+
+        it('rejects a disabled provider with 400', async () => {
+            const srv = await startServer();
+            const taskId = await cancelledTask(srv, {
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'p', provider: 'copilot' },
+            });
+            // Codex is disabled unless `codex.enabled` is set.
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, { provider: 'codex' });
+            expect(res.status).toBe(400);
+            expect(JSON.parse(res.body).error).toMatch(/disabled/i);
+        });
+
+        it('rejects a provider restart of a running/queued task with 409', async () => {
+            const srv = await startServer();
+            await postJSON(`${srv.url}/api/queue/pause`, {});
+            const createRes = await postJSON(`${srv.url}/api/queue`, makeTask());
+            const taskId = JSON.parse(createRes.body).task.id;
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, { provider: 'claude' });
+            expect(res.status).toBe(409);
+        });
+
+        it('rejects a provider restart of an orchestrated (ralph) chat with RESTART_UNSUPPORTED', async () => {
+            const srv = await startServer();
+            const taskId = await cancelledTask(srv, {
+                payload: { kind: 'chat', mode: 'ralph', prompt: 'iterate', provider: 'claude' },
+            });
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, { provider: 'copilot' });
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('RESTART_UNSUPPORTED');
+        });
+
+        it('rejects a provider restart of a non-chat task with RESTART_UNSUPPORTED', async () => {
+            const srv = await startServer();
+            const taskId = await cancelledTask(srv, {
+                type: 'run-script',
+                payload: { kind: 'run-script', script: 'echo hi' },
+            });
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, { provider: 'copilot' });
+            expect(res.status).toBe(409);
+            expect(JSON.parse(res.body).code).toBe('RESTART_UNSUPPORTED');
+        });
+
+        it('keeps the repo-group workspace when restarting a group chat on another provider', async () => {
+            const srv = await startServer();
+            const groupDir = fs.mkdtempSync(path.join(dataDir, 'group-root-'));
+            const taskId = await cancelledTask(srv, {
+                repoId: 'group-restart',
+                folderPath: groupDir,
+                payload: {
+                    kind: 'chat',
+                    mode: 'autopilot',
+                    prompt: 'group job',
+                    provider: 'claude',
+                    workspaceId: 'group-restart',
+                    workingDirectory: groupDir,
+                },
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue/${taskId}/retry`, { provider: 'copilot' });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            // Members and read-only policy are resolved at dispatch from the
+            // group workspace id, so keeping it keeps both.
+            expect(body.task.repoId).toBe('group-restart');
+            expect(body.task.payload.workspaceId).toBe('group-restart');
+            expect(body.task.payload.workingDirectory).toBe(groupDir);
+        });
+
+        it('restarts the original chat task when a follow-up turn failed, and links both chats', async () => {
+            const srv = await startServer();
+            const rootProcessId = 'queue_root-restart';
+            await srv.store.addProcess({
+                id: rootProcessId,
+                type: 'chat',
+                promptPreview: 'first message',
+                fullPrompt: 'first message',
+                status: 'failed',
+                startTime: new Date(),
+                metadata: { type: 'chat', provider: 'codex', mode: 'autopilot', workspaceId: 'ws-follow', model: 'gpt-5-codex' },
+                conversationTurns: [],
+            } as any);
+            const followUpId = await cancelledTask(srv, {
+                repoId: 'ws-follow',
+                payload: { kind: 'chat', prompt: 'later follow-up', processId: rootProcessId, provider: 'codex' },
+            });
+
+            const res = await postJSON(`${srv.url}/api/queue/${followUpId}/retry`, { provider: 'copilot' });
+            expect(res.status).toBe(201);
+            const body = JSON.parse(res.body);
+            expect(body.task.payload.prompt).toBe('first message');
+            expect(body.task.payload.provider).toBe('copilot');
+            expect(body.task.config.model).toBeUndefined();
+            expect(body.task.payload.restartedFrom).toBe(rootProcessId);
+
+            const source = await srv.store.getProcess(rootProcessId);
+            expect(source?.metadata?.restartedAs).toEqual({
+                processId: `queue_${body.task.id}`,
+                provider: 'copilot',
+            });
+            expect(source?.metadata?.workspaceId).toBe('ws-follow');
+        });
+
+        it('allows retry when the first-turn task completed but the chat later failed', async () => {
+            const srv = await startServer();
+            const rootProcessId = 'queue_root-failed-later';
+            await srv.store.addProcess({
+                id: rootProcessId,
+                type: 'chat',
+                promptPreview: 'hello',
+                fullPrompt: 'hello',
+                status: 'failed',
+                startTime: new Date(),
+                metadata: { type: 'chat', provider: 'claude', mode: 'ask' },
+                conversationTurns: [],
+            } as any);
+
+            const res = await postJSON(`${srv.url}/api/queue/${rootProcessId}/retry`, { provider: 'copilot' });
+            expect(res.status).toBe(201);
+            expect(JSON.parse(res.body).task.payload.provider).toBe('copilot');
+        });
     });
 
     // ========================================================================

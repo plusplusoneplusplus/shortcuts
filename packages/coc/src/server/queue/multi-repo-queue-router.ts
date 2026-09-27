@@ -112,6 +112,21 @@ export class MultiRepoQueueRouter extends EventEmitter {
         this.defaultOptions = { ...this.defaultOptions, initialDelayMs: 0 };
     }
 
+    /**
+     * Start every queue created during startup and auto-start queues created later.
+     * Existing executors retain their configured startup delay; lazy executors do not.
+     */
+    activateQueueProcessing(): void {
+        this.defaultOptions = {
+            ...this.defaultOptions,
+            autoStart: true,
+            initialDelayMs: 0,
+        };
+        for (const { executor } of this.bridges.values()) {
+            executor.start();
+        }
+    }
+
     /** Re-arm submitted implement-plan PR watches after queue persistence restore. */
     restorePrMergeWatchers(): void {
         for (const [repoPath, queueManager] of this.registry.getAllQueues()) {

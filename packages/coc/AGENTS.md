@@ -82,6 +82,12 @@ all have their own `references/*.md`.
   (`ChatExecutorRuntime`/`LifecycleRuntime`/`DreamRuntime`) so tools do not leak
   into background executors. `test/server/executors/executor-runtime-wiring.test.ts`
   is table-driven over every capability and fails if a hop is dropped.
+- **Restored queues stay stopped until server activation.** Queue persistence may
+  create per-repo executors while the composition root is still wiring routes and
+  late-bound capabilities. `createExecutionServer` activates queue processing only
+  after the HTTP server is listening; activation starts every existing executor and
+  makes later lazy repo executors auto-start. Never replace this readiness boundary
+  with a timing delay.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Process mutation admission** uses the shared keyed coordinator in
@@ -426,9 +432,12 @@ all have their own `references/*.md`.
   or `namespace-registry.ts` for admin settings. Reserve `admin-handler.ts`
   changes for cross-field validation shared with config-file loading (see
   [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
-- **Admin Features save shortcut** is scoped to Admin -> Configure -> Features.
-  Ctrl+S and Command+S prevent the browser save action there, submit only dirty
-  feature values, and stay inactive in other admin sections.
+- **Admin Settings save shortcut** is one handler, `useAdminSaveShortcut`,
+  wired in `AdminPanel` with a per-section save target. Ctrl+S and Command+S
+  prevent the browser save action on every Settings section except Advanced;
+  AI & Execution, Chat, Chat Style, Appearance, and Features also save their
+  own card when dirty. Integrations and Providers persist on change, so they
+  only suppress the dialog. Do not add per-section keydown listeners.
 - **Queue config reads go through `QueueRuntimeConfig`**
   (`src/server/queue/queue-runtime-config.ts`), the one boundary between
   `RuntimeConfigService` and the executor graph. Never call `loadConfigFile()`
@@ -823,6 +832,16 @@ all have their own `references/*.md`.
   `retry-task-button`, gated by `ChatDetail.canRetryFailedTask`) that re-runs the
   original task payload as a brand-new conversation via `client.queue.retry` —
   distinct from resuming the dead session.
+- **Restart with another provider**: failed chats show a "Restart with… ▾"
+  split button (`features/chat/RestartWithProviderButton.tsx`) on the red
+  "Task failed" card, the "Partial response preserved" banner, and the
+  no-session notice. It calls `client.queue.retry(taskId, { provider })`
+  (`POST /api/queue/:id/retry`), which starts a new chat from the first
+  message only; model/effort are dropped so the new provider's defaults apply.
+  Menu options come from `useAgentProviders` + the quota cache (0% quota is
+  disabled); `isQuotaFailure` (`utils/quotaFailure.ts`) is advisory and only
+  pre-selects the other provider with the most quota. Chats are linked via
+  `metadata.restartedAs` (old) and `metadata.restartedFrom` (new).
 - **Follow-up delivery decisions** (steer vs buffer vs enqueue) live in
   `src/server/processes/process-message-delivery-service.ts`, not the
   `POST /api/processes/:id/message` route. The route resolves the process,

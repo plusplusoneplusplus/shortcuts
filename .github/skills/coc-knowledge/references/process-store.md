@@ -214,9 +214,12 @@ Per-repo directory layout under `~/.coc/repos/<workspaceId>/processes/`, selecte
 
 States: `queued → running → completed | failed | cancelled`.
 
-**Restart recovery:** `sweepOrphanedRunningProcesses` runs on startup *after* the queue
-persistence layer's `restore()`, finalizing processes left by an unclean shutdown
-(`running → failed`, `cancelling → cancelled`). Exception: a `running` process whose ID a
+**Restart recovery:** queue persistence restores tasks into stopped per-repo executors. The
+composition root activates queue processing only after routes, late-bound executor capabilities,
+WebSocket infrastructure, and the listening HTTP server are ready. `restartPickupDelayMs` then
+applies to those startup executors; repo executors created after activation start immediately.
+`sweepOrphanedRunningProcesses` runs after `restore()`, finalizing processes left by an
+unclean shutdown (`running → failed`, `cancelling → cancelled`). Exception: a `running` process whose ID a
 re-enqueued chat follow-up points back at via `payload.processId` is revived to `queued` to
 match the task still in the queue. `cancelling` processes are never revived. Dangling streaming
 assistant turns are finalized `interrupted` either way.

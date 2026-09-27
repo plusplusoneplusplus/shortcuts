@@ -36,7 +36,7 @@ function renderWithProviders() {
  * integrations / advanced), so tests interacting with controls outside of
  * the default 'ai' sub-tab must call this first.
  */
-async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'appearance' | 'features' | 'integrations' | 'advanced'): Promise<void> {
+async function gotoSettingsSubTab(sub: 'ai' | 'chat' | 'chat-style' | 'appearance' | 'features' | 'integrations' | 'providers' | 'advanced'): Promise<void> {
     await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`)).toBeDefined());
     await act(async () => {
         fireEvent.click(screen.getByTestId(`settings-subtab-${sub}`));
@@ -885,7 +885,7 @@ describe('AdminPanel', () => {
     });
 
     describe('Settings card structure', () => {
-        function mockFullConfig() {
+        function mockFullConfig(extraResolved: Record<string, unknown> = {}) {
             mockFetch.mockImplementation((url: string) => {
                 if (url.includes('/admin/config')) {
                     return Promise.resolve({
@@ -899,6 +899,7 @@ describe('AdminPanel', () => {
                                 myWork: { enabled: false }, myLife: { enabled: false },
                                 chat: { followUpSuggestions: { enabled: true, count: 3 }, askUser: { enabled: true } },
                                 approvePermissions: false, mcpConfig: false, persist: true,
+                                ...extraResolved,
                             },
                             sources: {},
                         }),
@@ -1089,18 +1090,88 @@ describe('AdminPanel', () => {
             expect(mockFetch).not.toHaveBeenCalled();
         });
 
-        it('Ctrl+S outside Workspace Features is left to the active page', async () => {
+        // Regression: Ctrl/Cmd+S used to save only the Features section.
+        // Every section with a Save button must save its own dirty values.
+        it.each<[string, 'ai' | 'chat' | 'chat-style' | 'appearance', () => void, (writes: Array<{ url: string; body: any }>) => void]>([
+            ['AI & Execution', 'ai', () => {
+                fireEvent.change(document.getElementById('admin-config-model')!, { target: { value: 'gpt-5' } });
+            }, writes => {
+                expect(writes.some(w => w.url.includes('/admin/config') && w.body.model === 'gpt-5')).toBe(true);
+            }],
+            ['Chat', 'chat', () => {
+                fireEvent.click(screen.getByTestId('toggle-chat-followup-enabled'));
+            }, writes => {
+                expect(writes.some(w => w.url.includes('/admin/config') && w.body['chat.followUpSuggestions.enabled'] === false)).toBe(true);
+            }],
+            ['Chat Style', 'chat-style', () => {
+                fireEvent.change(screen.getByTestId('select-default-chat-style'), { target: { value: 'terse' } });
+            }, writes => {
+                expect(writes.some(w => w.url.includes('/admin/config') && w.body['features.defaultChatStyle'] === 'terse')).toBe(true);
+            }],
+            ['Appearance', 'appearance', () => {
+                fireEvent.change(screen.getByTestId('pref-theme'), { target: { value: 'dark' } });
+            }, writes => {
+                expect(writes.some(w => w.url.includes('/preferences') && w.body.theme === 'dark')).toBe(true);
+            }],
+        ])('Ctrl+S saves dirty %s settings', async (_label, sub, makeDirty, assertSaved) => {
+            const writes: Array<{ url: string; body: any }> = [];
+            mockFullConfig({ features: { chatStyleSelector: true, defaultChatStyle: 'default' } });
+            const baseImpl = mockFetch.getMockImplementation()!;
+            mockFetch.mockImplementation((url: string, options?: any) => {
+                if (options?.method && options.method !== 'GET') {
+                    writes.push({ url, body: options.body ? JSON.parse(options.body) : null });
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+                }
+                return baseImpl(url, options);
+            });
+
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab(sub);
+            await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`).getAttribute('aria-selected')).toBe('true'));
+            await act(async () => { makeDirty(); });
+
+            const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true });
+            await act(async () => { window.dispatchEvent(event); });
+
+            expect(event.defaultPrevented).toBe(true);
+            await waitFor(() => assertSaved(writes));
+        });
+
+        it.each(['ai', 'chat', 'appearance'] as const)('Ctrl+S on clean %s settings prevents browser save without writing', async (sub) => {
             mockFullConfig();
             await act(async () => { renderWithProviders(); });
-            await waitFor(() => expect(screen.getByTestId('settings-ai-execution-save')).toBeDefined());
+            await gotoSettingsSubTab(sub);
+            await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`).getAttribute('aria-selected')).toBe('true'));
             mockFetch.mockClear();
 
-            const event = new KeyboardEvent('keydown', {
-                key: 's',
-                ctrlKey: true,
-                bubbles: true,
-                cancelable: true,
-            });
+            const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true });
+            window.dispatchEvent(event);
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(mockFetch).not.toHaveBeenCalled();
+        });
+
+        it.each(['integrations', 'providers'] as const)('Ctrl+S on %s prevents browser save without writing', async (sub) => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab(sub);
+            await waitFor(() => expect(screen.getByTestId(`settings-subtab-${sub}`).getAttribute('aria-selected')).toBe('true'));
+            mockFetch.mockClear();
+
+            const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true });
+            window.dispatchEvent(event);
+
+            expect(event.defaultPrevented).toBe(true);
+            expect(mockFetch.mock.calls.filter(([, o]) => o?.method && o.method !== 'GET')).toHaveLength(0);
+        });
+
+        it('Ctrl+S on Advanced is left to the browser', async () => {
+            mockFullConfig();
+            await act(async () => { renderWithProviders(); });
+            await gotoSettingsSubTab('advanced');
+            mockFetch.mockClear();
+
+            const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true });
             window.dispatchEvent(event);
 
             expect(event.defaultPrevented).toBe(false);

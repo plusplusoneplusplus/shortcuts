@@ -23,8 +23,8 @@ const mockHasWorkspaceRoute = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({
     TerminalView: () => <div data-testid="mock-terminal" />,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
-    DockNotesPanel: () => <div data-testid="mock-notes" />,
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: () => <div data-testid="mock-notes" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
     ExplorerPanel: ({ workspaceId, mode }: { workspaceId: string; mode?: string }) => (

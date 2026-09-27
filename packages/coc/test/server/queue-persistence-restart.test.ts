@@ -24,7 +24,7 @@
  *   tasks that were actually executed.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -83,6 +83,17 @@ function makeGlobalTask(displayName: string) {
     };
 }
 
+function makeGlobalScriptTask(displayName: string) {
+    return {
+        type: 'run-script',
+        priority: 'normal',
+        payload: { kind: 'run-script', script: 'node --version' },
+        config: {},
+        displayName,
+        repoId: GLOBAL_WORKSPACE_ID,
+    };
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -134,6 +145,39 @@ describe('Queue Persistence Across Server Restart', () => {
         const listRes = await request(`${server2.url}/api/queue`);
         const queued = JSON.parse(listRes.body).queued;
         expect(queued).toHaveLength(3);
+
+        await server2.close();
+        store2.close();
+    });
+
+    it('restored tasks start only after the restarted server is ready', async () => {
+        const store1 = new SqliteProcessStore({ dbPath });
+        activeStores.push(store1);
+        const server1 = await createExecutionServer({
+            port: 0,
+            host: '127.0.0.1',
+            dataDir,
+            store: store1,
+            queue: { autoStart: false },
+        });
+        activeServers.push(server1);
+        const taskRes = await post(`${server1.url}/api/queue`, makeGlobalScriptTask('Restored script'));
+        const taskId = JSON.parse(taskRes.body).task.id as string;
+
+        await server1.close();
+        store1.close();
+
+        const store2 = new SqliteProcessStore({ dbPath });
+        activeStores.push(store2);
+        const server2 = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir, store: store2 });
+        activeServers.push(server2);
+
+        await vi.waitFor(() => {
+            const row = store2.getDatabase().prepare(
+                'SELECT status FROM queue_tasks WHERE id = ?',
+            ).get(taskId) as { status: string } | undefined;
+            expect(row?.status).toBe('completed');
+        }, { timeout: 5_000, interval: 25 });
 
         await server2.close();
         store2.close();
@@ -268,4 +312,3 @@ describe('Queue Persistence Across Server Restart', () => {
         store2.close();
     });
 });
-

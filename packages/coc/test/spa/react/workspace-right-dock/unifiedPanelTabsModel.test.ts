@@ -23,6 +23,7 @@ import {
     serializeUnifiedPanelState,
     unifiedPanelStorageKey,
     unifiedTabId,
+    updateNotesView,
     visibleTabIds,
     visibleTabs,
     type OpenUnifiedPreviewTabInput,
@@ -926,6 +927,67 @@ describe('unifiedPanelTabsModel — external definition sources', () => {
         const closed = closeTab(state, id);
 
         expect(visibleTabs(closed, CHAT_1).map(tab => tab.resourceId)).toEqual(['sess-1', 'notes', 'src/a.ts']);
+    });
+});
+
+describe('notes tab view state', () => {
+    const notesInput: OpenUnifiedTabInput = {
+        kind: 'notes',
+        ownerWorkspaceId: WS,
+        chatId: null,
+        resourceId: 'notes',
+        label: 'Notes',
+    };
+
+    it('persists and restores the panel-local selected note', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, notesInput);
+        state = updateNotesView(state, state.workspaceTabs[0].id, 'Plans/Release.md');
+
+        const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
+
+        expect(restored.workspaceTabs[0].notesView).toEqual({ notePath: 'Plans/Release.md' });
+    });
+
+    it('updates and clears selection without changing the active panel tab', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, notesInput);
+        state = openTab(state, {
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal',
+        });
+        const notesId = state.workspaceTabs[0].id;
+        const activeId = activeTabId(state, null);
+
+        state = updateNotesView(state, notesId, 'Notes/One.md');
+        expect(activeTabId(state, null)).toBe(activeId);
+        expect(state.workspaceTabs[0].notesView).toEqual({ notePath: 'Notes/One.md' });
+
+        state = updateNotesView(state, notesId, null);
+        expect(activeTabId(state, null)).toBe(activeId);
+        expect(state.workspaceTabs[0].notesView).toBeUndefined();
+    });
+
+    it('keeps selection when the existing Notes tab is opened again', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, notesInput);
+        state = updateNotesView(state, state.workspaceTabs[0].id, 'Notes/One.md');
+
+        state = openTab(state, notesInput);
+
+        expect(state.workspaceTabs[0].notesView).toEqual({ notePath: 'Notes/One.md' });
+    });
+
+    it('drops malformed view state and ignores it on other tab kinds', () => {
+        let state = openTab(EMPTY_UNIFIED_PANEL, notesInput);
+        const payload = JSON.parse(serializeUnifiedPanelState(state));
+        payload.workspaceTabs[0].notesView = { notePath: 42, content: 'not descriptor state' };
+        let restored = parseUnifiedPanelState(JSON.stringify(payload));
+        expect(restored.workspaceTabs[0].notesView).toBeUndefined();
+
+        state = openTab(EMPTY_UNIFIED_PANEL, {
+            kind: 'terminal', ownerWorkspaceId: WS, chatId: null, resourceId: 'terminal', label: 'Terminal',
+        });
+        const otherPayload = JSON.parse(serializeUnifiedPanelState(state));
+        otherPayload.workspaceTabs[0].notesView = { notePath: 'Notes/One.md' };
+        restored = parseUnifiedPanelState(JSON.stringify(otherPayload));
+        expect(restored.workspaceTabs[0].notesView).toBeUndefined();
     });
 });
 

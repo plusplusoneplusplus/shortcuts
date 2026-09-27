@@ -4,7 +4,7 @@
  *
  * Owns the current + last-saved feature values (keyed by flat config key, e.g.
  * 'cron.enabled'), the live search string, per-card saving/dirty state, the
- * runtime-config patch on save, and the Ctrl/Cmd+S save shortcut. Rows, dirty
+ * runtime-config patch on save. Rows, dirty
  * state, and the save payload all derive from the admin setting registry —
  * adding a setting there with `ui` metadata surfaces it with no per-setting
  * code here.
@@ -44,8 +44,6 @@ export interface UseAdminFeatureSettingsOptions {
     addToast: (message: string, type: 'success' | 'error') => void;
     /** True while the Features sub-tab is the visible section (drives the search reset). */
     searchActive: boolean;
-    /** True while the Features card is focused and the Ctrl/Cmd+S shortcut should fire. */
-    shortcutActive: boolean;
 }
 
 export interface AdminFeatureSettings {
@@ -62,7 +60,7 @@ export interface AdminFeatureSettings {
 }
 
 export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions): AdminFeatureSettings {
-    const { addToast, searchActive, shortcutActive } = options;
+    const { addToast, searchActive } = options;
     const [featureValues, setFeatureValues] = useState<FeatureValues>(() => readFeatureValues(undefined));
     const [featuresSnapshot, setFeaturesSnapshot] = useState<FeatureValues>(() => readFeatureValues(undefined));
     // Live search/filter for the Workspace Features card. Local UI state only —
@@ -102,28 +100,6 @@ export function useAdminFeatureSettings(options: UseAdminFeatureSettingsOptions)
     const handleCancelFeatures = useCallback(() => {
         setFeatureValues({ ...featuresSnapshot });
     }, [featuresSnapshot]);
-
-    useEffect(() => {
-        if (!shortcutActive) return;
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (
-                !(event.ctrlKey || event.metaKey)
-                || event.altKey
-                || event.shiftKey
-                || event.key.toLowerCase() !== 's'
-            ) {
-                return;
-            }
-
-            event.preventDefault();
-            if (!featuresDirty || featuresSaving) return;
-            void handleSaveFeatures();
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [shortcutActive, featuresDirty, featuresSaving, handleSaveFeatures]);
 
     return {
         featureValues,

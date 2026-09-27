@@ -44,6 +44,34 @@ function createSelection(overrides: Partial<UseModalJobAiSelectionResult> = {}):
 }
 
 describe('ClassifyDiffAiControls', () => {
+    const MULTI_PROVIDER_TIERS = {
+        agentProviders: [
+            { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+            { id: 'codex', label: 'Codex', enabled: true, available: true },
+        ] as AgentProviderStatus[],
+        useEffortTierMode: true,
+        effortTierMap: { medium: { model: 'm', reasoningEffort: 'medium', source: 'config' as const } },
+    };
+
+    it('collapseLabels hides the provider name and Effort prefix in a narrow container and stays on one row', () => {
+        render(<ClassifyDiffAiControls selection={createSelection(MULTI_PROVIDER_TIERS)} collapseLabels />);
+
+        expect(screen.getByTestId('classify-ai-controls').className).toContain('flex-nowrap');
+        expect(screen.getByTestId('classify-ai-controls').className).not.toContain('flex-wrap');
+        expect(screen.getByTestId('agent-selector-chip-label').className).toContain('[@container_(max-width:559px)]:hidden');
+        const tierLabel = screen.getByTestId('effort-tier-label');
+        expect(tierLabel.textContent).toBe('Effort: Medium');
+        expect(tierLabel.querySelector('span')!.className).toContain('[@container_(max-width:559px)]:hidden');
+    });
+
+    it('keeps labels unconditionally visible without collapseLabels', () => {
+        render(<ClassifyDiffAiControls selection={createSelection(MULTI_PROVIDER_TIERS)} />);
+
+        expect(screen.getByTestId('classify-ai-controls').className).toContain('flex-wrap');
+        expect(screen.getByTestId('agent-selector-chip-label').className).not.toContain('@container');
+        expect(screen.getByTestId('effort-tier-label').innerHTML).not.toContain('@container');
+    });
+
     it('hides the provider selector when only one provider can be selected', () => {
         render(<ClassifyDiffAiControls selection={createSelection()} />);
 

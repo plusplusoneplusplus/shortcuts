@@ -352,8 +352,8 @@ can match the chat's cwd, but never the default, since it holds only `group.json
 every member repo, with stale members listed but disabled. Notes stays on the group.
 Because available views derive from the *target*, picking a member brings Explorer back
 and picking the group root drops it. The open/close toggle is
-`WorkspaceDockToggleButton` in the TopBar next to the virtual header; My Work / My Life
-get no dock. See `features/repo-detail/AGENTS.md` for the dock's own contract.
+`WorkspaceDockToggleButton` in the TopBar next to the virtual header, and Ctrl/Cmd+\
+(Router's keydown handler) flips the same open store; My Work / My Life get no dock. See `features/repo-detail/AGENTS.md` for the dock's own contract.
 
 Group selections never overwrite `lastWorkspaceRepoId` (an AppContext guard).
 `ScopeSlideSwitcher` gives an active group the workspace segment

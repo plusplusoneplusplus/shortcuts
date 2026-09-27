@@ -204,6 +204,53 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         }
         expect(bar.querySelector('[data-testid="diff-view-toggle"], [data-testid="diff-view-unified"]')).toBeTruthy();
     });
+
+    it('splits the bar into wrap-as-a-unit left and right groups inside a size container', async () => {
+        mockClassificationStatus = 'ready';
+        await renderDetail();
+        const bar = screen.getByTestId('commit-classify-bar');
+        const left = screen.getByTestId('commit-classify-left');
+        const right = screen.getByTestId('commit-classify-right');
+        expect(bar.className).toContain('flex-wrap');
+        expect(bar.parentElement!.className).toContain('[container-type:inline-size]');
+        for (const group of [left, right]) {
+            expect(group.parentElement).toBe(bar);
+            expect(group.className).toContain('flex-nowrap');
+        }
+        expect(right.className).toContain('ml-auto');
+        for (const id of ['commit-classify-ai-controls', 'commit-classify-button', 'commit-prev-priority-btn', 'commit-next-priority-btn']) {
+            expect(left.contains(screen.getByTestId(id))).toBe(true);
+        }
+        for (const id of ['commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
+            expect(right.contains(screen.getByTestId(id))).toBe(true);
+        }
+        expect(right.querySelector('[data-testid="diff-view-toggle"], [data-testid="diff-view-unified"]')).toBeTruthy();
+    });
+
+    it('never lets a toolbar control wrap its own text', async () => {
+        mockClassificationStatus = 'ready';
+        await renderDetail();
+        for (const id of ['commit-classify-button', 'commit-prev-priority-btn', 'commit-next-priority-btn', 'commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
+            expect(screen.getByTestId(id).className).toContain('whitespace-nowrap');
+            expect(screen.getByTestId(id).className).toContain('shrink-0');
+        }
+    });
+
+    it('collapses Prev/Next to arrows in a narrow pane but keeps accessible names', async () => {
+        mockClassificationStatus = 'ready';
+        await renderDetail();
+        for (const [id, name, label] of [
+            ['commit-prev-priority-btn', 'Previous priority file', 'Prev'],
+            ['commit-next-priority-btn', 'Next priority file', 'Next'],
+        ]) {
+            const btn = screen.getByTestId(id);
+            expect(btn.getAttribute('aria-label')).toBe(name);
+            expect(btn.getAttribute('title')).toBe(name);
+            const span = btn.querySelector('span')!;
+            expect(span.textContent).toBe(label);
+            expect(span.className).toContain('[@container_(max-width:559px)]:hidden');
+        }
+    });
 });
 
 describe('CommitDetail — classification filter bar (AC-05)', () => {
@@ -268,5 +315,7 @@ describe('CommitDetail — reviewed count (AC-05)', () => {
         const badge = screen.getByTestId('commit-reviewed-count');
         // parseDiffFileList is mocked to return 2 files
         expect(badge.textContent).toBe('0/2 reviewed');
+        expect(badge.getAttribute('title')).toBe('0 of 2 files reviewed');
+        expect(badge.querySelector('span')!.className).toContain('[@container_(max-width:559px)]:hidden');
     });
 });

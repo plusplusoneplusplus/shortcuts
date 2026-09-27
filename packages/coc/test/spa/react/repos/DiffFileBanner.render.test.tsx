@@ -92,39 +92,60 @@ describe.each(VIEWERS)('file-name banner — $name mode', ({ Viewer }) => {
     it('keeps the full path so it stays greppable, with the basename bold', () => {
         const { container } = render(<Viewer diff={MODIFIED_DIFF} showFileBanners data-testid="diff" />);
         const banner = container.querySelector<HTMLElement>('[data-testid="diff-file-banner"]')!;
+        const path = banner.querySelector<HTMLElement>('[data-testid="diff-file-banner-path"]')!;
 
         expect(banner.textContent).toContain('packages/coc-desktop/src/');
         expect(banner.textContent).toContain('app-menu.ts');
-        expect(banner.querySelector('.font-semibold')?.textContent).toBe('app-menu.ts');
+        expect(path.children[0].className).toContain('block');
+        expect(path.children[0].textContent).toBe('packages/coc-desktop/src/');
+        expect(path.children[1].className).toContain('font-semibold');
+        expect(path.children[1].textContent).toBe('app-menu.ts');
         expect(banner.getAttribute('data-file-path')).toBe('packages/coc-desktop/src/app-menu.ts');
     });
 
     it('renders the modified status badge', () => {
         const { container } = render(<Viewer diff={MODIFIED_DIFF} showFileBanners data-testid="diff" />);
+        const banner = container.querySelector<HTMLElement>('[data-testid="diff-file-banner"]')!;
+        const accent = banner.querySelector<HTMLElement>('[data-testid="diff-file-banner-accent"]')!;
         const badge = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-status"]')!;
         expect(badge.textContent).toBe('modified');
         expect(badge.className).toContain('blue');
+        expect(badge.className).toContain('rounded-full');
+        expect(banner.className).toContain('bg-blue-50/80');
+        expect(accent.className).toContain('bg-blue-600');
     });
 
     it('renders the new-file status badge', () => {
         const { container } = render(<Viewer diff={NEW_FILE_DIFF} showFileBanners data-testid="diff" />);
+        const banner = container.querySelector<HTMLElement>('[data-testid="diff-file-banner"]')!;
+        const accent = banner.querySelector<HTMLElement>('[data-testid="diff-file-banner-accent"]')!;
         const badge = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-status"]')!;
         expect(badge.textContent).toBe('new file');
         expect(badge.className).toContain('emerald');
+        expect(banner.className).toContain('bg-emerald-50/80');
+        expect(accent.className).toContain('bg-emerald-600');
     });
 
     it('renders the deleted status badge', () => {
         const { container } = render(<Viewer diff={DELETED_DIFF} showFileBanners data-testid="diff" />);
+        const banner = container.querySelector<HTMLElement>('[data-testid="diff-file-banner"]')!;
+        const accent = banner.querySelector<HTMLElement>('[data-testid="diff-file-banner-accent"]')!;
         const badge = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-status"]')!;
         expect(badge.textContent).toBe('deleted');
         expect(badge.className).toContain('rose');
+        expect(banner.className).toContain('bg-rose-50/80');
+        expect(accent.className).toContain('bg-rose-600');
     });
 
     it('renders the renamed badge with the old path, hidden on narrow widths', () => {
         const { container } = render(<Viewer diff={RENAMED_DIFF} showFileBanners data-testid="diff" />);
+        const banner = container.querySelector<HTMLElement>('[data-testid="diff-file-banner"]')!;
+        const accent = banner.querySelector<HTMLElement>('[data-testid="diff-file-banner-accent"]')!;
         const badge = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-status"]')!;
         expect(badge.textContent).toBe('renamed');
         expect(badge.className).toContain('violet');
+        expect(banner.className).toContain('bg-violet-50/80');
+        expect(accent.className).toContain('bg-violet-600');
 
         const oldPath = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-oldpath"]')!;
         expect(oldPath.textContent).toContain('src/old-name.ts');

@@ -173,6 +173,8 @@ export interface NotesSidebarProps {
     onNoteRenamed?: (oldPath: string, newPath: string) => void;
     onNoteCreated?: (path: string) => void;
     onNoteDeleted?: (path: string) => void;
+    /** Clears a restored selection after its tree proves the path is absent. */
+    onSelectedNoteMissing?: (path: string) => void;
     canGoBack?: boolean;
     onGoBack?: () => void;
     canGoForward?: boolean;
@@ -202,7 +204,7 @@ export interface NotesSidebarProps {
     footer?: ReactNode;
 }
 
-export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, canGoBack, onGoBack, canGoForward, onGoForward, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
+export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRenamed, onNoteCreated, onNoteDeleted, onSelectedNoteMissing, canGoBack, onGoBack, canGoForward, onGoForward, onNotesRootReady, onRestoreEditorFocus, markSeenRef, isDefaultRoot = true, selectedRootId, roots, onSelectRoot, onRootsChanged, footer }: NotesSidebarProps) {
     const { addToast } = useGlobalToast();
     /** Roots in API order — the section stack (AC-01). */
     const orderedRootIds = useMemo(() => roots?.map(r => r.rootId) ?? [], [roots]);
@@ -248,6 +250,15 @@ export function NotesSidebar({ workspaceId, selectedPath, onSelectPage, onNoteRe
     );
     const { getTree, refresh: refreshRoot } = useNotesTrees(workspaceId, activeRootIds);
     const { tree, notesRoot, systemFolders, loading, error } = getTree(activeRootId);
+
+    useEffect(() => {
+        if (!selectedPath || loading || tree === null || error) {
+            return;
+        }
+        if (findNodeByPath(tree, selectedPath) === null) {
+            onSelectedNoteMissing?.(selectedPath);
+        }
+    }, [error, loading, onSelectedNoteMissing, selectedPath, tree]);
     const rootMutations = useNotesRootMutations(workspaceId, refreshRoot);
     const refresh = useCallback(() => refreshRoot(activeRootIdRef.current), [refreshRoot]);
     const createNode = useCallback(

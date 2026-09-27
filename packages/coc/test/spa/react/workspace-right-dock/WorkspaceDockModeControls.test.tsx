@@ -17,7 +17,8 @@ describe('WorkspaceDockToggle', () => {
 
         const toggle = screen.getByRole('button', { name: 'Show right panel' });
         expect(toggle.textContent).toBe('');
-        expect(toggle.getAttribute('title')).toBe('Show right panel');
+        expect(toggle.getAttribute('title')).toBe('Show right panel (Ctrl+\\)');
+        expect(toggle.getAttribute('aria-keyshortcuts')).toBe('Control+\\');
         expect(toggle.className).toContain('focus-visible:outline');
         expect(toggle.querySelector('rect')).toBeTruthy();
         expect(screen.getAllByRole('button')).toHaveLength(1);

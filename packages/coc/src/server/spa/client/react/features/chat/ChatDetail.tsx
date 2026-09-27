@@ -8,7 +8,6 @@
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { useComposerInsertListener } from './composerInsert';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
 import type { AIProcess } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
@@ -118,12 +117,13 @@ import { InlineTurnEditor } from './conversation/InlineTurnEditor';
 import { useEditTurn } from './hooks/useEditTurn';
 import { useRewindTurn } from './hooks/useRewindTurn';
 import { EDIT_BUSY_TOOLTIP } from './hooks/rewindCapability';
-import type { ChatProvider } from './ProviderBadge';
+import { getProviderLabel, type ChatProvider } from './ProviderBadge';
 import type { ChatAttachment } from '../../types/attachments';
 import { useConversationRetrievalCapability } from './sessionContextDrop';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { popOutOpened } from '../../utils/popOutWindow';
 import { isConcreteChatProvider, type AgentSelectorProvider, type ConcreteChatProvider } from '../../utils/providerSelection';
+import { RestartWithProviderButton } from './RestartWithProviderButton';
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
@@ -779,11 +779,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
         return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
     }, [openFileRef]);
-
-    // "Insert into chat" from the workspace right dock's Notes panel lands here:
-    // the dock is a sibling column with no React path to this composer, so it
-    // dispatches a window event this follow-up input listens for.
-    useComposerInsertListener(workspaceId, setFollowUpInput);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;
@@ -2474,29 +2469,77 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         }
     }, [processId, forking, workspaceId]);
 
-    // Re-run a task whose first message failed before any resumable session
-    // existed. Enqueues a fresh copy server-side and navigates to it.
-    const handleRetryTask = useCallback(async () => {
+    const openChatProcess = useCallback((targetProcessId: string) => {
+        if (!standalone) {
+            queueDispatch({ type: 'SELECT_QUEUE_TASK', id: targetProcessId, repoId: workspaceId });
+        }
+        if (workspaceId) {
+            location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(targetProcessId);
+        }
+    }, [standalone, workspaceId, queueDispatch]);
+
+    // Re-run a failed task from its original payload in a new chat, optionally
+    // on another provider. Enqueues a fresh copy server-side and navigates to it.
+    const handleRetryTask = useCallback(async (provider?: ConcreteChatProvider) => {
         if (retryingTask) return;
         setRetryingTask(true);
         try {
-            const res = await client.queue.retry(bareTaskId);
+            const res = await client.queue.retry(bareTaskId, provider ? { provider } : undefined);
             const newId = res?.task?.id;
             if (newId) {
-                const newProcessId = toQueueProcessId(String(newId));
-                if (!standalone) {
-                    queueDispatch({ type: 'SELECT_QUEUE_TASK', id: newProcessId, repoId: workspaceId });
-                }
-                if (workspaceId) {
-                    location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/activity/' + encodeURIComponent(newProcessId);
-                }
+                openChatProcess(toQueueProcessId(String(newId)));
             }
         } catch (err) {
             setError(getSpaCocClientErrorMessage(err, 'Failed to retry task.'));
         } finally {
             setRetryingTask(false);
         }
-    }, [retryingTask, bareTaskId, standalone, workspaceId, queueDispatch]);
+    }, [retryingTask, bareTaskId, openChatProcess]);
+    const handleRetrySameTask = useCallback(() => { void handleRetryTask(); }, [handleRetryTask]);
+
+    // User follow-ups after the first message; a restart re-sends only the first.
+    const laterUserMessageCount = Math.max(0, turns.filter(t => t.role === 'user' && !t.deletedAt).length - 1);
+    const restartButton = (
+        <RestartWithProviderButton
+            currentProvider={conversationProvider}
+            error={processDetails?.error ?? null}
+            laterMessageCount={laterUserMessageCount}
+            baseUrl={owningServerBaseUrl}
+            quotaTarget={owningServerBaseUrl ?? workspaceId}
+            busy={retryingTask}
+            onRestart={(provider) => { void handleRetryTask(provider); }}
+        />
+    );
+    const restartAction = canRetryFailedTask ? restartButton : undefined;
+
+    const restartedAs = metadataProcess?.metadata?.restartedAs as { processId?: string; provider?: string } | undefined;
+    const restartedFrom = metadataProcess?.metadata?.restartedFrom as string | undefined;
+    const restartLinks = (restartedAs?.processId || restartedFrom) ? (
+        <div className="flex flex-wrap gap-3 text-xs" data-testid="restart-links">
+            {restartedFrom && (
+                <button
+                    type="button"
+                    className="text-[#0078d4] hover:underline"
+                    onClick={() => openChatProcess(restartedFrom)}
+                    data-testid="restarted-from-link"
+                >
+                    ← Restarted from previous chat
+                </button>
+            )}
+            {restartedAs?.processId && (
+                <button
+                    type="button"
+                    className="text-[#0078d4] hover:underline"
+                    onClick={() => openChatProcess(restartedAs.processId!)}
+                    data-testid="restarted-as-link"
+                >
+                    {isConcreteChatProvider(restartedAs.provider)
+                        ? `Restarted on ${getProviderLabel(restartedAs.provider)} →`
+                        : 'Restarted in a new chat →'}
+                </button>
+            )}
+        </div>
+    ) : null;
 
     const scrollToBottom = () => {
         if (conversationContainerRef.current) {
@@ -2570,15 +2613,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             </div>
             {effectiveStatus === 'failed' && (
                 <div className="mt-2 flex justify-center">
-                    <button
-                        type="button"
-                        data-testid="retry-task-button"
-                        onClick={handleRetryTask}
-                        disabled={retryingTask}
-                        className="px-3 py-1.5 text-sm rounded bg-[#0e639c] hover:bg-[#1177bb] text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {retryingTask ? 'Retrying…' : 'Retry task'}
-                    </button>
+                    {restartButton}
                 </div>
             )}
         </div>
@@ -2806,7 +2841,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         onCopySidenote={(note, text) => { try { void navigator.clipboard?.writeText(text ?? note.answer); } catch { /* ignore */ } }}
                         onFollowUpSidenote={quickAsk.followUpSidenote}
                         onRetrySidenoteTurn={quickAsk.retrySidenoteTurn}
-                        postConversationContent={planReviewCards}
+                        postConversationContent={<>{restartLinks}{planReviewCards}</>}
+                        restartAction={restartAction}
                         isCompacting={isCompacting}
                         compactInstructions={compactInstructions}
                         searchHighlightQuery={searchHighlightQuery}
@@ -2926,7 +2962,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             isCancelling={isCancelling}
                             error={error}
                             nonRetryableError={nonRetryableFollowUpError}
-                            onRetryTask={canRetryFailedTask ? handleRetryTask : undefined}
+                            onRetryTask={canRetryFailedTask ? handleRetrySameTask : undefined}
                             retryingTask={retryingTask}
                             disabledPlaceholder={nonRetryableFollowUpError ? 'Cannot continue this stopped chat.' : undefined}
                             resumeFeedback={resumeFeedback}
@@ -3074,7 +3110,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     isCancelling={isCancelling}
                     error={error}
                     nonRetryableError={nonRetryableFollowUpError}
-                    onRetryTask={canRetryFailedTask ? handleRetryTask : undefined}
+                    onRetryTask={canRetryFailedTask ? handleRetrySameTask : undefined}
                     retryingTask={retryingTask}
                     disabledPlaceholder={nonRetryableFollowUpError ? 'Cannot continue this stopped chat.' : undefined}
                     resumeFeedback={resumeFeedback}

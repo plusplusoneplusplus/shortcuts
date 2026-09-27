@@ -1377,7 +1377,7 @@ describe('ChatDetail', () => {
             });
         });
 
-        it('shows a Retry button for a failed task with no session and calls retry on click', async () => {
+        it('shows a Restart button for a failed task with no session and restarts on the same provider after confirm', async () => {
             const task = makeTask({ status: 'failed', processId: 'proc-1' });
             const proc = makeProcess({ status: 'failed', metadata: { mode: 'autopilot' } });
             setupFetch({
@@ -1399,17 +1399,112 @@ describe('ChatDetail', () => {
             });
             render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
 
-            const btn = await screen.findByTestId('retry-task-button');
-            expect(btn).toBeTruthy();
-
+            const btn = await screen.findByTestId('restart-with-provider-primary');
+            expect(btn.textContent).toBe('Restart on Copilot');
             fireEvent.click(btn);
+            fireEvent.click(await screen.findByTestId('restart-with-provider-confirm'));
 
             await waitFor(() => {
                 const retryCalls = fetchMock.mock.calls.filter(
                     (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/task-1/retry'),
                 );
                 expect(retryCalls.length).toBeGreaterThan(0);
+                expect(JSON.parse(String(retryCalls[0][1]?.body))).toEqual({ provider: 'copilot' });
             });
+            await waitFor(() => {
+                expect(location.hash).toBe('#repos/ws-1/activity/queue_task-2');
+            });
+        });
+
+        it('pre-selects another provider on a quota failure and restarts there', async () => {
+            const task = makeTask({ status: 'failed', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'failed',
+                sdkSessionId: 'sess-codex',
+                error: "You've hit your usage limit. Upgrade to Pro or try again in 2 days 3 hours.",
+                metadata: { mode: 'autopilot', provider: 'codex', sessionId: 'sess-codex' },
+                conversationTurns: [
+                    { role: 'user', content: 'first', timestamp: new Date().toISOString(), turnIndex: 0, timeline: [] },
+                    { role: 'assistant', content: 'partial', timestamp: new Date().toISOString(), turnIndex: 1, timeline: [] },
+                    { role: 'user', content: 'second', timestamp: new Date().toISOString(), turnIndex: 2, timeline: [] },
+                ],
+            });
+            setupFetch({
+                '/skills/all': { body: { merged: [] } },
+                '/agent-providers/quota': { body: {
+                    lastUpdated: null,
+                    providers: [
+                        { id: 'codex', quotaTypes: [{ type: 'chat', isUnlimitedEntitlement: false, usedRequests: 10, entitlementRequests: 10, remainingPercentage: 0, usageAllowedWithExhaustedQuota: false, overage: 0, resetDate: '2026-10-01T00:00:00Z' }] },
+                        { id: 'claude', quotaTypes: [{ type: 'chat', isUnlimitedEntitlement: false, usedRequests: 2, entitlementRequests: 10, remainingPercentage: 0.8, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                        { id: 'copilot', quotaTypes: [{ type: 'chat', isUnlimitedEntitlement: false, usedRequests: 7, entitlementRequests: 10, remainingPercentage: 0.3, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+                    ],
+                } },
+                '/agent-providers': { body: { providers: [
+                    { id: 'copilot', label: 'Copilot', enabled: true, available: true, locked: true },
+                    { id: 'codex', label: 'Codex', enabled: true, available: true },
+                    { id: 'claude', label: 'Claude', enabled: true, available: true },
+                    { id: 'opencode', label: 'OpenCode', enabled: false, available: false },
+                ] } },
+                '/queue/': (url: string) => {
+                    if (url.includes('/retry')) {
+                        return new Response(
+                            JSON.stringify({ task: { id: 'task-2', status: 'queued' } }),
+                            { status: 201, headers: { 'content-type': 'application/json' } },
+                        );
+                    }
+                    return new Response(JSON.stringify({ task }), { status: 200, headers: { 'content-type': 'application/json' } });
+                },
+                '/processes/': { body: { process: proc } },
+                '/models': { body: [] },
+            });
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+            const banner = await screen.findByTestId('process-error-restart');
+            await waitFor(() => {
+                expect(banner.querySelector('[data-testid="restart-with-provider-primary"]')!.textContent).toBe('Restart on Claude');
+            });
+            fireEvent.click(banner.querySelector('[data-testid="restart-with-provider-toggle"]')!);
+            const codexOption = await screen.findByTestId('restart-with-provider-option-codex') as HTMLButtonElement;
+            expect(codexOption.disabled).toBe(true);
+            expect(codexOption.textContent).toContain('(same)');
+            expect(codexOption.textContent).toContain('No quota left');
+            expect(screen.getByTestId('restart-with-provider-option-copilot').textContent).toContain('30% left');
+            expect(screen.queryByTestId('restart-with-provider-option-opencode')).toBeNull();
+
+            fireEvent.click(screen.getByTestId('restart-with-provider-option-claude'));
+            expect((await screen.findByTestId('restart-with-provider-later-messages')).textContent)
+                .toContain('1 later message');
+            fireEvent.click(screen.getByTestId('restart-with-provider-confirm'));
+
+            await waitFor(() => {
+                const retryCalls = fetchMock.mock.calls.filter(
+                    (c: any) => typeof c[0] === 'string' && c[0].includes('/queue/task-1/retry'),
+                );
+                expect(retryCalls.length).toBe(1);
+                expect(JSON.parse(String(retryCalls[0][1]?.body))).toEqual({ provider: 'claude' });
+            });
+        });
+
+        it('links a restarted chat to its replacement and back', async () => {
+            const task = makeTask({ status: 'failed', processId: 'proc-1' });
+            const proc = makeProcess({
+                status: 'failed',
+                metadata: {
+                    mode: 'autopilot',
+                    restartedAs: { processId: 'queue_task-2', provider: 'claude' },
+                    restartedFrom: 'queue_task-0',
+                },
+            });
+            setupStandardFetch(task, proc);
+            render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+
+            const forward = await screen.findByTestId('restarted-as-link');
+            expect(forward.textContent).toBe('Restarted on Claude →');
+            fireEvent.click(forward);
+            expect(location.hash).toBe('#repos/ws-1/activity/queue_task-2');
+
+            fireEvent.click(screen.getByTestId('restarted-from-link'));
+            expect(location.hash).toBe('#repos/ws-1/activity/queue_task-0');
         });
 
         it('does not show a Retry button for a completed task with no session', async () => {

@@ -122,7 +122,7 @@ const monacoStub = vi.hoisted(() => {
             },
         },
         // The pane builds a real navigation controller off this editor the
-        // moment a model mounts, so the stub has to answer the six calls that
+        // moment a model mounts, so the stub has to answer the calls that
         // controller makes. A fixed cursor is enough: this suite is about
         // providers, and the navigation behaviour itself is pinned in
         // `PreviewPane.navigation.test.tsx`.
@@ -134,11 +134,11 @@ const monacoStub = vi.hoisted(() => {
                 positionLineNumber: 1,
                 positionColumn: 1,
             }),
-            saveViewState: () => ({ cursorState: [], viewState: {}, contributionsState: {} }),
-            restoreViewState: () => undefined,
             setSelection: () => undefined,
+            revealRangeInCenterIfOutsideViewport: () => undefined,
+            getLayoutInfo: () => ({ height: 400 }),
+            onDidLayoutChange: () => ({ dispose: () => undefined }),
             onDidChangeCursorSelection: () => ({ dispose: () => undefined }),
-            onDidScrollChange: () => ({ dispose: () => undefined }),
         },
         model: {
             languageId: 'typescript',
@@ -267,7 +267,6 @@ describe('PreviewPane — language providers (AC-03)', () => {
                 positionLineNumber: 1,
                 positionColumn: 1,
             },
-            viewState: { cursorState: [], viewState: {}, contributionsState: {} },
         });
         expect(onNavigationLocation).toHaveBeenCalledWith(controller.capture(), 'programmatic');
     });

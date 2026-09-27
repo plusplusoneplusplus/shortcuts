@@ -63,8 +63,8 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView'
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
     ExplorerPanel: () => <div data-testid="mock-explorer" />,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
-    DockNotesPanel: () => <div data-testid="mock-notes" />,
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: () => <div data-testid="mock-notes" />,
 }));
 // The two autosaving views, reduced to their host seams (see the header).
 type HostSeams = {

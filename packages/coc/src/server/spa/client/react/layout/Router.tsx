@@ -17,6 +17,7 @@ import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
 import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled, isSplitWorkspacePanelEnabled } from '../utils/config';
 import { splitWorkspaceLeftCollapsedStorageKey, toggleLeftCollapsed } from '../features/repo-detail/WorkspaceLeftCollapse';
+import { toggleWorkspaceDockOpen } from '../features/repo-detail/WorkspaceDockToggle';
 import { getUiLayoutMode } from '../hooks/preferences/useUiLayoutMode';
 import type { DashboardTab, RepoSubTab } from '../types/dashboard';
 import { getWorkspaceIdFromSelectionId } from '../repos/cloneIdentity';
@@ -128,6 +129,15 @@ export function Router() {
                 e.preventDefault();
                 const wsId = getWorkspaceIdFromSelectionId(state.selectedRepoId);
                 toggleLeftCollapsed(splitWorkspaceLeftCollapsedStorageKey(wsId));
+                return;
+            }
+
+            // Cmd/Ctrl+\ → show/hide the workspace right panel. Matches the physical
+            // key so layouts without a direct backslash (e.g. German) still work.
+            if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'Backslash') {
+                if (!isSplitWorkspacePanelEnabled()) return;
+                e.preventDefault();
+                toggleWorkspaceDockOpen(getWorkspaceIdFromSelectionId(state.selectedRepoId));
                 return;
             }
 

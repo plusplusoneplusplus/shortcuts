@@ -193,6 +193,7 @@ export function UnifiedRightPanel({
     const { isOpen, mode, target, width, maxWidth, isDragging, handleMouseDown, handleTouchStart } = dock;
     const {
         state, tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
+        updateNotesSelection,
     } = useUnifiedPanelTabs(workspaceId, chatId);
 
     // Reconcile only at the chat-selection boundary. Resource entry points still
@@ -450,7 +451,7 @@ export function UnifiedRightPanel({
         location: UnifiedPanelNavigationLocation,
         controller: EditorNavigationController,
     ) => {
-        controller.restore({ selection: location.selection, viewState: location.viewState });
+        controller.restore({ selection: location.selection });
         pendingReplay.current = null;
         setNavigationHistory(finishNavigationReplay(navigationHistoryRef.current));
     }, [setNavigationHistory]);
@@ -1474,6 +1475,7 @@ export function UnifiedRightPanel({
                                     onOpenExternal={openNavigationExternal}
                                     onFileNavigationMount={handleFileNavigationMount}
                                     onFileNavigationLocation={handleFileNavigationLocation}
+                                    onNotesSelectionChange={updateNotesSelection}
                                 />
                             </div>
                         ))

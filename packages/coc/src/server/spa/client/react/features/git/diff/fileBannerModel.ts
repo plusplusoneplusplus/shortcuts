@@ -78,10 +78,25 @@ export const BANNER_STATUS_LABELS: Record<FileBannerStatus, string> = {
 
 /** Badge color classes per status (light + dark). */
 export const BANNER_STATUS_CLASSES: Record<FileBannerStatus, string> = {
-    modified: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200',
-    new: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200',
-    deleted: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200',
-    renamed: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200',
+    modified: 'border-blue-300 bg-blue-100 text-blue-800 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-200',
+    new: 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200',
+    deleted: 'border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-700 dark:bg-rose-900/40 dark:text-rose-200',
+    renamed: 'border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-700 dark:bg-violet-900/40 dark:text-violet-200',
+};
+
+/** Full-width banner surface and leading stripe for each change status. */
+export const BANNER_SURFACE_CLASSES: Record<FileBannerStatus, string> = {
+    modified: 'border-blue-300 bg-blue-50/80 dark:border-blue-800 dark:bg-blue-950/40',
+    new: 'border-emerald-300 bg-emerald-50/80 dark:border-emerald-800 dark:bg-emerald-950/40',
+    deleted: 'border-rose-300 bg-rose-50/80 dark:border-rose-800 dark:bg-rose-950/40',
+    renamed: 'border-violet-300 bg-violet-50/80 dark:border-violet-800 dark:bg-violet-950/40',
+};
+
+export const BANNER_ACCENT_CLASSES: Record<FileBannerStatus, string> = {
+    modified: 'bg-blue-600 dark:bg-blue-400',
+    new: 'bg-emerald-600 dark:bg-emerald-400',
+    deleted: 'bg-rose-600 dark:bg-rose-400',
+    renamed: 'bg-violet-600 dark:bg-violet-400',
 };
 
 /** Strip a leading `a/` or `b/` prefix from a git preamble path. */

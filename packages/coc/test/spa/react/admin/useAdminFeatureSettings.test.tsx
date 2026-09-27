@@ -2,8 +2,8 @@
 /**
  * Focused controller tests for `useAdminFeatureSettings` — the Workspace
  * Features card logic. Covers hydrate/dirty tracking, save (payload +
- * runtime-config patch + display-settings invalidation), cancel, the
- * Ctrl/Cmd+S save shortcut gating, and the search reset on tab leave.
+ * runtime-config patch + display-settings invalidation), cancel, and the
+ * search reset on tab leave.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
@@ -39,7 +39,7 @@ function renderController(overrides: Partial<Parameters<typeof useAdminFeatureSe
     const addToast = vi.fn();
     const view = renderHook(
         (props: Parameters<typeof useAdminFeatureSettings>[0]) => useAdminFeatureSettings(props),
-        { initialProps: { addToast, searchActive: true, shortcutActive: true, ...overrides } },
+        { initialProps: { addToast, searchActive: true, ...overrides } },
     );
     return { view, addToast };
 }
@@ -95,36 +95,12 @@ describe('useAdminFeatureSettings', () => {
         expect(view.result.current.featuresDirty).toBe(false);
     });
 
-    it('Ctrl/Cmd+S saves when the shortcut is active and the card is dirty', () => {
-        const { view } = renderController({ shortcutActive: true });
-        act(() => view.result.current.hydrate({}));
-        const current = view.result.current.featureValues[boolDef.key] === true;
-        act(() => view.result.current.setFeatureValues(prev => ({ ...prev, [boolDef.key]: !current })));
-
-        act(() => {
-            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }));
-        });
-        expect(updateConfig).toHaveBeenCalledTimes(1);
-    });
-
-    it('Ctrl/Cmd+S is ignored when the shortcut is inactive', () => {
-        const { view } = renderController({ shortcutActive: false });
-        act(() => view.result.current.hydrate({}));
-        const current = view.result.current.featureValues[boolDef.key] === true;
-        act(() => view.result.current.setFeatureValues(prev => ({ ...prev, [boolDef.key]: !current })));
-
-        act(() => {
-            window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true }));
-        });
-        expect(updateConfig).not.toHaveBeenCalled();
-    });
-
     it('clears the search string when the Features sub-tab is left', () => {
         const addToast = vi.fn();
         const { view } = renderController({ addToast, searchActive: true });
         act(() => view.result.current.setFeatureSearch('loops'));
         expect(view.result.current.featureSearch).toBe('loops');
-        act(() => view.rerender({ addToast, searchActive: false, shortcutActive: false }));
+        act(() => view.rerender({ addToast, searchActive: false }));
         expect(view.result.current.featureSearch).toBe('');
     });
 });

@@ -659,6 +659,8 @@ export interface ChatPayload {
      * boundary, where an omitted field is normalized to `'default'`.
      */
     chatStyle?: ChatStyle;
+    /** Process ID of the failed chat this task restarts (`POST /api/queue/:id/retry`). */
+    restartedFrom?: string;
 }
 
 export interface RunWorkflowPayload {

@@ -17,7 +17,7 @@ export { PreferencesClient } from './preferences';
 export { ProcessesClient } from './processes';
 export { PromptHistoryClient } from './prompt-history';
 export { PullRequestsClient } from './pull-requests';
-export { QueueClient } from './queue';
+export { QueueClient, type QueueRetryOptions } from './queue';
 export { SchedulesClient } from './schedules';
 export { SeenStateClient } from './seen-state';
 export { ServersClient } from './servers';

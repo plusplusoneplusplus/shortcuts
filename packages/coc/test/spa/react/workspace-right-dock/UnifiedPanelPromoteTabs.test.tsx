@@ -80,8 +80,8 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
         </div>
     ),
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
-    DockNotesPanel: () => <div data-testid="mock-notes" />,
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: () => <div data-testid="mock-notes" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),

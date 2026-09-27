@@ -59,8 +59,8 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/E
         </div>
     ),
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
-    DockNotesPanel: () => <div data-testid="mock-notes" />,
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: () => <div data-testid="mock-notes" />,
 }));
 // The note editor is a full tiptap stack; only the wiring it is handed matters
 // here. The IO adapters are tagged so the fetch-mode choice is observable.

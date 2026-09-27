@@ -14,8 +14,8 @@ import type { UseClassificationReturn } from '../../../../../src/server/spa/clie
 import type { UseModalJobAiSelectionResult } from '../../../../../src/server/spa/client/react/shared/ModalJobAiControls';
 
 vi.mock('../../../../../src/server/spa/client/react/features/git/diff/ClassifyDiffAiControls', () => ({
-    ClassifyDiffAiControls: ({ testIdPrefix, disabled }: { testIdPrefix: string; disabled?: boolean }) => (
-        <div data-testid={`${testIdPrefix}-ai-controls`} data-disabled={disabled ? 'true' : 'false'} />
+    ClassifyDiffAiControls: ({ testIdPrefix, disabled, collapseLabels }: { testIdPrefix: string; disabled?: boolean; collapseLabels?: boolean }) => (
+        <div data-testid={`${testIdPrefix}-ai-controls`} data-disabled={disabled ? 'true' : 'false'} data-collapse-labels={collapseLabels ? 'true' : 'false'} />
     ),
 }));
 
@@ -50,6 +50,32 @@ afterEach(() => {
 });
 
 describe.each(PREFIXES)('PopOutClassificationToolbar (%s)', prefix => {
+    it('wraps whole groups inside a size container instead of wrapping control text', () => {
+        render(
+            <PopOutClassificationToolbar
+                testIdPrefix={prefix}
+                classification={makeClassification('idle')}
+                aiSelection={AI_SELECTION}
+                chatOpen={false}
+                onToggleChat={vi.fn()}
+            />,
+        );
+
+        const bar = screen.getByTestId(`${prefix}-classify-bar`);
+        expect(bar.className).toContain('flex-wrap');
+        expect(bar.parentElement!.className).toContain('[container-type:inline-size]');
+        const left = screen.getByTestId(`${prefix}-classify-left`);
+        const right = screen.getByTestId(`${prefix}-classify-right`);
+        expect(left.className).toContain('flex-nowrap');
+        expect(right.className).toContain('flex-nowrap');
+        expect(left.contains(screen.getByTestId(`${prefix}-classify-button`))).toBe(true);
+        expect(right.contains(screen.getByTestId(`${prefix}-chat-toggle`))).toBe(true);
+        expect(screen.getByTestId(`${prefix}-classify-ai-controls`).getAttribute('data-collapse-labels')).toBe('true');
+        for (const id of [`${prefix}-classify-button`, `${prefix}-chat-toggle`]) {
+            expect(screen.getByTestId(id).className).toContain('whitespace-nowrap');
+        }
+    });
+
     it('renders the AI controls, classify button, and chat toggle', () => {
         render(
             <PopOutClassificationToolbar

@@ -19,8 +19,13 @@ import type {
   QueueTaskDelayResponse,
   QueueTaskResponse,
 } from '../contracts';
+import type { ChatProvider } from '../contracts/common';
 import type { CocRequestOptions, QueryPrimitive, RequestAdapter } from '../types';
 import { encodePathSegment } from '../url';
+
+export interface QueueRetryOptions {
+  provider?: ChatProvider;
+}
 
 export interface QueueQuery {
   workspace?: string;
@@ -122,11 +127,14 @@ export class QueueClient {
 
   /**
    * Re-run a failed or cancelled task by enqueueing a fresh copy from its
-   * preserved payload/config. Used to recover when the first message of a chat
-   * failed before any resumable session existed.
+   * preserved payload/config in a new chat. Pass `provider` to restart a chat
+   * on a different provider (model/effort then fall back to its defaults).
    */
-  retry(taskId: string): Promise<EnqueueTaskResponse> {
-    return this.transport.request<EnqueueTaskResponse>(`/queue/${encodePathSegment(taskId)}/retry`, { method: 'POST' });
+  retry(taskId: string, options?: QueueRetryOptions): Promise<EnqueueTaskResponse> {
+    return this.transport.request<EnqueueTaskResponse>(`/queue/${encodePathSegment(taskId)}/retry`, {
+      method: 'POST',
+      ...(options?.provider ? { body: { provider: options.provider } } : {}),
+    });
   }
 
   pause(scope?: QueueScope, options?: QueuePauseOptions): Promise<QueueStatsResponse & { paused: boolean; pausedUntil?: number; workspace?: string; repoId?: string }> {

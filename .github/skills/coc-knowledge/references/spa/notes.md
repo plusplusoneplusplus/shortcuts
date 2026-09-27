@@ -2,6 +2,21 @@
 
 The Notes view, its collection roots, the rich editor, and Notes Chat.
 
+## Hosts and selection
+
+`NotesView` is shared by the main Notes sub-tab and the unified right panel. Its
+`navigation` prop defaults to `url`, which publishes selection to the app state and
+the Notes route. The right panel passes `local`, so its tree and editor own an
+independent selection while remaining scoped to the panel workspace. The panel stores
+that path in the Notes tab descriptor and restores it per workspace; if the loaded
+tree does not contain the path, the local selection clears without activating the tab.
+
+The `layout` prop defaults to `viewport` (window breakpoints). The right panel passes
+`container`: a `ResizeObserver` on the view root compares its width with
+`NOTES_CONTAINER_WIDE_WIDTH` (720px). Narrower views show the rail, whose button opens
+the tree as an overlay, and start with the note chat collapsed without changing the
+persisted chat-open state shared with the main sub-tab.
+
 ## AI chat surface
 
 Notes inherits `features.commitChatLens` as the single source of truth for its AI chat

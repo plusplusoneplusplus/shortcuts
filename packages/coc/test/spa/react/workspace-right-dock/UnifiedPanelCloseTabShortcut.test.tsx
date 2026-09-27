@@ -27,8 +27,8 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView'
         return <textarea data-testid="mock-terminal-input" />;
     },
 }));
-vi.mock('../../../../src/server/spa/client/react/features/notes/dock/DockNotesPanel', () => ({
-    DockNotesPanel: () => <textarea data-testid="mock-notes-input" />,
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: () => <textarea data-testid="mock-notes-input" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
     ExplorerPanel: () => <div data-testid="mock-explorer" />,

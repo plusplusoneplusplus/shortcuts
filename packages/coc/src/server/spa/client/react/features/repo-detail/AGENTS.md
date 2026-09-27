@@ -84,7 +84,7 @@ loaded and has no healthy member. Mobile publishes no live left width.
 
 **Scope vs. target.** `workspaceId` is the panel's *scope*: it owns the
 `split-workspace:<id>:dock-{open,width,target}` keys, the unified tab set, and
-the workspace `DockNotesPanel` is keyed on. The *target* is the workspace new
+the workspace `NotesView` is keyed on. The *target* is the workspace new
 terminals and file resources open against. They are the same value unless the
 caller passes `targets?: readonly DockTarget[]` (`{ workspaceId, label,
 disabled?, deprioritized? }`) to both `useWorkspaceDock` and the panel; that adds
@@ -126,7 +126,12 @@ explicit `setTarget` writes; mount and workspace switches never persist.
 One icon-only visibility toggle lives outside the panel and shares its cross-tree
 open store. The classic shell renders `WorkspaceDockToggle` in `RepoDetail`'s
 header; the remote-first shell renders the same component in `layout/TopBar.tsx`
-for a concrete clone or a `group-*` selection. My Work / My Life have no panel.
+for a concrete clone or a `group-*` selection. Ctrl/Cmd+\ does the same from
+`layout/Router.tsx`'s keydown handler (next to Ctrl/Cmd+B for the left column):
+it calls `toggleWorkspaceDockOpen` for the selected workspace, matches
+`e.code === 'Backslash'` so non-US layouts work, is skipped while typing in an
+input, and only fires with `splitWorkspacePanel` on. The button's tooltip names
+the shortcut; its `aria-label` stays plain. My Work / My Life have no panel.
 Search and Explorer are peer navigator controls inside the panel; selecting one
 opens or switches the navigator, and selecting the active one collapses it
 without closing the resource panel.
@@ -142,15 +147,15 @@ stored open bit; only an accepted file selection opens Explorer mode. Ordinary
 repos still require an open panel or mounted Explorer owner, Ctrl/Cmd+O remains
 target-repo Exact Open, and mobile mounts no group panel listener.
 
-`../notes/dock/DockNotesPanel.tsx` is the Notes view: search + new-note row, a
-recency-ordered flat list (`dock/dockNotes.ts` holds the pure list/query/naming
-helpers), a read-only markdown preview, and the two hand-off actions. The preview
-is deliberately read-only — the full Notes tab can be mounted at the same time,
-and sharing dirty state between two editable surfaces is out of scope.
-"Insert into chat" reaches the composer through `../chat/composerInsert.ts`, a
-window-event bridge (`ChatDetail` and `NewChatArea` subscribe via
-`useComposerInsertListener`) because the panel is a sibling column with no React
-path to the composer.
+The Notes resource renders the shared `../notes/NotesView.tsx`, including its
+tree, editor, comments, and per-note chat. It is scoped to the panel workspace,
+not the current dock target. `navigation="local"` keeps its note selection
+inside that instance: selecting, creating, renaming, or deleting a panel note
+does not write the Notes route or the app-wide selected note. The selected path
+lives in the Notes tab descriptor and restores per panel scope. Tree validation
+clears a missing restored path without activating the Notes tab.
+`layout="container"` sizes it by the panel width, not the window: below 720px
+the tree becomes a rail-toggled overlay and the note chat starts collapsed.
 
 ## Explorer lazy-load state
 
@@ -434,9 +439,8 @@ end to end against the real tree cache (`--environment jsdom`);
 `test/spa/react/workspace-right-dock/` covers the panel and its controller:
 `useWorkspaceDock.test.tsx` (open/width/resize plus the target rules — default,
 fallback, persistence, the dirty-edit guard, and what follows the picker and what
-does not), the `Unified*` / `unified*` suites for the panel itself, plus
-`DockNotesPanel.test.tsx`, `dockNotes.test.ts`, and `composerInsert.test.tsx`.
-The heavy views (TerminalView, ExplorerPanel, DockNotesPanel) are mocked by
+does not), and the `Unified*` / `unified*` suites for the panel itself.
+The heavy views (TerminalView, ExplorerPanel, NotesView) are mocked by
 source path there so xterm/Monaco never load.
 
 The group side lives in `test/spa/react/repos/RepoGroupView.dock.test.tsx`

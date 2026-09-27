@@ -5,12 +5,15 @@ import { ModelCommandMenu } from '../../chat/ModelCommandMenu';
 import type { UseModalJobAiSelectionResult } from '../../../shared/ModalJobAiControls';
 import { isChatProvider, isSelectableProvider } from '../../../shared/ModalJobAiControls';
 import { cn } from '../../../ui/cn';
+import { DIFF_TOOLBAR_NARROW_HIDDEN } from './diffToolbarClasses';
 
 export interface ClassifyDiffAiControlsProps {
     selection: UseModalJobAiSelectionResult;
     disabled?: boolean;
     className?: string;
     testIdPrefix?: string;
+    /** Hide the provider name and `Effort:` prefix when the toolbar container is narrow. */
+    collapseLabels?: boolean;
 }
 
 function ModelIcon() {
@@ -44,6 +47,7 @@ export function ClassifyDiffAiControls({
     disabled = false,
     className,
     testIdPrefix = 'classify',
+    collapseLabels = false,
 }: ClassifyDiffAiControlsProps) {
     const {
         provider,
@@ -61,10 +65,11 @@ export function ClassifyDiffAiControls({
     } = selection;
 
     const showProviderSelector = getSelectableProviderCount(selection) > 1;
+    const collapsibleLabelClassName = collapseLabels ? DIFF_TOOLBAR_NARROW_HIDDEN : undefined;
 
     return (
         <div
-            className={cn('flex flex-wrap items-center gap-x-px gap-y-0.5', className)}
+            className={cn('flex items-center gap-x-px gap-y-0.5', collapseLabels ? 'flex-nowrap shrink-0' : 'flex-wrap', className)}
             data-testid={`${testIdPrefix}-ai-controls`}
         >
             {showProviderSelector && (
@@ -75,6 +80,7 @@ export function ClassifyDiffAiControls({
                         selected={provider}
                         onChange={setProvider}
                         disabled={disabled}
+                        labelClassName={collapsibleLabelClassName}
                     />
                     <span
                         aria-hidden="true"
@@ -92,6 +98,7 @@ export function ClassifyDiffAiControls({
                     data-testid={`${testIdPrefix}-effort-tier-selector`}
                     className="ml-0.5"
                     autoProviderMode={provider === 'auto'}
+                    prefixClassName={collapsibleLabelClassName}
                 />
             ) : (
                 <div className="relative shrink-0" data-testid={`${testIdPrefix}-model-picker-chip-container`}>

@@ -177,7 +177,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
 
     const {
         blob, displayBlob, isOversized, loading, error, status, retry,
-        isDirty, isSaving, editedContent, onChange: recordEdit, save: writeFile,
+        isDirty, isSaving, editedContent, onChange: recordEdit, save: writeFile, discard: discardEdits,
     } = useFileContent({
         key: `${isTrusted ? 'trusted' : repoId}:${actualPath}`,
         read,
@@ -403,6 +403,12 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         return ok;
     }, [editedContent, writeFile, markSaved]);
 
+    // Monaco applies the restored `value` without firing onChange, so the
+    // language document gets the full text here.
+    const handleDiscard = useCallback(() => {
+        recordLanguageEdit(discardEdits(), undefined);
+    }, [discardEdits, recordLanguageEdit]);
+
     // Surface unsaved-edits state to the owner so a workspace switch can prompt
     // before discarding the buffer (AC-03). Report the current value whenever it
     // flips, and report clean on unmount (file closed / panel torn down).
@@ -451,6 +457,17 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                             data-testid="save-btn"
                         >
                             {isSaving ? 'Saving…' : 'Save'}
+                        </button>
+                    )}
+                    {isDirty && !isTrusted && (
+                        <button
+                            className="text-[10px] px-2 py-0.5 rounded border border-[#c8c8c8] dark:border-[#555] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#f0f0f0] dark:hover:bg-[#3c3c3c] disabled:opacity-50 transition-colors shadow-sm"
+                            onClick={handleDiscard}
+                            disabled={isSaving}
+                            title="Discard unsaved changes"
+                            data-testid="discard-btn"
+                        >
+                            Discard
                         </button>
                     )}
                     {isDirty && !isTrusted && (

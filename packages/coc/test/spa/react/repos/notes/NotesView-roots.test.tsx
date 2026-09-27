@@ -146,6 +146,72 @@ describe('NotesView root selection preservation', () => {
         }));
     });
 
+    it('keeps selection private when navigation is local', async () => {
+        const onSelectedNotePathChange = vi.fn();
+        window.location.hash = '#repos/ws-main/notes/Main.md';
+        render(
+            <NotesView
+                workspaceId="ws1"
+                initialNotePath="DefaultNotebook/Default.md"
+                navigation="local"
+                onSelectedNotePathChange={onSelectedNotePathChange}
+            />,
+        );
+
+        await screen.findByTestId('notes-tree-default');
+        fireEvent.click(await screen.findByTestId('notes-tree-item-Other.md'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-note-editor').getAttribute('data-note-path'))
+                .toBe('DefaultNotebook/Other.md');
+        });
+        expect(window.location.hash).toBe('#repos/ws-main/notes/Main.md');
+        expect(mocks.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+            type: 'SET_SELECTED_NOTE_PATH',
+        }));
+        expect(onSelectedNotePathChange).toHaveBeenCalledWith('DefaultNotebook/Other.md');
+    });
+
+    it('restores an existing local selection without publishing it', async () => {
+        const onSelectedNotePathChange = vi.fn();
+        render(
+            <NotesView
+                workspaceId="ws1"
+                initialNotePath="DefaultNotebook/Default.md"
+                navigation="local"
+                onSelectedNotePathChange={onSelectedNotePathChange}
+            />,
+        );
+
+        await screen.findByTestId('notes-tree-default');
+        expect(screen.getByTestId('mock-note-editor').getAttribute('data-note-path'))
+            .toBe('DefaultNotebook/Default.md');
+        expect(onSelectedNotePathChange).not.toHaveBeenCalled();
+    });
+
+    it('clears a restored local selection that is missing from the loaded tree', async () => {
+        const onSelectedNotePathChange = vi.fn();
+        window.location.hash = '#repos/ws-main/notes/Main.md';
+        render(
+            <NotesView
+                workspaceId="ws1"
+                initialNotePath="DefaultNotebook/Missing.md"
+                navigation="local"
+                onSelectedNotePathChange={onSelectedNotePathChange}
+            />,
+        );
+
+        await screen.findByTestId('notes-tree-default');
+        await waitFor(() => {
+            expect(screen.getByTestId('mock-note-editor').getAttribute('data-note-path')).toBe('');
+        });
+        expect(onSelectedNotePathChange).toHaveBeenCalledWith(null);
+        expect(window.location.hash).toBe('#repos/ws-main/notes/Main.md');
+        expect(mocks.dispatch).not.toHaveBeenCalledWith(expect.objectContaining({
+            type: 'SET_SELECTED_NOTE_PATH',
+        }));
+    });
+
     it('selecting a page in another section switches the active root and scopes the editor to it', async () => {
         renderNotesView();
 

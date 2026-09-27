@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { editor as monacoEditor } from 'monaco-editor';
 import {
     EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY,
     UNIFIED_PANEL_NAVIGATION_LIMIT,
@@ -18,34 +17,18 @@ import {
 function location(
     tabId: string,
     line: number,
-    {
-        scopeWorkspaceId = 'workspace-a',
-        column = 1,
-        scrollTop = line * 20,
-    }: { scopeWorkspaceId?: string; column?: number; scrollTop?: number } = {},
+    { scopeWorkspaceId = 'workspace-a', column = 1 }: { scopeWorkspaceId?: string; column?: number } = {},
 ): UnifiedPanelNavigationLocation {
-    const selection = {
-        selectionStartLineNumber: line,
-        selectionStartColumn: column,
-        positionLineNumber: line,
-        positionColumn: column,
-    };
-    const viewState: monacoEditor.ICodeEditorViewState = {
-        cursorState: [{
-            inSelectionMode: false,
-            selectionStart: { lineNumber: line, column },
-            position: { lineNumber: line, column },
-        }],
-        viewState: {
-            scrollLeft: 0,
-            firstPosition: { lineNumber: line, column: 1 },
-            firstPositionDeltaTop: 0,
-            scrollTop,
-            scrollTopWithoutViewZones: scrollTop,
+    return {
+        scopeWorkspaceId,
+        tabId,
+        selection: {
+            selectionStartLineNumber: line,
+            selectionStartColumn: column,
+            positionLineNumber: line,
+            positionColumn: column,
         },
-        contributionsState: {},
     };
-    return { scopeWorkspaceId, tabId, selection, viewState };
 }
 
 function record(
@@ -66,20 +49,20 @@ describe('unified panel navigation history — location comparison', () => {
         }))).toBe(false);
     });
 
-    it('compares the complete selection and Monaco view state', () => {
-        const base = location('a', 4, { column: 3, scrollTop: 80 });
-        expect(navigationLocationsEqual(base, location('a', 4, { column: 3, scrollTop: 80 }))).toBe(true);
-        expect(navigationLocationsEqual(base, location('a', 4, { column: 4, scrollTop: 80 }))).toBe(false);
-        expect(navigationLocationsEqual(base, location('a', 4, { column: 3, scrollTop: 120 }))).toBe(false);
+    it('compares the complete selection', () => {
+        const base = location('a', 4, { column: 3 });
+        expect(navigationLocationsEqual(base, location('a', 4, { column: 3 }))).toBe(true);
+        expect(navigationLocationsEqual(base, location('a', 4, { column: 4 }))).toBe(false);
+        expect(navigationLocationsEqual(base, location('a', 5, { column: 3 }))).toBe(false);
     });
 });
 
 describe('unified panel navigation history — VS Code-style recording', () => {
-    it('coalesces ordinary movement within ten lines and keeps the latest exact view', () => {
+    it('coalesces ordinary movement within ten lines and keeps the latest selection', () => {
         let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 10));
-        history = record(history, location('a', 19, { column: 7, scrollTop: 360 }));
+        history = record(history, location('a', 19, { column: 7 }));
 
-        expect(history.entries).toEqual([location('a', 19, { column: 7, scrollTop: 360 })]);
+        expect(history.entries).toEqual([location('a', 19, { column: 7 })]);
     });
 
     it.each<NavigationLocationReason>(['navigation', 'jump'])(
@@ -120,6 +103,52 @@ describe('unified panel navigation history — VS Code-style recording', () => {
         history = record(history, location('c', 1));
 
         expect(history.entries.map(entry => entry.tabId)).toEqual(['a', 'a', 'c']);
+        expect(canNavigateHistory(history, 'forward')).toBe(false);
+    });
+
+    // Regression: replacing the current entry used to truncate the forward
+    // branch, so any nearby click or cursor move after Back disabled Forward.
+    it.each<NavigationLocationReason>(['user', 'programmatic'])(
+        'keeps the forward branch when a nearby %s move replaces the current entry after Back',
+        reason => {
+            let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
+            history = record(history, location('a', 40));
+            history = record(history, location('b', 1));
+            history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+
+            history = record(history, location('a', 45, { column: 4 }), reason);
+
+            expect(history.entries).toEqual([location('a', 1), location('a', 45, { column: 4 }), location('b', 1)]);
+            expect(history.index).toBe(1);
+            expect(stepNavigationHistory(history, 'forward')?.location).toEqual(location('b', 1));
+        },
+    );
+
+    it('keeps the forward branch when the current entry is replaced in the middle of a longer history', () => {
+        let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
+        history = record(history, location('b', 1));
+        history = record(history, location('c', 1));
+        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+
+        history = record(history, location('a', 1, { column: 9 }));
+
+        expect(history.entries.map(entry => entry.tabId)).toEqual(['a', 'b', 'c']);
+        expect(history.index).toBe(0);
+        expect(canNavigateHistory(history, 'forward')).toBe(true);
+    });
+
+    it('truncates the forward branch when a distant move after Back adds a new entry', () => {
+        let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
+        history = record(history, location('b', 1));
+        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+
+        history = record(history, location('a', 50));
+
+        expect(history.entries.map(entry => [entry.tabId, entry.selection.positionLineNumber])).toEqual([
+            ['a', 1],
+            ['a', 50],
+        ]);
         expect(canNavigateHistory(history, 'forward')).toBe(false);
     });
 

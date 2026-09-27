@@ -13,12 +13,19 @@ import { render } from '@testing-library/react';
 import { UnifiedTabView } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedTabView';
 import type { UnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
-const previewProps = vi.hoisted(() => ({ last: null as any }));
+const viewProps = vi.hoisted(() => ({ preview: null as any, notes: null as any }));
 
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane', () => ({
     PreviewPane: (props: any) => {
-        previewProps.last = props;
+        viewProps.preview = props;
         return <div data-testid="mock-preview-pane" />;
+    },
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
+    NotesView: (props: any) => {
+        viewProps.notes = props;
+        return <div data-testid="mock-notes-view" />;
     },
 }));
 
@@ -34,13 +41,14 @@ function fileTab(overrides: Partial<UnifiedPanelTab> = {}): UnifiedPanelTab {
     } as UnifiedPanelTab;
 }
 
-function renderTab(tab: UnifiedPanelTab, onOpenFile?: any) {
+function renderTab(tab: UnifiedPanelTab, onOpenFile?: any, onNotesSelectionChange?: any) {
     return render(
         <UnifiedTabView
             tab={tab}
             scopeWorkspaceId="group-1"
             onClose={() => undefined}
             {...(onOpenFile ? { onOpenFile } : {})}
+            {...(onNotesSelectionChange ? { onNotesSelectionChange } : {})}
         />,
     );
 }
@@ -53,9 +61,9 @@ describe('UnifiedTabView — language navigation (AC-03/AC-04)', () => {
             ownerRoutingRef: 'remote:server-b:member-b',
         }), onOpenFile);
 
-        previewProps.last.onNavigate({ path: 'src/types.ts', name: 'types.ts', line: 12, column: 17 });
+        viewProps.preview.onNavigate({ path: 'src/types.ts', name: 'types.ts', line: 12, column: 17 });
 
-        expect(previewProps.last.routingRef).toBe('remote:server-b:member-b');
+        expect(viewProps.preview.routingRef).toBe('remote:server-b:member-b');
         expect(onOpenFile).toHaveBeenCalledWith(
             { path: 'src/types.ts', name: 'types.ts', line: 12, column: 17 },
             {
@@ -70,7 +78,7 @@ describe('UnifiedTabView — language navigation (AC-03/AC-04)', () => {
         const onOpenFile = vi.fn();
         renderTab(fileTab({ ownerWorkspaceId: 'group-1' }), onOpenFile);
 
-        previewProps.last.onNavigate({ path: 'src/types.ts', name: 'types.ts', line: 1, column: 1 });
+        viewProps.preview.onNavigate({ path: 'src/types.ts', name: 'types.ts', line: 1, column: 1 });
 
         expect(onOpenFile.mock.calls[0][1]).toEqual({ ownerWorkspaceId: 'group-1' });
     });
@@ -78,13 +86,35 @@ describe('UnifiedTabView — language navigation (AC-03/AC-04)', () => {
     it('wires no navigation at all when the panel offers no opener', () => {
         renderTab(fileTab());
 
-        expect(previewProps.last.onNavigate).toBeUndefined();
+        expect(viewProps.preview.onNavigate).toBeUndefined();
     });
 
     it('passes the tab’s reveal position down to the buffer', () => {
         renderTab(fileTab({ line: 12, column: 17 }));
 
-        expect(previewProps.last.revealLine).toBe(12);
-        expect(previewProps.last.revealColumn).toBe(17);
+        expect(viewProps.preview.revealLine).toBe(12);
+        expect(viewProps.preview.revealColumn).toBe(17);
+    });
+
+    it('renders the full Notes view with panel-local navigation for the panel scope', () => {
+        const onNotesSelectionChange = vi.fn();
+        renderTab({
+            id: 'notes',
+            kind: 'notes',
+            ownerWorkspaceId: 'member-b',
+            resourceId: 'notes',
+            label: 'Notes',
+            notesView: { notePath: 'Plans/Release.md' },
+        } as UnifiedPanelTab, undefined, onNotesSelectionChange);
+
+        expect(viewProps.notes).toMatchObject({
+            workspaceId: 'group-1',
+            initialNotePath: 'Plans/Release.md',
+            navigation: 'local',
+            layout: 'container',
+            active: false,
+        });
+        viewProps.notes.onSelectedNotePathChange('Plans/Next.md');
+        expect(onNotesSelectionChange).toHaveBeenCalledWith('notes', 'Plans/Next.md');
     });
 });

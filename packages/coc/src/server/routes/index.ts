@@ -590,6 +590,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getEffortTiersForProvider,
         dataDir,
         cancelSentinelCron: opts.cancelSentinelCron,
+        validateProvider: validateSendToConversationProvider,
         state: queueGlobalState,
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {

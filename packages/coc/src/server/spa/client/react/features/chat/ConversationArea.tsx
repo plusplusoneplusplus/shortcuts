@@ -198,6 +198,8 @@ export interface ConversationAreaProps {
     onRetrySidenoteTurn?: (id: string, turnIndex: number) => void;
     /** Additional cards that should remain reachable via the main conversation scroll area. */
     postConversationContent?: ReactNode;
+    /** "Restart with…" control shown on the failure card and interrupted-turn banner. */
+    restartAction?: ReactNode;
     /**
      * True while a `/compact` action is running for this conversation (AC-02).
      * Renders a synthetic, user-message-style "Compacting context…" bubble near
@@ -273,6 +275,7 @@ export function ConversationArea({
     onFollowUpSidenote,
     onRetrySidenoteTurn,
     postConversationContent,
+    restartAction,
     isCompacting,
     compactInstructions,
     searchHighlightQuery,
@@ -343,6 +346,7 @@ export function ConversationArea({
                             <div className="min-w-0">
                                 <div className="text-sm font-semibold text-[#d32f2f] dark:text-[#f48771] mb-1">Task failed</div>
                                 <pre className="text-xs text-[#1f2328] dark:text-[#cccccc] whitespace-pre-wrap break-words font-mono">{processError}</pre>
+{restartAction && <div className="mt-2" data-testid="process-error-restart">{restartAction}</div>}
                             </div>
                         </div>
                     ) : (
@@ -375,6 +379,7 @@ export function ConversationArea({
                                                 editTurnDisabledReason={editTurnDisabledReason}
                                                 inlineEditor={turn.turnIndex != null ? renderInlineTurnEditor?.(turn.turnIndex) : undefined}
                                                 onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
+                                                interruptedAction={restartAction}
                                                 noteEdits={noteEdits}
                                                 processId={processId}
                                                 openNotePath={openNotePath}
@@ -540,6 +545,7 @@ export function ConversationArea({
                                                     editTurnDisabledReason={editTurnDisabledReason}
                                                     inlineEditor={renderInlineTurnEditor?.(idx)}
                                                     onContinueInterrupted={() => continueInterruptedTurn(turn.interruptionReason)}
+                                                interruptedAction={restartAction}
                                                     noteEdits={noteEdits}
                                                     processId={processId}
                                                     openNotePath={openNotePath}
@@ -600,6 +606,7 @@ export function ConversationArea({
                                 <div className="min-w-0">
                                     <div className="text-sm font-semibold text-[#d32f2f] dark:text-[#f48771] mb-1">Task failed</div>
                                     <pre className="text-xs text-[#1f2328] dark:text-[#cccccc] whitespace-pre-wrap break-words font-mono">{processError}</pre>
+{restartAction && <div className="mt-2" data-testid="process-error-restart">{restartAction}</div>}
                                 </div>
                             </div>
                         )}

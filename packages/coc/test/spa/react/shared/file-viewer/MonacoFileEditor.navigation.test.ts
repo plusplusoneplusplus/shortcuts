@@ -13,59 +13,45 @@ function snapshot(line: number, column = 1): EditorNavigationSnapshot {
             positionLineNumber: line,
             positionColumn: column,
         },
-        viewState: {
-            cursorState: [{
-                inSelectionMode: false,
-                selectionStart: { lineNumber: line, column },
-                position: { lineNumber: line, column },
-            }],
-            viewState: {
-                scrollLeft: 0,
-                scrollTop: line * 10,
-                firstPosition: { lineNumber: line, column: 1 },
-                firstPositionDeltaTop: 0,
-            },
-            contributionsState: {},
-        },
     };
 }
 
-function fakeEditor(initial = snapshot(4)) {
+function fakeEditor(initial = snapshot(4), height = 400) {
     let current = initial;
+    let layoutHeight = height;
     let cursorListener: ((event: monacoEditor.ICursorSelectionChangedEvent) => void) | null = null;
-    let scrollListener: (() => void) | null = null;
+    let layoutListener: ((layout: monacoEditor.EditorLayoutInfo) => void) | null = null;
     const editor = {
-        getSelection: vi.fn(() => current.selection),
-        saveViewState: vi.fn(() => current.viewState),
-        restoreViewState: vi.fn((viewState: monacoEditor.ICodeEditorViewState) => {
-            current = { ...current, viewState };
-        }),
+        getSelection: vi.fn(() => current.selection as monacoEditor.ISelection as never),
         setSelection: vi.fn((selection: monacoEditor.ISelection) => {
-            current = { ...current, selection };
+            current = { selection };
+        }),
+        revealRangeInCenterIfOutsideViewport: vi.fn(),
+        getLayoutInfo: vi.fn(() => ({ height: layoutHeight }) as monacoEditor.EditorLayoutInfo),
+        onDidLayoutChange: vi.fn((listener: (layout: monacoEditor.EditorLayoutInfo) => void) => {
+            layoutListener = listener;
+            return { dispose: vi.fn(() => { if (layoutListener === listener) layoutListener = null; }) };
         }),
         onDidChangeCursorSelection: vi.fn((listener: (event: monacoEditor.ICursorSelectionChangedEvent) => void) => {
             cursorListener = listener;
             return { dispose: vi.fn() };
         }),
-        onDidScrollChange: vi.fn((listener: () => void) => {
-            scrollListener = listener;
-            return { dispose: vi.fn() };
-        }),
     };
     return {
         editor,
-        setCurrent: (next: EditorNavigationSnapshot) => { current = next; },
         fireCursor: (source: string) => cursorListener?.({ source } as monacoEditor.ICursorSelectionChangedEvent),
-        fireScroll: () => scrollListener?.(),
+        fireLayout: (nextHeight: number) => {
+            layoutHeight = nextHeight;
+            layoutListener?.({ height: nextHeight } as monacoEditor.EditorLayoutInfo);
+        },
     };
 }
 
 describe('createEditorNavigationController', () => {
-    it('captures the full selection and view state', () => {
-        const source = snapshot(12, 7);
-        const fake = fakeEditor(source);
+    it('captures the selection only', () => {
+        const fake = fakeEditor(snapshot(12, 7));
 
-        expect(createEditorNavigationController(fake.editor).capture()).toEqual(source);
+        expect(createEditorNavigationController(fake.editor).capture()).toEqual(snapshot(12, 7));
     });
 
     it.each([
@@ -83,18 +69,15 @@ describe('createEditorNavigationController', () => {
         expect(listener).toHaveBeenCalledWith(snapshot(4), reason);
     });
 
-    it('reports scroll changes with the current exact view state', () => {
+    it('does not subscribe to scroll changes', () => {
         const fake = fakeEditor();
-        const listener = vi.fn();
-        createEditorNavigationController(fake.editor).subscribe(listener);
-        fake.setCurrent(snapshot(4, 8));
+        const editor = { ...fake.editor, onDidScrollChange: vi.fn() };
+        createEditorNavigationController(editor).subscribe(vi.fn());
 
-        fake.fireScroll();
-
-        expect(listener).toHaveBeenCalledWith(snapshot(4, 8), 'user');
+        expect(editor.onDidScrollChange).not.toHaveBeenCalled();
     });
 
-    it('restores view state and selection without reporting emitted replay events', async () => {
+    it('restores the selection, centres it if outside the viewport, and suppresses replay events', async () => {
         const fake = fakeEditor();
         const listener = vi.fn();
         const controller = createEditorNavigationController(fake.editor);
@@ -103,14 +86,44 @@ describe('createEditorNavigationController', () => {
 
         controller.restore(destination);
         fake.fireCursor('api');
-        fake.fireScroll();
 
-        expect(fake.editor.restoreViewState).toHaveBeenCalledWith(destination.viewState);
         expect(fake.editor.setSelection).toHaveBeenCalledWith(destination.selection);
+        expect(fake.editor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalledWith(destination.selection);
         expect(listener).not.toHaveBeenCalled();
 
         await Promise.resolve();
         fake.fireCursor('keyboard');
         expect(listener).toHaveBeenCalledWith(destination, 'user');
+    });
+
+    it('waits for a real layout before revealing in an editor that was hidden', () => {
+        const fake = fakeEditor(snapshot(4), 0);
+        const controller = createEditorNavigationController(fake.editor);
+
+        controller.restore(snapshot(90));
+        expect(fake.editor.setSelection).toHaveBeenCalledWith(snapshot(90).selection);
+        expect(fake.editor.revealRangeInCenterIfOutsideViewport).not.toHaveBeenCalled();
+
+        fake.fireLayout(0);
+        expect(fake.editor.revealRangeInCenterIfOutsideViewport).not.toHaveBeenCalled();
+
+        fake.fireLayout(500);
+        expect(fake.editor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalledTimes(1);
+        expect(fake.editor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalledWith(snapshot(90).selection);
+
+        fake.fireLayout(600);
+        expect(fake.editor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops a pending hidden-editor reveal when a newer restore arrives', () => {
+        const fake = fakeEditor(snapshot(4), 0);
+        const controller = createEditorNavigationController(fake.editor);
+
+        controller.restore(snapshot(90));
+        controller.restore(snapshot(120));
+        fake.fireLayout(500);
+
+        expect(fake.editor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalledTimes(1);
+        expect(fake.editor.revealRangeInCenterIfOutsideViewport).toHaveBeenCalledWith(snapshot(120).selection);
     });
 });

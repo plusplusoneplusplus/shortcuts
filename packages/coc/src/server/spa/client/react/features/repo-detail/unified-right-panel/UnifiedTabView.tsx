@@ -4,7 +4,7 @@
  * Every kind maps onto a view that already exists elsewhere in the app; nothing
  * here is a second editor, a second file transport, or a second canvas store:
  *
- *  - `terminal` / `notes` — `TerminalView` and `DockNotesPanel`. There is no Explorer
+ *  - `terminal` / `notes` — `TerminalView` and the full editable `NotesView`. There is no Explorer
  *    tab: the file tree is the panel's own right-edge column, which the panel
  *    shell renders beside whichever view is active.
  *  - `file` — the Explorer's `PreviewPane`, the same buffer controller the
@@ -39,7 +39,7 @@
 
 import { useCallback } from 'react';
 import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
-import { DockNotesPanel } from '../../notes/dock/DockNotesPanel';
+import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
 import { ExternalSourcePane } from '../explorer/ExternalSourcePane';
 import type {
@@ -104,6 +104,8 @@ export interface UnifiedTabViewProps {
         snapshot: EditorNavigationSnapshot,
         reason: EditorNavigationReason,
     ) => void;
+    /** Persist the panel-local Notes selection without activating its tab. */
+    onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
 }
 
 /** The last path segment — what the editor uses to pick a language. */
@@ -116,6 +118,7 @@ export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onTerminalSessionsChange, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation,
+    onNotesSelectionChange,
 }: UnifiedTabViewProps) {
     // One instance of this component exists per tab (the panel keys the list by
     // tab id), so binding the id here keeps the callbacks the reused views see
@@ -167,11 +170,24 @@ export function UnifiedTabView({
         },
         [onFileNavigationLocation, tab.id],
     );
+    const handleNotesSelection = useCallback(
+        (notePath: string | null) => onNotesSelectionChange?.(tab.id, notePath),
+        [onNotesSelectionChange, tab.id],
+    );
     switch (tab.kind) {
         case 'terminal':
             return <TerminalView workspaceId={tab.ownerWorkspaceId} onSessionsChange={handleTerminalSessions} />;
         case 'notes':
-            return <DockNotesPanel workspaceId={scopeWorkspaceId} />;
+            return (
+                <NotesView
+                    workspaceId={scopeWorkspaceId}
+                    initialNotePath={tab.notesView?.notePath ?? null}
+                    navigation="local"
+                    layout="container"
+                    active={false}
+                    onSelectedNotePathChange={handleNotesSelection}
+                />
+            );
         case 'file':
             return (
                 <PreviewPane

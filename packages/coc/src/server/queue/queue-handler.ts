@@ -31,6 +31,7 @@ export function registerQueueRoutes(
         getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
         dataDir?: string;
         cancelSentinelCron?: (processId: string) => void;
+        validateProvider?: (provider: ChatProvider) => Promise<void>;
         /**
          * Shared global queue state. When supplied (by the route layer), the HTTP
          * enqueue path and any in-process enqueue capability (e.g. the
@@ -58,6 +59,7 @@ export function registerQueueRoutes(
         isAutoProviderRoutingActive: options.isAutoProviderRoutingActive,
         getEffortTiersForProvider: options.getEffortTiersForProvider,
         cancelSentinelCron: options.cancelSentinelCron,
+        validateProvider: options.validateProvider,
     };
     registerQueueEnqueueRoutes(routes, ctx);
     registerQueueStatsRoutes(routes, ctx);

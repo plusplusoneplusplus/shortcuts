@@ -39,7 +39,7 @@ import * as queueExecutorBridgeMod from '../../src/server/queue/queue-executor-b
 // Helpers
 // ============================================================================
 
-function createBridge(options?: { maxConcurrency?: number; autoStart?: boolean }) {
+function createBridge(options?: { maxConcurrency?: number; autoStart?: boolean; initialDelayMs?: number }) {
     const registry = new RepoQueueRegistry();
     const store = createMockProcessStore();
     const bridge = new MultiRepoQueueRouter(registry, store, {
@@ -821,6 +821,56 @@ describe('MultiRepoQueueRouter', () => {
     });
 
     // ========================================================================
+    // activateQueueProcessing
+    // ========================================================================
+
+    describe('activateQueueProcessing', () => {
+        it('starts existing repo executors and auto-starts later repo executors', () => {
+            const { bridge, registry } = createBridge({ autoStart: false, initialDelayMs: 30000 });
+            const firstManager = registry.getQueueForRepo('/repo/first');
+            const firstTaskId = firstManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'first' },
+                config: {},
+            });
+            bridge.getOrCreateBridge('/repo/first');
+            const firstExecutor = bridge.findExecutorForTask(firstTaskId)!;
+
+            expect(firstExecutor.isRunning()).toBe(false);
+            expect((firstExecutor as unknown as { options: { initialDelayMs: number } }).options.initialDelayMs).toBe(30000);
+            bridge.activateQueueProcessing();
+            expect(firstExecutor.isRunning()).toBe(true);
+
+            const secondManager = registry.getQueueForRepo('/repo/second');
+            const secondTaskId = secondManager.enqueue({
+                type: 'chat',
+                priority: 'normal',
+                payload: { kind: 'chat', mode: 'ask', prompt: 'second' },
+                config: {},
+            });
+            bridge.getOrCreateBridge('/repo/second');
+            const secondExecutor = bridge.findExecutorForTask(secondTaskId)!;
+            expect(secondExecutor.isRunning()).toBe(true);
+            expect((secondExecutor as unknown as { options: { initialDelayMs: number } }).options.initialDelayMs).toBe(0);
+
+            bridge.dispose();
+        });
+
+        it('is idempotent', () => {
+            const { bridge } = createBridge({ autoStart: false });
+            bridge.getOrCreateBridge('/repo/first');
+
+            expect(() => {
+                bridge.activateQueueProcessing();
+                bridge.activateQueueProcessing();
+            }).not.toThrow();
+
+            bridge.dispose();
+        });
+    });
+
+    // ========================================================================
     // findExecutorForTask
     // ========================================================================
 
@@ -1121,4 +1171,3 @@ describe('MultiRepoQueueRouter', () => {
     });
 
 });
-
