@@ -205,13 +205,19 @@ server; server names stay in the hover and accessible label, never in row text.
 
 ## Repo groups
 
-A repo group is a virtual workspace whose id carries the `group-` prefix
-(`isRepoGroupWorkspaceId`, `repos/virtualWorkspaceIds.ts`).
+A repo group is a virtual workspace whose raw server-side id carries the `group-`
+prefix (`isRepoGroupWorkspaceId`, `repos/virtualWorkspaceIds.ts`). Dashboard
+selection, routes, active state, and pins use that id for local groups and
+`remote:<serverId>:<groupId>` for remote groups (`repos/cloneIdentity.ts`).
+The raw id goes to the owning server's API; the server-qualified selection
+distinguishes groups with identical slugs across servers and survives forwarded
+port changes.
 
 **In the picker.** `useScopePickerModel` builds the "Repo groups" `PickerSection` (rows
 `repo-group-item`, icon `repo-group-icon`) from the **full AppContext workspace list** —
 `repos` cannot be the source because `ReposContext` strips virtual workspaces. All three
-picker surfaces (desktop dropdown, mobile sheet, mobile scope list) render those rows. The
+picker surfaces (desktop dropdown, mobile sheet, mobile scope list) render those rows
+with the owning machine/server label; the active headers and pins show that label too. The
 footer's `remote-new-repo-group-option` opens `repos/RepoGroupDialog.tsx`: name, Server
 dropdown, checkbox multi-select of that server's registered repos; free-form paths are
 never offered, and edit prefills from `GET /api/repo-groups/:id`, badging stale members.

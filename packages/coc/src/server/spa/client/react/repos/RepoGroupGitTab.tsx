@@ -57,6 +57,8 @@ export function resolveRepoGroupGitMember(
 export interface RepoGroupGitTabProps {
     /** The `group-<slug>` workspace id whose Git tab this is. */
     workspaceId: string;
+    /** Qualified UI route and preference key; defaults to workspaceId locally. */
+    selectionId?: string;
     /** Members as resolved by `GET /api/repo-groups/:id`; `undefined` = loading. */
     members: readonly RepoGroupMember[] | undefined;
     /**
@@ -97,6 +99,7 @@ function useRepoGroupGitMemberPreference(groupId: string): [string | null, (memb
 
 export function RepoGroupGitTab({
     workspaceId,
+    selectionId = workspaceId,
     members,
     layout,
     detailContainer,
@@ -112,13 +115,13 @@ export function RepoGroupGitTab({
     // *preference*, not the answer: it only decides a route that never named a
     // member, and a member that goes stale (or leaves the group) falls back to
     // the first healthy one without the user re-picking.
-    const [preferredId, setPreferredId] = useRepoGroupGitMemberPreference(workspaceId);
+    const [preferredId, setPreferredId] = useRepoGroupGitMemberPreference(selectionId);
 
     // The Git route the router published, but only while it addresses THIS
     // group. Anything else (another workspace's git route, or none at all —
     // pop-out shells and unit tests) leaves the host on preference-only rules.
     const scope = app?.state.gitRouteScope ?? null;
-    const routeOwnsThisGroup = scope?.routeWorkspaceId === workspaceId;
+    const routeOwnsThisGroup = scope?.routeWorkspaceId === selectionId;
     const routedMemberId = routeOwnsThisGroup ? (scope?.workspaceId ?? null) : null;
     const routeCommitHash = routeOwnsThisGroup ? (app?.state.selectedGitCommitHash ?? null) : null;
     const routeFilePath = routeOwnsThisGroup ? (app?.state.selectedGitFilePath ?? null) : null;
@@ -153,7 +156,7 @@ export function RepoGroupGitTab({
     /** Rewrite the current group Git URL into its explicit-member form, in place. */
     const canonicalizeToMember = useCallback((memberId: string) => {
         const descriptor = {
-            routeWorkspaceId: workspaceId,
+            routeWorkspaceId: selectionId,
             workspaceId: memberId,
             commitHash: routeCommitHash,
             filePath: routeFilePath,
@@ -166,10 +169,10 @@ export function RepoGroupGitTab({
         dispatch?.({ type: 'SET_GIT_ROUTE', ...descriptor });
         dispatch?.({
             type: 'RECORD_REPO_ROUTE_SUFFIX',
-            repoId: workspaceId,
+            repoId: selectionId,
             suffix: buildGitRouteSuffix(descriptor),
         });
-    }, [dispatch, workspaceId, routeCommitHash, routeFilePath]);
+    }, [dispatch, selectionId, routeCommitHash, routeFilePath]);
 
     // Membership is the only thing that can validate a member, so nothing is
     // selected, canonicalized or persisted until it has loaded.
@@ -205,13 +208,13 @@ export function RepoGroupGitTab({
         setPreferredId(memberId);
         if (routeOwnsThisGroup) {
             location.hash = buildGitRouteHash({
-                routeWorkspaceId: workspaceId,
+                routeWorkspaceId: selectionId,
                 workspaceId: memberId,
                 commitHash: null,
                 filePath: null,
             });
         }
-    }, [selectedId, healthyIds, setPreferredId, routeOwnsThisGroup, workspaceId]);
+    }, [selectedId, healthyIds, setPreferredId, routeOwnsThisGroup, selectionId]);
 
     const selectorRef = useRef<HTMLSelectElement | null>(null);
     const restoreSelectorFocus = useRef(false);

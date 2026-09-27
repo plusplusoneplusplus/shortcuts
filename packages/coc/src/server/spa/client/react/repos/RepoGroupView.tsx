@@ -41,7 +41,7 @@ import { useQueue, useQueueOptional } from '../contexts/QueueContext';
 import { useRepoQueueStats } from '../queue/hooks/useRepoQueueStats';
 import { StatusActions } from '../layout/StatusActions';
 import { useReposOptional } from '../contexts/ReposContext';
-import { resolveRepoGroupName } from './repoGroupName';
+import { resolveRepoGroupName, resolveRepoGroupDisplayName } from './repoGroupName';
 import type { RepoGroupMember } from './repoGroupService';
 import { RepoGroupGitTab } from './RepoGroupGitTab';
 import { RepoGroupSettingsTab } from './RepoGroupSettingsTab';
@@ -50,7 +50,7 @@ import { useWorkspaceDock, type DockTarget } from '../features/repo-detail/useWo
 import { VirtualWorkspaceInlineHeader } from '../features/remote-shell/VirtualWorkspaceInlineHeader';
 import { VirtualWorkspaceMobileTabBar } from '../features/remote-shell/VirtualWorkspaceMobileTabBar';
 import type { VirtualWorkspaceHeaderConfig } from '../features/remote-shell/virtualWorkspaceHeader';
-import { getRemoteCloneKey } from './cloneIdentity';
+import { getRemoteCloneKey, getWorkspaceSelectionId } from './cloneIdentity';
 
 /**
  * The only tabs a repo group exposes: chat ("Workspace"), Notes, and Settings.
@@ -117,9 +117,11 @@ export function repoGroupDockTargets(workspaceId: string, members: readonly Repo
 export interface RepoGroupViewProps {
     /** The `group-<slug>` workspace id currently selected. */
     workspaceId: string;
+    /** Clone-qualified dashboard selection, distinct from the raw API workspace id. */
+    selectionId?: string;
 }
 
-export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
+export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGroupViewProps) {
     const { state } = useApp();
     const { dispatch: queueDispatch } = useQueue();
     const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(workspaceId);
@@ -135,8 +137,8 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // The id is a readable fallback while those lists are still loading.
     const remoteGroups = useReposOptional()?.remoteGroupWorkspaces;
     const groupName = useMemo(
-        () => resolveRepoGroupName(workspaceId, state.workspaces, remoteGroups),
-        [state.workspaces, remoteGroups, workspaceId]
+        () => resolveRepoGroupName(selectionId, state.workspaces, remoteGroups),
+        [state.workspaces, remoteGroups, selectionId]
     );
     // Split Workspace panel: behind `splitWorkspacePanel` the group's chat and
     // git share the Chats tab through the same `SplitWorkspacePanel` shell a repo
@@ -147,8 +149,9 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // layout exposes a second, standalone Git tab.
     const mobileWorkspaceSplit = splitWorkspacePanelEnabled && isMobile;
     const headerConfig = useMemo(
-        () => getRepoGroupHeaderConfig(workspaceId, groupName, splitWorkspacePanelEnabled),
-        [workspaceId, groupName, splitWorkspacePanelEnabled],
+        () => getRepoGroupHeaderConfig(selectionId,
+            resolveRepoGroupDisplayName(selectionId, state.workspaces, remoteGroups), splitWorkspacePanelEnabled),
+        [selectionId, state.workspaces, remoteGroups, splitWorkspacePanelEnabled],
     );
 
     // Landing tab when the current sub-tab is not one of the group's tabs (e.g.
@@ -172,8 +175,8 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
     // local group, the remote's baseUrl for one aggregated from a remote server.
     const dockAvailable = splitWorkspacePanelEnabled && !isMobile;
     const remoteGroup = useMemo(
-        () => (remoteGroups ?? []).find(ws => String(ws?.id ?? '') === workspaceId),
-        [remoteGroups, workspaceId],
+        () => (remoteGroups ?? []).find(ws => getWorkspaceSelectionId(ws) === selectionId),
+        [remoteGroups, selectionId],
     );
     const groupBaseUrl = useMemo(() => {
         const url = (remoteGroup as { baseUrl?: unknown } | undefined)?.baseUrl;
@@ -288,6 +291,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                                 gitList={splitGitAvailable ? (
                                     <RepoGroupGitTab
                                         workspaceId={workspaceId}
+                                        selectionId={selectionId}
                                         members={members}
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
@@ -322,7 +326,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                     </div>
                     {!splitWorkspacePanelEnabled && (
                         <div style={{ display: activeTab === 'git' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
-                            {gitVisited && <RepoGroupGitTab workspaceId={workspaceId} members={members} active={activeTab === 'git'} />}
+                            {gitVisited && <RepoGroupGitTab workspaceId={workspaceId} selectionId={selectionId} members={members} active={activeTab === 'git'} />}
                         </div>
                     )}
                     <div style={{ display: activeTab === 'notes' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
@@ -337,6 +341,7 @@ export function RepoGroupView({ workspaceId }: RepoGroupViewProps) {
                     <div style={{ display: activeTab === 'settings' ? undefined : 'none' }} className="h-full min-w-0 overflow-hidden">
                         <RepoGroupSettingsTab
                             workspaceId={workspaceId}
+                            selectionId={selectionId}
                             baseUrl={groupBaseUrl}
                             active={activeTab === 'settings'}
                         />

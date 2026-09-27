@@ -35,7 +35,8 @@ import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import { RepoGroupDialog } from '../../repos/RepoGroupDialog';
 import { deleteRepoGroup } from '../../repos/repoGroupService';
 import { MY_LIFE_WORKSPACE_ID, MY_WORK_WORKSPACE_ID, isRepoGroupWorkspaceId } from '../../repos/virtualWorkspaceIds';
-import { getRepoSelectionId, isRepoSelected, pickCloneForGroup } from '../../repos/cloneIdentity';
+import { getRepoSelectionId, getWorkspaceSelectionId, isRepoSelected, pickCloneForGroup } from '../../repos/cloneIdentity';
+import { getRepoGroupServerName } from '../../repos/repoGroupName';
 import { groupKey, groupReposByRemote, type RepoData, type RepoGroup } from '../../repos/repoGrouping';
 import { getGroupRemoteServers, getGroupWsl, type RepoWslInfo } from '../../repos/repoPickerModel';
 import type { ContextMenuItem } from '../../tasks/comments/ContextMenu';
@@ -78,11 +79,12 @@ export function groupMatchesSearch(group: RepoGroup, query: string): boolean {
 }
 
 /** Does this repo-group virtual workspace match the picker's search box? */
-export function repoGroupMatchesSearch(workspace: { id?: unknown; name?: unknown }, query: string): boolean {
+export function repoGroupMatchesSearch(workspace: { id?: unknown; name?: unknown; remote?: { serverId?: unknown; serverLabel?: string } }, query: string): boolean {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return String(workspace.name ?? '').toLowerCase().includes(q)
-        || String(workspace.id ?? '').toLowerCase().includes(q);
+        || String(workspace.id ?? '').toLowerCase().includes(q)
+        || getRepoGroupServerName(workspace).toLowerCase().includes(q);
 }
 
 /** One git-remote cluster row ("remote"): the clones sharing an origin URL. */
@@ -342,19 +344,21 @@ export function useScopePickerModel(repos: RepoData[], options?: ScopePickerMode
             .map(ws => {
                 const remote = ws?.remote as { serverLabel?: string; offline?: boolean } | undefined;
                 const offline = !!remote?.offline;
+                const id = getWorkspaceSelectionId(ws);
+                const serverName = getRepoGroupServerName(ws);
                 return {
                     kind: 'group' as const,
-                    id: String(ws.id),
+                    id,
                     workspace: ws,
                     name: String(ws.name ?? ws.id),
                     sublabel: remote
-                        ? `Repo group · ${remote.serverLabel ?? 'remote'}${offline ? ' (offline)' : ''}`
-                        : 'Repo group',
+                        ? `Repo group · ${serverName}${offline ? ' (offline)' : ''}`
+                        : `Repo group · ${serverName}`,
                     offline,
                     serverLabel: remote?.serverLabel ?? null,
                     isRemote: !!remote,
-                    active: appState.selectedRepoId === String(ws.id),
-                    pinRef: { kind: 'group' as const, key: String(ws.id) },
+                    active: appState.selectedRepoId === id,
+                    pinRef: { kind: 'group' as const, key: id },
                 };
             });
     }, [repoGroupWorkspaces, query, appState.selectedRepoId]);

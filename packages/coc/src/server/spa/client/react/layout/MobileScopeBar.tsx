@@ -25,7 +25,7 @@ import { computeCloneStatusMap, summarizeRemote } from '../features/remote-shell
 import { CloneCountBadge, Chevron, RepoGroupGlyph, UnseenBadge } from '../features/remote-shell/scopePickerGlyphs';
 import { findRepoBySelectionId } from '../repos/cloneIdentity';
 import { groupReposByRemote } from '../repos/repoGrouping';
-import { resolveRepoGroupName } from '../repos/repoGroupName';
+import { resolveRepoGroupDisplayName } from '../repos/repoGroupName';
 import {
     MY_LIFE_WORKSPACE_ID,
     MY_WORK_WORKSPACE_ID,
@@ -89,7 +89,7 @@ function MobileScopeBarBody() {
                 // Neutral dot: a group aggregates clones with independent health,
                 // so borrowing any member's color would misreport the others.
                 color: '#848484',
-                name: resolveRepoGroupName(scopeId, state.workspaces, remoteGroupWorkspaces),
+                name: resolveRepoGroupDisplayName(scopeId, state.workspaces, remoteGroupWorkspaces),
                 cloneCount: 1,
                 unseen,
             };

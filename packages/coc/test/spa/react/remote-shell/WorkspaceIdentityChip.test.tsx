@@ -578,14 +578,14 @@ describe('WorkspaceIdentityChip repo groups (repo-group AC-01/AC-04)', () => {
         expect(screen.queryAllByTestId('repo-group-server-badge')).toHaveLength(1);
     });
 
-    it('selects a remote group by its own workspace id (clone-registry routing)', () => {
+    it('selects a remote group by its server-qualified id', () => {
         mockRemoteGroupWorkspaces = [remoteGroupWs('group-devbox-svc', 'Devbox Services')];
         openPicker([repo('a', 'shortcuts', SHORTCUTS)], undefined);
 
         const remoteRow = screen.queryAllByTestId('repo-group-item')
             .find(el => el.textContent?.includes('Devbox Services'))!;
         fireEvent.click(remoteRow);
-        expect(mockSelectClone).toHaveBeenCalledWith('group-devbox-svc');
+        expect(mockSelectClone).toHaveBeenCalledWith('remote:srv-1:group-devbox-svc');
     });
 
     it('proxies edit and delete of a remote group to its server base URL', async () => {

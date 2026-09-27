@@ -31,7 +31,7 @@ import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWo
 import { MY_WORK_WORKSPACE_ID, getMyWorkHeaderConfig } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID, MY_LIFE_HEADER_CONFIG } from '../repos/MyLifeView';
 import { getRepoGroupHeaderConfig } from '../repos/RepoGroupView';
-import { resolveRepoGroupName } from '../repos/repoGroupName';
+import { resolveRepoGroupDisplayName } from '../repos/repoGroupName';
 import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyWorkTodayViewEnabled } from '../hooks/feature-flags/useMyWorkTodayViewEnabled';
@@ -163,7 +163,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         const id = state.selectedRepoId!;
         return getRepoGroupHeaderConfig(
             id,
-            resolveRepoGroupName(id, state.workspaces, remoteGroupWorkspaces),
+            resolveRepoGroupDisplayName(id, state.workspaces, remoteGroupWorkspaces),
             splitWorkspacePanelEnabled,
         );
     }, [isOnReposTab, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces, splitWorkspacePanelEnabled]);

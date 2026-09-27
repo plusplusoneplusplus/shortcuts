@@ -39,6 +39,12 @@ all have their own `references/*.md`.
   workspace, while the remote desktop shell docks its status actions under
   the split left column. A loaded group without healthy members hides the
   desktop Git half so chats fill that column.
+- **Repo-group dashboard selection is server-qualified.** A local group uses
+  its raw `group-<slug>` id; a remote group uses the existing
+  `remote:<serverId>:<groupId>` clone key for selection, routes, and pins.
+  Decode the raw group id only at the owning server's API boundary. Display
+  machine/server names identify rows but are not persistent keys; identical
+  group ids across servers must remain distinct.
 - **File search has exactly one backend.** `RepoTreeService` answers whole-repo
   listings and `/search` from the Rust index in `@plusplusoneplusplus/coc-native`,
   and there is no JavaScript path behind it: a missing or unloadable binary

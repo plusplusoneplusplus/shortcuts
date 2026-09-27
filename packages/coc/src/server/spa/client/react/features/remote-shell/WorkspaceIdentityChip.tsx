@@ -218,7 +218,7 @@ export function WorkspaceIdentityChip({ repo, repos, onSwitchBack, groupIdentity
         return (
             // Row click switches the dashboard to the group's virtual workspace
             // (RepoGroupView) through the same target-aware navigation repos use;
-            // for a remote group the clone registry already maps its id to the
+            // for a remote group its server-qualified selection resolves to the
             // owning server's baseUrl, so every request from the view routes
             // there. The ⋮ menu edits/deletes on that same server. (AC-02)
             <PickerRow

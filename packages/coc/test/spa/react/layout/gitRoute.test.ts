@@ -16,6 +16,7 @@ import {
     parseGitRoute,
     type GitRouteDescriptor,
 } from '../../../../src/server/spa/client/react/layout/gitRoute';
+import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
 
 const GROUP = 'group-frontend';
 
@@ -64,6 +65,24 @@ describe('parseGitRoute — single repo', () => {
 });
 
 describe('parseGitRoute — repo group', () => {
+    it('round-trips a server-qualified group without confusing it with a member', () => {
+        const qualified = buildRemoteCloneKey('box-b', GROUP);
+        expect(roundTrip({
+            routeWorkspaceId: qualified,
+            workspaceId: 'repo-b',
+            commitHash: 'abc1234',
+            filePath: null,
+        })).toEqual({
+            routeWorkspaceId: qualified,
+            workspaceId: 'repo-b',
+            commitHash: 'abc1234',
+            filePath: null,
+        });
+        expect(isSameGitRouteScope(
+            { routeWorkspaceId: qualified, workspaceId: 'repo-b' },
+            { routeWorkspaceId: buildRemoteCloneKey('box-a', GROUP), workspaceId: 'repo-b' },
+        )).toBe(false);
+    });
     it('reads the member, the commit and the file', () => {
         expect(parseGitRoute(`#repos/${GROUP}/git/member/repo-b/abc1234/src%2Findex.ts`)).toEqual({
             routeWorkspaceId: GROUP, workspaceId: 'repo-b', commitHash: 'abc1234', filePath: 'src/index.ts',

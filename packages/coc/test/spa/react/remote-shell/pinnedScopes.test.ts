@@ -220,7 +220,7 @@ describe('resolvePinnedScopes', () => {
 
     it('resolves a group pin to the virtual workspace name and id', () => {
         const [resolved] = resolvePinnedScopes([groupPin('group-ai')], ctx({ unseenCounts: { 'group-ai': 4 } }));
-        expect(resolved.label).toBe('ai-repos');
+        expect(resolved.label).toBe('Local · ai-repos');
         expect(resolved.targetId).toBe('group-ai');
         expect(resolved.unseen).toBe(4);
         // Neutral dot: a group aggregates clones with independent health.
@@ -231,7 +231,22 @@ describe('resolvePinnedScopes', () => {
         const [resolved] = resolvePinnedScopes([groupPin('group-ai')], ctx({ groupWorkspaces: [] as any }));
         expect(resolved).toBeUndefined();
         const [named] = resolvePinnedScopes([groupPin('group-ai')], ctx({ groupWorkspaces: [{ id: 'group-ai' }] }));
-        expect(named.label).toBe('group-ai');
+        expect(named.label).toBe('Local · group-ai');
+    });
+
+    it('keeps pins for same-named groups on separate servers distinct', () => {
+        const groupWorkspaces = ['box-a', 'box-b'].map(serverId => ({
+            id: 'group-xstore', name: 'XStore',
+            remote: { serverId, serverLabel: serverId },
+        }));
+        const a = buildRemoteCloneKey('box-a', 'group-xstore');
+        const b = buildRemoteCloneKey('box-b', 'group-xstore');
+        const resolved = resolvePinnedScopes([groupPin(a), groupPin(b)], ctx({ groupWorkspaces }));
+        expect(resolved.map(pin => [pin.targetId, pin.label])).toEqual([
+            [a, 'box-a · XStore'],
+            [b, 'box-b · XStore'],
+        ]);
+        expect(resolvePinnedScopes([groupPin('group-xstore')], ctx({ groupWorkspaces }))).toEqual([]);
     });
 
     it('drops stale pins from the rendered set without touching the stored list', () => {
@@ -257,6 +272,6 @@ describe('resolvePinnedScopes', () => {
             [repoPin('github.com/acme/forge'), groupPin('group-ai'), repoPin('github.com/acme/shortcuts')],
             ctx(),
         );
-        expect(resolved.map(r => r.label)).toEqual(['forge', 'ai-repos', 'shortcuts']);
+        expect(resolved.map(r => r.label)).toEqual(['forge', 'Local · ai-repos', 'shortcuts']);
     });
 });
