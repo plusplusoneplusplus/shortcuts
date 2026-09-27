@@ -105,4 +105,9 @@ export const BUNDLED_SKILLS_REGISTRY: readonly BundledSkill[] = [
         description: 'Compact the current conversation into a handoff document for another agent to pick up',
         relativePath: 'handoff',
     },
+    {
+        name: 'trace-callstack',
+        description: 'Trace the call stack of a function or feature and render it as a nested tree where every node links to its definition and call site',
+        relativePath: 'trace-callstack',
+    },
 ];
