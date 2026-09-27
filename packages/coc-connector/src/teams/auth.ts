@@ -259,7 +259,7 @@ export async function acquireTokenViaBrowser(
 }
 
 /** Save OAuth tokens to the Copilot CLI cache format. */
-function saveMcpOAuthTokens(
+export function saveMcpOAuthTokens(
     serverUrl: string,
     data: {
         clientId: string;

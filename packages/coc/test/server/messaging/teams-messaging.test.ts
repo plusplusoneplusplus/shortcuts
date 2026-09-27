@@ -276,7 +276,9 @@ describe('Teams messaging routes (integration)', () => {
                 const response = await fetch(`${base}/api/messaging/teams/auth/start`, { method: 'POST' });
                 expect(response.status).toBe(200);
                 const body = await response.json();
-                expect(body.authorizationUrl).toContain('https://login.example.test');
+                const signIn = new URL(body.authorizationUrl);
+                expect(signIn.protocol).toBe('https:');
+                expect(signIn.searchParams.get('code_challenge_method')).toBe('S256');
                 expect(oauthManager.getPending(body.requestId)?.status).toBe('pending');
                 const url = new URL(body.authorizationUrl);
                 const callback = new URL(url.searchParams.get('redirect_uri')!.replace('localhost', '127.0.0.1'));
