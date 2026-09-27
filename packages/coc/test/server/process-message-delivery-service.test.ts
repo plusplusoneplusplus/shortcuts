@@ -489,6 +489,22 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         expect(bridge.enqueue).not.toHaveBeenCalled();
     });
 
+    it('returns the pending ID and stores only the opaque origin request ID when buffered', async () => {
+        const store = makeStore();
+        const bridge = {
+            enqueue: vi.fn(),
+            findTaskByProcessId: vi.fn().mockReturnValue({ status: 'running' }),
+        };
+        const result = await makeService(store, bridge, { newId: () => 'pending-1' })
+            .deliver(makeProc({ status: 'running' }), makeInput({ relayRequestId: 'origin-123' }));
+
+        expect(result).toMatchObject({ path: 'buffered', turnIndex: -1, pendingMessageId: 'pending-1' });
+        expect(store.pending[0]).toMatchObject({ id: 'pending-1', relayRequestId: 'origin-123' });
+        expect(store.turns).toHaveLength(0);
+        expect(store.pending[0]).not.toHaveProperty('sender');
+        expect(result.events[0]).toMatchObject({ kind: 'pending-message-added', pendingMessage: { relayRequestId: 'origin-123' } });
+    });
+
     it('buffers when the parent task is queued', async () => {
         const store = makeStore();
         const bridge = {
@@ -543,7 +559,24 @@ describe('ProcessMessageDeliveryService.deliver', () => {
         // A user turn is appended and status flips to running.
         expect(store.appendConversationTurn).toHaveBeenCalledOnce();
         expect(result.turnIndex).toBe(0);
+        expect(result.pendingMessageId).toBeUndefined();
+        expect(store.turns[0]).not.toHaveProperty('relayRequestId');
         expect(result.events.map(e => e.kind)).toEqual(['message-queued']);
+    });
+
+    it('persists the opaque origin request ID on the enqueued user turn and task', async () => {
+        const store = makeStore();
+        const bridge = { enqueue: vi.fn().mockResolvedValue('task-id') };
+        const result = await makeService(store, bridge).deliver(
+            makeProc({ status: 'completed' }),
+            makeInput({ relayRequestId: 'origin-456', content: 'private body' }),
+        );
+
+        expect(result.path).toBe('enqueued');
+        expect(result.pendingMessageId).toBeUndefined();
+        expect(store.turns[0]).toMatchObject({ role: 'user', relayRequestId: 'origin-456' });
+        expect(bridge.enqueue.mock.calls[0][0].payload).toHaveProperty('relayRequestId', 'origin-456');
+        expect(result.events).not.toEqual(expect.arrayContaining([expect.objectContaining({ relayRequestId: 'origin-456' })]));
     });
 
     it('carries the accepted provider into the enqueue payload', async () => {

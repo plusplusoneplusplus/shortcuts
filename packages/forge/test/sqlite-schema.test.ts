@@ -106,7 +106,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(37);
+        expect(SCHEMA_VERSION).toBe(38);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1178,7 +1178,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(37);
+            expect(SCHEMA_VERSION).toBe(38);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1405,7 +1405,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(37);
+            expect(SCHEMA_VERSION).toBe(38);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1606,7 +1606,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(37);
+            expect(SCHEMA_VERSION).toBe(38);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',
@@ -1808,6 +1808,36 @@ describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
 
     beforeEach(() => {
         db = new Database(':memory:');
+    });
+
+    describe('V37 -> V38 migration (Teams request correlation)', () => {
+        let db: Database.Database;
+
+        beforeEach(() => {
+            db = new Database(':memory:');
+            initializeDatabase(db);
+            db.exec('ALTER TABLE conversation_turns DROP COLUMN relay_request_id');
+            db.prepare('INSERT INTO processes (id, workspace_id, status, start_time) VALUES (?, ?, ?, ?)')
+                .run('old-process', 'old-workspace', 'completed', '2026-01-01T00:00:00.000Z');
+            db.prepare('INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp) VALUES (?, ?, ?, ?, ?)')
+                .run('old-process', 0, 'user', 'old turn', '2026-01-01T00:00:00.000Z');
+            db.pragma('user_version = 37');
+        });
+
+        afterEach(() => {
+            db.close();
+        });
+
+        it('adds the nullable request ID without inventing provenance for older turns', () => {
+            initializeDatabase(db);
+            expect(getSchemaVersion(db)).toBe(38);
+            const columns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
+            expect(columns.map(column => column.name)).toContain('relay_request_id');
+            expect(db.prepare('SELECT relay_request_id FROM conversation_turns WHERE process_id = ?').get('old-process'))
+                .toEqual({ relay_request_id: null });
+            initializeDatabase(db);
+            expect(columns.filter(column => column.name === 'relay_request_id')).toHaveLength(1);
+        });
     });
 
     afterEach(() => {

@@ -157,6 +157,23 @@ describe('Follow-up FIFO — server orchestration', () => {
         executor.setQueueManager(queueManager as any);
     });
 
+    it('moves an opaque origin request ID from pending message to drained user turn and task', async () => {
+        const proc = createCompletedProcessWithSession('proc-correlated', 'sess-correlated');
+        proc.pendingMessages = [{ ...makePendingMessage('Follow-up'), relayRequestId: 'origin-789' }];
+        await store.addProcess(proc);
+
+        const task = followUpTask({ processId: proc.id, content: 'first' });
+        queueManager.tasks.set(task.id, task);
+        await executor.execute(task);
+
+        const updated = await store.getProcess(proc.id);
+        expect(updated?.pendingMessages).toHaveLength(0);
+        expect(updated?.conversationTurns?.filter(turn => turn.role === 'user' && turn.relayRequestId === 'origin-789'))
+            .toHaveLength(1);
+        expect(queueManager.enqueue).toHaveBeenCalledOnce();
+        expect(queueManager.enqueue.mock.calls[0][0].payload).toHaveProperty('relayRequestId', 'origin-789');
+    });
+
     it('drains message A before message B across successive completions', async () => {
         const proc = createCompletedProcessWithSession('proc-1', 'sess-1');
         proc.pendingMessages = [

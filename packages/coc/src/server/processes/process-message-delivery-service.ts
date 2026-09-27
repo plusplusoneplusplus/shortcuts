@@ -206,6 +206,8 @@ export interface FollowUpMessageInput {
     content: string;
     /** Content as shown in the conversation bubble (skills directive prepended). */
     displayContent: string;
+    /** Opaque origin request identifier; not derived from sender or message content. */
+    relayRequestId?: string;
     /** Content with appended text-attachment context, for the executor/enqueue prompt. */
     contentWithContext?: string;
     attachments?: Attachment[];
@@ -252,6 +254,10 @@ export interface DeliveryResult {
     path: DeliveryPath;
     /** Appended user-turn index, or -1 when the message was buffered. */
     turnIndex: number;
+    /** Pending message identifier when the follow-up was buffered. */
+    pendingMessageId?: string;
+    /** Queue task assigned to a newly enqueued follow-up, if available. */
+    taskId?: string;
     pasteExternalized: boolean;
     events: DeliveryEvent[];
 }
@@ -327,6 +333,9 @@ export class ProcessMessageDeliveryService {
         const priorStatus = proc.status;
         const activeBinding = readActiveProviderSession(proc);
         const events: DeliveryEvent[] = [];
+        const requestCorrelation = input.relayRequestId !== undefined
+            ? { relayRequestId: input.relayRequestId }
+            : {};
 
         // Turn index this message will occupy — the cutoff a reconstructed
         // continuation quotes history strictly before. Captured before the
@@ -338,6 +347,8 @@ export class ProcessMessageDeliveryService {
 
         let path: DeliveryPath = 'enqueued';
         let buffered = false;
+        let pendingMessageId: string | undefined;
+        let taskId: string | undefined;
         let steerSucceeded = false;
 
         // Buffer a follow-up as a pending message for server-side drain. The user
@@ -350,6 +361,7 @@ export class ProcessMessageDeliveryService {
             path = 'buffered';
             const pendingMessage = {
                 id: this.newId(),
+                ...requestCorrelation,
                 content: input.content,
                 displayContent: input.displayContent,
                 ...(input.images ? { images: input.images } : {}),
@@ -365,6 +377,7 @@ export class ProcessMessageDeliveryService {
                 createdAt: this.now().toISOString(),
             };
             await this.store.appendPendingMessage(id, pendingMessage);
+            pendingMessageId = pendingMessage.id;
             events.push({ kind: 'pending-message-added', pendingMessage });
         };
 
@@ -394,7 +407,7 @@ export class ProcessMessageDeliveryService {
                 } else {
                     // Terminal status (failed or resumable cancelled) or restart fallback → enqueue.
                     const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
-                    await this.bridge.enqueue({
+                    taskId = await this.bridge.enqueue({
                         ...(isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
                         processId: id,
                         type: 'chat',
@@ -402,6 +415,7 @@ export class ProcessMessageDeliveryService {
                         payload: {
                             kind: 'chat',
                             prompt: input.contentWithContext ?? input.content,
+                            ...requestCorrelation,
                             processId: id,
                             ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
                             attachments: input.attachments,
@@ -450,6 +464,7 @@ export class ProcessMessageDeliveryService {
                     content: input.displayContent,
                     timestamp: this.now(),
                     turnIndex: idx,
+                    ...requestCorrelation,
                     timeline: [],
                     images: input.images,
                     ...(input.pasteExternalized ? { pasteExternalized: true } : {}),
@@ -485,6 +500,7 @@ export class ProcessMessageDeliveryService {
             });
         }
 
-        return { path, turnIndex, pasteExternalized: input.pasteExternalized, events };
+        return { path, turnIndex, ...(pendingMessageId ? { pendingMessageId } : {}),
+            ...(taskId ? { taskId } : {}), pasteExternalized: input.pasteExternalized, events };
     }
 }

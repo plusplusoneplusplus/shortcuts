@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 export { Database };
 export type { Database as DatabaseType } from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 37;
+export const SCHEMA_VERSION = 38;
 
 /**
  * Read the current schema version from the database.
@@ -101,6 +101,7 @@ export function initializeDatabase(db: Database.Database): void {
                 chat_mode_context TEXT,
                 provider          TEXT,
                 segment_id        TEXT,
+                relay_request_id  TEXT,
                 UNIQUE(process_id, turn_index)
             )
         `);
@@ -562,6 +563,9 @@ export function initializeDatabase(db: Database.Database): void {
         if (versionBefore < 37) {
             migrateV36toV37(db);
         }
+        if (versionBefore < 38) {
+            migrateV37toV38(db);
+        }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
     });
@@ -1016,6 +1020,10 @@ function migrateV35toV36(db: Database.Database): void {
  */
 function migrateV36toV37(db: Database.Database): void {
     ensureColumn(db, 'conversation_turns', 'segment_id', 'TEXT');
+}
+
+function migrateV37toV38(db: Database.Database): void {
+    ensureColumn(db, 'conversation_turns', 'relay_request_id', 'TEXT');
 }
 
 /**

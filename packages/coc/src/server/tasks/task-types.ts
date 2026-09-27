@@ -616,6 +616,8 @@ export interface ChatPayload {
     readonly kind: 'chat';
     mode: ChatMode;
     prompt: string;
+    /** Opaque inbound request correlation carried through queued follow-up execution. */
+    relayRequestId?: string;
     context?: ChatContext;
     /** Additional tools to inject (e.g., 'resolve-comments'). */
     tools?: string[];

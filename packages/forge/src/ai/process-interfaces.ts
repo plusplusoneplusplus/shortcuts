@@ -168,6 +168,8 @@ export interface ConversationTurn {
     timestamp: Date;
     /** Zero-based index of this turn in the conversation */
     turnIndex: number;
+    /** Opaque origin request identifier for correlating a user follow-up; never sender or message content. */
+    relayRequestId?: string;
     /** True while the assistant response is still being streamed (ephemeral UI hint) */
     streaming?: boolean;
     /** True when an assistant turn was preserved after the generation failed mid-stream. */
@@ -271,6 +273,7 @@ export interface SerializedConversationTurn {
     content: string;
     timestamp: string;  // ISO string
     turnIndex: number;
+    relayRequestId?: string;
     streaming?: boolean;
     /** True when an assistant turn was preserved after the generation failed mid-stream. */
     interrupted?: boolean;
@@ -493,6 +496,8 @@ export interface ActiveProviderSession {
 export interface PendingMessage {
     /** Unique identifier (crypto.randomUUID) */
     id: string;
+    /** Opaque origin request identifier, preserved when this message becomes a user turn. */
+    relayRequestId?: string;
     /** Message content */
     content: string;
     /** Content with skill directives prepended (for the conversation bubble when drained) */
