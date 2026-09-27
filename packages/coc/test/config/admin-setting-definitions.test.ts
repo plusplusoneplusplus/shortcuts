@@ -188,6 +188,19 @@ describe('admin validate/apply round-trip', () => {
 // ── resolved config merge ─────────────────────────────────────────────────────
 
 describe('resolved config merge honors file overrides', () => {
+    it('keeps Teams answer relay disabled independently of bridge observability', () => {
+        expect(DEFAULT_CONFIG.features.teamsAiAnswerRelay).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsBridgeObservability: true },
+        }).features.teamsAiAnswerRelay).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsAiAnswerRelay: true },
+        }).features.teamsBridgeObservability).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsAiAnswerRelay: true },
+        }).features.teamsAiAnswerRelay).toBe(true);
+    });
+
     it('with no override, every setting resolves to its default', () => {
         const resolved = mergeConfig(DEFAULT_CONFIG, undefined);
         for (const def of ADMIN_SETTING_DEFINITIONS) {

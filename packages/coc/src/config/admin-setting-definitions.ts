@@ -825,6 +825,9 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.teamsAiAnswerRelay', default: false, runtime: 'live',
+    }),
+    bool({
         key: 'features.quickAskSidenotes', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'quickAskSidenotesEnabled',
         ui: {
             group: 'dashboard', order: 62, label: 'Quick Ask side-notes', badge: 'experimental',
