@@ -93,6 +93,23 @@ describe('TeamsAttemptStore', () => {
         expect(loaded.list().some(a => a.id === old)).toBe(false);
     });
 
+    it('retains attempts at the exact 30-day cutoff and prunes them one millisecond later', () => {
+        const f = fixture();
+        const store = new TeamsAttemptStore(f.dir, f.clock);
+        const cutoff = store.start();
+        store.finish(cutoff, 'disconnected');
+        const pending = store.start();
+        f.advance(30 * 24 * 60 * 60 * 1000);
+        const atCutoff = new TeamsAttemptStore(f.dir, f.clock);
+        expect(atCutoff.list().map(a => a.id)).toEqual([pending, cutoff]);
+        expect(atCutoff.list()[0].result).toBe('interrupted');
+
+        f.advance(1);
+        const afterCutoff = new TeamsAttemptStore(f.dir, f.clock);
+        expect(afterCutoff.list().map(a => a.id)).toEqual([pending]);
+        expect(afterCutoff.list()[0].result).toBe('interrupted');
+    });
+
     it('does not persist extra fields from a stored record and rejects corrupt data', () => {
         const f = fixture();
         const store = new TeamsAttemptStore(f.dir, f.clock);
