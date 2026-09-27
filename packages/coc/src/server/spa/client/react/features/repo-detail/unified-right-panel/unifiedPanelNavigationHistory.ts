@@ -151,25 +151,35 @@ export function stepNavigationHistory(
 }
 
 /**
- * Drop the entry a replay just stepped onto (its file is gone) and put the
- * index back where the step started, so stepping again in `direction` moves on
- * to the next entry. Neighbours left adjacent at the same position collapse.
+ * The file a replay just stepped onto is gone: drop every entry for it and put
+ * the index where stepping again in `direction` moves on to the next entry.
+ * Neighbours left adjacent at the same position collapse.
  */
 export function dropReplayedNavigationEntry(
     history: UnifiedPanelNavigationHistory,
     direction: NavigationDirection,
 ): UnifiedPanelNavigationHistory {
-    const removed = history.index;
-    if (removed < 0 || removed >= history.entries.length) return finishNavigationReplay(history);
-    const entries = history.entries.filter((_, index) => index !== removed);
-    let index = direction === 'back' ? removed : removed - 1;
-    const seam = removed - 1;
-    if (seam >= 0 && seam + 1 < entries.length && hasIdenticalHistoryPosition(entries[seam], entries[seam + 1])) {
-        entries.splice(seam, 1);
-        if (index > seam) index -= 1;
-    }
-    index = Math.min(Math.max(index, 0), entries.length - 1);
-    return { entries, index, replaying: false };
+    const replayed = history.entries[history.index];
+    if (replayed === undefined) return finishNavigationReplay(history);
+    // A collapsed pair keeps the later entry's original position, so a pair
+    // straddling the dropped file counts as after it.
+    const entries: UnifiedPanelNavigationLocation[] = [];
+    let lastOriginal = -1;
+    let keptBefore = 0;
+    history.entries.forEach((entry, index) => {
+        if (sameNavigationLocationIdentity(entry, replayed)) return;
+        const previous = entries[entries.length - 1];
+        if (previous && hasIdenticalHistoryPosition(previous, entry)) {
+            entries.pop();
+            if (lastOriginal < history.index) keptBefore -= 1;
+        }
+        entries.push(entry);
+        lastOriginal = index;
+        if (index < history.index) keptBefore += 1;
+    });
+    if (entries.length === 0) return EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY;
+    const index = direction === 'back' ? keptBefore : keptBefore - 1;
+    return { entries, index: Math.min(Math.max(index, 0), entries.length - 1), replaying: false };
 }
 
 export function navigationFileOf(tab: UnifiedPanelTab): UnifiedPanelNavigationFile {

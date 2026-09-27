@@ -61,7 +61,7 @@ from same-id clones never merge into one tab.
 | `unifiedPanelOpen.ts` | The imperative seam for callers outside the panel subtree: `openUnifiedPanelTab`, `focusUnifiedPanelTab`, `inheritDraftPanelTabs`, `unifiedTabIdFor`, `updateUnifiedPanelState`. Works with no panel mounted; inheritance is the non-revealing entry point. |
 | `unifiedPanelHost.tsx` | The "may I reroute?" signal. `useUnifiedPanelHostForChat(chatId)` returns a host **only** when the panel is showing that chat's tabs. |
 | `UnifiedRightPanel.tsx` | The shell: reuses `useWorkspaceDock` wholesale (open/mode/width/resize/target), keep-alive, dirty/error sets, the close guards, and the layout — resource views on the left, the selected Search/Explorer mode on the right edge. |
-| `unifiedPanelNavigationHistory.ts` | Pure file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, and the versioned codec. Each entry carries its file's reopen descriptor, so closing a tab keeps its entries; Back/Forward onto a closed file reopens it as a preview (through the preview slot's unsaved-edits guard) in the current chat's view, and never steps onto another scope's entries. |
+| `unifiedPanelNavigationHistory.ts` | Pure file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, missing-file drop, and the versioned codec. Each entry carries its file's reopen descriptor, so closing a tab keeps its entries; Back/Forward onto a closed file reopens it as a preview (through the preview slot's unsaved-edits guard) in the current chat's view, and never steps onto another scope's entries. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
 | `UnifiedPanelTabStrip.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip and accessible VS Code-style tab menu. A dedicated visual divider in the tab row separates tools (Terminal, Notes, notes, Git, and the chat's canvases) from resources (files, diffs, external); the workspace below remains continuous. File tabs render Explorer's shared `FileNameIcon` from their filename, while other resource kinds use their fixed icons. The pure model owns per-kind action availability, path resolution, and visible-order bulk target selection. |
@@ -114,16 +114,19 @@ file-viewer behavior.
 
 ## File navigation history
 
-The panel owns one session-only history of file locations. A location carries the
-panel scope, concrete file-tab id, and Monaco selection — no scroll or view
+The panel owns one history of file locations per panel scope, persisted to
+localStorage. A location carries the panel scope, concrete file-tab id, the
+file's reopen descriptor, and Monaco selection — no scroll or view
 state, matching VS Code's `TextEditorPaneSelection`. The pure model follows VS
 Code's `EditorNavigationStack` behavior at commit
 `bdadf2eb338657fd540c1b38713393b4a5856de1`: ordinary moves less than ten lines
 apart replace the current entry **in place, keeping any forward branch**, while
 navigation and jump events at a different line push a new entry. Only a push
 truncates the forward branch. The stack holds at most 50 locations, suppresses
-records during replay, and drops locations for closed tabs while preserving the
-current cursor and any surviving forward branch.
+records during replay, and keeps locations of closed tabs: replaying one reopens
+the file as a preview. A replayed file whose read fails is gone — every entry for
+it is dropped (`dropReplayedNavigationEntry`), a tab the replay reopened is closed
+again, and replay keeps stepping the same direction.
 
 `MonacoFileEditor` exposes a navigation controller that captures and restores the
 selection. Restore sets the selection and reveals it centered only when it is
@@ -134,7 +137,7 @@ record — using Monaco's `api`, `code.navigation`, and `code.jump` source label
 and captures the source before a cross-file language jump. `UnifiedRightPanel`
 records only the active file, activates the destination tab, and marks replay
 before restoring so emitted cursor events cannot fork history. Remounting the
-same panel scope reuses its in-memory history without writing it to localStorage.
+same panel scope reuses its in-memory history.
 
 Go Back / Go Forward use VS Code's keys: Alt+Left/Alt+Right on Windows and Linux,
 Ctrl+-/Ctrl+Shift+- on macOS (where Alt+Arrow stays with Monaco for word

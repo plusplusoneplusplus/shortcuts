@@ -106,6 +106,7 @@ import type {
     EditorNavigationSnapshot,
 } from '../../../shared/file-viewer/MonacoFileEditor';
 import {
+    dropReplayedNavigationEntry,
     finishNavigationReplay,
     navigationFileOf,
     navigationHistoryDestination,
@@ -178,6 +179,11 @@ export interface UnifiedRightPanelProps {
         baseUrl?: string;
     };
 }
+
+type PendingNavigationReplay = UnifiedPanelNavigationLocation & {
+    direction: NavigationDirection;
+    reopened: boolean;
+};
 
 /** Basename of a workspace-relative path. */
 function fileNameOf(path: string): string {
@@ -411,7 +417,10 @@ export function UnifiedRightPanel({
     // recorded as its tab closes still carries what reopening it needs.
     const navigationFiles = useRef(new Map<string, UnifiedPanelNavigationFile>());
     const pendingNavigationReason = useRef<{ tabId: string; reason: EditorNavigationReason } | null>(null);
-    const pendingReplay = useRef<UnifiedPanelNavigationLocation | null>(null);
+    // The entry a Back/Forward is bringing up, until its editor restores it.
+    // `reopened` marks a tab the replay itself opened, so a missing file's
+    // tab is closed again when the entry is skipped.
+    const pendingReplay = useRef<PendingNavigationReplay | null>(null);
     const navigationScope = useRef(workspaceId);
     if (navigationScope.current !== workspaceId) {
         navigationScope.current = workspaceId;
@@ -769,7 +778,7 @@ export function UnifiedRightPanel({
                 restoreNavigationLocation(location, controller);
                 return;
             }
-            pendingReplay.current = location;
+            pendingReplay.current = { ...location, direction, reopened: reopen !== null };
             if (reopen === null) activate(tabId);
             else openPreview(reopen);
         };
@@ -785,6 +794,18 @@ export function UnifiedRightPanel({
         activate, chatId, openPreview, openPreviewGuarded, restoreNavigationLocation,
         setNavigationHistory, workspaceId,
     ]);
+
+    // A replayed file that fails to read is gone: drop its entries and keep
+    // stepping the same way. With nothing left the key has already been
+    // taken — the read only fails after the keypress.
+    useEffect(() => {
+        const replay = pendingReplay.current;
+        if (replay === null || replay.tabId !== activeId || !errorIds.has(replay.tabId)) return;
+        pendingReplay.current = null;
+        setNavigationHistory(dropReplayedNavigationEntry(navigationHistoryRef.current, replay.direction));
+        if (replay.reopened) closeTab(replay.tabId);
+        navigateFileHistory(replay.direction);
+    }, [activeId, closeTab, errorIds, navigateFileHistory, setNavigationHistory]);
 
     // A file picked in the tree opens against the dock's target, exactly as an
     // Explorer navigator tab's selection does — same descriptor builder, so the

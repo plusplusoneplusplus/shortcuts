@@ -322,7 +322,9 @@ recording while replaying Back or Forward. Replay reveals the selection centered
 only when it is off-screen, and scrolling never records. Closing a file keeps
 its locations: replaying one reopens the file as a preview tab (through the
 preview slot's unsaved-edits guard) in the current chat's view and restores the
-saved selection. Entries of another scope are never replayed.
+saved selection. If the replayed file fails to read, all its entries are
+dropped, the reopened tab closes, and replay continues in the same direction.
+Entries of another scope are never replayed.
 Alt+Left/Alt+Right (Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse buttons
 3/4 use the same replay path only when a visible panel owns the interaction,
 its active tab is a file, and a destination exists; otherwise browser behavior

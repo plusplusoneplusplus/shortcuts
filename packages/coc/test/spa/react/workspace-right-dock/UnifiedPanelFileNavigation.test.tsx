@@ -12,6 +12,9 @@ const controllers = new Map<string, {
     restore: ReturnType<typeof vi.fn>;
 }>();
 
+// Files whose read fails: the mock reports an error and never mounts an editor.
+const missingFiles = new Set<string>();
+
 function snapshot(line: number, column = 1): EditorNavigationSnapshot {
     return {
         selection: {
@@ -29,8 +32,10 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/P
         onNavigate,
         onNavigationMount,
         onNavigationLocation,
+        onStatusChange,
     }: {
         filePath: string;
+        onStatusChange?: (status: 'loading' | 'error' | 'ready') => void;
         onNavigate?: (target: { path: string; name: string; line: number; column: number }) => void;
         onNavigationMount?: (controller: EditorNavigationController | null) => void;
         onNavigationLocation?: (value: EditorNavigationSnapshot, reason: 'user' | 'jump') => void;
@@ -51,12 +56,17 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/P
             };
             return { controller, restore };
         }, []);
-        controllers.set(filePath, entry);
+        const missing = missingFiles.has(filePath);
         useEffect(() => {
+            if (missing) onStatusChange?.('error');
+        }, [missing, onStatusChange]);
+        if (!missing) controllers.set(filePath, entry);
+        useEffect(() => {
+            if (missing) return undefined;
             onNavigationMount?.(entry.controller);
             onNavigationLocation?.(currentRef.current, 'user');
             return () => onNavigationMount?.(null);
-        }, [entry.controller, onNavigationLocation, onNavigationMount]);
+        }, [entry.controller, missing, onNavigationLocation, onNavigationMount]);
         return (
             <div>
                 <button data-testid={`mock-file-${filePath}`}>{filePath}</button>
@@ -133,7 +143,10 @@ import {
     clearUnifiedPanelState,
     writeUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
-import { clearUnifiedPanelNavigationHistory } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelNavigationStore';
+import {
+    clearUnifiedPanelNavigationHistory,
+    writeUnifiedPanelNavigationHistory,
+} from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelNavigationStore';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
@@ -207,6 +220,7 @@ function stubOffsetParent() {
 beforeEach(() => {
     localStorage.clear();
     controllers.clear();
+    missingFiles.clear();
     clearUnifiedPanelState();
     clearUnifiedTreeState();
     stubOffsetParent();
@@ -399,6 +413,40 @@ describe('unified panel file navigation history', () => {
         await waitFor(() => expect(
             screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
         ).toHaveAttribute('aria-selected', 'true'));
+    });
+
+    it('skips a closed destination whose file is gone and keeps stepping the same way', async () => {
+        const location = (path: string, line: number) => ({
+            scopeWorkspaceId: WS,
+            tabId: fileId(path),
+            file: { ownerWorkspaceId: WS, resourceId: path, label: path },
+            ...snapshot(line),
+        });
+        writeUnifiedPanelNavigationHistory(WS, {
+            entries: [location('c.ts', 7), location('b.ts', 12), location('a.ts', 1)],
+            index: 2,
+            replaying: false,
+        });
+        missingFiles.add('b.ts');
+        seedFile();
+        renderPanel();
+        const a = await screen.findByTestId('mock-file-a.ts');
+        act(() => a.focus());
+
+        expect(pressHistory('back').defaultPrevented).toBe(true);
+        const c = await screen.findByTestId(`unified-panel-tab-${fileId('c.ts')}`);
+        expect(c).toHaveAttribute('data-preview', 'true');
+        await waitFor(() => expect(controllers.get('c.ts')?.restore).toHaveBeenCalledWith(snapshot(7)));
+        expect(screen.queryByTestId(`unified-panel-tab-${fileId('b.ts')}`)).not.toBeInTheDocument();
+
+        // B's entries are gone: Forward goes straight back to A.
+        await act(async () => { await Promise.resolve(); });
+        act(() => screen.getByTestId('mock-file-c.ts').focus());
+        expect(pressHistory('forward').defaultPrevented).toBe(true);
+        await waitFor(() => expect(
+            screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
+        ).toHaveAttribute('aria-selected', 'true'));
+        expect(screen.queryByTestId(`unified-panel-tab-${fileId('b.ts')}`)).not.toBeInTheDocument();
     });
 
     it('does not replay one workspace scope after switching to another', async () => {

@@ -84,6 +84,20 @@ describe('unifiedPanelNavigationHistory', () => {
         expect(stepNavigationHistory(dropped, 'forward', WS)?.location.file.resourceId).toBe('c.ts');
     });
 
+    it('drops every entry of the missing file, not only the replayed one', () => {
+        const start = history(loc('a.ts', 1), loc('gone.ts', 5), loc('c.ts', 9), loc('gone.ts', 40), loc('d.ts', 2));
+        const step = stepNavigationHistory(start, 'back', WS)!;
+        const dropped = dropReplayedNavigationEntry(step.history, 'back');
+        expect(paths(dropped)).toEqual(['a.ts', 'c.ts', 'd.ts']);
+        expect(stepNavigationHistory(dropped, 'back', WS)?.location.file.resourceId).toBe('c.ts');
+    });
+
+    it('empties the history when only the missing file was left', () => {
+        const start = history(loc('gone.ts', 5), loc('gone.ts', 40));
+        const step = stepNavigationHistory(start, 'back', WS)!;
+        expect(dropReplayedNavigationEntry(step.history, 'back')).toBe(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY);
+    });
+
     it('still collapses an identical adjacent record', () => {
         const start = history(loc('a.ts', 1), loc('a.ts', 1));
         expect(start.entries).toHaveLength(1);
