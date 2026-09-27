@@ -126,6 +126,18 @@ describe('TeamsAttemptStore', () => {
         expect(() => new TeamsAttemptStore(f.dir, f.clock)).toThrow();
     });
 
+    it('rejects parseable non-ISO timestamps rather than exposing arbitrary text', () => {
+        const f = fixture();
+        const store = new TeamsAttemptStore(f.dir, f.clock);
+        store.start();
+        const file = path.join(f.dir, 'teams-attempts.json');
+        const records = JSON.parse(fs.readFileSync(file, 'utf8'));
+        records[0].phases[0].at = '2026-01-01 (private)';
+        expect(Number.isFinite(Date.parse(records[0].phases[0].at))).toBe(true);
+        fs.writeFileSync(file, JSON.stringify(records));
+        expect(() => new TeamsAttemptStore(f.dir, f.clock)).toThrow('Invalid Teams attempt history');
+    });
+
     it('aggregates successful polls, bounds safe events and clears live degradation', () => {
         const f = fixture();
         const store = new TeamsAttemptStore(f.dir, f.clock);

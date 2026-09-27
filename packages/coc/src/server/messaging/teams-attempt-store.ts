@@ -50,26 +50,32 @@ const MAX_EVENTS = 100;
 const MAX_COMPLETED = 200;
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
+function isTimestamp(value: unknown): value is string {
+    return typeof value === 'string'
+        && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)
+        && Number.isFinite(Date.parse(value))
+        && new Date(value).toISOString() === value;
+}
+
 function readAttempt(value: unknown): StoredAttempt {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid Teams attempt history');
     const row = value as Record<string, unknown>;
     if (typeof row.id !== 'string' || !/^[a-f0-9-]{36}$/i.test(row.id)
-        || typeof row.startedAt !== 'string' || !Number.isFinite(Date.parse(row.startedAt))
+        || !isTimestamp(row.startedAt)
         || !Array.isArray(row.phases) || row.phases.length < 1 || row.phases.length > STAGES.length
         || row.phases.some((phase: unknown) => {
             if (!phase || typeof phase !== 'object') return true;
             const p = phase as Record<string, unknown>;
-            return !STAGES.includes(p.stage as TeamsAttemptStage)
-                || typeof p.at !== 'string' || !Number.isFinite(Date.parse(p.at));
+            return !STAGES.includes(p.stage as TeamsAttemptStage) || !isTimestamp(p.at);
         })
-        || (row.endedAt !== undefined && (typeof row.endedAt !== 'string' || !Number.isFinite(Date.parse(row.endedAt))))
+        || (row.endedAt !== undefined && !isTimestamp(row.endedAt))
         || (row.result !== undefined && !RESULTS.includes(row.result as TeamsAttemptResult))
         || (row.failureCategory !== undefined && !CATEGORIES.includes(row.failureCategory as TeamsFailureCategory))
         || (row.events !== undefined && (!Array.isArray(row.events) || row.events.length > MAX_EVENTS
             || row.events.some((event: unknown) => {
                 if (!event || typeof event !== 'object' || Array.isArray(event)) return true;
                 const e = event as Record<string, unknown>;
-                return typeof e.at !== 'string' || !Number.isFinite(Date.parse(e.at))
+                return !isTimestamp(e.at)
                     || !EVENTS.includes(e.type as TeamsEventType)
                     || (e.category !== undefined && !(e.type === 'inbound-skipped'
                         ? SKIP_REASONS.includes(e.category as TeamsSkipReason)
@@ -80,8 +86,8 @@ function readAttempt(value: unknown): StoredAttempt {
             || Object.entries(row.totals).some(([key, count]) =>
                 !TOTAL_KEYS.includes(key) || !Number.isSafeInteger(count) || (count as number) < 0)))
         || (row.pollSuccessCount !== undefined && (!Number.isSafeInteger(row.pollSuccessCount) || (row.pollSuccessCount as number) < 0))
-        || (row.lastPollSuccessAt !== undefined && (typeof row.lastPollSuccessAt !== 'string' || !Number.isFinite(Date.parse(row.lastPollSuccessAt))))
-        || (row.lastSendSuccessAt !== undefined && (typeof row.lastSendSuccessAt !== 'string' || !Number.isFinite(Date.parse(row.lastSendSuccessAt))))
+        || (row.lastPollSuccessAt !== undefined && !isTimestamp(row.lastPollSuccessAt))
+        || (row.lastSendSuccessAt !== undefined && !isTimestamp(row.lastSendSuccessAt))
         || (row.pollDegraded !== undefined && typeof row.pollDegraded !== 'boolean')
         || (row.sendDegraded !== undefined && typeof row.sendDegraded !== 'boolean')
         || (row.endedAt === undefined) !== (row.result === undefined)) {
