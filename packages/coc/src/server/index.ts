@@ -398,6 +398,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }
         return options.aiService ?? sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
     };
+    // Copilot-only features (decision API) resolve once at startup; undefined maps to 503 per request.
+    const resolveCopilotServiceOrUndefined = () => {
+        try {
+            return resolveAiServiceForProvider('copilot');
+        } catch {
+            return undefined;
+        }
+    };
 
     const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,
@@ -788,6 +796,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         tokenTtlMs: options.tokenTtlMs,
         globalWorkspaceRootPath: globalWorkspace.rootPath,
         resolvedAiService, getWsServer: () => wsServer,
+        copilotAiService: resolveCopilotServiceOrUndefined(),
         queuePersistence, wikiOptions: options.wiki,
         aiInvoker,
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,

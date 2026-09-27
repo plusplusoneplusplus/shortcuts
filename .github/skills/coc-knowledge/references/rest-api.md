@@ -298,6 +298,14 @@ Workspace-scoped, gated by `dreams.enabled` (default `false`); generation also r
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/convert` | Mark a visible/approved card converted with `{ artifactType, artifactId, artifactUrl? }` |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/supersede` | Mark a candidate/visible card superseded with required `dedupRationale` and optional `supersededByCardId` |
 
+## Decisions
+
+Always registered. Bounded Noul/Choice/Score evaluation over caller-supplied `state`; exposed as `client.decisions.evaluate(workspaceId, request)`. Question/answer naming follows TypeSafe. The workspace is resolved through the process store and its root is the `cwd`; the route never reads repository files. Not part of `SDKServiceRegistry` and independent of the workspace's default chat provider.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/workspaces/:id/decisions/evaluate` | Body `{ backend?: 'copilot'\|'typesafe', state, questions: { [id]: { type: 'noul'\|'choice'\|'score', instructions, criteria } } }`. `copilot` (default) runs one isolated `transform()` with fixed model `gpt-5.4-mini` (no MCP/tools, permissions denied, 30 s timeout, aborted on client disconnect, `effectiveModel` mismatch rejected) plus at most one repair attempt for invalid JSON/schema. Code normalizes each distribution, derives Choice `choice`, Score `score`/`legend`, and entropy-based `confidence` (`metadata.confidenceKind: 'self_reported'`). Limits: 256 KiB body, 64 questions, 2–64 Choice options, 2–10 Score levels, 100-char ids, no `__proto__`/`prototype`/`constructor` keys. Errors: `400` invalid, `404` workspace, `413` too large, `501` `typesafe` (placeholder), `502` Copilot failure/invalid output/model mismatch, `503` Copilot unavailable, `504` timeout |
+
 ## Schedules
 
 | Method | Path | Description |
