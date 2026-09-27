@@ -252,6 +252,7 @@ export class TeamsBot implements MessagingConnector {
         try {
             const since = this.mode === 'graph' ? this._lastSeenTimestamp ?? undefined : this._lastPolledId ?? undefined;
             const { messages, nextSince } = await this.transport.poll(this._channelId, since);
+            this.observePoll('success');
 
             if (this.mode === 'mcp') {
                 await this.handleMcpPoll(messages, nextSince);
@@ -268,6 +269,7 @@ export class TeamsBot implements MessagingConnector {
                 this.setStatus('connected');
             }
         } catch (err: any) {
+            this.observePoll('failure');
             if (err.message?.includes('401') && !this._refreshingToken) {
                 if (!await this.refreshToken()) {
                     const message = this._lastError ?? err.message ?? 'Teams polling authorization failed';
@@ -309,12 +311,16 @@ export class TeamsBot implements MessagingConnector {
         // First poll: just set watermark, don't process
         if (!this._lastPolledId) {
             this._lastPolledId = lastMsg.messageId;
+            this.observeInbound('skipped', 'initial');
             if (this.debug) console.log(`[teams-bot] First poll — setting watermark to ${lastMsg.messageId}`);
             return;
         }
 
         // No new message since last poll
-        if (lastMsg.messageId === this._lastPolledId) return;
+        if (lastMsg.messageId === this._lastPolledId) {
+            this.observeInbound('skipped', 'unchanged');
+            return;
+        }
 
         // Update watermark
         this._lastPolledId = lastMsg.messageId;
@@ -322,13 +328,18 @@ export class TeamsBot implements MessagingConnector {
         if (this._sentMessageIds.has(lastMsg.messageId)) {
             if (this.debug) console.log(`[teams-bot] Skipping own sent message: ${lastMsg.messageId}`);
             this._sentMessageIds.delete(lastMsg.messageId);
+            this.observeInbound('skipped', 'own');
             return;
         }
 
-        if (!lastMsg.text.trim()) return;
+        if (!lastMsg.text.trim()) {
+            this.observeInbound('skipped', 'empty');
+            return;
+        }
 
         // Skip bot-formatted messages (CoC outbound format)
         if (this.isBotFormattedMessage(lastMsg.text)) {
+            this.observeInbound('skipped', 'bot');
             if (this.debug) console.log(`[teams-bot] Skipping bot-formatted message: ${lastMsg.messageId}`);
             return;
         }
@@ -346,6 +357,7 @@ export class TeamsBot implements MessagingConnector {
         }
 
         if (this.debug) console.log(`[teams-bot] Delivering inbound message: id=${lastMsg.messageId}, replyToMessageId=${lastMsg.replyToMessageId ?? '(none)'}, text="${lastMsg.text.substring(0, 60)}"`);
+        this.observeInbound('observed');
         await this.opts.onMessage(lastMsg).catch((err) => {
             console.error('[teams-bot] Error handling message:', err);
         });
@@ -356,16 +368,32 @@ export class TeamsBot implements MessagingConnector {
         for (const msg of messages) {
             if (this._sentMessageIds.has(msg.messageId)) {
                 this._sentMessageIds.delete(msg.messageId);
+                this.observeInbound('skipped', 'own');
                 continue;
             }
-            if (!msg.text.trim()) continue;
-            if (this.isBotFormattedMessage(msg.text)) continue;
+            if (!msg.text.trim()) {
+                this.observeInbound('skipped', 'empty');
+                continue;
+            }
+            if (this.isBotFormattedMessage(msg.text)) {
+                this.observeInbound('skipped', 'bot');
+                continue;
+            }
 
+            this.observeInbound('observed');
             await this.opts.onMessage(msg).catch((err) => {
                 console.error('[teams-bot] Error handling message:', err);
             });
         }
         if (nextSince) this._lastSeenTimestamp = nextSince;
+    }
+
+    private observePoll(outcome: 'success' | 'failure'): void {
+        try { this.opts.onPoll?.(outcome); } catch { /* Observability cannot affect polling. */ }
+    }
+
+    private observeInbound(outcome: 'observed' | 'skipped', reason?: 'initial' | 'unchanged' | 'own' | 'empty' | 'bot'): void {
+        try { this.opts.onInbound?.(outcome, reason); } catch { /* Observability cannot affect routing. */ }
     }
 
     /** Attempt to refresh the bearer token via the configured callback. */

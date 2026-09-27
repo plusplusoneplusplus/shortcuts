@@ -103,4 +103,48 @@ describe('TeamsAttemptStore', () => {
         fs.writeFileSync(file, '{');
         expect(() => new TeamsAttemptStore(f.dir, f.clock)).toThrow();
     });
+
+    it('aggregates successful polls, bounds safe events and clears live degradation', () => {
+        const f = fixture();
+        const store = new TeamsAttemptStore(f.dir, f.clock);
+        const id = store.start();
+        store.poll(id, 'failure');
+        store.send(id, 'rejected');
+        expect(store.list()[0]).toMatchObject({ pollDegraded: true, sendDegraded: true });
+        for (let i = 0; i < 250; i++) store.poll(id, 'success');
+        store.send(id, 'accepted');
+        store.event(id, 'inbound-skipped', 'own');
+        for (let i = 0; i < 150; i++) store.event(id, 'inbound-observed');
+        const attempt = store.list()[0];
+        expect(attempt.pollSuccessCount).toBe(250);
+        expect(attempt.lastPollSuccessAt).toBe(f.clock().toISOString());
+        expect(attempt.pollDegraded).toBe(false);
+        expect(attempt.sendDegraded).toBe(false);
+        expect(attempt.events).toHaveLength(100);
+        attempt.events[0].type = 'reply-rejected';
+        expect(store.list()[0].events[0].type).toBe('inbound-observed');
+        expect(new TeamsAttemptStore(f.dir, f.clock).list()[0]).toMatchObject({
+            pollSuccessCount: 250, pollDegraded: false, sendDegraded: false,
+        });
+    });
+
+    it('drops callbacks for superseded attempts and strips extra stored event fields', () => {
+        const f = fixture();
+        const store = new TeamsAttemptStore(f.dir, f.clock);
+        const old = store.start();
+        const current = store.start();
+        store.poll(old, 'failure');
+        store.send(old, 'rejected');
+        store.event(old, 'dispatch-queued');
+        expect(store.list().find(a => a.id === old)?.events).toEqual([]);
+        store.event(current, 'inbound-skipped', 'empty');
+        const file = path.join(f.dir, 'teams-attempts.json');
+        const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
+        rows[0].events[0].messageId = 'secret-message-id';
+        rows[0].events[0].response = 'private MCP response';
+        fs.writeFileSync(file, JSON.stringify(rows));
+        const loaded = new TeamsAttemptStore(f.dir, f.clock);
+        expect(loaded.list()[0].events).toEqual([{ at: f.clock().toISOString(), type: 'inbound-skipped', reason: 'empty' }]);
+        expect(fs.readFileSync(file, 'utf8')).not.toMatch(/secret-message-id|private MCP response/);
+    });
 });

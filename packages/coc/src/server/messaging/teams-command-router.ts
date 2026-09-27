@@ -16,6 +16,7 @@
 import type { ProcessStore, AIProcess, ProcessFilter } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsUserStateStore } from './teams-user-state';
+import type { TeamsEventType } from './teams-attempt-store';
 
 // ============================================================================
 // Types
@@ -96,11 +97,12 @@ export class TeamsCommandRouter {
         this.userState = new TeamsUserStateStore(deps.dataDir);
     }
 
-    async handle(msg: InboundTeamsMessage): Promise<void> {
+    async handle(msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
         const command = parseCommand(msg.text);
         const userKey = msg.senderAadId ?? msg.senderName ?? 'anonymous';
 
         try {
+            if (command.type !== 'chat' && command.type !== 'chat-explicit') observe?.('dispatch-command');
             switch (command.type) {
                 case 'list-agents':
                 case 'list-repos':
@@ -119,13 +121,14 @@ export class TeamsCommandRouter {
                     await this.handleSelectTopic(userKey, command.args, msg);
                     break;
                 case 'chat-explicit':
-                    await this.handleExplicitChat(userKey, command.args, msg);
+                    await this.handleExplicitChat(userKey, command.args, msg, observe);
                     break;
                 case 'chat':
-                    await this.handleChat(userKey, command.args, msg);
+                    await this.handleChat(userKey, command.args, msg, observe);
                     break;
             }
         } catch (err: any) {
+            observe?.('dispatch-failed');
             await this.deps.sendReply(`❌ Error: ${err.message ?? 'Unknown error'}`, msg.messageId);
         }
     }
@@ -260,7 +263,7 @@ export class TeamsCommandRouter {
         );
     }
 
-    private async handleExplicitChat(userKey: string, args: string, msg: InboundTeamsMessage): Promise<void> {
+    private async handleExplicitChat(userKey: string, args: string, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
         const separatorIdx = args.indexOf('\0');
         const chatId = args.slice(0, separatorIdx).trim();
         const message = args.slice(separatorIdx + 1).trim();
@@ -277,6 +280,7 @@ export class TeamsCommandRouter {
         }
 
         await this.deps.executeFollowUp(chatId, message);
+        observe?.('dispatch-follow-up');
         this.userState.update(userKey, { lastActiveTopic: chatId });
 
         await this.deps.sendReply(
@@ -285,7 +289,7 @@ export class TeamsCommandRouter {
         );
     }
 
-    private async handleChat(userKey: string, message: string, msg: InboundTeamsMessage): Promise<void> {
+    private async handleChat(userKey: string, message: string, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
         if (!message) return;
 
         const state = this.userState.get(userKey);
@@ -303,6 +307,7 @@ export class TeamsCommandRouter {
 
         if (targetId) {
             await this.deps.executeFollowUp(targetId, message);
+            observe?.('dispatch-follow-up');
             this.userState.update(userKey, { lastActiveTopic: targetId });
             await this.deps.sendReply(
                 `💬 Message sent to topic \`${targetId.slice(0, 8)}\``,
@@ -323,6 +328,7 @@ export class TeamsCommandRouter {
                 }
                 const firstRepo = workspaces[0];
                 const taskId = await this.deps.enqueueChat(firstRepo.id, message);
+                observe?.('dispatch-queued');
                 this.userState.update(userKey, {
                     selectedRepo: firstRepo.id,
                     lastActiveTopic: taskId,
@@ -333,6 +339,7 @@ export class TeamsCommandRouter {
                 );
             } else {
                 const taskId = await this.deps.enqueueChat(repoId, message);
+                observe?.('dispatch-queued');
                 this.userState.update(userKey, { lastActiveTopic: taskId });
                 await this.deps.sendReply(
                     `💬 New topic created: \`${taskId.slice(0, 8)}\``,

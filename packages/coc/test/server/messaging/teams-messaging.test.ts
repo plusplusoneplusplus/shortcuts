@@ -137,6 +137,7 @@ describe('TeamsMessagingManager', () => {
         const makeManager = () => new TeamsMessagingManager(tmpDir, {
             homeDir, getObservabilityEnabled: () => true,
         });
+
         const first = makeManager();
         first.setMessageHandler(async () => {});
         await first.configureServer('https://example.test/teams');
@@ -160,6 +161,78 @@ describe('TeamsMessagingManager', () => {
         expect(startup.getAttemptHistory()?.[0].result).toBe('disconnected');
         expect(fs.readFileSync(path.join(tmpDir, 'teams-attempts.json'), 'utf8'))
             .not.toMatch(/example\.test|team-id-resolved|channel-id-resolved|fake-mcp-token/);
+    });
+
+    it('tracks poll recovery, reply rejection and dispatch without leaking provider data', async () => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home'), getObservabilityEnabled: () => true });
+        m2.setMessageHandler(async (_msg, observe) => {
+            observe('dispatch-queued');
+            m2.recordEvent('reply-attempt');
+        });
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        const opts = vi.mocked(TeamsBot).mock.lastCall![0];
+        const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+        opts.onPoll?.('failure');
+        opts.onError?.('private URL and message');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({ pollDegraded: true });
+        for (let i = 0; i < 200; i++) opts.onPoll?.('success');
+        for (let i = 0; i < 200; i++) opts.onInbound?.('skipped', 'unchanged');
+        opts.onStatusChange?.('connected');
+        expect(m2.getStatus().error).toBeNull();
+        opts.onInbound?.('skipped', 'empty');
+        opts.onInbound?.('observed');
+        await opts.onMessage({ channelId: 'private-channel', messageId: 'private-message', text: 'secret text' });
+        bot.send.mockRejectedValueOnce(new Error('private MCP response'));
+        await expect(m2.sendMessage('private text')).rejects.toThrow('private MCP response');
+        expect(m2.getStatus().status).toBe('connected');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({
+            pollSuccessCount: 200, pollDegraded: false, sendDegraded: true,
+        });
+        await m2.sendMessage('private text');
+        expect(m2.getAttemptHistory()?.[0].sendDegraded).toBe(false);
+        expect(m2.getAttemptHistory()?.[0].events.map(e => e.type)).toEqual([
+            'poll-failed', 'inbound-skipped', 'inbound-observed', 'dispatch-queued',
+            'reply-attempt', 'reply-rejected', 'reply-accepted',
+        ]);
+        expect(fs.readFileSync(path.join(tmpDir, 'teams-attempts.json'), 'utf8'))
+            .not.toMatch(/private|example\.test|TestTeam|TestChannel/);
+    });
+
+    it('ignores late poll and inbound callbacks from superseded bots and in-flight dispatch', async () => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home'), getObservabilityEnabled: () => true });
+        let release!: () => void;
+        m2.setMessageHandler(async (_msg, observe) => {
+            await new Promise<void>(resolve => { release = resolve; });
+            observe('dispatch-queued');
+            m2.recordEvent('reply-attempt');
+        });
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        const old = vi.mocked(TeamsBot).mock.lastCall![0];
+        const oldBot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+        let finishSend!: (id: string) => void;
+        oldBot.send.mockImplementationOnce(() => new Promise<string>(resolve => { finishSend = resolve; }));
+        const sending = m2.sendMessage('private text');
+        const pending = old.onMessage({ channelId: 'c', messageId: 'm', text: 'request' });
+        await vi.waitFor(() => expect(release).toBeDefined());
+        expect(finishSend).toBeDefined();
+        await m2.connect();
+        const current = vi.mocked(TeamsBot).mock.lastCall![0];
+        old.onPoll?.('failure');
+        old.onInbound?.('observed');
+        old.onStatusChange?.('error');
+        await old.onMessage({ channelId: 'c', messageId: 'm', text: 'late' });
+        release();
+        await pending;
+        finishSend('private-id');
+        await sending;
+        current.onPoll?.('success');
+        expect(m2.getStatus().status).toBe('connected');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({ pollSuccessCount: 1, pollDegraded: false, events: [] });
+        expect(m2.getAttemptHistory()?.[1].events).toEqual([]);
     });
 
     it('records safe categories for early and authentication failures without storing their details', async () => {
@@ -344,6 +417,35 @@ describe('TeamsMessagingManager', () => {
 });
 
 describe('Teams messaging routes (integration)', () => {
+    it('records rejected replies without interrupting command routing or disconnecting', async () => {
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-reply-test-'));
+        try {
+            const manager = new TeamsMessagingManager(dir, {
+                homeDir: path.join(dir, 'home'), getObservabilityEnabled: () => true,
+            });
+            registerTeamsMessagingRoutes([], {
+                dataDir: dir, manager,
+                store: { getWorkspaces: vi.fn().mockResolvedValue([]) } as any,
+                enqueueChat: vi.fn(), executeFollowUp: vi.fn(),
+            });
+            await manager.configureServer('https://example.test/teams');
+            await manager.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+            await manager.connect();
+            const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+            bot.send.mockRejectedValueOnce(new Error('private MCP response'));
+            const opts = vi.mocked(TeamsBot).mock.lastCall![0];
+            await opts.onMessage({ channelId: 'private-channel', messageId: 'private-id', text: '/list agents' });
+            expect(manager.getStatus().status).toBe('connected');
+            expect(manager.getAttemptHistory()?.[0]).toMatchObject({ sendDegraded: true });
+            expect(manager.getAttemptHistory()?.[0].events.map(e => e.type)).toEqual([
+                'dispatch-command', 'reply-attempt', 'reply-rejected',
+            ]);
+            expect(fs.readFileSync(path.join(dir, 'teams-attempts.json'), 'utf8')).not.toMatch(/private|example\.test/);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
     // Lightweight route test — we simulate the handler functions directly
     it('registerTeamsMessagingRoutes exports a function', async () => {
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');

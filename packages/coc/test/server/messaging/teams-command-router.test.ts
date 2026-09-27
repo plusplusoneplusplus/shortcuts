@@ -182,6 +182,18 @@ describe('TeamsCommandRouter', () => {
         expect(reply).toContain('2');
     });
 
+    it('reports safe command, queue, follow-up and dispatch failure categories', async () => {
+        const observe = vi.fn();
+        await router.handle(makeMsg('/list agents'), observe);
+        await router.handle(makeMsg('Start a topic'), observe);
+        await router.handle(makeMsg('[proc-111] Continue'), observe);
+        vi.mocked(deps.executeFollowUp).mockRejectedValueOnce(new Error('private workspace path'));
+        await router.handle(makeMsg('[proc-111] Retry'), observe);
+        expect(observe.mock.calls.map(([type]) => type)).toEqual([
+            'dispatch-command', 'dispatch-queued', 'dispatch-follow-up', 'dispatch-failed',
+        ]);
+    });
+
     it('lists repos (alias)', async () => {
         await router.handle(makeMsg('/list repos'));
         expect(sendReplySpy).toHaveBeenCalledTimes(1);

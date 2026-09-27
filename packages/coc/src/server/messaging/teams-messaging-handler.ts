@@ -50,6 +50,7 @@ export function registerTeamsMessagingRoutes(
             enqueueChat: opts.enqueueChat,
             executeFollowUp: opts.executeFollowUp,
             sendReply: async (text, replyToId) => {
+                manager.recordEvent('reply-attempt');
                 try {
                     await manager.sendMessage(text, replyToId);
                 } catch (err) {
@@ -59,8 +60,8 @@ export function registerTeamsMessagingRoutes(
             dataDir: opts.dataDir,
         });
 
-        manager.setMessageHandler(async (msg) => {
-            await router.handle(msg);
+        manager.setMessageHandler(async (msg, observe) => {
+            await router.handle(msg, observe);
         });
     }
 

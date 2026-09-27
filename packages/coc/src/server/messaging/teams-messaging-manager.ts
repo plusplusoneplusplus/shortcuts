@@ -9,12 +9,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { BotStatus, InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
 import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
-import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult } from './teams-attempt-store';
+import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult, type TeamsEventType, type TeamsSkipReason } from './teams-attempt-store';
 
 // ── Persisted Config ─────────────────────────────────────────
 
@@ -57,7 +58,8 @@ export class TeamsMessagingManager {
     private _status: BotStatus = 'disconnected';
     private _lastError: string | null = null;
     private readonly configPath: string;
-    private onInboundMessage: ((msg: InboundTeamsMessage) => Promise<void>) | null = null;
+    private onInboundMessage: ((msg: InboundTeamsMessage, observe: (type: TeamsEventType) => void) => Promise<void>) | null = null;
+    private readonly inboundContext = new AsyncLocalStorage<{ generation: number; attemptId: string | null }>();
     private readonly _homeDir: string;
     private readonly customHome: boolean;
     private generation = 0;
@@ -87,8 +89,17 @@ export class TeamsMessagingManager {
         return this.history ??= new TeamsAttemptStore(this.dataDir);
     }
 
-    setMessageHandler(handler: (msg: InboundTeamsMessage) => Promise<void>): void {
+    setMessageHandler(handler: (msg: InboundTeamsMessage, observe: (type: TeamsEventType) => void) => Promise<void>): void {
         this.onInboundMessage = handler;
+    }
+
+    /** Record only a fixed safe category for the currently originating attempt. */
+    recordEvent(type: TeamsEventType, reason?: TeamsSkipReason): void {
+        if (!this.getObservabilityEnabled()) return;
+        const context = this.inboundContext.getStore();
+        if (context && context.generation !== this.generation) return;
+        const id = context ? context.attemptId : this.attemptId;
+        if (id) this.history?.event(id, type, reason);
     }
 
     /** Get the current status for the REST API. */
@@ -239,8 +250,16 @@ export class TeamsMessagingManager {
                 },
                 botName: this.config.botName,
                 onMessage: async (msg) => {
-                    if (this.onInboundMessage) {
-                        await this.onInboundMessage(msg);
+                    if (generation !== this.generation || !this.onInboundMessage) return;
+                    await this.inboundContext.run({ generation, attemptId: attemptId ?? null },
+                        () => this.onInboundMessage!(msg, (type) => this.recordEvent(type)));
+                },
+                onPoll: (outcome) => {
+                    if (generation === this.generation && attemptId && this.getObservabilityEnabled()) history?.poll(attemptId, outcome);
+                },
+                onInbound: (outcome, reason) => {
+                    if (generation === this.generation && attemptId && this.getObservabilityEnabled() && reason !== 'unchanged') {
+                        history?.event(attemptId, outcome === 'observed' ? 'inbound-observed' : 'inbound-skipped', reason);
                     }
                 },
                 onStatusChange: (s) => {
@@ -340,25 +359,32 @@ export class TeamsMessagingManager {
     async disconnect(result: TeamsAttemptResult = 'disconnected', category?: TeamsFailureCategory): Promise<void> {
         this.oauthFlow?.cancel();
         this.generation++;
+        const generation = this.generation;
         const attemptId = this.attemptId;
         this.attemptId = null;
         if (attemptId) this.history?.finish(attemptId, result, category);
-        if (this.bot) {
-            await this.bot.stop();
-            this.bot = null;
-        }
-        this._status = 'disconnected';
+        const bot = this.bot;
+        this.bot = null;
+        if (bot) await bot.stop();
+        if (generation === this.generation) this._status = 'disconnected';
     }
 
     /** Send a message to the configured channel. Optionally reply to a specific message. */
     async sendMessage(text: string, replyToId?: string): Promise<string> {
-        if (!this.bot || this._status !== 'connected') {
-            throw new Error('Teams bot is not connected');
+        const context = this.inboundContext.getStore();
+        const id = context ? (context.generation === this.generation ? context.attemptId : null) : this.attemptId;
+        const generation = this.generation;
+        try {
+            if (context && context.generation !== generation) throw new Error('Teams connection cancelled');
+            if (!this.bot || this._status !== 'connected') throw new Error('Teams bot is not connected');
+            if (!this.config.channelId) throw new Error('No channel configured');
+            const messageId = await this.bot.send(this.config.channelId, text, replyToId ? { replyToId } : undefined);
+            if (id && generation === this.generation && this.getObservabilityEnabled()) this.history?.send(id, 'accepted');
+            return messageId;
+        } catch (err) {
+            if (id && generation === this.generation && this.getObservabilityEnabled()) this.history?.send(id, 'rejected');
+            throw err;
         }
-        if (!this.config.channelId) {
-            throw new Error('No channel configured');
-        }
-        return this.bot.send(this.config.channelId, text, replyToId ? { replyToId } : undefined);
     }
 
     // ── Private helpers ──────────────────────────────────────
