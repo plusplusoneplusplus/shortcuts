@@ -28,6 +28,15 @@ export class GitCacheService {
         this.cache.set(key, value);
     }
 
+    /** Delete every key that starts with `prefix`. */
+    deletePrefix(prefix: string): void {
+        for (const key of [...this.cache.keys()]) {
+            if (key.startsWith(prefix)) {
+                this.cache.delete(key);
+            }
+        }
+    }
+
     /** Delete all mutable keys for a workspace. Immutable (hash-keyed) entries are preserved. */
     invalidateMutable(workspaceId: string): void {
         const prefix = `${workspaceId}:`;

@@ -101,4 +101,18 @@ describe('GitCacheService', () => {
         cache.clear();
         expect(cache.size).toBe(0);
     });
+
+    it('deletePrefix removes only keys under the prefix', () => {
+        cache.set('ws1:wt-file-content:unstaged:/r/a.ts:fp1', 1);
+        cache.set('ws1:wt-file-content:unstaged:/r/a.tsx:fp1', 2);
+        cache.set('ws1:wt-file-content:staged:/r/a.ts:fp1', 3);
+        cache.set('ws2:wt-file-content:unstaged:/r/a.ts:fp1', 4);
+
+        cache.deletePrefix('ws1:wt-file-content:unstaged:/r/a.ts:');
+
+        expect(cache.get('ws1:wt-file-content:unstaged:/r/a.ts:fp1')).toBeUndefined();
+        expect(cache.get('ws1:wt-file-content:unstaged:/r/a.tsx:fp1')).toBe(2);
+        expect(cache.get('ws1:wt-file-content:staged:/r/a.ts:fp1')).toBe(3);
+        expect(cache.get('ws2:wt-file-content:unstaged:/r/a.ts:fp1')).toBe(4);
+    });
 });

@@ -29,6 +29,8 @@ import type {
   GitRangeBaseMode,
   GitRepoState,
   GitWorkingTreeChangesResponse,
+  GitWorkingTreeContentStage,
+  GitWorkingTreeFileContentResponse,
   GitAutoPullStatusResponse,
   ListWorktreesResponse,
   CleanupWorktreeResponse,
@@ -497,6 +499,14 @@ export class GitClient {
     return this.transport.request<GitDiffResponse>(
       workspaceGitPath(workspaceId, `/changes/files/${encodePathSegment(filePath)}/diff`),
       { query: serializeWorkingTreeDiffQuery(query) },
+    );
+  }
+
+  /** Both full-text sides of a working-tree file (base = HEAD; head = index for `staged`, disk otherwise). */
+  getWorkingTreeFileContent(workspaceId: string, filePath: string, stage: GitWorkingTreeContentStage): Promise<GitWorkingTreeFileContentResponse> {
+    return this.transport.request<GitWorkingTreeFileContentResponse>(
+      workspaceGitPath(workspaceId, `/changes/files/${encodePathSegment(filePath)}/content`),
+      { query: { stage } },
     );
   }
 

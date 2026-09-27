@@ -78,6 +78,34 @@ export interface GitFileContentResponse {
   resolvedRef: string;
 }
 
+/** Stage of a working-tree file whose two full-text sides are requested. */
+export type GitWorkingTreeContentStage = 'staged' | 'unstaged' | 'untracked';
+
+/** One side of a working-tree file. `content` is the stored text, line endings untouched. */
+export interface GitWorkingTreeFileSide {
+  content: string;
+  /** Resolved HEAD hash, `INDEX` for the staged head, `WORKTREE` for disk, or `''` when there is no ref. */
+  ref: string;
+  /** `false` (with `content: ""`) for an added file's base or a deleted file's head. */
+  exists: boolean;
+}
+
+/**
+ * Both full-text sides of one working-tree file.
+ *
+ * When `binary` or `tooLarge` is set, neither side carries content — the
+ * client falls back to the classic viewer.
+ */
+export interface GitWorkingTreeFileContentResponse {
+  path: string;
+  fileName: string;
+  language: string;
+  base: GitWorkingTreeFileSide;
+  head: GitWorkingTreeFileSide;
+  binary: boolean;
+  tooLarge: boolean;
+}
+
 export interface GitBranch {
   name: string;
   isCurrent: boolean;
