@@ -181,6 +181,9 @@ describe('PreviewPane — surface-aware navigation (AC-03)', () => {
         render(<PreviewPane repoId="ws-1" filePath="README.md" fileName="README.md"
             markdownPreview onNavigationMount={onNavigationMount} />);
         await screen.findByTestId('preview-markdown');
+        await waitFor(() => expect(onNavigationMount).toHaveBeenCalledWith(
+            expect.objectContaining({ restore: expect.any(Function) }),
+        ));
         const renderedController = onNavigationMount.mock.calls.find(([controller]) => controller !== null)?.[0];
         expect(renderedController).toBeDefined();
         const target = {
