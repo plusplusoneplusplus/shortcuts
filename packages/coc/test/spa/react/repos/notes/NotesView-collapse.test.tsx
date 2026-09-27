@@ -164,11 +164,17 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
         vi.useFakeTimers();
         try {
             // Hover the rail → after the open delay the sidebar floats out as an overlay.
-            act(() => { fireEvent.mouseEnter(screen.getByTestId('notes-sidebar-rail')); });
+            const rail = screen.getByTestId('notes-sidebar-rail');
+            act(() => { fireEvent.mouseEnter(rail); });
             act(() => { vi.advanceTimersByTime(450); });
             expect(sidebar.classList.contains('hidden')).toBe(false);
             expect(sidebar.className).toContain('absolute');
             expect(sidebar.className).toContain('z-30');
+            // Regression: anchored at `left-0`, the overlay slid under the `w-9`
+            // rail (z-40), clipping the tree's left edge. It starts past the rail.
+            expect(rail.className).toContain('w-9');
+            expect(sidebar.classList.contains('left-9')).toBe(true);
+            expect(sidebar.classList.contains('left-0')).toBe(false);
             // The transient peek never rewrites the persisted collapsed flag.
             expect(window.localStorage.getItem(notesSidebarCollapsedStorageKey('ws1'))).toBe('1');
 
@@ -226,7 +232,8 @@ describe('NotesView collapsed rail — hover-to-peek', () => {
 
         vi.useFakeTimers();
         try {
-            act(() => { fireEvent.mouseEnter(screen.getByTestId('notes-sidebar-rail')); });
+            const rail = screen.getByTestId('notes-sidebar-rail');
+            act(() => { fireEvent.mouseEnter(rail); });
             act(() => { vi.advanceTimersByTime(450); });
             expect(sidebar.classList.contains('hidden')).toBe(false);
 
