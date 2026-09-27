@@ -592,6 +592,7 @@ describe('parseAttachedSessionContextBlocks', () => {
             sessionContexts: [],
             ralphSessionContexts: [],
             pointerContexts: [],
+            diffSelectionContexts: [],
             remainingContent: content,
         });
     });

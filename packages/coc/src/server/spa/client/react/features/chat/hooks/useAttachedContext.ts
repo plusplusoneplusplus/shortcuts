@@ -7,6 +7,7 @@ import {
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_KIND,
     WORK_ITEM_CONTEXT_DRAG_KIND,
+    buildDiffSelectionLabel,
     formatDiffSelectionRef,
     type DiffSelectionContextDragPayload,
     type DiffSelectionLineRange,
@@ -143,12 +144,15 @@ export type AttachedContextItem =
 const PREVIEW_LENGTH = 100;
 /** Same cap as note text references (useNoteReferences TEXT_SIZE_LIMIT). */
 export const DIFF_SELECTION_TEXT_SIZE_LIMIT = 4000;
-const ATTACHED_CONTEXT_BLOCK_PATTERN = /<attached_session_context\s+version="1">[\s\S]*?<\/attached_session_context>|<attached_ralph_session_context\s+version="1">[\s\S]*?<\/attached_ralph_session_context>|<attached_pointer_context\s+version="1">[\s\S]*?<\/attached_pointer_context>/g;
+const ATTACHED_CONTEXT_BLOCK_PATTERN = /<attached_session_context\s+version="1">[\s\S]*?<\/attached_session_context>|<attached_ralph_session_context\s+version="1">[\s\S]*?<\/attached_ralph_session_context>|<attached_pointer_context\s+version="1">[\s\S]*?<\/attached_pointer_context>|<context\s+from="diff-selection"[^>]*>\r?\n(?<fence>`{3,})diff\r?\n[\s\S]*?\r?\n\k<fence>\r?\n<\/context>/g;
 // The `<instruction>` element is no longer emitted, but stays optional here so blocks
 // already persisted in older messages still parse back into a session chip.
 const SESSION_CONTEXT_BLOCK_PATTERN = /^<attached_session_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*(?:<instruction>[\s\S]*?<\/instruction>\s*)?<\/source>\s*<\/attached_session_context>$/;
 const RALPH_SESSION_CONTEXT_BLOCK_PATTERN = /^<attached_ralph_session_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*<display_label>([\s\S]*?)<\/display_label>\s*<child_process_ids>\s*([\s\S]*?)\s*<\/child_process_ids>\s*<instruction>[\s\S]*?<\/instruction>\s*<\/source>\s*<\/attached_ralph_session_context>$/;
 const POINTER_CONTEXT_BLOCK_PATTERN = /^<attached_pointer_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*<instruction>[\s\S]*?<\/instruction>\s*<\/source>\s*<\/attached_pointer_context>$/;
+// The fence is one backtick longer than any run inside the snippet, so matching the same
+// fence before `</context>` keeps a snippet that itself contains `</context>` intact.
+const DIFF_SELECTION_CONTEXT_BLOCK_PATTERN = /^<context\s+from="diff-selection"\s+([^>]*)>\r?\n(`{3,})diff\r?\n([\s\S]*?)\r?\n\2\r?\n<\/context>$/;
 const CHILD_PROCESS_ID_PATTERN = /<process_id>([\s\S]*?)<\/process_id>/g;
 
 function truncatePreview(text: string): string {
@@ -260,13 +264,31 @@ export interface ParsedPointerContextBlock {
     rawBlock: string;
 }
 
-export type ParsedAttachedContextBlock = ParsedSessionContextBlock | ParsedRalphSessionContextBlock | ParsedPointerContextBlock;
+export interface ParsedDiffSelectionContextBlock {
+    kind: 'diff-selection';
+    sourceWorkspaceId: string;
+    filePath: string;
+    oldRange?: DiffSelectionLineRange;
+    newRange?: DiffSelectionLineRange;
+    ref: DiffSelectionRef;
+    snippet: string;
+    truncated: boolean;
+    label: string;
+    rawBlock: string;
+}
+
+export type ParsedAttachedContextBlock =
+    | ParsedSessionContextBlock
+    | ParsedRalphSessionContextBlock
+    | ParsedPointerContextBlock
+    | ParsedDiffSelectionContextBlock;
 
 export interface ParsedAttachedSessionContextContent {
     attachedContexts: ParsedAttachedContextBlock[];
     sessionContexts: ParsedSessionContextBlock[];
     ralphSessionContexts: ParsedRalphSessionContextBlock[];
     pointerContexts: ParsedPointerContextBlock[];
+    diffSelectionContexts: ParsedDiffSelectionContextBlock[];
     remainingContent: string;
 }
 
@@ -353,24 +375,68 @@ function parsePointerContextBlock(rawBlock: string): ParsedPointerContextBlock |
     };
 }
 
+function parseLineRangeAttribute(value: string | undefined): DiffSelectionLineRange | undefined {
+    const match = value?.match(/^(\d+)-(\d+)$/);
+    if (!match) return undefined;
+    const start = Number.parseInt(match[1], 10);
+    const end = Number.parseInt(match[2], 10);
+    return end >= start ? { start, end } : undefined;
+}
+
+function parseDiffSelectionRefAttributes(attrs: Record<string, string>): DiffSelectionRef | null {
+    if (attrs.ref_type === 'commit') return attrs.commit_hash ? { type: 'commit', commitHash: attrs.commit_hash } : null;
+    if (attrs.ref_type === 'range') {
+        return attrs.base_ref && attrs.head_ref ? { type: 'range', baseRef: attrs.base_ref, headRef: attrs.head_ref } : null;
+    }
+    if (attrs.ref_type === 'working-tree' || attrs.ref_type === 'staged') return { type: attrs.ref_type };
+    return null;
+}
+
+function parseDiffSelectionContextBlock(rawBlock: string): ParsedDiffSelectionContextBlock | null {
+    const match = rawBlock.match(DIFF_SELECTION_CONTEXT_BLOCK_PATTERN);
+    if (!match) return null;
+    const attrs = parseSourceAttributes(match[1]);
+    const ref = parseDiffSelectionRefAttributes(attrs);
+    if (!attrs.path || !ref) return null;
+    const oldRange = parseLineRangeAttribute(attrs.old_lines);
+    const newRange = parseLineRangeAttribute(attrs.new_lines);
+    return {
+        kind: 'diff-selection',
+        sourceWorkspaceId: attrs.workspace_id || 'unknown-workspace',
+        filePath: attrs.path,
+        ...(oldRange ? { oldRange } : {}),
+        ...(newRange ? { newRange } : {}),
+        ref,
+        snippet: match[3],
+        truncated: attrs.truncated === 'true',
+        label: buildDiffSelectionLabel(attrs.path, { oldRange, newRange }, ref),
+        rawBlock,
+    };
+}
+
 export function parseAttachedSessionContextBlocks(content: string): ParsedAttachedSessionContextContent {
     const attachedContexts: ParsedAttachedContextBlock[] = [];
     const sessionContexts: ParsedSessionContextBlock[] = [];
     const ralphSessionContexts: ParsedRalphSessionContextBlock[] = [];
     const pointerContexts: ParsedPointerContextBlock[] = [];
+    const diffSelectionContexts: ParsedDiffSelectionContextBlock[] = [];
     const remainingContent = content
         .replace(ATTACHED_CONTEXT_BLOCK_PATTERN, (rawBlock: string) => {
             const parsed = rawBlock.startsWith('<attached_ralph_session_context')
                 ? parseRalphSessionContextBlock(rawBlock)
                 : rawBlock.startsWith('<attached_pointer_context')
                     ? parsePointerContextBlock(rawBlock)
-                    : parseSessionContextBlock(rawBlock);
+                    : rawBlock.startsWith('<context')
+                        ? parseDiffSelectionContextBlock(rawBlock)
+                        : parseSessionContextBlock(rawBlock);
             if (parsed) {
                 attachedContexts.push(parsed);
                 if (parsed.kind === 'ralph-session') {
                     ralphSessionContexts.push(parsed);
                 } else if (parsed.kind === 'session') {
                     sessionContexts.push(parsed);
+                } else if (parsed.kind === 'diff-selection') {
+                    diffSelectionContexts.push(parsed);
                 } else {
                     pointerContexts.push(parsed);
                 }
@@ -380,7 +446,7 @@ export function parseAttachedSessionContextBlocks(content: string): ParsedAttach
         })
         .replace(/^(?:[ \t]*\r?\n)+/, '');
 
-    return { attachedContexts, sessionContexts, ralphSessionContexts, pointerContexts, remainingContent };
+    return { attachedContexts, sessionContexts, ralphSessionContexts, pointerContexts, diffSelectionContexts, remainingContent };
 }
 
 export function buildSessionContextPreview(source: Pick<SessionContextDragPayload, 'title' | 'status' | 'lastActivityAt' | 'sourceProcessId'>): string {
