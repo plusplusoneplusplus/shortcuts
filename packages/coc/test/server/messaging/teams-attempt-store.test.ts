@@ -41,9 +41,14 @@ describe('TeamsAttemptStore', () => {
         expect(attempt.phases.map(p => p.stage)).toEqual([
             'started', 'authenticating', 'resolving', 'starting-polling', 'connected',
         ]);
+        expect(attempt.stage).toBe('connected');
+        expect(attempt.degraded).toBe(false);
         attempt.phases.pop();
         expect(store.list()[0].phases).toHaveLength(5);
-        expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'teams-attempts.json'), 'utf8'))).toEqual(store.list());
+        const persisted = JSON.parse(fs.readFileSync(path.join(f.dir, 'teams-attempts.json'), 'utf8'));
+        expect(persisted[0]).not.toHaveProperty('degraded');
+        expect(persisted[0]).not.toHaveProperty('stage');
+        expect(persisted[0]).toMatchObject({ id, totals: {}, events: [] });
     });
 
     it('supersedes a live attempt and interrupts an orphan on restart', () => {
@@ -110,21 +115,28 @@ describe('TeamsAttemptStore', () => {
         const id = store.start();
         store.poll(id, 'failure');
         store.send(id, 'rejected');
-        expect(store.list()[0]).toMatchObject({ pollDegraded: true, sendDegraded: true });
+        expect(store.list()[0]).toMatchObject({ pollDegraded: true, sendDegraded: true, degraded: true });
         for (let i = 0; i < 250; i++) store.poll(id, 'success');
         store.send(id, 'accepted');
         store.event(id, 'inbound-skipped', 'own');
         for (let i = 0; i < 150; i++) store.event(id, 'inbound-observed');
         const attempt = store.list()[0];
         expect(attempt.pollSuccessCount).toBe(250);
+        expect(attempt.totals).toMatchObject({ 'poll-success': 250, 'poll-failed': 1, 'reply-rejected': 1,
+            'reply-accepted': 1, 'inbound-observed': 150, 'inbound-skipped': 1 });
         expect(attempt.lastPollSuccessAt).toBe(f.clock().toISOString());
+        expect(attempt.lastSendSuccessAt).toBe(f.clock().toISOString());
         expect(attempt.pollDegraded).toBe(false);
         expect(attempt.sendDegraded).toBe(false);
+        expect(attempt.degraded).toBe(false);
         expect(attempt.events).toHaveLength(100);
         attempt.events[0].type = 'reply-rejected';
+        attempt.totals['poll-success'] = 0;
         expect(store.list()[0].events[0].type).toBe('inbound-observed');
+        expect(store.list()[0].totals['poll-success']).toBe(250);
         expect(new TeamsAttemptStore(f.dir, f.clock).list()[0]).toMatchObject({
-            pollSuccessCount: 250, pollDegraded: false, sendDegraded: false,
+            pollSuccessCount: 250, pollDegraded: false, sendDegraded: false, degraded: false,
+            totals: { 'poll-success': 250, 'inbound-observed': 150 },
         });
     });
 
@@ -144,7 +156,43 @@ describe('TeamsAttemptStore', () => {
         rows[0].events[0].response = 'private MCP response';
         fs.writeFileSync(file, JSON.stringify(rows));
         const loaded = new TeamsAttemptStore(f.dir, f.clock);
-        expect(loaded.list()[0].events).toEqual([{ at: f.clock().toISOString(), type: 'inbound-skipped', reason: 'empty' }]);
+        expect(loaded.list()[0].events).toEqual([{ at: f.clock().toISOString(), type: 'inbound-skipped', category: 'empty' }]);
         expect(fs.readFileSync(file, 'utf8')).not.toMatch(/secret-message-id|private MCP response/);
+    });
+
+    it('exposes the detail shape and migrates historical counters without exposing extra fields', () => {
+        const f = fixture();
+        const store = new TeamsAttemptStore(f.dir, f.clock);
+        const id = store.start();
+        store.phase(id, 'connected');
+        store.event(id, 'inbound-skipped', 'own');
+        store.poll(id, 'success');
+        store.poll(id, 'failure');
+        store.send(id, 'accepted');
+        const [detail] = store.list();
+        expect(detail).toEqual({
+            id, startedAt: f.clock().toISOString(), stage: 'connected',
+            phases: [{ stage: 'started', at: f.clock().toISOString() }, { stage: 'connected', at: f.clock().toISOString() }],
+            events: [
+                { type: 'inbound-skipped', at: f.clock().toISOString(), category: 'own' },
+                { type: 'poll-failed', at: f.clock().toISOString() },
+                { type: 'reply-accepted', at: f.clock().toISOString() },
+            ],
+            totals: { 'inbound-skipped': 1, 'poll-success': 1, 'poll-failed': 1, 'reply-accepted': 1 },
+            pollSuccessCount: 1, lastPollSuccessAt: f.clock().toISOString(),
+            lastSendSuccessAt: f.clock().toISOString(), pollDegraded: true, sendDegraded: false, degraded: true,
+        });
+        const file = path.join(f.dir, 'teams-attempts.json');
+        const rows = JSON.parse(fs.readFileSync(file, 'utf8'));
+        delete rows[0].totals;
+        rows[0].events[0].reason = rows[0].events[0].category;
+        delete rows[0].events[0].category;
+        rows[0].totalsSecret = 'private';
+        fs.writeFileSync(file, JSON.stringify(rows));
+        const migrated = new TeamsAttemptStore(f.dir, f.clock).list()[0];
+        expect(migrated.events[0]).toMatchObject({ category: 'own' });
+        expect(migrated.totals).toMatchObject({ 'poll-success': 1, 'inbound-skipped': 1 });
+        expect(JSON.stringify(migrated)).not.toMatch(/private|reason|totalsSecret/);
+        expect(fs.readFileSync(file, 'utf8')).not.toMatch(/private|reason|totalsSecret/);
     });
 });

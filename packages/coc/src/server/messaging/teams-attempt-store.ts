@@ -12,7 +12,7 @@ export type TeamsSkipReason = 'initial' | 'unchanged' | 'own' | 'empty' | 'bot';
 export interface TeamsAttemptEvent {
     at: string;
     type: TeamsEventType;
-    reason?: TeamsSkipReason;
+    category?: TeamsSkipReason;
 }
 
 export interface TeamsAttempt {
@@ -22,13 +22,18 @@ export interface TeamsAttempt {
     endedAt?: string;
     result?: TeamsAttemptResult;
     failureCategory?: TeamsFailureCategory;
+    stage: TeamsAttemptStage;
     events: TeamsAttemptEvent[];
+    totals: Record<string, number>;
     pollSuccessCount: number;
     lastPollSuccessAt?: string;
+    lastSendSuccessAt?: string;
     pollDegraded: boolean;
     sendDegraded: boolean;
+    degraded: boolean;
 }
 
+type StoredAttempt = Omit<TeamsAttempt, 'stage' | 'degraded'>;
 const STAGES: TeamsAttemptStage[] = ['started', 'authenticating', 'resolving', 'starting-polling', 'connected'];
 const RESULTS: TeamsAttemptResult[] = ['disconnected', 'superseded', 'failed', 'interrupted'];
 const CATEGORIES: TeamsFailureCategory[] = ['configuration', 'authentication', 'resolution', 'polling', 'unknown'];
@@ -36,11 +41,12 @@ const EVENTS: TeamsEventType[] = ['poll-failed', 'inbound-observed', 'inbound-sk
     'dispatch-command', 'dispatch-queued', 'dispatch-follow-up', 'dispatch-failed',
     'reply-attempt', 'reply-accepted', 'reply-rejected'];
 const SKIP_REASONS: TeamsSkipReason[] = ['initial', 'unchanged', 'own', 'empty', 'bot'];
+const TOTAL_KEYS: string[] = ['poll-success', ...EVENTS];
 const MAX_EVENTS = 100;
 const MAX_COMPLETED = 200;
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
-function readAttempt(value: unknown): TeamsAttempt {
+function readAttempt(value: unknown): StoredAttempt {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid Teams attempt history');
     const row = value as Record<string, unknown>;
     if (typeof row.id !== 'string' || !/^[a-f0-9-]{36}$/i.test(row.id)
@@ -61,14 +67,29 @@ function readAttempt(value: unknown): TeamsAttempt {
                 const e = event as Record<string, unknown>;
                 return typeof e.at !== 'string' || !Number.isFinite(Date.parse(e.at))
                     || !EVENTS.includes(e.type as TeamsEventType)
+                    || (e.category !== undefined && (!SKIP_REASONS.includes(e.category as TeamsSkipReason) || e.type !== 'inbound-skipped'))
                     || (e.reason !== undefined && (!SKIP_REASONS.includes(e.reason as TeamsSkipReason) || e.type !== 'inbound-skipped'));
             })))
+        || (row.totals !== undefined && (!row.totals || typeof row.totals !== 'object' || Array.isArray(row.totals)
+            || Object.entries(row.totals).some(([key, count]) =>
+                !TOTAL_KEYS.includes(key) || !Number.isSafeInteger(count) || (count as number) < 0)))
         || (row.pollSuccessCount !== undefined && (!Number.isSafeInteger(row.pollSuccessCount) || (row.pollSuccessCount as number) < 0))
         || (row.lastPollSuccessAt !== undefined && (typeof row.lastPollSuccessAt !== 'string' || !Number.isFinite(Date.parse(row.lastPollSuccessAt))))
+        || (row.lastSendSuccessAt !== undefined && (typeof row.lastSendSuccessAt !== 'string' || !Number.isFinite(Date.parse(row.lastSendSuccessAt))))
         || (row.pollDegraded !== undefined && typeof row.pollDegraded !== 'boolean')
         || (row.sendDegraded !== undefined && typeof row.sendDegraded !== 'boolean')
         || (row.endedAt === undefined) !== (row.result === undefined)) {
         throw new Error('Invalid Teams attempt history');
+    }
+    const events = (row.events as Array<TeamsAttemptEvent & { reason?: TeamsSkipReason }> | undefined ?? []).map(e => ({
+        at: e.at, type: e.type,
+        ...((e.category ?? e.reason) ? { category: e.category ?? e.reason } : {}),
+    }));
+    const totals: Record<string, number> = row.totals
+        ? Object.fromEntries(Object.entries(row.totals))
+        : { 'poll-success': row.pollSuccessCount as number | undefined ?? 0 };
+    if (!row.totals) {
+        for (const event of events) totals[event.type] = (totals[event.type] ?? 0) + 1;
     }
     return {
         id: row.id,
@@ -76,11 +97,11 @@ function readAttempt(value: unknown): TeamsAttempt {
         phases: row.phases.map((p: { stage: TeamsAttemptStage; at: string }) => ({ stage: p.stage, at: p.at })),
         ...(row.endedAt ? { endedAt: row.endedAt as string, result: row.result as TeamsAttemptResult } : {}),
         ...(row.failureCategory ? { failureCategory: row.failureCategory as TeamsFailureCategory } : {}),
-        events: (row.events as TeamsAttemptEvent[] | undefined ?? []).map(e => ({
-            at: e.at, type: e.type, ...(e.reason ? { reason: e.reason } : {}),
-        })),
+        events,
+        totals,
         pollSuccessCount: row.pollSuccessCount as number | undefined ?? 0,
         ...(row.lastPollSuccessAt ? { lastPollSuccessAt: row.lastPollSuccessAt as string } : {}),
+        ...(row.lastSendSuccessAt ? { lastSendSuccessAt: row.lastSendSuccessAt as string } : {}),
         pollDegraded: row.pollDegraded as boolean | undefined ?? false,
         sendDegraded: row.sendDegraded as boolean | undefined ?? false,
     };
@@ -89,7 +110,7 @@ function readAttempt(value: unknown): TeamsAttempt {
 /** Server-global, privacy-allowlisted history of normal Teams bridge connections. */
 export class TeamsAttemptStore {
     private readonly filePath: string;
-    private attempts: TeamsAttempt[] = [];
+    private attempts: StoredAttempt[] = [];
     private activeId: string | null = null;
 
     constructor(dataDir: string, private readonly now: () => Date = () => new Date()) {
@@ -116,12 +137,16 @@ export class TeamsAttemptStore {
     list(): TeamsAttempt[] {
         return this.attempts.map(a => ({
             id: a.id, startedAt: a.startedAt, phases: a.phases.map(p => ({ stage: p.stage, at: p.at })),
+            stage: a.phases[a.phases.length - 1].stage,
             ...(a.endedAt ? { endedAt: a.endedAt, result: a.result } : {}),
             ...(a.failureCategory ? { failureCategory: a.failureCategory } : {}),
-            events: a.events.map(e => ({ at: e.at, type: e.type, ...(e.reason ? { reason: e.reason } : {}) })),
+            events: a.events.map(e => ({ at: e.at, type: e.type, ...(e.category ? { category: e.category } : {}) })),
+            totals: { ...a.totals },
             pollSuccessCount: a.pollSuccessCount,
             ...(a.lastPollSuccessAt ? { lastPollSuccessAt: a.lastPollSuccessAt } : {}),
+            ...(a.lastSendSuccessAt ? { lastSendSuccessAt: a.lastSendSuccessAt } : {}),
             pollDegraded: a.pollDegraded, sendDegraded: a.sendDegraded,
+            degraded: a.pollDegraded || a.sendDegraded,
         }));
     }
 
@@ -130,7 +155,7 @@ export class TeamsAttemptStore {
         const id = randomUUID();
         const at = this.now().toISOString();
         this.attempts.unshift({ id, startedAt: at, phases: [{ stage: 'started', at }],
-            events: [], pollSuccessCount: 0, pollDegraded: false, sendDegraded: false });
+            events: [], totals: {}, pollSuccessCount: 0, pollDegraded: false, sendDegraded: false });
         this.activeId = id;
         this.prune();
         this.save();
@@ -160,6 +185,7 @@ export class TeamsAttemptStore {
         if (!attempt) return;
         if (outcome === 'success') {
             attempt.pollSuccessCount = Math.min(Number.MAX_SAFE_INTEGER, attempt.pollSuccessCount + 1);
+            this.increment(attempt, 'poll-success');
             attempt.lastPollSuccessAt = this.now().toISOString();
             attempt.pollDegraded = false;
         } else {
@@ -173,6 +199,7 @@ export class TeamsAttemptStore {
         const attempt = this.getActive(id);
         if (!attempt) return;
         attempt.sendDegraded = outcome === 'rejected';
+        if (outcome === 'accepted') attempt.lastSendSuccessAt = this.now().toISOString();
         this.append(attempt, outcome === 'accepted' ? 'reply-accepted' : 'reply-rejected');
         this.save();
     }
@@ -184,12 +211,17 @@ export class TeamsAttemptStore {
         this.save();
     }
 
-    private append(attempt: TeamsAttempt, type: TeamsEventType, reason?: TeamsSkipReason): void {
-        attempt.events.push({ at: this.now().toISOString(), type, ...(reason ? { reason } : {}) });
+    private append(attempt: StoredAttempt, type: TeamsEventType, category?: TeamsSkipReason): void {
+        attempt.events.push({ at: this.now().toISOString(), type, ...(category ? { category } : {}) });
+        this.increment(attempt, type);
         if (attempt.events.length > MAX_EVENTS) attempt.events.shift();
     }
 
-    private getActive(id: string): TeamsAttempt | undefined {
+    private increment(attempt: StoredAttempt, key: string): void {
+        attempt.totals[key] = Math.min(Number.MAX_SAFE_INTEGER, (attempt.totals[key] ?? 0) + 1);
+    }
+
+    private getActive(id: string): StoredAttempt | undefined {
         return this.activeId === id ? this.attempts.find(a => a.id === id) : undefined;
     }
 
