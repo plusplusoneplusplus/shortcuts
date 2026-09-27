@@ -249,6 +249,19 @@ function pressHistory(direction: 'back' | 'forward') {
     return event;
 }
 
+function pressMacHistory(direction: 'back' | 'forward') {
+    const event = new KeyboardEvent('keydown', {
+        key: direction === 'back' ? '-' : '_',
+        code: 'Minus',
+        ctrlKey: true,
+        shiftKey: direction === 'forward',
+        bubbles: true,
+        cancelable: true,
+    });
+    act(() => document.dispatchEvent(event));
+    return event;
+}
+
 function mouseHistory(target: HTMLElement, button: 3 | 4) {
     const down = new MouseEvent('mousedown', { button, bubbles: true, cancelable: true });
     const up = new MouseEvent('mouseup', { button, bubbles: true, cancelable: true });
@@ -323,6 +336,33 @@ describe('unified panel file navigation history', () => {
             screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`),
         ).toHaveAttribute('aria-selected', 'true'));
         expect(controllers.get('b.ts')?.restore).toHaveBeenCalledWith(snapshot(30, 5));
+    });
+
+    it('uses Ctrl+- and Ctrl+Shift+- for Back and Forward on macOS', async () => {
+        const platform = vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel');
+        try {
+            seedFile();
+            renderPanel();
+            await screen.findByTestId('mock-file-a.ts');
+            fireEvent.click(screen.getByTestId('jump-to-b'));
+            const b = await screen.findByTestId('mock-file-b.ts');
+            act(() => b.focus());
+
+            expect(pressHistory('back').defaultPrevented).toBe(false);
+            expect(pressMacHistory('back').defaultPrevented).toBe(true);
+            await waitFor(() => expect(
+                screen.getByTestId(`unified-panel-tab-${fileId('a.ts')}`),
+            ).toHaveAttribute('aria-selected', 'true'));
+
+            await act(async () => { await Promise.resolve(); });
+            act(() => screen.getByTestId('mock-file-a.ts').focus());
+            expect(pressMacHistory('forward').defaultPrevented).toBe(true);
+            await waitFor(() => expect(
+                screen.getByTestId(`unified-panel-tab-${fileId('b.ts')}`),
+            ).toHaveAttribute('aria-selected', 'true'));
+        } finally {
+            platform.mockRestore();
+        }
     });
 
     it.each(['references', 'symbol'] as const)('records a Go To %s cross-file jump', async kind => {
