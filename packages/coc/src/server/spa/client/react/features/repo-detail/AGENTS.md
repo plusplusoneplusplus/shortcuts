@@ -126,7 +126,12 @@ explicit `setTarget` writes; mount and workspace switches never persist.
 One icon-only visibility toggle lives outside the panel and shares its cross-tree
 open store. The classic shell renders `WorkspaceDockToggle` in `RepoDetail`'s
 header; the remote-first shell renders the same component in `layout/TopBar.tsx`
-for a concrete clone or a `group-*` selection. My Work / My Life have no panel.
+for a concrete clone or a `group-*` selection. Ctrl/Cmd+\ does the same from
+`layout/Router.tsx`'s keydown handler (next to Ctrl/Cmd+B for the left column):
+it calls `toggleWorkspaceDockOpen` for the selected workspace, matches
+`e.code === 'Backslash'` so non-US layouts work, is skipped while typing in an
+input, and only fires with `splitWorkspacePanel` on. The button's tooltip names
+the shortcut; its `aria-label` stays plain. My Work / My Life have no panel.
 Search and Explorer are peer navigator controls inside the panel; selecting one
 opens or switches the navigator, and selecting the active one collapses it
 without closing the resource panel.

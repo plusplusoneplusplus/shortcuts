@@ -252,7 +252,7 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
         // Order: [+ New][right-panel toggle][…status cluster]
         expect(kids[0]).toBe('header-new-btn');
         expect(kids[1]).toBe('workspace-dock-toggle');
-        expect(screen.getByRole('button', { name: 'Show right panel' }).getAttribute('title')).toBe('Show right panel');
+        expect(screen.getByRole('button', { name: 'Show right panel' }).getAttribute('title')).toBe('Show right panel (Ctrl+\\)');
         expect(screen.queryByRole('button', { name: 'Show Search' })).toBeNull();
     });
 

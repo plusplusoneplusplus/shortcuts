@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { cn } from '../../ui';
+import { isMacPlatform } from '../../utils/composerKeyboardShortcuts';
 
 /**
  * Light-weight open/mode plumbing, sizing constants and storage keys for the
@@ -168,6 +169,12 @@ export function setWorkspaceDockOpen(workspaceId: string, open: boolean): void {
     writeDockOpen(storageKey, open);
 }
 
+/** Flip a workspace dock's visibility from outside React (the Ctrl/Cmd+\ shortcut). */
+export function toggleWorkspaceDockOpen(workspaceId: string): void {
+    const storageKey = workspaceDockOpenStorageKey(workspaceId);
+    writeDockOpen(storageKey, !readDockOpen(storageKey));
+}
+
 /** Persisted, cross-tree open/closed flag for a dock, scoped by `storageKey`. */
 export function useDockOpen(storageKey: string): [boolean, () => void] {
     const isOpen = useSyncExternalStore(
@@ -235,6 +242,7 @@ export function SearchIcon() {
 export function WorkspaceDockToggle({ workspaceId }: { workspaceId: string }) {
     const [isOpen, toggleOpen] = useDockOpen(workspaceDockOpenStorageKey(workspaceId));
     const label = isOpen ? 'Hide right panel' : 'Show right panel';
+    const mac = isMacPlatform();
     return (
         <button
             type="button"
@@ -242,7 +250,8 @@ export function WorkspaceDockToggle({ workspaceId }: { workspaceId: string }) {
             onClick={toggleOpen}
             aria-label={label}
             aria-expanded={isOpen}
-            title={label}
+            aria-keyshortcuts={mac ? 'Meta+\\' : 'Control+\\'}
+            title={`${label} (${mac ? '⌘' : 'Ctrl+'}\\)`}
             className={cn(
                 'hidden h-7 w-7 items-center justify-center rounded-md border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0969da] md:inline-flex',
                 isOpen
