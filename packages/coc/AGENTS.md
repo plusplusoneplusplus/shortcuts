@@ -58,6 +58,12 @@ all have their own `references/*.md`.
   [packages/coc-native/AGENTS.md](../coc-native/AGENTS.md) before changing
   either. `searchFiles` is uncapped (the path list never leaves the process);
   `fileListMaxEntries` bounds only the `/files` response payload.
+- **Tracked content search reads fresh working-tree contents.** For single-line
+  literal searches without untracked files, `RepoTreeService` narrows candidates
+  with `git grep -l -z -F` and adds tracked symlinks from the Git index before
+  the native matcher calculates context, highlights, globs and caps. Regex,
+  multiline, untracked and WSL searches use the full native candidate walk.
+  There is no result cache; verify both paths against real Git fixtures.
 - **QuickOpen searches on the server.** The `Ctrl+P` dialog fetches nothing on
   open, debounces keystrokes, and highlights using the `indices` the server's
   scorer returned — never by re-deriving the match in the browser, which used to

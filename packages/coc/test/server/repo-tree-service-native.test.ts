@@ -254,7 +254,7 @@ suiteIfGit('RepoTreeService — native index vs. the capped response', () => {
     });
 });
 
-suiteIfGit('RepoTreeService.searchContent — options reaching the addon', () => {
+suiteIfGit('RepoTreeService.searchContent', () => {
     /** Records what the service asked the addon for, and answers nothing. */
     function recordingAddon() {
         const calls: Array<{ root: string; query: string; options: unknown }> = [];
@@ -299,6 +299,85 @@ suiteIfGit('RepoTreeService.searchContent — options reaching the addon', () =>
         await svc.searchContent(REPO_ID, 'a', { limit: 100_000 });
 
         expect(addon.calls.map(c => (c.options as { maxResults: number }).maxResults)).toEqual([1, 500]);
+    });
+
+    describe('fresh tracked literal candidates', () => {
+        it('searches the working tree on every request, including ignored tracked files', async () => {
+            seedRepo();
+            write('.gitignore', 'ignored/\n');
+            write('ignored/tracked.txt', 'before\nFixture-Search-Token\n');
+            write('src/ordinary.txt', 'before\nFixture-Search-Token\n');
+            write('src/untracked.txt', 'Fixture-Search-Token\n');
+            childProcess.execFileSync('git', ['add', '.gitignore', 'src/ordinary.txt'], {
+                cwd: repoDir,
+                stdio: 'pipe',
+            });
+            childProcess.execFileSync('git', ['add', '-f', 'ignored/tracked.txt'], { cwd: repoDir, stdio: 'pipe' });
+            const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE });
+            const options = { fileScope: 'tracked' as const };
+
+            const first = await svc.searchContent(REPO_ID, 'Fixture-Search-Token', options);
+            expect(first.matches.map(match => match.path)).toEqual(['ignored/tracked.txt', 'src/ordinary.txt']);
+            expect(first.matches[0].before).toEqual(['before']);
+
+            write('src/ordinary.txt', 'different contents\n');
+            const second = await svc.searchContent(REPO_ID, 'Fixture-Search-Token', options);
+            expect(second.matches.map(match => match.path)).toEqual(['ignored/tracked.txt']);
+            expect((await svc.searchContent(REPO_ID, 'absent-query', options)).matches).toEqual([]);
+        });
+
+        it('preserves literal case, whole-word and UTF-16 offsets', async () => {
+            seedRepo();
+            write('letters.txt', 'Kelvin Fixture-Search-Token\nfixture-search-tokens\n');
+            childProcess.execFileSync('git', ['add', 'letters.txt'], { cwd: repoDir, stdio: 'pipe' });
+            const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE });
+            const options = { fileScope: 'tracked' as const, wholeWord: true };
+
+            const result = await svc.searchContent(REPO_ID, 'Fixture-Search-Token', options);
+            expect(result.matches.map(match => [match.line, match.startColumn, match.endColumn]))
+                .toEqual([[1, 7, 27]]);
+            expect((await svc.searchContent(REPO_ID, 'fixture-search-token', {
+                ...options,
+                caseSensitive: true,
+            })).matches).toEqual([]);
+            expect((await svc.searchContent(REPO_ID, 'kelvin', options)).matches.map(match => match.line))
+                .toEqual([1]);
+        });
+
+        it('keeps the native candidate path for regex, multiline and untracked searches', async () => {
+            seedRepo();
+            write('tracked.txt', 'alpha\nbeta\n');
+            write('untracked.txt', 'alpha\nbeta\n');
+            childProcess.execFileSync('git', ['add', 'tracked.txt'], { cwd: repoDir, stdio: 'pipe' });
+            const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE });
+
+            for (const [query, extra] of [
+                ['alpha\\nbeta', { regex: true }],
+                ['alpha\nbeta', {}],
+                ['alpha', { includeUntracked: true }],
+            ] as const) {
+                const result = await svc.searchContent(REPO_ID, query, { fileScope: 'tracked', ...extra });
+                expect(result.matches.map(match => match.path)).toContain('tracked.txt');
+                if ('includeUntracked' in extra) {
+                    expect(result.matches.map(match => match.path)).toContain('untracked.txt');
+                }
+            }
+        });
+
+        it('includes tracked symlinks even when Git grep does not search their targets', async () => {
+            seedRepo();
+            write('target.txt', 'linked needle\n');
+            try {
+                fs.symlinkSync('target.txt', path.join(repoDir, 'linked.txt'), 'file');
+            } catch (error) {
+                if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') return;
+                throw error;
+            }
+            childProcess.execFileSync('git', ['add', 'linked.txt'], { cwd: repoDir, stdio: 'pipe' });
+            const result = await new RepoTreeService(dataDir, { nativeFileIndex: NATIVE })
+                .searchContent(REPO_ID, 'needle', { fileScope: 'tracked' });
+            expect(result.matches.map(match => match.path)).toEqual(['linked.txt']);
+        });
     });
 
     it('strips the "." and leading-slash spellings of the repo root from the scope', async () => {

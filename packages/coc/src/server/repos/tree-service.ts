@@ -4,7 +4,7 @@ import * as childProcess from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
-import { execGitAsync } from '@plusplusoneplusplus/forge';
+import { execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import {
     loadNativeContentSearch,
     loadNativeFileIndex,
@@ -203,6 +203,37 @@ async function gitContentCandidates(repoRoot: string, includeUntracked: boolean)
             `Git-tracked search is unavailable: ${detail}`,
         );
     }
+}
+
+async function gitLiteralContentCandidates(
+    repoRoot: string,
+    query: string,
+    caseSensitive: boolean,
+): Promise<string[]> {
+    const args = ['grep', '-l', '-z', '-F'];
+    if (!caseSensitive) args.push('-i');
+    args.push('--', query);
+    try {
+        const { stdout } = await execFileAsync('git', args, {
+            cwd: repoRoot,
+            encoding: 'utf-8',
+            timeout: GIT_CANDIDATE_TIMEOUT_MS,
+            maxBuffer: GIT_CANDIDATE_MAX_BUFFER,
+        });
+        return stdout.split('\0').filter(Boolean).map(file => file.split(path.sep).join('/'));
+    } catch (error) {
+        if ((error as { code?: unknown } | null)?.code === 1) return [];
+        throw error;
+    }
+}
+
+async function gitTrackedSymlinks(repoRoot: string): Promise<string[]> {
+    const stdout = await execGitAsync(['ls-files', '--stage', '-z', '--cached'], repoRoot, {
+        timeout: GIT_CANDIDATE_TIMEOUT_MS,
+        maxBuffer: GIT_CANDIDATE_MAX_BUFFER,
+    });
+    return stdout.split('\0').filter(entry => entry.startsWith('120000 '))
+        .map(entry => entry.slice(entry.indexOf('\t') + 1).split(path.sep).join('/'));
 }
 
 /**
@@ -898,9 +929,10 @@ export class RepoTreeService {
     /**
      * Search eligible file contents under the repo root.
      *
-     * Every query is a fresh parallel walk — there is no content index to keep
-     * warm and no cancellation, so the caps in `options` are the only bound on
-     * what one query costs.
+     * Every query reads current working-tree contents. Tracked single-line
+     * literals use Git to narrow the fresh native walk to candidate paths;
+     * other modes walk their full eligible file set. There is no content
+     * result cache or native cancellation.
      *
      * Rejects with a `Repo not found` error for an unregistered repo or a root
      * that has since disappeared from disk, and passes the addon's own
@@ -936,9 +968,22 @@ export class RepoTreeService {
         // '.' is how every other repo route spells "the root", but handing it
         // to the addon as a subfolder would prefix every result path with './'.
         const scope = stripLeadingSeparators(options?.path ?? '').replace(/^\.(?:\/|$)/, '');
-        const files = options?.fileScope === 'tracked'
-            ? await gitContentCandidates(repoRoot, options.includeUntracked ?? false)
-            : undefined;
+        let files: string[] | undefined;
+        if (options?.fileScope === 'tracked') {
+            files = await gitContentCandidates(repoRoot, options.includeUntracked ?? false);
+            // Git grep reads the working tree afresh. The native matcher still
+            // owns context, offsets, globs and caps. Git grep skips symlink
+            // targets, so retain tracked symlinks in the candidate set.
+            if (query && !query.includes('\0') && !options.includeUntracked && !options.regex
+                && !query.includes('\n') && !query.includes('\r')
+                && resolveWorkspaceExecutionContext(repoRoot).kind !== 'wsl') {
+                const [matches, symlinks] = await Promise.all([
+                    gitLiteralContentCandidates(repoRoot, query, options.caseSensitive ?? false),
+                    gitTrackedSymlinks(repoRoot),
+                ]);
+                files = [...new Set([...matches, ...symlinks])];
+            }
+        }
 
         this.nativeContent ??= loadNativeContentSearch();
         return this.nativeContent.searchContent(repoRoot, query, {
