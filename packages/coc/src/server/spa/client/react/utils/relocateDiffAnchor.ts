@@ -31,7 +31,7 @@ function hashText(text: string): string {
  * @returns The new 0-based index into newLines, or null if not found.
  */
 export function relocateDiffAnchor(
-    comment: DiffComment,
+    comment: Pick<DiffComment, 'anchor' | 'selection'>,
     newLines: DiffLine[],
 ): number | null {
     const anchor = comment.anchor;
