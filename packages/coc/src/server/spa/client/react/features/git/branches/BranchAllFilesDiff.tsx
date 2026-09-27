@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { Spinner, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer } from '../diff/UnifiedDiffViewer';
 import { STATUS_COLORS, STATUS_LABELS, normalizeStatus } from '../diff/FileTree';
@@ -84,7 +84,7 @@ export function BranchAllFilesDiff({ workspaceId, files, onFileSelect, scrollToF
             [filePath]: { expanded: true, diff: null, loading: true, error: null },
         }));
 
-        getSpaCocClient().git.getBranchRangeFileDiff(workspaceId, filePath, { base: baseMode })
+        getCocClientForWorkspace(workspaceId).git.getBranchRangeFileDiff(workspaceId, filePath, { base: baseMode })
             .then(data => {
                 setFileStates(prev => ({
                     ...prev,

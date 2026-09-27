@@ -87,8 +87,9 @@ describe('BranchChanges', () => {
     });
 
     describe('API integration', () => {
-        it('imports typed CoC client', () => {
-            expect(source).toContain("import { getSpaCocClient } from '../../../api/cocClient'");
+        it('imports the clone-routed CoC client', () => {
+            expect(source).toContain("import { getCocClientForWorkspace } from '../../../repos/cloneRegistry'");
+            expect(source).not.toContain('getSpaCocClient');
         });
 
         it('derives rangeInfo from branchRangeData prop (lifted to parent)', () => {
@@ -99,8 +100,8 @@ describe('BranchChanges', () => {
             expect(source).toContain('listBranchRangeFiles(workspaceId, { base: baseMode })');
         });
 
-        it('uses typed client for workspace-scoped routes', () => {
-            expect(source).toContain('getSpaCocClient().git');
+        it('routes workspace-scoped git calls to the owning clone', () => {
+            expect(source).toContain('getCocClientForWorkspace(workspaceId).git');
         });
     });
 

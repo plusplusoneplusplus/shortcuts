@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSpaCocClient } from '../../../api/cocClient';
+import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 import { Spinner } from '../../../ui';
 import { useFileCommentCounts } from '../hooks/useFileCommentCounts';
 import { computeDiffCommentKey } from '../../../../comments/diff-comment-utils';
@@ -120,7 +120,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
 
         setFilesLoading(true);
         setFilesError(null);
-        getSpaCocClient().git.listBranchRangeFiles(workspaceId, { base: baseMode })
+        getCocClientForWorkspace(workspaceId).git.listBranchRangeFiles(workspaceId, { base: baseMode })
             .then(data => {
                 setFiles(data.files || []);
             })
@@ -142,7 +142,7 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
         setFileDiffError(null);
         setFileDiffLoading(true);
 
-        getSpaCocClient().git.getBranchRangeFileDiff(workspaceId, filePath, { base: baseMode })
+        getCocClientForWorkspace(workspaceId).git.getBranchRangeFileDiff(workspaceId, filePath, { base: baseMode })
             .then(data => setFileDiff(data.diff ?? ''))
             .catch(err => setFileDiffError(err.message || 'Failed to load diff'))
             .finally(() => setFileDiffLoading(false));

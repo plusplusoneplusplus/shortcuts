@@ -37,8 +37,9 @@ describe('BranchAllFilesDiff', () => {
     });
 
     describe('imports', () => {
-        it('imports typed CoC client', () => {
-            expect(source).toContain("getSpaCocClient");
+        it('imports the clone-routed CoC client', () => {
+            expect(source).toContain("getCocClientForWorkspace");
+            expect(source).not.toContain('getSpaCocClient');
         });
 
         it('imports Spinner', () => {
