@@ -110,6 +110,9 @@ describe('NotesView layout="container"', () => {
         fireEvent.click(toggle);
         expect(sidebar.classList.contains('hidden')).toBe(false);
         expect(sidebar.className).toContain('absolute');
+        // Regression: the overlay must start past the always-on rail, not under it.
+        expect(sidebar.classList.contains('left-9')).toBe(true);
+        expect(sidebar.classList.contains('left-0')).toBe(false);
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
 
         fireEvent.click(toggle);

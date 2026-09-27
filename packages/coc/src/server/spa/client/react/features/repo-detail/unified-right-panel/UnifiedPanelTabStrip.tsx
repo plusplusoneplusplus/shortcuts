@@ -24,6 +24,10 @@
  *    scrolling row so labels truncate at a sane width instead of collapsing to
  *    nothing, and the trailing "+" sits outside that row so it stays reachable
  *    no matter how many tabs are open.
+ *  - **The scrollbar is an overlay.** The native bar is hidden (it is thick on
+ *    macOS and draws over the labels); a 3px thumb along the bottom edge shows
+ *    on hover and can be dragged, and a plain vertical wheel scrolls the row
+ *    sideways, as in VS Code.
  *
  * The strip is also an inline-size container named `unified-panel-strip`, so the
  * chrome parked at its end can condense against the panel's width rather than
@@ -31,10 +35,10 @@
  * panel.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
 import { FileNameIcon } from '../explorer/FileTypeIcon';
-import { scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
+import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
 import {
     unifiedPanelTabMenuItems,
@@ -81,9 +85,12 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
         </svg>
     ),
     canvas: (
-        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
-            <rect x="2.5" y="3" width="11" height="10" rx="1.2" />
-            <line x1="2.5" y1="6" x2="13.5" y2="6" />
+        // A painter's palette, matching the 🎨 the "+" menu shows for canvases.
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true" data-icon="canvas-palette">
+            <path d="M8 2.2C4.5 2.2 2 4.6 2 7.7c0 3.2 2.6 6.1 5.4 6.1 1 0 1.4-.6 1.1-1.4-.3-.9.1-1.7 1.1-1.7h1.5c1.8 0 2.9-1.2 2.9-2.9 0-3.2-2.7-5.6-6-5.6z" />
+            <circle cx="5.2" cy="7.6" r="0.8" fill="currentColor" stroke="none" />
+            <circle cx="7" cy="5" r="0.8" fill="currentColor" stroke="none" />
+            <circle cx="10.2" cy="5.4" r="0.8" fill="currentColor" stroke="none" />
         </svg>
     ),
     diff: (
@@ -169,6 +176,7 @@ export function UnifiedPanelTabStrip({
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
     const draggingId = useRef<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
+    const { listRef, thumb, onThumbPointerDown } = useOverlayScrollbar(tabs);
 
     // Keep the active tab visible: it is routinely activated from far outside
     // the strip — a chat source link, a canvas event, a restored selection —
@@ -188,10 +196,11 @@ export function UnifiedPanelTabStrip({
         if (originId) queueMicrotask(() => tabRefs.current.get(originId)?.focus());
     }, [contextMenu?.tabId]);
 
-    /** The contiguous run of tabs sharing `tab`'s scope — its own section. */
+    /** The contiguous run of tabs sharing `tab`'s scope and display group — its own section. */
     const sectionOf = (tab: UnifiedPanelTab) => {
         const scope = scopeForKind(tab.kind);
-        return tabs.filter(entry => scopeForKind(entry.kind) === scope);
+        const group = displayGroupForKind(tab.kind);
+        return tabs.filter(entry => scopeForKind(entry.kind) === scope && displayGroupForKind(entry.kind) === group);
     };
 
     /** Alt+Arrow: shift the focused tab one place inside its section. */
@@ -257,26 +266,28 @@ export function UnifiedPanelTabStrip({
             )}
             data-testid="unified-panel-tab-strip"
         >
+            <div className="group/strip relative flex min-w-0 flex-1">
             <div
+                ref={listRef}
                 role="tablist"
                 aria-label="Open resources"
                 aria-orientation="horizontal"
-                className="flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
+                className="scrollbar-hide flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
                 data-testid="unified-panel-tab-list"
             >
                 {tabs.map((tab, index) => {
                     const isActive = tab.id === activeId;
                     const isDirty = dirtyIds?.has(tab.id) ?? false;
                     const hasError = errorIds?.has(tab.id) ?? false;
-                    // The divider marks where workspace-owned tools (Terminal
-                    // and Notes) end and chat resources begin — derived, never
-                    // passed in.
-                    const startsChatSection = index > 0
-                        && scopeForKind(tab.kind) === 'chat'
-                        && scopeForKind(tabs[index - 1].kind) === 'workspace';
+                    // The divider marks where tools (Terminal, Notes, Git, and
+                    // the chat's canvases) end and resources (files, diffs)
+                    // begin — derived, never passed in.
+                    const startsResourceSection = index > 0
+                        && displayGroupForKind(tab.kind) === 'resources'
+                        && displayGroupForKind(tabs[index - 1].kind) === 'tools';
                     return (
                         <Fragment key={tab.id}>
-                            {startsChatSection && (
+                            {startsResourceSection && (
                                 <div
                                     aria-hidden="true"
                                     data-testid="unified-panel-tab-section-divider"
@@ -304,7 +315,7 @@ export function UnifiedPanelTabStrip({
                             data-active={isActive || undefined}
                             data-dirty={isDirty || undefined}
                             data-preview={tab.preview || undefined}
-                            data-section-start={startsChatSection || undefined}
+                            data-section-start={startsResourceSection || undefined}
                             onClick={() => onActivate(tab.id)}
                             onDoubleClick={() => onPromote?.(tab.id)}
                             onAuxClick={event => {
@@ -409,6 +420,20 @@ export function UnifiedPanelTabStrip({
                     );
                 })}
             </div>
+            {thumb && (
+                <div
+                    aria-hidden="true"
+                    data-testid="unified-panel-tab-scroll-thumb"
+                    onPointerDown={onThumbPointerDown}
+                    style={{ left: thumb.left, width: thumb.width }}
+                    className={cn(
+                        'absolute bottom-0 z-10 h-[3px] rounded-sm bg-black/35 opacity-0 transition-opacity dark:bg-white/35',
+                        'hover:bg-black/55 group-hover/strip:opacity-100 dark:hover:bg-white/55',
+                        thumb.dragging && 'opacity-100',
+                    )}
+                />
+            )}
+            </div>
 
             {/* Outside the scrolling row, so they stay reachable at any tab count. */}
             {leadingControls}
@@ -455,4 +480,83 @@ export function UnifiedPanelTabStrip({
             })()}
         </div>
     );
+}
+
+/** Where the overlay thumb sits, in px from the strip's left edge; `null` when nothing overflows. */
+interface ThumbGeometry {
+    left: number;
+    width: number;
+    dragging: boolean;
+}
+
+/**
+ * Drives the tab row's overlay scrollbar: measures the thumb from the row's
+ * scroll state, lets the thumb be dragged, and turns a vertical wheel into a
+ * horizontal scroll (the row has nothing to scroll vertically).
+ */
+function useOverlayScrollbar(tabs: readonly UnifiedPanelTab[]) {
+    const listRef = useRef<HTMLDivElement>(null);
+    const [thumb, setThumb] = useState<ThumbGeometry | null>(null);
+    const dragging = useRef(false);
+
+    const measure = useCallback(() => {
+        const list = listRef.current;
+        if (!list) return;
+        const { scrollLeft, scrollWidth, clientWidth } = list;
+        if (scrollWidth <= clientWidth) {
+            setThumb(null);
+            return;
+        }
+        setThumb({
+            left: (scrollLeft / scrollWidth) * clientWidth,
+            width: (clientWidth / scrollWidth) * clientWidth,
+            dragging: dragging.current,
+        });
+    }, []);
+
+    useEffect(measure, [measure, tabs]);
+
+    useEffect(() => {
+        const list = listRef.current;
+        if (!list) return;
+        const onWheel = (event: WheelEvent) => {
+            if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+            if (list.scrollWidth <= list.clientWidth) return;
+            event.preventDefault();
+            list.scrollLeft += event.deltaY;
+        };
+        list.addEventListener('scroll', measure, { passive: true });
+        list.addEventListener('wheel', onWheel, { passive: false });
+        const observer = new ResizeObserver(measure);
+        observer.observe(list);
+        return () => {
+            list.removeEventListener('scroll', measure);
+            list.removeEventListener('wheel', onWheel);
+            observer.disconnect();
+        };
+    }, [measure]);
+
+    const onThumbPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+        const list = listRef.current;
+        if (!list || event.button !== 0) return;
+        event.preventDefault();
+        const startX = event.clientX;
+        const startScroll = list.scrollLeft;
+        const ratio = list.scrollWidth / list.clientWidth;
+        dragging.current = true;
+        measure();
+        const onMove = (move: PointerEvent) => {
+            list.scrollLeft = startScroll + (move.clientX - startX) * ratio;
+        };
+        const onUp = () => {
+            dragging.current = false;
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            measure();
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+    }, [measure]);
+
+    return { listRef, thumb, onThumbPointerDown };
 }

@@ -8,6 +8,7 @@ import {
     activeTab,
     activeTabId,
     closeTab,
+    displayGroupForKind,
     findTab,
     inheritDraftTabs,
     moveTab,
@@ -391,6 +392,43 @@ describe('unifiedPanelTabsModel — closing', () => {
     });
 });
 
+describe('unifiedPanelTabsModel — display groups', () => {
+    it('groups canvases with the workspace tools and files/diffs/external as resources', () => {
+        for (const kind of ['terminal', 'notes', 'note', 'git', 'canvas'] as const) {
+            expect(displayGroupForKind(kind)).toBe('tools');
+        }
+        for (const kind of ['file', 'diff', 'external'] as const) {
+            expect(displayGroupForKind(kind)).toBe('resources');
+        }
+        // Grouping is display-only: a canvas still belongs to its chat.
+        expect(scopeForKind('canvas')).toBe('chat');
+    });
+
+    it('shows the chat canvases right after the workspace tools, before its files', () => {
+        let state = baseState();
+        state = open(state, { kind: 'canvas', resourceId: 'c1', label: 'Plan', chatId: CHAT_1 });
+        state = open(state, { kind: 'file', resourceId: 'src/b.ts', label: 'b.ts', chatId: CHAT_1 });
+        state = open(state, { kind: 'canvas', resourceId: 'c2', label: 'Draft', chatId: CHAT_1 });
+        expect(visibleTabs(state, CHAT_1).map(t => t.label))
+            .toEqual(['bash', 'Notes', 'Plan', 'Draft', 'a.ts', 'b.ts']);
+        // Stored order is untouched; only the strip view is grouped.
+        expect(state.chatTabs[CHAT_1]!.map(t => t.label)).toEqual(['a.ts', 'Plan', 'b.ts', 'Draft']);
+        // Another chat never sees these canvases.
+        expect(visibleTabs(state, CHAT_2).map(t => t.label)).toEqual(['bash', 'Notes']);
+    });
+
+    it('keeps the file preview slot last when canvases open after it', () => {
+        let state = baseState();
+        state = openPreviewTab(state, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: CHAT_1, resourceId: 'src/p.ts', label: 'p.ts',
+        });
+        state = open(state, { kind: 'canvas', resourceId: 'c1', label: 'Plan', chatId: CHAT_1 });
+        const labels = visibleTabs(state, CHAT_1).map(t => t.label);
+        expect(labels).toEqual(['bash', 'Notes', 'Plan', 'a.ts', 'p.ts']);
+        expect(visibleTabs(state, CHAT_1).at(-1)?.preview).toBe(true);
+    });
+});
+
 describe('unifiedPanelTabsModel — reordering', () => {
     it('moves a tab within its own section', () => {
         let state = baseState();
@@ -413,6 +451,22 @@ describe('unifiedPanelTabsModel — reordering', () => {
         // Chat file dragged onto the workspace section, and the reverse.
         expect(moveTab(state, fileId, terminalId)).toBe(state);
         expect(moveTab(state, terminalId, fileId)).toBe(state);
+    });
+
+    it('refuses a drag across the tools/resources divider inside one chat', () => {
+        let state = baseState();
+        state = open(state, { kind: 'canvas', resourceId: 'c1', label: 'Plan', chatId: CHAT_1 });
+        state = open(state, { kind: 'canvas', resourceId: 'c2', label: 'Draft', chatId: CHAT_1 });
+        const [fileA, c1, c2] = state.chatTabs[CHAT_1]!;
+        // A canvas onto a file, and a file onto a canvas: both stay put.
+        expect(moveTab(state, c1.id, fileA.id)).toBe(state);
+        expect(moveTab(state, fileA.id, c1.id)).toBe(state);
+        // Canvases still reorder among themselves.
+        state = moveTab(state, c2.id, c1.id);
+        expect(visibleTabs(state, CHAT_1).map(t => t.label)).toEqual(['bash', 'Notes', 'Draft', 'Plan', 'a.ts']);
+        // "To the end" keeps a canvas in the canvas group.
+        state = moveTab(state, c2.id, null);
+        expect(visibleTabs(state, CHAT_1).map(t => t.label)).toEqual(['bash', 'Notes', 'Plan', 'Draft', 'a.ts']);
     });
 
     it('leaves the active selection alone', () => {

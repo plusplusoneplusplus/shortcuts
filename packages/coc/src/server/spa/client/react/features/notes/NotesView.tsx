@@ -319,9 +319,11 @@ export function NotesView({
     // slide-in overlay while peeking. Undefined when expanded so it stays in flow.
     // `motion-reduce:transition-none` drops the slide for users who prefer reduced
     // motion — the panel still floats out, it just appears instantly.
+    // `left-9` starts the overlay at the rail's right edge (`w-9`): the rail
+    // paints above it (`z-40`), so anchoring at `left-0` hid the tree's left edge.
     const sidebarPeekClassName = sidebarCollapsedDesktop
         ? sidebarPeeking
-            ? `absolute inset-y-0 left-0 z-30 shadow-xl transition-transform duration-200 ease-out motion-reduce:transition-none ${peekVisible ? 'translate-x-0' : '-translate-x-full'}`
+            ? `absolute inset-y-0 left-9 z-30 shadow-xl transition-transform duration-200 ease-out motion-reduce:transition-none ${peekVisible ? 'translate-x-0' : '-translate-x-full'}`
             : 'hidden'
         : undefined;
 

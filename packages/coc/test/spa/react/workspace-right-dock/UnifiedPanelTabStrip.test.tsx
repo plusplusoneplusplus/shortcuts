@@ -91,6 +91,49 @@ describe('UnifiedPanelTabStrip', () => {
         expect(divider.nextElementSibling).toBe(starts[0]);
     });
 
+    it('puts chat canvases on the tools side of the divider, before files', () => {
+        let state = EMPTY_UNIFIED_PANEL;
+        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
+        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        const tabs = visibleTabs(state, CHAT);
+        renderStrip({ tabs });
+        expect(screen.getAllByRole('tab').map(el => el.getAttribute('data-kind')))
+            .toEqual(['terminal', 'canvas', 'file']);
+        const divider = screen.getByTestId('unified-panel-tab-section-divider');
+        expect(divider.previousElementSibling?.getAttribute('data-kind')).toBe('canvas');
+        expect(divider.nextElementSibling?.getAttribute('data-kind')).toBe('file');
+        // The canvas keeps its chat ownership even on the tools side.
+        expect(screen.getAllByRole('tab')[1].getAttribute('data-scope')).toBe('chat');
+    });
+
+    it('draws no divider while only tools (including canvases) are open', () => {
+        let state = EMPTY_UNIFIED_PANEL;
+        state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        renderStrip({ tabs: visibleTabs(state, CHAT) });
+        expect(screen.queryByTestId('unified-panel-tab-section-divider')).toBeNull();
+    });
+
+    it('stops Alt+Arrow at the divider between canvases and files', () => {
+        let state = EMPTY_UNIFIED_PANEL;
+        state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
+        state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        const tabs = visibleTabs(state, CHAT);
+        const props = renderStrip({ tabs });
+        // tabs = [canvas, file]: neither may step across into the other group.
+        fireEvent.keyDown(tabNode(tabs[0]), { key: 'ArrowRight', altKey: true });
+        fireEvent.keyDown(tabNode(tabs[1]), { key: 'ArrowLeft', altKey: true });
+        expect(props.onMove).not.toHaveBeenCalled();
+    });
+
+    it('draws canvas tabs with the palette icon', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
+        const tabs = visibleTabs(state, CHAT);
+        renderStrip({ tabs });
+        expect(tabNode(tabs[0]).querySelector('svg[data-icon="canvas-palette"]')).toBeTruthy();
+    });
+
     it('marks the active tab for assistive tech, not only with color', () => {
         const tabs = sampleTabs();
         renderStrip({ tabs, activeId: tabs[1].id });
@@ -404,5 +447,73 @@ describe('UnifiedPanelTabStrip', () => {
         } finally {
             delete (Element.prototype as any).scrollIntoView;
         }
+    });
+
+    describe('overlay scrollbar', () => {
+        /** Give the tab row fake scroll metrics (jsdom has no layout) and re-measure. */
+        function overflow(list: HTMLElement, clientWidth: number, scrollWidth: number, scrollLeft = 0) {
+            Object.defineProperty(list, 'clientWidth', { configurable: true, value: clientWidth });
+            Object.defineProperty(list, 'scrollWidth', { configurable: true, value: scrollWidth });
+            list.scrollLeft = scrollLeft;
+            fireEvent.scroll(list);
+        }
+
+        it('hides the native scrollbar on the tab row', () => {
+            renderStrip();
+            expect(screen.getByTestId('unified-panel-tab-list').className).toContain('scrollbar-hide');
+        });
+
+        it('shows no thumb when the tabs fit', () => {
+            renderStrip();
+            overflow(screen.getByTestId('unified-panel-tab-list'), 300, 300);
+            expect(screen.queryByTestId('unified-panel-tab-scroll-thumb')).toBeNull();
+        });
+
+        it('sizes and places the thumb from the row scroll position', () => {
+            renderStrip();
+            const list = screen.getByTestId('unified-panel-tab-list');
+            overflow(list, 200, 800);
+            const thumb = screen.getByTestId('unified-panel-tab-scroll-thumb');
+            expect(thumb.style.width).toBe('50px');
+            expect(thumb.style.left).toBe('0px');
+            overflow(list, 200, 800, 400);
+            expect(thumb.style.left).toBe('100px');
+            // The thumb overlays the row instead of taking layout space under it.
+            expect(list.contains(thumb)).toBe(false);
+            expect(thumb.className).toContain('absolute');
+        });
+
+        it('scrolls the row sideways on a vertical wheel', () => {
+            renderStrip();
+            const list = screen.getByTestId('unified-panel-tab-list');
+            overflow(list, 200, 800);
+            fireEvent.wheel(list, { deltaY: 120, deltaX: 0 });
+            expect(list.scrollLeft).toBe(120);
+            // A horizontal gesture is left to the browser.
+            fireEvent.wheel(list, { deltaY: 0, deltaX: 40 });
+            expect(list.scrollLeft).toBe(120);
+        });
+
+        it('leaves the wheel alone when nothing overflows', () => {
+            renderStrip();
+            const list = screen.getByTestId('unified-panel-tab-list');
+            overflow(list, 300, 300);
+            fireEvent.wheel(list, { deltaY: 120 });
+            expect(list.scrollLeft).toBe(0);
+        });
+
+        it('drags the thumb to scroll the row proportionally', () => {
+            renderStrip();
+            const list = screen.getByTestId('unified-panel-tab-list');
+            overflow(list, 200, 800);
+            const thumb = screen.getByTestId('unified-panel-tab-scroll-thumb');
+            fireEvent.pointerDown(thumb, { button: 0, clientX: 10 });
+            fireEvent.pointerMove(window, { clientX: 30 });
+            // 20px of thumb travel is 20 * (800 / 200) px of row scroll.
+            expect(list.scrollLeft).toBe(80);
+            fireEvent.pointerUp(window);
+            fireEvent.pointerMove(window, { clientX: 100 });
+            expect(list.scrollLeft).toBe(80);
+        });
     });
 });

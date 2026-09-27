@@ -106,6 +106,19 @@ export function scopeForKind(kind: UnifiedTabKind): UnifiedTabScope {
     return WORKSPACE_KINDS.has(kind) ? 'workspace' : 'chat';
 }
 
+/** Where a tab sits in the strip: tools left of the divider, resources right. */
+export type UnifiedTabDisplayGroup = 'tools' | 'resources';
+
+/**
+ * Display grouping, separate from ownership. Canvases are chat-owned but render
+ * with the workspace tools (Terminal, Notes, Git) because they are something
+ * the user works in, not a repo file; files, diffs, and external sources form
+ * the resource group after the strip's divider.
+ */
+export function displayGroupForKind(kind: UnifiedTabKind): UnifiedTabDisplayGroup {
+    return WORKSPACE_KINDS.has(kind) || kind === 'canvas' ? 'tools' : 'resources';
+}
+
 /**
  * The key a tab is filed under: `WORKSPACE_SCOPE_KEY` for workspace-owned
  * kinds and for chat-owned kinds opened with no chat selected, otherwise the
@@ -254,13 +267,18 @@ function escapePart(part: string): string {
 
 /**
  * The tabs visible for a chat selection, in strip order: workspace tabs first,
- * then that chat's own tabs. Passing null (no chat selected) shows the
- * workspace tabs plus anything opened while no chat was selected.
+ * then that chat's canvases, then the chat's other tabs. Passing null (no chat
+ * selected) shows the workspace tabs plus anything opened while no chat was
+ * selected. Stored order is kept inside each group.
  */
 export function visibleTabs(state: UnifiedPanelState, chatId: string | null): readonly UnifiedPanelTab[] {
     const chatOwned = state.chatTabs[chatId ?? WORKSPACE_SCOPE_KEY] ?? [];
     if (chatOwned.length === 0) return state.workspaceTabs;
-    return [...state.workspaceTabs, ...chatOwned];
+    return [
+        ...state.workspaceTabs,
+        ...chatOwned.filter(tab => displayGroupForKind(tab.kind) === 'tools'),
+        ...chatOwned.filter(tab => displayGroupForKind(tab.kind) === 'resources'),
+    ];
 }
 
 /**
@@ -805,7 +823,8 @@ export function moveTab(state: UnifiedPanelState, id: string, beforeId: string |
     }
     const to = without.findIndex(entry => entry.id === beforeId);
     // `beforeId` outside this section means a cross-section drag; ignore it.
-    if (to < 0) return state;
+    // So does a drop across the strip's divider (a canvas among files).
+    if (to < 0 || displayGroupForKind(without[to].kind) !== displayGroupForKind(tab.kind)) return state;
     return withList(state, scopeKey, scope, [...without.slice(0, to), moved, ...without.slice(to)]);
 }
 

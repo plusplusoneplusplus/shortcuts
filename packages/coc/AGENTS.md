@@ -557,6 +557,9 @@ all have their own `references/*.md`.
   mode serves the other's diff. In `upstream` mode a zero-commit range is
   returned as an empty range rather than `null`, so the base toggle stays
   reachable when nothing is unpushed.
+  Every SPA branch-range call (range, file list, per-file diff) routes through
+  `getCocClientForWorkspace(workspaceId)`; the local client 404s
+  "Workspace not found" for a remote clone.
 - **Git worktree execution** (opt-in, `features.gitWorktreeExecution`, default
   off) lives in `src/server/worktree/` (`GitWorktreeService` +
   `WorktreeMetadataStore`) with Ralph wiring in
