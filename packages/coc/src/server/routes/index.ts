@@ -878,6 +878,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
+        oauthManager: opts.mcpOauthManager,
         enqueueChat: async (workspaceId, message) => {
             const taskId = await bridge.enqueue({
                 type: 'chat',

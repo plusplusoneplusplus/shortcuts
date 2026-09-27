@@ -53,7 +53,9 @@ The MCP server panel combines configured status with live tool discovery: a live
 
 ### Teams channel connection
 
-Normal CoC's Admin → Connections card registers the global `Microsoft Teams` HTTP MCP endpoint in `~/.copilot/mcp-config.json` and authenticates it through `POST /api/mcp-oauth/start` using that exact server name. The card checks `oauthAvailable` and the shared token-cache `authStatus`; when MCP OAuth is disabled or the SDK lacks `createClient`, it explains why authentication cannot start. The manager reads that same endpoint and cached token, resolves or creates the configured team and channel through MCP, then polls the channel with `TeamsBot`. Configuration stays server-wide; inbound `TeamsCommandRouter` lets each sender select a registered workspace. This is distinct from the container's self-chat messaging relay and OAuth exchange.
+Normal CoC's Admin → Connections card registers the global `Microsoft Teams` HTTP MCP endpoint in `~/.copilot/mcp-config.json`. `POST /api/messaging/teams/auth/start` creates a localhost PKCE callback and returns a Microsoft sign-in link to open on the CoC host. The callback exchanges the code with the connector's MCP-scoped token helper, verifies `initialize` and `tools/list`, and stores credentials in the shared token cache. The shared MCP OAuth manager exposes pending/completed/failed state; an abandoned sign-in expires after eight minutes.
+
+The card checks `teamsOAuthAvailable` and the cache `authStatus`. The manager reads the configured endpoint and token, resolves or creates the named team and channel through MCP, then polls with `TeamsBot`. Configuration is server-wide; inbound `TeamsCommandRouter` lets each sender select a registered workspace. This is distinct from the container's self-chat messaging relay.
 
 ## OAuth Auto-Refresh (Background)
 

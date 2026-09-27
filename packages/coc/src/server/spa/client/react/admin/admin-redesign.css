@@ -2050,3 +2050,5 @@
 .admin-redesign .ar-teams-field { display: grid; gap: 5px; min-width: 0; }
 .admin-redesign .ar-teams-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .admin-redesign .ar-teams-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-redesign .ar-teams-auth-link { align-self: center; color: var(--ar-accent-fg); font-size: 12px; font-weight: 600; text-decoration: underline; }
+.admin-redesign .ar-teams-auth-link:focus-visible { outline: 2px solid var(--ar-accent); outline-offset: 2px; }

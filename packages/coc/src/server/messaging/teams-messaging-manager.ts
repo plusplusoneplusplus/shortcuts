@@ -12,6 +12,7 @@ import * as os from 'os';
 import type { BotStatus, InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
 import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
+import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
 
 // ── Persisted Config ─────────────────────────────────────────
@@ -59,6 +60,11 @@ export class TeamsMessagingManager {
     private readonly _homeDir: string;
     private readonly customHome: boolean;
     private generation = 0;
+    private oauthFlow: TeamsOAuthFlow | null = null;
+
+    setOAuthFlow(flow: TeamsOAuthFlow): void {
+        this.oauthFlow = flow;
+    }
 
     constructor(private readonly dataDir: string, opts?: { homeDir?: string }) {
         this.configPath = path.join(dataDir, 'teams-messaging.json');
@@ -291,6 +297,7 @@ export class TeamsMessagingManager {
     }
 
     async disconnect(): Promise<void> {
+        this.oauthFlow?.cancel();
         this.generation++;
         if (this.bot) {
             await this.bot.stop();

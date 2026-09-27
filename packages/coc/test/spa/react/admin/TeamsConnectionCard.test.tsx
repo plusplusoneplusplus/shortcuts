@@ -8,6 +8,7 @@ const status = {
     error: null,
     authStatus: 'authenticated',
     oauthAvailable: true,
+    teamsOAuthAvailable: true,
     serverUrl: 'https://example.test/teams',
     teamName: 'Engineering',
     channelName: 'General',
@@ -38,12 +39,32 @@ describe('TeamsConnectionCard', () => {
     it('does not offer OAuth when the server lacks support and displays connection errors', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => ({
             ok: true,
-            json: async () => ({ ...status, oauthAvailable: false, error: 'OAuth required', authStatus: 'required' }),
+            json: async () => ({ ...status, teamsOAuthAvailable: false, error: 'OAuth required', authStatus: 'required' }),
         })));
         render(<TeamsConnectionCard />);
         expect(await screen.findByText('OAuth required')).toBeDefined();
         expect((screen.getByText('Authenticate') as HTMLButtonElement).disabled).toBe(true);
         expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('offers a user-clickable sign-in link without opening a popup automatically', async () => {
+        const popup = vi.fn();
+        vi.stubGlobal('open', popup);
+        const fetch = vi.fn(async (url: string) => ({
+            ok: true,
+            json: async () => url.endsWith('/status') ? { ...status, authStatus: 'required' } : {
+                requestId: 'pending-1', authorizationUrl: 'https://login.example.test/authorize?state=opaque',
+            },
+        }));
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByText(/OAuth: required/);
+        fireEvent.click(screen.getByText('Authenticate'));
+        const link = await screen.findByText('Continue Microsoft sign-in') as HTMLAnchorElement;
+        expect(link.href).toContain('https://login.example.test/authorize');
+        expect(link.rel).toContain('noopener');
+        expect(popup).not.toHaveBeenCalled();
+        expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/messaging\/teams\/auth\/start$/), expect.objectContaining({ method: 'POST' }));
     });
 
     it('offers reconnect for an expired token that the connector can refresh', async () => {

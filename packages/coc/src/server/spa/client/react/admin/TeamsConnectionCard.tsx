@@ -10,6 +10,7 @@ interface TeamsStatus {
     error: string | null;
     authStatus: string | null;
     oauthAvailable: boolean;
+    teamsOAuthAvailable?: boolean;
     serverUrl: string | null;
     teamName: string;
     channelName: string;
@@ -38,6 +39,7 @@ export function TeamsConnectionCard() {
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [authorizing, setAuthorizing] = useState(false);
+    const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
     const oauth = useRef(new McpOAuthFlowController());
     const mounted = useRef(false);
     const dirty = status !== null && (
@@ -90,23 +92,20 @@ export function TeamsConnectionCard() {
     const authenticate = async () => {
         setAuthorizing(true);
         setError(null);
+        setAuthorizationUrl(null);
         try {
             const response = await request<{
-                alreadyAuthenticated: boolean; requestId: string; authorizationUrl?: string;
-            }>('/mcp-oauth/start', { serverName: 'Microsoft Teams', force: true });
-            if (response.alreadyAuthenticated) {
-                setAuthorizing(false);
-                await load();
-                return;
-            }
+                requestId: string; authorizationUrl: string;
+            }>('/messaging/teams/auth/start', {});
             if (!response.requestId) throw new Error('OAuth did not return a request ID');
-            if (response.authorizationUrl) window.open(response.authorizationUrl, '_blank', 'noopener,noreferrer');
+            if (!response.authorizationUrl) throw new Error('OAuth did not return a sign-in link');
+            setAuthorizationUrl(response.authorizationUrl);
             oauth.current.startPolling({
                 key: 'Microsoft Teams', requestId: response.requestId, apiBase: base(),
                 isStale: () => !mounted.current,
             }, {
-                onCompleted: () => { setAuthorizing(false); void load(); },
-                onFailed: message => { setAuthorizing(false); setError(message); },
+                onCompleted: () => { setAuthorizationUrl(null); setAuthorizing(false); void load(); },
+                onFailed: message => { setAuthorizationUrl(null); setAuthorizing(false); setError(message); },
             });
         } catch (err) {
             setAuthorizing(false);
@@ -118,7 +117,7 @@ export function TeamsConnectionCard() {
         <SettingsCard title="Microsoft Teams" description="Receive commands and chat messages from one Teams channel, routed to a selected CoC workspace." data-testid="teams-connection-card">
             <div className="ar-teams">
                 <p className="ar-teams-hint">
-                    Configure a global Teams MCP endpoint, authenticate with Copilot SDK OAuth, then connect.
+                    Configure a global Teams MCP endpoint, complete Microsoft sign-in, then connect.
                     This bridge polls a team channel for inbound messages; it does not relay agent output to a self-chat.
                     A missing team or channel is created when you connect.
                     Users can run <code>list repos</code> and <code>select repo &lt;name&gt;</code> to choose their workspace.
@@ -153,8 +152,9 @@ export function TeamsConnectionCard() {
                                 teamName: teamName.trim(), channelName: channelName.trim(), botName: botName.trim(),
                             });
                         })}>Save channel</Button>
-                    <Button size="sm" disabled={busy || authorizing || dirty || !status?.serverUrl || !status?.oauthAvailable}
+                    <Button size="sm" disabled={busy || authorizing || dirty || !status?.serverUrl || !status?.teamsOAuthAvailable}
                         onClick={() => void authenticate()}>{authorizing ? 'Authorizing…' : 'Authenticate'}</Button>
+                    {authorizationUrl && <a className="ar-teams-auth-link" href={authorizationUrl} target="_blank" rel="noopener noreferrer">Continue Microsoft sign-in</a>}
                     <Button size="sm" disabled={busy || dirty || !status?.serverUrl || !['authenticated', 'expired'].includes(status.authStatus ?? '')}
                         onClick={() => void run(async () => {
                             if (!status?.enabled) await request('/messaging/teams/config', { enabled: true });
@@ -165,9 +165,10 @@ export function TeamsConnectionCard() {
                     })}>Disable</Button>}
                     <Button size="sm" disabled={busy} onClick={() => void load()}>Refresh status</Button>
                 </div>
-                {status && !status.oauthAvailable && <p className="ar-teams-warning">
-                    MCP OAuth is unavailable. Enable mcpOauth and use a Copilot SDK with OAuth support, then restart CoC.
+                {status && !status.teamsOAuthAvailable && <p className="ar-teams-warning">
+                    MCP OAuth is unavailable. Enable mcpOauth and restart CoC.
                 </p>}
+                {authorizationUrl && <p className="ar-teams-warning">Open the sign-in link on the same computer as CoC; the callback uses localhost.</p>}
                 {dirty && <p className="ar-teams-warning">Save endpoint and channel changes before connecting.</p>}
             </div>
         </SettingsCard>

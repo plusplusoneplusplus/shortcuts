@@ -15,6 +15,7 @@ Consolidated messaging connectors behind one `MessagingConnector` contract. No C
 - **`getStatus()` is normalized** to `ConnectorStatus`. Each bot keeps its native `_status` for internal logic and maps on the way out. WhatsApp maps `qr-pending → pairing`, `creating-group → busy`; use `WhatsAppBot.getNativeStatus()` when the native value is needed (e.g. REST status output).
 - **`SendOptions.mentions` are keyed by `id`.** `TeamsBot.send` maps `id → aadId` before calling its transport.
 - **MCP polling failures stay visible.** `TeamsBot` reports poll errors through `onError` and clears them after a successful poll; an unrecoverable token-refresh failure stops polling with error status until reconnect.
+- **MCP HTTP sessions complete initialization.** `McpClient` sends `notifications/initialized` after negotiating the protocol version and carries the session id and version on later requests, including `tools/list`.
 - Baileys + qrcode-terminal are `optionalDependencies` — installed but only loaded by WhatsApp use.
 
 ## Build / test

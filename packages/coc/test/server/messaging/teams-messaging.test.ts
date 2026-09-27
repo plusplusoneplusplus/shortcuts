@@ -10,6 +10,7 @@ import * as http from 'http';
 import type { Route } from '../../../src/server/types';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
 import { acquireMcpOAuthToken, TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
+import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 
 // Mock the teams-bot package
 vi.mock('@plusplusoneplusplus/coc-connector/teams', () => ({
@@ -49,6 +50,10 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', () => ({
     }),
     acquireMcpOAuthToken: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
     acquireTokenViaAzCli: vi.fn().mockResolvedValue('fake-mcp-token-abc'),
+    getOAuthConfig: vi.fn(() => ({
+        clientId: 'test-public-client', scope: 'https://example.test/teams/.default offline_access',
+        authorizeUrl: 'https://login.example.test/oauth2/v2.0/authorize',
+    })),
 }));
 
 describe('TeamsMessagingManager', () => {
@@ -240,6 +245,47 @@ describe('Teams messaging routes (integration)', () => {
             expect(routes[1].pattern).toEqual(/^\/api\/messaging\/teams\/server$/);
             expect(routes[2].pattern).toEqual(/^\/api\/messaging\/teams\/config$/);
             expect(routes[3].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
+        } finally {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+
+    it('exposes the Teams sign-in flow only when the OAuth manager is available', async () => {
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-auth-routes-'));
+        try {
+            const routes: Route[] = [];
+            const manager = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home') });
+            const oauthManager = new McpOauthManager();
+            registerTeamsMessagingRoutes(routes, { dataDir: tmpDir, manager, oauthManager });
+            const start = routes.find(r => r.method === 'POST' && r.pattern.test('/api/messaging/teams/auth/start'));
+            expect(start).toBeDefined();
+            const server = http.createServer((req, res) => {
+                const pathname = new URL(req.url!, 'http://localhost').pathname;
+                const route = routes.find(r => r.method === req.method && r.pattern.test(pathname));
+                if (route) void Promise.resolve(route.handler(req, res, pathname.match(route.pattern)!));
+                else { res.writeHead(404); res.end(); }
+            });
+            await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+            try {
+                const addr = server.address();
+                if (!addr || typeof addr === 'string') throw new Error('Expected TCP address');
+                const base = `http://127.0.0.1:${addr.port}`;
+                expect((await fetch(`${base}/api/messaging/teams/auth/start`, { method: 'POST' })).status).toBe(400);
+                await manager.configureServer('https://example.test/teams');
+                const response = await fetch(`${base}/api/messaging/teams/auth/start`, { method: 'POST' });
+                expect(response.status).toBe(200);
+                const body = await response.json();
+                expect(body.authorizationUrl).toContain('https://login.example.test');
+                expect(oauthManager.getPending(body.requestId)?.status).toBe('pending');
+                const url = new URL(body.authorizationUrl);
+                const callback = new URL(url.searchParams.get('redirect_uri')!.replace('localhost', '127.0.0.1'));
+                callback.searchParams.set('state', url.searchParams.get('state')!);
+                callback.searchParams.set('error', 'access_denied');
+                await fetch(callback);
+            } finally {
+                await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
+            }
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

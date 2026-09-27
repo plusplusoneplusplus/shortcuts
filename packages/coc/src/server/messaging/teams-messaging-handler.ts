@@ -15,8 +15,10 @@ import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { McpOauthManager } from '../mcp-oauth/mcp-oauth-manager';
 import { TeamsMessagingManager } from './teams-messaging-manager';
 import { TeamsCommandRouter } from './teams-command-router';
+import { TeamsOAuthFlow } from './teams-oauth-flow';
 
 export interface TeamsMessagingRoutesOptions {
     dataDir: string;
@@ -29,6 +31,7 @@ export interface TeamsMessagingRoutesOptions {
     /** Existing manager, shared with the server lifecycle. */
     manager?: TeamsMessagingManager;
     oauthAvailable?: boolean;
+    oauthManager?: McpOauthManager;
 }
 
 export function registerTeamsMessagingRoutes(
@@ -36,6 +39,8 @@ export function registerTeamsMessagingRoutes(
     opts: TeamsMessagingRoutesOptions,
 ): TeamsMessagingManager {
     const manager = opts.manager ?? new TeamsMessagingManager(opts.dataDir);
+    const oauthFlow = opts.oauthManager ? new TeamsOAuthFlow(opts.oauthManager) : null;
+    if (oauthFlow) manager.setOAuthFlow(oauthFlow);
 
     // Wire the command router if store + queue deps are provided
     if (opts.store && opts.enqueueChat && opts.executeFollowUp) {
@@ -62,9 +67,28 @@ export function registerTeamsMessagingRoutes(
         method: 'GET',
         pattern: /^\/api\/messaging\/teams\/status$/,
         handler: (_req, res) => {
-            sendJSON(res, 200, { ...manager.getStatus(), oauthAvailable: opts.oauthAvailable ?? false });
+            sendJSON(res, 200, { ...manager.getStatus(), oauthAvailable: opts.oauthAvailable ?? false, teamsOAuthAvailable: !!oauthFlow });
         },
     });
+
+    if (oauthFlow) {
+        routes.push({
+            method: 'POST',
+            pattern: /^\/api\/messaging\/teams\/auth\/start$/,
+            handler: async (_req, res) => {
+                const serverUrl = manager.getStatus().serverUrl;
+                if (!serverUrl) {
+                    sendError(res, 400, 'Configure a global HTTP Microsoft Teams MCP server before authenticating');
+                    return;
+                }
+                try {
+                    sendJSON(res, 200, await oauthFlow.start(serverUrl));
+                } catch (err) {
+                    sendError(res, 500, err instanceof Error ? err.message : String(err));
+                }
+            },
+        });
+    }
 
     routes.push({
         method: 'POST',
