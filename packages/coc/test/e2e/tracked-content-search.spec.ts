@@ -142,7 +142,17 @@ test.describe('Tracked content search overlay', () => {
                 .filter({ hasText: 'betaMarker' });
             await expect(betaMatch).toHaveCount(1);
             const groupUrl = page.url();
+            // Single-click only selects: the overlay stays open and the source
+            // preview reads the owner's file at the matched line.
             await betaMatch.click();
+            await expect(betaMatch).toHaveAttribute('aria-selected', 'true');
+            await expect(page.getByTestId('content-search-overlay')).toHaveCount(1);
+            await expect(page.getByTestId('content-search-overlay-source')).toContainText('betaMarker', {
+                timeout: 15_000,
+            });
+
+            // Double-click opens the match in the panel.
+            await betaMatch.dblclick();
 
             await expect(page.getByTestId('content-search-overlay')).toHaveCount(0, { timeout: 15_000 });
             await expect(page).toHaveURL(groupUrl);

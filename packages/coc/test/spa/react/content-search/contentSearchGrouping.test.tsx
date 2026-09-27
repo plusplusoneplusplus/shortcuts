@@ -67,6 +67,16 @@ describe('groupOverlayMatches', () => {
         expect(repos[0].files[0].key).not.toBe(repos[1].files[0].key);
     });
 
+    it('separates equal workspace IDs and paths on different clone routes', () => {
+        const repos = groupOverlayMatches([
+            match({ id: 'remote-a', routingRef: 'clone-a' }),
+            match({ id: 'remote-b', routingRef: 'clone-b' }),
+        ]);
+        expect(repos).toHaveLength(2);
+        expect(repos[0].files[0].key).not.toBe(repos[1].files[0].key);
+        expect(repos[0].key).not.toBe(repos[1].key);
+    });
+
     it('is empty for an empty result set', () => {
         expect(groupOverlayMatches([])).toEqual([]);
         expect(visibleMatches([], new Set())).toEqual([]);
@@ -106,6 +116,14 @@ describe('toggleCollapsed', () => {
 });
 
 describe('ContentSearchOverlay grouped results', () => {
+    function manyMatches(workspaceId: string, count: number): ContentSearchOverlayMatch[] {
+        return Array.from({ length: count }, (_, index) => match({
+            id: `${workspaceId}-${index}`,
+            workspaceId,
+            line: index + 1,
+        }));
+    }
+
     function renderOverlay(
         overrides: Partial<React.ComponentProps<typeof ContentSearchOverlay>> = {},
     ) {
@@ -295,5 +313,80 @@ describe('ContentSearchOverlay grouped results', () => {
     it('shows no failure list when every member answered', () => {
         renderOverlay();
         expect(screen.queryByTestId('content-search-overlay-failures')).toBeNull();
+    });
+
+    it.each([1, 10, 11])('shows the first ten of %i results with accurate totals', count => {
+        renderOverlay({ scope: 'repo', matches: manyMatches('repo-a', count) });
+        const key = fileGroupKey('repo-a', 'src/app.ts');
+        expect(matchRows()).toHaveLength(Math.min(count, 10));
+        expect(screen.getByTestId(`content-search-overlay-file-${key}`).getAttribute('aria-label'))
+            .toBe(`src/app.ts, ${count} ${count === 1 ? 'result' : 'results'}`);
+        expect(screen.queryByTestId(`content-search-overlay-reveal-${key}`)?.textContent ?? null)
+            .toBe(count > 10 ? 'Show remaining 1' : null);
+    });
+
+    it('reveals per owner, keeps reveal after collapse, and resets on a fresh result set', () => {
+        const first = [...manyMatches('repo-a', 11), ...manyMatches('repo-b', 11)];
+        const props = {
+            open: true,
+            scope: 'group' as const,
+            query: 'needle',
+            onQueryChange: vi.fn(),
+            onSubmit: vi.fn(),
+            onClose: vi.fn(),
+            matches: first,
+            onOpenMatch: vi.fn(),
+        };
+        const { rerender } = render(<ContentSearchOverlay {...props} />);
+        const aKey = fileGroupKey('repo-a', 'src/app.ts');
+        const bKey = fileGroupKey('repo-b', 'src/app.ts');
+        expect(matchRows()).toHaveLength(20);
+        expect(screen.getByTestId('content-search-overlay-repo-repo-a').getAttribute('aria-label'))
+            .toBe('repo-a, 11 results');
+
+        fireEvent.click(screen.getByTestId(`content-search-overlay-reveal-${aKey}`));
+        expect(matchRows()).toHaveLength(21);
+        expect(screen.queryByTestId(`content-search-overlay-reveal-${aKey}`)).toBeNull();
+        expect(screen.getByTestId(`content-search-overlay-reveal-${bKey}`)).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId(`content-search-overlay-file-${aKey}`));
+        expect(matchRows()).toHaveLength(10);
+        fireEvent.click(screen.getByTestId(`content-search-overlay-file-${aKey}`));
+        expect(matchRows()).toHaveLength(21);
+        rerender(<ContentSearchOverlay {...props} matches={[...first]} />);
+        expect(matchRows()).toHaveLength(20);
+        expect(screen.getByTestId(`content-search-overlay-reveal-${aKey}`)).toBeTruthy();
+    });
+
+    it('reveals identical paths independently when workspace IDs collide across clones', () => {
+        const a = manyMatches('repo-a', 11).map(row => ({ ...row, routingRef: 'remote:a', id: `a-${row.id}` }));
+        const b = manyMatches('repo-a', 11).map(row => ({ ...row, routingRef: 'remote:b', id: `b-${row.id}` }));
+        renderOverlay({ matches: [...a, ...b] });
+        const aKey = fileGroupKey('repo-a', 'src/app.ts', 'remote:a');
+        const bKey = fileGroupKey('repo-a', 'src/app.ts', 'remote:b');
+        fireEvent.click(screen.getByTestId(`content-search-overlay-reveal-${aKey}`));
+        expect(matchRows()).toHaveLength(21);
+        expect(screen.getByTestId(`content-search-overlay-reveal-${bKey}`)).toBeTruthy();
+        fireEvent.click(screen.getByTestId(`content-search-overlay-file-${bKey}`));
+        expect(matchRows()).toHaveLength(11);
+        expect(screen.getByTestId(`content-search-overlay-file-${aKey}`).getAttribute('aria-label'))
+            .toBe('src/app.ts, 11 results');
+        expect(screen.getByTestId(`content-search-overlay-file-${bKey}`).getAttribute('aria-label'))
+            .toBe('src/app.ts, 11 results');
+    });
+
+    it('arrows skip unrevealed rows then reach them after reveal', () => {
+        const props = renderOverlay({ scope: 'repo', matches: manyMatches('repo-a', 11) });
+        const dialog = screen.getByTestId('content-search-overlay');
+        for (let i = 0; i < 12; i += 1) fireEvent.keyDown(dialog, { key: 'ArrowDown' });
+        expect(screen.getByTestId('content-search-overlay-match-repo-a-9').getAttribute('aria-selected'))
+            .toBe('true');
+        fireEvent.keyDown(dialog, { key: 'Enter' });
+        expect(props.onOpenMatch.mock.calls[0][0].id).toBe('repo-a-9');
+
+        fireEvent.click(screen.getByTestId(`content-search-overlay-reveal-${fileGroupKey('repo-a', 'src/app.ts')}`));
+        fireEvent.keyDown(dialog, { key: 'ArrowDown' });
+        fireEvent.keyDown(dialog, { key: 'Enter' });
+        expect(props.onOpenMatch.mock.calls[1][0].id).toBe('repo-a-10');
     });
 });

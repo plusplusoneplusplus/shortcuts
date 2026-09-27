@@ -3599,3 +3599,51 @@
 .math-node-editor-cancel:hover {
     background: rgba(127, 127, 127, 0.12);
 }
+
+.content-search-overlay-dialog {
+    width: calc(100% - 2rem);
+    height: min(80vh, 760px);
+}
+
+.content-search-overlay-body {
+    display: grid;
+    grid-template-columns: minmax(0, 44%) minmax(0, 56%);
+}
+
+.content-search-overlay-results-pane,
+.content-search-overlay-preview-pane {
+    min-height: 0;
+}
+
+.content-search-overlay-preview-pane {
+    border-left: 1px solid #c8c8c8;
+}
+
+.dark .content-search-overlay-preview-pane {
+    border-left-color: #555;
+}
+
+.content-search-overlay-mobile {
+    display: none;
+}
+
+@media (max-width: 799px) {
+    .content-search-overlay-body {
+        display: block;
+    }
+    .content-search-overlay-results-pane,
+    .content-search-overlay-preview-pane {
+        height: 100%;
+    }
+    .content-search-overlay-body[data-view="preview"] .content-search-overlay-results-pane,
+    .content-search-overlay-body[data-view="results"] .content-search-overlay-preview-pane {
+        display: none;
+    }
+    .content-search-overlay-mobile {
+        display: inline;
+    }
+    .content-search-overlay-preview-pane,
+    .dark .content-search-overlay-preview-pane {
+        border-left: 0;
+    }
+}

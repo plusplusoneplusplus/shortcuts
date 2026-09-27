@@ -203,7 +203,7 @@ export function useWorkspaceDockToggle(workspaceId: string): {
     const mode = useSyncExternalStore(
         useCallback(listener => subscribeDockMode(modeStorageKey, listener), [modeStorageKey]),
         () => readDockMode(modeStorageKey),
-        () => 'explorer',
+        (): WorkspaceDockMode => 'explorer',
     );
     const selectMode = useCallback((nextMode: WorkspaceDockMode) => {
         const currentMode = readDockMode(modeStorageKey);

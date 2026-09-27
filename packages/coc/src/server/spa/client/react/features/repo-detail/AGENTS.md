@@ -277,15 +277,28 @@ The page-level Ctrl/Cmd+Shift+F overlay is a separate tracked-file surface under
 `content-search/`. `contentSearchStateStore` keys repo and group state by workspace
 plus concrete clone route. It persists only query/modes/globs/untracked controls;
 result payloads remain in memory, so close/reopen and same-page scope changes can
-restore them while a reload restores controls without searching. Activating a row
-runs `contentSearchOpen`: group results first refresh membership, every result
-preflights its repo-relative path through the clone-qualified owner route, and only
-then opens the unified panel's preview slot at the matching line. The panel scope
-and dock target stay unchanged for group results. A stale member, unresolved clone,
-or deleted file leaves the overlay and panel state intact and is announced inline.
-Rows highlight the exact server-provided UTF-16 `startColumn`/`endColumn` span; the
-shared Explorer splitter clamps malformed offsets, and the overlay never derives a
-span from the current query.
+restore them while a reload restores controls without searching. The overlay
+keeps query/modes and filters above a two-pane results/preview view. Below 800px
+it switches between Results and Preview with the list still mounted, preserving
+scroll position and selection. Results group by clone-qualified repository and
+file. Files with more than ten matches initially show ten rows and offer an
+in-memory reveal control; collapse and reveal never change total counts, and
+keyboard navigation visits only rendered match rows. Each new result set resets
+grouping and selection state. Single-click and arrows select without changing
+panel state. `ContentSearchSourcePreview` fetches only the selected match's file
+through `explorerApi.readBlob` with its workspace id and concrete owner route;
+selection changes, new results, scope changes, and unmount abort older reads.
+It displays adjacent source lines as inert text, highlighting the server's
+UTF-16 span; binary, changed, missing, and offline source remain errors beside
+the usable results.
+
+Enter on a selected row, double-click, and Open file run `contentSearchOpen`:
+group results first refresh membership, every result preflights its repo-relative
+path through the clone-qualified owner route, and only then opens the unified
+panel's preview slot at the matching line. The panel scope and dock target stay
+unchanged for group results. A stale member, unresolved clone, or deleted file
+leaves the overlay and panel state intact and is announced inline. Result rows
+use the shared Explorer UTF-16 splitter for their exact match span.
 
 `SearchBar.tsx` is shared by both views. Its `data-testid`s derive from a
 `testIdPrefix` (`<prefix>-bar` / `-input` / `-clear` / `-toggle-<id>`) whose

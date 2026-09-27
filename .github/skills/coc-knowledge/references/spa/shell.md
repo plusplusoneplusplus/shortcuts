@@ -256,16 +256,26 @@ a result-owned preview without changing the page-level group. Ordinary repos and
 Ctrl/Cmd+O retain target-scoped ownership.
 
 Ctrl/Cmd+Shift+F opens the page-level tracked-content overlay from any desktop
-repo or repo-group sub-tab. Activating a result preflights the clone-qualified
-file route and opens it at the matching line in the panel's preview slot. Group
-results keep the page and panel scoped to the group and carry the member owner on
-the tab; stale membership, offline routing, and deleted files leave the overlay
-and existing panel state intact. Overlay controls persist per clone-qualified repo
-or group scope in localStorage, while results remain in memory; reopening restores
-both during the page lifetime, and a reload restores controls without searching.
-Result previews highlight the exact server-provided UTF-16 column span, including
-regex and multiline pieces, with malformed offsets clamped by the shared Explorer
-match-text splitter.
+repo or repo-group sub-tab. Single-click or arrows select a result and read the
+file through its clone-qualified owner route into a cancellable, text-only source
+preview. Enter, double-click, or Open file preflights the owner and path before
+opening the matched line in the unified-panel preview slot. Group results keep
+the page and panel scoped to the group and carry the member owner on the tab;
+stale membership, offline routing, and deleted files leave the overlay and
+existing panel state intact.
+
+Overlay controls persist per clone-qualified repo or group scope in localStorage,
+while results remain in memory; reopening restores both during the page lifetime,
+and a reload restores controls without searching.
+The overlay keeps query controls and filters above a two-pane results/preview
+area. At narrow widths it switches between the panes without unmounting results
+or losing their scroll and selection. Repository and file groups use
+clone-qualified identities; files show their first ten matches until explicitly
+revealed, while counts include every returned hit. Collapse and reveal state
+reset on each result set, and keyboard navigation follows only visible rows.
+Source and row previews highlight the exact server-provided UTF-16 column span,
+including regex and multiline pieces, with malformed offsets clamped by the
+shared Explorer match-text splitter.
 
 The panel holds Terminal, Notes, files, notes, canvases, and chat diffs as tabs.
 The strip's divider splits tools (workspace tabs plus the chat's canvases, which

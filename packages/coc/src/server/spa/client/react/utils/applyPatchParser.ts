@@ -86,9 +86,10 @@ export function parseApplyPatchFileChanges(patchText: string): ApplyPatchFileCha
         isDelete: boolean,
         fromPath?: string,
         unified = false,
-    ) => {
+    ): ApplyPatchFileChange => {
         commitCurrent();
-        current = {
+        inUnifiedSection = unified;
+        return {
             path: path.trim(),
             insertions: 0,
             deletions: 0,
@@ -96,7 +97,6 @@ export function parseApplyPatchFileChanges(patchText: string): ApplyPatchFileCha
             isDelete,
             fromPath,
         };
-        inUnifiedSection = unified;
     };
 
     for (const line of patchText.split(/\r?\n/)) {
@@ -106,26 +106,26 @@ export function parseApplyPatchFileChanges(patchText: string): ApplyPatchFileCha
             const { oldPath, newPath, isCreate, isDelete } = header;
             // A `/dev/null` old side is a create, not a rename — don't set fromPath.
             const fromPath = isCreate || oldPath === newPath ? undefined : oldPath;
-            startSection(newPath, isCreate, isDelete, fromPath, true);
+            current = startSection(newPath, isCreate, isDelete, fromPath, true);
             continue;
         }
 
         // Legacy section headers
         const addFile = line.match(/^\*\*\* Add File: (.+)$/);
         if (addFile) {
-            startSection(addFile[1], true, false);
+            current = startSection(addFile[1], true, false);
             continue;
         }
 
         const updateFile = line.match(/^\*\*\* Update File: (.+)$/);
         if (updateFile) {
-            startSection(updateFile[1], false, false);
+            current = startSection(updateFile[1], false, false);
             continue;
         }
 
         const deleteFile = line.match(/^\*\*\* Delete File: (.+)$/);
         if (deleteFile) {
-            startSection(deleteFile[1], false, true);
+            current = startSection(deleteFile[1], false, true);
             continue;
         }
 

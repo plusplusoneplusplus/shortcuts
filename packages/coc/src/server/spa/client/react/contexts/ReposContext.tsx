@@ -139,9 +139,6 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                     stats: {
                         queued: qr.queuedCount ?? 0,
                         running: qr.runningCount ?? 0,
-                        completed: 0,
-                        failed: 0,
-                        cancelled: 0,
                         total: 0,
                         isPaused: qr.isPaused ?? false,
                         isDraining: false,
@@ -195,7 +192,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             }
 
             // Extract all summaries and seed AppContext (replaces App.tsx bootstrap responsibility)
-            const allSummaries: any[] = processRes?.summaries || processRes?.processes || (Array.isArray(processRes) ? processRes : []);
+            const allSummaries = processRes?.summaries ?? [];
             dispatch({ type: 'SET_PROCESSES', processes: allSummaries });
 
             // Hide virtual workspaces (e.g. global workspace) from repos grid
@@ -388,9 +385,9 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 else if (process.status === 'running') stats.running++;
             }
             if (
-                repo.stats.success === stats.success
-                && repo.stats.failed === stats.failed
-                && repo.stats.running === stats.running
+                repo.stats?.success === stats.success
+                && repo.stats?.failed === stats.failed
+                && repo.stats?.running === stats.running
             ) return repo;
             return { ...repo, stats };
         }));

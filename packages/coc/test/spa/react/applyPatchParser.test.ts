@@ -210,6 +210,21 @@ describe('parseApplyPatchFileChanges — unified git diff format', () => {
         expect(result[1].deletions).toBe(1);
     });
 
+    it('commits the current section when switching from unified to legacy headers', () => {
+        const patch = [
+            'diff --git a/src/existing.ts b/src/existing.ts',
+            '@@ -1 +1 @@',
+            '-before',
+            '+after',
+            '*** Add File: src/new.ts',
+            '+created',
+        ].join('\n');
+        expect(parseApplyPatchFileChanges(patch)).toEqual([
+            { path: 'src/existing.ts', insertions: 1, deletions: 1, isCreate: false, isDelete: false, fromPath: undefined },
+            { path: 'src/new.ts', insertions: 1, deletions: 0, isCreate: true, isDelete: false, fromPath: undefined },
+        ]);
+    });
+
     it('skips git metadata lines from body counting (index, similarity, rename, old/new mode)', () => {
         const patch = [
             'diff --git a/src/f.ts b/src/f.ts',

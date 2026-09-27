@@ -19,11 +19,10 @@
  *  - Escape closes, and the host restores focus to whatever invoked the
  *    overlay.
  *
- * Selection lives here rather than on the DOM's own focus so a re-render with
- * fresh results cannot silently move the user: the index is clamped back into
- * range whenever the match list changes.
+ * Selection belongs to the current result set rather than DOM focus: a new
+ * answer clears it before a stale row can trigger a source read.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../../ui/cn';
 import { usePortalContainer } from '../../../ui/usePortalContainer';
@@ -34,11 +33,16 @@ import {
 } from './contentSearchControls';
 import {
     groupOverlayMatches,
+    INITIAL_MATCH_LIMIT,
     toggleCollapsed,
     visibleMatches,
     type ContentSearchRepoGroup,
 } from './contentSearchGrouping';
 import { splitMatchText } from '../explorer/contentSearchMatchText';
+import {
+    ContentSearchSourcePreview,
+    type ContentSearchPreviewLoader,
+} from './ContentSearchSourcePreview';
 
 /** One selectable row. Carries the owner identity the open path needs (AC-04). */
 export interface ContentSearchOverlayMatch {
@@ -86,6 +90,7 @@ export interface ContentSearchOverlayProps {
     onClose: () => void;
     matches: ContentSearchOverlayMatch[];
     onOpenMatch: (match: ContentSearchOverlayMatch) => void;
+    loadPreview?: ContentSearchPreviewLoader;
     /** A search is in flight. */
     busy?: boolean;
     /** The server capped the answer; the overlay says so above the results. */
@@ -153,6 +158,7 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
         onClose,
         matches,
         onOpenMatch,
+        loadPreview,
         busy,
         truncated = false,
         failures = EMPTY_FAILURES,
@@ -163,19 +169,35 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
     } = props;
     const portalContainer = usePortalContainer(open);
     const queryRef = useRef<HTMLInputElement | null>(null);
+    const backRef = useRef<HTMLButtonElement | null>(null);
     const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
-    const [selected, setSelected] = useState(QUERY_SELECTION);
+    const [selection, setSelection] = useState({ index: QUERY_SELECTION, matches });
+    const selected = selection.matches === matches ? selection.index : QUERY_SELECTION;
+    const setSelected = useCallback((update: SetStateAction<number>) => {
+        setSelection(current => {
+            const index = current.matches === matches ? current.index : QUERY_SELECTION;
+            return {
+                matches,
+                index: typeof update === 'function' ? update(index) : update,
+            };
+        });
+    }, [matches]);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(EMPTY_COLLAPSED);
+    const [revealed, setRevealed] = useState<ReadonlySet<string>>(EMPTY_COLLAPSED);
+    const [mobileView, setMobileView] = useState<'results' | 'preview'>('results');
 
     const repos = useMemo(() => groupOverlayMatches(matches), [matches]);
     // The keyboard model walks only what is drawn, so collapsing a group
     // removes its matches from the selectable list as well as from the view.
-    const rows = useMemo(() => visibleMatches(repos, collapsed), [repos, collapsed]);
+    const rows = useMemo(() => visibleMatches(repos, collapsed, revealed), [repos, collapsed, revealed]);
     // A fresh result set starts fully expanded: the keys in `collapsed` belong
     // to the previous answer's groups and must not silently hide new ones.
     useEffect(() => {
         setCollapsed(EMPTY_COLLAPSED);
-    }, [matches]);
+        setRevealed(EMPTY_COLLAPSED);
+        setMobileView('results');
+        setSelected(QUERY_SELECTION);
+    }, [matches, setSelected]);
 
     // Opening, and every repeat of the shortcut, puts the caret in the query
     // with the previous term selected so typing replaces it. A passive effect,
@@ -188,13 +210,13 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
         if (input === null) return;
         input.focus();
         input.select();
-    }, [open, focusToken]);
+    }, [open, focusToken, setSelected]);
 
     // A smaller visible list — a new result set, or a group the user just
     // collapsed — must not leave the selection pointing past the end.
     useEffect(() => {
         setSelected((current) => (current >= rows.length ? rows.length - 1 : current));
-    }, [rows]);
+    }, [rows, setSelected]);
 
     // Move DOM focus to follow the selection, so screen readers and the browser
     // agree with the highlighted row.
@@ -204,6 +226,15 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
         rowRefs.current[selected]?.focus();
     }, [open, selected]);
 
+    useEffect(() => {
+        if (!open || window.innerWidth >= 800) return;
+        if (mobileView === 'preview') {
+            backRef.current?.focus();
+        } else if (selected >= 0) {
+            rowRefs.current[selected]?.focus({ preventScroll: true });
+        }
+    }, [mobileView, open]);
+
     const onKeyDown = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
             if (event.key === 'Escape') {
@@ -211,6 +242,10 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                 event.stopPropagation();
                 onClose();
                 return;
+            }
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                if (mobileView === 'preview' && window.innerWidth < 800) return;
+                if (event.target instanceof HTMLInputElement && event.target !== queryRef.current) return;
             }
             if (event.key === 'ArrowDown') {
                 if (rows.length === 0) return;
@@ -241,13 +276,17 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                 ) {
                     return;
                 }
+                if (target instanceof HTMLElement
+                    && target.closest('[data-content-search-action]') !== null) return;
                 event.preventDefault();
-                const match = selected >= 0 ? rows[selected] : undefined;
+                const match = target instanceof HTMLInputElement || (
+                    target instanceof HTMLButtonElement && !target.matches('[role="treeitem"]')
+                ) ? undefined : selected >= 0 ? rows[selected] : undefined;
                 if (match) onOpenMatch(match);
                 else onSubmit();
             }
         },
-        [rows, onClose, onOpenMatch, onSubmit, selected],
+        [mobileView, rows, onClose, onOpenMatch, onSubmit, selected, setSelected],
     );
 
     const onToggleGroup = useCallback((key: string) => {
@@ -271,31 +310,20 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                 aria-modal="true"
                 aria-label={title}
                 data-testid="content-search-overlay"
-                className="w-full max-w-2xl max-h-[70vh] flex flex-col rounded-lg border border-[#c8c8c8] dark:border-[#555555] bg-white dark:bg-[#252526] shadow-xl overflow-hidden"
+                className="content-search-overlay-dialog max-w-6xl flex flex-col rounded-lg border border-[#c8c8c8] dark:border-[#555555] bg-white dark:bg-[#252526] shadow-xl overflow-hidden"
                 onKeyDown={onKeyDown}
             >
-                <div className="flex items-center gap-2 p-3 border-b border-[#e5e5e5] dark:border-[#3c3c3c]">
+                <div className="flex flex-wrap items-center gap-2 p-3">
                     <input
                         ref={queryRef}
                         type="text"
                         aria-label="Search query"
                         data-testid="content-search-overlay-query"
                         placeholder="Search tracked files"
-                        className="flex-1 px-2 py-1 text-sm bg-transparent border border-[#c8c8c8] dark:border-[#555555] rounded outline-none focus:border-[#0078d4]"
+                        className="flex-1 min-w-[12rem] px-2 py-1 text-sm bg-transparent border border-[#c8c8c8] dark:border-[#555555] rounded outline-none focus:border-[#0078d4]"
                         value={query}
                         onChange={(event) => onQueryChange(event.target.value)}
                     />
-                    <button
-                        type="button"
-                        aria-label="Close search"
-                        data-testid="content-search-overlay-close"
-                        className="px-2 text-[#616161] dark:text-[#cccccc]"
-                        onClick={onClose}
-                    >
-                        ✕
-                    </button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs">
                     {MODE_CONTROLS.map(mode => (
                         <button
                             key={mode.id}
@@ -304,23 +332,38 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                             aria-pressed={controls.modes[mode.id]}
                             data-testid={`content-search-overlay-mode-${mode.id}`}
                             className={cn(
-                                'px-1.5 py-0.5 rounded border border-transparent font-mono',
+                                'px-1.5 py-0.5 rounded border border-transparent font-mono text-xs',
                                 controls.modes[mode.id]
                                     && 'border-[#0078d4] bg-[#e8e8e8] dark:bg-[#37373d]',
                             )}
-                            onClick={() =>
-                                onControlsChange?.(current => ({
-                                    ...current,
-                                    modes: {
-                                        ...current.modes,
-                                        [mode.id]: !current.modes[mode.id],
-                                    },
-                                }))
-                            }
+                            onClick={() => onControlsChange?.(current => ({
+                                ...current,
+                                modes: { ...current.modes, [mode.id]: !current.modes[mode.id] },
+                            }))}
                         >
                             {mode.glyph}
                         </button>
                     ))}
+                    <button
+                        type="button"
+                        data-content-search-action="submit"
+                        className="px-3 py-1 rounded bg-[#3165d7] text-white text-sm"
+                        onClick={onSubmit}
+                    >
+                        Search
+                    </button>
+                    <button
+                        type="button"
+                        data-content-search-action="close"
+                        aria-label="Close search"
+                        data-testid="content-search-overlay-close"
+                        className="px-2 text-[#616161] dark:text-[#cccccc]"
+                        onClick={onClose}
+                    >
+                        ✕
+                    </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs border-b border-[#e5e5e5] dark:border-[#3c3c3c]">
                     <input
                         type="text"
                         aria-label="Files to include"
@@ -391,22 +434,71 @@ export function ContentSearchOverlay(props: ContentSearchOverlayProps) {
                         ))}
                     </ul>
                 ) : null}
-                <div
-                    role="tree"
-                    aria-label="Search results"
-                    data-testid="content-search-overlay-results"
-                    className="flex-1 overflow-auto"
-                >
-                    {renderGroups({
-                        repos,
-                        scope,
-                        collapsed,
-                        selected,
-                        rowRefs,
-                        onToggleGroup,
-                        onSelect: setSelected,
-                        onOpenMatch,
-                    })}
+                <div className="content-search-overlay-body min-h-0 flex-1" data-view={mobileView}>
+                    <div className="content-search-overlay-results-pane min-w-0 flex flex-col">
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-[#e5e5e5] dark:border-[#3c3c3c]">
+                            <strong className="text-sm">Results</strong>
+                            <button
+                                type="button"
+                                data-content-search-action="preview"
+                                className="content-search-overlay-mobile text-sm text-[#005a9e] dark:text-[#75beff] disabled:opacity-50"
+                                disabled={selected < 0 || !rows[selected]}
+                                onClick={() => setMobileView('preview')}
+                            >
+                                Preview
+                            </button>
+                        </div>
+                        <div
+                            role="tree"
+                            aria-label="Search results"
+                            data-testid="content-search-overlay-results"
+                            className="flex-1 min-h-0 overflow-auto"
+                        >
+                            {renderGroups({
+                                repos,
+                                scope,
+                                collapsed,
+                                revealed,
+                                selected,
+                                rowRefs,
+                                onToggleGroup,
+                                onReveal: key => setRevealed(current => new Set(current).add(key)),
+                                onSelect: setSelected,
+                                onOpenMatch,
+                            })}
+                        </div>
+                    </div>
+                    <section
+                        aria-label="Source preview"
+                        data-testid="content-search-overlay-preview"
+                        className="content-search-overlay-preview-pane min-w-0 flex flex-col"
+                    >
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e5e5e5] dark:border-[#3c3c3c]">
+                            <button
+                                ref={backRef}
+                                type="button"
+                                data-content-search-action="back"
+                                className="content-search-overlay-mobile text-sm text-[#005a9e] dark:text-[#75beff]"
+                                onClick={() => setMobileView('results')}
+                            >
+                                Back
+                            </button>
+                            <strong className="text-sm">Preview</strong>
+                        </div>
+                        {loadPreview ? (
+                            <ContentSearchSourcePreview
+                                match={selected >= 0 ? rows[selected] ?? null : null}
+                                load={loadPreview}
+                                onOpen={onOpenMatch}
+                            />
+                        ) : (
+                            <p className="p-4 text-sm text-[#616161] dark:text-[#a0a0a0]">
+                                {selected >= 0 && rows[selected]
+                                    ? `${rows[selected].repoLabel || rows[selected].workspaceId} / ${rows[selected].path}`
+                                    : 'Select a match to preview its source.'}
+                            </p>
+                        )}
+                    </section>
                 </div>
             </div>
         </div>,
@@ -418,9 +510,11 @@ interface RenderGroupsArgs {
     repos: readonly ContentSearchRepoGroup[];
     scope: ContentSearchScope;
     collapsed: ReadonlySet<string>;
+    revealed: ReadonlySet<string>;
     selected: number;
     rowRefs: React.MutableRefObject<Array<HTMLButtonElement | null>>;
     onToggleGroup: (key: string) => void;
+    onReveal: (key: string) => void;
     onSelect: (index: number) => void;
     onOpenMatch: (match: ContentSearchOverlayMatch) => void;
 }
@@ -438,7 +532,7 @@ interface RenderGroupsArgs {
  * repository and no member label worth a row.
  */
 function renderGroups(args: RenderGroupsArgs): ReactNode[] {
-    const { repos, scope, collapsed, selected, rowRefs, onToggleGroup, onSelect, onOpenMatch }
+    const { repos, scope, collapsed, revealed, selected, rowRefs, onToggleGroup, onReveal, onSelect, onOpenMatch }
         = args;
     const showRepoLevel = scope === 'group';
     const fileLevel = showRepoLevel ? 2 : 1;
@@ -465,7 +559,9 @@ function renderGroups(args: RenderGroupsArgs): ReactNode[] {
                 >
                     <span aria-hidden="true">{repoExpanded ? '▾' : '▸'}</span>
                     <span className="truncate">{label}</span>
-                    <span className="text-[#616161] dark:text-[#a0a0a0]">{repo.matchCount}</span>
+                    <span className="rounded-full bg-[#edf3ff] dark:bg-[#37373d] px-1.5 text-[#4e617d] dark:text-[#cccccc]">
+                        {repo.matchCount}
+                    </span>
                 </button>,
             );
         }
@@ -492,14 +588,16 @@ function renderGroups(args: RenderGroupsArgs): ReactNode[] {
                 >
                     <span aria-hidden="true">{fileExpanded ? '▾' : '▸'}</span>
                     <span className="truncate">{file.path}</span>
-                    <span className="text-[#616161] dark:text-[#a0a0a0]">
+                    <span className="rounded-full bg-[#edf3ff] dark:bg-[#37373d] px-1.5 text-[#4e617d] dark:text-[#cccccc]">
                         {file.matches.length}
                     </span>
                 </button>,
             );
             if (!fileExpanded) continue;
 
-            for (const match of file.matches) {
+            for (const match of revealed.has(file.key)
+                ? file.matches
+                : file.matches.slice(0, INITIAL_MATCH_LIMIT)) {
                 const index = rowIndex;
                 rowIndex += 1;
                 const { before, hit, after } = splitMatchText({
@@ -520,14 +618,14 @@ function renderGroups(args: RenderGroupsArgs): ReactNode[] {
                         tabIndex={index === selected ? 0 : -1}
                         data-testid={`content-search-overlay-match-${match.id}`}
                         className={cn(
-                            'w-full flex items-baseline gap-2 py-0.5 text-left text-xs',
+                            'w-full flex items-baseline gap-2 py-0.5 text-left text-xs border-l-2 border-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#3165d7]',
                             showRepoLevel ? 'pl-10 pr-2' : 'pl-6 pr-2',
-                            index === selected && 'bg-[#e8e8e8] dark:bg-[#37373d]',
+                            index === selected && 'border-l-[#3165d7] bg-[#e7efff] dark:bg-[#293448] font-medium',
                         )}
                         onClick={() => {
                             onSelect(index);
-                            onOpenMatch(match);
                         }}
+                        onDoubleClick={() => onOpenMatch(match)}
                     >
                         <span className="shrink-0 tabular-nums text-[#616161] dark:text-[#a0a0a0]">
                             {match.line}
@@ -539,6 +637,25 @@ function renderGroups(args: RenderGroupsArgs): ReactNode[] {
                             </mark>
                             {after}
                         </span>
+                    </button>,
+                );
+            }
+            if (file.matches.length > INITIAL_MATCH_LIMIT && !revealed.has(file.key)) {
+                nodes.push(
+                    <button
+                        key={`reveal:${file.key}`}
+                        type="button"
+                        role="treeitem"
+                        aria-level={fileLevel + 1}
+                        {...{ [TOGGLE_ATTRIBUTE]: 'reveal' }}
+                        data-testid={`content-search-overlay-reveal-${file.key}`}
+                        className={cn(
+                            'w-full py-1 text-left text-xs text-[#005a9e] dark:text-[#75beff] hover:underline',
+                            showRepoLevel ? 'pl-10 pr-2' : 'pl-6 pr-2',
+                        )}
+                        onClick={() => onReveal(file.key)}
+                    >
+                        Show remaining {file.matches.length - INITIAL_MATCH_LIMIT}
                     </button>,
                 );
             }
