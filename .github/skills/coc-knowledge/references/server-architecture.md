@@ -100,7 +100,7 @@ src/
 
 ### Teams bridge receipts and connection history
 
-With `features.teamsAiAnswerRelay` on, `TeamsAnswerRelay` persists one receipt per inbound message under the resolved physical workspace's `teams-answer-relay/` directory. The new-chat task ID and process reservation are allocated before enqueue; Teams follow-ups queue against that process, with their opaque request ID written to the user turn at execution.
+With `features.teamsAiAnswerRelay` on, `TeamsAnswerRelay` persists one receipt per inbound message under the resolved physical workspace's `teams-answer-relay/` directory. The new-chat task ID and process reservation are allocated before enqueue; Teams follow-ups queue against that process, with their opaque request ID written to the user turn at execution. The flag opts the normal bridge into channel-thread polling; when MCP advertises the reply-list tool, the connector polls visible roots and their replies and dispatches each unseen ID.
 
 Queue terminal events and restart/reconnect reconciliation read the matching saved assistant turn and reply under the captured thread root only when the configured team/channel match. Receipts hold routing IDs and bounded delivery state, never prompts or answers.
 

@@ -27,7 +27,7 @@ export class McpTransport implements TeamsTransport {
     private _initMessageId: string | null = null;
     debug = false;
 
-    constructor(serverUrl: string) {
+    constructor(serverUrl: string, private readonly pollChannelReplies: () => boolean = () => false) {
         this.serverUrl = serverUrl;
     }
 
@@ -233,7 +233,21 @@ export class McpTransport implements TeamsTransport {
         const result = await this.client.callTool('ListChannelMessages', args);
         const responseText = result.content?.[0]?.text ?? '[]';
 
-        return this.parseMessages(responseText, channelId);
+        const roots = this.parseMessages(responseText, channelId);
+        if (!this.pollChannelReplies() || !this._availableTools.includes('ListChannelMessageReplies')) return roots;
+
+        const messages = [...roots.messages];
+        for (const root of roots.messages) {
+            const replies = await this.client.callTool('ListChannelMessageReplies', {
+                teamId: this.teamId, channelId, messageId: root.messageId,
+            });
+            if (replies.isError) throw new Error('Teams channel replies could not be polled');
+            const parsed = this.parseMessages(replies.content?.[0]?.text ?? '[]', channelId);
+            messages.push(...parsed.messages
+                .filter(reply => reply.messageId !== root.messageId)
+                .map(reply => ({ ...reply, replyToMessageId: root.messageId })));
+        }
+        return { messages, nextSince: roots.nextSince };
     }
 
     /** Poll chat messages via MCP. */

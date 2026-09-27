@@ -236,6 +236,35 @@ describe('McpTransport', () => {
         expect(id).toBe('mcp-msg-1');
     });
 
+    it('polls replies to channel roots when the MCP tool is available', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [{ name: 'ListChannelMessageReplies' }] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
+            { id: 'root', body: { content: 'root' } },
+        ]) }] }));
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
+            { id: 'reply-1', body: { content: 'first' } },
+            { id: 'reply-2', body: { content: 'second' }, replyToId: 'root' },
+        ]) }] }));
+
+        const result = await transport.poll('channel-1');
+        expect(result.messages).toEqual([
+            expect.objectContaining({ messageId: 'root', replyToMessageId: undefined }),
+            expect.objectContaining({ messageId: 'reply-1', replyToMessageId: 'root' }),
+            expect.objectContaining({ messageId: 'reply-2', replyToMessageId: 'root' }),
+        ]);
+        expect(JSON.parse(mockFetch.mock.calls.at(-1)![1].body).params).toEqual({
+            name: 'ListChannelMessageReplies',
+            arguments: { teamId: 'team-1', channelId: 'channel-1', messageId: 'root' },
+        });
+    });
+
     it.each([
         ['ReplyToChannelMessage', 'root-message'],
         ['SendMessageToChannel', undefined],

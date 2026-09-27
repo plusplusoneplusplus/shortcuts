@@ -114,6 +114,8 @@ all have their own `references/*.md`.
   ID, never the process's mutable result; confirmed sends are not replayed and
   unknown outcomes remain ambiguous. Disable, disconnect, or target changes
   must not redirect pending answers, and shutdown disposes queue listeners.
+  The relay flag opts the MCP connector into channel-thread polling when the
+  reply-list tool is available; each unseen inbound post uses the same admission.
   Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
   for discovery, PKCE, exchange, and read-only
   handshake verification; verified tokens enter the shared Copilot OAuth cache

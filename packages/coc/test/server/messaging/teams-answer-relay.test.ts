@@ -205,6 +205,44 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('This request was cancelled.'), 'cancelled-post');
     });
 
+    it('does not relay interrupted output when a running task is cancelled', async () => {
+        const id = (await relay.admitNew(message('running-cancel'), 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                processId: toQueueProcessId(taskId), status: 'running' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        await relay.acknowledged(id);
+        finish(id, 'workspace-a', 'private partial answer');
+        const proc = processes.get(toQueueProcessId(id));
+        proc.status = 'cancelled';
+        proc.conversationTurns[1].interrupted = true;
+        tasks.get(id)!.status = 'cancelled';
+        queue.emit('taskCancelled', tasks.get(id));
+        await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+        expect(send.mock.calls[0][0]).toContain('This request was cancelled.');
+        expect(send.mock.calls[0][0]).not.toContain('private partial answer');
+        await relay.reconcile();
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('waits through a queue retry and relays only its successful saved answer', async () => {
+        const id = (await relay.admitNew(message('retried-task'), 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                processId: toQueueProcessId(taskId), status: 'running', retryCount: 0 } as QueuedTask);
+            return taskId;
+        })).taskId;
+        await relay.acknowledged(id);
+        tasks.get(id)!.retryCount = 1;
+        tasks.get(id)!.status = 'queued';
+        await relay.reconcile();
+        expect(send).not.toHaveBeenCalled();
+        finish(id, 'workspace-a', 'answer after retry');
+        queue.emit('taskCompleted', tasks.get(id));
+        await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+        expect(send.mock.calls[0][0]).toContain('answer after retry');
+        expect(send.mock.calls[0][0]).not.toContain('could not be completed');
+    });
+
     it('does not leak failed-turn partial output or raw failure details', async () => {
         const id = (await relay.admitNew(message('failed-post'), 'workspace-a', async taskId => {
             tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);

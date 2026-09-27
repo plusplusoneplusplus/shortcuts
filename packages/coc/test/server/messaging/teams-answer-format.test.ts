@@ -108,6 +108,20 @@ describe('formatTeamsAnswerChunks', () => {
         expect(parts.at(-1)).toContain('last\\line');
     });
 
+    it('delivers one long mixed-content answer in order without truncating its final code', () => {
+        const first = 'Text & <script> 👩‍💻 C:\\repo\\file '.repeat(900);
+        const answer = `${first}\n[documentation](https://example.org/path?a=1&b=2)\n` +
+            '```ts\nconst last = "C:\\repo\\last 👩‍💻";\n```';
+        const parts = formatTeamsAnswerChunks(answer, 'mixed');
+        expect(parts.length).toBeGreaterThan(1);
+        expectValid(parts, 'mixed');
+        const html = content(parts);
+        expect(html).not.toContain('<script>');
+        expect(html).toContain('<a href="https://example.org/path?a=1&amp;b=2">documentation</a>');
+        expect(visible(html)).toBe(first + 'documentation' + 'const last = "C:\\repo\\last 👩‍💻";');
+        expect(parts.at(-1)).toContain('last 👩‍💻');
+    });
+
     it('reserves room for numbering at a digit rollover', () => {
         const answer = Array.from({ length: 11 }, (_, i) => `row${i}:${'&'.repeat(3900)}`).join('\n');
         const parts = formatTeamsAnswerChunks(answer, 'r10');

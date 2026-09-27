@@ -77,10 +77,12 @@ export class TeamsMessagingManager {
     private readonly getObservabilityEnabled: () => boolean;
     private answerRelay: TeamsAnswerRelay | null = null;
     private answerRelayUnsubscribe: (() => void) | null = null;
+    private getAnswerRelayEnabled: () => boolean = () => false;
 
-    setAnswerRelay(relay: TeamsAnswerRelay, unsubscribe?: () => void): void {
+    setAnswerRelay(relay: TeamsAnswerRelay, unsubscribe?: () => void, isEnabled?: () => boolean): void {
         this.answerRelay = relay;
         this.answerRelayUnsubscribe = unsubscribe ?? null;
+        this.getAnswerRelayEnabled = isEnabled ?? (() => false);
     }
 
     dispose(): void {
@@ -270,6 +272,7 @@ export class TeamsMessagingManager {
                     onTokenRefresh: () => acquireMcpOAuthToken(serverUrl, this._homeDir),
                 },
                 botName: this.config.botName,
+                pollChannelReplies: () => this.getAnswerRelayEnabled(),
                 onMessage: async (msg) => {
                     if (generation !== this.generation || !this.onInboundMessage) return;
                     await this.inboundContext.run({ generation, attemptId: attemptId ?? null },

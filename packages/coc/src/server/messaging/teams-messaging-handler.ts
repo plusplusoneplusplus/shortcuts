@@ -95,7 +95,7 @@ export function registerTeamsMessagingRoutes(
                         .catch(() => console.error('[teams-answer-relay] Config reconciliation failed'));
                 }
             });
-            manager.setAnswerRelay(relay, unsubscribe);
+            manager.setAnswerRelay(relay, unsubscribe, opts.getAnswerRelayEnabled);
         }
         const router = new TeamsCommandRouter({
             store: opts.store,

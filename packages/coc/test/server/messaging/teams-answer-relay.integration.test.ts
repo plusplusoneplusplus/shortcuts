@@ -1,13 +1,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FileProcessStore, RepoQueueRegistry, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { McpTransport } from '@plusplusoneplusplus/coc-connector/teams';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
-import { TeamsAnswerRelay } from '../../../src/server/messaging/teams-answer-relay';
-import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
+import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
+import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
 
 const teamId = 'test-team';
 const channelId = 'test-channel';
@@ -30,17 +31,17 @@ async function until(predicate: () => boolean | Promise<boolean>): Promise<void>
 describe('Teams answer relay through the real multi-repo queues', () => {
     let dataDir: string;
     let queue: MultiRepoQueueRouter;
-    let relay: TeamsAnswerRelay;
+    let manager: TeamsMessagingManager;
 
     afterEach(() => {
-        relay?.dispose();
+        manager?.dispose();
         queue?.dispose();
         vi.unstubAllGlobals();
         if (dataDir) fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
     it('ACKs before AI finishes and correlates queued, running, explicit, and selected-topic follow-ups across workspaces', { timeout: 20_000 }, async () => {
-        dataDir = fs.mkdtempSync(path.join(process.cwd(), '.teams-answer-relay-integration-'));
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-answer-relay-integration-'));
         const store = new FileProcessStore({ dataDir });
         for (const [id, name] of [['ws-a', 'Alpha'], ['ws-b', 'Beta']]) {
             await store.registerWorkspace({ id, name, rootPath: path.join(dataDir, id) });
@@ -88,24 +89,30 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         for (const ws of await store.getWorkspaces()) {
             queue.registerRepoId(ws.id, ws.rootPath!);
         }
-        relay = new TeamsAnswerRelay({
-            dataDir, store,
-            queue: queue.createAggregateQueueFacade(),
-            isEnabled: () => true,
-            target: () => ({ connected: true, teamId, channelId }),
-            send: (text, rootId) => transport.send(channelId, text, { replyToId: rootId }),
+        manager = new TeamsMessagingManager(dataDir);
+        vi.spyOn(manager, 'getStatus').mockReturnValue({
+            enabled: true, status: 'connected', teamId, channelId,
+            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
         });
-        const router = new TeamsCommandRouter({
+        vi.spyOn(manager, 'sendMessage').mockImplementation(
+            (text, rootId) => transport.send(channelId, text, { replyToId: rootId }));
+        let handle!: (msg: InboundTeamsMessage) => Promise<void>;
+        vi.spyOn(manager, 'setMessageHandler').mockImplementation(handler => {
+            handle = msg => handler(msg, () => {});
+        });
+        registerTeamsMessagingRoutes([], {
             dataDir, store,
             enqueueChat: async () => { throw new Error('Expected relay admission'); },
             executeFollowUp: async () => { throw new Error('Expected correlated follow-up admission'); },
-            admitNewChat: (msg, wsId, prompt) => relay.admitNew(msg, wsId, id => queue.enqueue({
+            manager,
+            relayQueue: queue.createAggregateQueueFacade(),
+            getAnswerRelayEnabled: () => true,
+            enqueueRelayChat: (wsId, prompt, id) => queue.enqueue({
                 id, processId: toQueueProcessId(id), type: 'chat', repoId: wsId,
                 payload: { kind: 'chat', mode: 'ask', prompt, workspaceId: wsId },
                 config: {}, priority: 'normal',
-            })),
-            acknowledgeNewChat: id => relay.acknowledged(id),
-            admitFollowUp: (msg, process, text) => relay.admitFollowUp(msg, process, async requestId => {
+            }),
+            admitRelayFollowUp: async (process, text, requestId) => {
                 return { taskId: await queue.enqueue({
                     type: 'chat', repoId: process.metadata.workspaceId as string,
                     processId: process.id, priority: 'normal',
@@ -113,42 +120,38 @@ describe('Teams answer relay through the real multi-repo queues', () => {
                         prompt: text, workspaceId: process.metadata.workspaceId, relayRequestId: requestId },
                     config: {},
                 }) };
-            }),
-            admitPendingFollowUp: (msg, taskId, text) => relay.admitPendingFollowUp(
-                msg, taskId, (wsId, processId, requestId) => queue.enqueue({
+            },
+            enqueuePendingRelayFollowUp: (wsId, processId, text, requestId) => queue.enqueue({
                     type: 'chat', repoId: wsId, processId, priority: 'normal',
                     payload: { kind: 'chat', mode: 'ask', processId, prompt: text,
                         workspaceId: wsId, relayRequestId: requestId },
                     config: {},
                 }),
-            ),
-            acknowledgeFollowUp: id => relay.acknowledgedMessage(id),
-            sendReply: async (text, rootId) => { await transport.send(channelId, text, { replyToId: rootId }); },
         });
         const inbound = (messageId: string, text: string, replyToMessageId?: string): InboundTeamsMessage =>
             ({ messageId, channelId, text, senderAadId: 'synthetic-user', ...(replyToMessageId ? { replyToMessageId } : {}) });
         const repliesFor = (root: string) => calls.filter(call => call.arguments.messageId === root)
             .map(call => String(call.arguments.content));
 
-        await router.handle(inbound('choose-a', '/select repo Alpha'));
-        await router.handle(inbound('root-a', 'alpha prompt'));
+        await handle(inbound('choose-a', '/select repo Alpha'));
+        await handle(inbound('root-a', 'alpha prompt'));
         const taskA = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll()[0];
         expect(taskA.repoId).toBe('ws-a');
         expect(repliesFor('root-a')).toEqual([expect.stringContaining('New topic created')]);
         expect(repliesFor('root-a')[0]).toContain('New topic created');
 
-        await router.handle(inbound('choose-b', '/select repo Beta'));
-        await router.handle(inbound('new-b', '/create topic'));
-        await router.handle(inbound('root-b', 'beta prompt'));
+        await handle(inbound('choose-b', '/select repo Beta'));
+        await handle(inbound('new-b', '/create topic'));
+        await handle(inbound('root-b', 'beta prompt'));
         const taskB = registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll()[0];
         expect(taskB.repoId).toBe('ws-b');
         expect(repliesFor('root-b')).toHaveLength(1);
-        await router.handle(inbound('queued-follow', 'queued follow-up'));
+        await handle(inbound('queued-follow', 'queued follow-up'));
         expect(repliesFor('queued-follow')).toEqual([expect.stringContaining('Message sent')]);
 
         queue.activateQueueProcessing();
         await until(() => entered.includes('alpha prompt') && entered.includes('beta prompt'));
-        await router.handle(inbound('running-follow', 'running follow-up'));
+        await handle(inbound('running-follow', 'running follow-up'));
         expect(repliesFor('running-follow')).toEqual([expect.stringContaining('Message sent')]);
         expect(repliesFor('root-a')).toHaveLength(1);
         expect(repliesFor('root-b')).toHaveLength(1);
@@ -169,8 +172,8 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         expect(repliesFor('running-follow')[1]).toContain('Answer for running follow-up');
 
         // An explicit chat ID and then the selected last-active topic address the same conversation.
-        await router.handle(inbound('follow-b-1', `[${toQueueProcessId(taskB.id)}] first follow-up`));
-        await router.handle(inbound('follow-b-2', 'second follow-up'));
+        await handle(inbound('follow-b-1', `[${toQueueProcessId(taskB.id)}] first follow-up`));
+        await handle(inbound('follow-b-2', 'second follow-up'));
         await until(() => entered.includes('first follow-up'));
         expect(repliesFor('follow-b-1')).toEqual([expect.stringContaining('Message sent')]);
         expect(repliesFor('follow-b-2')).toEqual([expect.stringContaining('Message sent')]);
@@ -181,8 +184,8 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         await until(() => repliesFor('follow-b-1').length === 2 && repliesFor('follow-b-2').length === 2);
         expect(repliesFor('follow-b-1')[1]).toContain('Answer for first follow-up');
         expect(repliesFor('follow-b-2')[1]).toContain('Answer for second follow-up');
-        await router.handle(inbound('select-topic-b', `/select topic ${toQueueProcessId(taskB.id)}`));
-        await router.handle(inbound('selected-follow', 'selected follow-up'));
+        await handle(inbound('select-topic-b', `/select topic ${toQueueProcessId(taskB.id)}`));
+        await handle(inbound('selected-follow', 'selected follow-up'));
         expect(repliesFor('selected-follow')).toEqual([expect.stringContaining('Message sent')]);
         await until(() => entered.includes('selected follow-up'));
         gates.get('selected follow-up')!.resolve();
@@ -209,7 +212,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         expect(calls.every(call => call.name === 'ReplyToChannelMessage'
             && call.arguments.teamId === teamId && call.arguments.channelId === channelId)).toBe(true);
         const terminalListeners = registry.listenerCount('taskCompleted');
-        relay.dispose();
+        manager.dispose();
         expect(registry.listenerCount('taskCompleted')).toBe(terminalListeners - 1);
     });
 });
