@@ -9,7 +9,7 @@ import * as os from 'os';
 import * as http from 'http';
 import type { Route } from '../../../src/server/types';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
-import { acquireMcpOAuthToken, TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
+import { acquireMcpOAuthToken, McpClient, TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 
 // Mock the teams-bot package
@@ -130,6 +130,124 @@ describe('TeamsMessagingManager', () => {
         expect(m2.getStatus().error).toBe('Polling unavailable');
         botOptions?.onStatusChange?.('connected');
         expect(m2.getStatus().error).toBeNull();
+    });
+
+    it('records separate manual, reconnect and startup attempts only with observability enabled', async () => {
+        const homeDir = path.join(tmpDir, 'home');
+        const makeManager = () => new TeamsMessagingManager(tmpDir, {
+            homeDir, getObservabilityEnabled: () => true,
+        });
+        const first = makeManager();
+        first.setMessageHandler(async () => {});
+        await first.configureServer('https://example.test/teams');
+        await first.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await first.connect();
+        expect(first.getAttemptHistory()).toMatchObject([{
+            phases: [
+                { stage: 'started' }, { stage: 'authenticating' }, { stage: 'resolving' },
+                { stage: 'starting-polling' }, { stage: 'connected' },
+            ],
+        }]);
+        await first.connect();
+        expect(first.getAttemptHistory()?.[0].result).toBeUndefined();
+        expect(first.getAttemptHistory()?.[1].result).toBe('superseded');
+        const startup = makeManager();
+        startup.setMessageHandler(async () => {});
+        expect(startup.getAttemptHistory()?.[0].result).toBe('interrupted');
+        await startup.connect();
+        expect(new Set(startup.getAttemptHistory()?.map(a => a.id)).size).toBe(3);
+        await startup.disconnect();
+        expect(startup.getAttemptHistory()?.[0].result).toBe('disconnected');
+        expect(fs.readFileSync(path.join(tmpDir, 'teams-attempts.json'), 'utf8'))
+            .not.toMatch(/example\.test|team-id-resolved|channel-id-resolved|fake-mcp-token/);
+    });
+
+    it('records safe categories for early and authentication failures without storing their details', async () => {
+        const homeDir = path.join(tmpDir, 'home');
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir, getObservabilityEnabled: () => true });
+        m2.setMessageHandler(async () => {});
+        await m2.updateConfig({ enabled: true });
+        await expect(m2.connect()).rejects.toThrow('Configure a global HTTP');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({
+            result: 'failed', failureCategory: 'configuration', phases: [{ stage: 'started' }],
+        });
+        await m2.configureServer('https://example.test/teams');
+        vi.mocked(acquireMcpOAuthToken).mockRejectedValueOnce(new Error('secret-token /private/path'));
+        await expect(m2.connect()).rejects.toThrow('secret-token');
+        expect(m2.getStatus().status).toBe('error');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({
+            result: 'failed', failureCategory: 'authentication',
+            phases: [{ stage: 'started' }, { stage: 'authenticating' }],
+        });
+        expect(fs.readFileSync(path.join(tmpDir, 'teams-attempts.json'), 'utf8'))
+            .not.toMatch(/secret-token|private\/path|example\.test/);
+    });
+
+    it('does not create attempt history while the flag is off', async () => {
+        const homeDir = path.join(tmpDir, 'home');
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        await m2.disconnect();
+        expect(m2.getAttemptHistory()).toBeNull();
+        expect(fs.existsSync(path.join(tmpDir, 'teams-attempts.json'))).toBe(false);
+    });
+
+    it('closes an OAuth-pending attempt on disable without reopening it after cancellation', async () => {
+        const homeDir = path.join(tmpDir, 'home');
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir, getObservabilityEnabled: () => true });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true });
+        let release!: (token: string) => void;
+        vi.mocked(acquireMcpOAuthToken).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        const connecting = m2.connect();
+        await vi.waitFor(() => expect(release).toBeDefined());
+        await m2.updateConfig({ enabled: false });
+        release('unused-token');
+        await expect(connecting).rejects.toThrow('cancelled');
+        expect(m2.getAttemptHistory()).toMatchObject([{ result: 'disconnected' }]);
+    });
+
+    it('supersedes a pending connection without attaching its late result to the new attempt', async () => {
+        const homeDir = path.join(tmpDir, 'home');
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir, getObservabilityEnabled: () => true });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        let release!: (token: string) => void;
+        vi.mocked(acquireMcpOAuthToken).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        const pending = m2.connect();
+        await vi.waitFor(() => expect(release).toBeDefined());
+        await m2.connect();
+        release('unused-token');
+        await expect(pending).rejects.toThrow('cancelled');
+        expect(m2.getStatus().status).toBe('connected');
+        expect(m2.getAttemptHistory()?.map(a => a.result)).toEqual([undefined, 'superseded']);
+        expect(m2.getAttemptHistory()?.[0].phases.slice(-1)[0]?.stage).toBe('connected');
+        expect(m2.getAttemptHistory()?.[1].phases.map(p => p.stage)).toEqual(['started', 'authenticating']);
+    });
+
+    it('classifies resolution and bot startup failures without persisting provider details', async () => {
+        const homeDir = path.join(tmpDir, 'home');
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir, getObservabilityEnabled: () => true });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        vi.mocked(McpClient).mockImplementationOnce(function () {
+            throw new Error('private URL https://example.test/token');
+        });
+        await expect(m2.connect()).rejects.toThrow('private URL');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({ result: 'failed', failureCategory: 'resolution' });
+        vi.mocked(TeamsBot).mockImplementationOnce(function () {
+            throw new Error('private message content');
+        });
+        await expect(m2.connect()).rejects.toThrow('private message');
+        expect(m2.getAttemptHistory()?.[0]).toMatchObject({ result: 'failed', failureCategory: 'polling' });
+        expect(fs.readFileSync(path.join(tmpDir, 'teams-attempts.json'), 'utf8'))
+            .not.toMatch(/private|example\.test|team-id-resolved/);
     });
 
     it('reports connection failures and disconnects when disabled', async () => {

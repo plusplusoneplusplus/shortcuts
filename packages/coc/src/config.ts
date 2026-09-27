@@ -302,6 +302,7 @@ export interface CLIConfig {
         ralphMultiAgentGrill?: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions?: boolean;
+        teamsBridgeObservability?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
         quickAskSidenotes?: boolean;
         /** Ingest and embed a local PDF when a lone arXiv link is pasted into Notes. Disabled by default. */
@@ -675,6 +676,7 @@ export interface ResolvedCLIConfig {
         ralphMultiAgentGrill: boolean;
         /** Read-only native Copilot/Codex/Claude CLI sessions tab. Disabled by default. */
         nativeCliSessions: boolean;
+        teamsBridgeObservability: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
         quickAskSidenotes: boolean;
         /** Ingest and embed a local PDF when a lone arXiv link is pasted into Notes. Disabled by default. */
@@ -974,6 +976,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         autoAgentProviderRouting: false,
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
+        teamsBridgeObservability: false,
         quickAskSidenotes: true,
         arxivPaperIngest: false,
         remoteShell: true,

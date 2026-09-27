@@ -876,6 +876,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     const teamsMessagingManager = registerTeamsMessagingRoutes(routes, {
         dataDir,
+        getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,

@@ -817,6 +817,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.teamsBridgeObservability', default: false, runtime: 'live', runtimeFlag: 'teamsBridgeObservabilityEnabled',
+        ui: {
+            group: 'dashboard', order: 61, label: 'Teams bridge observability', badge: 'experimental',
+            hint: 'Collect safe, bounded history for normal CoC Teams channel connections. Disabled by default.',
+            testId: 'toggle-teams-bridge-observability-enabled',
+        },
+    }),
+    bool({
         key: 'features.quickAskSidenotes', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'quickAskSidenotesEnabled',
         ui: {
             group: 'dashboard', order: 62, label: 'Quick Ask side-notes', badge: 'experimental',

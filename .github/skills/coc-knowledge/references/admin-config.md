@@ -95,6 +95,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `singleRowShell` | off | Needs `remoteShell`; moves shell controls plus `+ New` into the global header |
 | `ralphMultiAgentGrill` | off | Ralph grill question-planning card, separate grill-agent calls, dedupe/provenance metadata |
 | `nativeCliSessions` | off | Read-only CLI Sessions surface over native Copilot/Codex/Claude stores |
+| `teamsBridgeObservability` | off | Normal Teams channel-bridge connection history collection and inspection, independent of the container relay |
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
 | `chatStyleSelector` | on | Chat Style chip (below) |

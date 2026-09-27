@@ -22,6 +22,7 @@ import { TeamsOAuthFlow } from './teams-oauth-flow';
 
 export interface TeamsMessagingRoutesOptions {
     dataDir: string;
+    getObservabilityEnabled?: () => boolean;
     /** ProcessStore for querying workspaces and processes. */
     store?: ProcessStore;
     /** Enqueue a new chat task. Returns the task ID. */
@@ -38,7 +39,7 @@ export function registerTeamsMessagingRoutes(
     routes: Route[],
     opts: TeamsMessagingRoutesOptions,
 ): TeamsMessagingManager {
-    const manager = opts.manager ?? new TeamsMessagingManager(opts.dataDir);
+    const manager = opts.manager ?? new TeamsMessagingManager(opts.dataDir, { getObservabilityEnabled: opts.getObservabilityEnabled });
     const oauthFlow = opts.oauthManager ? new TeamsOAuthFlow(opts.oauthManager) : null;
     if (oauthFlow) manager.setOAuthFlow(oauthFlow);
 

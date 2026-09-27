@@ -14,6 +14,7 @@ import { TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
 import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
+import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult } from './teams-attempt-store';
 
 // ── Persisted Config ─────────────────────────────────────────
 
@@ -61,16 +62,29 @@ export class TeamsMessagingManager {
     private readonly customHome: boolean;
     private generation = 0;
     private oauthFlow: TeamsOAuthFlow | null = null;
+    private history: TeamsAttemptStore | null = null;
+    private attemptId: string | null = null;
+    private readonly getObservabilityEnabled: () => boolean;
 
     setOAuthFlow(flow: TeamsOAuthFlow): void {
         this.oauthFlow = flow;
     }
 
-    constructor(private readonly dataDir: string, opts?: { homeDir?: string }) {
+    constructor(private readonly dataDir: string, opts?: { homeDir?: string; getObservabilityEnabled?: () => boolean }) {
         this.configPath = path.join(dataDir, 'teams-messaging.json');
         this._homeDir = opts?.homeDir ?? os.homedir();
         this.customHome = opts?.homeDir !== undefined;
+        this.getObservabilityEnabled = opts?.getObservabilityEnabled ?? (() => false);
         this.config = this.loadConfig();
+    }
+
+    getAttemptHistory(): TeamsAttempt[] | null {
+        return this.getAttemptStore()?.list() ?? null;
+    }
+
+    private getAttemptStore(): TeamsAttemptStore | null {
+        if (!this.getObservabilityEnabled()) return null;
+        return this.history ??= new TeamsAttemptStore(this.dataDir);
     }
 
     setMessageHandler(handler: (msg: InboundTeamsMessage) => Promise<void>): void {
@@ -155,18 +169,33 @@ export class TeamsMessagingManager {
      * 4. Starts the TeamsBot in MCP mode for message polling.
      */
     async connect(): Promise<void> {
+        const history = this.getAttemptStore();
+        const attemptId = history?.start();
         if (!this.config.enabled) {
             this._lastError = 'Teams integration is disabled';
             this._status = 'disconnected';
+            if (attemptId) history?.finish(attemptId, 'failed', 'configuration');
             throw new Error(this._lastError);
         }
 
         // Stop existing bot if running
-        await this.disconnect();
-
-        const generation = this.generation;
+        let generation: number;
+        try {
+            const stopping = this.disconnect('superseded');
+            generation = this.generation;
+            await stopping;
+        } catch (err) {
+            if (attemptId) history?.finish(attemptId, 'failed', 'unknown');
+            throw err;
+        }
+        if (generation !== this.generation) {
+            throw new Error('Teams connection cancelled');
+        }
+        this.attemptId = attemptId ?? null;
         this._status = 'connecting';
         this._lastError = null;
+        let failureCategory: TeamsFailureCategory = 'configuration';
+        let connectedRecorded = false;
 
         try {
             const serverUrl = this.getServerUrl();
@@ -175,11 +204,15 @@ export class TeamsMessagingManager {
 
             // Step 2: Acquire token from the shared MCP OAuth cache
             this._status = 'authenticating';
+            if (attemptId) history?.phase(attemptId, 'authenticating');
+            failureCategory = 'authentication';
             const { acquireMcpOAuthToken, McpClient } = await import('@plusplusoneplusplus/coc-connector/teams');
             const token = await acquireMcpOAuthToken(serverUrl, this._homeDir);
             if (generation !== this.generation || !this.config.enabled) throw new Error('Teams connection cancelled');
 
             // Step 3: Resolve team and channel via MCP tools
+            if (attemptId) history?.phase(attemptId, 'resolving');
+            failureCategory = 'resolution';
             const mcpClient = new McpClient({
                 serverUrl,
                 bearerToken: token,
@@ -194,6 +227,8 @@ export class TeamsMessagingManager {
             this.saveConfig();
 
             // Step 4: Create bot in MCP mode for polling
+            if (attemptId) history?.phase(attemptId, 'starting-polling');
+            failureCategory = 'polling';
             const bot = new TeamsBot({
                 mode: 'mcp',
                 mcpServerUrl: serverUrl,
@@ -211,7 +246,13 @@ export class TeamsMessagingManager {
                 onStatusChange: (s) => {
                     if (generation !== this.generation) return;
                     this._status = s;
-                    if (s === 'connected') this._lastError = null;
+                    if (s === 'connected') {
+                        this._lastError = null;
+                        if (attemptId && this.attemptId === attemptId && !connectedRecorded) {
+                            connectedRecorded = true;
+                            history?.phase(attemptId, 'connected');
+                        }
+                    }
                 },
                 onError: (e) => { if (generation === this.generation) this._lastError = e; },
             });
@@ -226,7 +267,7 @@ export class TeamsMessagingManager {
         } catch (err: any) {
             if (generation === this.generation) {
                 this._lastError = err.message ?? 'Failed to connect';
-                await this.disconnect();
+                await this.disconnect('failed', failureCategory);
                 this._status = 'error';
             }
             throw err;
@@ -296,9 +337,12 @@ export class TeamsMessagingManager {
         return { teamId, channelId };
     }
 
-    async disconnect(): Promise<void> {
+    async disconnect(result: TeamsAttemptResult = 'disconnected', category?: TeamsFailureCategory): Promise<void> {
         this.oauthFlow?.cancel();
         this.generation++;
+        const attemptId = this.attemptId;
+        this.attemptId = null;
+        if (attemptId) this.history?.finish(attemptId, result, category);
         if (this.bot) {
             await this.bot.stop();
             this.bot = null;
