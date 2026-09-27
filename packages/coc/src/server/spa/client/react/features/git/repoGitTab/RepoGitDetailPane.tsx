@@ -113,6 +113,7 @@ export function RepoGitDetailPane({
                 source={createBranchRangeDiffSource(workspaceId, {
                     files: (branchRangeFiles ?? []).map((f: { path: string }) => f.path).sort(),
                     baseMode,
+                    range: branchRangeData ?? undefined,
                 })}
                 workspaceId={workspaceId}
                 filePath={view.filePath}

@@ -35,6 +35,7 @@ import { FileBannerRow } from './FileBannerRow';
 import { parseFileBanners, type FileBanner } from './fileBannerModel';
 import { useDockedFileBanner } from './useDockedFileBanner';
 import { observeOffsetUntilCleanup } from './observeOffsetUntilCleanup';
+import { writeDiffSelectionDragStart } from './diffSelectionContext';
 import type { DiffComment, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 
 /** Walk up the DOM tree to find the nearest ancestor that scrolls vertically. */
@@ -90,6 +91,7 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             onCommentClick,
             matchRangesByLine,
             showFileBanners,
+            diffSelectionDragSource,
         },
         ref
     ) {
@@ -436,6 +438,18 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
             setToolbar(t => ({ ...t, visible: false }));
         }, []);
 
+        const handleDragStart = useCallback((e: React.DragEvent) => {
+            writeDiffSelectionDragStart(e, {
+                container: containerRef.current,
+                diffLines,
+                source: diffSelectionDragSource,
+                splitView: true,
+            });
+        }, [diffLines, diffSelectionDragSource]);
+
+        // A drag that drops elsewhere never delivers mouseup here; release the column lock.
+        const handleDragEnd = useCallback(() => setSelectSide(null), []);
+
         // Dismiss context menu on scroll.
         useEffect(() => {
             if (!toolbar.visible) return;
@@ -660,6 +674,8 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                     onMouseUp={handleMouseUp}
                     onMouseDown={handleMouseDown}
                     onContextMenu={enableComments ? handleContextMenu : undefined}
+                    onDragStart={diffSelectionDragSource ? handleDragStart : undefined}
+                    onDragEnd={diffSelectionDragSource ? handleDragEnd : undefined}
                     className={`font-mono text-xs leading-tight ${showFileBanners ? '' : 'overflow-x-auto '}text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded`}
                 >
                     {/* Docked outside the horizontal scroller below — sticky

@@ -21,6 +21,7 @@ import {
     type LineMatchRange,
 } from './diffFindModel';
 import { FileBannerRow } from './FileBannerRow';
+import { writeDiffSelectionDragStart, type DiffSelectionDragSource } from './diffSelectionContext';
 import { parseFileBanners, buildBannerIndex, buildPreambleIndex, type FileBanner } from './fileBannerModel';
 import { useDockedFileBanner } from './useDockedFileBanner';
 import { observeOffsetUntilCleanup } from './observeOffsetUntilCleanup';
@@ -84,6 +85,11 @@ export interface UnifiedDiffViewerProps {
      * full-model search stays correct; only mounted rows render them.
      */
     matchRangesByLine?: Map<number, LineMatchRange[]>;
+    /**
+     * When set, a text selection in the diff can be dragged onto a chat
+     * composer as diff-selection context (repo, file, line ranges, ref).
+     */
+    diffSelectionDragSource?: DiffSelectionDragSource;
 }
 
 /** Per-hunk metadata used to drive AC-02 collapsed summary rows. */
@@ -906,7 +912,7 @@ function getScrollableAncestor(el: HTMLElement): HTMLElement {
     return document.documentElement as HTMLElement;
 }
 
-export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, showFileBanners, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters, matchRangesByLine }, ref) {
+export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiffViewerProps>(function UnifiedDiffViewer({ diff, fileName, 'data-testid': testId, enableComments, showLineNumbers, hideFileHeaders, showFileBanners, onLinesReady, onAddComment, onAskAI, onCopyAsContext, comments, onCommentClick, filePath, getHunkClassification, activeFilters, matchRangesByLine, diffSelectionDragSource }, ref) {
     const lines = useMemo(() => diff.split('\n'), [diff]);
     const languages = useMemo(() => getLanguagesForLines(lines, fileName), [lines, fileName]);
     const diffLines = useMemo(() => computeDiffLines(lines), [lines]);
@@ -1320,6 +1326,10 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
         setToolbar(t => ({ ...t, visible: false }));
     }, []);
 
+    const handleDragStart = useCallback((e: React.DragEvent) => {
+        writeDiffSelectionDragStart(e, { container: containerRef.current, diffLines, source: diffSelectionDragSource });
+    }, [diffLines, diffSelectionDragSource]);
+
     // Dismiss context menu on scroll.
     useEffect(() => {
         if (!toolbar.visible) return;
@@ -1336,6 +1346,7 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             onMouseUp={enableComments ? handleMouseUp : undefined}
             onMouseDown={enableComments ? handleMouseDown : undefined}
             onContextMenu={enableComments ? handleContextMenu : undefined}
+            onDragStart={diffSelectionDragSource ? handleDragStart : undefined}
             className={`${showFileBanners ? '' : 'overflow-x-auto '}font-mono text-xs leading-tight text-[#1e1e1e] dark:text-[#cccccc] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] rounded`}
             data-testid={testId}
         >

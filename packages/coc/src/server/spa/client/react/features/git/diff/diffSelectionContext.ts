@@ -5,10 +5,12 @@
  */
 import {
     createDiffSelectionContextDragPayload,
+    writeDiffSelectionContextDragData,
     type DiffSelectionContextDragPayload,
     type DiffSelectionLineRange,
     type DiffSelectionRef,
 } from '../../chat/sessionContextDrag';
+import { isSessionContextAttachmentsEnabled } from '../../../utils/config';
 import { extractFilePathFromDiffHeader, type DiffLine } from './UnifiedDiffViewer';
 
 /** In Split view a selection lives on one column; `old` = left, `new` = right. */
@@ -113,4 +115,97 @@ export function createDiffSelectionDragPayloadFromLines(
         ref: options.ref,
         snippet: selection.snippet,
     });
+}
+
+/** Where a diff viewer's content comes from; enables dragging a selection into chat. */
+export interface DiffSelectionDragSource {
+    workspaceId: string;
+    ref: DiffSelectionRef;
+    /** Path used when the diff has no `diff --git` header (single-file views). */
+    filePath?: string;
+}
+
+/** Walk up from `node` (stopping at `boundary`) to the nearest diff row element. */
+function findDiffLineElement(node: Node | null, boundary: Element): Element | null {
+    let current: Node | null = node;
+    while (current && current !== boundary) {
+        if (current.nodeType === 1 && (current as Element).hasAttribute('data-diff-line-index')) {
+            return current as Element;
+        }
+        current = current.parentNode;
+    }
+    return null;
+}
+
+function lineIndexOf(el: Element): number {
+    const value = Number.parseInt(el.getAttribute('data-diff-line-index') ?? '', 10);
+    return Number.isInteger(value) && value >= 0 ? value : -1;
+}
+
+/**
+ * Build a drag payload from the browser selection inside a rendered diff.
+ * Rows are located via `data-diff-line-index`; in Split view the column the
+ * selection starts in (`data-split-side`) picks the side. Returns null when
+ * the selection is empty, outside `container`, or covers no code line.
+ */
+export function createDiffSelectionDragPayloadFromDomSelection(options: {
+    selection: Selection | null;
+    container: Element;
+    diffLines: readonly DiffLine[];
+    source: DiffSelectionDragSource;
+    splitView?: boolean;
+}): DiffSelectionContextDragPayload | null {
+    const { selection, container, diffLines, source, splitView } = options;
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+    const range = selection.getRangeAt(0);
+    const startEl = findDiffLineElement(range.startContainer, container);
+    if (!startEl) return null;
+    const endEl = findDiffLineElement(range.endContainer, container) ?? startEl;
+    const startIndex = lineIndexOf(startEl);
+    const endIndex = lineIndexOf(endEl);
+    if (startIndex < 0 || endIndex < 0) return null;
+
+    let side: DiffSelectionSide | undefined;
+    if (splitView) {
+        const column = startEl.closest('[data-split-side]')?.getAttribute('data-split-side');
+        side = column === 'left' ? 'old' : column === 'right' ? 'new' : undefined;
+    }
+    return createDiffSelectionDragPayloadFromLines({
+        diffLines,
+        startIndex,
+        endIndex,
+        side,
+        workspaceId: source.workspaceId,
+        ref: source.ref,
+        fallbackFilePath: source.filePath,
+    });
+}
+
+/**
+ * `dragstart` handler body shared by the Unified and Split diff viewers. It
+ * only adds CoC data to the browser's native text drag, so selection, copy,
+ * find, and the comment menu keep working. No-op when the feature is off or
+ * the selection does not map to diff lines.
+ */
+export function writeDiffSelectionDragStart(
+    event: { dataTransfer: DataTransfer | null },
+    options: {
+        container: Element | null;
+        diffLines: readonly DiffLine[];
+        source: DiffSelectionDragSource | undefined;
+        splitView?: boolean;
+    },
+): boolean {
+    if (!options.source || !options.container || !event.dataTransfer) return false;
+    if (!isSessionContextAttachmentsEnabled()) return false;
+    const payload = createDiffSelectionDragPayloadFromDomSelection({
+        selection: typeof window !== 'undefined' ? window.getSelection() : null,
+        container: options.container,
+        diffLines: options.diffLines,
+        source: options.source,
+        splitView: options.splitView,
+    });
+    if (!payload) return false;
+    writeDiffSelectionContextDragData(event.dataTransfer, payload);
+    return true;
 }

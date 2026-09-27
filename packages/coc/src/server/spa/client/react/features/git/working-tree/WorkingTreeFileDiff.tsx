@@ -6,11 +6,12 @@
  * and renders it in UnifiedDiffViewer. Untracked files show a placeholder.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
+import type { DiffSelectionDragSource } from '../diff/diffSelectionContext';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { DiffViewToggle } from '../diff/DiffViewToggle';
@@ -117,6 +118,11 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
         }, 50);
         return () => clearTimeout(timer);
     }, [initialHunkTarget, diff, loading]);
+
+    const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
+        () => ({ workspaceId, filePath, ref: stage === 'staged' ? { type: 'staged' } : { type: 'working-tree' } }),
+        [workspaceId, filePath, stage],
+    );
 
     const diffContext = stage !== 'untracked'
         ? { repositoryId: workspaceId, filePath, oldRef: stage === 'staged' ? 'HEAD' : 'INDEX', newRef: 'working-tree' as const }
@@ -282,6 +288,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                                     onAskAI={handleAskAIDiff}
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
+                                    diffSelectionDragSource={diffSelectionDragSource}
                                     data-testid="working-tree-file-diff-content"
                                 />
                             ) : (
@@ -297,6 +304,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                                     onAskAI={handleAskAIDiff}
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
+                                    diffSelectionDragSource={diffSelectionDragSource}
                                     data-testid="working-tree-file-diff-content"
                                 />
                             )}

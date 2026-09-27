@@ -159,6 +159,11 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
                 diff={fileDiff}
                 fileName={expandedFile ?? undefined}
                 showLineNumbers
+                diffSelectionDragSource={rangeInfo ? {
+                    workspaceId,
+                    filePath: expandedFile ?? undefined,
+                    ref: { type: 'range', baseRef: rangeInfo.baseRef, headRef: rangeInfo.headRef },
+                } : undefined}
                 data-testid="branch-file-diff-content"
             />
         );

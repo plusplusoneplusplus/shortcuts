@@ -10,6 +10,7 @@ import { useCachedDiff } from '../hooks/useCommitDiffCache';
 import { Spinner, Button } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons, parseDiffFileList } from '../diff/UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewer';
+import type { DiffSelectionDragSource } from '../diff/diffSelectionContext';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { DiffViewToggle } from '../diff/DiffViewToggle';
@@ -55,6 +56,10 @@ export interface CommitDetailProps {
 }
 
 export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFilePath, onClassified }: CommitDetailProps) {
+    const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
+        () => ({ workspaceId, ref: { type: 'commit', commitHash: hash } }),
+        [workspaceId, hash],
+    );
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const {
         chatOpen,
@@ -524,6 +529,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                                 onLinesReady={setDiffLines}
                                 matchRangesByLine={find.matchRangesByLine}
                                 showFileBanners
+                                diffSelectionDragSource={diffSelectionDragSource}
                                 data-testid="diff-content"
                             />
                         ) : (
@@ -533,6 +539,7 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                                 onLinesReady={setDiffLines}
                                 matchRangesByLine={find.matchRangesByLine}
                                 showFileBanners
+                                diffSelectionDragSource={diffSelectionDragSource}
                                 data-testid="diff-content"
                             />
                         )
