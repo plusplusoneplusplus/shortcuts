@@ -101,6 +101,15 @@ function withSqliteError<T>(operation: () => T): T {
     }
 }
 
+function restoreJsonSqliteValues(row: NativeSqliteRow): void {
+    for (const [name, value] of Object.entries(row)) {
+        if (value === null || typeof value !== 'object') continue;
+        const tagged = value as { $sqliteBlob?: number[]; $sqliteNumber?: string };
+        if (tagged.$sqliteBlob !== undefined) row[name] = Buffer.from(tagged.$sqliteBlob);
+        else if (tagged.$sqliteNumber !== undefined) row[name] = Number(tagged.$sqliteNumber);
+    }
+}
+
 export class NativeStatement {
     public constructor(private readonly handle: Bindings.NativeStatementHandle) {}
 
@@ -181,7 +190,15 @@ export class NativeDatabase {
         filter?: Bindings.NativeProcessReadFilter,
     ): Promise<Bindings.NativeProcessWithTurns[]> {
         try {
-            return await this.handle.getAllProcesses(filter);
+            const json = await this.handle.getAllProcessesJson(filter);
+            const rows = JSON.parse(json) as Bindings.NativeProcessWithTurns[];
+            if (json.includes('"$sqliteBlob"') || json.includes('"$sqliteNumber"')) {
+                for (const entry of rows) {
+                    restoreJsonSqliteValues(entry.process);
+                    for (const turn of entry.turns ?? []) restoreJsonSqliteValues(turn);
+                }
+            }
+            return rows;
         } catch (error) {
             return withSqliteError(() => { throw error; });
         }

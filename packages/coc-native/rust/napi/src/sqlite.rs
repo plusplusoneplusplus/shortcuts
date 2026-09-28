@@ -95,6 +95,22 @@ pub struct NativeProcessReadFilter {
     pub exclude_conversation: Option<bool>,
 }
 
+fn process_read_filter(filter: Option<NativeProcessReadFilter>) -> ProcessFilter {
+    filter
+        .map(|filter| ProcessFilter {
+            workspace_id: filter.workspace_id,
+            parent_process_id: filter.parent_process_id,
+            statuses: filter.statuses,
+            process_type: filter.process_type,
+            since: filter.since,
+            until: filter.until,
+            limit: filter.limit.map(i64::from),
+            offset: filter.offset.map(i64::from),
+            exclude_conversation: filter.exclude_conversation.unwrap_or(false),
+        })
+        .unwrap_or_default()
+}
+
 #[napi(object)]
 pub struct NativeProcessWithTurns {
     pub process: HashMap<String, Either4<f64, String, Buffer, Null>>,
@@ -193,6 +209,24 @@ impl Task for AllProcessesTask {
                 turns: entry.turns.map(to_js_rows),
             })
             .collect())
+    }
+}
+
+pub struct AllProcessesJsonTask {
+    database: Database,
+    filter: ProcessFilter,
+}
+
+impl Task for AllProcessesJsonTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_reads::get_all_processes_json(&self.database, &self.filter).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, json: Self::Output) -> Result<Self::JsValue> {
+        Ok(json)
     }
 }
 
@@ -419,20 +453,21 @@ impl NativeDatabaseHandle {
         &self,
         filter: Option<NativeProcessReadFilter>,
     ) -> AsyncTask<AllProcessesTask> {
-        let filter = filter
-            .map(|filter| ProcessFilter {
-                workspace_id: filter.workspace_id,
-                parent_process_id: filter.parent_process_id,
-                statuses: filter.statuses,
-                process_type: filter.process_type,
-                since: filter.since,
-                until: filter.until,
-                limit: filter.limit.map(i64::from),
-                offset: filter.offset.map(i64::from),
-                exclude_conversation: filter.exclude_conversation.unwrap_or(false),
-            })
-            .unwrap_or_default();
-        AsyncTask::new(AllProcessesTask { database: self.database.clone(), filter })
+        AsyncTask::new(AllProcessesTask {
+            database: self.database.clone(),
+            filter: process_read_filter(filter),
+        })
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn get_all_processes_json(
+        &self,
+        filter: Option<NativeProcessReadFilter>,
+    ) -> AsyncTask<AllProcessesJsonTask> {
+        AsyncTask::new(AllProcessesJsonTask {
+            database: self.database.clone(),
+            filter: process_read_filter(filter),
+        })
     }
 
     #[napi(ts_return_type = "Promise<NativeProcessSummaryPage>")]

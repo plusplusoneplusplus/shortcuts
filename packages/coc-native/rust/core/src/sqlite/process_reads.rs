@@ -155,6 +155,69 @@ pub fn get_all_processes(
     })
 }
 
+fn write_json_row(output: &mut String, row: &Row) {
+    output.push('{');
+    for (index, (name, value)) in row.iter().enumerate() {
+        if index != 0 {
+            output.push(',');
+        }
+        output.push_str(&serde_json::to_string(name).expect("SQLite column names serialize"));
+        output.push(':');
+        match value {
+            Value::Null => output.push_str("null"),
+            Value::Integer(value) => output.push_str(&value.to_string()),
+            Value::Real(value) if value.is_finite() => {
+                output.push_str(&serde_json::to_string(value).expect("finite real serializes"));
+            }
+            Value::Real(value) => {
+                let number = if value.is_nan() {
+                    "NaN"
+                } else if value.is_sign_positive() {
+                    "Infinity"
+                } else {
+                    "-Infinity"
+                };
+                output.push_str(&format!(r#"{{"$sqliteNumber":"{number}"}}"#));
+            }
+            Value::Text(value) => {
+                output.push_str(&serde_json::to_string(value).expect("SQLite text serializes"));
+            }
+            Value::Blob(bytes) => {
+                output.push_str(r#"{"$sqliteBlob":"#);
+                output.push_str(&serde_json::to_string(bytes).expect("SQLite blob serializes"));
+                output.push('}');
+            }
+        }
+    }
+    output.push('}');
+}
+
+pub fn get_all_processes_json(database: &Database, filter: &ProcessFilter) -> Result<String> {
+    let rows = get_all_processes(database, filter)?;
+    let mut output = String::new();
+    output.push('[');
+    for (index, entry) in rows.iter().enumerate() {
+        if index != 0 {
+            output.push(',');
+        }
+        output.push_str(r#"{"process":"#);
+        write_json_row(&mut output, &entry.process);
+        if let Some(turns) = &entry.turns {
+            output.push_str(r#","turns":["#);
+            for (turn_index, turn) in turns.iter().enumerate() {
+                if turn_index != 0 {
+                    output.push(',');
+                }
+                write_json_row(&mut output, turn);
+            }
+            output.push(']');
+        }
+        output.push('}');
+    }
+    output.push(']');
+    Ok(output)
+}
+
 pub fn get_process_summaries(database: &Database, filter: &ProcessFilter) -> Result<SummaryPage> {
     database.with_read_connection(|connection| {
         check_process_schema(connection)?;
