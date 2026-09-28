@@ -52,11 +52,14 @@ test('real compiled production search reports counts, p50, and timer responsiven
             ['getConversationTurns', 10], ['getAllProcesses (100, ws-a)', 100],
             ['getAllProcesses (100, ws-a, exclude conversation)', 100],
             ['getProcessSummaries (100, ws-a)', 200],
-            ['listRecentProcesses (100, ws-a)', 100]]);
+            ['listRecentProcesses (100, ws-a)', 100],
+            ['upsertStreamingTurn', 1], ['appendConversationTurn', 3]]);
     for (const item of report.cases) {
         assert.equal(item.production.samplesMs.length, 2);
         assert.ok(item.production.p50Ms > 0);
         assert.equal(item.production.resultCount, item.name === 'getConversationTurns' ? 10
+            : item.name === 'upsertStreamingTurn' ? 1
+            : item.name === 'appendConversationTurn' ? 3
             : ['dense', 'workspace', 'sparse'].includes(item.name) ? 20 : 100);
         assert.equal(item.baseline, null);
         assert.equal(item.speedup, null);

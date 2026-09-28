@@ -95,7 +95,7 @@ function openBaseline(dbPath) {
         return { status: 'unavailable', reason: `better-sqlite3 could not load: ${error.message}` };
     }
     try {
-        return { status: 'available', db: new BetterSqlite3(dbPath, { readonly: true }) };
+        return { status: 'available', db: new BetterSqlite3(dbPath) };
     } catch (error) {
         return { status: 'unavailable', reason: `better-sqlite3 could not open fixture: ${error.message}` };
     }
@@ -315,6 +315,43 @@ function baselineRecent(db) {
     return { total: rows.length, results: rows.map(row => hydrateIndex(row)) };
 }
 
+function streamingRows(db, processId) {
+    const results = db.prepare(
+        'SELECT turn_index, role, content, streaming, timeline FROM conversation_turns WHERE process_id = ? ORDER BY turn_index',
+    ).all(processId);
+    return { total: results.length, results };
+}
+
+function baselineStreamingWrite(db) {
+    db.transaction(() => {
+        const updated = db.prepare(
+            'UPDATE conversation_turns SET content = ?, timeline = ?, streaming = ? WHERE process_id = ? AND streaming = 1',
+        ).run('updated stream', '[]', 1, 'bench-baseline-stream');
+        assert.equal(updated.changes, 1);
+    })();
+    return streamingRows(db, 'bench-baseline-stream');
+}
+
+function baselineAppend(db) {
+    db.transaction(() => {
+        const index = db.prepare(
+            'SELECT COALESCE(MAX(turn_index), -1) + 1 AS next_idx FROM conversation_turns WHERE process_id = ?',
+        ).get('bench-baseline-append').next_idx;
+        db.prepare(
+            `INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, timeline)
+             VALUES (?, ?, 'assistant', ?, ?, '[]')`,
+        ).run('bench-baseline-append', index, `reply-${index}`, '2026-01-01T00:00:00.000Z');
+        db.prepare('UPDATE processes SET last_event_at = ? WHERE id = ?')
+            .run(new Date().toISOString(), 'bench-baseline-append');
+    })();
+    const rows = db.prepare('SELECT * FROM conversation_turns WHERE process_id = ? ORDER BY turn_index')
+        .all('bench-baseline-append');
+    hydrateProcess(db.prepare('SELECT * FROM processes WHERE id = ?').get('bench-baseline-append'),
+        rows.map(hydrateTurn));
+    const results = rows.map(hydrateTurn);
+    return { total: results.length, results };
+}
+
 export async function measure(run, runs, observeTimer = false) {
     const samplesMs = [];
     let timerFiredDuringSearch = false;
@@ -354,6 +391,16 @@ export async function benchmark(options, { baselineFactory = openBaseline } = {}
         const seedStart = performance.now();
         seed(store, options.turns);
         const fixtureMs = performance.now() - seedStart;
+        for (const id of ['bench-native-stream', 'bench-baseline-stream',
+            'bench-native-append', 'bench-baseline-append']) {
+            await store.addProcess({
+                id, type: 'chat', status: 'running', promptPreview: 'benchmark',
+                startTime: new Date('2026-01-01T00:00:00.000Z'),
+                metadata: { type: 'chat', workspaceId: 'ws-benchmark' },
+            });
+        }
+        await store.upsertStreamingTurn('bench-native-stream', 'initial stream', true);
+        await store.upsertStreamingTurn('bench-baseline-stream', 'initial stream', true);
         baseline = baselineFactory(dbPath);
         const reads = [
             {
@@ -406,6 +453,25 @@ export async function benchmark(options, { baselineFactory = openBaseline } = {}
                 baseline: () => baselineSearch(baseline.db, query, filter),
             })),
             ...reads,
+            {
+                name: 'upsertStreamingTurn',
+                production: async () => {
+                    await store.upsertStreamingTurn('bench-native-stream', 'updated stream', true);
+                    return streamingRows(store.getDatabase(), 'bench-native-stream');
+                },
+                baseline: () => baselineStreamingWrite(baseline.db),
+            },
+            {
+                name: 'appendConversationTurn',
+                production: async () => {
+                    const result = await store.appendConversationTurn('bench-native-append', index => ({
+                        role: 'assistant', content: `reply-${index}`, turnIndex: index,
+                        timestamp: new Date('2026-01-01T00:00:00.000Z'), timeline: [],
+                    }));
+                    return { total: result.allTurns.length, results: result.allTurns };
+                },
+                baseline: () => baselineAppend(baseline.db),
+            },
         ];
         const cases = [];
         for (const { name, production: runProduction, baseline: runBaseline } of workloads) {
