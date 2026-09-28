@@ -1,5 +1,7 @@
 //! Pooled process and conversation reads; TypeScript owns JSON/date conversion.
 
+use std::collections::HashMap;
+
 use rusqlite::Connection;
 
 use super::{check_process_schema, query, Database, Error, Parameters, Result, Row, Value};
@@ -117,16 +119,36 @@ pub fn get_all_processes(
             values.push(Value::Integer(offset));
         }
         let rows = query(connection, &sql, &Parameters::Positional(values))?;
-        rows.into_iter().map(|process| {
-            let turns = if filter.exclude_conversation {
-                None
-            } else {
-                let id = match process.get("id") {
-                    Some(Value::Text(id)) => id,
-                    _ => return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("id".into()))),
+        if filter.exclude_conversation {
+            return Ok(rows.into_iter().map(|process| ProcessWithTurns { process, turns: None }).collect());
+        }
+
+        let mut turns_by_process: HashMap<String, Vec<Row>> = HashMap::new();
+        for chunk in rows.chunks(500) {
+            let ids: Vec<Value> = chunk.iter().map(|process| {
+                process.get("id").cloned().ok_or_else(|| {
+                    Error::Sqlite(rusqlite::Error::InvalidColumnName("id".into()))
+                })
+            }).collect::<Result<_>>()?;
+            let placeholders = vec!["?"; ids.len()].join(", ");
+            let sql = format!(
+                "SELECT * FROM conversation_turns WHERE process_id IN ({placeholders}) \
+                 ORDER BY process_id, turn_index"
+            );
+            for turn in query(connection, &sql, &Parameters::Positional(ids))? {
+                let id = match turn.get("process_id") {
+                    Some(Value::Text(id)) => id.clone(),
+                    _ => return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("process_id".into()))),
                 };
-                Some(load_turns(connection, id)?)
+                turns_by_process.entry(id).or_default().push(turn);
+            }
+        }
+        rows.into_iter().map(|process| {
+            let id = match process.get("id") {
+                Some(Value::Text(id)) => id,
+                _ => return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("id".into()))),
             };
+            let turns = Some(turns_by_process.remove(id).unwrap_or_default());
             Ok(ProcessWithTurns { process, turns })
         }).collect()
     })

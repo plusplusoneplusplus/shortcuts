@@ -317,6 +317,94 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
 }
 
 #[test]
+fn get_all_processes_batches_turns_without_changing_process_or_turn_order() {
+    let directory = tempdir().unwrap();
+    let database = Database::open(directory.path().join("batched-reads.db"), false).unwrap();
+    database
+        .exec(
+            "
+        PRAGMA journal_mode=WAL; PRAGMA user_version=38;
+        CREATE TABLE processes (
+            id TEXT PRIMARY KEY, workspace_id TEXT, last_event_at TEXT
+        );
+        CREATE TABLE conversation_turns (
+            id INTEGER PRIMARY KEY, process_id TEXT, turn_index INTEGER, content TEXT,
+            UNIQUE(process_id, turn_index)
+        );
+        CREATE INDEX idx_turns_process_id ON conversation_turns(process_id);
+    ",
+        )
+        .unwrap();
+    let insert_process = database
+        .prepare("INSERT INTO processes (id, workspace_id, last_event_at) VALUES (?, ?, ?)");
+    let insert_turn = database.prepare(
+        "INSERT INTO conversation_turns (process_id, turn_index, content) VALUES (?, ?, ?)",
+    );
+    database
+        .transaction(|| {
+            for index in 0..502 {
+                let id = format!("p-{index:03}");
+                insert_process.run(&positional([
+                    Value::Text(id.clone()),
+                    Value::Text("ws-a".into()),
+                    Value::Text(format!("{index:03}")),
+                ]))?;
+                if index != 501 {
+                    for turn_index in [2, 0] {
+                        insert_turn.run(&positional([
+                            Value::Text(id.clone()),
+                            Value::Integer(turn_index),
+                            Value::Text(format!("{id}-{turn_index}")),
+                        ]))?;
+                    }
+                }
+            }
+            insert_process.run(&positional([
+                Value::Text("other-workspace".into()),
+                Value::Text("ws-b".into()),
+                Value::Text("999".into()),
+            ]))?;
+            insert_turn.run(&positional([
+                Value::Text("other-workspace".into()),
+                Value::Integer(0),
+                Value::Text("not in ws-a".into()),
+            ]))?;
+            Ok(())
+        })
+        .unwrap();
+
+    let filter = ProcessFilter { workspace_id: Some("ws-a".into()), ..ProcessFilter::default() };
+    let processes = get_all_processes(&database, &filter).unwrap();
+    assert_eq!(processes.len(), 502);
+    assert_eq!(processes[0].process["id"], Value::Text("p-501".into()));
+    assert_eq!(processes[0].turns.as_ref().unwrap(), &[]);
+    for index in [1, 499, 500, 501] {
+        let id = format!("p-{:03}", 501 - index);
+        assert_eq!(processes[index].process["id"], Value::Text(id.clone()));
+        assert_eq!(
+            processes[index].turns.as_ref().unwrap(),
+            &get_conversation_turns(&database, &id).unwrap()
+        );
+        assert_eq!(processes[index].turns.as_ref().unwrap()[0]["turn_index"], Value::Integer(0));
+    }
+    let page = get_all_processes(
+        &database,
+        &ProcessFilter { limit: Some(2), offset: Some(500), ..filter.clone() },
+    )
+    .unwrap();
+    assert_eq!(page.len(), 2);
+    assert_eq!(page[0].process["id"], Value::Text("p-001".into()));
+    assert_eq!(page[1].process["id"], Value::Text("p-000".into()));
+    assert_eq!(page[0].turns.as_ref().unwrap().len(), 2);
+    assert!(get_all_processes(
+        &database,
+        &ProcessFilter { workspace_id: Some("missing".into()), ..filter }
+    )
+    .unwrap()
+    .is_empty());
+}
+
+#[test]
 fn streaming_turn_write_is_atomic_and_uses_the_writer_transaction() {
     let directory = tempdir().unwrap();
     let database = Database::open(directory.path().join("writes.db"), false).unwrap();

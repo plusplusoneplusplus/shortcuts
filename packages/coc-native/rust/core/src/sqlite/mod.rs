@@ -94,14 +94,16 @@ impl std::fmt::Display for Error {
         match self {
             Self::Sqlite(error) => error.fmt(formatter),
             Self::Closed => formatter.write_str("database connection is closed"),
-            Self::UnsupportedVersion(version) => write!(formatter, "unsupported process database user_version: {version}"),
+            Self::UnsupportedVersion(version) => {
+                write!(formatter, "unsupported process database user_version: {version}")
+            }
         }
     }
 }
 
+pub mod process_reads;
 pub mod process_search;
 pub mod process_writes;
-pub mod process_reads;
 
 pub(super) fn check_process_schema(connection: &Connection) -> Result<()> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
