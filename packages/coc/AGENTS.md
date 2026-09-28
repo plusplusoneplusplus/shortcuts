@@ -116,11 +116,12 @@ all have their own `references/*.md`.
   The independent default-off live `features.teamsMessageReaction` setting is
   also exposed in the Features card. Newly admitted human channel posts attempt
   a Like before routing; ordinary replies and relay receipts remain authoritative.
-  All channel sends begin with visible `AI:` at the shared manager boundary;
-  relay replies supply formatted HTML, while command and status replies supply
-  Markdown source. Acknowledgements remain immediate receipts; saved terminal
-  assistant turns (or safe failure/cancellation notices) are separate bounded
-  HTML replies under the original thread root. Follow-ups use an opaque per-request turn
+  All channel sends begin with visible `AI:` at the shared manager boundary.
+  The boundary renders command, status, acknowledgement, and error Markdown as
+  safe Teams HTML; relay replies pass preformatted HTML through unchanged.
+  Acknowledgements remain immediate receipts; saved terminal assistant turns
+  (or safe failure/cancellation notices) are separate bounded HTML replies under
+  the original thread root. Follow-ups use an opaque per-request turn
   ID, never the process's mutable result; confirmed sends are not replayed and
   unknown outcomes remain ambiguous. Disable, disconnect, or target changes
   must not redirect pending answers, and shutdown disposes queue listeners.

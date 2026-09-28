@@ -177,13 +177,27 @@ describe('TeamsMessagingManager', () => {
         await options.onMessage(inbound);
         expect(inbound.text).toBe('/list repos');
         expect(bot.send).toHaveBeenLastCalledWith('channel-id-resolved',
-            expect.stringMatching(/^AI: \*\*Agents \/ Repos\*\*/), { replyToId: 'user-msg' });
+            expect.stringMatching(/^AI: <p><strong>Agents \/ Repos<\/strong> \(1\):<\/p><ol><li><strong>Alpha<\/strong> — <code>C:\\repo\\alpha<\/code><\/li><\/ol>$/),
+            { replyToId: 'user-msg' });
+
+        getWorkspaces.mockResolvedValueOnce([
+            { id: 'ws-a', name: '<img src=x onerror=bad()> **[bad](javascript:alert(1))',
+                rootPath: 'C:\\repo\\`<script>`' },
+        ]);
+        await options.onMessage({ ...inbound, messageId: 'hostile' });
+        const hostile = bot.send.mock.lastCall[1] as string;
+        expect(hostile).toContain('&lt;img src=x onerror=bad()&gt;');
+        expect(hostile).toContain('<code>C:\\repo\\`&lt;script&gt;`</code>');
+        expect(hostile).not.toMatch(/<(?:img|script)\b|href="javascript:/i);
 
         await options.onMessage({ ...inbound, messageId: 'missing', text: '/select repo Missing' });
-        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: ❌ Repo/);
+        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: <p>❌ Repo/);
         getWorkspaces.mockRejectedValueOnce(new Error('offline'));
         await options.onMessage({ ...inbound, messageId: 'error' });
-        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: ❌ Error: offline/);
+        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: <p>❌ Error: offline<\/p>$/);
+        bot.send.mockRejectedValueOnce(new Error('channel rejected message'));
+        await expect(m2.sendMessage('**Retry**', 'user-msg')).rejects.toThrow('channel rejected message');
+        expect(bot.send.mock.lastCall[1]).toBe('AI: <p><strong>Retry</strong></p>');
 
         const parts = formatTeamsAnswerChunks('👩‍💻 <unsafe> & '.repeat(4000), 'opaque-1');
         expect(parts.length).toBeGreaterThan(1);

@@ -17,6 +17,7 @@ import { toQueueProcessId, type ProcessStore, type AIProcess, type ProcessFilter
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsUserStateStore } from './teams-user-state';
 import type { TeamsEventType } from './teams-attempt-store';
+import { escapeTeamsMarkdown, teamsCodeSpan } from './teams-outbound-format';
 
 // ============================================================================
 // Types
@@ -191,7 +192,7 @@ export class TeamsCommandRouter {
         }
 
         const lines = workspaces.map((w, i) =>
-            `${i + 1}. **${w.name ?? w.id}** — \`${w.rootPath ?? 'N/A'}\``,
+            `${i + 1}. **${escapeTeamsMarkdown(w.name ?? w.id)}** — ${teamsCodeSpan(w.rootPath ?? 'N/A')}`,
         );
         await this.deps.sendReply(`**Agents / Repos** (${workspaces.length}):\n${lines.join('\n')}`, msg.messageId);
     }
@@ -210,7 +211,7 @@ export class TeamsCommandRouter {
 
         this.userState.update(userKey, { selectedRepo: workspace.id });
         await this.deps.sendReply(
-            `✅ Selected repo: **${workspace.name ?? workspace.id}**`,
+            `✅ Selected repo: **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**`,
             msg.messageId,
         );
     }
@@ -403,7 +404,7 @@ export class TeamsCommandRouter {
                     lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
                 });
                 await this.sendAcceptance(
-                    `💬 New topic created in **${firstRepo.name ?? firstRepo.id}**: \`${taskId.slice(0, 8)}\``,
+                    `💬 New topic created in **${escapeTeamsMarkdown(firstRepo.name ?? firstRepo.id)}**: \`${taskId.slice(0, 8)}\``,
                     msg, () => this.deps.acknowledgeNewChat?.(taskId),
                 );
             } else {
