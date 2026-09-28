@@ -60,6 +60,7 @@ export { ALL_TOOL_NAV_ITEMS, TOOL_TAB_GROUP_LABELS };
 
 const AgentManagementPanel = lazy(() => import('../repos/AgentManagementPanel').then(m => ({ default: m.AgentManagementPanel })));
 const IMSettingsSection = lazy(() => import('./IMSettingsSection').then(m => ({ default: m.IMSettingsSection })));
+const TeamsConnectionCard = lazy(() => import('./TeamsConnectionCard').then(m => ({ default: m.TeamsConnectionCard })));
 
 // Tool views embedded in the admin right panel. Keeping the imports here
 // (not in Router.tsx) means the admin shell owns their layout.
@@ -803,6 +804,11 @@ export function AdminPanel() {
                             {activeTab === 'messaging' && isContainerMode() && (
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
                                     <IMSettingsSection />
+                                </Suspense>
+                            )}
+                            {activeTab === 'messaging' && !isContainerMode() && (
+                                <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
+                                    <TeamsConnectionCard />
                                 </Suspense>
                             )}
                         </div>

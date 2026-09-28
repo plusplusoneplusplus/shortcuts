@@ -151,7 +151,7 @@ describe('AdminPanel — sidebar layout zones', () => {
             const nav = document.querySelector('.ar-sidebar-nav');
             expect(nav).toBeTruthy();
             const labels = Array.from(nav!.querySelectorAll('.ar-nav-group-label')).map(el => el.textContent);
-            expect(labels).toEqual(['Configure', 'Knowledge', 'Operations', 'Developer / Internals']);
+            expect(labels).toEqual(['Configure', 'Knowledge', 'Connections', 'Operations', 'Developer / Internals']);
         });
     });
 
@@ -234,7 +234,7 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         await act(async () => { renderAdmin(); });
         await waitFor(() => {
             const labels = Array.from(document.querySelectorAll('.ar-sidebar .ar-nav-group-label')).map(node => node.textContent);
-            expect(labels).toEqual(['Configure', 'Knowledge', 'Operations', 'Developer / Internals']);
+            expect(labels).toEqual(['Configure', 'Knowledge', 'Connections', 'Operations', 'Developer / Internals']);
         });
     });
 
@@ -278,9 +278,12 @@ describe('AdminPanel — grouped sidebar navigation', () => {
         expect(groups).toEqual([
             { label: 'Configure', ids: ['servers-toggle'] },
             { label: 'Knowledge', ids: ['memory-toggle', 'skills-toggle', 'dreams-admin-toggle'] },
+            { label: 'Connections', ids: [] },
             { label: 'Operations', ids: ['stats-toggle', 'logs-toggle'] },
             { label: 'Developer / Internals', ids: [] },
         ]);
+        expect(document.querySelector('[data-testid="admin-tab-messaging"]')?.closest('.ar-nav-group')
+            ?.querySelector('.ar-nav-group-label')?.textContent).toBe('Connections');
     });
 
     it('each embedded tool row carries data-tab attribute matching its global route', async () => {

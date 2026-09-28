@@ -263,16 +263,27 @@ export class TeamsBot implements MessagingConnector {
             if (messages.length > 0) {
                 this._lastActivityTime = Date.now();
             }
+            if (this._lastError) {
+                this._lastError = null;
+                this.setStatus('connected');
+            }
         } catch (err: any) {
             if (err.message?.includes('401') && !this._refreshingToken) {
-                await this.refreshToken();
+                if (!await this.refreshToken()) {
+                    const message = this._lastError ?? err.message ?? 'Teams polling authorization failed';
+                    this._lastError = message;
+                    this.opts.onError?.(message);
+                }
             } else {
                 console.error(`[teams-bot] ${this.mode} poll error:`, err.message);
+                const message = err.message ?? 'Teams polling failed';
+                this._lastError = message;
+                this.opts.onError?.(message);
             }
         }
 
         // Schedule next poll (adaptive interval based on activity)
-        this.schedulePoll();
+        if (this._status === 'connected') this.schedulePoll();
     }
 
     /**

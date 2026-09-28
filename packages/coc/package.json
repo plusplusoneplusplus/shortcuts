@@ -28,6 +28,7 @@
     "@azure/identity": "^4.13.1",
     "@excalidraw/excalidraw": "^0.18.1",
     "@github/copilot-sdk": "^1.0.14",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@monaco-editor/react": "^4.7.0",
     "@octokit/rest": "^22.0.1",
     "@openai/codex-sdk": "^0.153.2",

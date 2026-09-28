@@ -227,6 +227,24 @@ describe('TeamsBot', () => {
             } as any);
         }
 
+        it('surfaces polling errors and clears them when polling recovers', async () => {
+            mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
+            const bot = createMcpBot();
+            await bot.start();
+            bot.setChannelId('channel-123');
+
+            mockFetch.mockRejectedValueOnce(new Error('Polling unavailable'));
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(onError).toHaveBeenCalledWith('Polling unavailable');
+            expect(bot.getLastError()).toBe('Polling unavailable');
+
+            mockMcpResponse({ content: [{ type: 'text', text: JSON.stringify({ messages: [] }) }] });
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(bot.getLastError()).toBeNull();
+            expect(onStatusChange).toHaveBeenCalledWith('connected');
+            await bot.stop();
+        });
+
         describe('start', () => {
             it('should connect successfully via MCP initialize', async () => {
                 mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
@@ -568,4 +586,3 @@ describe('TeamsBot', () => {
         });
     });
 });
-

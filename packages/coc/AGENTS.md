@@ -102,6 +102,13 @@ all have their own `references/*.md`.
   with a timing delay.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
+- **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
+  team/channel inbound command bridge. Its `/api/messaging/teams/*` authorization
+  flow uses the official MCP SDK for discovery, PKCE, exchange, and read-only
+  handshake verification; verified tokens enter the shared Copilot OAuth cache
+  for polling. It is separate from container `/container/messaging/*` and the
+  container self-chat relay. Keep enable/disable, startup, and shutdown
+  synchronized with the polling manager.
 - **Process mutation admission** uses the shared keyed coordinator in
   `src/server/processes/process-operation-admission.ts`. Follow-up delivery and
   rewind share that section. Follow-up delivery re-reads process/task state

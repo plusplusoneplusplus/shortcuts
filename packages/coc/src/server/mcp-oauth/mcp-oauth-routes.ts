@@ -230,6 +230,7 @@ export function registerMcpOauthRoutes(routes: Route[], ctx: McpOauthRouteContex
                         serverConfig,
                         workspaceId,
                         workingDirectory: workspaceRoot,
+                        forceReauth: force,
                         aiService: oauthAiService,
                         manager,
                     });

@@ -1,8 +1,8 @@
 /**
  * Manages the MS Teams bot lifecycle (connect, disconnect, poll).
  * Persists Teams configuration (team name, channel name, resolved IDs, botName).
- * On "connect", ensures the MCP server entry exists in ~/.copilot/mcp-config.json,
- * acquires a token for the MCP server resource via az CLI, resolves team/channel
+ * On "connect", reads the configured global Teams MCP server,
+ * acquires a cached SDK OAuth token, resolves team/channel
  * IDs via MCP tools, and starts the bot in MCP mode for polling.
  */
 
@@ -11,6 +11,9 @@ import * as path from 'path';
 import * as os from 'os';
 import type { BotStatus, InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
+import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
+import type { TeamsOAuthFlow } from './teams-oauth-flow';
+import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
 
 // ── Persisted Config ─────────────────────────────────────────
 
@@ -30,8 +33,7 @@ const DEFAULT_CONFIG: TeamsMessagingConfig = {
     channelName: 'Coc-General',
 };
 
-/** MCP Server URL for Microsoft Teams (Microsoft tenant). */
-const TEAMS_MCP_SERVER_URL = 'https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_TeamsServer';
+export const TEAMS_MCP_SERVER_NAME = 'Microsoft Teams';
 
 // ── Manager ──────────────────────────────────────────────────
 
@@ -44,6 +46,8 @@ export interface TeamsMessagingStatus {
     teamId?: string;
     channelId?: string;
     botName: string;
+    serverUrl: string | null;
+    authStatus: string | null;
 }
 
 export class TeamsMessagingManager {
@@ -54,10 +58,18 @@ export class TeamsMessagingManager {
     private readonly configPath: string;
     private onInboundMessage: ((msg: InboundTeamsMessage) => Promise<void>) | null = null;
     private readonly _homeDir: string;
+    private readonly customHome: boolean;
+    private generation = 0;
+    private oauthFlow: TeamsOAuthFlow | null = null;
+
+    setOAuthFlow(flow: TeamsOAuthFlow): void {
+        this.oauthFlow = flow;
+    }
 
     constructor(private readonly dataDir: string, opts?: { homeDir?: string }) {
         this.configPath = path.join(dataDir, 'teams-messaging.json');
         this._homeDir = opts?.homeDir ?? os.homedir();
+        this.customHome = opts?.homeDir !== undefined;
         this.config = this.loadConfig();
     }
 
@@ -67,6 +79,7 @@ export class TeamsMessagingManager {
 
     /** Get the current status for the REST API. */
     getStatus(): TeamsMessagingStatus {
+        const serverUrl = this.getServerUrl();
         return {
             enabled: this.config.enabled,
             status: this._status,
@@ -76,19 +89,68 @@ export class TeamsMessagingManager {
             teamId: this.config.teamId,
             channelId: this.config.channelId,
             botName: this.config.botName,
+            serverUrl,
+            authStatus: serverUrl
+                ? readMcpServerAuthInfo(serverUrl, 'http', this._homeDir).status
+                : null,
         };
     }
 
-    /** Update configuration fields. Does NOT reconnect automatically. */
+    /** Update configuration fields. Disconnect on disable or target changes. */
     async updateConfig(patch: Partial<TeamsMessagingConfig>): Promise<void> {
+        if (patch.enabled === false || patch.teamName !== undefined || patch.channelName !== undefined || patch.botName !== undefined) {
+            await this.disconnect();
+            this._lastError = null;
+        }
+        if (patch.teamName !== undefined || patch.channelName !== undefined) {
+            this.config.teamId = undefined;
+            this.config.channelId = undefined;
+        }
         Object.assign(this.config, patch);
         this.saveConfig();
     }
 
+    /** Register the shared global MCP endpoint used by both OAuth and polling. */
+    async configureServer(url: string): Promise<void> {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
+            throw new RangeError('Teams MCP URL must be HTTPS without credentials or a fragment');
+        }
+        const configFile = path.join(this._homeDir, '.copilot', 'mcp-config.json');
+        if (fs.existsSync(configFile)) {
+            const existingConfig: unknown = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+            if (!existingConfig || typeof existingConfig !== 'object' || Array.isArray(existingConfig)
+                || ('mcpServers' in existingConfig && (
+                    !existingConfig.mcpServers || typeof existingConfig.mcpServers !== 'object'
+                    || Array.isArray(existingConfig.mcpServers)
+                ))) {
+                throw new Error('Global MCP configuration must contain an object of servers');
+            }
+        }
+        const config = this.customHome
+            ? (fs.existsSync(configFile) ? JSON.parse(fs.readFileSync(configFile, 'utf-8')) as Record<string, unknown> : { mcpServers: {} })
+            : readRawGlobalConfig();
+        const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
+        const existing = servers[TEAMS_MCP_SERVER_NAME];
+        if (existing && (typeof existing !== 'object' || (existing as { type?: string }).type !== 'http')) {
+            throw new Error('Microsoft Teams MCP entry must use HTTP; edit it in workspace MCP settings');
+        }
+        servers[TEAMS_MCP_SERVER_NAME] = { ...(existing ?? {}), type: 'http', url: parsed.href };
+        config.mcpServers = servers;
+        if (this.customHome) {
+            fs.mkdirSync(path.dirname(configFile), { recursive: true });
+            fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+        } else {
+            await writeRawGlobalConfig(config);
+        }
+        await this.disconnect();
+        this._lastError = null;
+    }
+
     /**
      * Connect (or reconnect) the bot.
-     * 1. Ensures MCP server config is in ~/.copilot/mcp-config.json.
-     * 2. Acquires a bearer token for the MCP server resource via az CLI.
+     * 1. Reads the global MCP server configured in the MCP settings panel.
+     * 2. Acquires a bearer token from the shared SDK OAuth cache.
      * 3. Resolves team + channel IDs via MCP tools.
      * 4. Starts the TeamsBot in MCP mode for message polling.
      */
@@ -96,56 +158,78 @@ export class TeamsMessagingManager {
         if (!this.config.enabled) {
             this._lastError = 'Teams integration is disabled';
             this._status = 'disconnected';
-            return;
+            throw new Error(this._lastError);
         }
 
         // Stop existing bot if running
         await this.disconnect();
 
+        const generation = this.generation;
         this._status = 'connecting';
         this._lastError = null;
 
         try {
-            // Step 1: Ensure MCP server is configured
-            this.ensureMcpServerConfig();
+            const serverUrl = this.getServerUrl();
+            if (!serverUrl) throw new Error('Configure a global HTTP Microsoft Teams MCP server before connecting');
+            if (!this.onInboundMessage) throw new Error('Teams command router is unavailable');
 
-            // Step 2: Acquire token from cached MCP OAuth tokens (obtained via Copilot CLI)
+            // Step 2: Acquire token from the shared MCP OAuth cache
             this._status = 'authenticating';
             const { acquireMcpOAuthToken, McpClient } = await import('@plusplusoneplusplus/coc-connector/teams');
-            const token = await acquireMcpOAuthToken(TEAMS_MCP_SERVER_URL, this._homeDir);
+            const token = await acquireMcpOAuthToken(serverUrl, this._homeDir);
+            if (generation !== this.generation || !this.config.enabled) throw new Error('Teams connection cancelled');
 
             // Step 3: Resolve team and channel via MCP tools
             const mcpClient = new McpClient({
-                serverUrl: TEAMS_MCP_SERVER_URL,
+                serverUrl,
                 bearerToken: token,
             });
             await mcpClient.initialize();
+            if (generation !== this.generation || !this.config.enabled) throw new Error('Teams connection cancelled');
 
             const resolved = await this.resolveTeamAndChannelViaMcp(mcpClient);
+            if (generation !== this.generation || !this.config.enabled) throw new Error('Teams connection cancelled');
             this.config.teamId = resolved.teamId;
             this.config.channelId = resolved.channelId;
             this.saveConfig();
 
             // Step 4: Create bot in MCP mode for polling
-            this.bot = new TeamsBot({
+            const bot = new TeamsBot({
                 mode: 'mcp',
-                mcpServerUrl: TEAMS_MCP_SERVER_URL,
+                mcpServerUrl: serverUrl,
                 teamId: resolved.teamId,
-                auth: { bearerToken: token },
+                auth: {
+                    bearerToken: token,
+                    onTokenRefresh: () => acquireMcpOAuthToken(serverUrl, this._homeDir),
+                },
                 botName: this.config.botName,
                 onMessage: async (msg) => {
                     if (this.onInboundMessage) {
                         await this.onInboundMessage(msg);
                     }
                 },
-                onStatusChange: (s) => { this._status = s; },
-                onError: (e) => { this._lastError = e; },
+                onStatusChange: (s) => {
+                    if (generation !== this.generation) return;
+                    this._status = s;
+                    if (s === 'connected') this._lastError = null;
+                },
+                onError: (e) => { if (generation === this.generation) this._lastError = e; },
             });
-            this.bot.setChannelId(resolved.channelId);
-            await this.bot.start();
+            this.bot = bot;
+            bot.setChannelId(resolved.channelId);
+            await bot.start();
+            if (generation !== this.generation || !this.config.enabled) {
+                await bot.stop();
+                throw new Error('Teams connection cancelled');
+            }
+            if (!bot.isConnected()) throw new Error(this._lastError ?? 'Teams bot did not connect');
         } catch (err: any) {
-            this._lastError = err.message ?? 'Failed to connect';
-            this._status = 'error';
+            if (generation === this.generation) {
+                this._lastError = err.message ?? 'Failed to connect';
+                await this.disconnect();
+                this._status = 'error';
+            }
+            throw err;
         }
     }
 
@@ -213,6 +297,8 @@ export class TeamsMessagingManager {
     }
 
     async disconnect(): Promise<void> {
+        this.oauthFlow?.cancel();
+        this.generation++;
         if (this.bot) {
             await this.bot.stop();
             this.bot = null;
@@ -239,52 +325,31 @@ export class TeamsMessagingManager {
                 const raw = fs.readFileSync(this.configPath, 'utf-8');
                 return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
             }
-        } catch { /* use defaults */ }
+        } catch (err) {
+            this._status = 'error';
+            this._lastError = `Cannot read Teams settings: ${err instanceof Error ? err.message : String(err)}`;
+        }
         return { ...DEFAULT_CONFIG };
     }
 
     private saveConfig(): void {
-        try {
-            const dir = path.dirname(this.configPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2));
-        } catch { /* best effort */ }
+        fs.mkdirSync(path.dirname(this.configPath), { recursive: true });
+        fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2));
     }
 
-    /**
-     * Ensure the Teams MCP server entry exists in ~/.copilot/mcp-config.json.
-     * This allows the Copilot SDK to use the Teams tools in chat sessions.
-     */
-    private ensureMcpServerConfig(): void {
-        const configDir = path.join(this._homeDir, '.copilot');
-        const configFile = path.join(configDir, 'mcp-config.json');
-
-        let config: { mcpServers?: Record<string, { type: string; url: string }> } = { mcpServers: {} };
-
+    private getServerUrl(): string | null {
+        const configFile = path.join(this._homeDir, '.copilot', 'mcp-config.json');
+        if (!fs.existsSync(configFile)) return null;
         try {
-            if (fs.existsSync(configFile)) {
-                const raw = fs.readFileSync(configFile, 'utf-8');
-                config = JSON.parse(raw);
-            }
-        } catch { /* start fresh */ }
-
-        if (!config.mcpServers) {
-            config.mcpServers = {};
-        }
-
-        // Add or update the Teams MCP server entry
-        if (!config.mcpServers['Microsoft Teams']) {
-            config.mcpServers['Microsoft Teams'] = {
-                type: 'http',
-                url: TEAMS_MCP_SERVER_URL,
+            const config = JSON.parse(fs.readFileSync(configFile, 'utf-8')) as {
+                mcpServers?: Record<string, { type?: string; url?: string }>;
             };
-
-            if (!fs.existsSync(configDir)) {
-                fs.mkdirSync(configDir, { recursive: true });
-            }
-            fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+            const server = config.mcpServers?.[TEAMS_MCP_SERVER_NAME];
+            return server?.type === 'http' && typeof server.url === 'string' ? server.url : null;
+        } catch (err) {
+            this._lastError = `Cannot read Teams MCP configuration: ${err instanceof Error ? err.message : String(err)}`;
+            this._status = 'error';
+            return null;
         }
     }
 }

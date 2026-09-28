@@ -259,7 +259,7 @@ export async function acquireTokenViaBrowser(
 }
 
 /** Save OAuth tokens to the Copilot CLI cache format. */
-function saveMcpOAuthTokens(
+export function saveMcpOAuthTokens(
     serverUrl: string,
     data: {
         clientId: string;
@@ -477,13 +477,13 @@ interface McpOAuthTokens {
  * Copilot CLI's OAuth flow (triggered on first use of an MCP server).
  *
  * If the token is expired and a refresh token is available, refreshes it automatically.
- * Throws if no cached token exists (user must use Copilot CLI to authenticate first).
+ * Throws if no cached token exists (authenticate the MCP endpoint first).
  */
 export async function acquireMcpOAuthToken(mcpServerUrl: string, homeDir?: string): Promise<string> {
     const configDir = path.join(homeDir ?? os.homedir(), '.copilot', 'mcp-oauth-config');
 
     if (!fs.existsSync(configDir)) {
-        throw new Error('No MCP OAuth config found — use Copilot CLI to authenticate to the Teams MCP server first');
+        throw new Error('No MCP OAuth config found — authenticate the Teams MCP server first');
     }
 
     // Scan *.json (excluding *.tokens.json) to find metadata matching this server URL
@@ -504,14 +504,14 @@ export async function acquireMcpOAuthToken(mcpServerUrl: string, homeDir?: strin
     }
 
     if (!metadataFile || !metadata) {
-        throw new Error(`No OAuth config found for MCP server "${mcpServerUrl}" — use Copilot CLI to authenticate first`);
+        throw new Error(`No OAuth config found for MCP server "${mcpServerUrl}" — authenticate first`);
     }
 
     const tokensFileName = metadataFile.replace('.json', '.tokens.json');
     const tokensFilePath = path.join(configDir, tokensFileName);
 
     if (!fs.existsSync(tokensFilePath)) {
-        throw new Error(`OAuth tokens file missing for MCP server — use Copilot CLI to re-authenticate`);
+        throw new Error('OAuth tokens file missing for MCP server — re-authenticate');
     }
 
     let tokens: McpOAuthTokens;
@@ -529,7 +529,7 @@ export async function acquireMcpOAuthToken(mcpServerUrl: string, homeDir?: strin
 
     // Token expired — try to refresh
     if (!tokens.refreshToken) {
-        throw new Error('MCP OAuth token expired and no refresh token available — use Copilot CLI to re-authenticate');
+        throw new Error('MCP OAuth token expired and no refresh token available — re-authenticate');
     }
 
     const refreshed = await refreshMcpToken(metadata, tokens.refreshToken);

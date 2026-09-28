@@ -16,6 +16,7 @@ export interface McpClientOptions {
 export class McpClient {
     private readonly serverUrl: string;
     private sessionId: string | null = null;
+    private protocolVersion: string | null = null;
     private bearerToken: string | null;
 
     constructor(opts: McpClientOptions) {
@@ -43,6 +44,12 @@ export class McpClient {
         if (response.error) {
             throw new Error(`MCP initialize failed: ${response.error.message}`);
         }
+        const result = response.result as { protocolVersion?: unknown } | undefined;
+        if (typeof result?.protocolVersion !== 'string') {
+            throw new Error('MCP initialize did not return a protocol version');
+        }
+        this.protocolVersion = result.protocolVersion;
+        await this.sendRequest({ jsonrpc: '2.0', method: 'notifications/initialized' }, true);
     }
 
     /** List available tools on the MCP server. */
@@ -75,7 +82,7 @@ export class McpClient {
     }
 
     /** Send a JSON-RPC request to the MCP server. */
-    private async sendRequest(body: Record<string, unknown>): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+    private async sendRequest(body: Record<string, unknown>, notification = false): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
@@ -85,6 +92,9 @@ export class McpClient {
         }
         if (this.sessionId) {
             headers['Mcp-Session-Id'] = this.sessionId;
+        }
+        if (this.protocolVersion) {
+            headers['MCP-Protocol-Version'] = this.protocolVersion;
         }
 
         const res = await fetch(this.serverUrl, {
@@ -101,6 +111,10 @@ export class McpClient {
 
         if (!res.ok) {
             throw new Error(`MCP HTTP error: ${res.status} ${res.statusText}`);
+        }
+        if (notification) {
+            await res.body?.cancel();
+            return {};
         }
 
         const contentType = res.headers.get('Content-Type') ?? '';
