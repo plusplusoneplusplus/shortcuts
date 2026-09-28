@@ -171,6 +171,7 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
                 codex: { enabled: false },
                 claude: { enabled: false },
                 defaultProvider: 'copilot',
+                features: { autoAgentProviderRouting: false },
             },
         } as any,
         ...overrides,
@@ -197,7 +198,16 @@ describe('registerAllRoutes', () => {
             { id: 'ws-first', name: 'First', rootPath: path.join(tmpDir, 'first') },
             { id: 'ws-second', name: 'Second', rootPath: path.join(tmpDir, 'second') },
         ]);
-        const sdk = createMockSDKService();
+        const sdk = createMockSDKService({
+            listModelsResult: [{
+                id: 'gpt-6-sol', name: 'gpt-6-sol',
+                capabilities: {
+                    supports: { reasoningEffort: true, vision: false },
+                    limits: { max_context_window_tokens: 200_000 },
+                },
+                supportedReasoningEfforts: ['medium'],
+            }],
+        });
         sdk.mockSendMessage.mockResolvedValue({
             success: true, response: 'A reply', sessionId: 'session-1',
         });
@@ -234,17 +244,71 @@ describe('registerAllRoutes', () => {
             expect(input).toMatchObject({
                 type: 'chat', repoId: workspaceId, priority: 'normal',
                 payload: { kind: 'chat', mode: 'ask', prompt, workspaceId },
+                config: { afterEffortTier: 'medium', model: 'gpt-6-sol', reasoningEffort: 'medium' },
             });
+            expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
             expect(isChatPayload(input.payload)).toBe(true);
             const process = await store.getProcess(toQueueProcessId(`teams-task-${index + 1}`), workspaceId);
             expect(process?.status).toBe('completed');
+            expect(process?.metadata?.afterEffortTier).toBe('medium');
             expect(process?.conversationTurns).toEqual(expect.arrayContaining([
                 expect.objectContaining({ role: 'user', content: expect.stringContaining(prompt) }),
                 expect.objectContaining({ role: 'assistant', content: 'A reply' }),
             ]));
         }
         expect(sdk.mockSendMessage).toHaveBeenCalledTimes(2);
+        expect(sdk.mockSendMessage.mock.calls.map(([options]) => ({
+            model: options.model, reasoningEffort: options.reasoningEffort,
+        }))).toEqual([
+            { model: 'gpt-6-sol', reasoningEffort: 'medium' },
+            { model: 'gpt-6-sol', reasoningEffort: 'medium' },
+        ]);
         expect(send).toHaveBeenCalledTimes(3);
+    });
+
+    it('resolves the configured Medium tier for relay-created Teams chats', async () => {
+        const store = makeStore();
+        vi.mocked(store.getWorkspaces).mockResolvedValue([
+            { id: 'ws-a', name: 'Alpha', rootPath: path.join(tmpDir, 'a') },
+            { id: 'ws-b', name: 'Beta', rootPath: path.join(tmpDir, 'b') },
+        ]);
+        const bridge = makeBridge();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => input.id);
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir });
+        Object.assign(opts.runtimeConfigService!.config, {
+            defaultProvider: 'codex',
+            codex: { enabled: true },
+            features: { teamsAiAnswerRelay: true },
+            models: { providers: { codex: {
+                effortTiers: { medium: { model: 'custom-medium', reasoningEffort: 'high' } },
+            } } },
+        });
+
+        let inbound: Parameters<TeamsMessagingManager['setMessageHandler']>[0] | undefined;
+        vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => {
+            inbound = handler;
+        });
+        vi.spyOn(TeamsMessagingManager.prototype, 'getStatus').mockReturnValue({
+            enabled: true, status: 'connected', teamId: 'team-1', channelId: 'channel-1',
+            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
+        });
+        vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
+        registerAllRoutes([], opts);
+
+        await inbound!({
+            text: 'relay question', senderAadId: 'sender-a', messageId: 'message-1', channelId: 'channel-1',
+        }, () => {});
+
+        expect(bridge.enqueue).toHaveBeenCalledTimes(1);
+        const input = bridge.enqueue.mock.calls[0][0] as CreateTaskInput;
+        expect(input).toMatchObject({
+            id: expect.any(String),
+            processId: toQueueProcessId(input.id!),
+            type: 'chat', repoId: 'ws-a',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'relay question', workspaceId: 'ws-a' },
+            config: { afterEffortTier: 'medium', model: 'custom-medium', reasoningEffort: 'high' },
+        });
+        expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 
     it('populates the routes array with a large set of routes', () => {

@@ -105,6 +105,9 @@ all have their own `references/*.md`.
 - **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
   team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
   with a prompt in the selected workspace (or the first registered workspace).
+  Both ordinary and relay-created Teams chats resolve the provider's Medium
+  effort tier through queue preparation; container-forwarded chats retain
+  their own default selection.
   A missing `teams-messaging.json` defaults the channel to a sanitized
   `CoC-<machine-name>`; saved channels and routing IDs stay untouched on startup.
   Machines sharing a name must choose distinct channels to avoid duplicate work.
@@ -113,9 +116,15 @@ all have their own `references/*.md`.
   enabled, the bridge persists each inbound request's team/channel/thread and
   task or turn correlation in its physical workspace's `teams-answer-relay/`
   directory.
+  The independent default-off live `features.teamsMessageReaction` setting is
+  also exposed in the Features card. Newly admitted human channel posts attempt
+  a Like before routing; ordinary replies and relay receipts remain authoritative.
+  All channel sends begin with visible `AI:` at the shared manager boundary.
+  The boundary renders command, status, acknowledgement, and error Markdown as
+  safe Teams HTML; relay replies pass preformatted HTML through unchanged.
   Acknowledgements remain immediate receipts; saved terminal assistant turns
-  (or safe failure/cancellation notices) are separate bounded HTML replies
-  under the original thread root. Follow-ups use an opaque per-request turn
+  (or safe failure/cancellation notices) are separate bounded HTML replies under
+  the original thread root. Follow-ups use an opaque per-request turn
   ID, never the process's mutable result; confirmed sends are not replayed and
   unknown outcomes remain ambiguous. Disable, disconnect, or target changes
   must not redirect pending answers, and shutdown disposes queue listeners.
@@ -123,9 +132,21 @@ all have their own `references/*.md`.
   reply-list tool is available. Persisted root receipts keep older threads
   eligible across reconnects; their reply cursor prevents old requests from
   replaying after receipt compaction, and outbound IDs identify the connector's
-  own replies. Bound thread replies route to their physical workspace and chat
-  independently of the sender's selected topic. Unbound or unavailable thread
-  replies receive an error in the same thread, never a new chat.
+  own replies. Bound thread command selections are shared by participants and
+  persisted in repo-scoped `teams-thread-roots/`. The original chat's answer correlation stays
+  in its physical workspace. Root discovery metadata contains only team/channel
+  and root identity and lives in `teams-thread-discovery/`. Historic repository
+  commands in recent or backfilled roots restore selection without replaying
+  old questions or sending status.
+  Bound replies route by the thread selection independently of the sender's
+  topic. An unselected reply asks for `/list repos` and `/select repo <name>`;
+  a selected root starts a fresh chat on its next question. A late answer after
+  a switch identifies its source repo and chat. Multipart receipts reserve
+  space for a source label before the first send, so confirmed parts keep their
+  numbering if a switch occurs before later parts. Receipts with confirmed
+  parts but no reserved space send one request-linked continuation label before
+  resuming; definite rejections retry, while uncertain sends require manual
+  reconciliation.
   Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
   for discovery, PKCE, exchange, and read-only
   handshake verification; verified tokens enter the shared Copilot OAuth cache

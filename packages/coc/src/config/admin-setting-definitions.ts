@@ -833,6 +833,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.teamsMessageReaction', default: false, runtime: 'live', runtimeFlag: 'teamsMessageReactionEnabled',
+        ui: {
+            group: 'dashboard', order: 61.75, label: 'Teams message reaction', badge: 'experimental',
+            hint: 'Attempt a Like reaction on new channel messages before processing; ordinary replies remain unchanged. Disabled by default.',
+            testId: 'toggle-teams-message-reaction-enabled',
+        },
+    }),
+    bool({
         key: 'features.quickAskSidenotes', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'quickAskSidenotesEnabled',
         ui: {
             group: 'dashboard', order: 62, label: 'Quick Ask side-notes', badge: 'experimental',

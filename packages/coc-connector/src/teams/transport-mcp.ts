@@ -3,7 +3,7 @@
  * Supports both channel messaging and direct chat messaging.
  */
 
-import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from './types';
+import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions, McpToolsListResult } from './types';
 import { McpClient } from './mcp-client';
 
 export class TeamsMcpSendRejectedError extends Error {
@@ -17,15 +17,34 @@ function escapeMcpContent(text: string): string {
     return text.replace(/\\/g, '\\\\');
 }
 
+function reactionProperties(tool: McpToolsListResult['tools'][number]): Record<string, unknown> | null {
+    const properties = tool.inputSchema?.properties;
+    return properties && typeof properties === 'object' && !Array.isArray(properties)
+        ? properties as Record<string, unknown> : null;
+}
+
+export interface McpChannelRootPage {
+    roots: InboundTeamsMessage[];
+    nextLink?: string;
+    nextSince: string;
+}
+
 export class McpTransport implements TeamsTransport {
     private client: McpClient | null = null;
     private serverUrl: string;
     private teamId: string | null = null;
     private _availableTools: string[] = [];
+    private _reactionTools: McpToolsListResult['tools'] = [];
     private _useChat = false;
     private _chatId: string | null = null;
     private _initMessageId: string | null = null;
     private nextTrackedRoot = 0;
+    private readonly rootPages = new Map<string, string>();
+    private readonly discoveredRoots = new Map<string, string[]>();
+    private readonly discoveredRootIds = new Map<string, Set<string>>();
+    private readonly notifiedRootIds = new Map<string, Set<string>>();
+    private readonly historicalReplies = new Set<string>();
+    private readonly nextDiscoveredRoot = new Map<string, number>();
     private readonly replyPages = new Map<string, string>();
     private readonly bufferedReplies = new Map<string, InboundTeamsMessage[]>();
     private static readonly TRACKED_ROOTS_PER_POLL = 5;
@@ -35,8 +54,38 @@ export class McpTransport implements TeamsTransport {
         serverUrl: string,
         private readonly pollChannelReplies: () => boolean = () => false,
         private readonly channelThreadRoots: (channelId: string) => readonly string[] = () => [],
+        private readonly onChannelRootDiscovered?: (root: InboundTeamsMessage) => Promise<void>,
     ) {
         this.serverUrl = serverUrl;
+    }
+
+    hasDiscoveredRoot(channelId: string, rootId: string): boolean {
+        return this.discoveredRootIds.get(channelId)?.has(rootId) ?? false;
+    }
+
+    /** Fetch one provider page without consuming the poller's backfill cursor. */
+    async listChannelRootPage(channelId: string, nextLink?: string): Promise<McpChannelRootPage> {
+        if (!this.client || !this.teamId || this._useChat) throw new Error('MCP channel transport not initialized');
+        const result = await this.client.callTool('ListChannelMessages', {
+            teamId: this.teamId, channelId,
+            ...(nextLink ? { nextLink } : { top: 5 }),
+        });
+        if (result.isError) throw new Error('Teams channel messages could not be polled');
+        const text = result.content?.[0]?.text ?? '[]';
+        const parsed = this.parseMessages(text, channelId, true);
+        return { roots: parsed.messages, nextSince: parsed.nextSince,
+            nextLink: this.pageCursor(JSON.parse(text), 'root') };
+    }
+
+    private async notifyRoots(roots: readonly InboundTeamsMessage[]): Promise<void> {
+        if (!this.onChannelRootDiscovered) return;
+        for (const root of roots) {
+            const notified = this.notifiedRootIds.get(root.channelId) ?? new Set<string>();
+            if (notified.has(root.messageId)) continue;
+            await this.onChannelRootDiscovered(root);
+            notified.add(root.messageId);
+            this.notifiedRootIds.set(root.channelId, notified);
+        }
     }
 
     async initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void> {
@@ -48,9 +97,14 @@ export class McpTransport implements TeamsTransport {
         });
         await this.client.initialize();
 
+        this._availableTools = [];
+        this._reactionTools = [];
         try {
             const toolsResult = await this.client.listTools();
-            this._availableTools = (toolsResult.tools ?? []).map((t: any) => t.name);
+            this._availableTools = (toolsResult.tools ?? []).map(t => t.name);
+            this._reactionTools = (toolsResult.tools ?? []).filter(tool =>
+                /^(set|add|react|like)/i.test(tool.name)
+                && /reaction|react|like/i.test(tool.name) && !!reactionProperties(tool));
             console.log(`[mcp-transport] Available tools: ${this._availableTools.join(', ')}`);
         } catch (err: any) {
             console.warn(`[mcp-transport] Failed to list tools: ${err.message}`);
@@ -178,6 +232,45 @@ export class McpTransport implements TeamsTransport {
         }
     }
 
+    async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
+        if (!this.client || this._useChat || !this.teamId) {
+            throw new Error('Teams channel Like reaction unavailable in direct messages or while disconnected');
+        }
+        const tool = this._reactionTools.find(candidate => {
+            const properties = reactionProperties(candidate);
+            const replyKey = properties && ('replyId' in properties ? 'replyId'
+                : 'replyMessageId' in properties ? 'replyMessageId' : null);
+            const required = candidate.inputSchema?.required;
+            return properties && ['teamId', 'channelId', 'messageId', 'reactionType'].every(key => key in properties)
+                && (msg.replyToMessageId ? !!replyKey : !Array.isArray(required)
+                    || !required.some(key => key === 'replyId' || key === 'replyMessageId'));
+        });
+        if (!tool) throw new Error('Teams channel Like reaction unavailable: MCP advertises no compatible channel reaction tool');
+        const properties = reactionProperties(tool)!;
+        const replyKey = 'replyId' in properties ? 'replyId' : 'replyMessageId';
+        const typeSchema = properties.reactionType;
+        const allowed = typeSchema && typeof typeSchema === 'object' && 'enum' in typeSchema
+            ? (typeSchema as { enum: unknown }).enum : undefined;
+        const reactionType = Array.isArray(allowed)
+            ? allowed.includes('like') ? 'like' : allowed.includes('👍') ? '👍' : null
+            : '👍';
+        if (!reactionType) throw new Error('Teams channel Like reaction unavailable: MCP tool does not advertise Like');
+        const signal = AbortSignal.timeout(5_000);
+        try {
+            const result = await this.client.callTool(tool.name, {
+                teamId: this.teamId, channelId: msg.channelId,
+                messageId: msg.replyToMessageId ?? msg.messageId, reactionType,
+                ...(msg.replyToMessageId ? { [replyKey]: msg.messageId } : {}),
+            }, signal);
+            if (result.isError || result.content?.some(item => item.text?.startsWith('Error:'))) {
+                throw new Error('Teams channel Like reaction rejected by MCP tool');
+            }
+        } catch (error) {
+            if (signal.aborted) throw new Error('Teams channel Like reaction timed out', { cause: error });
+            throw error;
+        }
+    }
+
     /** Send a direct message to the authenticated user via SendMessageToSelf. */
     private async sendChat(_chatId: string, text: string): Promise<string> {
         if (!this.client) throw new Error('McpTransport not initialized');
@@ -232,28 +325,47 @@ export class McpTransport implements TeamsTransport {
             return this.pollChat(channelId, _since);
         }
 
-        const args: Record<string, unknown> = {
-            teamId: this.teamId,
-            channelId,
-            top: 5,
-        };
-
-        const result = await this.client.callTool('ListChannelMessages', args);
-        if (result.isError) throw new Error('Teams channel messages could not be polled');
-        const responseText = result.content?.[0]?.text ?? '[]';
-
-        const roots = this.parseMessages(responseText, channelId, true);
+        const roots = await this.listChannelRootPage(channelId);
         if (!this.pollChannelReplies() || !this._availableTools.includes('ListChannelMessageReplies')) {
             this.replyPages.clear();
             this.bufferedReplies.clear();
-            return roots;
+            this.rootPages.clear();
+            this.discoveredRoots.clear();
+            this.discoveredRootIds.clear();
+            this.historicalReplies.clear();
+            this.nextDiscoveredRoot.clear();
+            this.notifiedRootIds.clear();
+            return { messages: roots.roots, nextSince: roots.nextSince };
         }
 
-        const messages = [...roots.messages];
+        await this.notifyRoots(roots.roots);
+        const messages = [...roots.roots];
         const tracked = [...new Set(this.channelThreadRoots(channelId).filter(Boolean))];
+        const cursor = roots.nextLink;
+        const pendingCursor = this.rootPages.get(channelId) ?? cursor;
+        let historicalRoots: InboundTeamsMessage[] = [];
+        let followingCursor = cursor;
+        if (pendingCursor) {
+            const history = await this.listChannelRootPage(channelId, pendingCursor);
+            historicalRoots = history.roots;
+            followingCursor = history.nextLink;
+        }
+        await this.notifyRoots(historicalRoots.map(root => ({ ...root, initializationReplay: true })));
+        const discovered = this.discoveredRoots.get(channelId) ?? [];
+        const discoveredIds = this.discoveredRootIds.get(channelId) ?? new Set<string>();
+        for (const root of historicalRoots) {
+            if (!root.messageId || discoveredIds.has(root.messageId) || tracked.includes(root.messageId)) continue;
+            discovered.push(root.messageId);
+            discoveredIds.add(root.messageId);
+            this.historicalReplies.add(JSON.stringify([channelId, root.messageId]));
+        }
+        this.discoveredRoots.set(channelId, discovered);
+        this.discoveredRootIds.set(channelId, discoveredIds);
+        messages.push(...historicalRoots.map(root => ({ ...root, initializationReplay: true })));
         for (const key of this.replyPages.keys()) {
             const [trackedChannel, trackedRoot] = JSON.parse(key) as [string, string];
-            if (trackedChannel === channelId && !tracked.includes(trackedRoot)) {
+            if (trackedChannel === channelId && !tracked.includes(trackedRoot)
+                && !discoveredIds.has(trackedRoot)) {
                 this.replyPages.delete(key);
                 this.bufferedReplies.delete(key);
             }
@@ -265,9 +377,15 @@ export class McpTransport implements TeamsTransport {
             }
             this.nextTrackedRoot = (this.nextTrackedRoot + batch.length) % tracked.length;
         }
-        for (const rootId of new Set([...roots.messages.map(root => root.messageId), ...batch])) {
+        const discoveredBatch: string[] = [];
+        let discoveredIndex = this.nextDiscoveredRoot.get(channelId) ?? 0;
+        for (let i = 0; i < Math.min(discovered.length, McpTransport.TRACKED_ROOTS_PER_POLL); i++) {
+            discoveredBatch.push(discovered[(discoveredIndex + i) % discovered.length]);
+        }
+        discoveredIndex = discovered.length ? (discoveredIndex + discoveredBatch.length) % discovered.length : 0;
+        for (const rootId of new Set([...roots.roots.map(root => root.messageId), ...batch, ...discoveredBatch])) {
             const key = JSON.stringify([channelId, rootId]);
-            const trackedRoot = tracked.includes(rootId);
+            const trackedRoot = tracked.includes(rootId) || discoveredIds.has(rootId);
             const nextLink = trackedRoot ? this.replyPages.get(key) : undefined;
             const replies = await this.client.callTool('ListChannelMessageReplies', {
                 teamId: this.teamId, channelId, messageId: rootId,
@@ -276,17 +394,18 @@ export class McpTransport implements TeamsTransport {
             });
             if (replies.isError) throw new Error('Teams channel replies could not be polled');
             const response = replies.content?.[0]?.text ?? '[]';
-            const parsed = this.parseMessages(response, channelId, true);
+            const parsed = this.parseMessages(response, channelId, true, true);
             const pageReplies = parsed.messages
                 .filter(reply => reply.messageId !== rootId)
-                .map(reply => ({ ...reply, replyToMessageId: rootId }));
+                .map(reply => ({
+                    ...reply, replyToMessageId: rootId,
+                    ...(this.historicalReplies.has(key) ? { initializationReplay: true } : {}),
+                }));
             if (trackedRoot) {
                 const page: unknown = JSON.parse(response);
-                if (page && typeof page === 'object' && !Array.isArray(page)
-                    && (page as { hasMoreResults?: unknown }).hasMoreResults === true) {
-                    const cursor = (page as { nextLink?: unknown }).nextLink;
-                    if (typeof cursor !== 'string' || !cursor) throw new Error('Teams reply page cursor is missing');
-                    this.replyPages.set(key, cursor);
+                const replyCursor = this.pageCursor(page, 'reply');
+                if (replyCursor) {
+                    this.replyPages.set(key, replyCursor);
                     this.bufferedReplies.set(key, [...(this.bufferedReplies.get(key) ?? []), ...pageReplies]);
                     continue;
                 } else {
@@ -295,13 +414,26 @@ export class McpTransport implements TeamsTransport {
             }
             messages.push(...(this.bufferedReplies.get(key) ?? []), ...pageReplies);
             this.bufferedReplies.delete(key);
+            this.historicalReplies.delete(key);
         }
+        this.rootPages.set(channelId, followingCursor ?? '');
+        this.nextDiscoveredRoot.set(channelId, discoveredIndex);
         messages.sort((a, b) => {
             const left = a.createdDateTime ? Date.parse(a.createdDateTime) : 0;
             const right = b.createdDateTime ? Date.parse(b.createdDateTime) : 0;
             return (Number.isFinite(left) ? left : 0) - (Number.isFinite(right) ? right : 0);
         });
         return { messages, nextSince: roots.nextSince };
+    }
+
+    private pageCursor(page: unknown, kind: 'root' | 'reply'): string | undefined {
+        if (!page || typeof page !== 'object' || Array.isArray(page)) return undefined;
+        const record = page as { hasMoreResults?: unknown; nextLink?: unknown };
+        if (record.hasMoreResults !== true) return undefined;
+        if (typeof record.nextLink !== 'string' || !record.nextLink) {
+            throw new Error(`Teams ${kind} page cursor is missing`);
+        }
+        return record.nextLink;
     }
 
     /** Poll chat messages via MCP. */
@@ -325,14 +457,14 @@ export class McpTransport implements TeamsTransport {
     }
 
     /** Parse raw MCP message response into InboundTeamsMessage array. */
-    private parseMessages(responseText: string, targetId: string, strict = false): { messages: InboundTeamsMessage[]; nextSince: string } {
+    private parseMessages(responseText: string, targetId: string, strict = false, allowReplies = false): { messages: InboundTeamsMessage[]; nextSince: string } {
 
         let rawMessages: Array<{
             id: string;
             body?: { content?: string };
             text?: string;
             content?: string;
-            from?: { user?: { displayName?: string; id?: string; userId?: string }; displayName?: string; userId?: string };
+            from?: { user?: { displayName?: string; id?: string; userId?: string }; application?: unknown; displayName?: string; userId?: string };
             senderName?: string;
             senderAadId?: string;
             replyToId?: string;
@@ -342,12 +474,13 @@ export class McpTransport implements TeamsTransport {
 
         try {
             const parsed = JSON.parse(responseText);
-            if (strict && !Array.isArray(parsed)
-                && !Array.isArray(parsed?.value) && !Array.isArray(parsed?.messages)) {
-                throw new Error('Invalid Teams message list');
+            const list = Array.isArray(parsed) ? parsed
+                : (parsed?.value ?? parsed?.messages ?? (allowReplies ? parsed?.replies : undefined));
+            if (!Array.isArray(list)) throw new Error('Invalid Teams message list');
+            if (strict && list.some(msg => !msg || typeof msg.id !== 'string' || !msg.id)) {
+                throw new Error('Invalid Teams message id');
             }
-            rawMessages = Array.isArray(parsed) ? parsed : (parsed?.value ?? parsed?.messages ?? []);
-            if (!Array.isArray(rawMessages)) throw new Error('Invalid Teams message list');
+            rawMessages = list;
         } catch (error) {
             if (strict) throw new Error('Invalid Teams message list', { cause: error });
             return { messages: [], nextSince: '' };
@@ -391,6 +524,7 @@ export class McpTransport implements TeamsTransport {
                 text,
                 senderName: msg.from?.user?.displayName ?? msg.from?.displayName ?? msg.senderName,
                 senderAadId: msg.from?.user?.id ?? msg.from?.userId ?? msg.senderAadId,
+                botAuthored: !!msg.from?.application,
                 replyToMessageId: msg.replyToId,
                 ...(msg.createdDateTime ? { createdDateTime: msg.createdDateTime } : {}),
             };
@@ -494,5 +628,14 @@ export class McpTransport implements TeamsTransport {
 
     stop(): void {
         this.client = null;
+        this.replyPages.clear();
+        this.bufferedReplies.clear();
+        this.rootPages.clear();
+        this.discoveredRoots.clear();
+        this.discoveredRootIds.clear();
+        this.historicalReplies.clear();
+        this.nextDiscoveredRoot.clear();
+        this.notifiedRootIds.clear();
+        this.nextTrackedRoot = 0;
     }
 }

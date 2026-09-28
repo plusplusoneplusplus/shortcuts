@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
+import { TEAMS_CHANNEL_PREFIX } from '../../../src/server/messaging/teams-outbound-format';
 
 const size = (text: string) => Buffer.byteLength(text, 'utf8');
 
@@ -17,7 +18,7 @@ function expectValid(parts: string[], label: string): void {
     expect(parts.length).toBeGreaterThan(0);
     parts.forEach((part, index) => {
         expect(part.startsWith(`<p><strong>Request ${label} · Part ${index + 1}/${parts.length}</strong></p>`)).toBe(true);
-        expect(size(part)).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+        expect(size(TEAMS_CHANNEL_PREFIX + part)).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
         expect(part).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
         expect(part).not.toMatch(/&(?:amp|lt|gt|quot|#39)(?!;)/);
         const tags = part.match(/<\/?(?:p|strong|em|code|pre|a|br)\b[^>]*>/g) ?? [];
@@ -33,6 +34,24 @@ function expectValid(parts: string[], label: string): void {
 }
 
 describe('formatTeamsAnswerChunks', () => {
+    it('escapes an optional source context in the reply header', () => {
+        const parts = formatTeamsAnswerChunks('Done', 'request-1', 'Repo A&B · Chat <topic>');
+        expect(parts[0]).toContain('Repo A&amp;B · Chat &lt;topic&gt;');
+        expect(parts[0]).toContain('<p>Done</p>');
+    });
+    it('reserves context bytes without displaying the label or changing later part boundaries', () => {
+        const answer = '&'.repeat(10_000);
+        const label = 'Repo A&B · Chat <topic>';
+        const unlabeled = formatTeamsAnswerChunks(answer, 'reserved', undefined, label);
+        const labeled = formatTeamsAnswerChunks(answer, 'reserved', label, label);
+        expect(unlabeled.length).toBeGreaterThan(1);
+        expectValid(unlabeled, 'reserved');
+        expectValid(labeled, 'reserved');
+        expect(unlabeled.map(part => part.replace(/^<p><strong>.*?<\/strong><\/p>/, '')))
+            .toEqual(labeled.map(part => part.replace(/^<p><strong>.*?<\/strong><\/p><p>.*?<\/p>/, '')));
+        expect(unlabeled.join('')).not.toContain('Repo A');
+        expect(labeled.every(part => part.includes('Repo A&amp;B · Chat &lt;topic&gt;'))).toBe(true);
+    });
     it('formats paragraphs, headings, lists, links, and code without discarding content', () => {
         const answer = '## Summary\nFirst & <safe> line\n\n- one\n2. two\n' +
             '[docs](https://example.org/a?x=1&y=2) and `C:\\work\\repo` and **bold** *em*\n' +

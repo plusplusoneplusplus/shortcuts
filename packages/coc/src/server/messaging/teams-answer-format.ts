@@ -1,5 +1,7 @@
 /** Pure, bounded formatting for outbound Teams thread replies. */
 
+import { TEAMS_CHANNEL_PREFIX, escapeTeamsHtml, safeTeamsHref } from './teams-outbound-format';
+
 export const TEAMS_ANSWER_MAX_BYTES = 20_000;
 
 const EMPTY_ANSWER = '(No answer provided.)';
@@ -15,45 +17,28 @@ function bytes(text: string): number {
     return encoder.encode(text).length;
 }
 
-function escapeHtml(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function safeHref(href: string): string | null {
-    try {
-        const url = new URL(href);
-        if (url.protocol === 'https:' || url.protocol === 'http:' || url.protocol === 'mailto:') {
-            return escapeHtml(href);
-        }
-    } catch {
-        // Relative or malformed destinations remain visible as plain text.
-    }
-    return null;
-}
-
 function renderInline(text: string): string {
     const token = /\[([^\]\n]+)\]\(([^)\n]+)\)|`([^`\n]+)`|\*\*([^*\n]+)\*\*|\*([^*\n]+)\*/g;
     let result = '';
     let start = 0;
     for (const match of text.matchAll(token)) {
         const offset = match.index;
-        result += escapeHtml(text.slice(start, offset));
+        result += escapeTeamsHtml(text.slice(start, offset));
         if (match[1] !== undefined) {
-            const href = safeHref(match[2]);
+            const href = safeTeamsHref(match[2]);
             result += href === null
-                ? escapeHtml(match[0])
-                : `<a href="${href}">${escapeHtml(match[1])}</a>`;
+                ? escapeTeamsHtml(match[0])
+                : `<a href="${href}">${escapeTeamsHtml(match[1])}</a>`;
         } else if (match[3] !== undefined) {
-            result += `<code>${escapeHtml(match[3])}</code>`;
+            result += `<code>${escapeTeamsHtml(match[3])}</code>`;
         } else if (match[4] !== undefined) {
-            result += `<strong>${escapeHtml(match[4])}</strong>`;
+            result += `<strong>${escapeTeamsHtml(match[4])}</strong>`;
         } else {
-            result += `<em>${escapeHtml(match[5])}</em>`;
+            result += `<em>${escapeTeamsHtml(match[5])}</em>`;
         }
         start = offset + match[0].length;
     }
-    return result + escapeHtml(text.slice(start));
+    return result + escapeTeamsHtml(text.slice(start));
 }
 
 interface Block {
@@ -74,7 +59,7 @@ function blocksFor(answer: string): Block[] {
                 openingFence = line;
             } else {
                 const source = code.join('\n');
-                blocks.push({ source, html: `<pre><code>${escapeHtml(source)}</code></pre>`, kind: 'code' });
+                blocks.push({ source, html: `<pre><code>${escapeTeamsHtml(source)}</code></pre>`, kind: 'code' });
                 code = null;
             }
         } else if (code !== null) {
@@ -87,7 +72,7 @@ function blocksFor(answer: string): Block[] {
             const source = list?.[2] ?? heading?.[1] ?? line;
             const content = renderInline(source);
             const html = list
-                ? `<p>${escapeHtml(list[1])} ${content}</p>`
+                ? `<p>${escapeTeamsHtml(list[1])} ${content}</p>`
                 : heading ? `<p><strong>${content}</strong></p>` : `<p>${content}</p>`;
             blocks.push({ source: line, html, kind: 'text' });
         }
@@ -95,7 +80,7 @@ function blocksFor(answer: string): Block[] {
     if (code !== null) {
         // An unmatched fence is content, not a reason to discard the remainder.
         const source = [openingFence, ...code].join('\n');
-        blocks.push({ source, html: `<pre><code>${escapeHtml(source)}</code></pre>`, kind: 'code' });
+        blocks.push({ source, html: `<pre><code>${escapeTeamsHtml(source)}</code></pre>`, kind: 'code' });
     }
     return blocks;
 }
@@ -112,7 +97,7 @@ function splitOversized(block: Block, limit: number): string[] {
     let current = '';
     let size = 0;
     for (const { segment } of graphemes.segment(block.source)) {
-        const escaped = escapeHtml(segment);
+        const escaped = escapeTeamsHtml(segment);
         const length = bytes(escaped);
         if (length > available) {
             throw new RangeError('A single grapheme exceeds the Teams message limit');
@@ -141,16 +126,20 @@ function splitOversized(block: Block, limit: number): string[] {
  * `requestLabel` must be an opaque identifier, never a prompt or user-provided excerpt.
  * The caller sends the returned parts in order under the originating thread root.
  */
-export function formatTeamsAnswerChunks(answer: string, requestLabel: string): string[] {
+export function formatTeamsAnswerChunks(
+    answer: string, requestLabel: string, contextLabel?: string, reservedContextLabel?: string,
+): string[] {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(requestLabel)) {
         throw new TypeError('Teams request label must be a compact opaque identifier');
     }
     const blocks = blocksFor(answer);
     let expected = 1;
     for (;;) {
-        const header = (part: number, total: number) =>
-            `<p><strong>Request ${requestLabel} · Part ${part}/${total}</strong></p>`;
-        const budget = TEAMS_ANSWER_MAX_BYTES - bytes(header(expected, expected));
+        const header = (part: number, total: number, label = contextLabel) =>
+            `<p><strong>Request ${requestLabel} · Part ${part}/${total}</strong></p>`
+            + (label ? `<p>${escapeTeamsHtml(label.slice(0, 140))}</p>` : '');
+        const budget = TEAMS_ANSWER_MAX_BYTES - bytes(TEAMS_CHANNEL_PREFIX
+            + header(expected, expected, contextLabel ?? reservedContextLabel));
         const bodies: string[] = [];
         let body = '';
         let length = 0;
@@ -174,7 +163,7 @@ export function formatTeamsAnswerChunks(answer: string, requestLabel: string): s
             continue;
         }
         const result = bodies.map((content, index) => header(index + 1, bodies.length) + content);
-        if (result.every(part => bytes(part) <= TEAMS_ANSWER_MAX_BYTES)) {
+        if (result.every(part => bytes(TEAMS_CHANNEL_PREFIX + part) <= TEAMS_ANSWER_MAX_BYTES)) {
             return result;
         }
         expected = bodies.length + 1;

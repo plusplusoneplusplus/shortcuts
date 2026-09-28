@@ -52,6 +52,14 @@ export class GraphTransport implements TeamsTransport {
         return this.client.postChannelMessage(text, opts?.mentions);
     }
 
+    async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
+        if (!this.client || this._useChat || !this.teamId) {
+            throw new Error('Teams channel Like reaction unavailable in direct messages or while disconnected');
+        }
+        this.client.setChannelId(msg.channelId);
+        await this.client.reactToChannelMessage(msg.messageId, msg.replyToMessageId);
+    }
+
     async poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('GraphTransport not initialized');
 
@@ -82,6 +90,7 @@ export class GraphTransport implements TeamsTransport {
                 text: msg.body?.content ?? '',
                 senderName: msg.from?.user?.displayName,
                 senderAadId: msg.from?.user?.id,
+                botAuthored: !!msg.from?.application,
                 replyToMessageId: msg.replyToId,
             }));
 
@@ -91,15 +100,17 @@ export class GraphTransport implements TeamsTransport {
 
     private async pollChannel(channelId: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         this.client!.setChannelId(channelId);
-        const filter = since ? `createdDateTime gt ${since}` : undefined;
-        const rawMessages = await this.client!.listChannelMessages({ top: 20, filter });
+        const rawMessages = await this.client!.listChannelMessages({ top: 50 });
 
         // Sort oldest-first
         const sorted = [...rawMessages].sort((a, b) =>
             new Date(a.createdDateTime).getTime() - new Date(b.createdDateTime).getTime(),
         );
 
-        const messages: InboundTeamsMessage[] = sorted
+        const fresh = since
+            ? sorted.filter(msg => new Date(msg.createdDateTime).getTime() > new Date(since).getTime())
+            : sorted;
+        const messages: InboundTeamsMessage[] = fresh
             .filter(msg => (msg.body?.content ?? '').trim())
             .map(msg => ({
                 channelId,
@@ -107,10 +118,11 @@ export class GraphTransport implements TeamsTransport {
                 text: msg.body?.content ?? '',
                 senderName: msg.from?.user?.displayName,
                 senderAadId: msg.from?.user?.id,
+                botAuthored: !!msg.from?.application,
                 replyToMessageId: msg.replyToId,
             }));
 
-        const nextSince = sorted.length > 0 ? sorted[sorted.length - 1].createdDateTime : (since ?? '');
+        const nextSince = fresh.length > 0 ? fresh[fresh.length - 1].createdDateTime : (since ?? '');
         return { messages, nextSince };
     }
 

@@ -54,6 +54,7 @@ export interface TeamsMessagingRoutesOptions {
     enqueuePendingRelayFollowUp?: (workspaceId: string, processId: string, message: string, requestId: string) => Promise<string>;
     relayQueue?: ScheduleQueueEventBus;
     getAnswerRelayEnabled?: () => boolean;
+    getMessageReactionEnabled?: () => boolean;
     onAnswerRelayConfigChanged?: (callback: () => void) => () => void;
     /** Send a follow-up message to an existing process. */
     executeFollowUp?: (processId: string, message: string) => Promise<void>;
@@ -83,7 +84,7 @@ export function registerTeamsMessagingRoutes(
                     const status = manager.getStatus();
                     return { connected: status.enabled && status.status === 'connected', teamId: status.teamId, channelId: status.channelId };
                 },
-                send: (text, rootId) => manager.sendMessage(text, rootId),
+                send: (text, rootId) => manager.sendMessage(text, rootId, 'html'),
             })
             : undefined;
         const ready = relay?.restore();
@@ -102,8 +103,18 @@ export function registerTeamsMessagingRoutes(
             enqueueChat: opts.enqueueChat,
             isAnswerRelayEnabled: opts.getAnswerRelayEnabled,
             ...(relay ? { resolveThreadReply: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
-                relay.resolveThread(msg) } : {}),
+                relay.resolveThread(msg),
+                getThreadSelection: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
+                    relay.getThreadSelection(msg),
+                hasThreadCommand: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
+                    relay.hasCommand(msg),
+                recordThreadCommand: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
+                    relay.recordCommand(msg),
+                selectThreadTarget: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, processId: string | null) =>
+                    relay.selectThreadTarget(msg, workspaceId, processId) } : {}),
             ...(relay && opts.enqueueRelayChat ? {
+                admitThreadNew: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string) =>
+                    relay.admitThreadNew(msg, workspaceId, taskId => opts.enqueueRelayChat!(workspaceId, message, taskId)),
                 admitNewChat: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string) =>
                     opts.getAnswerRelayEnabled?.() === true
                         ? relay.admitNew(msg, workspaceId, taskId => opts.enqueueRelayChat!(workspaceId, message, taskId))
@@ -144,6 +155,21 @@ export function registerTeamsMessagingRoutes(
         manager.setMessageHandler(async (msg, observe) => {
             await ready;
             if (opts.getAnswerRelayEnabled?.() === true && relay?.hasInbound(msg)) return;
+            const boundReply = !!msg.replyToMessageId && opts.getAnswerRelayEnabled?.() === true
+                && !!relay?.threadRoots(manager.getStatus().teamId ?? '', msg.channelId).includes(msg.replyToMessageId);
+            if (opts.getMessageReactionEnabled?.() === true && msg.text.trim() && !msg.botAuthored
+                && !msg.initializationReplay
+                && (!msg.replyToMessageId || boundReply)) {
+                try {
+                    await manager.reactToChannelMessage(msg);
+                } catch (err) {
+                    console.error('[teams-messaging] Teams Like reaction unavailable or failed:',
+                        err instanceof Error && err.message.startsWith('Teams channel Like ')
+                            ? err.message : err instanceof Error
+                                ? `${err.name}${'status' in err && typeof err.status === 'number' ? ` (HTTP ${err.status})` : ''}`
+                                : 'unknown error');
+                }
+            }
             await router.handle(msg, observe);
         });
     }

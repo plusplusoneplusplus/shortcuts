@@ -9,7 +9,13 @@ export interface InboundTeamsMessage {
     text: string;
     senderName?: string;
     senderAadId?: string;
+    /** Teams identifies the sender as an application rather than a human user. */
+    botAuthored?: boolean;
     createdDateTime?: string;
+    /** This tracked reply was discovered while establishing the initial channel watermark. */
+    initializationReplay?: boolean;
+    /** Historic repo/topic control reply from paginated root backfill; restore selection without responding. */
+    historicalSelectionReplay?: boolean;
 }
 
 /**
@@ -44,8 +50,12 @@ export interface TeamsBotOptions {
     pollIntervalMs?: number;
     /** Opt in to polling channel thread replies and dispatching each unseen post. */
     pollChannelReplies?: () => boolean;
+    /** Enable Graph channel polling; omitted means Graph remains send-only. */
+    pollGraphChannel?: () => boolean;
     /** Live channel thread roots supplied by the owner of durable thread bindings. */
     channelThreadRoots?: (channelId: string) => readonly string[];
+    /** Persist a discovered channel root before its replies are routed; must be idempotent across reconnects. */
+    onChannelRootDiscovered?: (root: InboundTeamsMessage) => Promise<void>;
     /** Recognize outbound thread messages whose IDs survived a connector restart. */
     isOwnChannelReply?: (msg: InboundTeamsMessage) => boolean;
     /** Recognize inbound thread messages already admitted by durable receipts. */
@@ -122,6 +132,8 @@ export interface TeamsTransport {
     initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void>;
     /** Send a message to a target (channelId or chatId). Returns the message ID. */
     send(target: string, text: string, opts?: TransportSendOptions): Promise<string>;
+    /** Like an original channel post or its thread reply. Unsupported modes reject. */
+    reactToChannelMessage(target: InboundTeamsMessage): Promise<void>;
     /** Poll for new messages since a timestamp or watermark. */
     poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }>;
     /** List channels in the team. */

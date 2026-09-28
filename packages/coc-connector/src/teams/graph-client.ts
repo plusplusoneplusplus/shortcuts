@@ -26,7 +26,7 @@ export interface GraphClientOptions {
 export interface GraphMessage {
     id: string;
     body: { content: string; contentType?: string };
-    from?: { user?: { displayName?: string; id?: string } };
+    from?: { user?: { displayName?: string; id?: string }; application?: { id?: string } };
     createdDateTime: string;
     replyToId?: string;
 }
@@ -340,6 +340,34 @@ export class GraphClient {
         return res.id;
     }
 
+    /** Set Teams' native thumbs-up reaction on a channel root or reply. */
+    async reactToChannelMessage(messageId: string, replyToMessageId?: string): Promise<void> {
+        if (!this.channelId || !this.teamId) throw new Error('Teams channel Like reaction unavailable: no channel');
+        const rootId = replyToMessageId ?? messageId;
+        const url = `${this.graphBase}/teams/${encodeURIComponent(this.teamId)}/channels/${encodeURIComponent(this.channelId)}`
+            + `/messages/${encodeURIComponent(rootId)}`
+            + (replyToMessageId ? `/replies/${encodeURIComponent(messageId)}` : '')
+            + '/setReaction';
+        const signal = AbortSignal.timeout(5_000);
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + this.bearerToken,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ reactionType: '👍' }),
+                signal,
+            });
+            if (response.status !== 204) {
+                throw new Error(`Teams channel Like reaction rejected (HTTP ${response.status})`);
+            }
+        } catch (error) {
+            if (signal.aborted) throw new Error('Teams channel Like reaction timed out', { cause: error });
+            throw error;
+        }
+    }
+
     /** Post a message to a 1:1 or group chat. Returns the message ID. */
     async postChatMessage(content: string, chatId?: string): Promise<string> {
         const target = chatId ?? this.chatId;
@@ -352,14 +380,12 @@ export class GraphClient {
     /**
      * List recent channel messages (for polling).
      * @param top Number of messages to fetch (default: 20).
-     * @param filter OData filter (e.g., "createdDateTime gt 2026-05-19T00:00:00Z").
      */
-    async listChannelMessages(opts?: { top?: number; filter?: string }): Promise<GraphMessage[]> {
+    async listChannelMessages(opts?: { top?: number }): Promise<GraphMessage[]> {
         if (!this.channelId) throw new Error('No channelId configured');
         if (!this.teamId) throw new Error('No teamId configured');
         const params = new URLSearchParams();
         if (opts?.top) params.set('$top', String(opts.top));
-        if (opts?.filter) params.set('$filter', opts.filter);
         const qs = params.toString() ? `?${params.toString()}` : '';
         const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages${qs}`;
         const data = await this.get<GraphListResponse>(url);

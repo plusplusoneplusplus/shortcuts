@@ -108,6 +108,26 @@ describe('GraphTransport', () => {
         expect(result.nextSince).toBe('2026-01-01T00:01:00Z');
     });
 
+    it('filters recent Graph channel posts locally without unsupported OData filters', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true, json: async () => ({ id: 'team-1' }),
+        });
+        await transport.initialize('token', { teamId: 'team-1', channelId: 'ch-1' });
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ value: [
+                { id: 'new', body: { content: 'Fresh' }, createdDateTime: '2026-01-01T00:01:00Z' },
+                { id: 'old', body: { content: 'Edited old post' }, createdDateTime: '2026-01-01T00:00:00Z' },
+            ] }),
+        });
+
+        const result = await transport.poll('ch-1', '2026-01-01T00:00:00Z');
+        expect(result.messages.map(msg => msg.messageId)).toEqual(['new']);
+        expect(result.nextSince).toBe('2026-01-01T00:01:00Z');
+        expect(mockFetch.mock.calls[1][0]).toContain('%24top=50');
+        expect(mockFetch.mock.calls[1][0]).not.toContain('%24filter');
+    });
+
     it('should list channels', async () => {
         // Initialize
         mockFetch.mockResolvedValueOnce({
@@ -177,6 +197,10 @@ describe('GraphTransport', () => {
 
             const sendCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
             expect(sendCall[0]).toContain('/chats/chat-1/messages');
+            await expect(t.reactToChannelMessage({
+                channelId: 'chat-1', messageId: 'msg-chat-1', text: 'DM',
+            })).rejects.toThrow('unavailable in direct messages');
+            expect(mockFetch).toHaveBeenCalledTimes(2);
         });
 
         it('should use pre-configured chatId if provided in opts', async () => {
@@ -249,10 +273,14 @@ describe('McpTransport', () => {
         mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
             { id: 'root', body: { content: 'root' } },
         ]) }] }));
-        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
-            { id: 'reply-1', body: { content: 'first' } },
-            { id: 'reply-2', body: { content: 'second' }, replyToId: 'root' },
-        ]) }] }));
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify({
+            replies: [
+                { id: 'reply-1', body: { content: 'first' } },
+                { id: 'reply-2', body: { content: 'second' }, replyToId: 'root' },
+            ],
+            hasMoreResults: false,
+            parentMessageId: 'root',
+        }) }] }));
 
         const result = await transport.poll('channel-1');
         expect(result.messages).toEqual([
@@ -264,6 +292,148 @@ describe('McpTransport', () => {
             name: 'ListChannelMessageReplies',
             arguments: { teamId: 'team-1', channelId: 'channel-1', messageId: 'root', maxReplies: 50 },
         });
+    });
+
+    it('preserves application authorship on inbound channel posts', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
+            { id: 'human', body: { content: '/list repos' }, from: { user: { id: 'human-id' } } },
+            { id: 'bot', body: { content: '/list repos' }, from: { application: { id: 'bot-id' } } },
+        ]) }] }));
+        const result = await transport.poll('channel-1');
+        expect(result.messages.map(msg => [msg.messageId, msg.botAuthored])).toEqual([
+            ['human', false], ['bot', true],
+        ]);
+    });
+
+    it('calls only an advertised compatible MCP channel reaction tool for roots and replies', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        const tool = {
+            name: 'AddReactionToChannelMessage',
+            inputSchema: { properties: {
+                teamId: {}, channelId: {}, messageId: {}, replyId: {},
+                reactionType: { enum: ['like', 'heart'] },
+            } },
+        };
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [
+            { ...tool, name: 'RemoveReactionFromChannelMessage' }, tool,
+        ] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValue(response({ content: [] }));
+        await transport.reactToChannelMessage({ channelId: 'channel-1', messageId: 'root', text: 'ask' });
+        await transport.reactToChannelMessage({
+            channelId: 'channel-1', messageId: 'reply', replyToMessageId: 'root', text: 'follow-up',
+        });
+        const calls = mockFetch.mock.calls.slice(-2).map(([, init]) => JSON.parse(init.body).params);
+        expect(calls).toEqual([
+            { name: tool.name, arguments: {
+                teamId: 'team-1', channelId: 'channel-1', messageId: 'root', reactionType: 'like',
+            } },
+            { name: tool.name, arguments: {
+                teamId: 'team-1', channelId: 'channel-1', messageId: 'root', replyId: 'reply', reactionType: 'like',
+            } },
+        ]);
+        expect(mockFetch.mock.calls.at(-1)![1].signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('reports unavailable reaction capability without calling an unadvertised tool or blocking later polls', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [{ name: 'SendMessageToChannel' }] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        await expect(transport.reactToChannelMessage({
+            channelId: 'channel-1', messageId: 'root', text: 'ask',
+        })).rejects.toThrow('no compatible channel reaction tool');
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
+            { id: 'root', body: { content: 'ask' } },
+        ]) }] }));
+        expect((await transport.poll('channel-1')).messages).toHaveLength(1);
+    });
+
+    it('reports rejected or timed-out MCP reactions while keeping the connection usable', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [{
+            name: 'ReactToChannelMessage',
+            inputSchema: { properties: { teamId: {}, channelId: {}, messageId: {}, reactionType: {} } },
+        }] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        const msg = { channelId: 'channel-1', messageId: 'root', text: 'ask' };
+        mockFetch.mockResolvedValueOnce(response({
+            isError: true, content: [{ text: 'private provider response' }],
+        }));
+        await expect(transport.reactToChannelMessage(msg)).rejects.toThrow('rejected by MCP tool');
+        mockFetch.mockResolvedValueOnce({
+            ok: false, status: 401, statusText: 'Unauthorized', headers: new Headers(),
+        });
+        await expect(transport.reactToChannelMessage(msg)).rejects.toMatchObject({ status: 401 });
+        const controller = new AbortController();
+        const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+        mockFetch.mockImplementationOnce((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }));
+        try {
+            const pending = transport.reactToChannelMessage(msg);
+            controller.abort();
+            await expect(pending).rejects.toThrow('timed out');
+        } finally {
+            timeout.mockRestore();
+        }
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: '[]' }] }));
+        expect((await transport.poll('channel-1')).messages).toEqual([]);
+    });
+
+    it('accepts empty Teams reply lists without dropping channel roots', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [{ name: 'ListChannelMessageReplies' }] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
+            { id: 'root', body: { content: 'root' } },
+        ]) }] }));
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify({
+            replies: [], hasMoreResults: false, parentMessageId: 'root',
+        }) }] }));
+
+        const result = await transport.poll('channel-1');
+        expect(result.messages).toEqual([
+            expect.objectContaining({ messageId: 'root', replyToMessageId: undefined }),
+        ]);
+        expect(result.nextSince).toBe('root');
+    });
+
+    it('rejects reply-list envelopes for channel root polls', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: '{"replies":[]}' }] }));
+
+        await expect(transport.poll('channel-1')).rejects.toThrow('Invalid Teams message list');
     });
 
     it('rotates a bounded set of persisted roots beyond the recent channel posts', async () => {
@@ -285,6 +455,7 @@ describe('McpTransport', () => {
             return { ok: true, headers: new Map(),
                 json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
         });
+
         await transport.initialize('token', { teamId: 'team-1' });
         await transport.poll('channel-1');
         await transport.poll('channel-1');
@@ -298,6 +469,195 @@ describe('McpTransport', () => {
         expect(last.messages).toContainEqual(expect.objectContaining({
             messageId: 'reply-old', replyToMessageId: 'tracked-11',
         }));
+    });
+
+    it('backfills historic root pages and polls discovered threads without reloading the first page', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        const calls: Array<[string, string | undefined, string | undefined]> = [];
+        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            const tool = body.params?.name;
+            const args = body.params?.arguments ?? {};
+            if (tool) calls.push([tool, args.channelId, args.nextLink]);
+            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                        ? args.nextLink === 'page-2'
+                            ? { value: [{ id: 'historic', body: { content: 'old root' } }], hasMoreResults: false }
+                            : { value: [{ id: 'recent', body: { content: 'recent root' } }],
+                                hasMoreResults: true, nextLink: 'page-2' }
+                        : args.messageId === 'historic'
+                            ? [{ id: 'old-ask', body: { content: 'old question' } }]
+                            : []) }] };
+            return { ok: true, headers: new Map(),
+                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+        });
+
+        await transport.initialize('token', { teamId: 'team-1' });
+        const first = await transport.poll('channel-a');
+        expect(first.messages).toEqual(expect.arrayContaining([
+            expect.objectContaining({ messageId: 'historic', initializationReplay: true }),
+            expect.objectContaining({ messageId: 'old-ask', replyToMessageId: 'historic', initializationReplay: true }),
+        ]));
+        expect(transport.hasDiscoveredRoot('channel-a', 'historic')).toBe(true);
+        expect(transport.hasDiscoveredRoot('channel-b', 'historic')).toBe(false);
+        await transport.poll('channel-b');
+        expect(calls.filter(([tool]) => tool === 'ListChannelMessages')).toEqual([
+            ['ListChannelMessages', 'channel-a', undefined],
+            ['ListChannelMessages', 'channel-a', 'page-2'],
+            ['ListChannelMessages', 'channel-b', undefined],
+            ['ListChannelMessages', 'channel-b', 'page-2'],
+        ]);
+    });
+
+        it('exposes root pages and awaits durable root discovery before polling replies', async () => {
+            const events: string[] = [];
+            let rejectOnce = true;
+            transport = new McpTransport('https://mcp.test.com/server', () => true, () => [],
+                async root => {
+                    events.push(`discover:${root.channelId}:${root.messageId}:${root.initializationReplay === true}`);
+                    if (root.messageId === 'old-root' && rejectOnce) {
+                        rejectOnce = false;
+                        throw new Error('durable store unavailable');
+                    }
+                });
+            mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                const body = JSON.parse(String(options.body));
+                const tool = body.params?.name;
+                const args = body.params?.arguments ?? {};
+                if (tool === 'ListChannelMessageReplies') events.push(`replies:${args.messageId}`);
+                const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                    : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                        : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                            ? args.nextLink
+                                ? { value: [{ id: 'old-root', body: { content: 'historic' } }] }
+                                : { value: [{ id: 'recent', body: { content: 'recent' } }],
+                                    hasMoreResults: true, nextLink: 'page-2' }
+                            : []) }] };
+                return { ok: true, headers: new Map(),
+                    json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+            });
+            await transport.initialize('token', { teamId: 'team-1' });
+            expect(await transport.listChannelRootPage('channel-a', 'page-2')).toEqual({
+                roots: [expect.objectContaining({ channelId: 'channel-a', messageId: 'old-root' })],
+                nextLink: undefined, nextSince: 'old-root',
+            });
+            await expect(transport.poll('channel-a')).rejects.toThrow('durable store unavailable');
+            expect(events).toEqual([
+                'discover:channel-a:recent:false', 'discover:channel-a:old-root:true',
+            ]);
+            await transport.poll('channel-a');
+            expect(events).toEqual([
+                'discover:channel-a:recent:false', 'discover:channel-a:old-root:true',
+                'discover:channel-a:old-root:true', 'replies:recent', 'replies:old-root',
+            ]);
+            expect(transport.hasDiscoveredRoot('channel-a', 'old-root')).toBe(true);
+            await transport.poll('channel-a');
+            expect(events.filter(event => event.startsWith('discover:'))).toHaveLength(3);
+            await transport.poll('channel-b');
+            expect(events.filter(event => event.startsWith('discover:'))).toEqual([
+                'discover:channel-a:recent:false', 'discover:channel-a:old-root:true',
+                'discover:channel-a:old-root:true', 'discover:channel-b:recent:false',
+                'discover:channel-b:old-root:true',
+            ]);
+        });
+
+    it('retries failed history pages without advancing the root cursor', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        let fail: 'list' | 'id' | null = 'list';
+        const cursors: Array<string | undefined> = [];
+        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            const args = body.params?.arguments ?? {};
+            const tool = body.params?.name;
+            if (tool === 'ListChannelMessages') cursors.push(args.nextLink);
+            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : { content: [{ text: tool === 'ListChannelMessages'
+                        ? args.nextLink === 'page-2' && fail
+                            ? fail === 'list'
+                                ? '{"value":{},"hasMoreResults":true,"nextLink":"page-3"}'
+                                : '{"value":[{"body":{"content":"missing id"}}],"hasMoreResults":true,"nextLink":"page-3"}'
+                            : JSON.stringify(args.nextLink === 'page-2'
+                                ? { value: [{ id: 'old-root', body: { content: 'old' } }] }
+                                : { value: [], hasMoreResults: true, nextLink: 'page-2' })
+                        : '[]' }] };
+            return { ok: true, headers: new Map(),
+                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+        });
+
+        await transport.initialize('token', { teamId: 'team-1' });
+        await expect(transport.poll('channel-a')).rejects.toThrow('Invalid Teams message list');
+        fail = 'id';
+        await expect(transport.poll('channel-a')).rejects.toThrow('Invalid Teams message list');
+        fail = null;
+        expect((await transport.poll('channel-a')).messages)
+            .toContainEqual(expect.objectContaining({ messageId: 'old-root', initializationReplay: true }));
+        expect(cursors).toEqual([undefined, 'page-2', undefined, 'page-2', undefined, 'page-2']);
+    });
+
+        it('advances one historic root page per poll across multiple pages', async () => {
+            transport = new McpTransport('https://mcp.test.com/server', () => true);
+            const cursors: Array<string | undefined> = [];
+            mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                const body = JSON.parse(String(options.body));
+                const tool = body.params?.name;
+                const args = body.params?.arguments ?? {};
+                if (tool === 'ListChannelMessages') cursors.push(args.nextLink);
+                const page = args.nextLink === 'page-2'
+                    ? { value: [{ id: 'old-a', body: { content: 'a' } }],
+                        hasMoreResults: true, nextLink: 'page-3' }
+                    : args.nextLink === 'page-3'
+                        ? { value: [{ id: 'old-b', body: { content: 'b' } }] }
+                        : { value: [{ id: 'recent', body: { content: 'recent' } }],
+                            hasMoreResults: true, nextLink: 'page-2' };
+                const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                    : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                        : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages' ? page : []) }] };
+                return { ok: true, headers: new Map(),
+                    json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+            });
+            await transport.initialize('token', { teamId: 'team-1' });
+            await transport.poll('channel-a');
+            expect(transport.hasDiscoveredRoot('channel-a', 'old-a')).toBe(true);
+            expect(transport.hasDiscoveredRoot('channel-a', 'old-b')).toBe(false);
+            await transport.poll('channel-a');
+            expect(transport.hasDiscoveredRoot('channel-a', 'old-b')).toBe(true);
+            expect(cursors).toEqual([undefined, 'page-2', undefined, 'page-3']);
+        });
+
+    it('continues paginated replies of discovered roots until their history is complete', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        const replyCursors: Array<string | undefined> = [];
+        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            const tool = body.params?.name;
+            const args = body.params?.arguments ?? {};
+            if (tool === 'ListChannelMessageReplies' && args.messageId === 'old-root') {
+                replyCursors.push(args.nextLink);
+            }
+            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                        ? args.nextLink ? { value: [{ id: 'old-root', body: { content: 'old root' } }] }
+                            : { value: [], hasMoreResults: true, nextLink: 'root-page-2' }
+                        : args.messageId === 'old-root'
+                            ? args.nextLink
+                                ? { value: [{ id: 'old-second', body: { content: 'old second' } }] }
+                                : { value: [{ id: 'old-first', body: { content: 'old first' } }],
+                                    hasMoreResults: true, nextLink: 'reply-page-2' }
+                            : []) }] };
+            return { ok: true, headers: new Map(),
+                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+        });
+        await transport.initialize('token', { teamId: 'team-1' });
+        expect((await transport.poll('channel-a')).messages.some(msg => msg.messageId === 'old-first')).toBe(false);
+        const completed = await transport.poll('channel-a');
+        expect(completed.messages.filter(msg => msg.replyToMessageId === 'old-root')).toEqual([
+            expect.objectContaining({ messageId: 'old-first', initializationReplay: true }),
+            expect.objectContaining({ messageId: 'old-second', initializationReplay: true }),
+        ]);
+        expect(replyCursors).toEqual([undefined, 'reply-page-2']);
     });
 
     it('deduplicates recent roots against tracked roots without additional reply calls', async () => {
@@ -370,19 +730,20 @@ describe('McpTransport', () => {
         expect(result.messages.map(msg => msg.messageId)).toEqual(['first', 'second']);
     });
 
-    it('rejects malformed channel reply lists rather than advancing the poll', async () => {
-        transport = new McpTransport('https://mcp.test.com/server', () => true, () => ['older-root']);
-        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
-            const body = JSON.parse(String(options.body));
-            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
-                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
-                    : { content: [{ text: body.params?.name === 'ListChannelMessages' ? '[]' : '{invalid' }] };
-            return { ok: true, headers: new Map(),
-                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+    it.each(['{invalid', '{"replies":{}}'])(
+        'rejects malformed channel reply lists rather than advancing the poll (%s)', async (payload) => {
+            transport = new McpTransport('https://mcp.test.com/server', () => true, () => ['older-root']);
+            mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                const body = JSON.parse(String(options.body));
+                const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                    : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                        : { content: [{ text: body.params?.name === 'ListChannelMessages' ? '[]' : payload }] };
+                return { ok: true, headers: new Map(),
+                    json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+            });
+            await transport.initialize('token', { teamId: 'team-1' });
+            await expect(transport.poll('channel-1')).rejects.toThrow('Invalid Teams message list');
         });
-        await transport.initialize('token', { teamId: 'team-1' });
-        await expect(transport.poll('channel-1')).rejects.toThrow('Invalid Teams message list');
-    });
 
     it.each([
         ['ReplyToChannelMessage', 'root-message'],
@@ -573,6 +934,10 @@ describe('McpTransport', () => {
             await t.initialize('mcp-token', {}); // no teamId → DM mode
 
             expect(t.getChatId()).toBe('19:self-chat@unq.gbl.spaces');
+            await expect(t.reactToChannelMessage({
+                channelId: '19:self-chat@unq.gbl.spaces', messageId: 'msg', text: 'DM',
+            })).rejects.toThrow('unavailable in direct messages');
+            expect(mockFetch).toHaveBeenCalledTimes(3);
         });
 
         it('should send via SendMessageToSelf in DM mode', async () => {

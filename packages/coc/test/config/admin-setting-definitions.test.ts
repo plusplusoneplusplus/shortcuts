@@ -201,6 +201,20 @@ describe('resolved config merge honors file overrides', () => {
         }).features.teamsAiAnswerRelay).toBe(true);
     });
 
+    it('keeps Teams message reactions disabled independently of other Teams features', () => {
+        expect(DEFAULT_CONFIG.features.teamsMessageReaction).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsAiAnswerRelay: true, teamsBridgeObservability: true },
+        }).features.teamsMessageReaction).toBe(false);
+        const enabled = mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsMessageReaction: true },
+        });
+        expect(enabled.features.teamsMessageReaction).toBe(true);
+        expect(enabled.features.teamsAiAnswerRelay).toBe(false);
+        expect(enabled.features.teamsBridgeObservability).toBe(false);
+        expect(() => CLIConfigSchema.parse({ features: { teamsMessageReaction: 'yes' } })).toThrow();
+    });
+
     it('with no override, every setting resolves to its default', () => {
         const resolved = mergeConfig(DEFAULT_CONFIG, undefined);
         for (const def of ADMIN_SETTING_DEFINITIONS) {
@@ -296,6 +310,23 @@ describe('readAdminSettingValue', () => {
 
 describe('Features card UI metadata', () => {
     const uiDefs = ADMIN_SETTING_DEFINITIONS.filter(d => d.ui);
+
+    it('exposes Teams message reaction as an independent live, default-off toggle', () => {
+        const reaction = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsMessageReaction')!;
+        expect(reaction.value).toEqual({ kind: 'boolean' });
+        expect(reaction.default).toBe(false);
+        expect(reaction.runtime).toBe('live');
+        expect(reaction.runtimeFlag).toBe('teamsMessageReactionEnabled');
+        expect(reaction.ui).toMatchObject({
+            group: 'dashboard',
+            testId: 'toggle-teams-message-reaction-enabled',
+        });
+        expect(readAdminSettingValue(reaction, {})).toBe(false);
+        expect(buildRuntimeFeatures(DEFAULT_CONFIG).teamsMessageReactionEnabled).toBe(false);
+        expect(buildRuntimeFeatures(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsMessageReaction: true },
+        })).teamsMessageReactionEnabled).toBe(true);
+    });
 
     it('exposes Teams answer relay as an independent live, default-off toggle beside bridge observability', () => {
         const relay = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsAiAnswerRelay')!;

@@ -17,6 +17,7 @@ import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
 import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult, type TeamsEventType, type TeamsSkipReason } from './teams-attempt-store';
 import type { TeamsAnswerRelay } from './teams-answer-relay';
+import { formatTeamsOutbound, type TeamsOutboundSource } from './teams-outbound-format';
 
 // ── Persisted Config ─────────────────────────────────────────
 
@@ -279,6 +280,10 @@ export class TeamsMessagingManager {
                 },
                 botName: this.config.botName,
                 pollChannelReplies: () => this.getAnswerRelayEnabled(),
+                onChannelRootDiscovered: async root => {
+                    if (generation !== this.generation || !this.getAnswerRelayEnabled()) return;
+                    this.answerRelay?.recordDiscoveredRoot(resolved.teamId, root);
+                },
                 channelThreadRoots: channelId => this.getAnswerRelayEnabled()
                     ? this.answerRelay?.threadRoots(resolved.teamId, channelId) ?? [] : [],
                 isOwnChannelReply: msg => this.getAnswerRelayEnabled()
@@ -418,7 +423,7 @@ export class TeamsMessagingManager {
     }
 
     /** Send a message to the configured channel. Optionally reply to a specific message. */
-    async sendMessage(text: string, replyToId?: string): Promise<string> {
+    async sendMessage(text: string, replyToId?: string, source: TeamsOutboundSource = 'markdown'): Promise<string> {
         const context = this.inboundContext.getStore();
         const id = context ? (context.generation === this.generation ? context.attemptId : null) : this.attemptId;
         const generation = this.generation;
@@ -427,7 +432,7 @@ export class TeamsMessagingManager {
             if (!this.bot || this._status !== 'connected' || !this.config.channelId) throw new TeamsMessageNotSentError();
             const targetChannelId = this.config.channelId;
             const bot = this.bot;
-            const messageId = await bot.send(targetChannelId, text, replyToId ? { replyToId } : undefined);
+            const messageId = await bot.send(targetChannelId, formatTeamsOutbound(text, source), replyToId ? { replyToId } : undefined);
             if (replyToId && this.getAnswerRelayEnabled() && this.config.teamId && messageId) {
                 this.answerRelay?.recordOutbound(this.config.teamId, targetChannelId, replyToId, messageId);
             }
@@ -437,6 +442,16 @@ export class TeamsMessagingManager {
             if (id && generation === this.generation && this.getObservabilityEnabled()) this.history?.send(id, 'rejected');
             throw err;
         }
+    }
+
+    async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
+        const context = this.inboundContext.getStore();
+        if (context && context.generation !== this.generation) throw new TeamsMessageNotSentError();
+        if (!this.bot || this._status !== 'connected' || !this.config.teamId
+            || !this.config.channelId || msg.channelId !== this.config.channelId) {
+            throw new TeamsMessageNotSentError();
+        }
+        await this.bot.reactToChannelMessage(msg);
     }
 
     // ── Private helpers ──────────────────────────────────────

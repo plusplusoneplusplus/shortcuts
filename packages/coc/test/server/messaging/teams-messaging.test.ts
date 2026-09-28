@@ -7,8 +7,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
+import { EventEmitter } from 'node:events';
+import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../../src/server/types';
 import { TeamsMessagingManager, defaultTeamsChannelName } from '../../../src/server/messaging/teams-messaging-manager';
+import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
+import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
+import { getRepoDataPath } from '../../../src/server/paths';
 import { acquireMcpOAuthToken, McpClient, TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 
@@ -21,6 +26,7 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', () => ({
             }),
             stop: vi.fn().mockResolvedValue(undefined),
             send: vi.fn().mockResolvedValue('msg-123'),
+            reactToChannelMessage: vi.fn().mockResolvedValue(undefined),
             setChannelId: vi.fn(),
             isConnected: vi.fn().mockReturnValue(true),
             getStatus: vi.fn().mockReturnValue('connected'),
@@ -146,6 +152,80 @@ describe('TeamsMessagingManager', () => {
         expect(m2.getStatus().error).toBe('Polling unavailable');
         botOptions?.onStatusChange?.('connected');
         expect(m2.getStatus().error).toBeNull();
+    });
+
+    it('prefixes command, status, error, and every formatted relay part at the channel send boundary', async () => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home') });
+        const inbound = { channelId: 'channel-id-resolved', messageId: 'user-msg', text: '/list repos', senderAadId: 'user-id' };
+        const getWorkspaces = vi.fn().mockResolvedValue([
+            { id: 'ws-a', name: 'Alpha', rootPath: 'C:\\repo\\alpha' },
+        ]);
+        const router = new TeamsCommandRouter({
+            store: { getWorkspaces } as ProcessStore,
+            enqueueChat: vi.fn().mockResolvedValue('task-1'),
+            executeFollowUp: vi.fn().mockResolvedValue(undefined),
+            sendReply: async (text, replyToId) => { await m2.sendMessage(text, replyToId); },
+            dataDir: tmpDir,
+        });
+        m2.setMessageHandler(msg => router.handle(msg));
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+        const options = vi.mocked(TeamsBot).mock.lastCall![0];
+
+        await options.onMessage(inbound);
+        expect(inbound.text).toBe('/list repos');
+        expect(bot.send).toHaveBeenLastCalledWith('channel-id-resolved',
+            expect.stringMatching(/^AI: <p><strong>Agents \/ Repos<\/strong> \(1\):<\/p><ol><li><strong>Alpha<\/strong> — <code>C:\\repo\\alpha<\/code><\/li><\/ol>$/),
+            { replyToId: 'user-msg' });
+
+        getWorkspaces.mockResolvedValueOnce([
+            { id: 'ws-a', name: '<img src=x onerror=bad()> **[bad](javascript:alert(1))',
+                rootPath: 'C:\\repo\\`<script>`' },
+        ]);
+        await options.onMessage({ ...inbound, messageId: 'hostile' });
+        const hostile = bot.send.mock.lastCall[1] as string;
+        expect(hostile).toContain('&lt;img src=x onerror=bad()&gt;');
+        expect(hostile).toContain('<code>C:\\repo\\`&lt;script&gt;`</code>');
+        expect(hostile).not.toMatch(/<(?:img|script)\b|href="javascript:/i);
+
+        await options.onMessage({ ...inbound, messageId: 'missing', text: '/select repo Missing' });
+        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: <p>❌ Repo/);
+        getWorkspaces.mockRejectedValueOnce(new Error('offline'));
+        await options.onMessage({ ...inbound, messageId: 'error' });
+        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: <p>❌ Error: offline<\/p>$/);
+        bot.send.mockRejectedValueOnce(new Error('channel rejected message'));
+        await expect(m2.sendMessage('**Retry**', 'user-msg')).rejects.toThrow('channel rejected message');
+        expect(bot.send.mock.lastCall[1]).toBe('AI: <p><strong>Retry</strong></p>');
+
+        const parts = formatTeamsAnswerChunks('👩‍💻 <unsafe> & '.repeat(4000), 'opaque-1');
+        expect(parts.length).toBeGreaterThan(1);
+        for (const part of parts) await m2.sendMessage(part, 'user-msg', 'html');
+        for (const [index, call] of bot.send.mock.calls.slice(-parts.length).entries()) {
+            const html = call[1] as string;
+            expect(html).toMatch(new RegExp(`^AI: <p><strong>Request opaque-1 · Part ${index + 1}/${parts.length}</strong></p>`));
+            expect(Buffer.byteLength(html, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+            expect(html).not.toContain('<unsafe>');
+            expect(call[2]).toEqual({ replyToId: 'user-msg' });
+        }
+    });
+
+    it('forwards a channel Like target without treating direct-message targets as channels', async () => {
+        const fakeHome = path.join(tmpDir, 'reaction-home');
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: fakeHome });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+        const msg = { channelId: 'channel-id-resolved', messageId: 'reply', replyToMessageId: 'root', text: 'ask' };
+        await m2.reactToChannelMessage(msg);
+        expect(bot.reactToChannelMessage).toHaveBeenCalledExactlyOnceWith(msg);
+        await expect(m2.reactToChannelMessage({ ...msg, channelId: 'dm-chat' }))
+            .rejects.toThrow('Teams channel is unavailable');
+        expect(bot.reactToChannelMessage).toHaveBeenCalledTimes(1);
+        await m2.disconnect();
     });
 
     it('records separate manual, reconnect and startup attempts only with observability enabled', async () => {
@@ -481,6 +561,69 @@ describe('TeamsMessagingManager', () => {
 });
 
 describe('Teams messaging routes (integration)', () => {
+    it('routes initialization replies without Likes and persists their receipt watermark', async () => {
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-replay-test-'));
+        const manager = new TeamsMessagingManager(dir, { homeDir: path.join(dir, 'home') });
+        const tasks = new Map<string, QueuedTask>();
+        const queue = Object.assign(new EventEmitter(), { getTask: (id: string) => tasks.get(id) });
+        const store = {
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'workspace-a', name: 'A', rootPath: dir }]),
+            getProcess: vi.fn().mockResolvedValue(undefined),
+        } as unknown as ProcessStore;
+        const enqueueFollowUp = vi.fn().mockResolvedValue('follow-up-task');
+        try {
+            registerTeamsMessagingRoutes([], {
+                dataDir: dir, manager, store, relayQueue: queue,
+                getAnswerRelayEnabled: () => true, getMessageReactionEnabled: () => true,
+                enqueueChat: vi.fn(), executeFollowUp: vi.fn(),
+                enqueueRelayChat: async (workspaceId, _text, taskId) => {
+                    tasks.set(taskId, {
+                        id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
+                    } as QueuedTask);
+                    return taskId;
+                },
+                enqueuePendingRelayFollowUp: enqueueFollowUp,
+            });
+            await manager.configureServer('https://example.test/teams');
+            await manager.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+            await manager.connect();
+            const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+            const opts = vi.mocked(TeamsBot).mock.lastCall![0];
+            const root = { channelId: 'channel-id-resolved', messageId: 'root', text: 'new request', senderAadId: 'human' };
+            await opts.onMessage(root);
+            const historical = {
+                ...root, messageId: 'historical', replyToMessageId: 'root', text: 'old follow-up',
+                createdDateTime: '2026-01-01T00:00:00Z', initializationReplay: true,
+            };
+            await opts.onMessage(historical);
+            expect(enqueueFollowUp).toHaveBeenCalledOnce();
+            expect(bot.reactToChannelMessage.mock.calls.map(([msg]: [typeof root]) => msg.messageId)).toEqual(['root']);
+            const folder = getRepoDataPath(dir, 'workspace-a', 'teams-answer-relay');
+            const receipts = () => fs.readdirSync(folder)
+                .map(name => JSON.parse(fs.readFileSync(path.join(folder, name), 'utf8')));
+            expect(receipts().find(receipt => receipt.messageId === 'root')).toMatchObject({
+                lastReplyAt: '2026-01-01T00:00:00.000Z', lastReplyIds: ['historical'],
+            });
+            await opts.onMessage(historical);
+            expect(enqueueFollowUp).toHaveBeenCalledOnce();
+            await opts.onMessage({
+                ...historical, messageId: 'fresh', text: 'fresh follow-up',
+                createdDateTime: '2026-01-01T00:01:00Z', initializationReplay: false,
+            });
+            expect(bot.reactToChannelMessage.mock.calls.map(([msg]: [typeof root]) => msg.messageId))
+                .toEqual(['root', 'fresh']);
+            expect(enqueueFollowUp).toHaveBeenCalledTimes(2);
+            expect(receipts().find(receipt => receipt.messageId === 'root')).toMatchObject({
+                lastReplyAt: '2026-01-01T00:01:00.000Z', lastReplyIds: ['fresh'],
+            });
+        } finally {
+            await manager.disconnect();
+            manager.dispose();
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
     it('records rejected replies without interrupting command routing or disconnecting', async () => {
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-reply-test-'));

@@ -77,6 +77,44 @@ describe('GraphClient', () => {
         });
     });
 
+    describe('reactToChannelMessage', () => {
+        it.each([
+            ['root-id', undefined, '/messages/root-id/setReaction'],
+            ['reply-id', 'root-id', '/messages/root-id/replies/reply-id/setReaction'],
+        ])('sets a native Like on %s with the correct channel target', async (id, parent, suffix) => {
+            mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+            await createClient().reactToChannelMessage(id, parent);
+            expect(mockFetch).toHaveBeenCalledTimes(1);
+            const [url, init] = mockFetch.mock.calls[0];
+            expect(url).toBe(`https://graph.microsoft.com/v1.0/teams/team-abc/channels/19%3Achannel%40thread.tacv2${suffix}`);
+            expect(init.method).toBe('POST');
+            expect(init.body).toBe(JSON.stringify({ reactionType: '👍' }));
+            expect(init.signal).toBeInstanceOf(AbortSignal);
+        });
+
+        it('reports authorization rejection without logging response bodies or claiming success', async () => {
+            mockFetch.mockResolvedValueOnce({ ok: false, status: 403 });
+            await expect(createClient().reactToChannelMessage('root')).rejects.toThrow('HTTP 403');
+            mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+            await expect(createClient().reactToChannelMessage('root')).rejects.toThrow('HTTP 200');
+        });
+
+        it('times out an unresponsive Graph reaction request', async () => {
+            const controller = new AbortController();
+            const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+            mockFetch.mockImplementationOnce((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+                init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+            }));
+            try {
+                const pending = createClient().reactToChannelMessage('root');
+                controller.abort();
+                await expect(pending).rejects.toThrow('timed out');
+            } finally {
+                timeout.mockRestore();
+            }
+        });
+    });
+
     describe('postChatMessage', () => {
         it('should POST to the chat messages endpoint', async () => {
             mockFetch.mockResolvedValueOnce({
@@ -99,7 +137,7 @@ describe('GraphClient', () => {
     });
 
     describe('listChannelMessages', () => {
-        it('should GET channel messages with filter', async () => {
+        it('requests recent channel messages using only supported OData parameters', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({
@@ -111,14 +149,14 @@ describe('GraphClient', () => {
             } as any);
 
             const client = createClient();
-            const messages = await client.listChannelMessages({ top: 10, filter: 'createdDateTime gt 2026-05-18T00:00:00Z' });
+            const messages = await client.listChannelMessages({ top: 10 });
 
             expect(messages).toHaveLength(2);
             expect(messages[0].id).toBe('msg-1');
 
             const [url] = mockFetch.mock.calls[0];
             expect(url).toContain('top=10');
-            expect(url).toContain('filter=');
+            expect(url).not.toContain('filter=');
         });
     });
 
