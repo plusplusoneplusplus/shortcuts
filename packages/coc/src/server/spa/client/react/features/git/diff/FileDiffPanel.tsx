@@ -32,6 +32,7 @@ import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import { useFileDiff } from '../hooks/useFileDiff';
 import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
 import type { DiffSource } from './diffSource';
+import type { DiffSelectionDragSource } from './diffSelectionContext';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
 import type { AnyComment } from '../../../../comments/shared-comment-types';
 import type { TaskCommentCategory } from '../../../../comments/task-comments-types';
@@ -91,6 +92,12 @@ export function FileDiffPanel({
     headerActions,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
+
+    const diffSelectionRef = source.diffSelectionRef;
+    const diffSelectionDragSource = useMemo<DiffSelectionDragSource | undefined>(
+        () => (diffSelectionRef ? { workspaceId, ref: diffSelectionRef, filePath } : undefined),
+        [workspaceId, diffSelectionRef, filePath],
+    );
 
     // ── Diff fetching ──
     const [fullContextMode, setFullContextMode] = useState(false);
@@ -469,6 +476,7 @@ export function FileDiffPanel({
                                     onCopyAsContext={handleCopyAsContext}
                                     onCommentClick={handleCommentClick}
                                     matchRangesByLine={find.matchRangesByLine}
+                                    diffSelectionDragSource={diffSelectionDragSource}
                                     data-testid="file-diff-content"
                                 />
                             ) : (
@@ -492,6 +500,7 @@ export function FileDiffPanel({
                                     getHunkClassification={getHunkClassification}
                                     activeFilters={hunkActiveFilters}
                                     matchRangesByLine={find.matchRangesByLine}
+                                    diffSelectionDragSource={diffSelectionDragSource}
                                     data-testid="file-diff-content"
                                 />
                             )}

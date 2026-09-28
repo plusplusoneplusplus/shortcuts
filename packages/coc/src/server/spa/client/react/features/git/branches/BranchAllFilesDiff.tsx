@@ -30,6 +30,8 @@ interface BranchAllFilesDiffProps {
     scrollToFilePath?: string | null;
     /** Comparison base for the per-file diff requests. */
     baseMode?: GitRangeBaseMode;
+    /** Resolved range refs; enables dragging diff selections into chat. */
+    range?: { baseRef: string; headRef: string };
 }
 
 type FileState = {
@@ -41,7 +43,7 @@ type FileState = {
 
 const DIFF_LINE_LIMIT = 200;
 
-export function BranchAllFilesDiff({ workspaceId, files, onFileSelect, scrollToFilePath, baseMode }: BranchAllFilesDiffProps) {
+export function BranchAllFilesDiff({ workspaceId, files, onFileSelect, scrollToFilePath, baseMode, range }: BranchAllFilesDiffProps) {
     const [fileStates, setFileStates] = useState<Record<string, FileState>>({});
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -189,6 +191,11 @@ export function BranchAllFilesDiff({ workspaceId, files, onFileSelect, scrollToF
                                                 fileName={file.path}
                                                 enableComments={false}
                                                 showLineNumbers={false}
+                                                diffSelectionDragSource={range ? {
+                                                    workspaceId,
+                                                    filePath: file.path,
+                                                    ref: { type: 'range', baseRef: range.baseRef, headRef: range.headRef },
+                                                } : undefined}
                                             />
                                         </div>
                                         {isTruncated && (

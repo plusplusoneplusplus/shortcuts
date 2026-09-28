@@ -203,6 +203,7 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
                     onFileSelect={onFileSelect ?? (() => {})}
                     scrollToFilePath={scrollToFilePath}
                     baseMode={baseMode}
+                    range={range}
                 />
             </div>
         </div>

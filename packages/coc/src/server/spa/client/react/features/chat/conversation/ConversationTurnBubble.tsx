@@ -48,6 +48,7 @@ import {
     parseAttachedSessionContextBlocks,
     shortenSessionProcessId,
     type ParsedAttachedContextBlock,
+    type ParsedDiffSelectionContextBlock,
     type ParsedPointerContextBlock,
     type ParsedRalphSessionContextBlock,
     type ParsedSessionContextBlock,
@@ -489,7 +490,58 @@ function AttachedRalphSessionContextBlockCard({ context }: { context: ParsedRalp
     );
 }
 
+function getDiffSelectionDetailRows(context: ParsedDiffSelectionContextBlock): Array<[string, string]> {
+    const range = (value: { start: number; end: number } | undefined) => value ? `${value.start}-${value.end}` : '';
+    const ref = context.ref.type === 'commit'
+        ? context.ref.commitHash
+        : context.ref.type === 'range'
+            ? `${context.ref.baseRef}..${context.ref.headRef}`
+            : context.ref.type;
+    const rows: Array<[string, string]> = [
+        ['File', context.filePath],
+        ['Old lines', range(context.oldRange)],
+        ['New lines', range(context.newRange)],
+        ['Ref', ref],
+        ['Workspace ID', context.sourceWorkspaceId],
+    ];
+    return rows.filter(row => Boolean(row[1]));
+}
+
+function AttachedDiffSelectionContextBlockCard({ context }: { context: ParsedDiffSelectionContextBlock }) {
+    return (
+        <details
+            className="rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 text-[12px] overflow-hidden"
+            data-testid="attached-diff-selection-context-block"
+        >
+            <summary className="cursor-pointer select-none list-none px-3 py-2 flex items-center gap-2">
+                <span aria-hidden="true" className="shrink-0">±</span>
+                <span className="shrink-0 whitespace-nowrap font-medium text-emerald-800 dark:text-emerald-200">Attached diff selection</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-emerald-800/80 dark:text-emerald-200/80" data-testid="attached-diff-selection-context-summary">
+                    {context.label}
+                </span>
+                {context.truncated && (
+                    <span className="shrink-0 rounded-full border border-emerald-300 dark:border-emerald-700 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:text-emerald-300" data-testid="attached-diff-selection-context-truncated">
+                        truncated
+                    </span>
+                )}
+            </summary>
+            <div className="border-t border-emerald-300 dark:border-emerald-700 px-3 py-2 space-y-2 text-[#3c3c3c] dark:text-[#c8c8c8]">
+                <dl className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1">
+                    {getDiffSelectionDetailRows(context).map(([label, value]) => (
+                        <React.Fragment key={label}>
+                            <dt className="text-emerald-700 dark:text-emerald-300">{label}</dt>
+                            <dd className="font-mono break-all">{value}</dd>
+                        </React.Fragment>
+                    ))}
+                </dl>
+                <pre className="max-h-60 overflow-auto whitespace-pre rounded border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-[#1e1e1e] p-2 font-mono text-[11px]" data-testid="attached-diff-selection-context-snippet">{context.snippet}</pre>
+            </div>
+        </details>
+    );
+}
+
 function AttachedContextBlockCard({ context }: { context: ParsedAttachedContextBlock }) {
+    if (context.kind === 'diff-selection') return <AttachedDiffSelectionContextBlockCard context={context} />;
     if (context.kind === 'ralph-session') return <AttachedRalphSessionContextBlockCard context={context} />;
     if (context.kind === 'session') return <AttachedSessionContextBlockCard context={context} />;
     return <AttachedPointerContextBlockCard context={context} />;
@@ -1175,7 +1227,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         [isUser, turn.chatModeContext, injectedBlocks.chatMode],
     );
     const parsedUserContent = useMemo(
-        () => isUser ? parseAttachedSessionContextBlocks(injectedBlocks.text) : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], remainingContent: '' },
+        () => isUser ? parseAttachedSessionContextBlocks(injectedBlocks.text) : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], diffSelectionContexts: [], remainingContent: '' },
         [isUser, injectedBlocks.text],
     );
     const userContentText = isUser ? parsedUserContent.remainingContent : '';
@@ -1783,7 +1835,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                     )}
                     {isUser && !showRaw && parsedUserContent.attachedContexts.map((context, index) => (
                         <AttachedContextBlockCard
-                            key={`${context.kind}:${context.sourceWorkspaceId}:${context.kind === 'ralph-session' ? context.sourceRalphSessionId : context.sourceProcessId}:${index}`}
+                            key={`${context.kind}:${context.sourceWorkspaceId}:${index}`}
                             context={context}
                         />
                     ))}

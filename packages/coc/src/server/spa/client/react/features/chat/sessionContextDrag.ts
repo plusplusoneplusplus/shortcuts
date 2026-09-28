@@ -24,6 +24,14 @@ export const WORK_ITEM_CONTEXT_DRAG_KIND = 'coc.work-item-context';
 export const GIT_COMMIT_CONTEXT_DRAG_KIND = 'coc.git-commit-context';
 export const GIT_RANGE_CONTEXT_DRAG_KIND = 'coc.git-range-context';
 export const PULL_REQUEST_CONTEXT_DRAG_KIND = 'coc.pull-request-context';
+/**
+ * Carries a text selection made inside one file of a Git diff (selected diff
+ * lines with their `+`/`-`/space markers plus old/new line ranges and the ref
+ * the diff was computed against). Unlike pointer contexts, the snippet itself
+ * is the payload.
+ */
+export const DIFF_SELECTION_CONTEXT_DRAG_MIME = 'application/vnd.coc.diff-selection-context+json';
+export const DIFF_SELECTION_CONTEXT_DRAG_KIND = 'coc.diff-selection-context';
 
 export type SessionContextSourceStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type RalphSessionContextPhase = 'grilling' | 'executing' | 'complete' | 'failed';
@@ -100,6 +108,34 @@ export interface FilePathDragPayload {
     paths: string[];
 }
 
+export interface DiffSelectionLineRange {
+    start: number;
+    end: number;
+}
+
+/** What the diff the selection came from was computed against. */
+export type DiffSelectionRef =
+    | { type: 'commit'; commitHash: string }
+    | { type: 'range'; baseRef: string; headRef: string }
+    | { type: 'working-tree' }
+    | { type: 'staged' };
+
+export interface DiffSelectionContextDragPayload {
+    kind: typeof DIFF_SELECTION_CONTEXT_DRAG_KIND;
+    version: 1;
+    sourceWorkspaceId: string;
+    /** Repo-relative, POSIX-separated path of the file the selection belongs to. */
+    filePath: string;
+    /** Old-side (pre-image) line range; absent when no old-side line was selected. */
+    oldRange?: DiffSelectionLineRange;
+    /** New-side (post-image) line range; absent when no new-side line was selected. */
+    newRange?: DiffSelectionLineRange;
+    ref: DiffSelectionRef;
+    /** Selected diff lines, newline-joined, each keeping its `+`/`-`/space marker. */
+    snippet: string;
+    label: string;
+}
+
 export type PointerContextDragPayload =
     | WorkItemContextDragPayload
     | GitCommitContextDragPayload
@@ -109,7 +145,8 @@ export type PointerContextDragPayload =
 export type SessionContextAttachmentDragPayload =
     | SessionContextDragPayload
     | RalphSessionContextDragPayload
-    | PointerContextDragPayload;
+    | PointerContextDragPayload
+    | DiffSelectionContextDragPayload;
 
 export interface CreateSessionContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
@@ -611,6 +648,99 @@ export function writePointerContextDragData(dataTransfer: DragDataTransfer, payl
     dataTransfer.setData('text/plain', `CoC pointer context: ${payload.label}${title}`);
 }
 
+function shortRef(ref: string): string {
+    return /^[0-9a-f]{8,}$/i.test(ref) ? shortenCommitHash(ref) : ref;
+}
+
+/** Short, human label for a diff ref: `585e64d`, `main..feature`, `working tree`, `staged`. */
+export function formatDiffSelectionRef(ref: DiffSelectionRef): string {
+    if (ref.type === 'commit') return shortRef(ref.commitHash);
+    if (ref.type === 'range') return `${shortRef(ref.baseRef)}..${shortRef(ref.headRef)}`;
+    return ref.type === 'staged' ? 'staged' : 'working tree';
+}
+
+function formatLineRange(range: DiffSelectionLineRange): string {
+    return range.start === range.end ? `L${range.start}` : `L${range.start}-L${range.end}`;
+}
+
+/** Chip label like `src/a.ts:L12-L20 @ 585e64d` (new-side range preferred, old side as fallback). */
+export function buildDiffSelectionLabel(
+    filePath: string,
+    ranges: { oldRange?: DiffSelectionLineRange; newRange?: DiffSelectionLineRange },
+    ref: DiffSelectionRef,
+): string {
+    const range = ranges.newRange ?? ranges.oldRange;
+    const location = range ? `${filePath}:${formatLineRange(range)}` : filePath;
+    return `${location} @ ${formatDiffSelectionRef(ref)}`;
+}
+
+function isValidLineRange(value: unknown): value is DiffSelectionLineRange {
+    if (!value || typeof value !== 'object') return false;
+    const { start, end } = value as DiffSelectionLineRange;
+    return Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end >= start;
+}
+
+function normalizeDiffSelectionRef(value: unknown): DiffSelectionRef | null {
+    if (!value || typeof value !== 'object') return null;
+    const record = value as any;
+    if (record.type === 'working-tree' || record.type === 'staged') return { type: record.type };
+    if (record.type === 'commit') {
+        const commitHash = normalizePointerReference(stringFrom(record, [['commitHash']]));
+        return commitHash ? { type: 'commit', commitHash } : null;
+    }
+    if (record.type === 'range') {
+        const baseRef = normalizePointerReference(stringFrom(record, [['baseRef']]));
+        const headRef = normalizePointerReference(stringFrom(record, [['headRef']]));
+        return baseRef && headRef ? { type: 'range', baseRef, headRef } : null;
+    }
+    return null;
+}
+
+/**
+ * Build (or re-validate) a diff-selection drag payload. Returns `null` when the
+ * workspace, file path, ref, or snippet is missing, or the file path is not
+ * repo-relative, so callers can cancel the drag / ignore the drop.
+ */
+export function createDiffSelectionContextDragPayload(source: {
+    sourceWorkspaceId?: unknown;
+    filePath?: unknown;
+    oldRange?: unknown;
+    newRange?: unknown;
+    ref?: unknown;
+    snippet?: unknown;
+}): DiffSelectionContextDragPayload | null {
+    const sourceWorkspaceId = typeof source.sourceWorkspaceId === 'string' ? source.sourceWorkspaceId.trim() : '';
+    const filePath = typeof source.filePath === 'string' ? source.filePath.trim() : '';
+    const snippet = typeof source.snippet === 'string' ? source.snippet : '';
+    const ref = normalizeDiffSelectionRef(source.ref);
+    if (!sourceWorkspaceId || looksLikeLocalPath(sourceWorkspaceId)) return null;
+    if (!filePath || looksLikeLocalPath(filePath)) return null;
+    if (!snippet.trim() || !ref) return null;
+    const oldRange = isValidLineRange(source.oldRange) ? { start: source.oldRange.start, end: source.oldRange.end } : undefined;
+    const newRange = isValidLineRange(source.newRange) ? { start: source.newRange.start, end: source.newRange.end } : undefined;
+    return {
+        kind: DIFF_SELECTION_CONTEXT_DRAG_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        filePath,
+        ...(oldRange ? { oldRange } : {}),
+        ...(newRange ? { newRange } : {}),
+        ref,
+        snippet,
+        label: buildDiffSelectionLabel(filePath, { oldRange, newRange }, ref),
+    };
+}
+
+/**
+ * `text/plain` keeps the raw selected diff text so dropping into a non-CoC
+ * target (editor, terminal) behaves like a normal text drag.
+ */
+export function writeDiffSelectionContextDragData(dataTransfer: DragDataTransfer, payload: DiffSelectionContextDragPayload): void {
+    dataTransfer.effectAllowed = 'copy';
+    dataTransfer.setData(DIFF_SELECTION_CONTEXT_DRAG_MIME, JSON.stringify(payload));
+    dataTransfer.setData('text/plain', payload.snippet);
+}
+
 function writeSessionContextAttachmentDragData(
     dataTransfer: DragDataTransfer,
     payload: SessionContextAttachmentDragPayload,
@@ -619,6 +749,8 @@ function writeSessionContextAttachmentDragData(
         writeSessionContextDragData(dataTransfer, payload);
     } else if (payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) {
         writeRalphSessionContextDragData(dataTransfer, payload);
+    } else if (payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) {
+        writeDiffSelectionContextDragData(dataTransfer, payload);
     } else {
         writePointerContextDragData(dataTransfer, payload);
     }
