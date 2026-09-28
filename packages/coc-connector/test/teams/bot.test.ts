@@ -383,6 +383,71 @@ describe('TeamsBot', () => {
                 await bot.stop();
             });
 
+            it('restores tracked older replies on first poll without replaying admitted or outbound messages', async () => {
+                const known = new Set(['accepted-before-restart']);
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const tool = body.params?.name;
+                    const result = body.method === 'initialize'
+                        ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list'
+                            ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : tool === 'ListChannelMessages'
+                                ? { content: [{ text: JSON.stringify([{ id: 'recent-root', body: { content: 'old post' } }]) }] }
+                                : { content: [{ text: JSON.stringify(body.params.arguments.messageId === 'older-root'
+                                    ? [
+                                        { id: 'accepted-before-restart', body: { content: 'old ask' } },
+                                        { id: 'outbound', body: { content: 'answer' } },
+                                        { id: 'new-ask', body: { content: 'new ask' } },
+                                        { id: 'next-ask', body: { content: 'another ask' } },
+                                    ] : []) }] };
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                onMessage.mockImplementation(async (msg: InboundTeamsMessage) => { known.add(msg.messageId); });
+                const options = {
+                    pollChannelReplies: () => true,
+                    channelThreadRoots: () => ['older-root'],
+                    isOwnChannelReply: (msg: InboundTeamsMessage) => msg.messageId === 'outbound',
+                    isKnownChannelReply: (msg: InboundTeamsMessage) => known.has(msg.messageId),
+                };
+                const first = createMcpBot(options);
+                await first.start();
+                first.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) => msg.messageId)).toEqual(['new-ask', 'next-ask']);
+                await first.stop();
+
+                const restarted = createMcpBot(options);
+                await restarted.start();
+                restarted.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledTimes(2);
+                await restarted.stop();
+            });
+
+            it('retries a failed channel admission rather than discarding the reply ID', async () => {
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : { content: [{ text: JSON.stringify(body.params?.name === 'ListChannelMessages'
+                                ? [{ id: 'recent', body: { content: 'old' } }]
+                                : body.params.arguments.messageId === 'older-root'
+                                    ? [{ id: 'new', body: { content: 'ask' } }] : []) }] };
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                onMessage.mockRejectedValueOnce(new Error('queue unavailable'));
+                const bot = createMcpBot({ pollChannelReplies: () => true, channelThreadRoots: () => ['older-root'] });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledTimes(2);
+                await bot.stop();
+            });
+
             it('keeps default channel polling unchanged until thread polling is enabled', async () => {
                 let enabled = false;
                 let replyPolls = 0;

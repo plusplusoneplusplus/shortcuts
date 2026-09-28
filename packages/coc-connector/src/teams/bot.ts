@@ -303,13 +303,16 @@ export class TeamsBot implements MessagingConnector {
             this._channelBatchPolling = true;
             for (const [index, msg] of messages.entries()) {
                 if (this._seenChannelMessageIds.has(msg.messageId)) continue;
-                this._seenChannelMessageIds.add(msg.messageId);
-                if (this._seenChannelMessageIds.size > 1000) {
-                    this._seenChannelMessageIds.delete(this._seenChannelMessageIds.values().next().value!);
+                const trackedReply = !!msg.replyToMessageId
+                    && this.opts.channelThreadRoots?.(msg.channelId).includes(msg.replyToMessageId);
+                if (initial && !trackedReply) {
+                    this._seenChannelMessageIds.add(msg.messageId);
+                    continue;
                 }
-                if (initial) continue;
-                if (this._sentMessageIds.delete(msg.messageId)) {
+                if (this._sentMessageIds.delete(msg.messageId) || this.opts.isOwnChannelReply?.(msg)) {
                     this.observeInbound('skipped', 'own');
+                } else if (trackedReply && this.opts.isKnownChannelReply?.(msg)) {
+                    this.observeInbound('skipped', 'unchanged');
                 } else if (!msg.text.trim()) {
                     this.observeInbound('skipped', 'empty');
                 } else if (this.isBotFormattedMessage(msg.text)) {
@@ -322,9 +325,11 @@ export class TeamsBot implements MessagingConnector {
                         msg.replyToMessageId = preceding.messageId;
                     }
                     this.observeInbound('observed');
-                    await this.opts.onMessage(msg).catch(err => {
-                        console.error('[teams-bot] Error handling message:', err);
-                    });
+                    await this.opts.onMessage(msg);
+                }
+                this._seenChannelMessageIds.add(msg.messageId);
+                if (this._seenChannelMessageIds.size > 1000) {
+                    this._seenChannelMessageIds.delete(this._seenChannelMessageIds.values().next().value!);
                 }
             }
             if (initial) {

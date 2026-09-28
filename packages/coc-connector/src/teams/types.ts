@@ -9,6 +9,7 @@ export interface InboundTeamsMessage {
     text: string;
     senderName?: string;
     senderAadId?: string;
+    createdDateTime?: string;
 }
 
 /**
@@ -45,6 +46,10 @@ export interface TeamsBotOptions {
     pollChannelReplies?: () => boolean;
     /** Live channel thread roots supplied by the owner of durable thread bindings. */
     channelThreadRoots?: (channelId: string) => readonly string[];
+    /** Recognize outbound thread messages whose IDs survived a connector restart. */
+    isOwnChannelReply?: (msg: InboundTeamsMessage) => boolean;
+    /** Recognize inbound thread messages already admitted by durable receipts. */
+    isKnownChannelReply?: (msg: InboundTeamsMessage) => boolean;
     /** Display name for the bot in Teams (default: "CoC"). */
     botName?: string;
     /** Azure AD auth config for token acquisition. */
