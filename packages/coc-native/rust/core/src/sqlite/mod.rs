@@ -76,6 +76,7 @@ pub struct RunResult {
 pub enum Error {
     Sqlite(rusqlite::Error),
     Closed,
+    UnsupportedVersion(i64),
 }
 
 impl Error {
@@ -93,9 +94,12 @@ impl std::fmt::Display for Error {
         match self {
             Self::Sqlite(error) => error.fmt(formatter),
             Self::Closed => formatter.write_str("database connection is closed"),
+            Self::UnsupportedVersion(version) => write!(formatter, "unsupported process database user_version: {version}"),
         }
     }
 }
+
+pub mod process_search;
 
 impl std::error::Error for Error {}
 

@@ -1,16 +1,17 @@
 //! N-API bindings for the synchronous SQLite handle.
 //!
 //! These classes are deliberately low-level. `src/sqlite.ts` owns the public
-//! better-sqlite3-shaped API, including variadic arguments and iterators; this
+//! synchronous SQL API, including variadic arguments and iterators; this
 //! module only converts JavaScript values and delegates to the core.
 
 use std::collections::HashMap;
 
+use coc_native_core::sqlite::process_search::{self, SearchFilter, SearchPage};
 use coc_native_core::sqlite::{
     Database, Error as SqliteError, Parameters, Row, RunResult, Statement, Value,
 };
-use napi::bindgen_prelude::{Buffer, Either4, Function, Null, Unknown};
-use napi::{Error, Result, Status};
+use napi::bindgen_prelude::{AsyncTask, Buffer, Either4, Function, Null, Task, Unknown};
+use napi::{Env, Error, Result, Status};
 use napi_derive::napi;
 
 type JsSqliteValue = Either4<f64, String, Buffer, Null>;
@@ -25,6 +26,77 @@ pub struct NativeDatabaseOptions {
 pub struct NativeRunResult {
     pub changes: f64,
     pub last_insert_rowid: f64,
+}
+
+#[napi(object)]
+pub struct NativeConversationSearchFilter {
+    pub workspace_id: Option<String>,
+    pub statuses: Option<Vec<String>>,
+    pub process_type: Option<String>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
+#[napi(object)]
+pub struct NativeConversationSearchHit {
+    pub process_id: String,
+    pub turn_index: f64,
+    pub role: String,
+    pub snippet: String,
+    pub rank: f64,
+    pub process_title: Option<String>,
+    pub prompt_preview: Option<String>,
+    pub process_status: String,
+    pub process_type: String,
+    pub workspace_id: String,
+    pub start_time: String,
+}
+
+#[napi(object)]
+pub struct NativeConversationSearchPage {
+    pub results: Vec<NativeConversationSearchHit>,
+    pub total: f64,
+}
+
+pub struct ConversationSearchTask {
+    database: Database,
+    query: String,
+    filter: SearchFilter,
+}
+
+impl Task for ConversationSearchTask {
+    type Output = SearchPage;
+    type JsValue = NativeConversationSearchPage;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_search::search_conversations(&self.database, &self.query, &self.filter)
+            .map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, page: Self::Output) -> Result<Self::JsValue> {
+        Ok(NativeConversationSearchPage {
+            total: page.total as f64,
+            results: page
+                .results
+                .into_iter()
+                .map(|hit| NativeConversationSearchHit {
+                    process_id: hit.process_id,
+                    turn_index: hit.turn_index as f64,
+                    role: hit.role,
+                    snippet: hit.snippet,
+                    rank: hit.rank,
+                    process_title: hit.process_title,
+                    prompt_preview: hit.prompt_preview,
+                    process_status: hit.process_status,
+                    process_type: hit.process_type,
+                    workspace_id: hit.workspace_id,
+                    start_time: hit.start_time,
+                })
+                .collect(),
+        })
+    }
 }
 
 fn to_napi_error(error: SqliteError) -> Error {
@@ -179,5 +251,25 @@ impl NativeDatabaseHandle {
         callback: Function<'env, (), Unknown<'env>>,
     ) -> Result<Unknown<'env>> {
         self.database.transaction_with(|| callback.call(())).map_err(to_napi_error)?
+    }
+
+    #[napi(ts_return_type = "Promise<NativeConversationSearchPage>")]
+    pub fn search_conversations(
+        &self,
+        query: String,
+        filter: Option<NativeConversationSearchFilter>,
+    ) -> AsyncTask<ConversationSearchTask> {
+        let filter = filter
+            .map(|filter| SearchFilter {
+                workspace_id: filter.workspace_id,
+                statuses: filter.statuses.unwrap_or_default(),
+                process_type: filter.process_type,
+                since: filter.since,
+                until: filter.until,
+                limit: filter.limit.unwrap_or(50) as i64,
+                offset: filter.offset.unwrap_or(0) as i64,
+            })
+            .unwrap_or_else(|| SearchFilter { limit: 50, ..SearchFilter::default() });
+        AsyncTask::new(ConversationSearchTask { database: self.database.clone(), query, filter })
     }
 }

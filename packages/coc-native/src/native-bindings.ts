@@ -35,6 +35,7 @@ export declare class NativeDatabaseHandle {
   prepare(sql: string): NativeStatementHandle
   close(): void
   transaction(callback: () => unknown): unknown
+  searchConversations(query: string, filter?: NativeConversationSearchFilter | undefined | null): Promise<NativeConversationSearchPage>
 }
 
 export declare class NativeStatementHandle {
@@ -746,6 +747,35 @@ export declare function gitValidateRef(repoRoot: string, rev: string): Promise<s
  * core module for what that costs and why it is the trade taken.
  */
 export declare function matchDangerousCommand(command: string): DangerousCommandVerdict
+
+export interface NativeConversationSearchFilter {
+  workspaceId?: string
+  statuses?: Array<string>
+  processType?: string
+  since?: string
+  until?: string
+  limit?: number
+  offset?: number
+}
+
+export interface NativeConversationSearchHit {
+  processId: string
+  turnIndex: number
+  role: string
+  snippet: string
+  rank: number
+  processTitle?: string
+  promptPreview?: string
+  processStatus: string
+  processType: string
+  workspaceId: string
+  startTime: string
+}
+
+export interface NativeConversationSearchPage {
+  results: Array<NativeConversationSearchHit>
+  total: number
+}
 
 export interface NativeDatabaseOptions {
   readonly?: boolean

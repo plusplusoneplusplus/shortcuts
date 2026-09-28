@@ -1,7 +1,7 @@
 /**
  * Synchronous SQLite API backed by coc-native's rusqlite core.
  *
- * The public classes keep the better-sqlite3 call shape used across CoC while
+ * The public classes provide the synchronous SQL call shape used across CoC while
  * the generated native handles use arrays for a small, explicit N-API surface.
  */
 
@@ -13,7 +13,7 @@ export type NativeSqliteValue = number | string | Buffer | null;
 export type NativeSqliteRow = Record<string, NativeSqliteValue>;
 /**
  * Parameters intentionally accept unknown application row shapes, matching
- * better-sqlite3's structural call surface. The native boundary remains the
+ * existing store row objects' structural call surface. The native boundary remains the
  * authority that rejects values SQLite cannot bind.
  */
 export type NativeSqliteParameters = unknown;
@@ -156,6 +156,17 @@ export class NativeDatabase {
 
     public prepare(sql: string): NativeStatement {
         return withSqliteError(() => new NativeStatement(this.handle.prepare(sql)));
+    }
+
+    public async searchConversations(
+        query: string,
+        filter?: Bindings.NativeConversationSearchFilter,
+    ): Promise<Bindings.NativeConversationSearchPage> {
+        try {
+            return await this.handle.searchConversations(query, filter);
+        } catch (error) {
+            return withSqliteError(() => { throw error; });
+        }
     }
 
     public transaction<Arguments extends unknown[], Return>(

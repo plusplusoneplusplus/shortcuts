@@ -1,5 +1,8 @@
 use std::fs;
 
+use coc_native_core::sqlite::process_search::{
+    sanitize_fts_query, search_conversations, SearchFilter,
+};
 use coc_native_core::sqlite::{Database, Error, Parameters, Value};
 use tempfile::tempdir;
 
@@ -173,4 +176,39 @@ fn bundled_sqlite_has_fts5() {
         .unwrap()
         .unwrap();
     assert_eq!(row["content"], Value::Text("native sqlite search".into()));
+}
+
+#[test]
+fn process_search_uses_pooled_reads_and_rejects_unsupported_versions() {
+    let directory = tempdir().unwrap();
+    let database = Database::open(directory.path().join("search.db"), false).unwrap();
+    database.exec("
+        PRAGMA journal_mode=WAL;
+        PRAGMA user_version=38;
+        CREATE TABLE processes (id TEXT PRIMARY KEY, archived INTEGER, workspace_id TEXT, status TEXT,
+          type TEXT, last_event_at TEXT, title TEXT, prompt_preview TEXT, start_time TEXT);
+        CREATE TABLE conversation_turns (id INTEGER PRIMARY KEY, process_id TEXT, turn_index INTEGER,
+          role TEXT, content TEXT, interrupted INTEGER);
+        CREATE VIRTUAL TABLE conversation_search USING fts5(content);
+        INSERT INTO processes VALUES ('first', 0, 'ws-a', 'completed', 'chat', '2026-01-02',
+          NULL, 'preview', '2026-01-01');
+        INSERT INTO conversation_turns VALUES (1, 'first', 0, 'user', 'search search search', 0);
+        INSERT INTO conversation_turns VALUES (2, 'first', 1, 'assistant', 'search interrupted', 1);
+        INSERT INTO conversation_search(rowid, content) VALUES (1, 'search search search'), (2, 'search interrupted');
+    ").unwrap();
+    assert_eq!(sanitize_fts_query(" \"search*\" (rust)-^:"), "search rust");
+    assert_eq!(sanitize_fts_query("\u{FEFF} search\u{00A0}\u{2028}rust\u{FEFF} "), "search rust");
+    assert_eq!(sanitize_fts_query("search\u{0085}rust"), "search\u{0085}rust");
+    let filter =
+        SearchFilter { workspace_id: Some("ws-a".into()), limit: 50, ..SearchFilter::default() };
+    let page = search_conversations(&database, "search*", &filter).unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.results.len(), 1);
+    assert!(page.results[0].snippet.contains("<mark>search</mark>"));
+    assert!(page.results[0].rank.is_finite());
+    database.pragma("user_version = 39").unwrap();
+    assert!(matches!(
+        search_conversations(&database, "search", &filter),
+        Err(Error::UnsupportedVersion(39))
+    ));
 }

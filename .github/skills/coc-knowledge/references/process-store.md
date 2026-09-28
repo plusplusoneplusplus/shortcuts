@@ -23,6 +23,15 @@ wakeup, schedule, trigger, turn-performance, chat-binding, task-group, startup
 repair, and route stores. The admin database browser opens `processes.db` by path
 through its own short-lived native handle so each request closes what it owns.
 
+### Conversation search
+
+`searchConversations` runs through a typed Rust `AsyncTask` on the SQLite read
+pool. Rust validates `user_version` against the process schema, sanitizes FTS5
+terms, and returns `<mark>` snippets (48 tokens) in BM25 rank order. Archived
+processes and interrupted turns are excluded; other filters and pagination
+retain the ProcessStore interface. The TypeScript wrapper maps native rows to
+`ConversationSearchResult` and reports malformed FTS syntax as an empty result.
+
 ### Tables
 
 | Table | Purpose |

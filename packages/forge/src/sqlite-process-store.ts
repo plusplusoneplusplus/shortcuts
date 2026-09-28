@@ -1948,133 +1948,44 @@ export class SqliteProcessStore implements ProcessStore {
     // Full-text search
     // ========================================================================
 
-    /**
-     * Sanitize a raw user query into safe FTS5 syntax.
-     * Strips FTS5 operator characters that could cause parse errors,
-     * and wraps each term as a simple token.
-     */
-    private sanitizeFtsQuery(raw: string): string {
-        // Remove FTS5 special characters: * ^ : { } ( )
-        let cleaned = raw.replace(/[*^:{}()]/g, '');
-        // Escape double-quotes by removing them (prevents malformed phrase queries)
-        cleaned = cleaned.replace(/"/g, '');
-        // Replace hyphens with spaces to prevent FTS5 NOT operator interpretation
-        cleaned = cleaned.replace(/-/g, ' ');
-        // Collapse whitespace and trim
-        cleaned = cleaned.replace(/\s+/g, ' ').trim();
-        return cleaned;
-    }
-
     async searchConversations(
         query: string,
         filter?: SearchFilter
     ): Promise<{ results: ConversationSearchResult[]; total: number }> {
-        const empty = { results: [], total: 0 };
-
-        const sanitized = this.sanitizeFtsQuery(query);
-        if (!sanitized) return empty;
-
-        const params: unknown[] = [sanitized];
-        const whereClauses = ['conversation_search MATCH ?', 'p.archived = 0'];
-
-        if (filter?.workspaceId) {
-            whereClauses.push('p.workspace_id = ?');
-            params.push(filter.workspaceId);
-        }
-
-        if (filter?.status) {
-            const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
-            whereClauses.push(`p.status IN (${statuses.map(() => '?').join(', ')})`);
-            params.push(...statuses);
-        }
-
-        if (filter?.type) {
-            whereClauses.push('p.type = ?');
-            params.push(filter.type);
-        }
-
-        if (filter?.since) {
-            whereClauses.push('p.last_event_at >= ?');
-            params.push(filter.since.toISOString());
-        }
-
-        if (filter?.until) {
-            whereClauses.push('p.last_event_at < ?');
-            params.push(filter.until.toISOString());
-        }
-
-        const whereSQL = whereClauses.join(' AND ');
-        const limit = filter?.limit ?? 50;
-        const offset = filter?.offset ?? 0;
-
+        const empty = { results: [] as ConversationSearchResult[], total: 0 };
         try {
-            // Count total results (pre-pagination)
-            const countSQL = `
-                SELECT COUNT(*) as cnt
-                FROM conversation_search cs
-                JOIN conversation_turns ct ON ct.id = cs.rowid
-                JOIN processes p ON ct.process_id = p.id
-                WHERE ${whereSQL}
-            `;
-            const countRow = this.db.prepare(countSQL).get(...params) as { cnt: number };
-            const total = countRow.cnt;
-
-            if (total === 0) return empty;
-
-            // Fetch paginated results with snippets
-            const resultsSQL = `
-                SELECT
-                    ct.process_id,
-                    ct.turn_index,
-                    ct.role,
-                    snippet(conversation_search, 0, '<mark>', '</mark>', '…', 48) AS snippet,
-                    cs.rank,
-                    p.title AS process_title,
-                    p.prompt_preview,
-                    p.status AS process_status,
-                    p.type AS process_type,
-                    p.workspace_id,
-                    p.start_time
-                FROM conversation_search cs
-                JOIN conversation_turns ct ON ct.id = cs.rowid
-                JOIN processes p ON ct.process_id = p.id
-                WHERE ${whereSQL}
-                ORDER BY cs.rank
-                LIMIT ? OFFSET ?
-            `;
-            const rows = this.db.prepare(resultsSQL).all(...params, limit, offset) as Array<{
-                process_id: string;
-                turn_index: number;
-                role: string;
-                snippet: string;
-                rank: number;
-                process_title: string | null;
-                prompt_preview: string | null;
-                process_status: string;
-                process_type: string;
-                workspace_id: string;
-                start_time: string;
-            }>;
-
-            const results: ConversationSearchResult[] = rows.map(row => ({
-                processId: row.process_id,
-                turnIndex: row.turn_index,
-                role: row.role,
-                snippet: row.snippet,
-                rank: row.rank,
-                processTitle: row.process_title ?? undefined,
-                promptPreview: row.prompt_preview ?? '',
-                processStatus: row.process_status,
-                processType: row.process_type,
-                workspaceId: row.workspace_id,
-                startTime: row.start_time,
-            }));
-
-            return { results, total };
+            const page = await this.db.searchConversations(query, {
+                workspaceId: filter?.workspaceId,
+                statuses: filter?.status ? (Array.isArray(filter.status) ? filter.status : [filter.status]) : undefined,
+                processType: filter?.type,
+                since: filter?.since?.toISOString(),
+                until: filter?.until?.toISOString(),
+                limit: filter?.limit,
+                offset: filter?.offset,
+            });
+            if (page.total === 0) return empty;
+            return {
+                results: page.results.map(row => ({
+                    processId: row.processId,
+                    turnIndex: row.turnIndex,
+                    role: row.role,
+                    snippet: row.snippet,
+                    rank: row.rank,
+                    processTitle: row.processTitle ?? undefined,
+                    promptPreview: row.promptPreview ?? '',
+                    processStatus: row.processStatus,
+                    processType: row.processType,
+                    workspaceId: row.workspaceId,
+                    startTime: row.startTime,
+                })),
+                total: page.total,
+            };
         } catch (err) {
-            // Graceful degradation: malformed FTS5 queries return empty results
-            logger.warn('searchConversations', `FTS5 query failed for "${sanitized}": ${String(err)}`);
-            return empty;
+            if (err instanceof Error && /^\[sqlite:1\] fts5: syntax error near "/.test(err.message)) {
+                logger.warn('searchConversations', `FTS5 query failed: ${err.message}`);
+                return empty;
+            }
+            throw err;
         }
     }
 
