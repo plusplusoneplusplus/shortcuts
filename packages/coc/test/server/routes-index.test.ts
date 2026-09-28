@@ -409,6 +409,7 @@ describe('registerAllRoutes', () => {
             store,
             bridge,
             runtimeConfigService: {
+                onChange: vi.fn().mockReturnValue(() => {}),
                 config: {
                     dreams: {
                         enabled: true,
