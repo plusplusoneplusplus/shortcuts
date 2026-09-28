@@ -20,6 +20,8 @@ interface AnswerBinding {
     rootId: string;
     taskId: string;
     processId: string;
+    selectedWorkspaceId?: string;
+    selectedProcessId?: string | null;
     requestId?: string;
     partCount?: number;
     nextPart?: number;
@@ -70,6 +72,9 @@ function readBinding(file: string): AnswerBinding | undefined {
             .some(key => typeof row[key] !== 'string' || !row[key])
         || !Number.isFinite(Date.parse(row.createdAt as string))
         || (row.requestId !== undefined && (typeof row.requestId !== 'string' || !/^[a-f0-9-]{36}$/i.test(row.requestId)))
+        || (row.selectedWorkspaceId !== undefined && (typeof row.selectedWorkspaceId !== 'string' || !row.selectedWorkspaceId))
+        || (row.selectedProcessId !== undefined && row.selectedProcessId !== null
+            && (typeof row.selectedProcessId !== 'string' || !row.selectedProcessId))
         || (row.answerHash !== undefined && (typeof row.answerHash !== 'string' || !/^[a-f0-9]{64}$/.test(row.answerHash)))
         || (row.acceptedMessageId !== undefined && (typeof row.acceptedMessageId !== 'string'
             || !/^[A-Za-z0-9:_@.-]{1,256}$/.test(row.acceptedMessageId)))
@@ -167,23 +172,50 @@ export class TeamsAnswerRelay {
             !value.requestId && value.teamId === target.teamId
             && value.channelId === msg.channelId && value.messageId === msg.replyToMessageId)?.value;
         if (!root) return null;
-        if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === root.workspaceId)) {
+        const workspaceId = root.selectedWorkspaceId ?? root.workspaceId;
+        if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) {
             throw new Error('Teams thread workspace is unavailable');
         }
-        const process = await this.deps.store.getProcess(root.processId, root.workspaceId);
+        if (root.selectedProcessId === null) return { workspaceId };
+        const processId = root.selectedProcessId ?? root.processId;
+        const process = await this.deps.store.getProcess(processId, workspaceId);
         if (process) {
-            if (process.id !== root.processId || process.metadata?.workspaceId !== root.workspaceId
+            if (process.id !== processId || process.metadata?.workspaceId !== workspaceId
                 || ['failed', 'cancelled'].includes(process.status)) {
                 throw new Error('Teams thread chat is unavailable');
             }
-            return { process, workspaceId: root.workspaceId };
+            return { process, workspaceId };
         }
+        if (root.selectedProcessId !== undefined) throw new Error('Teams thread chat is unavailable');
         const task = this.deps.queue.getTask(root.taskId);
-        if (!task || task.repoId !== root.workspaceId || task.processId !== root.processId
+        if (!task || task.repoId !== workspaceId || task.processId !== processId
             || !['queued', 'running'].includes(task.status)) {
             throw new Error('Teams thread chat is unavailable');
         }
-        return { taskId: root.taskId, workspaceId: root.workspaceId };
+        return { taskId: root.taskId, workspaceId };
+    }
+
+    async selectThreadTarget(msg: InboundTeamsMessage, workspaceId: string, processId: string | null): Promise<void> {
+        if (this.disposed || !this.deps.isEnabled()) throw new Error('Teams thread selection is unavailable');
+        const target = this.deps.target();
+        if (!target.connected || !target.teamId || target.channelId !== msg.channelId || !msg.replyToMessageId) {
+            throw new Error('Teams thread target is unavailable');
+        }
+        const entry = [...this.bindings.entries()].find(([, { value }]) =>
+            !value.requestId && value.teamId === target.teamId && value.channelId === msg.channelId
+            && value.messageId === msg.replyToMessageId);
+        if (!entry) throw new Error('Teams thread binding is unavailable');
+        if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) {
+            throw new Error('Teams thread workspace is unavailable');
+        }
+        if (processId) {
+            const process = await this.deps.store.getProcess(processId, workspaceId);
+            if (!process || process.id !== processId || process.metadata?.workspaceId !== workspaceId
+                || ['failed', 'cancelled'].includes(process.status)) {
+                throw new Error('Teams thread chat is unavailable');
+            }
+        }
+        this.update(entry[0], entry[1].value.status, { selectedWorkspaceId: workspaceId, selectedProcessId: processId });
     }
 
     isOwnReply(teamId: string, msg: InboundTeamsMessage): boolean {

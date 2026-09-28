@@ -103,7 +103,9 @@ export function registerTeamsMessagingRoutes(
             enqueueChat: opts.enqueueChat,
             isAnswerRelayEnabled: opts.getAnswerRelayEnabled,
             ...(relay ? { resolveThreadReply: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
-                relay.resolveThread(msg) } : {}),
+                relay.resolveThread(msg),
+                selectThreadTarget: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, processId: string | null) =>
+                    relay.selectThreadTarget(msg, workspaceId, processId) } : {}),
             ...(relay && opts.enqueueRelayChat ? {
                 admitNewChat: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string) =>
                     opts.getAnswerRelayEnabled?.() === true

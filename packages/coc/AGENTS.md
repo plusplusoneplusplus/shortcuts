@@ -129,9 +129,11 @@ all have their own `references/*.md`.
   reply-list tool is available. Persisted root receipts keep older threads
   eligible across reconnects; their reply cursor prevents old requests from
   replaying after receipt compaction, and outbound IDs identify the connector's
-  own replies. Bound thread replies route to their physical workspace and chat
-  independently of the sender's selected topic. Unbound or unavailable thread
-  replies receive an error in the same thread, never a new chat.
+  own replies. Bound thread command selections are shared by participants and
+  persisted on the original root receipt; the original chat's answer correlation
+  stays in its physical workspace. Bound replies route by the thread selection,
+  independently of the sender's selected topic. Unbound or unavailable chat
+  thread replies receive an error in the same thread.
   Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
   for discovery, PKCE, exchange, and read-only
   handshake verification; verified tokens enter the shared Copilot OAuth cache

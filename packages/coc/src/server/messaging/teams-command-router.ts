@@ -34,6 +34,8 @@ export interface TeamsCommandRouterDeps {
     admitFollowUp?: (msg: InboundTeamsMessage, process: AIProcess, message: string) => Promise<{ duplicate: boolean }>;
     admitPendingFollowUp?: (msg: InboundTeamsMessage, taskId: string, message: string) => Promise<{ duplicate: boolean } | null>;
     resolveThreadReply?: (msg: InboundTeamsMessage) => Promise<{ process?: AIProcess; taskId?: string; workspaceId: string } | null>;
+    /** Persist a shared selection for an already-bound channel thread. */
+    selectThreadTarget?: (msg: InboundTeamsMessage, workspaceId: string, processId: string | null) => Promise<void>;
     acknowledgeFollowUp?: (msg: InboundTeamsMessage) => Promise<void>;
     isAnswerRelayEnabled?: () => boolean;
     /** Send a follow-up message to an existing process. */
@@ -117,9 +119,15 @@ export class TeamsCommandRouter {
                 return;
             }
             if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
+                boundThread = true;
+                command = parseCommand(msg.text);
+                if (this.isControlCommand(command)) {
+                    observe?.('dispatch-command');
+                    await this.handleThreadCommand(msg, command);
+                    return;
+                }
                 const binding = await this.deps.resolveThreadReply?.(msg);
                 if (!binding) throw new Error('Teams thread binding is unavailable');
-                boundThread = true;
                 const message = msg.text.trim();
                 if (!message) {
                     return;
@@ -177,6 +185,72 @@ export class TeamsCommandRouter {
             } else {
                 await this.deps.sendReply(`❌ Error: ${err.message ?? 'Unknown error'}`, msg.messageId);
             }
+        }
+    }
+
+    private isControlCommand(command: ParsedCommand): boolean {
+        return command.type !== 'chat' && command.type !== 'chat-explicit';
+    }
+
+    private async handleThreadCommand(msg: InboundTeamsMessage, command: ParsedCommand): Promise<void> {
+        const root = msg.replyToMessageId!;
+        if (command.type === 'list-agents' || command.type === 'list-repos') {
+            await this.handleListAgents({ ...msg, messageId: root });
+            return;
+        }
+        const binding = await this.deps.resolveThreadReply?.(msg);
+        if (!binding) throw new Error('Teams thread binding is unavailable');
+        if (!this.deps.selectThreadTarget) throw new Error('Teams thread selection is unavailable');
+        const reply = (text: string) => this.deps.sendReply(text, root);
+        if (command.type === 'select-repo') {
+            const workspaces = await this.deps.store.getWorkspaces();
+            const workspace = resolveWorkspace(workspaces, command.args);
+            if (!workspace) {
+                await reply('❌ Repo not found. Use `/list repos` to see available repos.');
+                return;
+            }
+            await this.deps.selectThreadTarget(msg, workspace.id, null);
+            await reply(`✅ Selected repo: **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question starts a new chat.`);
+            return;
+        }
+        const workspaces = await this.deps.store.getWorkspaces();
+        const workspace = workspaces.find(w => w.id === binding.workspaceId);
+        if (!workspace) {
+            await reply('❌ Selected repo is unavailable. Use `/select repo <name>` here.');
+            return;
+        }
+        if (command.type === 'list-topics') {
+            const processes = await this.deps.store.getAllProcesses({ workspaceId: workspace.id });
+            const recent = processes.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).slice(0, 10);
+            await reply(recent.length
+                ? `**Chat Topics** (repo: ${escapeTeamsMarkdown(workspace.name ?? workspace.id)}):\n${recent.map((p, i) =>
+                    `${i + 1}. ${teamsCodeSpan(p.id.slice(0, 8))} ${escapeTeamsMarkdown(p.title ?? p.customTitle ?? p.id)}`).join('\n')}`
+                : 'No chat topics found.');
+            return;
+        }
+        if (command.type === 'create-topic') {
+            await this.deps.selectThreadTarget(msg, workspace.id, null);
+            await reply(`✅ Ready for a new topic in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question starts a new chat.`);
+            return;
+        }
+        if (command.type === 'select-topic') {
+            const trimmed = command.args.trim();
+            let process: AIProcess | undefined;
+            if (/^[1-9]\d*$/.test(trimmed)) {
+                const processes = await this.deps.store.getAllProcesses({ workspaceId: workspace.id });
+                process = processes.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+                    .slice(0, 10)[Number(trimmed) - 1];
+            } else {
+                process = await this.deps.store.getProcess(trimmed, workspace.id);
+            }
+            if (!process || process.metadata?.workspaceId !== workspace.id
+                || ['failed', 'cancelled'].includes(process.status)) {
+                await reply('❌ Topic not found in the selected repo. Use `/list topics` here.');
+                return;
+            }
+            await this.deps.selectThreadTarget(msg, workspace.id, process.id);
+            const title = process.title ?? process.customTitle ?? process.id;
+            await reply(`✅ Selected topic: **${escapeTeamsMarkdown(title)}** in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question continues this chat.`);
         }
     }
 

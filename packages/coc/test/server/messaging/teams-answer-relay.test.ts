@@ -62,6 +62,35 @@ describe('TeamsAnswerRelay new topics', () => {
         });
     }
 
+    it('persists a shared thread selection while retaining the original answer receipt', async () => {
+        const root = message('root-selection');
+        const admitted = await relay.admitNew(root, 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const reply = { ...message('reply-selection'), replyToMessageId: root.messageId };
+        processes.set('chosen-topic', {
+            id: 'chosen-topic', status: 'completed', metadata: { workspaceId: 'workspace-b' },
+        });
+        await relay.selectThreadTarget(reply, 'workspace-b', 'chosen-topic');
+        expect((await relay.resolveThread(reply))?.process?.id).toBe('chosen-topic');
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            expect((await restored.resolveThread(reply))?.workspaceId).toBe('workspace-b');
+        } finally {
+            restored.dispose();
+        }
+        await relay.selectThreadTarget(reply, 'workspace-b', null);
+        expect(await relay.resolveThread(reply)).toEqual({ workspaceId: 'workspace-b' });
+        finish(admitted.taskId, 'workspace-a', 'Original answer');
+        await relay.acknowledged(admitted.taskId);
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Original answer'), root.messageId);
+    });
+
     it('acknowledges before sending the saved assistant turn and deduplicates inbound polling', async () => {
         const ack = vi.fn().mockResolvedValue(undefined);
         const enqueue = vi.fn(async (workspaceId: string, _prompt: string, id: string) => {
