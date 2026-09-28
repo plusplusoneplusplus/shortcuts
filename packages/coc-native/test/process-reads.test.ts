@@ -52,4 +52,46 @@ describe('pooled native process reads', () => {
             db.close();
         }
     });
+
+    it('returns summary counts, recent rows, and rejects unsupported schema on both paths', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ac07-native-index-'));
+        dirs.push(dir);
+        const db = new NativeDatabase(path.join(dir, 'processes.db'));
+        try {
+            db.exec(`
+                PRAGMA journal_mode=WAL; PRAGMA user_version=38;
+                CREATE TABLE processes (
+                    id TEXT, workspace_id TEXT, parent_process_id TEXT, status TEXT, type TEXT,
+                    start_time TEXT, end_time TEXT, prompt_preview TEXT, error TEXT,
+                    title TEXT, custom_title TEXT, last_message_preview TEXT, last_event_at TEXT,
+                    pinned_at TEXT, archived INTEGER, metadata TEXT
+                );
+                INSERT INTO processes VALUES (
+                    'one', 'ws-a', NULL, 'completed', 'chat',
+                    '2026-01-01', NULL, 'prompt', NULL, NULL, NULL, NULL, '2026-01-02',
+                    NULL, 0, '{"__pendingAskUser":[{"id":"ask"}],"compaction":{"count":2}}'
+                );
+                INSERT INTO processes VALUES (
+                    'two', 'ws-b', NULL, 'running', 'chat',
+                    '2026-02-01', NULL, 'prompt', NULL, NULL, NULL, NULL, '2026-02-02',
+                    NULL, 1, NULL
+                );
+            `);
+            const pending = db.getProcessSummaries({ workspaceId: 'ws-a' });
+            expect(pending).toBeInstanceOf(Promise);
+            const page = await pending;
+            expect(page.total).toBe(1);
+            expect(page.rows[0]).toMatchObject({
+                id: 'one', pending_ask_user_count: 1, compaction_json: '{"count":2}',
+            });
+            expect((await db.getProcessSummaries({ limit: 1 })).total).toBe(2);
+            expect((await db.listRecentProcesses()).map(row => row.id)).toEqual(['one']);
+            expect((await db.listRecentProcesses({ limit: 0, excludeProcessId: 'one' }))).toEqual([]);
+            db.pragma('user_version = 999');
+            await expect(db.getProcessSummaries()).rejects.toThrow('unsupported process database user_version: 999');
+            await expect(db.listRecentProcesses()).rejects.toThrow('unsupported process database user_version: 999');
+        } finally {
+            db.close();
+        }
+    });
 });

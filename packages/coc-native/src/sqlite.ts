@@ -187,6 +187,26 @@ export class NativeDatabase {
         }
     }
 
+    public async getProcessSummaries(
+        filter?: Bindings.NativeProcessReadFilter,
+    ): Promise<Bindings.NativeProcessSummaryPage> {
+        try {
+            return await this.handle.getProcessSummaries(filter);
+        } catch (error) {
+            return withSqliteError(() => { throw error; });
+        }
+    }
+
+    public async listRecentProcesses(
+        filter?: Bindings.NativeRecentProcessFilter,
+    ): Promise<NativeSqliteRow[]> {
+        try {
+            return await this.handle.listRecentProcesses(filter);
+        } catch (error) {
+            return withSqliteError(() => { throw error; });
+        }
+    }
+
     public transaction<Arguments extends unknown[], Return>(
         callback: (...args: Arguments) => Return,
     ): (...args: Arguments) => Return {

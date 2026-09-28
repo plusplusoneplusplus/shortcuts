@@ -1,7 +1,8 @@
 use std::fs;
 
 use coc_native_core::sqlite::process_reads::{
-    get_all_processes, get_conversation_turns, ProcessFilter,
+    get_all_processes, get_conversation_turns, get_process_summaries, list_recent_processes,
+    ProcessFilter, RecentFilter,
 };
 use coc_native_core::sqlite::process_search::{
     sanitize_fts_query, search_conversations, SearchFilter,
@@ -226,14 +227,19 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
         PRAGMA journal_mode=WAL; PRAGMA user_version=38;
         CREATE TABLE processes (
           id TEXT PRIMARY KEY, workspace_id TEXT, parent_process_id TEXT, status TEXT,
-          type TEXT, start_time TEXT, last_event_at TEXT
+          type TEXT, start_time TEXT, last_event_at TEXT, end_time TEXT, prompt_preview TEXT,
+          error TEXT, title TEXT, custom_title TEXT, last_message_preview TEXT,
+          pinned_at TEXT, archived INTEGER, metadata TEXT
         );
         CREATE TABLE conversation_turns (
           id INTEGER PRIMARY KEY, process_id TEXT, turn_index INTEGER, content TEXT
         );
         INSERT INTO processes VALUES
-          ('one', 'ws-a', NULL, 'completed', 'chat', '2026-01-01', '2026-01-02'),
-          ('two', 'ws-b', 'one', 'running', 'chat', '2026-02-01', '2026-02-02');
+          ('one', 'ws-a', NULL, 'completed', 'chat', '2026-01-01', '2026-01-02',
+            NULL, 'first', NULL, NULL, NULL, NULL, NULL, 0,
+            '{\"__pendingAskUser\":[{\"id\":1}],\"compaction\":{\"count\":2}}'),
+          ('two', 'ws-b', 'one', 'running', 'chat', '2026-02-01', '2026-02-02',
+            NULL, 'second', NULL, NULL, NULL, NULL, NULL, 0, NULL);
         INSERT INTO conversation_turns VALUES (1, 'one', 2, 'second'), (2, 'one', 0, 'first');
     ",
         )
@@ -263,7 +269,48 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     )
     .unwrap()
     .is_empty());
+    let summaries = get_process_summaries(
+        &database,
+        &ProcessFilter {
+            workspace_id: Some("ws-a".into()),
+            limit: Some(1),
+            ..ProcessFilter::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(summaries.total, 1);
+    assert_eq!(summaries.rows[0]["pending_ask_user_count"], Value::Integer(1));
+    assert_eq!(summaries.rows[0]["compaction_json"], Value::Text("{\"count\":2}".into()));
+    let recent = list_recent_processes(
+        &database,
+        &RecentFilter {
+            limit: 100,
+            exclude_process_id: Some("two".into()),
+            ..RecentFilter::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(recent.len(), 1);
+    assert_eq!(recent[0]["id"], Value::Text("one".into()));
+    assert!(list_recent_processes(
+        &database,
+        &RecentFilter {
+            limit: 10,
+            workspace_id: Some("ws-missing".into()),
+            ..RecentFilter::default()
+        }
+    )
+    .unwrap()
+    .is_empty());
     database.pragma("user_version = 39").unwrap();
     assert!(matches!(get_conversation_turns(&database, "one"), Err(Error::UnsupportedVersion(39))));
     assert!(matches!(get_all_processes(&database, &filter), Err(Error::UnsupportedVersion(39))));
+    assert!(matches!(
+        get_process_summaries(&database, &filter),
+        Err(Error::UnsupportedVersion(39))
+    ));
+    assert!(matches!(
+        list_recent_processes(&database, &RecentFilter { limit: 10, ..RecentFilter::default() }),
+        Err(Error::UnsupportedVersion(39))
+    ));
 }

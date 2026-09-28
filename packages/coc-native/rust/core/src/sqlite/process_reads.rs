@@ -23,6 +23,58 @@ pub struct ProcessWithTurns {
     pub turns: Option<Vec<Row>>,
 }
 
+pub struct SummaryPage {
+    pub rows: Vec<Row>,
+    pub total: i64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RecentFilter {
+    pub workspace_id: Option<String>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub exclude_process_id: Option<String>,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+fn where_clause(filter: &ProcessFilter, activity_time: bool) -> (String, Vec<Value>) {
+    let mut conditions = Vec::new();
+    let mut values = Vec::new();
+    if let Some(workspace_id) = &filter.workspace_id {
+        conditions.push("workspace_id = ?".to_owned());
+        values.push(Value::Text(workspace_id.clone()));
+    }
+    if let Some(parent_process_id) = &filter.parent_process_id {
+        conditions.push("parent_process_id = ?".to_owned());
+        values.push(Value::Text(parent_process_id.clone()));
+    }
+    if let Some(statuses) = &filter.statuses {
+        // `status = ?` and `IN (?)` return identical results, including NULL.
+        conditions.push(format!("status IN ({})", vec!["?"; statuses.len()].join(", ")));
+        values.extend(statuses.iter().cloned().map(Value::Text));
+    }
+    if let Some(process_type) = &filter.process_type {
+        conditions.push("type = ?".to_owned());
+        values.push(Value::Text(process_type.clone()));
+    }
+    let time_column = if activity_time { "last_event_at" } else { "start_time" };
+    if let Some(since) = &filter.since {
+        conditions.push(format!("{time_column} >= ?"));
+        values.push(Value::Text(since.clone()));
+    }
+    if let Some(until) = &filter.until {
+        conditions.push(format!("{time_column} < ?"));
+        values.push(Value::Text(until.clone()));
+    }
+    let sql = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
+    };
+    (sql, values)
+}
+
 fn load_turns(connection: &Connection, process_id: &str) -> Result<Vec<Row>> {
     query(
         connection,
@@ -44,41 +96,7 @@ pub fn get_all_processes(
 ) -> Result<Vec<ProcessWithTurns>> {
     database.with_read_connection(|connection| {
         check_process_schema(connection)?;
-        let mut conditions = Vec::new();
-        let mut values = Vec::new();
-        if let Some(workspace_id) = &filter.workspace_id {
-            conditions.push("workspace_id = ?".to_owned());
-            values.push(Value::Text(workspace_id.clone()));
-        }
-        if let Some(parent_process_id) = &filter.parent_process_id {
-            conditions.push("parent_process_id = ?".to_owned());
-            values.push(Value::Text(parent_process_id.clone()));
-        }
-        if let Some(statuses) = &filter.statuses {
-            if statuses.len() == 1 {
-                conditions.push("status = ?".to_owned());
-            } else {
-                conditions.push(format!("status IN ({})", vec!["?"; statuses.len()].join(", ")));
-            }
-            values.extend(statuses.iter().cloned().map(Value::Text));
-        }
-        if let Some(process_type) = &filter.process_type {
-            conditions.push("type = ?".to_owned());
-            values.push(Value::Text(process_type.clone()));
-        }
-        if let Some(since) = &filter.since {
-            conditions.push("start_time >= ?".to_owned());
-            values.push(Value::Text(since.clone()));
-        }
-        if let Some(until) = &filter.until {
-            conditions.push("start_time < ?".to_owned());
-            values.push(Value::Text(until.clone()));
-        }
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
+        let (where_clause, mut values) = where_clause(filter, false);
         let select = if filter.exclude_conversation {
             "id, workspace_id, type, prompt_preview, NULL AS full_prompt, status, \
              start_time, end_time, error, NULL AS result, result_file_path, \
@@ -111,5 +129,72 @@ pub fn get_all_processes(
             };
             Ok(ProcessWithTurns { process, turns })
         }).collect()
+    })
+}
+
+pub fn get_process_summaries(database: &Database, filter: &ProcessFilter) -> Result<SummaryPage> {
+    database.with_read_connection(|connection| {
+        check_process_schema(connection)?;
+        let snapshot = connection.unchecked_transaction()?;
+        let (where_clause, mut values) = where_clause(filter, true);
+        let count = query(&snapshot, &format!("SELECT COUNT(*) AS cnt FROM processes {where_clause}"),
+            &Parameters::Positional(values.clone()))?;
+        let total = match count.first().and_then(|row| row.get("cnt")) {
+            Some(Value::Integer(total)) => *total,
+            _ => return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("cnt".into()))),
+        };
+        let mut sql = format!(
+            "SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, \
+             parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, \
+             COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count, \
+             json_extract(metadata, '$.compaction') AS compaction_json \
+             FROM processes {where_clause} ORDER BY last_event_at DESC"
+        );
+        if let Some(limit) = filter.limit {
+            sql.push_str(" LIMIT ?");
+            values.push(Value::Integer(limit));
+        }
+        if let Some(offset) = filter.offset {
+            sql.push_str(" OFFSET ?");
+            values.push(Value::Integer(offset));
+        }
+        let rows = query(&snapshot, &sql, &Parameters::Positional(values))?;
+        snapshot.commit()?;
+        Ok(SummaryPage { rows, total })
+    })
+}
+
+pub fn list_recent_processes(database: &Database, filter: &RecentFilter) -> Result<Vec<Row>> {
+    database.with_read_connection(|connection| {
+        check_process_schema(connection)?;
+        let mut conditions = vec!["archived = 0".to_owned()];
+        let mut values = Vec::new();
+        if let Some(workspace_id) = &filter.workspace_id {
+            conditions.push("workspace_id = ?".into());
+            values.push(Value::Text(workspace_id.clone()));
+        }
+        if let Some(process_id) = &filter.exclude_process_id {
+            conditions.push("id != ?".into());
+            values.push(Value::Text(process_id.clone()));
+        }
+        if let Some(since) = &filter.since {
+            conditions.push("last_event_at >= ?".into());
+            values.push(Value::Text(since.clone()));
+        }
+        if let Some(until) = &filter.until {
+            conditions.push("last_event_at < ?".into());
+            values.push(Value::Text(until.clone()));
+        }
+        let sql = format!(
+            "SELECT id, workspace_id, status, type, start_time, end_time, \
+             prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, \
+             last_event_at, pinned_at, archived, \
+             json_extract(metadata, '$.compaction') AS compaction_json \
+             FROM processes WHERE {} ORDER BY last_event_at DESC LIMIT ? OFFSET ?",
+            conditions.join(" AND ")
+        );
+        values.push(Value::Integer(filter.limit));
+        values.push(Value::Integer(filter.offset));
+        query(connection, &sql, &Parameters::Positional(values))
     })
 }

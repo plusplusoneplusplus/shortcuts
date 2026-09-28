@@ -6,7 +6,9 @@
 
 use std::collections::HashMap;
 
-use coc_native_core::sqlite::process_reads::{self, ProcessFilter, ProcessWithTurns};
+use coc_native_core::sqlite::process_reads::{
+    self, ProcessFilter, ProcessWithTurns, RecentFilter, SummaryPage,
+};
 use coc_native_core::sqlite::process_search::{self, SearchFilter, SearchPage};
 use coc_native_core::sqlite::{
     Database, Error as SqliteError, Parameters, Row, RunResult, Statement, Value,
@@ -78,6 +80,58 @@ pub struct NativeProcessReadFilter {
 pub struct NativeProcessWithTurns {
     pub process: HashMap<String, Either4<f64, String, Buffer, Null>>,
     pub turns: Option<Vec<HashMap<String, Either4<f64, String, Buffer, Null>>>>,
+}
+
+#[napi(object)]
+pub struct NativeProcessSummaryPage {
+    pub rows: Vec<HashMap<String, Either4<f64, String, Buffer, Null>>>,
+    pub total: f64,
+}
+
+#[napi(object)]
+pub struct NativeRecentProcessFilter {
+    pub workspace_id: Option<String>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub exclude_process_id: Option<String>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
+pub struct ProcessSummariesTask {
+    database: Database,
+    filter: ProcessFilter,
+}
+
+impl Task for ProcessSummariesTask {
+    type Output = SummaryPage;
+    type JsValue = NativeProcessSummaryPage;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_reads::get_process_summaries(&self.database, &self.filter).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, page: Self::Output) -> Result<Self::JsValue> {
+        Ok(NativeProcessSummaryPage { rows: to_js_rows(page.rows), total: page.total as f64 })
+    }
+}
+
+pub struct RecentProcessesTask {
+    database: Database,
+    filter: RecentFilter,
+}
+
+impl Task for RecentProcessesTask {
+    type Output = Vec<Row>;
+    type JsValue = Vec<JsSqliteRow>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_reads::list_recent_processes(&self.database, &self.filter).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, rows: Self::Output) -> Result<Self::JsValue> {
+        Ok(to_js_rows(rows))
+    }
 }
 
 pub struct ProcessTurnsTask {
@@ -360,5 +414,44 @@ impl NativeDatabaseHandle {
             })
             .unwrap_or_default();
         AsyncTask::new(AllProcessesTask { database: self.database.clone(), filter })
+    }
+
+    #[napi(ts_return_type = "Promise<NativeProcessSummaryPage>")]
+    pub fn get_process_summaries(
+        &self,
+        filter: Option<NativeProcessReadFilter>,
+    ) -> AsyncTask<ProcessSummariesTask> {
+        let filter = filter
+            .map(|filter| ProcessFilter {
+                workspace_id: filter.workspace_id,
+                parent_process_id: filter.parent_process_id,
+                statuses: filter.statuses,
+                process_type: filter.process_type,
+                since: filter.since,
+                until: filter.until,
+                limit: filter.limit.map(i64::from),
+                offset: filter.offset.map(i64::from),
+                exclude_conversation: false,
+            })
+            .unwrap_or_default();
+        AsyncTask::new(ProcessSummariesTask { database: self.database.clone(), filter })
+    }
+
+    #[napi(ts_return_type = "Promise<Array<Record<string, number | string | Buffer | null>>>")]
+    pub fn list_recent_processes(
+        &self,
+        filter: Option<NativeRecentProcessFilter>,
+    ) -> AsyncTask<RecentProcessesTask> {
+        let filter = filter
+            .map(|filter| RecentFilter {
+                workspace_id: filter.workspace_id,
+                since: filter.since,
+                until: filter.until,
+                exclude_process_id: filter.exclude_process_id,
+                limit: filter.limit.unwrap_or(10).clamp(1, 100) as i64,
+                offset: filter.offset.unwrap_or(0).max(0) as i64,
+            })
+            .unwrap_or_else(|| RecentFilter { limit: 10, ..RecentFilter::default() });
+        AsyncTask::new(RecentProcessesTask { database: self.database.clone(), filter })
     }
 }

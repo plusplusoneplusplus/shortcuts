@@ -923,31 +923,23 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     async getProcessSummaries(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }> {
-        const { sql, params } = this.buildProcessWhereClause(filter, true);
-
-        // Total count (pre-pagination)
-        const countQuery = `SELECT COUNT(*) AS cnt FROM processes ${sql}`;
-        const countRow = this.db.prepare(countQuery).get(...params) as CountRow;
-        const total = countRow.cnt;
-
-        // Fetch summary columns with pagination. Derive `pending_ask_user_count` from
-        // the metadata JSON envelope so list/sidebar views can show an "awaiting input"
-        // indicator without loading the full process row.
-        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, ` +
-            `COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count, ` +
-            `json_extract(metadata, '$.compaction') AS compaction_json ` +
-            `FROM processes ${sql} ORDER BY last_event_at DESC` +
-            (filter?.limit !== undefined ? ` LIMIT ?` : '') +
-            (filter?.offset !== undefined ? ` OFFSET ?` : '');
-
-        const queryParams = [...params];
-        if (filter?.limit !== undefined) queryParams.push(filter.limit);
-        if (filter?.offset !== undefined) queryParams.push(filter.offset);
+        const { rows, total } = await this.db.getProcessSummaries({
+            workspaceId: filter?.workspaceId,
+            parentProcessId: filter?.parentProcessId,
+            statuses: filter?.status === undefined ? undefined :
+                Array.isArray(filter.status) ? filter.status : [filter.status],
+            processType: filter?.type,
+            since: filter?.since?.toISOString(),
+            until: filter?.until?.toISOString(),
+            limit: filter?.limit,
+            offset: filter?.offset,
+        });
 
         type SummaryRow = ProcessRow & { pending_ask_user_count?: number | null; compaction_json?: string | null };
 
         const entries: ProcessIndexEntry[] = [];
-        for (const row of this.db.prepare(selectQuery).iterate(...queryParams) as IterableIterator<SummaryRow>) {
+        for (const raw of rows) {
+            const row = raw as unknown as SummaryRow;
             const startMs = new Date(row.start_time).getTime();
             const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
             const askUserCount = typeof row.pending_ask_user_count === 'number' ? row.pending_ask_user_count : 0;
@@ -2274,45 +2266,18 @@ export class SqliteProcessStore implements ProcessStore {
         offset?: number;
         excludeProcessId?: string;
     }): Promise<ProcessIndexEntry[]> {
-        const conditions: string[] = ['archived = 0'];
-        const params: unknown[] = [];
-
-        if (options.workspaceId) {
-            conditions.push('workspace_id = ?');
-            params.push(options.workspaceId);
-        }
-
-        if (options.excludeProcessId) {
-            conditions.push('id != ?');
-            params.push(options.excludeProcessId);
-        }
-
-        if (options.since) {
-            conditions.push('last_event_at >= ?');
-            params.push(options.since.toISOString());
-        }
-
-        if (options.until) {
-            conditions.push('last_event_at < ?');
-            params.push(options.until.toISOString());
-        }
-
-        const whereSQL = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const limit = Math.min(Math.max(1, options.limit ?? 10), 100);
-        const offset = Math.max(0, options.offset ?? 0);
-
-        const query = `
-            SELECT id, workspace_id, status, type, start_time, end_time,
-                   prompt_preview, error, parent_process_id, title, custom_title, last_message_preview,
-                   last_event_at, pinned_at, archived,
-                   json_extract(metadata, '$.compaction') AS compaction_json
-            FROM processes ${whereSQL}
-            ORDER BY last_event_at DESC
-            LIMIT ? OFFSET ?
-        `;
+        const rows = await this.db.listRecentProcesses({
+            workspaceId: options.workspaceId || undefined,
+            excludeProcessId: options.excludeProcessId || undefined,
+            since: options.since?.toISOString(),
+            until: options.until?.toISOString(),
+            limit: options.limit,
+            offset: options.offset,
+        });
 
         const entries: ProcessIndexEntry[] = [];
-        for (const row of this.db.prepare(query).iterate(...params, limit, offset) as IterableIterator<ProcessRow & { compaction_json?: string | null }>) {
+        for (const raw of rows) {
+            const row = raw as unknown as ProcessRow & { compaction_json?: string | null };
             const startMs = new Date(row.start_time).getTime();
             const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
             entries.push({

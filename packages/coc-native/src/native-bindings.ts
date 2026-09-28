@@ -38,6 +38,8 @@ export declare class NativeDatabaseHandle {
   searchConversations(query: string, filter?: NativeConversationSearchFilter | undefined | null): Promise<NativeConversationSearchPage>
   getConversationTurns(processId: string): Promise<Array<Record<string, number | string | Buffer | null>>>
   getAllProcesses(filter?: NativeProcessReadFilter | undefined | null): Promise<Array<NativeProcessWithTurns>>
+  getProcessSummaries(filter?: NativeProcessReadFilter | undefined | null): Promise<NativeProcessSummaryPage>
+  listRecentProcesses(filter?: NativeRecentProcessFilter | undefined | null): Promise<Array<Record<string, number | string | Buffer | null>>>
 }
 
 export declare class NativeStatementHandle {
@@ -795,9 +797,23 @@ export interface NativeProcessReadFilter {
   excludeConversation?: boolean
 }
 
+export interface NativeProcessSummaryPage {
+  rows: Array<Record<string, number | string | Buffer | null>>
+  total: number
+}
+
 export interface NativeProcessWithTurns {
   process: Record<string, number | string | Buffer | null>
   turns?: Array<Record<string, number | string | Buffer | null>>
+}
+
+export interface NativeRecentProcessFilter {
+  workspaceId?: string
+  since?: string
+  until?: string
+  excludeProcessId?: string
+  limit?: number
+  offset?: number
 }
 
 export interface NativeRunResult {

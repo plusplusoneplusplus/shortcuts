@@ -32,10 +32,11 @@ processes and interrupted turns are excluded; other filters and pagination
 retain the ProcessStore interface. The TypeScript wrapper maps native rows to
 `ConversationSearchResult` and reports malformed FTS syntax as an empty result.
 
-`getConversationTurns` and `getAllProcesses` use typed Rust read-pool tasks
-with the same schema check. Forge maps the returned SQLite rows into the
-existing date- and JSON-rich ProcessStore shapes, including the optional
-conversation and tool-call exclusions.
+`getConversationTurns`, `getAllProcesses`, `getProcessSummaries`, and
+`listRecentProcesses` use typed Rust read-pool tasks with the same schema check.
+Forge maps returned SQLite rows into the existing date- and JSON-rich
+ProcessStore shapes, including optional conversation/tool-call exclusions and
+chat-folder membership on summary entries.
 
 ### Tables
 
