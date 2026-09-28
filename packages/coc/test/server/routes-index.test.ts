@@ -72,6 +72,9 @@ function makeBridge(): any {
 function makeQueueFacade(): any {
     return {
         enqueue: vi.fn(),
+        on: vi.fn(),
+        off: vi.fn(),
+        getTask: vi.fn(),
         getAll: vi.fn().mockReturnValue([]),
         getQueue: vi.fn(),
         getHistory: vi.fn(),
@@ -248,6 +251,15 @@ describe('registerAllRoutes', () => {
         registerAllRoutes(routes, makeOpts());
         // There should be many routes registered (well over 30)
         expect(routes.length).toBeGreaterThan(30);
+    });
+
+    it('subscribes the Teams answer relay to queue terminal events', () => {
+        const queueFacade = makeQueueFacade();
+        registerAllRoutes([], makeOpts({ queueFacade }));
+
+        expect(queueFacade.on.mock.calls.map(([event]: [string]) => event)).toEqual([
+            'taskCompleted', 'taskFailed', 'taskCancelled',
+        ]);
     });
 
     it('routes authorized Notes searches through the required scoped service', async () => {

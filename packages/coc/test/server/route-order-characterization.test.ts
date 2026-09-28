@@ -69,6 +69,9 @@ describe('registerAllRoutes - Route Order Characterization', () => {
     function makeQueueFacade(): any {
         return {
             enqueue: vi.fn(),
+            on: vi.fn(),
+            off: vi.fn(),
+            getTask: vi.fn(),
             getAll: vi.fn().mockReturnValue([]),
             getQueue: vi.fn(),
             getHistory: vi.fn(),
