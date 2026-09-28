@@ -3,6 +3,7 @@
  * npm run bench:process-search -w @plusplusoneplusplus/forge -- --turns 50000
  * A locally installed better-sqlite3 is optional; it is never installed by this script.
  * --assert-p50 requires every AC-07 workload and an output-equivalent baseline.
+ * --profile measures native read calls separately from Forge hydration.
  */
 import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -22,11 +23,13 @@ const SEARCHES = [
 ];
 
 export function parseArgs(argv) {
-    const options = { turns: 50_000, runs: 5, json: false, assertP50: false };
+    const options = { turns: 50_000, runs: 5, json: false, assertP50: false, profile: false };
     for (let i = 0; i < argv.length; i++) {
         const flag = argv[i];
         if (flag === '--json') {
             options.json = true;
+        } else if (flag === '--profile') {
+            options.profile = true;
         } else if (flag === '--assert-p50') {
             options.assertP50 = true;
         } else if (flag === '--turns' || flag === '--runs') {
@@ -490,6 +493,58 @@ export async function benchmark(options, { baselineFactory = openBaseline } = {}
             cases.push({ name, production, baseline: comparison,
                 speedup: comparison ? comparison.p50Ms / production.p50Ms : null });
         }
+        let profile;
+        if (options.profile) {
+            const db = store.getDatabase();
+            const nativeReads = [
+                ...SEARCHES.map(({ name, query, filter }) => ({
+                    name,
+                    run: () => db.searchConversations(query, {
+                        workspaceId: filter.workspaceId, limit: filter.limit,
+                    }),
+                })),
+                {
+                    name: 'getConversationTurns',
+                    run: async () => {
+                        const results = await db.getConversationTurns('fixture-0');
+                        return { total: results.length, results };
+                    },
+                },
+                ...[false, true].map(excludeConversation => ({
+                    name: excludeConversation
+                        ? 'getAllProcesses (100, ws-a, exclude conversation)'
+                        : 'getAllProcesses (100, ws-a)',
+                    run: async () => {
+                        const results = await db.getAllProcesses({
+                            workspaceId: 'ws-a', limit: 100, excludeConversation,
+                        });
+                        return { total: results.length, results };
+                    },
+                })),
+                {
+                    name: 'getProcessSummaries (100, ws-a)',
+                    run: async () => {
+                        const page = await db.getProcessSummaries({ workspaceId: 'ws-a', limit: 100 });
+                        return { total: page.total, results: page.rows };
+                    },
+                },
+                {
+                    name: 'listRecentProcesses (100, ws-a)',
+                    run: async () => {
+                        const results = await db.listRecentProcesses({ workspaceId: 'ws-a', limit: 100 });
+                        return { total: results.length, results };
+                    },
+                },
+            ];
+            profile = [];
+            for (const { name, run } of nativeReads) {
+                const native = await measure(run, options.runs);
+                const production = cases.find(item => item.name === name).production;
+                assert.equal(native.total, production.total, `${name}: native count differs`);
+                assert.equal(native.resultCount, production.resultCount, `${name}: native page differs`);
+                profile.push({ name, nativeP50Ms: native.p50Ms, productionP50Ms: production.p50Ms });
+            }
+        }
         return {
             turns: options.turns, processes: Math.ceil(options.turns / 10),
             runs: options.runs, fixtureMs,
@@ -497,6 +552,7 @@ export async function benchmark(options, { baselineFactory = openBaseline } = {}
             baseline: baseline.status === 'available'
                 ? { status: 'available' } : { status: 'unavailable', reason: baseline.reason },
             cases,
+            ...(profile ? { profile } : {}),
         };
     } finally {
         if (baseline?.status === 'available') baseline.db.close();
@@ -510,13 +566,15 @@ export function formatReport(report) {
         `Fixture: ${report.turns} turns, ${report.processes} processes (${report.fixtureMs.toFixed(1)} ms seed)`,
         `Baseline: ${report.baseline.status}${report.baseline.reason ? ` — ${report.baseline.reason}` : ''}`,
         `Comparison: ${report.comparison}`,
-        'Read baselines hydrate full ProcessStore objects; p50 ratios are measurements, not pass criteria.',
+        'Read baselines hydrate full ProcessStore objects; --assert-p50 gates every output-equivalent p50.',
         ...report.cases.map(({ name, production, baseline, speedup }) =>
             `${name}: production p50 ${production.p50Ms.toFixed(2)} ms; ` +
             `better-sqlite3 p50 ${baseline ? `${baseline.p50Ms.toFixed(2)} ms` : 'unavailable'}; ` +
             `speedup ${speedup === null ? 'unavailable' : `${speedup.toFixed(2)}x`}; ` +
             `${production.total} total, ${production.resultCount} returned` +
             (name === 'dense' ? `; timer fired during async search: ${production.timerFiredDuringSearch}` : '')),
+        ...(report.profile ?? []).map(({ name, nativeP50Ms, productionP50Ms }) =>
+            `${name} (native read): ${nativeP50Ms.toFixed(2)} ms; Forge read: ${productionP50Ms.toFixed(2)} ms`),
     ].join('\n');
 }
 

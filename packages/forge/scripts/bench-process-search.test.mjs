@@ -6,10 +6,13 @@ import { assertP50, benchmark, formatReport, measure, p50, parseArgs } from './b
 const require = createRequire(import.meta.url);
 
 test('CLI options and p50 reject invalid fixtures and summarize even samples', () => {
-    assert.deepEqual(parseArgs([]), { turns: 50_000, runs: 5, json: false, assertP50: false });
+    assert.deepEqual(parseArgs([]), {
+        turns: 50_000, runs: 5, json: false, assertP50: false, profile: false,
+    });
     assert.deepEqual(parseArgs(['--turns', '250', '--runs', '2', '--json']),
-        { turns: 250, runs: 2, json: true, assertP50: false });
+        { turns: 250, runs: 2, json: true, assertP50: false, profile: false });
     assert.equal(parseArgs(['--assert-p50']).assertP50, true);
+    assert.equal(parseArgs(['--profile']).profile, true);
     for (const args of [['--turns', '0'], ['--runs', '-1'], ['--turns', '1.5'],
         ['--turns'], ['--runs', '9007199254740992'], ['--unknown']]) {
         assert.throws(() => parseArgs(args));
@@ -69,6 +72,19 @@ test('real compiled production search reports counts, p50, and timer responsiven
     assert.match(formatReport(report), /better-sqlite3 p50 unavailable/);
     assert.match(formatReport(report), /Comparison: unavailable/);
     assert.match(formatReport(report), /timer fired during async search: true/);
+});
+
+test('optional native read profile reports the same page and count before Forge hydration', async () => {
+    const report = await benchmark({ turns: 120, runs: 1, profile: true }, {
+        baselineFactory: () => ({ status: 'unavailable', reason: 'not installed' }),
+    });
+    assert.deepEqual(report.profile.map(item => item.name), report.cases.slice(0, 8).map(item => item.name));
+    for (const item of report.profile) {
+        assert.ok(item.nativeP50Ms > 0);
+        assert.equal(item.productionP50Ms, report.cases.find(entry => entry.name === item.name).production.p50Ms);
+    }
+    assert.match(formatReport(report), /getConversationTurns \(native read\): .*Forge read:/);
+    assert.throws(() => assertP50(report), /50,000 turns/);
 });
 
 test('timer observation requires callback before completion, not just eventual firing', async () => {

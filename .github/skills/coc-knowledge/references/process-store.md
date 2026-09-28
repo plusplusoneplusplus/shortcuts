@@ -50,6 +50,16 @@ optional process-update callback can re-enter the same database. The transaction
 holds the writer through turn-index allocation, callback execution, updates,
 and rollback.
 
+### Process-store benchmark
+
+`npm run bench:process-search -w packages/forge -- --turns 50000` compares hydrated
+AC-07 reads and writes against an optional local better-sqlite3 baseline. The
+`--assert-p50` gate requires output-equivalent results, a 50k-turn fixture,
+every workload at least as fast at p50, and an event-loop timer firing during
+dense async search. `--profile` also measures direct `NativeDatabase` read
+calls against Forge's hydrated reads, using the same filters and result counts
+to separate native/transport cost from Forge hydration.
+
 ### Tables
 
 | Table | Purpose |
