@@ -228,13 +228,7 @@ fn json_row_id(row: &SqliteRow<'_>, column: &str) -> Result<String> {
     }
 }
 
-fn query_json_rows<Key>(
-    connection: &Connection,
-    sql: &str,
-    parameters: &[Value],
-    key: impl Fn(&SqliteRow<'_>) -> Result<Key>,
-) -> Result<Vec<(Key, String)>> {
-    let mut statement = connection.prepare(sql)?;
+fn json_columns(statement: &rusqlite::Statement<'_>) -> Vec<(usize, String)> {
     let mut columns: Vec<(usize, String)> = statement
         .column_names()
         .iter()
@@ -245,20 +239,57 @@ fn query_json_rows<Key>(
     for (_, name) in &mut columns {
         *name = format!("{}:", serde_json::to_string(name).expect("SQLite column names serialize"));
     }
+    columns
+}
+
+fn append_json_row(
+    output: &mut Vec<u8>,
+    row: &SqliteRow<'_>,
+    columns: &[(usize, String)],
+) -> Result<()> {
+    output.push(b'{');
+    for (index, (column_index, name)) in columns.iter().enumerate() {
+        if index != 0 {
+            output.push(b',');
+        }
+        output.extend_from_slice(name.as_bytes());
+        write_json_value(output, row.get_ref(*column_index)?, *column_index)?;
+    }
+    output.push(b'}');
+    Ok(())
+}
+
+fn query_json_array(connection: &Connection, sql: &str, parameters: &[Value]) -> Result<String> {
+    let mut statement = connection.prepare(sql)?;
+    let columns = json_columns(&statement);
+    let mut cursor = statement.query(params_from_iter(parameters))?;
+    let mut output = vec![b'['];
+    let mut first = true;
+    while let Some(row) = cursor.next()? {
+        if !first {
+            output.push(b',');
+        }
+        first = false;
+        append_json_row(&mut output, row, &columns)?;
+    }
+    output.push(b']');
+    Ok(String::from_utf8(output).expect("SQLite JSON rows are UTF-8"))
+}
+
+fn query_json_rows<Key>(
+    connection: &Connection,
+    sql: &str,
+    parameters: &[Value],
+    key: impl Fn(&SqliteRow<'_>) -> Result<Key>,
+) -> Result<Vec<(Key, String)>> {
+    let mut statement = connection.prepare(sql)?;
+    let columns = json_columns(&statement);
     let mut cursor = statement.query(params_from_iter(parameters))?;
     let mut rows = Vec::new();
     while let Some(row) = cursor.next()? {
         let id = key(row)?;
         let mut json = Vec::new();
-        json.push(b'{');
-        for (index, (column_index, name)) in columns.iter().enumerate() {
-            if index != 0 {
-                json.push(b',');
-            }
-            json.extend_from_slice(name.as_bytes());
-            write_json_value(&mut json, row.get_ref(*column_index)?, *column_index)?;
-        }
-        json.push(b'}');
+        append_json_row(&mut json, row, &columns)?;
         rows.push((id, String::from_utf8(json).expect("SQLite JSON rows are UTF-8")));
     }
     Ok(rows)
@@ -410,15 +441,6 @@ pub fn list_recent_processes_json(database: &Database, filter: &RecentFilter) ->
     database.with_read_connection(|connection| {
         check_process_schema(connection)?;
         let (sql, values) = recent_query(filter);
-        let rows = query_json_rows(connection, &sql, &values, |_| Ok(()))?;
-        let mut output = String::from("[");
-        for (index, (_, row)) in rows.iter().enumerate() {
-            if index != 0 {
-                output.push(',');
-            }
-            output.push_str(row);
-        }
-        output.push(']');
-        Ok(output)
+        query_json_array(connection, &sql, &values)
     })
 }

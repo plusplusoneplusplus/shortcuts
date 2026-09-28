@@ -377,6 +377,17 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     .unwrap();
     assert_eq!(recent_json[0]["id"], "one");
     assert_eq!(recent_json.as_array().unwrap().len(), recent.len());
+    let page: serde_json::Value = serde_json::from_str(
+        &list_recent_processes_json(
+            &database,
+            &RecentFilter { limit: 2, ..RecentFilter::default() },
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(page[0]["id"], "two");
+    assert_eq!(page[1]["id"], "one");
+    assert_eq!(page[1]["compaction_json"], r#"{"count":2}"#);
     assert_eq!(
         list_recent_processes_json(
             &database,
