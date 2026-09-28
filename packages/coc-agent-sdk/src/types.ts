@@ -50,7 +50,7 @@ export interface ToolBinaryResult {
  * Per-tool telemetry payload attached to a structured tool result.
  * Matches the Copilot SDK's `ToolTelemetry`.
  */
-export type ToolTelemetry = Record<string, Record<string, JsonValue> | undefined>;
+export type ToolTelemetry = Record<string, Record<string, unknown> | undefined>;
 
 /**
  * Structured tool-handler result. Structurally identical to the Copilot SDK's

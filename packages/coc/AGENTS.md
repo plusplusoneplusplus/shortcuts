@@ -9,6 +9,9 @@ See the root `AGENTS.md` for cross-package conventions and **always load
 `.github/skills/coc-knowledge/SKILL.md`** before working on this package —
 detailed architecture lives in its `references/*.md` files.
 
+The direct `@github/copilot-sdk` dependency is pinned to `1.0.9`; the root
+override pins its CLI runtime to `1.0.78`.
+
 ## Where to Read Before Editing
 
 | If you are touching… | Read first |

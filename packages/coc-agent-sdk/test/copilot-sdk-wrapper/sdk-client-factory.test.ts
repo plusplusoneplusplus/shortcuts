@@ -94,6 +94,21 @@ describe('createSdkClient', () => {
 
         expect(capturedOptions).toHaveLength(1);
         expect(capturedOptions[0].workingDirectory).toBeUndefined();
+        expect(capturedOptions[0].env.COPILOT_AUTO_UPDATE).toBe('false');
+    });
+
+    it('disables updates for spawned CLI without changing the host environment', () => {
+        vi.stubEnv('COPILOT_AUTO_UPDATE', 'true');
+        try {
+            createSdkClient({ env: { COPILOT_AUTO_UPDATE: 'true', TEST_VALUE: 'kept' } });
+            expect(capturedOptions[0].env).toMatchObject({
+                COPILOT_AUTO_UPDATE: 'false',
+                TEST_VALUE: 'kept',
+            });
+            expect(process.env.COPILOT_AUTO_UPDATE).toBe('true');
+        } finally {
+            vi.unstubAllEnvs();
+        }
     });
 
     it('creates a client with no workingDirectory when workingDirectory is undefined', () => {
@@ -184,7 +199,7 @@ describe('createSdkClient', () => {
         );
         expect(capturedOptions[0].workingDirectory).toBe(workingDirectory);
         expect(capturedOptions[0].connection).toBeUndefined();
-        expect(capturedOptions[0].env).toBeUndefined();
+        expect(capturedOptions[0].env.COPILOT_AUTO_UPDATE).toBe('false');
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(workingDirectory);
         expect(fs.existsSync).toHaveBeenCalledWith(workingDirectory);
     });
@@ -257,7 +272,7 @@ describe('createSdkClient — Electron connection override', () => {
         createSdkClient({ workingDirectory: '/project' });
 
         expect(capturedOptions[0].connection).toBeUndefined();
-        expect(capturedOptions[0].env).toBeUndefined();
+        expect(capturedOptions[0].env.COPILOT_AUTO_UPDATE).toBe('false');
     });
 
     it('does NOT override an explicitly provided connection even under Electron', () => {
@@ -268,6 +283,28 @@ describe('createSdkClient — Electron connection override', () => {
 
         expect(capturedOptions[0].connection).toBe(callerConnection);
         expect(mockRuntimeConnection.forStdio).not.toHaveBeenCalled();
+    });
+
+    it('keeps a caller-owned connection environment unchanged', () => {
+        const connection = { kind: 'stdio' as const, env: { COPILOT_AUTO_UPDATE: 'true' } };
+        createSdkClient({ connection });
+        expect(capturedOptions[0].connection).toBe(connection);
+        expect(capturedOptions[0].env).toBeUndefined();
+    });
+
+    it('does not set a child environment for an in-process connection', () => {
+        createSdkClient({ connection: { kind: 'inprocess' } });
+        expect(capturedOptions[0].env).toBeUndefined();
+    });
+
+    it('does not set a child environment when the default connection is in-process', () => {
+        vi.stubEnv('COPILOT_SDK_DEFAULT_CONNECTION', 'inprocess');
+        try {
+            createSdkClient();
+            expect(capturedOptions[0].env).toBeUndefined();
+        } finally {
+            vi.unstubAllEnvs();
+        }
     });
 
     it('does NOT set connection when copilot CLI cannot be found even under Electron', () => {
@@ -307,6 +344,7 @@ describe('createSdkClient — Electron connection override', () => {
         expect(conn.args).toEqual([]);
         expect(capturedOptions[0].env).toBeDefined();
         expect(capturedOptions[0].env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+        expect(capturedOptions[0].env.COPILOT_AUTO_UPDATE).toBe('false');
 
         const spawn = getLastCopilotElectronSpawn();
         expect(spawn!.mode).toBe('native-binary');
@@ -345,7 +383,7 @@ describe('createSdkClient — native binary override outside Electron', () => {
         createSdkClient({ workingDirectory: '/project' });
 
         expect(capturedOptions[0].connection).toBeUndefined();
-        expect(capturedOptions[0].env).toBeUndefined();
+        expect(capturedOptions[0].env.COPILOT_AUTO_UPDATE).toBe('false');
     });
 });
 

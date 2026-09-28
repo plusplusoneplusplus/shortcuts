@@ -81,6 +81,9 @@ jobs:
       - name: ESLint config guard tests
         run: node --test scripts/eslint-config.test.mjs
 
+      - name: Copilot SDK lock guard
+        run: node --test scripts/copilot-sdk-lock.test.mjs
+
   forge-test:
     runs-on: ${{ matrix.os }}
     needs: [coc-native]

@@ -83,6 +83,7 @@ Each `sendMessage()` spawns its **own `CopilotClient`** child process — no sha
 - Native layouts: the unpacked binary is spawned **directly** (`forStdio({ path: binary, args: [] })`; the SDK appends its runtime arguments) under both Electron and plain Node.
 
 The resolved spawn mode (`system-node | electron-node | native-binary`) is recorded and appended to `getAccountQuota` errors.
+Copilot child processes receive `COPILOT_AUTO_UPDATE=false` through `CopilotClientOptions.env`, keeping the installed CLI version in use without changing the host process or caller-owned connections. The SDK and CLI pins are recorded in [monorepo.md](monorepo.md).
 
 ### Account quota contract
 

@@ -9,7 +9,6 @@
  */
 
 import type {
-    AttributedPermissionResult,
     CopilotClient,
     CopilotSession,
     PermissionHandler,
@@ -191,10 +190,7 @@ export class RequestRunner {
                 onPermissionRequest: (request: PermissionRequest, invocation: { sessionId: string }) => {
                     const sessionLog = createSessionLogger(invocation.sessionId);
                     sessionLog.debug({ kind: request.kind, toolCallId: request.toolCallId || undefined, resource: (request as ExtendedSdkRequest).resource, operation: (request as ExtendedSdkRequest).operation }, 'Permission request');
-                    const capturePermission = (handlerResult: PermissionRequestResult | AttributedPermissionResult) => {
-                        const permResult = handlerResult.kind === 'attributed'
-                            ? handlerResult.result
-                            : handlerResult;
+                    const capturePermission = (permResult: PermissionRequestResult) => {
                         if (request.toolCallId) {
                             const tc = toolCallsMap.get(request.toolCallId);
                             if (tc) {
@@ -217,14 +213,14 @@ export class RequestRunner {
                         && (request as PermissionRequest & { requestSandboxBypass?: boolean }).requestSandboxBypass
                         ? { kind: 'reject' as const }
                         : effectiveHandler(request, invocation);
-                    if (handlerResult && typeof (handlerResult as Promise<PermissionRequestResult | AttributedPermissionResult>).then === 'function') {
-                        return (handlerResult as Promise<PermissionRequestResult | AttributedPermissionResult>).then(r => {
+                    if (handlerResult && typeof (handlerResult as Promise<PermissionRequestResult>).then === 'function') {
+                        return (handlerResult as Promise<PermissionRequestResult>).then(r => {
                             createSessionLogger(invocation.sessionId).debug({ kind: r.kind, requestKind: request.kind }, 'Permission result');
                             capturePermission(r);
                             return r;
                         });
                     }
-                    const syncResult = handlerResult as PermissionRequestResult | AttributedPermissionResult;
+                    const syncResult = handlerResult as PermissionRequestResult;
                     createSessionLogger(invocation.sessionId).debug({ kind: syncResult.kind, requestKind: request.kind }, 'Permission result');
                     capturePermission(syncResult);
                     return syncResult;
