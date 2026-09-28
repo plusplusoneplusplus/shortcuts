@@ -340,37 +340,59 @@ pub fn get_process_summaries_json(database: &Database, filter: &ProcessFilter) -
     Ok(output)
 }
 
+fn recent_query(filter: &RecentFilter) -> (String, Vec<Value>) {
+    let mut conditions = vec!["archived = 0".to_owned()];
+    let mut values = Vec::new();
+    if let Some(workspace_id) = &filter.workspace_id {
+        conditions.push("workspace_id = ?".into());
+        values.push(Value::Text(workspace_id.clone()));
+    }
+    if let Some(process_id) = &filter.exclude_process_id {
+        conditions.push("id != ?".into());
+        values.push(Value::Text(process_id.clone()));
+    }
+    if let Some(since) = &filter.since {
+        conditions.push("last_event_at >= ?".into());
+        values.push(Value::Text(since.clone()));
+    }
+    if let Some(until) = &filter.until {
+        conditions.push("last_event_at < ?".into());
+        values.push(Value::Text(until.clone()));
+    }
+    let sql = format!(
+        "SELECT id, workspace_id, status, type, start_time, end_time, \
+         prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, \
+         last_event_at, pinned_at, archived, \
+         json_extract(metadata, '$.compaction') AS compaction_json \
+         FROM processes WHERE {} ORDER BY last_event_at DESC LIMIT ? OFFSET ?",
+        conditions.join(" AND ")
+    );
+    values.push(Value::Integer(filter.limit));
+    values.push(Value::Integer(filter.offset));
+    (sql, values)
+}
+
 pub fn list_recent_processes(database: &Database, filter: &RecentFilter) -> Result<Vec<Row>> {
     database.with_read_connection(|connection| {
         check_process_schema(connection)?;
-        let mut conditions = vec!["archived = 0".to_owned()];
-        let mut values = Vec::new();
-        if let Some(workspace_id) = &filter.workspace_id {
-            conditions.push("workspace_id = ?".into());
-            values.push(Value::Text(workspace_id.clone()));
-        }
-        if let Some(process_id) = &filter.exclude_process_id {
-            conditions.push("id != ?".into());
-            values.push(Value::Text(process_id.clone()));
-        }
-        if let Some(since) = &filter.since {
-            conditions.push("last_event_at >= ?".into());
-            values.push(Value::Text(since.clone()));
-        }
-        if let Some(until) = &filter.until {
-            conditions.push("last_event_at < ?".into());
-            values.push(Value::Text(until.clone()));
-        }
-        let sql = format!(
-            "SELECT id, workspace_id, status, type, start_time, end_time, \
-             prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, \
-             last_event_at, pinned_at, archived, \
-             json_extract(metadata, '$.compaction') AS compaction_json \
-             FROM processes WHERE {} ORDER BY last_event_at DESC LIMIT ? OFFSET ?",
-            conditions.join(" AND ")
-        );
-        values.push(Value::Integer(filter.limit));
-        values.push(Value::Integer(filter.offset));
+        let (sql, values) = recent_query(filter);
         query(connection, &sql, &Parameters::Positional(values))
+    })
+}
+
+pub fn list_recent_processes_json(database: &Database, filter: &RecentFilter) -> Result<String> {
+    database.with_read_connection(|connection| {
+        check_process_schema(connection)?;
+        let (sql, values) = recent_query(filter);
+        let rows = query_json_rows(connection, &sql, &values, |_| Ok(()))?;
+        let mut output = String::from("[");
+        for (index, (_, row)) in rows.iter().enumerate() {
+            if index != 0 {
+                output.push(',');
+            }
+            output.push_str(row);
+        }
+        output.push(']');
+        Ok(output)
     })
 }

@@ -42,6 +42,7 @@ export declare class NativeDatabaseHandle {
   getProcessSummariesJson(filter?: NativeProcessReadFilter | undefined | null): Promise<string>
   getProcessSummaries(filter?: NativeProcessReadFilter | undefined | null): Promise<NativeProcessSummaryPage>
   listRecentProcesses(filter?: NativeRecentProcessFilter | undefined | null): Promise<Array<Record<string, number | string | Buffer | null>>>
+  listRecentProcessesJson(filter?: NativeRecentProcessFilter | undefined | null): Promise<string>
   upsertStreamingTurn(processId: string, content: string, streaming: boolean, timeline: string, timestamp: string): Promise<void>
 }
 

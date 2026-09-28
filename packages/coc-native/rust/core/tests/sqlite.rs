@@ -2,7 +2,8 @@ use std::fs;
 
 use coc_native_core::sqlite::process_reads::{
     get_all_processes, get_all_processes_json, get_conversation_turns, get_process_summaries,
-    get_process_summaries_json, list_recent_processes, ProcessFilter, RecentFilter,
+    get_process_summaries_json, list_recent_processes, list_recent_processes_json, ProcessFilter,
+    RecentFilter,
 };
 use coc_native_core::sqlite::process_search::{
     sanitize_fts_query, search_conversations, SearchFilter,
@@ -314,6 +315,31 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     .unwrap();
     assert_eq!(recent.len(), 1);
     assert_eq!(recent[0]["id"], Value::Text("one".into()));
+    let recent_json: serde_json::Value =
+        serde_json::from_str(&list_recent_processes_json(
+            &database,
+            &RecentFilter {
+                limit: 100,
+                exclude_process_id: Some("two".into()),
+                ..RecentFilter::default()
+            },
+        )
+        .unwrap())
+        .unwrap();
+    assert_eq!(recent_json[0]["id"], "one");
+    assert_eq!(recent_json.as_array().unwrap().len(), recent.len());
+    assert_eq!(
+        list_recent_processes_json(
+            &database,
+            &RecentFilter {
+                limit: 10,
+                workspace_id: Some("ws-missing".into()),
+                ..RecentFilter::default()
+            }
+        )
+        .unwrap(),
+        "[]"
+    );
     assert!(list_recent_processes(
         &database,
         &RecentFilter {
@@ -337,6 +363,10 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     ));
     assert!(matches!(
         list_recent_processes(&database, &RecentFilter { limit: 10, ..RecentFilter::default() }),
+        Err(Error::UnsupportedVersion(39))
+    ));
+    assert!(matches!(
+        list_recent_processes_json(&database, &RecentFilter { limit: 10, ..RecentFilter::default() }),
         Err(Error::UnsupportedVersion(39))
     ));
 }

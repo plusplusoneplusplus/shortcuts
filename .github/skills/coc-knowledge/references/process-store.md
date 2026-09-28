@@ -41,8 +41,9 @@ ProcessStore shapes, including optional conversation/tool-call exclusions and
 chat-folder membership on summary entries. `getAllProcesses` serializes process
 and turn rows into bulk JSON in bounded process-ID batches while preserving
 turn order. `getProcessSummaries` serializes its count and page in one read
-snapshot. The native TypeScript wrapper restores BLOB buffers and non-finite
-REAL values in both JSON paths before exposing the standard row shapes.
+snapshot; `listRecentProcesses` serializes its filtered page. The native
+TypeScript wrapper restores BLOB buffers and non-finite REAL values in these
+JSON paths before exposing the standard row shapes.
 
 `upsertStreamingTurn` runs in an async Rust task under the writer mutex; Forge
 emits its process-change event after the write completes. `appendConversationTurn`

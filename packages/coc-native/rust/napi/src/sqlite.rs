@@ -136,6 +136,19 @@ pub struct NativeRecentProcessFilter {
     pub offset: Option<i32>,
 }
 
+fn recent_filter(filter: Option<NativeRecentProcessFilter>) -> RecentFilter {
+    filter
+        .map(|filter| RecentFilter {
+            workspace_id: filter.workspace_id,
+            since: filter.since,
+            until: filter.until,
+            exclude_process_id: filter.exclude_process_id,
+            limit: filter.limit.unwrap_or(10).clamp(1, 100) as i64,
+            offset: filter.offset.unwrap_or(0).max(0) as i64,
+        })
+        .unwrap_or_else(|| RecentFilter { limit: 10, ..RecentFilter::default() })
+}
+
 pub struct ProcessSummariesTask {
     database: Database,
     filter: ProcessFilter,
@@ -176,6 +189,25 @@ impl Task for ProcessSummariesJsonTask {
 pub struct RecentProcessesTask {
     database: Database,
     filter: RecentFilter,
+}
+
+pub struct RecentProcessesJsonTask {
+    database: Database,
+    filter: RecentFilter,
+}
+
+impl Task for RecentProcessesJsonTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_reads::list_recent_processes_json(&self.database, &self.filter)
+            .map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, json: Self::Output) -> Result<Self::JsValue> {
+        Ok(json)
+    }
 }
 
 impl Task for RecentProcessesTask {
@@ -529,17 +561,21 @@ impl NativeDatabaseHandle {
         &self,
         filter: Option<NativeRecentProcessFilter>,
     ) -> AsyncTask<RecentProcessesTask> {
-        let filter = filter
-            .map(|filter| RecentFilter {
-                workspace_id: filter.workspace_id,
-                since: filter.since,
-                until: filter.until,
-                exclude_process_id: filter.exclude_process_id,
-                limit: filter.limit.unwrap_or(10).clamp(1, 100) as i64,
-                offset: filter.offset.unwrap_or(0).max(0) as i64,
-            })
-            .unwrap_or_else(|| RecentFilter { limit: 10, ..RecentFilter::default() });
-        AsyncTask::new(RecentProcessesTask { database: self.database.clone(), filter })
+        AsyncTask::new(RecentProcessesTask {
+            database: self.database.clone(),
+            filter: recent_filter(filter),
+        })
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn list_recent_processes_json(
+        &self,
+        filter: Option<NativeRecentProcessFilter>,
+    ) -> AsyncTask<RecentProcessesJsonTask> {
+        AsyncTask::new(RecentProcessesJsonTask {
+            database: self.database.clone(),
+            filter: recent_filter(filter),
+        })
     }
 
     #[napi(ts_return_type = "Promise<void>")]

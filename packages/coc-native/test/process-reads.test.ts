@@ -94,6 +94,12 @@ describe('pooled native process reads', () => {
                 const blobPage = await db.getProcessSummaries(filter);
                 expect(blobPage.rows[0].prompt_preview).toEqual(Buffer.from([0, 255]));
                 expect(blobPage).toEqual(await raw.getProcessSummaries(filter));
+                expect(await db.listRecentProcesses(filter)).toEqual(
+                    await raw.listRecentProcesses(filter),
+                );
+                expect((await db.listRecentProcesses(filter))[0].prompt_preview).toEqual(
+                    Buffer.from([0, 255]),
+                );
                 expect(await db.getProcessSummaries({ statuses: [] })).toEqual({ total: 0, rows: [] });
             } finally {
                 raw.close();
