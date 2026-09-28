@@ -645,7 +645,6 @@ export class SqliteProcessStore implements ProcessStore {
     private readonly insertTurnStmt: NativeStatement;
     private readonly getProcessStmt: NativeStatement;
     private readonly getTurnsStmt: NativeStatement;
-    private readonly upsertStreamingStmt: NativeStatement;
     private readonly maxTurnIndexStmt: NativeStatement;
 
     onProcessChange?: ProcessChangeCallback;
@@ -697,12 +696,6 @@ export class SqliteProcessStore implements ProcessStore {
         this.getTurnsStmt = this.db.prepare(
             'SELECT * FROM conversation_turns WHERE process_id = ? ORDER BY turn_index'
         );
-
-        this.upsertStreamingStmt = this.db.prepare(`
-            UPDATE conversation_turns
-            SET content = @content, timeline = @timeline, streaming = @streaming
-            WHERE process_id = @process_id AND streaming = 1
-        `);
 
         this.maxTurnIndexStmt = this.db.prepare(
             'SELECT COALESCE(MAX(turn_index), -1) + 1 AS next_idx FROM conversation_turns WHERE process_id = ?'
@@ -1337,47 +1330,13 @@ export class SqliteProcessStore implements ProcessStore {
         streaming: boolean,
         timeline?: TimelineItem[],
     ): Promise<void> {
-        const upsertTxn = this.db.transaction(() => {
-            const result = this.upsertStreamingStmt.run({
-                content,
-                timeline: JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
-                streaming: boolToInt(streaming),
-                process_id: processId,
-            });
-
-            if (result.changes === 0) {
-                // No existing streaming turn — insert new one
-                const { next_idx } = this.maxTurnIndexStmt.get(processId) as MaxTurnIndexRow;
-                this.insertTurnStmt.run({
-                    process_id: processId,
-                    turn_index: next_idx,
-                    role: 'assistant',
-                    content,
-                    timestamp: new Date().toISOString(),
-                    streaming: boolToInt(streaming),
-                    interrupted: 0,
-                    interruption_reason: null,
-                    tool_calls: null,
-                    timeline: JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
-                    images: null,
-                    historical: 0,
-                    suggestions: null,
-                    token_usage: null,
-                    paste_externalized: 0,
-                    model: null,
-                    mode: null,
-                    sdk_event_id: null,
-                    display_only: 0,
-                    compaction_summary: null,
-                    repo_group_context: null,
-                    chat_mode_context: null,
-                    provider: null,
-                    segment_id: null,
-                    relay_request_id: null,
-                });
-            }
-        });
-        upsertTxn();
+        await this.db.upsertStreamingTurn(
+            processId,
+            content,
+            streaming,
+            JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
+            new Date().toISOString(),
+        );
         this.onProcessChange?.({ type: 'process-updated' });
     }
 

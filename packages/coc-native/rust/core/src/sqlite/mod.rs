@@ -100,6 +100,7 @@ impl std::fmt::Display for Error {
 }
 
 pub mod process_search;
+pub mod process_writes;
 pub mod process_reads;
 
 pub(super) fn check_process_schema(connection: &Connection) -> Result<()> {

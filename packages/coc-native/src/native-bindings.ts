@@ -40,6 +40,7 @@ export declare class NativeDatabaseHandle {
   getAllProcesses(filter?: NativeProcessReadFilter | undefined | null): Promise<Array<NativeProcessWithTurns>>
   getProcessSummaries(filter?: NativeProcessReadFilter | undefined | null): Promise<NativeProcessSummaryPage>
   listRecentProcesses(filter?: NativeRecentProcessFilter | undefined | null): Promise<Array<Record<string, number | string | Buffer | null>>>
+  upsertStreamingTurn(processId: string, content: string, streaming: boolean, timeline: string, timestamp: string): Promise<void>
 }
 
 export declare class NativeStatementHandle {

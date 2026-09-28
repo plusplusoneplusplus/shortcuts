@@ -7,6 +7,7 @@ use coc_native_core::sqlite::process_reads::{
 use coc_native_core::sqlite::process_search::{
     sanitize_fts_query, search_conversations, SearchFilter,
 };
+use coc_native_core::sqlite::process_writes::{upsert_streaming_turn, StreamingTurnInput};
 use coc_native_core::sqlite::{Database, Error, Parameters, Value};
 use tempfile::tempdir;
 
@@ -313,4 +314,64 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
         list_recent_processes(&database, &RecentFilter { limit: 10, ..RecentFilter::default() }),
         Err(Error::UnsupportedVersion(39))
     ));
+}
+
+#[test]
+fn streaming_turn_write_is_atomic_and_uses_the_writer_transaction() {
+    let directory = tempdir().unwrap();
+    let database = Database::open(directory.path().join("writes.db"), false).unwrap();
+    database
+        .exec(
+            "
+        PRAGMA journal_mode=WAL; PRAGMA user_version=38;
+        CREATE TABLE processes (id TEXT PRIMARY KEY);
+        INSERT INTO processes VALUES ('one');
+        CREATE TABLE conversation_turns (
+            id INTEGER PRIMARY KEY, process_id TEXT REFERENCES processes(id), turn_index INTEGER,
+            role TEXT, content TEXT, timestamp TEXT, streaming INTEGER,
+            interrupted INTEGER, interruption_reason TEXT, tool_calls TEXT, timeline TEXT,
+            images TEXT, historical INTEGER, suggestions TEXT, token_usage TEXT,
+            paste_externalized INTEGER, model TEXT, mode TEXT, sdk_event_id TEXT,
+            display_only INTEGER, compaction_summary TEXT, repo_group_context TEXT,
+            chat_mode_context TEXT, provider TEXT, segment_id TEXT, relay_request_id TEXT,
+            UNIQUE(process_id, turn_index)
+        );
+        PRAGMA foreign_keys=ON;
+    ",
+        )
+        .unwrap();
+    let mut input = StreamingTurnInput {
+        process_id: "one".into(),
+        content: "partial".into(),
+        timeline: "[]".into(),
+        streaming: true,
+        timestamp: "2026-01-01T00:00:00.000Z".into(),
+    };
+    upsert_streaming_turn(&database, &input).unwrap();
+    input.content = "complete".into();
+    input.streaming = false;
+    upsert_streaming_turn(&database, &input).unwrap();
+    let turns = get_conversation_turns(&database, "one").unwrap();
+    assert_eq!(turns.len(), 1);
+    assert_eq!(turns[0]["content"], Value::Text("complete".into()));
+    assert_eq!(turns[0]["streaming"], Value::Integer(0));
+    assert_eq!(turns[0]["timestamp"], Value::Text(input.timestamp.clone()));
+    input.content = "next".into();
+    upsert_streaming_turn(&database, &input).unwrap();
+    assert_eq!(get_conversation_turns(&database, "one").unwrap().len(), 2);
+
+    let err = database.transaction(|| {
+        input.streaming = true;
+        upsert_streaming_turn(&database, &input)?;
+        Err::<(), _>(Error::Closed)
+    });
+    assert!(matches!(err, Err(Error::Closed)));
+    assert_eq!(get_conversation_turns(&database, "one").unwrap().len(), 2);
+
+    database.pragma("user_version = 39").unwrap();
+    assert!(matches!(upsert_streaming_turn(&database, &input), Err(Error::UnsupportedVersion(39))));
+    database.pragma("user_version = 38").unwrap();
+    input.process_id = "missing".into();
+    assert!(upsert_streaming_turn(&database, &input).is_err());
+    assert!(get_conversation_turns(&database, "missing").unwrap().is_empty());
 }

@@ -207,6 +207,20 @@ export class NativeDatabase {
         }
     }
 
+    public async upsertStreamingTurn(
+        processId: string,
+        content: string,
+        streaming: boolean,
+        timeline: string,
+        timestamp: string,
+    ): Promise<void> {
+        try {
+            await this.handle.upsertStreamingTurn(processId, content, streaming, timeline, timestamp);
+        } catch (error) {
+            withSqliteError(() => { throw error; });
+        }
+    }
+
     public transaction<Arguments extends unknown[], Return>(
         callback: (...args: Arguments) => Return,
     ): (...args: Arguments) => Return {

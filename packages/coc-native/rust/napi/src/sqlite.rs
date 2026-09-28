@@ -1,8 +1,8 @@
-//! N-API bindings for the synchronous SQLite handle.
+//! N-API bindings for the SQLite handle and typed process operations.
 //!
-//! These classes are deliberately low-level. `src/sqlite.ts` owns the public
-//! synchronous SQL API, including variadic arguments and iterators; this
-//! module only converts JavaScript values and delegates to the core.
+//! `src/sqlite.ts` owns the public SQL API, including variadic arguments and
+//! iterators. Typed process operations run as async tasks; this module converts
+//! their values and delegates SQLite work to the core.
 
 use std::collections::HashMap;
 
@@ -10,6 +10,7 @@ use coc_native_core::sqlite::process_reads::{
     self, ProcessFilter, ProcessWithTurns, RecentFilter, SummaryPage,
 };
 use coc_native_core::sqlite::process_search::{self, SearchFilter, SearchPage};
+use coc_native_core::sqlite::process_writes::{self, StreamingTurnInput};
 use coc_native_core::sqlite::{
     Database, Error as SqliteError, Parameters, Row, RunResult, Statement, Value,
 };
@@ -19,6 +20,24 @@ use napi_derive::napi;
 
 type JsSqliteValue = Either4<f64, String, Buffer, Null>;
 type JsSqliteRow = HashMap<String, JsSqliteValue>;
+
+pub struct UpsertStreamingTurnTask {
+    database: Database,
+    input: StreamingTurnInput,
+}
+
+impl Task for UpsertStreamingTurnTask {
+    type Output = ();
+    type JsValue = ();
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_writes::upsert_streaming_turn(&self.database, &self.input).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
+        Ok(())
+    }
+}
 
 #[napi(object)]
 pub struct NativeDatabaseOptions {
@@ -453,5 +472,20 @@ impl NativeDatabaseHandle {
             })
             .unwrap_or_else(|| RecentFilter { limit: 10, ..RecentFilter::default() });
         AsyncTask::new(RecentProcessesTask { database: self.database.clone(), filter })
+    }
+
+    #[napi(ts_return_type = "Promise<void>")]
+    pub fn upsert_streaming_turn(
+        &self,
+        process_id: String,
+        content: String,
+        streaming: bool,
+        timeline: String,
+        timestamp: String,
+    ) -> AsyncTask<UpsertStreamingTurnTask> {
+        AsyncTask::new(UpsertStreamingTurnTask {
+            database: self.database.clone(),
+            input: StreamingTurnInput { process_id, content, streaming, timeline, timestamp },
+        })
     }
 }
