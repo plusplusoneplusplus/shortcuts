@@ -715,6 +715,76 @@ describe('TeamsBot', () => {
                 await restarted.stop();
             });
 
+            it('does not replay historic unbound questions but admits new replies in their discovered thread', async () => {
+                let historicPolls = 0;
+                const discovered: string[] = [];
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const tool = body.params?.name;
+                    const args = body.params?.arguments ?? {};
+                    const freshTime = new Date(Date.now()).toISOString();
+                    const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                                ? args.nextLink ? { value: [{ id: 'old-root', body: { content: '/select repo example' } }] }
+                                    : { value: [{ id: 'recent-root', body: { content: 'recent' } }],
+                                        hasMoreResults: true, nextLink: 'page-2' }
+                                : args.messageId === 'old-root'
+                                    ? ++historicPolls === 1
+                                        ? [{ id: 'old-selection', body: { content: '/select repo example' },
+                                            createdDateTime: '2020-01-01T00:00:00Z' },
+                                            { id: 'old-question', body: { content: 'old question' } }]
+                                        : [{ id: 'old-selection', body: { content: '/select repo example' },
+                                            createdDateTime: '2020-01-01T00:00:00Z' },
+                                            { id: 'old-question', body: { content: 'old question' } },
+                                            { id: 'new-question', body: { content: 'new question' },
+                                                createdDateTime: freshTime }]
+                                    : []) }] };
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                const bot = createMcpBot({
+                    pollChannelReplies: () => true,
+                    onChannelRootDiscovered: async root => {
+                        discovered.push(`${root.channelId}:${root.messageId}`);
+                    },
+                });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    messageId: 'old-selection', replyToMessageId: 'old-root', initializationReplay: true,
+                }));
+                expect(discovered).toEqual(['channel-123:recent-root', 'channel-123:old-root']);
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) => msg.messageId)).toEqual(['old-selection', 'new-question']);
+                await bot.stop();
+            });
+
+            it('does not conflate identical root and reply IDs after switching channels', async () => {
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : { content: [{ text: JSON.stringify(body.params?.name === 'ListChannelMessages'
+                                ? [] : [{ id: 'same-reply', body: { content: 'ask' } }]) }] };
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                const bot = createMcpBot({
+                    pollChannelReplies: () => true,
+                    channelThreadRoots: () => ['same-root'],
+                });
+                await bot.start();
+                bot.setChannelId('channel-a');
+                await vi.advanceTimersByTimeAsync(1000);
+                bot.setChannelId('channel-b');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) => [msg.channelId, msg.messageId]))
+                    .toEqual([['channel-a', 'same-reply'], ['channel-b', 'same-reply']]);
+                await bot.stop();
+            });
+
             it('retries a failed channel admission rather than discarding the reply ID', async () => {
                 mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
                     const body = JSON.parse(String(options.body));

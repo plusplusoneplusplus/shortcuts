@@ -455,6 +455,7 @@ describe('McpTransport', () => {
             return { ok: true, headers: new Map(),
                 json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
         });
+
         await transport.initialize('token', { teamId: 'team-1' });
         await transport.poll('channel-1');
         await transport.poll('channel-1');
@@ -468,6 +469,195 @@ describe('McpTransport', () => {
         expect(last.messages).toContainEqual(expect.objectContaining({
             messageId: 'reply-old', replyToMessageId: 'tracked-11',
         }));
+    });
+
+    it('backfills historic root pages and polls discovered threads without reloading the first page', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        const calls: Array<[string, string | undefined, string | undefined]> = [];
+        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            const tool = body.params?.name;
+            const args = body.params?.arguments ?? {};
+            if (tool) calls.push([tool, args.channelId, args.nextLink]);
+            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                        ? args.nextLink === 'page-2'
+                            ? { value: [{ id: 'historic', body: { content: 'old root' } }], hasMoreResults: false }
+                            : { value: [{ id: 'recent', body: { content: 'recent root' } }],
+                                hasMoreResults: true, nextLink: 'page-2' }
+                        : args.messageId === 'historic'
+                            ? [{ id: 'old-ask', body: { content: 'old question' } }]
+                            : []) }] };
+            return { ok: true, headers: new Map(),
+                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+        });
+
+        await transport.initialize('token', { teamId: 'team-1' });
+        const first = await transport.poll('channel-a');
+        expect(first.messages).toEqual(expect.arrayContaining([
+            expect.objectContaining({ messageId: 'historic', initializationReplay: true }),
+            expect.objectContaining({ messageId: 'old-ask', replyToMessageId: 'historic', initializationReplay: true }),
+        ]));
+        expect(transport.hasDiscoveredRoot('channel-a', 'historic')).toBe(true);
+        expect(transport.hasDiscoveredRoot('channel-b', 'historic')).toBe(false);
+        await transport.poll('channel-b');
+        expect(calls.filter(([tool]) => tool === 'ListChannelMessages')).toEqual([
+            ['ListChannelMessages', 'channel-a', undefined],
+            ['ListChannelMessages', 'channel-a', 'page-2'],
+            ['ListChannelMessages', 'channel-b', undefined],
+            ['ListChannelMessages', 'channel-b', 'page-2'],
+        ]);
+    });
+
+        it('exposes root pages and awaits durable root discovery before polling replies', async () => {
+            const events: string[] = [];
+            let rejectOnce = true;
+            transport = new McpTransport('https://mcp.test.com/server', () => true, () => [],
+                async root => {
+                    events.push(`discover:${root.channelId}:${root.messageId}:${root.initializationReplay === true}`);
+                    if (root.messageId === 'old-root' && rejectOnce) {
+                        rejectOnce = false;
+                        throw new Error('durable store unavailable');
+                    }
+                });
+            mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                const body = JSON.parse(String(options.body));
+                const tool = body.params?.name;
+                const args = body.params?.arguments ?? {};
+                if (tool === 'ListChannelMessageReplies') events.push(`replies:${args.messageId}`);
+                const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                    : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                        : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                            ? args.nextLink
+                                ? { value: [{ id: 'old-root', body: { content: 'historic' } }] }
+                                : { value: [{ id: 'recent', body: { content: 'recent' } }],
+                                    hasMoreResults: true, nextLink: 'page-2' }
+                            : []) }] };
+                return { ok: true, headers: new Map(),
+                    json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+            });
+            await transport.initialize('token', { teamId: 'team-1' });
+            expect(await transport.listChannelRootPage('channel-a', 'page-2')).toEqual({
+                roots: [expect.objectContaining({ channelId: 'channel-a', messageId: 'old-root' })],
+                nextLink: undefined, nextSince: 'old-root',
+            });
+            await expect(transport.poll('channel-a')).rejects.toThrow('durable store unavailable');
+            expect(events).toEqual([
+                'discover:channel-a:recent:false', 'discover:channel-a:old-root:true',
+            ]);
+            await transport.poll('channel-a');
+            expect(events).toEqual([
+                'discover:channel-a:recent:false', 'discover:channel-a:old-root:true',
+                'discover:channel-a:old-root:true', 'replies:recent', 'replies:old-root',
+            ]);
+            expect(transport.hasDiscoveredRoot('channel-a', 'old-root')).toBe(true);
+            await transport.poll('channel-a');
+            expect(events.filter(event => event.startsWith('discover:'))).toHaveLength(3);
+            await transport.poll('channel-b');
+            expect(events.filter(event => event.startsWith('discover:'))).toEqual([
+                'discover:channel-a:recent:false', 'discover:channel-a:old-root:true',
+                'discover:channel-a:old-root:true', 'discover:channel-b:recent:false',
+                'discover:channel-b:old-root:true',
+            ]);
+        });
+
+    it('retries failed history pages without advancing the root cursor', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        let fail: 'list' | 'id' | null = 'list';
+        const cursors: Array<string | undefined> = [];
+        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            const args = body.params?.arguments ?? {};
+            const tool = body.params?.name;
+            if (tool === 'ListChannelMessages') cursors.push(args.nextLink);
+            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : { content: [{ text: tool === 'ListChannelMessages'
+                        ? args.nextLink === 'page-2' && fail
+                            ? fail === 'list'
+                                ? '{"value":{},"hasMoreResults":true,"nextLink":"page-3"}'
+                                : '{"value":[{"body":{"content":"missing id"}}],"hasMoreResults":true,"nextLink":"page-3"}'
+                            : JSON.stringify(args.nextLink === 'page-2'
+                                ? { value: [{ id: 'old-root', body: { content: 'old' } }] }
+                                : { value: [], hasMoreResults: true, nextLink: 'page-2' })
+                        : '[]' }] };
+            return { ok: true, headers: new Map(),
+                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+        });
+
+        await transport.initialize('token', { teamId: 'team-1' });
+        await expect(transport.poll('channel-a')).rejects.toThrow('Invalid Teams message list');
+        fail = 'id';
+        await expect(transport.poll('channel-a')).rejects.toThrow('Invalid Teams message list');
+        fail = null;
+        expect((await transport.poll('channel-a')).messages)
+            .toContainEqual(expect.objectContaining({ messageId: 'old-root', initializationReplay: true }));
+        expect(cursors).toEqual([undefined, 'page-2', undefined, 'page-2', undefined, 'page-2']);
+    });
+
+        it('advances one historic root page per poll across multiple pages', async () => {
+            transport = new McpTransport('https://mcp.test.com/server', () => true);
+            const cursors: Array<string | undefined> = [];
+            mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                const body = JSON.parse(String(options.body));
+                const tool = body.params?.name;
+                const args = body.params?.arguments ?? {};
+                if (tool === 'ListChannelMessages') cursors.push(args.nextLink);
+                const page = args.nextLink === 'page-2'
+                    ? { value: [{ id: 'old-a', body: { content: 'a' } }],
+                        hasMoreResults: true, nextLink: 'page-3' }
+                    : args.nextLink === 'page-3'
+                        ? { value: [{ id: 'old-b', body: { content: 'b' } }] }
+                        : { value: [{ id: 'recent', body: { content: 'recent' } }],
+                            hasMoreResults: true, nextLink: 'page-2' };
+                const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                    : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                        : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages' ? page : []) }] };
+                return { ok: true, headers: new Map(),
+                    json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+            });
+            await transport.initialize('token', { teamId: 'team-1' });
+            await transport.poll('channel-a');
+            expect(transport.hasDiscoveredRoot('channel-a', 'old-a')).toBe(true);
+            expect(transport.hasDiscoveredRoot('channel-a', 'old-b')).toBe(false);
+            await transport.poll('channel-a');
+            expect(transport.hasDiscoveredRoot('channel-a', 'old-b')).toBe(true);
+            expect(cursors).toEqual([undefined, 'page-2', undefined, 'page-3']);
+        });
+
+    it('continues paginated replies of discovered roots until their history is complete', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        const replyCursors: Array<string | undefined> = [];
+        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            const tool = body.params?.name;
+            const args = body.params?.arguments ?? {};
+            if (tool === 'ListChannelMessageReplies' && args.messageId === 'old-root') {
+                replyCursors.push(args.nextLink);
+            }
+            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                        ? args.nextLink ? { value: [{ id: 'old-root', body: { content: 'old root' } }] }
+                            : { value: [], hasMoreResults: true, nextLink: 'root-page-2' }
+                        : args.messageId === 'old-root'
+                            ? args.nextLink
+                                ? { value: [{ id: 'old-second', body: { content: 'old second' } }] }
+                                : { value: [{ id: 'old-first', body: { content: 'old first' } }],
+                                    hasMoreResults: true, nextLink: 'reply-page-2' }
+                            : []) }] };
+            return { ok: true, headers: new Map(),
+                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+        });
+        await transport.initialize('token', { teamId: 'team-1' });
+        expect((await transport.poll('channel-a')).messages.some(msg => msg.messageId === 'old-first')).toBe(false);
+        const completed = await transport.poll('channel-a');
+        expect(completed.messages.filter(msg => msg.replyToMessageId === 'old-root')).toEqual([
+            expect.objectContaining({ messageId: 'old-first', initializationReplay: true }),
+            expect.objectContaining({ messageId: 'old-second', initializationReplay: true }),
+        ]);
+        expect(replyCursors).toEqual([undefined, 'reply-page-2']);
     });
 
     it('deduplicates recent roots against tracked roots without additional reply calls', async () => {

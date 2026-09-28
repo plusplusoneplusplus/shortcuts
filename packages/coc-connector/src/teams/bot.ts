@@ -19,10 +19,12 @@ import { acquireTokenViaAzCli } from './auth';
 export function createTransport(mode: TeamsTransportMode, opts: {
     mcpServerUrl?: string; pollChannelReplies?: () => boolean;
     channelThreadRoots?: (channelId: string) => readonly string[];
+    onChannelRootDiscovered?: (root: InboundTeamsMessage) => Promise<void>;
 }): TeamsTransport {
     if (mode === 'mcp') {
         if (!opts.mcpServerUrl) throw new Error('mcpServerUrl is required for MCP mode');
-        return new McpTransport(opts.mcpServerUrl, opts.pollChannelReplies, opts.channelThreadRoots);
+        return new McpTransport(opts.mcpServerUrl, opts.pollChannelReplies, opts.channelThreadRoots,
+            opts.onChannelRootDiscovered);
     }
     return new GraphTransport();
 }
@@ -43,6 +45,7 @@ export class TeamsBot implements MessagingConnector {
     private _lastPolledId: string | null = null;
     private readonly _seenChannelMessageIds = new Set<string>();
     private _channelBatchPolling = false;
+    private _channelBaselineTime: number | null = null;
     /** Last seen timestamp for Graph API delta queries. */
     private _lastSeenTimestamp: string | null = null;
     /** Track message IDs sent by this bot to skip on poll. */
@@ -62,6 +65,7 @@ export class TeamsBot implements MessagingConnector {
         this.transport = createTransport(this.mode, {
             mcpServerUrl: opts.mcpServerUrl, pollChannelReplies: opts.pollChannelReplies,
             channelThreadRoots: opts.channelThreadRoots,
+            onChannelRootDiscovered: opts.onChannelRootDiscovered,
         });
         this.transport.debug = opts.debug ?? false;
     }
@@ -184,6 +188,12 @@ export class TeamsBot implements MessagingConnector {
 
     /** Set the target channel for message polling. */
     setChannelId(channelId: string): void {
+        if (this._channelId !== channelId) {
+            this._channelBatchPolling = false;
+            this._channelBaselineTime = null;
+            this._lastPolledId = null;
+            this._seenChannelMessageIds.clear();
+        }
         this._channelId = channelId;
         this.transport.setChannelId(channelId);
     }
@@ -337,10 +347,24 @@ export class TeamsBot implements MessagingConnector {
             const initial = !this._channelBatchPolling;
             let activity = false;
             this._channelBatchPolling = true;
+            this._channelBaselineTime ??= Date.now();
             for (const msg of messages) {
                 if (this._seenChannelMessageIds.has(msg.messageId)) continue;
+                if (msg.initializationReplay
+                    && this.transport instanceof McpTransport
+                    && this.transport.hasDiscoveredRoot(msg.channelId, msg.replyToMessageId ?? msg.messageId)
+                    && (!msg.replyToMessageId || !msg.createdDateTime
+                        || !(Date.parse(msg.createdDateTime) > this._channelBaselineTime))
+                    && (!msg.replyToMessageId || !msg.createdDateTime
+                        || !Number.isFinite(Date.parse(msg.createdDateTime))
+                        || !/^\/select\s+repos?\s+\S/i.test(msg.text))) {
+                    this._seenChannelMessageIds.add(msg.messageId);
+                    continue;
+                }
                 const trackedReply = !!msg.replyToMessageId
-                    && this.opts.channelThreadRoots?.(msg.channelId).includes(msg.replyToMessageId);
+                    && (this.opts.channelThreadRoots?.(msg.channelId).includes(msg.replyToMessageId)
+                        || (this.transport instanceof McpTransport
+                            && this.transport.hasDiscoveredRoot(msg.channelId, msg.replyToMessageId)));
                 if (initial && !trackedReply) {
                     this._seenChannelMessageIds.add(msg.messageId);
                     continue;

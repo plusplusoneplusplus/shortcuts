@@ -7,5 +7,6 @@ export { McpClient } from './mcp-client';
 export { GraphClient } from './graph-client';
 export { GraphTransport } from './transport-graph';
 export { McpTransport, TeamsMcpSendRejectedError } from './transport-mcp';
+export type { McpChannelRootPage } from './transport-mcp';
 export { extractTenantId, acquireTokenViaAzCli, acquireMcpOAuthToken, acquireTokenWithDeviceCode, acquireTokenViaBrowser, getOAuthConfig, exchangeCodeForToken, saveMcpOAuthTokens } from './auth';
 export type { InboundTeamsMessage, TeamsBotOptions, BotStatus, TeamsChannel, McpToolResult, McpToolsListResult, TeamsAuthConfig, TeamsTransportMode, DeviceCodeInfo, TeamsTransport, TransportSendOptions } from './types';

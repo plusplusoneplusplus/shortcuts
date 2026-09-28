@@ -52,6 +52,8 @@ export interface TeamsBotOptions {
     pollGraphChannel?: () => boolean;
     /** Live channel thread roots supplied by the owner of durable thread bindings. */
     channelThreadRoots?: (channelId: string) => readonly string[];
+    /** Persist a discovered channel root before its replies are routed; must be idempotent across reconnects. */
+    onChannelRootDiscovered?: (root: InboundTeamsMessage) => Promise<void>;
     /** Recognize outbound thread messages whose IDs survived a connector restart. */
     isOwnChannelReply?: (msg: InboundTeamsMessage) => boolean;
     /** Recognize inbound thread messages already admitted by durable receipts. */
