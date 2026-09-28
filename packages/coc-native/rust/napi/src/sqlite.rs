@@ -113,12 +113,15 @@ fn process_read_filter(filter: Option<NativeProcessReadFilter>) -> ProcessFilter
 
 #[napi(object)]
 pub struct NativeProcessWithTurns {
+    #[napi(ts_type = "Record<string, number | string | Buffer | null>")]
     pub process: HashMap<String, Either4<f64, String, Buffer, Null>>,
+    #[napi(ts_type = "Array<Record<string, number | string | Buffer | null>>")]
     pub turns: Option<Vec<HashMap<String, Either4<f64, String, Buffer, Null>>>>,
 }
 
 #[napi(object)]
 pub struct NativeProcessSummaryPage {
+    #[napi(ts_type = "Array<Record<string, number | string | Buffer | null>>")]
     pub rows: Vec<HashMap<String, Either4<f64, String, Buffer, Null>>>,
     pub total: f64,
 }
