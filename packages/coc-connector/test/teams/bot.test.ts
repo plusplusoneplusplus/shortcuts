@@ -501,7 +501,8 @@ describe('TeamsBot', () => {
                     ? { tools: [{ name: 'ListChannelMessageReplies' }] }
                     : { content: [{ text: JSON.stringify(body.params?.name === 'ListChannelMessages'
                         ? [{ id: 'root', body: { content: 'old' } }]
-                        : replyCalls > 2 ? [{ id: 'new-reply', body: { content: '/list repos' } }] : []) }] };
+                        : replyCalls > 2 ? [{ id: 'new-reply', body: { content: '/list repos' },
+                            createdDateTime: new Date(Date.now()).toISOString() }] : []) }] };
                 return new Response(JSON.stringify({ result }));
             });
             const bot = createMcpBot({ pollChannelReplies: () => true });
@@ -623,6 +624,128 @@ describe('TeamsBot', () => {
         });
 
         describe('polling', () => {
+            it('accepts timestamped roots and replies arriving before the first poll', async () => {
+                mockMcpResponse({ protocolVersion: '2025-03-26' });
+                const bot = createMcpBot({ pollChannelReplies: () => true });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                const arrivedAfterStart = new Date(Date.now() + 500).toISOString();
+                vi.spyOn((bot as unknown as { transport: TeamsTransport }).transport, 'poll')
+                    .mockResolvedValue({ messages: [
+                        { channelId: 'channel-123', messageId: 'new-root', text: 'new question',
+                            createdDateTime: arrivedAfterStart },
+                        { channelId: 'channel-123', messageId: 'new-reply', replyToMessageId: 'new-root',
+                            text: 'new follow-up', createdDateTime: arrivedAfterStart },
+                    ], nextSince: 'new-root' });
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) => msg.messageId))
+                    .toEqual(['new-root', 'new-reply']);
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledTimes(2);
+                await bot.stop();
+            });
+
+            it('keeps the tracked-reply cutoff across a failed initial poll', async () => {
+                mockMcpResponse({ protocolVersion: '2025-03-26' });
+                const bot = createMcpBot({
+                    pollChannelReplies: () => true,
+                    channelThreadRoots: () => ['tracked-root'],
+                });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                const afterStart = new Date(Date.now() + 500).toISOString();
+                const poll = vi.spyOn((bot as unknown as { transport: TeamsTransport }).transport, 'poll')
+                    .mockRejectedValueOnce(new Error('temporarily unavailable'))
+                    .mockResolvedValue({ messages: [
+                        { channelId: 'channel-123', messageId: 'historical', replyToMessageId: 'tracked-root',
+                            text: 'old question', createdDateTime: '2020-01-01T00:00:00Z' },
+                        { channelId: 'channel-123', messageId: 'arrived-during-retry', replyToMessageId: 'tracked-root',
+                            text: 'new question', createdDateTime: afterStart },
+                    ], nextSince: '' });
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).not.toHaveBeenCalled();
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    messageId: 'arrived-during-retry', initializationReplay: true,
+                }));
+                expect(onMessage.mock.calls[0][0].historicalSelectionReplay).toBeUndefined();
+                expect(poll).toHaveBeenCalledTimes(2);
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledTimes(1);
+                await bot.stop();
+            });
+
+            it('does not replay old questions when a tracked root rotates into a later poll', async () => {
+                const roots = Array.from({ length: 6 }, (_, index) => `tracked-${index}`);
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const tool = body.params?.name;
+                    const args = body.params?.arguments ?? {};
+                    const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages' ? []
+                                : args.messageId === 'tracked-5' ? [
+                                    { id: 'old-on-late-root', body: { content: 'old question' },
+                                        createdDateTime: '2020-01-01T00:00:00Z' },
+                                    { id: 'live-on-late-root', body: { content: 'new question' },
+                                        createdDateTime: new Date(Date.now()).toISOString() },
+                                ] : []) }] };
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                const bot = createMcpBot({
+                    pollChannelReplies: () => true,
+                    channelThreadRoots: () => roots,
+                });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).not.toHaveBeenCalled();
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    messageId: 'live-on-late-root', replyToMessageId: 'tracked-5',
+                }));
+                await bot.stop();
+            });
+
+            it('establishes a fresh cutoff when channel thread polling is disabled and re-enabled', async () => {
+                let enabled = true;
+                mockMcpResponse({ protocolVersion: '2025-03-26' });
+                const bot = createMcpBot({
+                    pollChannelReplies: () => enabled,
+                    channelThreadRoots: () => ['tracked-root'],
+                });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                let polls = 0;
+                const poll = vi.spyOn((bot as unknown as { transport: TeamsTransport }).transport, 'poll')
+                    .mockImplementation(async () => {
+                        polls++;
+                        const old = { channelId: 'channel-123', messageId: 'while-disabled',
+                            replyToMessageId: 'tracked-root', text: 'old question',
+                            createdDateTime: new Date(Date.now() - 1000).toISOString() };
+                        return { messages: polls < 3 ? []
+                            : polls === 3 ? [old]
+                                : [old, { channelId: 'channel-123', messageId: 'after-reenable',
+                                    replyToMessageId: 'tracked-root', text: 'new question',
+                                    createdDateTime: new Date(Date.now()).toISOString() }],
+                        nextSince: '' };
+                    });
+                await vi.advanceTimersByTimeAsync(1000);
+                enabled = false;
+                await vi.advanceTimersByTimeAsync(1000);
+                enabled = true;
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).not.toHaveBeenCalled();
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    messageId: 'after-reenable',
+                }));
+                expect(onMessage.mock.calls[0][0].initializationReplay).toBeUndefined();
+                expect(poll).toHaveBeenCalledTimes(4);
+                await bot.stop();
+            });
+
             it('delivers each new channel thread reply once, including two asks between polls', async () => {
                 let poll = 0;
                 const calls: string[] = [];
@@ -638,8 +761,10 @@ describe('TeamsBot', () => {
                                 ? { content: [{ text: JSON.stringify([{ id: 'root', body: { content: 'initial' } }]) }] }
                                 : tool === 'ListChannelMessageReplies'
                                     ? { content: [{ text: JSON.stringify(poll++ === 0 ? [] : [
-                                        { id: 'first', body: { content: 'first ask' } },
-                                        { id: 'second', body: { content: 'second ask' } },
+                                        { id: 'first', body: { content: 'first ask' },
+                                            createdDateTime: new Date(Date.now()).toISOString() },
+                                        { id: 'second', body: { content: 'second ask' },
+                                            createdDateTime: new Date(Date.now()).toISOString() },
                                         ...(poll > 2 ? [{ id: 'bot-reply', body: { content: 'answer' } }] : []),
                                     ]) }] }
                                     : tool === 'ReplyToChannelMessage'
@@ -665,12 +790,13 @@ describe('TeamsBot', () => {
                 await bot.stop();
             });
 
-            it('restores tracked older replies on first poll without replaying admitted or outbound messages', async () => {
+            it('admits post-start tracked replies but skips historic, known and outbound messages', async () => {
                 const known = new Set(['accepted-before-restart']);
                 let trackedPolls = 0;
                 mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
                     const body = JSON.parse(String(options.body));
                     const tool = body.params?.name;
+                    const liveTime = new Date(Date.now()).toISOString();
                     const result = body.method === 'initialize'
                         ? { protocolVersion: '2025-03-26' }
                         : body.method === 'tools/list'
@@ -681,22 +807,32 @@ describe('TeamsBot', () => {
                                     ? [
                                         { id: 'accepted-before-restart', body: { content: 'old ask' } },
                                         { id: 'outbound', body: { content: 'answer' } },
+                                        { id: 'unseen-old-ask', body: { content: 'old ask' },
+                                            createdDateTime: '2020-01-01T00:00:00Z' },
+                                        { id: 'undated-old-ask', body: { content: 'old ask' } },
+                                        { id: 'invalid-date-ask', body: { content: 'old ask' },
+                                            createdDateTime: 'invalid' },
                                         { id: 'new-ask', body: { content: 'new ask' },
-                                            createdDateTime: '2020-01-01T00:00:01Z' },
+                                            createdDateTime: liveTime },
                                         { id: 'next-ask', body: { content: 'another ask' },
-                                            createdDateTime: '2020-01-01T00:00:02Z' },
+                                            createdDateTime: liveTime },
                                         ...(++trackedPolls > 1
-                                            ? [{ id: 'fresh-reply', body: { content: 'fresh ask' } }] : []),
+                                            ? [{ id: 'fresh-reply', body: { content: 'fresh ask' },
+                                                createdDateTime: liveTime }] : []),
                                     ] : []) }] };
                     return { ok: true, headers: new Map(),
                         json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
                 });
                 onMessage.mockImplementation(async (msg: InboundTeamsMessage) => { known.add(msg.messageId); });
+                const onInbound = vi.fn();
+                const isOwn = vi.fn((msg: InboundTeamsMessage) => msg.messageId === 'outbound');
+                const isKnown = vi.fn((msg: InboundTeamsMessage) => known.has(msg.messageId));
                 const options = {
                     pollChannelReplies: () => true,
                     channelThreadRoots: () => ['older-root'],
-                    isOwnChannelReply: (msg: InboundTeamsMessage) => msg.messageId === 'outbound',
-                    isKnownChannelReply: (msg: InboundTeamsMessage) => known.has(msg.messageId),
+                    isOwnChannelReply: isOwn,
+                    isKnownChannelReply: isKnown,
+                    onInbound,
                 };
                 const first = createMcpBot(options);
                 await first.start();
@@ -705,6 +841,10 @@ describe('TeamsBot', () => {
                 expect(onMessage.mock.calls.map(([msg]) =>
                     [msg.messageId, msg.initializationReplay, msg.historicalSelectionReplay]))
                     .toEqual([['new-ask', true, undefined], ['next-ask', true, undefined]]);
+                expect(isOwn).toHaveBeenCalledWith(expect.objectContaining({ messageId: 'outbound' }));
+                expect(isKnown).toHaveBeenCalledWith(expect.objectContaining({ messageId: 'accepted-before-restart' }));
+                expect(onInbound).toHaveBeenCalledWith('skipped', 'own');
+                expect(onInbound).toHaveBeenCalledWith('skipped', 'unchanged');
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage.mock.calls.map(([msg]) =>
                     [msg.messageId, msg.initializationReplay, msg.historicalSelectionReplay]))
@@ -792,7 +932,8 @@ describe('TeamsBot', () => {
                     const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
                         : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
                             : { content: [{ text: JSON.stringify(body.params?.name === 'ListChannelMessages'
-                                ? [] : [{ id: 'same-reply', body: { content: 'ask' } }]) }] };
+                                ? [] : [{ id: 'same-reply', body: { content: 'ask' },
+                                    createdDateTime: new Date(Date.now()).toISOString() }]) }] };
                     return { ok: true, headers: new Map(),
                         json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
                 });
@@ -818,7 +959,8 @@ describe('TeamsBot', () => {
                             : { content: [{ text: JSON.stringify(body.params?.name === 'ListChannelMessages'
                                 ? [{ id: 'recent', body: { content: 'old' } }]
                                 : body.params.arguments.messageId === 'older-root'
-                                    ? [{ id: 'new', body: { content: 'ask' } }] : []) }] };
+                                    ? [{ id: 'new', body: { content: 'ask' },
+                                        createdDateTime: new Date(Date.now()).toISOString() }] : []) }] };
                     return { ok: true, headers: new Map(),
                         json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
                 });
@@ -842,8 +984,13 @@ describe('TeamsBot', () => {
                                 ? { content: [{ text: JSON.stringify([
                                     { id: 'bot-post', body: { content: 'CoC\nAgent: A\nRepo: A\nMessage:\nanswer' },
                                         createdDateTime: '2026-01-01T00:00:00Z' },
-                                    ...(poll++ ? [{ id: 'new-root', body: { content: 'new request' },
-                                        createdDateTime: '2026-01-01T00:00:01Z' }] : []),
+                                    ...(poll++ ? [
+                                        { id: 'late-old-root', body: { content: 'old question' },
+                                            createdDateTime: '2020-01-01T00:00:00Z' },
+                                        { id: 'undated-late-root', body: { content: 'old question' } },
+                                        { id: 'new-root', body: { content: 'new request' },
+                                            createdDateTime: new Date(Date.now()).toISOString() },
+                                    ] : []),
                                 ]) }] }
                                 : { content: [{ text: '[]' }] };
                     return { ok: true, headers: new Map(),
@@ -873,7 +1020,8 @@ describe('TeamsBot', () => {
                                 ? { content: [{ text: JSON.stringify([{ id: 'root', body: { content: 'old' } }]) }] }
                                 : body.params?.name === 'ListChannelMessageReplies'
                                     ? { content: [{ text: JSON.stringify(++replyPolls > 1
-                                        ? [{ id: 'new-reply', body: { content: 'new ask' } }] : []) }] }
+                                        ? [{ id: 'new-reply', body: { content: 'new ask' },
+                                            createdDateTime: new Date(Date.now()).toISOString() }] : []) }] }
                                     : {};
                     return { ok: true, headers: new Map(),
                         json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };

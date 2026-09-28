@@ -131,6 +131,10 @@ export class TeamsBot implements MessagingConnector {
     async stop(): Promise<void> {
         this.stopPolling();
         this.transport.stop();
+        this._channelBatchPolling = false;
+        this._channelBaselineTime = null;
+        this._seenChannelMessageIds.clear();
+        this._lastPolledId = null;
         this.setStatus('disconnected');
     }
 
@@ -198,7 +202,9 @@ export class TeamsBot implements MessagingConnector {
     setChannelId(channelId: string): void {
         if (this._channelId !== channelId) {
             this._channelBatchPolling = false;
-            this._channelBaselineTime = null;
+            this._channelBaselineTime = this.mode === 'mcp' && this.opts.teamId
+                && this._status === 'connected' && this.opts.pollChannelReplies?.()
+                ? Date.now() : null;
             this._lastPolledId = null;
             this._seenChannelMessageIds.clear();
         }
@@ -248,6 +254,8 @@ export class TeamsBot implements MessagingConnector {
             return;
         }
         if (this._pollTimer) return;
+        if (this.mode === 'mcp' && this.opts.teamId && this._channelId
+            && this.opts.pollChannelReplies?.()) this._channelBaselineTime = Date.now();
         this._lastActivityTime = Date.now();
         this._rateLimitFailures = 0;
         this._retryAt = 0;
@@ -295,6 +303,16 @@ export class TeamsBot implements MessagingConnector {
                 this._lastSeenTimestamp = null;
                 this.schedulePoll();
                 return;
+            }
+            if (this.mode === 'mcp' && this.opts.teamId
+                && this._channelBatchPolling && !this.opts.pollChannelReplies?.()) {
+                this._channelBatchPolling = false;
+                this._channelBaselineTime = null;
+                this._lastPolledId = null;
+                this._seenChannelMessageIds.clear();
+            }
+            if (this.mode === 'mcp' && this.opts.teamId && this.opts.pollChannelReplies?.()) {
+                this._channelBaselineTime ??= Date.now();
             }
             const since = this.mode === 'graph' ? this._lastSeenTimestamp ?? undefined : this._lastPolledId ?? undefined;
             const { messages, nextSince } = await this.transport.poll(this._channelId, since);
@@ -367,19 +385,12 @@ export class TeamsBot implements MessagingConnector {
                     && Number.isFinite(timestamp)
                     && timestamp <= this._channelBaselineTime
                     && isHistoricalSelectionCommand(msg.text);
-                if (msg.initializationReplay
-                    && this.transport instanceof McpTransport
-                    && this.transport.hasDiscoveredRoot(msg.channelId, msg.replyToMessageId ?? msg.messageId)
-                    && (!Number.isFinite(timestamp) || timestamp <= this._channelBaselineTime)
-                    && !historicalSelectionReplay) {
-                    this._seenChannelMessageIds.add(msg.messageId);
-                    continue;
-                }
+                const notProvenPostStart = !(timestamp > this._channelBaselineTime);
                 const trackedReply = !!msg.replyToMessageId
                     && (this.opts.channelThreadRoots?.(msg.channelId).includes(msg.replyToMessageId)
                         || (this.transport instanceof McpTransport
                             && this.transport.hasDiscoveredRoot(msg.channelId, msg.replyToMessageId)));
-                if (initial && !trackedReply) {
+                if (initial && !trackedReply && notProvenPostStart) {
                     this._seenChannelMessageIds.add(msg.messageId);
                     continue;
                 }
@@ -387,6 +398,8 @@ export class TeamsBot implements MessagingConnector {
                     this.observeInbound('skipped', 'own');
                 } else if (trackedReply && this.opts.isKnownChannelReply?.(msg)) {
                     this.observeInbound('skipped', 'unchanged');
+                } else if (notProvenPostStart && !historicalSelectionReplay) {
+                    this.observeInbound('skipped', 'initial');
                 } else if (!msg.text.trim()) {
                     this.observeInbound('skipped', 'empty');
                 } else if (this.isBotFormattedMessage(msg.text)) {
