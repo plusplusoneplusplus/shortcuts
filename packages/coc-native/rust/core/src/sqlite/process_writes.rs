@@ -16,12 +16,11 @@ pub fn upsert_streaming_turn(database: &Database, input: &StreamingTurnInput) ->
         database.with_writer(|connection| {
             check_process_schema(connection)?;
             let streaming = i64::from(input.streaming);
-            let changes = connection.execute(
+            let changes = connection.prepare_cached(
                 "UPDATE conversation_turns
                  SET content = ?1, timeline = ?2, streaming = ?3
                  WHERE process_id = ?4 AND streaming = 1",
-                params![input.content, input.timeline, streaming, input.process_id],
-            )?;
+            )?.execute(params![input.content, input.timeline, streaming, input.process_id])?;
             if changes == 0 {
                 let next_idx: i64 = connection.query_row(
                     "SELECT COALESCE(MAX(turn_index), -1) + 1 AS next_idx
