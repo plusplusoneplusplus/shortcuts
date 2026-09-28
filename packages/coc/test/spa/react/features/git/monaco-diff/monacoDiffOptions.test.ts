@@ -108,6 +108,8 @@ describe('buildDiffEditorOptions', () => {
         expect(options.automaticLayout).toBe(false);
         // Unified must not silently switch to inline, split must not either.
         expect(options.useInlineViewWhenSpaceIsLimited).toBe(false);
+        // Hosts the add-comment widget (AC-05).
+        expect(options.glyphMargin).toBe(true);
     });
 });
 

@@ -134,7 +134,8 @@ export function buildDiffEditorOptions(viewMode: DiffViewMode): DiffEditorOption
         scrollBeyondLastLine: false,
         fontSize: 13,
         folding: false,
-        glyphMargin: false,
+        // Hosts the interactive add-comment widget beside a selection.
+        glyphMargin: true,
         lineDecorationsWidth: 8,
         lineNumbersMinChars: 3,
         scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },

@@ -7,7 +7,8 @@
  *
  * When the diff-engine preference is `monaco`, both full-text sides come from
  * GET .../changes/files/<path>/content?stage=<stage> and render in
- * MonacoFileDiffViewer. Binary, oversized or unloadable content, or an editor
+ * MonacoFileDiffViewer, with comment threads portalled into editor view zones.
+ * Binary, oversized or unloadable content, or an editor
  * that fails to start, falls back to the classic viewer with a visible reason
  * (see diffEngineResolution).
  */
@@ -31,6 +32,7 @@ import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
+import { CommentCard } from '../../../tasks/comments/CommentCard';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useCrossFileNav, type HunkNavigationHandle } from '../hooks/useCrossFileNav';
@@ -273,6 +275,10 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        if (showEditor) {
+            monacoViewerRef.current?.revealComment(comment.id);
+            return;
+        }
         const dc = comment as DiffComment;
         const lineIdx = dc.selection?.diffLineStart;
         if (lineIdx == null) return;
@@ -281,7 +287,25 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('ring-2', 'ring-yellow-400');
         setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
-    }, []);
+    }, [showEditor]);
+
+    // Editor engine: the same thread card the sidebar shows, inline under the line.
+    const renderCommentThread = useCallback((comment: DiffComment) => (
+        <CommentCard
+            comment={comment}
+            onResolve={() => { void resolveComment(comment.id); }}
+            onUnresolve={() => { void unresolveComment(comment.id); }}
+            onEdit={(text) => { void updateComment(comment.id, { comment: text }); }}
+            onDelete={() => { void deleteComment(comment.id); }}
+            onAskAI={(commandId, question) => handleAskAI(comment.id, commandId, question)}
+            onClick={() => undefined}
+            aiLoading={aiLoadingIds.has(comment.id)}
+            aiError={aiErrors.get(comment.id) ?? null}
+            onClearAiError={() => clearAiError(comment.id)}
+            isResolving={resolvingIds.has(comment.id)}
+            isDeleting={deletingIds.has(comment.id)}
+        />
+    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
 
     return (
         <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff">
@@ -344,8 +368,13 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                             modified={editorSides.head.content}
                             viewMode={viewMode}
                             initialHunkTarget={initialHunkTarget}
-                            onLinesReady={setDiffLines}
+                            onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
                             onEditorError={handleEditorError}
+                            comments={comments}
+                            renderCommentThread={renderCommentThread}
+                            onAddComment={handleAddComment}
+                            onAskAI={handleAskAIDiff}
+                            onCopyAsContext={handleCopyAsContext}
                             createEditor={createDiffEditor}
                             data-testid="working-tree-file-diff-editor"
                         />

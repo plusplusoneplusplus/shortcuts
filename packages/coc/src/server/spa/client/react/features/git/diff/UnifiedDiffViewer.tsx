@@ -356,6 +356,11 @@ export function computeDiffLines(lines: string[]): DiffLine[] {
             if (parsed) { oldLine = parsed.oldStart; newLine = parsed.newStart; }
             return { index, type, content: raw };
         }
+        // `\ No newline at end of file` annotates the previous line; it is not
+        // a line of either file, so it takes no line numbers.
+        if (type === 'context' && raw.startsWith('\\')) {
+            return { index, type, content: raw };
+        }
         if (type === 'context') {
             const result: DiffLine = { index, type, oldLine, newLine, content: raw };
             if (oldLine !== undefined) oldLine++;

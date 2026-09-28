@@ -264,3 +264,49 @@ export function createDiffLineIndexResolver(lines: readonly DiffLine[]): NonNull
     }
     return (kind, line) => (kind === 'old' ? oldIndex : newIndex).get(line);
 }
+
+/** Where an inline comment thread (view zone) sits in the diff editor. */
+export interface ThreadZoneAnchor {
+    side: DiffEditorSide;
+    /** The zone renders below this line (Monaco `afterLineNumber`). */
+    afterLineNumber: number;
+}
+
+/**
+ * Line a comment thread renders below. In split view a thread sits under the
+ * last line of its range on its own side. In unified view Monaco shows only
+ * the modified editor (removed lines are drawn inside it but are not
+ * addressable), so a thread on the original side moves to the modified
+ * editor: below its unchanged counterpart, or below the change block that
+ * replaced the removed lines (line 0 = above the first line).
+ */
+export function threadZoneAnchor(
+    range: DiffSideRange,
+    viewMode: 'unified' | 'split',
+    lineChanges: readonly DiffLineChange[],
+): ThreadZoneAnchor {
+    if (range.side === 'modified' || viewMode === 'split') {
+        return { side: range.side, afterLineNumber: range.endLineNumber };
+    }
+    const line = range.endLineNumber;
+    const counterpart = counterpartLine('original', line, lineChanges);
+    if (counterpart !== undefined) {return { side: 'modified', afterLineNumber: counterpart };}
+    const change = lineChanges.find(c => c.originalEndLineNumber > 0
+        && line >= c.originalStartLineNumber && line <= c.originalEndLineNumber);
+    const afterLineNumber = !change ? 0
+        : change.modifiedEndLineNumber > 0 ? change.modifiedEndLineNumber
+            : change.modifiedStartLineNumber;
+    return { side: 'modified', afterLineNumber };
+}
+
+/** Text covered by a Monaco range, lines joined with `\n`. */
+export function textInRange(source: DiffLineSource, range: MonacoRange): string {
+    const lines: string[] = [];
+    for (let n = range.startLineNumber; n <= range.endLineNumber; n++) {
+        const content = source.getLineContent(n);
+        const from = n === range.startLineNumber ? range.startColumn - 1 : 0;
+        const to = n === range.endLineNumber ? range.endColumn - 1 : content.length;
+        lines.push(content.slice(from, to));
+    }
+    return lines.join('\n');
+}

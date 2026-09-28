@@ -3647,3 +3647,18 @@
         border-left: 0;
     }
 }
+
+/* Diff comments inside the Monaco diff editor (MonacoDiffCommentLayer). */
+.monaco-editor .coc-diff-comment-open { background-color: rgba(255, 213, 79, 0.35); }
+.monaco-editor .coc-diff-comment-resolved { background-color: rgba(76, 175, 80, 0.15); }
+.monaco-editor .coc-diff-comment-recovered { background-color: rgba(255, 213, 79, 0.2); border-bottom: 1px dashed #b58900; }
+.monaco-editor .coc-diff-comment-gutter { margin-left: 2px; width: 3px !important; }
+.monaco-editor .coc-diff-comment-gutter-open { background-color: #f9a825; }
+.monaco-editor .coc-diff-comment-gutter-resolved { background-color: #81c784; }
+.monaco-editor .coc-diff-comment-gutter-recovered { background-color: #d4a72c; }
+.monaco-editor .coc-diff-comment-zone { z-index: 5; }
+.coc-diff-comment-thread { font-family: var(--font-sans, system-ui, sans-serif); white-space: normal; }
+.coc-diff-comment-glyph-button {
+    width: 16px; height: 16px; line-height: 14px; font-size: 13px; border-radius: 3px; cursor: pointer;
+    color: #fff; background-color: #0078d4;
+}

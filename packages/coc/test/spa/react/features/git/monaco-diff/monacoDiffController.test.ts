@@ -168,6 +168,29 @@ describe('createMonacoDiffController — diff readiness', () => {
     });
 });
 
+describe('createMonacoDiffController — comment overlays', () => {
+    it('exposes the editor only while attached and reports each applied model pair', async () => {
+        const fake = createFakeDiffEditor();
+        const pending = deferred<typeof fake.adapter>();
+        const onModelsApplied = vi.fn();
+        const controller = createMonacoDiffController(() => pending.promise, { onModelsApplied });
+        const first = buildDiffModels({ workspaceId: 'ws', relativePath: 'a.ts', stage: 'unstaged', original: 'a', modified: 'b' });
+        controller.setModels(first);
+        expect(controller.getEditor()).toBeNull();
+        expect(onModelsApplied).not.toHaveBeenCalled();
+        pending.resolve(fake.adapter);
+        await flush();
+        expect(controller.getEditor()).toBe(fake.adapter);
+        expect(onModelsApplied).toHaveBeenCalledWith(first);
+        controller.setModels(first);
+        expect(onModelsApplied).toHaveBeenCalledTimes(1);
+        controller.setModels({ ...first, modified: { ...first.modified, text: 'c' } });
+        expect(onModelsApplied).toHaveBeenCalledTimes(2);
+        controller.dispose();
+        expect(controller.getEditor()).toBeNull();
+    });
+});
+
 describe('createMonacoDiffController — disposal', () => {
     it('disposes the adapter and its diff listener exactly once', async () => {
         const { fake, controller } = await attached();
