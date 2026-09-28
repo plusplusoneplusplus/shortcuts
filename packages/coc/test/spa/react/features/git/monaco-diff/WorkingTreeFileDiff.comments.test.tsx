@@ -19,6 +19,9 @@ const hooks = vi.hoisted(() => ({
     runRelocation: vi.fn(), queueDispatch: vi.fn(), copyToClipboard: vi.fn(async () => {}),
 }));
 
+// The unstaged editor opens a language document (AC-06); keep the transport inert.
+vi.mock('../../../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
+    async () => await import('../../../language-servers/inertTransportMock'));
 vi.mock('../../../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: () => ({
         comments: hooks.comments, loading: false, error: null, isEphemeral: false,

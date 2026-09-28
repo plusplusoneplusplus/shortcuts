@@ -19,6 +19,9 @@ import type { DiffLineChange } from '../../../../../../src/server/spa/client/rea
 import { createFakeDiffEditor, deferred, flush, type FakeDiffEditor } from './fakeDiffEditorAdapter';
 
 let appTheme: 'auto' | 'dark' | 'light' = 'light';
+// The unstaged editor opens a language document (AC-06); keep the transport inert.
+vi.mock('../../../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
+    async () => await import('../../../language-servers/inertTransportMock'));
 vi.mock('../../../../../../src/server/spa/client/react/layout/ThemeProvider', () => ({
     useTheme: () => ({ theme: appTheme, setTheme: () => {} }),
 }));

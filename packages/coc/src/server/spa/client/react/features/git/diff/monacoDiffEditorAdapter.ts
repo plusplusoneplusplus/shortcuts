@@ -11,6 +11,7 @@
 import { loader } from '@monaco-editor/react';
 import type * as MonacoApi from 'monaco-editor';
 import type { DiffEditorAdapter, Disposable, CommentDecorationKind } from './monacoDiffController';
+import { LANGUAGE_MARKER_OWNER } from '../../language-servers/monacoBridge';
 import type { DiffEditorSide } from './diffCoords';
 import type { MonacoRange } from '../../language-servers/monacoBridge';
 import type { DiffEditorOptions } from './monacoDiffOptions';
@@ -91,6 +92,22 @@ export function createMonacoDiffEditorAdapter(
         removeGlyph();
     };
 
+    // The modified model, only when it is exactly the working-copy document.
+    // Compared in Monaco's normalized form, so encoding differences cannot let
+    // a synthetic or conflict-variant URI through.
+    const documentModel = (documentUri: string): TextModel | null => {
+        const model = editor.getModifiedEditor().getModel();
+        return model && model.uri.toString() === monaco.Uri.parse(documentUri).toString() ? model : null;
+    };
+
+    // At most one language mount, always on the current modified model.
+    let languageCleanup: (() => void) | null = null;
+    const unmountLanguage = () => {
+        const cleanup = languageCleanup;
+        languageCleanup = null;
+        cleanup?.();
+    };
+
     const releaseLeases = () => {
         for (const lease of leases) lease.release();
         leases = [];
@@ -99,7 +116,9 @@ export function createMonacoDiffEditorAdapter(
     return {
         setModels(models) {
             // Detach and release the old pair first, so a refreshed file gets
-            // its real URI back instead of a conflict variant.
+            // its real URI back instead of a conflict variant. Language
+            // providers go before their model can be disposed.
+            unmountLanguage();
             clearOverlays();
             editor.setModel(null);
             releaseLeases();
@@ -198,7 +217,26 @@ export function createMonacoDiffEditorAdapter(
         revealLine(side, line) {
             sideEditor(side).revealLineInCenter(line);
         },
+        attachModifiedLanguage(documentUri, mount): Disposable | null {
+            unmountLanguage();
+            const modifiedEditor = editor.getModifiedEditor();
+            const model = documentModel(documentUri);
+            if (!model) return null;
+            const cleanup = mount({ editor: modifiedEditor, monaco, model }) ?? (() => {});
+            languageCleanup = cleanup;
+            return {
+                dispose: () => {
+                    if (languageCleanup !== cleanup) return;
+                    unmountLanguage();
+                },
+            };
+        },
+        setModifiedMarkers(documentUri, markers) {
+            const model = documentModel(documentUri);
+            if (model) monaco.editor.setModelMarkers(model, LANGUAGE_MARKER_OWNER, [...markers]);
+        },
         dispose() {
+            unmountLanguage();
             clearOverlays();
             editor.setModel(null);
             editor.dispose();

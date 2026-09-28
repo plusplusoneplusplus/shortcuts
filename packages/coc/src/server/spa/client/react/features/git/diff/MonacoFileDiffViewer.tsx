@@ -13,6 +13,10 @@
  *
  * Diff comments render through `MonacoDiffCommentLayer` once the editor is
  * attached and Monaco has computed the diff for the current models.
+ *
+ * On an unstaged diff the modified side is the real file, so it gets the
+ * explorer's language features (hover, go-to-definition, diagnostics) through
+ * `useDiffLanguageFeatures`. Ref-backed sides never do.
  */
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -38,6 +42,9 @@ import {
 import { createMonacoDiffController, type MonacoDiffController } from './monacoDiffController';
 import { createDefaultDiffEditor, type DiffEditorFactory } from './monacoDiffEditorAdapter';
 import { synthesizeDiffLines } from './monacoDiffLineShim';
+import type { LanguageDocumentStore } from '../../language-servers/documentStore';
+import { useDiffLanguageFeatures } from './useDiffLanguageFeatures';
+import type { DiffDefinitionNavigate } from './diffLanguageMount';
 
 export type MonacoFileDiffViewerHandle = Pick<
     UnifiedDiffViewerHandle,
@@ -77,6 +84,12 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     renderCommentThread?: (comment: DiffComment) => ReactNode;
     /** Editor factory; tests pass an owned adapter. Defaults to Monaco. */
     createEditor?: DiffEditorFactory;
+    /** Language features on the unstaged modified side. Default true. */
+    languageFeatures?: boolean;
+    /** Language document store; tests inject one. Defaults to the workspace's. */
+    languageStore?: LanguageDocumentStore;
+    /** Opens a go-to-definition target in another file of this workspace. */
+    onNavigateDefinition?: DiffDefinitionNavigate;
     'data-testid'?: string;
 }
 
@@ -93,6 +106,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         workspaceId, relativePath, stage, original, modified, viewMode, initialHunkTarget,
         onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor,
         comments, renderCommentThread, onAddComment, onAskAI, onCopyAsContext,
+        languageFeatures = true, languageStore, onNavigateDefinition,
         'data-testid': testId = 'monaco-file-diff-viewer',
     }, ref) {
         const { theme } = useTheme();
@@ -111,6 +125,15 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             [workspaceId, relativePath, stage, original, modified],
         );
         const options = useMemo(() => buildDiffEditorOptions(viewMode), [viewMode]);
+        const language = useDiffLanguageFeatures({
+            workspaceId,
+            relativePath,
+            stage,
+            models,
+            enabled: languageFeatures && !identical,
+            store: languageStore,
+            onNavigate: onNavigateDefinition,
+        });
         const editorTheme = resolveDiffEditorTheme(theme, prefersDarkScheme());
 
         // Latest values for callbacks and the one-shot creation below.
@@ -172,6 +195,31 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         }, [models, identical]);
 
         useEffect(() => { controllerRef.current?.setOptions(options); }, [options, identical]);
+
+        // Providers on the modified model, re-mounted after every model swap
+        // (the adapter drops them before swapping).
+        const languageUri = language?.uri ?? null;
+        const languageMount = language?.mount ?? null;
+        useEffect(() => {
+            if (!editor || !languageUri || !languageMount) return;
+            const mounted = editor.attachModifiedLanguage(languageUri, languageMount);
+            return () => mounted?.dispose();
+        }, [editor, modelsVersion, languageUri, languageMount]);
+
+        // Diagnostics as markers; cleared when features go away (an unsaved
+        // explorer edit, a refused session) so stale squiggles never linger.
+        const markerUriRef = useRef<string | null>(null);
+        const languageMarkers = language?.markers ?? null;
+        useEffect(() => {
+            if (!editor) return;
+            if (languageUri && languageMarkers) {
+                markerUriRef.current = languageUri;
+                editor.setModifiedMarkers(languageUri, languageMarkers);
+            } else if (markerUriRef.current) {
+                editor.setModifiedMarkers(markerUriRef.current, []);
+                markerUriRef.current = null;
+            }
+        }, [editor, modelsVersion, languageUri, languageMarkers]);
         useEffect(() => { controllerRef.current?.setTheme(editorTheme); }, [editorTheme, identical]);
 
         // Explicit pixel layout from the host's measured size.

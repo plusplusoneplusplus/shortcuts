@@ -8,6 +8,8 @@ import { vi } from 'vitest';
 import type {
     CommentDecoration,
     DiffEditorAdapter,
+    DiffLanguageMount,
+    DiffLanguageMountContext,
     DiffEditorSelection,
     DiffEditorSelectionAction,
     GlyphWidgetSpec,
@@ -32,6 +34,15 @@ export interface FakeDiffEditor {
     glyph: GlyphWidgetSpec | null;
     actions: DiffEditorSelectionAction[];
     revealedLines: { side: string; line: number }[];
+    /** Language mounts made on the modified model, in order; `live` until cleaned up. */
+    languageMounts: { uri: string; live: boolean }[];
+    /** Language-marker lists published per document URI, in order. */
+    markerLog: { uri: string; count: number }[];
+    /**
+     * The structural Monaco context handed to a language mount. Tests that
+     * exercise real provider wiring replace it; the default is inert.
+     */
+    languageContext: () => DiffLanguageMountContext;
     /** Emit a selection change (null = collapsed). */
     select(selection: DiffEditorSelection | null): void;
     /** Run a registered context-menu action on a selection. */
@@ -46,6 +57,13 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
     let lineChanges: DiffLineChange[] | null = null;
     let nextZone = 1;
     const selectionListeners = new Set<(selection: DiffEditorSelection | null) => void>();
+    let languageCleanup: (() => void) | null = null;
+    const unmountLanguage = () => {
+        const cleanup = languageCleanup;
+        languageCleanup = null;
+        cleanup?.();
+    };
+    const currentModifiedUri = () => fake.models[fake.models.length - 1]?.modified.uri ?? null;
     const fake: FakeDiffEditor = {
         zones: new Map(),
         zoneLog: [],
@@ -53,6 +71,9 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
         glyph: null,
         actions: [],
         revealedLines: [],
+        languageMounts: [],
+        markerLog: [],
+        languageContext: () => inertLanguageContext(currentModifiedUri() ?? ''),
         select(selection) {
             for (const listener of [...selectionListeners]) listener(selection);
         },
@@ -75,6 +96,8 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
         },
         adapter: {
             setModels: vi.fn((models: DiffModelsInput) => {
+                // Like the real adapter: providers go before their model does.
+                unmountLanguage();
                 fake.models.push(models);
                 lineChanges = null; // a new pair starts computing
                 // Monaco drops view zones, glyph widgets and decorations with the old models.
@@ -123,7 +146,21 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
             }),
             getClientPosition: vi.fn((_side: string, line: number, column: number) => ({ top: line * 20, left: column * 7 })),
             revealLine: vi.fn((side: string, line: number) => { fake.revealedLines.push({ side, line }); }),
-            dispose: vi.fn(() => { fake.disposals++; }),
+            attachModifiedLanguage: vi.fn((uri: string, mount: DiffLanguageMount) => {
+                unmountLanguage();
+                if (currentModifiedUri() !== uri) return null;
+                const record = { uri, live: true };
+                fake.languageMounts.push(record);
+                const cleanup = mount(fake.languageContext());
+                const done = () => { record.live = false; cleanup?.(); };
+                languageCleanup = done;
+                return { dispose: () => { if (languageCleanup === done) unmountLanguage(); } };
+            }),
+            setModifiedMarkers: vi.fn((uri: string, markers: readonly unknown[]) => {
+                if (currentModifiedUri() !== uri) return;
+                fake.markerLog.push({ uri, count: markers.length });
+            }),
+            dispose: vi.fn(() => { unmountLanguage(); fake.disposals++; }),
         },
     };
     return fake;
@@ -138,3 +175,36 @@ export function deferred<T>() {
 }
 
 export const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+/** A context whose Monaco pieces accept every call and do nothing. */
+export function inertLanguageContext(uri: string): DiffLanguageMountContext {
+    const disposable = { dispose: () => {} };
+    const listen = () => disposable;
+    const editor = {
+        createDecorationsCollection: () => ({ set: () => {}, clear: () => {} }),
+        onDidChangeModelContent: listen,
+        onDidScrollChange: listen,
+        onKeyDown: listen,
+        onKeyUp: listen,
+        onMouseLeave: listen,
+        onMouseMove: listen,
+    };
+    const monaco = {
+        Uri: { parse: (value: string) => ({ toString: () => value }) },
+        languages: {
+            registerHoverProvider: () => disposable,
+            registerDefinitionProvider: () => disposable,
+            registerReferenceProvider: () => disposable,
+            registerCompletionItemProvider: () => disposable,
+            registerSignatureHelpProvider: () => disposable,
+        },
+        editor: { getModel: () => null },
+    };
+    const model = {
+        uri: { toString: () => uri },
+        getLanguageId: () => 'plaintext',
+        getWordUntilPosition: () => ({ startColumn: 1, endColumn: 1 }),
+        getWordAtPosition: () => null,
+    };
+    return { editor, monaco, model } as unknown as DiffLanguageMountContext;
+}

@@ -17,6 +17,7 @@
  *   - the adapter and its diff listener are each disposed exactly once.
  */
 
+import type * as MonacoApi from 'monaco-editor';
 import type { DiffEditorSide, DiffLineChange } from './diffCoords';
 import type { MonacoRange } from '../../language-servers/monacoBridge';
 import type { DiffEditorOptions, DiffEditorTheme, DiffModelsInput } from './monacoDiffOptions';
@@ -69,6 +70,19 @@ export interface GlyphWidgetSpec {
     domNode: HTMLElement;
 }
 
+/**
+ * The modified editor and its model, handed to a language host (AC-06). Monaco
+ * values, typed only: this module never touches them.
+ */
+export interface DiffLanguageMountContext {
+    editor: MonacoApi.editor.ICodeEditor;
+    monaco: typeof MonacoApi;
+    model: MonacoApi.editor.ITextModel;
+}
+
+/** Registers language features on the modified model; returns its cleanup. */
+export type DiffLanguageMount = (context: DiffLanguageMountContext) => (() => void) | void;
+
 /** What the controller needs from a diff editor. Monaco-shaped, Monaco-free. */
 export interface DiffEditorAdapter {
     /** Replace both models; previously owned models are disposed. */
@@ -98,6 +112,19 @@ export interface DiffEditorAdapter {
     getClientPosition(side: DiffEditorSide, line: number, column: number): { top: number; left: number } | null;
     /** Scroll `side` so `line` is centred. */
     revealLine(side: DiffEditorSide, line: number): void;
+    /**
+     * Mount language features on the modified model, but only when that model
+     * is exactly `documentUri` (the real working-copy document). Returns null
+     * and mounts nothing for any other model: a synthetic ref side, a conflict
+     * variant, or no model. The mount is undone before the next model swap and
+     * on dispose, whichever comes first.
+     */
+    attachModifiedLanguage(documentUri: string, mount: DiffLanguageMount): Disposable | null;
+    /**
+     * Publish language diagnostics on the modified model; `[]` clears them.
+     * Ignored unless that model is exactly `documentUri`.
+     */
+    setModifiedMarkers(documentUri: string, markers: readonly MonacoApi.editor.IMarkerData[]): void;
     /** Dispose the editor and every model it owns. */
     dispose(): void;
 }

@@ -13,6 +13,9 @@ import { createFakeDiffEditor, type FakeDiffEditor } from './fakeDiffEditorAdapt
 const COMMENTS = [{ id: 'c1', comment: 'look here', selection: { diffLineStart: 1, diffLineEnd: 1, side: 'added' } }];
 const classicProps = vi.fn();
 
+// The unstaged editor opens a language document (AC-06); keep the transport inert.
+vi.mock('../../../../../../src/server/spa/client/react/features/language-servers/languageServerClient',
+    async () => await import('../../../language-servers/inertTransportMock'));
 vi.mock('../../../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: () => ({
         comments: COMMENTS, loading: false, error: null, isEphemeral: false,
