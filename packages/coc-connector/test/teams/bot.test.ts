@@ -667,6 +667,7 @@ describe('TeamsBot', () => {
 
             it('restores tracked older replies on first poll without replaying admitted or outbound messages', async () => {
                 const known = new Set(['accepted-before-restart']);
+                let trackedPolls = 0;
                 mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
                     const body = JSON.parse(String(options.body));
                     const tool = body.params?.name;
@@ -682,6 +683,8 @@ describe('TeamsBot', () => {
                                         { id: 'outbound', body: { content: 'answer' } },
                                         { id: 'new-ask', body: { content: 'new ask' } },
                                         { id: 'next-ask', body: { content: 'another ask' } },
+                                        ...(++trackedPolls > 1
+                                            ? [{ id: 'fresh-reply', body: { content: 'fresh ask' } }] : []),
                                     ] : []) }] };
                     return { ok: true, headers: new Map(),
                         json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
@@ -699,13 +702,16 @@ describe('TeamsBot', () => {
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage.mock.calls.map(([msg]) => [msg.messageId, msg.initializationReplay]))
                     .toEqual([['new-ask', true], ['next-ask', true]]);
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) => [msg.messageId, msg.initializationReplay]))
+                    .toEqual([['new-ask', true], ['next-ask', true], ['fresh-reply', undefined]]);
                 await first.stop();
 
                 const restarted = createMcpBot(options);
                 await restarted.start();
                 restarted.setChannelId('channel-123');
                 await vi.advanceTimersByTimeAsync(1000);
-                expect(onMessage).toHaveBeenCalledTimes(2);
+                expect(onMessage).toHaveBeenCalledTimes(3);
                 await restarted.stop();
             });
 
