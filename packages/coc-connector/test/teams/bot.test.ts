@@ -681,8 +681,10 @@ describe('TeamsBot', () => {
                                     ? [
                                         { id: 'accepted-before-restart', body: { content: 'old ask' } },
                                         { id: 'outbound', body: { content: 'answer' } },
-                                        { id: 'new-ask', body: { content: 'new ask' } },
-                                        { id: 'next-ask', body: { content: 'another ask' } },
+                                        { id: 'new-ask', body: { content: 'new ask' },
+                                            createdDateTime: '2020-01-01T00:00:01Z' },
+                                        { id: 'next-ask', body: { content: 'another ask' },
+                                            createdDateTime: '2020-01-01T00:00:02Z' },
                                         ...(++trackedPolls > 1
                                             ? [{ id: 'fresh-reply', body: { content: 'fresh ask' } }] : []),
                                     ] : []) }] };
@@ -700,11 +702,16 @@ describe('TeamsBot', () => {
                 await first.start();
                 first.setChannelId('channel-123');
                 await vi.advanceTimersByTimeAsync(1000);
-                expect(onMessage.mock.calls.map(([msg]) => [msg.messageId, msg.initializationReplay]))
-                    .toEqual([['new-ask', true], ['next-ask', true]]);
+                expect(onMessage.mock.calls.map(([msg]) =>
+                    [msg.messageId, msg.initializationReplay, msg.historicalSelectionReplay]))
+                    .toEqual([['new-ask', true, undefined], ['next-ask', true, undefined]]);
                 await vi.advanceTimersByTimeAsync(1000);
-                expect(onMessage.mock.calls.map(([msg]) => [msg.messageId, msg.initializationReplay]))
-                    .toEqual([['new-ask', true], ['next-ask', true], ['fresh-reply', undefined]]);
+                expect(onMessage.mock.calls.map(([msg]) =>
+                    [msg.messageId, msg.initializationReplay, msg.historicalSelectionReplay]))
+                    .toEqual([
+                        ['new-ask', true, undefined], ['next-ask', true, undefined],
+                        ['fresh-reply', undefined, undefined],
+                    ]);
                 await first.stop();
 
                 const restarted = createMcpBot(options);
@@ -718,6 +725,19 @@ describe('TeamsBot', () => {
             it('does not replay historic unbound questions but admits new replies in their discovered thread', async () => {
                 let historicPolls = 0;
                 const discovered: string[] = [];
+                const historicalReplies = [
+                    { id: 'topic-selection', body: { content: '/select topic stable-topic-id' },
+                        createdDateTime: '2020-01-01T00:00:03Z' },
+                    { id: 'numeric-topic', body: { content: '/select topic 12' },
+                        createdDateTime: '2020-01-01T00:00:02Z' },
+                    { id: 'create-topic', body: { content: '/create topic' },
+                        createdDateTime: '2020-01-01T00:00:01Z' },
+                    { id: 'old-question', body: { content: 'old question' },
+                        createdDateTime: '2020-01-01T00:00:02Z' },
+                    { id: 'old-selection', body: { content: '/select repo example' },
+                        createdDateTime: '2020-01-01T00:00:00Z' },
+                    { id: 'undated-selection', body: { content: '/select repo example' } },
+                ];
                 mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
                     const body = JSON.parse(String(options.body));
                     const tool = body.params?.name;
@@ -731,12 +751,8 @@ describe('TeamsBot', () => {
                                         hasMoreResults: true, nextLink: 'page-2' }
                                 : args.messageId === 'old-root'
                                     ? ++historicPolls === 1
-                                        ? [{ id: 'old-selection', body: { content: '/select repo example' },
-                                            createdDateTime: '2020-01-01T00:00:00Z' },
-                                            { id: 'old-question', body: { content: 'old question' } }]
-                                        : [{ id: 'old-selection', body: { content: '/select repo example' },
-                                            createdDateTime: '2020-01-01T00:00:00Z' },
-                                            { id: 'old-question', body: { content: 'old question' } },
+                                        ? historicalReplies
+                                        : [...historicalReplies,
                                             { id: 'new-question', body: { content: 'new question' },
                                                 createdDateTime: freshTime }]
                                     : []) }] };
@@ -745,6 +761,9 @@ describe('TeamsBot', () => {
                 });
                 const bot = createMcpBot({
                     pollChannelReplies: () => true,
+                    channelThreadRoots: channelId => discovered
+                        .filter(id => id.startsWith(`${channelId}:`))
+                        .map(id => id.slice(channelId.length + 1)),
                     onChannelRootDiscovered: async root => {
                         discovered.push(`${root.channelId}:${root.messageId}`);
                     },
@@ -752,12 +771,18 @@ describe('TeamsBot', () => {
                 await bot.start();
                 bot.setChannelId('channel-123');
                 await vi.advanceTimersByTimeAsync(1000);
-                expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-                    messageId: 'old-selection', replyToMessageId: 'old-root', initializationReplay: true,
-                }));
+                expect(onMessage.mock.calls.map(([msg]) =>
+                    [msg.messageId, msg.replyToMessageId, msg.initializationReplay, msg.historicalSelectionReplay]))
+                    .toEqual([
+                        ['old-selection', 'old-root', true, true],
+                        ['create-topic', 'old-root', true, true],
+                        ['topic-selection', 'old-root', true, true],
+                    ]);
                 expect(discovered).toEqual(['channel-123:recent-root', 'channel-123:old-root']);
                 await vi.advanceTimersByTimeAsync(1000);
-                expect(onMessage.mock.calls.map(([msg]) => msg.messageId)).toEqual(['old-selection', 'new-question']);
+                expect(onMessage.mock.calls.map(([msg]) => msg.messageId))
+                    .toEqual(['old-selection', 'create-topic', 'topic-selection', 'new-question']);
+                expect(onMessage.mock.calls[3][0].historicalSelectionReplay).toBeUndefined();
                 await bot.stop();
             });
 
@@ -864,6 +889,48 @@ describe('TeamsBot', () => {
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
                     messageId: 'new-reply', replyToMessageId: 'root',
+                }));
+                await bot.stop();
+            });
+
+            it('replays historic topic commands only after channel thread polling is enabled', async () => {
+                let enabled = false;
+                const discovered = vi.fn().mockResolvedValue(undefined);
+                const requestedPages: Array<string | undefined> = [];
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const tool = body.params?.name;
+                    const args = body.params?.arguments ?? {};
+                    if (tool === 'ListChannelMessages') requestedPages.push(args.nextLink);
+                    const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                                ? args.nextLink
+                                    ? { value: [{ id: 'historic', body: { content: 'old root' } }] }
+                                    : { value: [{ id: 'recent', body: { content: 'recent root' } }],
+                                        hasMoreResults: true, nextLink: 'page-2' }
+                                : args.messageId === 'historic'
+                                    ? [{ id: 'topic', body: { content: '/select topic stable-id' },
+                                        createdDateTime: '2020-01-01T00:00:00Z' }]
+                                    : []) }] };
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                const bot = createMcpBot({
+                    pollChannelReplies: () => enabled,
+                    onChannelRootDiscovered: discovered,
+                });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(requestedPages).toEqual([undefined]);
+                expect(discovered).not.toHaveBeenCalled();
+                expect(onMessage).not.toHaveBeenCalled();
+                enabled = true;
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(requestedPages).toEqual([undefined, undefined, 'page-2']);
+                expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    messageId: 'topic', initializationReplay: true, historicalSelectionReplay: true,
                 }));
                 await bot.stop();
             });

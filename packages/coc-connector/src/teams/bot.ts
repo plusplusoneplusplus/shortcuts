@@ -29,6 +29,14 @@ export function createTransport(mode: TeamsTransportMode, opts: {
     return new GraphTransport();
 }
 
+function isHistoricalSelectionCommand(text: string): boolean {
+    const command = text.trim();
+    if (/^\/select\s+repos?\s+\S/i.test(command)
+        || /^\/create\s+(?:chat\s+)?topic$/i.test(command)) return true;
+    const topic = /^\/select\s+(?:chat\s+)?topic\s+(.+)$/i.exec(command)?.[1].trim();
+    return !!topic && !/^\d+$/.test(topic);
+}
+
 export class TeamsBot implements MessagingConnector {
     /** Stable provider id for the MessagingConnector contract. */
     readonly provider = 'teams';
@@ -350,14 +358,20 @@ export class TeamsBot implements MessagingConnector {
             this._channelBaselineTime ??= Date.now();
             for (const msg of messages) {
                 if (this._seenChannelMessageIds.has(msg.messageId)) continue;
+                const discoveredHistoricalReply = !!msg.replyToMessageId
+                    && msg.initializationReplay === true
+                    && this.transport instanceof McpTransport
+                    && this.transport.hasDiscoveredRoot(msg.channelId, msg.replyToMessageId);
+                const timestamp = msg.createdDateTime ? Date.parse(msg.createdDateTime) : NaN;
+                const historicalSelectionReplay = discoveredHistoricalReply
+                    && Number.isFinite(timestamp)
+                    && timestamp <= this._channelBaselineTime
+                    && isHistoricalSelectionCommand(msg.text);
                 if (msg.initializationReplay
                     && this.transport instanceof McpTransport
                     && this.transport.hasDiscoveredRoot(msg.channelId, msg.replyToMessageId ?? msg.messageId)
-                    && (!msg.replyToMessageId || !msg.createdDateTime
-                        || !(Date.parse(msg.createdDateTime) > this._channelBaselineTime))
-                    && (!msg.replyToMessageId || !msg.createdDateTime
-                        || !Number.isFinite(Date.parse(msg.createdDateTime))
-                        || !/^\/select\s+repos?\s+\S/i.test(msg.text))) {
+                    && (!Number.isFinite(timestamp) || timestamp <= this._channelBaselineTime)
+                    && !historicalSelectionReplay) {
                     this._seenChannelMessageIds.add(msg.messageId);
                     continue;
                 }
@@ -379,8 +393,11 @@ export class TeamsBot implements MessagingConnector {
                     this.observeInbound('skipped', 'bot');
                 } else {
                     this.observeInbound('observed');
-                    await this.opts.onMessage(initial && trackedReply
-                        ? { ...msg, initializationReplay: true } : msg);
+                    await this.opts.onMessage({
+                        ...msg,
+                        ...(initial && trackedReply ? { initializationReplay: true } : {}),
+                        ...(historicalSelectionReplay ? { historicalSelectionReplay: true } : {}),
+                    });
                     activity = true;
                 }
                 this._seenChannelMessageIds.add(msg.messageId);

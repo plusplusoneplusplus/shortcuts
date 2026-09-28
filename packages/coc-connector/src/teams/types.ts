@@ -14,6 +14,8 @@ export interface InboundTeamsMessage {
     createdDateTime?: string;
     /** This tracked reply was discovered while establishing the initial channel watermark. */
     initializationReplay?: boolean;
+    /** Historic repo/topic control reply from paginated root backfill; restore selection without responding. */
+    historicalSelectionReplay?: boolean;
 }
 
 /**
