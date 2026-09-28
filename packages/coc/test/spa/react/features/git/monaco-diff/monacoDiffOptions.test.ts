@@ -4,8 +4,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync, readdirSync } from 'fs';
+import { join, relative } from 'path';
 import {
     DIFF_REF_URI_SCHEME,
     buildDiffEditorOptions,
@@ -145,8 +145,27 @@ describe('source assertions', () => {
         }
     });
 
-    it('the working-tree surface still renders the classic viewers only', () => {
-        const surface = readFileSync(join(SRC, 'features/git/working-tree/WorkingTreeFileDiff.tsx'), 'utf8');
-        expect(surface).not.toMatch(/MonacoFileDiffViewer/);
+    it('only the working-tree surface reads the diff-engine preference or renders the Monaco diff viewer', () => {
+        const readers: string[] = [];
+        const walk = (dir: string) => {
+            for (const entry of readdirSync(dir, { withFileTypes: true })) {
+                const full = join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (/\.tsx?$/.test(entry.name)) {
+                    const text = readFileSync(full, 'utf8');
+                    if (/\buseDiffEngine\(|<MonacoFileDiffViewer\b/.test(text)) readers.push(relative(SRC, full).replace(/\\/g, '/'));
+                }
+            }
+        };
+        walk(SRC);
+        expect(readers.filter(f => !f.endsWith('hooks/useDiffEngine.ts'))).toEqual(['features/git/working-tree/WorkingTreeFileDiff.tsx']);
+    });
+
+    it('diffEngine resolves to legacy by default and the preference code adds no TODOs', () => {
+        const hook = readFileSync(join(SRC, 'features/git/hooks/useDiffEngine.ts'), 'utf8');
+        expect(hook).toMatch(/DEFAULT_DIFF_ENGINE: DiffEngine = 'legacy'/);
+        for (const file of ['features/git/hooks/useDiffEngine.ts', 'features/git/diff/DiffViewToggle.tsx', 'features/git/working-tree/WorkingTreeFileDiff.tsx']) {
+            expect(readFileSync(join(SRC, file), 'utf8'), file).not.toMatch(/TODO|FIXME/);
+        }
     });
 });

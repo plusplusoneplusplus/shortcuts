@@ -4,9 +4,15 @@
  * Fetches staged or unstaged diff for a single file via
  * GET /api/workspaces/:id/git/changes/files/<path>/diff?stage=<stage>
  * and renders it in UnifiedDiffViewer. Untracked files show a placeholder.
+ *
+ * When the diff-engine preference is `monaco`, both full-text sides come from
+ * GET .../changes/files/<path>/content?stage=<stage> and render in
+ * MonacoFileDiffViewer. Binary, oversized or unloadable content stays on the
+ * classic viewer.
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
+import type { GitWorkingTreeFileContentResponse } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
@@ -14,14 +20,17 @@ import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewe
 import type { DiffSelectionDragSource } from '../diff/diffSelectionContext';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
-import { DiffViewToggle } from '../diff/DiffViewToggle';
+import { DiffViewToggle, DiffEngineToggle } from '../diff/DiffViewToggle';
+import { useDiffEngine } from '../hooks/useDiffEngine';
+import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from '../diff/MonacoFileDiffViewer';
+import type { DiffEditorFactory } from '../diff/monacoDiffEditorAdapter';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
-import { useCrossFileNav } from '../hooks/useCrossFileNav';
+import { useCrossFileNav, type HunkNavigationHandle } from '../hooks/useCrossFileNav';
 import { PreviewPane } from '../../repo-detail/explorer';
 import { repoRelative } from './WorkingTree';
 import { buildDiffContext } from '../../../../comments/diff-context-utils';
@@ -49,6 +58,8 @@ export interface WorkingTreeFileDiffProps {
      * so the ghost entry disappears.
      */
     onFileMissing?: () => void;
+    /** Monaco diff editor factory; tests pass an owned adapter. */
+    createDiffEditor?: DiffEditorFactory;
 }
 
 const STAGE_LABEL: Record<string, string> = {
@@ -63,7 +74,13 @@ type PopupState = {
     selectedText: string;
 } | null;
 
-export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing }: WorkingTreeFileDiffProps) {
+/** Both file sides for the Monaco engine, keyed by the request that loaded them. */
+type EditorContentState =
+    | { key: string; status: 'loading' }
+    | { key: string; status: 'loaded'; content: GitWorkingTreeFileContentResponse }
+    | { key: string; status: 'failed' };
+
+export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor }: WorkingTreeFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -79,6 +96,9 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [viewMode, setViewMode] = useDiffViewMode();
+    const [diffEngine, setDiffEngine] = useDiffEngine();
+    const monacoViewerRef = useRef<MonacoFileDiffViewerHandle>(null);
+    const [editorContent, setEditorContent] = useState<EditorContentState | null>(null);
     // The untracked file vanished from disk after the change list was fetched.
     const [fileMissing, setFileMissing] = useState(false);
     const fileMissingNotifiedRef = useRef(false);
@@ -93,17 +113,42 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     // Route this file's diff fetch to the selected clone's server (AC-07).
     const cloneClient = useCocClient(workspaceId);
 
+    // Monaco engine: load both full-text sides for this file and stage.
+    const wantsEditor = diffEngine === 'monaco' && stage !== 'untracked';
+    const contentKey = `${workspaceId}\u0000${stage}\u0000${filePath}`;
+    useEffect(() => {
+        if (!wantsEditor) return;
+        let cancelled = false;
+        setEditorContent({ key: contentKey, status: 'loading' });
+        cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage as 'staged' | 'unstaged')
+            .then(content => { if (!cancelled) setEditorContent({ key: contentKey, status: 'loaded', content }); })
+            .catch(() => { if (!cancelled) setEditorContent({ key: contentKey, status: 'failed' }); });
+        return () => { cancelled = true; };
+    }, [wantsEditor, contentKey, workspaceId, filePath, stage, cloneClient]);
+
+    const currentContent = editorContent?.key === contentKey ? editorContent : null;
+    const editorLoading = wantsEditor && (!currentContent || currentContent.status === 'loading');
+    const editorSides = wantsEditor && currentContent?.status === 'loaded'
+        && !currentContent.content.binary && !currentContent.content.tooLarge
+        ? currentContent.content
+        : null;
+    const showEditor = editorSides !== null;
+    // Classic renders for the legacy engine and when the editor cannot show this file.
+    const classicActive = !wantsEditor || (!editorLoading && !showEditor);
+
+    const hunkNavRef: RefObject<HunkNavigationHandle | null> = showEditor ? monacoViewerRef : viewerRef;
     const { handleNext, handlePrev } = useCrossFileNav({
         filePath,
         files: workingTreeFiles ?? [],
-        viewerRef,
+        viewerRef: hunkNavRef,
         onNavigateToFile,
     });
 
     // Auto-scroll to target hunk after diff loads (for cross-file navigation)
     const hasScrolledRef = useRef(false);
     useEffect(() => {
-        if (!initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
+        // The Monaco viewer applies initialHunkTarget itself once its diff is computed.
+        if (!initialHunkTarget || !diff || loading || !classicActive || hasScrolledRef.current) return;
         hasScrolledRef.current = true;
         const timer = setTimeout(() => {
             const viewer = viewerRef.current;
@@ -117,7 +162,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             }
         }, 50);
         return () => clearTimeout(timer);
-    }, [initialHunkTarget, diff, loading]);
+    }, [initialHunkTarget, diff, loading, classicActive]);
 
     const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
         () => ({ workspaceId, filePath, ref: stage === 'staged' ? { type: 'staged' } : { type: 'working-tree' } }),
@@ -224,6 +269,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                 <div className="flex items-center gap-2">
                     <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
+                    {stage !== 'untracked' && <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />}
                     {stage !== 'untracked' && <DiffViewToggle mode={viewMode} onChange={setViewMode} />}
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">{STAGE_LABEL[stage]}</span>
                     {stage !== 'untracked' && (
@@ -264,7 +310,21 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                                 onNotFound={handlePreviewNotFound}
                             />
                         </div>
-                    ) : loading ? (
+                    ) : editorSides ? (
+                        <MonacoFileDiffViewer
+                            ref={monacoViewerRef}
+                            workspaceId={workspaceId}
+                            relativePath={repoRoot ? repoRelative(filePath, repoRoot) : filePath}
+                            stage={stage as 'staged' | 'unstaged'}
+                            original={editorSides.base.content}
+                            modified={editorSides.head.content}
+                            viewMode={viewMode}
+                            initialHunkTarget={initialHunkTarget}
+                            onLinesReady={setDiffLines}
+                            createEditor={createDiffEditor}
+                            data-testid="working-tree-file-diff-editor"
+                        />
+                    ) : loading || editorLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="working-tree-file-diff-loading">
                             <Spinner size="sm" /> Loading diff...
                         </div>
@@ -325,7 +385,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                         <div className="text-xs text-[#848484]" data-testid="working-tree-file-diff-empty">(no changes)</div>
                     )}
                 </div>
-                {diff && !loading && !error && stage !== 'untracked' && (
+                {diff && !loading && !error && classicActive && stage !== 'untracked' && (
                     <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
                 )}
 
