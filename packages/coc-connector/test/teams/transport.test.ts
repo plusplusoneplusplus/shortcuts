@@ -5,7 +5,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+const initialized = vi.fn();
+vi.stubGlobal('fetch', (url: string, options?: RequestInit) => {
+    const body = typeof options?.body === 'string' ? JSON.parse(options.body) : null;
+    if (body?.method === 'notifications/initialized') {
+        initialized(body);
+        return Promise.resolve({ ok: true, headers: new Map(), body: { cancel: async () => {} } });
+    }
+    return mockFetch(url, options);
+});
 
 import { createTransport } from '../../src/teams/bot';
 import { GraphTransport } from '../../src/teams/transport-graph';
@@ -189,6 +197,7 @@ describe('McpTransport', () => {
     beforeEach(() => {
         transport = new McpTransport('https://mcp.test.com/server');
         mockFetch.mockReset();
+        initialized.mockClear();
     });
 
     it('should initialize MCP session', async () => {
@@ -200,6 +209,7 @@ describe('McpTransport', () => {
         } as any);
 
         await transport.initialize('mcp-token', { teamId: 'team-1' });
+        expect(initialized).toHaveBeenCalledWith({ jsonrpc: '2.0', method: 'notifications/initialized' });
     });
 
     it('should send via MCP tool call', async () => {
@@ -207,7 +217,7 @@ describe('McpTransport', () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             headers: new Map([['mcp-session-id', 'session-1']]),
-            json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
         } as any);
         await transport.initialize('token', { teamId: 'team-1' });
 
@@ -226,6 +236,73 @@ describe('McpTransport', () => {
         expect(id).toBe('mcp-msg-1');
     });
 
+    it.each([
+        ['ReplyToChannelMessage', 'root-message'],
+        ['SendMessageToChannel', undefined],
+    ])('escapes Windows paths in %s content before the MCP call', async (toolName, replyToId) => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map([['mcp-session-id', 'session-1']]),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
+        } as any);
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 2, result: { tools: [{ name: toolName }] } }),
+        } as any);
+        await transport.initialize('token', { teamId: 'team-1' });
+
+        const text = '**Agents / Repos** (2):\n1. **Alpha** — `C:\\src\\alpha`\n2. **Beta** — `D:\\work\\beta`';
+        mockFetch.mockImplementationOnce(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(options.body as string);
+            const content = body.params.arguments.content as string;
+            const invalidEscape = /(?<!\\)\\[a-z]/i.test(content);
+            return {
+                ok: true,
+                headers: new Map(),
+                json: async () => ({
+                    jsonrpc: '2.0', id: 3,
+                    result: invalidEscape
+                        ? { isError: true, content: [{ type: 'text', text: 'Error: Invalid pattern. Unrecognized escape sequence \\s.' }] }
+                        : { content: [{ type: 'text', text: '{"id":"reply-1"}' }] },
+                }),
+            } as any;
+        });
+
+        await expect(transport.send('channel-1', text, replyToId ? { replyToId } : undefined))
+            .resolves.toBe('reply-1');
+        const body = JSON.parse(mockFetch.mock.calls.at(-1)![1].body);
+        expect(body.params).toEqual({
+            name: toolName,
+            arguments: {
+                teamId: 'team-1',
+                channelId: 'channel-1',
+                content: text.replace(/\\/g, '\\\\'),
+                contentType: 'html',
+                ...(replyToId ? { messageId: replyToId } : {}),
+            },
+        });
+    });
+
+    it('rejects an MCP tool error even when its text lacks an Error: prefix', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map([['mcp-session-id', 'session-1']]),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
+        } as any);
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            headers: new Map(),
+            json: async () => ({
+                jsonrpc: '2.0', id: 3,
+                result: { isError: true, content: [{ type: 'text', text: 'Send rejected' }] },
+            }),
+        } as any);
+        await expect(transport.send('channel-1', 'plain text', { replyToId: 'root-message' }))
+            .rejects.toThrow('Send rejected');
+    });
+
     it('should stop and nullify client', async () => {
         transport.stop();
         // After stop, operations should throw
@@ -237,7 +314,7 @@ describe('McpTransport', () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             headers: new Map([['mcp-session-id', 'session-1']]),
-            json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
         } as any);
         await transport.initialize('token', { teamId: 'team-1' });
 
@@ -270,7 +347,7 @@ describe('McpTransport', () => {
         mockFetch.mockResolvedValueOnce({
             ok: true,
             headers: new Map([['mcp-session-id', 'session-1']]),
-            json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
         } as any);
         await transport.initialize('token', { teamId: 'team-1' });
 
@@ -357,7 +434,7 @@ describe('McpTransport', () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 headers: new Map([['mcp-session-id', 'session-dm']]),
-                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
             } as any);
             mockFetch.mockResolvedValueOnce({
                 ok: true,
@@ -389,14 +466,14 @@ describe('McpTransport', () => {
                 }),
             } as any);
 
-            const msgId = await t.send('19:chat@spaces', 'Hello self!');
+            const msgId = await t.send('19:chat@spaces', 'Repo: C:\\src\\alpha');
             expect(msgId).toBe('dm-msg-1');
 
             // Verify the tool called was SendMessageToSelf
             const lastCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
             const body = JSON.parse(lastCall[1].body);
             expect(body.params.name).toBe('SendMessageToSelf');
-            expect(body.params.arguments.content).toBe('Hello self!');
+            expect(body.params.arguments.content).toBe('Repo: C:\\\\src\\\\alpha');
         });
 
         it('should fall back to ListChats when SendMessageToSelf init fails', async () => {
@@ -406,7 +483,7 @@ describe('McpTransport', () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 headers: new Map([['mcp-session-id', 'session-dm']]),
-                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
             } as any);
             // listTools — has both SendMessageToSelf and ListChats
             mockFetch.mockResolvedValueOnce({
@@ -448,7 +525,7 @@ describe('McpTransport', () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 headers: new Map([['mcp-session-id', 'session-dm']]),
-                json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }),
+                json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
             } as any);
             mockFetch.mockResolvedValueOnce({
                 ok: true,

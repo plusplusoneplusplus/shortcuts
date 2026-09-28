@@ -126,6 +126,7 @@ export interface AdminResolvedConfig {
     autoAgentProviderRouting?: boolean;
     ralphMultiAgentGrill?: boolean;
     nativeCliSessions?: boolean;
+    teamsBridgeObservability?: boolean;
     quickAskSidenotes?: boolean;
     arxivPaperIngest?: boolean;
     gitWorktreeExecution?: boolean;
@@ -215,6 +216,7 @@ export interface AdminConfigUpdate {
   'features.commitChatLensDormantMode'?: 'ghost' | 'pill';
   'features.autoAgentProviderRouting'?: boolean;
   'features.nativeCliSessions'?: boolean;
+  'features.teamsBridgeObservability'?: boolean;
   'features.quickAskSidenotes'?: boolean;
   'features.arxivPaperIngest'?: boolean;
   'features.gitWorktreeExecution'?: boolean;
@@ -273,6 +275,7 @@ export interface RuntimeDashboardConfig {
     /** Ask-mode dangerous shell command approval gate (feature flag, default off). */
     dangerousCommandGuardEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
+    teamsBridgeObservabilityEnabled: boolean;
     quickAskSidenotesEnabled: boolean;
     arxivPaperIngestEnabled: boolean;
     remoteShellEnabled: boolean;

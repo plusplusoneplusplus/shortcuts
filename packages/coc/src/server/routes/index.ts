@@ -832,6 +832,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     });
 
+    const enqueueMessagingChat = (workspaceId: string, message: string) => bridge.enqueue({
+        type: 'chat',
+        repoId: workspaceId,
+        payload: { kind: 'chat', mode: 'ask', prompt: message, workspaceId },
+        config: {},
+        priority: 'normal' as const,
+    });
+
     // Container default agent session routes (feature-flagged)
     if (opts.resolvedConfig?.containerDefaultAgent?.enabled) {
         const Database = require('better-sqlite3');
@@ -861,34 +869,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     }],
                 }));
             },
-            forwardMessage: async (_agentId, workspaceId, message, _existingProcessId) => {
-                const taskId = await bridge.enqueue({
-                    type: 'chat',
-                    repoId: workspaceId,
-                    payload: { message, workspaceId },
-                    config: {},
-                    priority: 'normal' as const,
-                });
-                return taskId;
-            },
+            forwardMessage: (_agentId, workspaceId, message, _existingProcessId) =>
+                enqueueMessagingChat(workspaceId, message),
         });
     }
 
     const teamsMessagingManager = registerTeamsMessagingRoutes(routes, {
         dataDir,
+        getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,
-        enqueueChat: async (workspaceId, message) => {
-            const taskId = await bridge.enqueue({
-                type: 'chat',
-                repoId: workspaceId,
-                payload: { message, workspaceId },
-                config: {},
-                priority: 'normal' as const,
-            });
-            return taskId;
-        },
+        enqueueChat: enqueueMessagingChat,
         executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
     });
 

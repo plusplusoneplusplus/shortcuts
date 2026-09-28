@@ -6,6 +6,10 @@
 import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from './types';
 import { McpClient } from './mcp-client';
 
+function escapeMcpContent(text: string): string {
+    return text.replace(/\\/g, '\\\\');
+}
+
 export class McpTransport implements TeamsTransport {
     private client: McpClient | null = null;
     private serverUrl: string;
@@ -122,7 +126,7 @@ export class McpTransport implements TeamsTransport {
         const args: Record<string, unknown> = {
             teamId: this.teamId,
             channelId,
-            content: text,
+            content: escapeMcpContent(text),
             contentType: 'html',
         };
 
@@ -147,8 +151,8 @@ export class McpTransport implements TeamsTransport {
         const responseText = result.content?.[0]?.text ?? '';
         console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
 
-        if (responseText.startsWith('Error:')) {
-            throw new Error(responseText);
+        if (result.isError || responseText.startsWith('Error:')) {
+            throw new Error(responseText || `${toolName} failed`);
         }
 
         try {
@@ -163,16 +167,13 @@ export class McpTransport implements TeamsTransport {
     private async sendChat(_chatId: string, text: string): Promise<string> {
         if (!this.client) throw new Error('McpTransport not initialized');
 
-        // Escape backslashes — the MCP server rejects unrecognized escape sequences in content
-        const sanitizedText = text.replace(/\\/g, '\\\\');
-
         // SendMessageToSelf sends to the logged-in user — no chatId needed
         const toolName = this._availableTools.includes('SendMessageToSelf')
             ? 'SendMessageToSelf'
             : (this._availableTools.includes('SendMessageToChat') ? 'SendMessageToChat' : 'SendMessageToSelf');
 
         const args: Record<string, unknown> = {
-            content: sanitizedText,
+            content: escapeMcpContent(text),
             contentType: 'html',
         };
 
@@ -190,8 +191,8 @@ export class McpTransport implements TeamsTransport {
         const responseText = result.content?.[0]?.text ?? '';
         console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
 
-        if (responseText.startsWith('Error:')) {
-            throw new Error(responseText);
+        if (result.isError || responseText.startsWith('Error:')) {
+            throw new Error(responseText || `${toolName} failed`);
         }
 
         try {

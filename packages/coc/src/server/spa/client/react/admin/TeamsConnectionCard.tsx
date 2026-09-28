@@ -15,7 +15,86 @@ interface TeamsStatus {
     teamName: string;
     channelName: string;
     botName: string;
+    teamsBridgeObservabilityEnabled?: boolean;
 }
+
+type AttemptResult = 'disconnected' | 'superseded' | 'failed' | 'interrupted';
+type AttemptStage = 'started' | 'authenticating' | 'resolving' | 'starting-polling' | 'connected';
+
+interface AttemptSummary {
+    id: string;
+    startedAt: string;
+    endedAt?: string;
+    result?: AttemptResult;
+    stage: AttemptStage;
+    failureCategory?: string;
+    degraded?: boolean;
+}
+
+interface AttemptDetail extends AttemptSummary {
+    phases: Array<{ stage: AttemptStage; at: string }>;
+    events: Array<{ type: string; at: string; category?: string }>;
+    totals: Record<string, number>;
+    lastPollSuccessAt?: string;
+    lastSendSuccessAt?: string;
+    pollDegraded?: boolean;
+    sendDegraded?: boolean;
+}
+
+interface AttemptPage {
+    attempts: AttemptSummary[];
+    total: number;
+    nextOffset: number | null;
+}
+
+const stageLabels: Record<AttemptStage, string> = {
+    started: 'Starting',
+    authenticating: 'Authenticating',
+    resolving: 'Resolving team/channel',
+    'starting-polling': 'Starting polling',
+    connected: 'Connected',
+};
+
+function attemptLabel(attempt: AttemptSummary): string {
+    if (attempt.result === 'failed') return 'Failed';
+    if (attempt.result === 'interrupted') return 'Interrupted by restart';
+    if (attempt.result === 'superseded') return 'Superseded';
+    if (attempt.result === 'disconnected') return 'Disconnected';
+    if (attempt.degraded) return 'Connected · degraded';
+    return stageLabels[attempt.stage];
+}
+
+function localTime(value: string): string {
+    return new Date(value).toLocaleString();
+}
+
+function duration(start: string, end?: string): string {
+    const ms = Math.max(0, new Date(end ?? Date.now()).getTime() - new Date(start).getTime());
+    return ms < 60_000 ? `${Math.floor(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m ${Math.floor(ms % 60_000 / 1000)}s`;
+}
+
+function timeline(detail: AttemptDetail): Array<{ at: string; label: string }> {
+    return [
+        ...detail.phases.map(phase => ({ at: phase.at, label: stageLabels[phase.stage] })),
+        ...detail.events.map(event => ({
+            at: event.at,
+            label: `${event.type === 'reply-accepted' ? 'MCP accepted reply' : event.type.replace(/-/g, ' ')}${event.category ? ` · ${event.category}` : ''}`,
+        })),
+        ...(detail.endedAt && detail.result
+            ? [{ at: detail.endedAt, label: attemptLabel(detail) }]
+            : []),
+    ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
+const guidance: Record<string, string> = {
+    configuration: 'Check the bridge configuration.',
+    authentication: 'Check Microsoft sign-in.',
+    resolution: 'Check team and channel access.',
+    polling: 'Check polling availability.',
+    dispatch: 'Check command processing.',
+    send: 'Check reply delivery through MCP.',
+    unknown: 'Check bridge health and try reconnecting.',
+};
 
 const base = () => getRawApiBase();
 
@@ -40,6 +119,16 @@ export function TeamsConnectionCard() {
     const [busy, setBusy] = useState(false);
     const [authorizing, setAuthorizing] = useState(false);
     const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
+    const [history, setHistory] = useState<AttemptPage | null>(null);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyError, setHistoryError] = useState<string | null>(null);
+    const [historyOffset, setHistoryOffset] = useState(0);
+    const [displayOffset, setDisplayOffset] = useState(0);
+    const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [detail, setDetail] = useState<AttemptDetail | null>(null);
+    const [detailError, setDetailError] = useState<string | null>(null);
+    const historyRequest = useRef(0);
+    const detailRequest = useRef(0);
     const oauth = useRef(new McpOAuthFlowController());
     const mounted = useRef(false);
     const dirty = status !== null && (
@@ -48,11 +137,33 @@ export function TeamsConnectionCard() {
         || channelName !== status.channelName
         || botName !== status.botName
     );
-    const load = useCallback(async (syncForm = false) => {
+    const load = useCallback(async (syncForm = false, offset = historyOffset) => {
         try {
             const next = await request<TeamsStatus>('/messaging/teams/status');
             if (!mounted.current) return;
             setStatus(next);
+            if (next.teamsBridgeObservabilityEnabled) {
+                const generation = ++historyRequest.current;
+                setHistoryLoading(true);
+                try {
+                    const page = await request<AttemptPage>(`/messaging/teams/attempts?offset=${offset}&limit=20`);
+                    if (mounted.current && generation === historyRequest.current) {
+                        setHistory(page);
+                        setDisplayOffset(offset);
+                        setHistoryError(null);
+                    }
+                } catch (err) {
+                    if (mounted.current && generation === historyRequest.current)
+                        setHistoryError(err instanceof Error ? err.message : String(err));
+                } finally {
+                    if (mounted.current && generation === historyRequest.current) setHistoryLoading(false);
+                }
+            } else {
+                historyRequest.current++;
+                setHistory(null);
+                setHistoryError(null);
+                setHistoryLoading(false);
+            }
             if (syncForm) {
                 setServerUrl(next.serverUrl ?? '');
                 setTeamName(next.teamName);
@@ -62,7 +173,23 @@ export function TeamsConnectionCard() {
         } catch (err) {
             if (mounted.current) setError(err instanceof Error ? err.message : String(err));
         }
-    }, []);
+    }, [historyOffset]);
+
+    useEffect(() => {
+        if (!expandedId || !status?.teamsBridgeObservabilityEnabled) return;
+        const generation = ++detailRequest.current;
+        setDetail(null);
+        setDetailError(null);
+        void request<{ attempt: AttemptDetail }>(`/messaging/teams/attempts/${encodeURIComponent(expandedId)}`)
+            .then(response => {
+                if (mounted.current && generation === detailRequest.current) setDetail(response.attempt);
+            })
+            .catch(err => {
+                if (mounted.current && generation === detailRequest.current)
+                    setDetailError(err instanceof Error ? err.message : String(err));
+            });
+        return () => { detailRequest.current++; };
+    }, [expandedId, history, status?.teamsBridgeObservabilityEnabled]);
 
     useEffect(() => {
         mounted.current = true;
@@ -70,6 +197,8 @@ export function TeamsConnectionCard() {
         const timer = setInterval(() => void load(), 5000);
         return () => {
             mounted.current = false;
+            historyRequest.current++;
+            detailRequest.current++;
             clearInterval(timer);
             oauth.current.stopAll();
         };
@@ -80,7 +209,8 @@ export function TeamsConnectionCard() {
         setError(null);
         try {
             await action();
-            await load();
+            setHistoryOffset(0);
+            await load(false, 0);
         } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
             await load();
@@ -170,6 +300,62 @@ export function TeamsConnectionCard() {
                 </p>}
                 {authorizationUrl && <p className="ar-teams-warning">Open the sign-in link on the same computer as CoC; the callback uses localhost.</p>}
                 {dirty && <p className="ar-teams-warning">Save endpoint and channel changes before connecting.</p>}
+                {status?.teamsBridgeObservabilityEnabled && (
+                    <section className="ar-teams-history" aria-label="Connection attempts">
+                        <h4>Connection attempts</h4>
+                        {historyLoading && !history && <p role="status">Loading connection history…</p>}
+                        {historyError && <p role="alert" className="ar-teams-error">
+                            Could not load connection history: {historyError}{history && ' · Previous results are stale.'}
+                        </p>}
+                        {history && history.attempts.length === 0 && <p>No connection attempts yet{status.enabled ? '.' : ' (bridge disabled).'}</p>}
+                        {history?.attempts.map(attempt => (
+                            <details key={attempt.id} open={expandedId === attempt.id}
+                                onToggle={event => {
+                                    if (event.currentTarget.open && expandedId !== attempt.id) setExpandedId(attempt.id);
+                                    else if (!event.currentTarget.open && expandedId === attempt.id) setExpandedId(null);
+                                }}>
+                                <summary className="ar-teams-attempt-summary">
+                                    <time dateTime={attempt.startedAt}>{localTime(attempt.startedAt)}</time>
+                                    <strong>{attempt.result === 'failed' ? '✕ ' : attempt.degraded ? '! ' : '○ '}{attemptLabel(attempt)}</strong>
+                                    <span>{duration(attempt.startedAt, attempt.endedAt)}</span>
+                                    {attempt.failureCategory && <span>{attempt.failureCategory} failure</span>}
+                                </summary>
+                                {expandedId === attempt.id && (
+                                    detail?.id === attempt.id ? (
+                                        <div className="ar-teams-attempt-detail">
+                                            <ol className="ar-teams-timeline">
+                                                {timeline(detail).map((event, index) => <li key={index}>
+                                                    <time dateTime={event.at}>{localTime(event.at)}</time> {event.label}
+                                                </li>)}
+                                            </ol>
+                                            {detail.failureCategory && <p>{guidance[detail.failureCategory] ?? guidance.unknown}</p>}
+                                            {detail.events.some(event => event.type === 'reply-rejected') && <p>{guidance.send}</p>}
+                                            <p>Poll: {detail.pollDegraded ? 'Degraded' : detail.lastPollSuccessAt ? 'Healthy' : 'No successful poll yet'} · last success: {detail.lastPollSuccessAt ? localTime(detail.lastPollSuccessAt) : 'none'}</p>
+                                            <p>Reply send: {detail.sendDegraded ? 'Degraded' : detail.lastSendSuccessAt ? 'Healthy' : 'No MCP acceptance yet'} · last MCP acceptance: {detail.lastSendSuccessAt ? localTime(detail.lastSendSuccessAt) : 'none'}</p>
+                                            <p>MCP acceptance does not confirm Teams displayed a reply.</p>
+                                            <dl className="ar-teams-counts">
+                                                {Object.entries(detail.totals).map(([key, count]) => (
+                                                    <div key={key}><dt>{key.replace(/([A-Z])/g, ' $1')}</dt><dd>{count}</dd></div>
+                                                ))}
+                                            </dl>
+                                        </div>
+                                    ) : <p role={detailError ? 'alert' : 'status'}>
+                                        {detailError ? `Could not load attempt: ${detailError}` : 'Loading attempt…'}
+                                    </p>
+                                )}
+                            </details>
+                        ))}
+                        {history && history.total > 20 && (
+                            <nav className="ar-teams-pages" aria-label="Connection history pages">
+                                <Button size="sm" disabled={historyLoading || displayOffset === 0}
+                                    onClick={() => setHistoryOffset(Math.max(0, displayOffset - 20))}>Previous</Button>
+                                <span>{displayOffset + 1}–{displayOffset + history.attempts.length} of {history.total}</span>
+                                <Button size="sm" disabled={historyLoading || history.nextOffset === null}
+                                    onClick={() => setHistoryOffset(history.nextOffset ?? 0)}>Next</Button>
+                            </nav>
+                        )}
+                    </section>
+                )}
             </div>
         </SettingsCard>
     );

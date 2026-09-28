@@ -35,6 +35,10 @@ export interface TeamsBotOptions {
     onStatusChange?: (status: BotStatus) => void;
     /** Called when an error occurs. */
     onError?: (error: string) => void;
+    /** Safe poll outcome observer; never receives transport data. */
+    onPoll?: (outcome: 'success' | 'failure') => void;
+    /** Safe inbound routing observer; never receives message content or IDs. */
+    onInbound?: (outcome: 'observed' | 'skipped', reason?: 'initial' | 'unchanged' | 'own' | 'empty' | 'bot') => void;
     /** Polling interval in ms for checking new messages (default: 3000). */
     pollIntervalMs?: number;
     /** Display name for the bot in Teams (default: "CoC"). */

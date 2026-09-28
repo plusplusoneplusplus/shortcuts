@@ -103,12 +103,18 @@ all have their own `references/*.md`.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
 - **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
-  team/channel inbound command bridge. Its `/api/messaging/teams/*` authorization
-  flow uses the official MCP SDK for discovery, PKCE, exchange, and read-only
+  team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
+  with a prompt in the selected workspace (or the first registered workspace).
+  Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
+  for discovery, PKCE, exchange, and read-only
   handshake verification; verified tokens enter the shared Copilot OAuth cache
   for polling. It is separate from container `/container/messaging/*` and the
   container self-chat relay. Keep enable/disable, startup, and shutdown
-  synchronized with the polling manager.
+  synchronized with the polling manager. `messaging/teams-attempt-store.ts`
+  keeps server-global connection history in the CoC data directory; its
+  persisted format allowlists safe stages, outcomes, and failure categories.
+  `features.teamsBridgeObservability` gates collection and read-only history
+  routes and defaults off; history responses must project allowlisted fields.
 - **Process mutation admission** uses the shared keyed coordinator in
   `src/server/processes/process-operation-admission.ts`. Follow-up delivery and
   rewind share that section. Follow-up delivery re-reads process/task state

@@ -18,6 +18,117 @@ const status = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('TeamsConnectionCard', () => {
+    const active = {
+        id: 'attempt-1', startedAt: '2026-01-01T00:00:00Z', stage: 'connected',
+        degraded: true,
+    };
+    const failed = {
+        id: 'attempt-2', startedAt: '2026-01-01T00:00:00Z', endedAt: '2026-01-01T00:00:05Z',
+        stage: 'authenticating', result: 'failed', failureCategory: 'authentication',
+    };
+    const details = {
+        ...active, phases: [{ stage: 'started', at: active.startedAt }, { stage: 'connected', at: active.startedAt }],
+        events: [{ type: 'reply-rejected', at: active.startedAt, category: 'send' }],
+        totals: { pollsSucceeded: 12, sendAttempted: 1, failed: 1 },
+        pollDegraded: false, sendDegraded: true,
+        lastPollSuccessAt: active.startedAt,
+    };
+
+    it('hides history when the owning server omits or disables the flag', async () => {
+        const fetch = vi.fn(async () => ({ ok: true, json: async () => status }));
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByText(/Connection: disconnected/);
+        expect(screen.queryByText('Connection attempts')).toBeNull();
+        expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows loading and empty history independently of connection status', async () => {
+        let resolveHistory!: (value: { ok: boolean; json: () => Promise<object> }) => void;
+        vi.stubGlobal('fetch', vi.fn((url: string) => url.includes('/attempts?')
+            ? new Promise(resolve => { resolveHistory = resolve; })
+            : Promise.resolve({ ok: true, json: async () => ({ ...status, teamsBridgeObservabilityEnabled: true }) })));
+        render(<TeamsConnectionCard />);
+        expect(await screen.findByText('Loading connection history…')).toBeDefined();
+        resolveHistory({ ok: true, json: async () => ({ attempts: [], total: 0, nextOffset: null }) });
+        expect(await screen.findByText(/No connection attempts yet/)).toBeDefined();
+    });
+
+    it('expands active degraded and failed attempts using native keyboard-accessible summaries', async () => {
+        const fetch = vi.fn(async (url: string) => ({
+            ok: true, json: async () => url.endsWith('/status')
+                ? { ...status, enabled: true, status: 'connected', teamsBridgeObservabilityEnabled: true }
+                : url.endsWith('/attempt-1') ? { attempt: details }
+                    : url.includes('/attempts?') ? { attempts: [active, failed], total: 2, nextOffset: null }
+                        : { attempt: { ...failed, phases: [{ stage: 'started', at: failed.startedAt }], events: [], totals: {} } },
+        }));
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        const degraded = await screen.findByText(/Connected · degraded/);
+        const summary = degraded.closest('summary')!;
+        expect(summary.tagName).toBe('SUMMARY');
+        summary.focus();
+        expect(document.activeElement).toBe(summary);
+        fireEvent.click(summary);
+        expect(await screen.findByText(/MCP acceptance does not confirm/)).toBeDefined();
+        expect(screen.getByText(/Reply send: Degraded/)).toBeDefined();
+        expect(screen.getByText('Check reply delivery through MCP.')).toBeDefined();
+        expect(screen.getByText('polls Succeeded')).toBeDefined();
+        expect(screen.getByText(/authentication failure/)).toBeDefined();
+        expect(screen.getByText(/✕ Failed/)).toBeDefined();
+    });
+
+    it('pages newest-first history and refreshes immediately after reconnect', async () => {
+        let refreshed = false;
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            if (url.endsWith('/reconnect') && options?.method === 'POST') refreshed = true;
+            return {
+                ok: true,
+                json: async () => url.endsWith('/status')
+                    ? { ...status, enabled: true, teamsBridgeObservabilityEnabled: true }
+                    : url.includes('offset=20') ? { attempts: [failed], total: 21, nextOffset: null }
+                        : url.includes('/attempts?') ? {
+                            attempts: [refreshed ? { ...active, id: 'attempt-new' } : active],
+                            total: 21, nextOffset: 20,
+                        } : { ok: true },
+            };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByText(/Connected · degraded/);
+        fireEvent.click(screen.getByText('Next'));
+        expect(await screen.findByText(/✕ Failed/)).toBeDefined();
+        fireEvent.click(screen.getByText('Reconnect'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/messaging\/teams\/attempts\?offset=0&limit=20$/), undefined,
+        ));
+        await waitFor(() => expect(screen.queryByText(/✕ Failed/)).toBeNull());
+    });
+
+    it('marks retained history stale when a later refresh fails', async () => {
+        let fail = false;
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('/attempts?')
+            ? fail ? { ok: false, status: 503, json: async () => ({ error: 'Unavailable' }) }
+                : { ok: true, json: async () => ({ attempts: [active], total: 1, nextOffset: null }) }
+            : { ok: true, json: async () => ({ ...status, teamsBridgeObservabilityEnabled: true }) }));
+        render(<TeamsConnectionCard />);
+        await screen.findByText(/Connected · degraded/);
+        fail = true;
+        fireEvent.click(screen.getByText('Refresh status'));
+        expect(await screen.findByText(/Previous results are stale/)).toBeDefined();
+        expect(screen.getByText(/Connected · degraded/)).toBeDefined();
+    });
+
+    it('shows an initial history-load error without misrepresenting it as empty', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => url.includes('/attempts?')
+            ? { ok: false, status: 503, json: async () => ({ error: 'Unavailable' }) }
+            : { ok: true, json: async () => ({ ...status, teamsBridgeObservabilityEnabled: true }) }));
+        render(<TeamsConnectionCard />);
+        expect(await screen.findByText(/Could not load connection history: Unavailable/)).toBeDefined();
+        expect(screen.queryByText(/No connection attempts yet/)).toBeNull();
+        expect(screen.queryByText(/Previous results are stale/)).toBeNull();
+    });
+
     it('shows the inbound bridge and enables + connects using the normal CoC routes', async () => {
         const fetch = vi.fn(async (url: string, options?: RequestInit) => ({
             ok: true,
