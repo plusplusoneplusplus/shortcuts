@@ -1,4 +1,4 @@
-import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, CronsClient, LanguageServersClient, MapReduceClient, MemoryClient, MemoryV2Client, MyWorkClient, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
+import { AdminClient, AgentProvidersClient, CanvasesClient, DbBrowserClient, DecisionsClient, DreamsClient, ExplorerClient, ForEachClient, GitClient, HealthClient, CronsClient, LanguageServersClient, MapReduceClient, MemoryClient, MemoryV2Client, MyWorkClient, NativeCliSessionsClient, NativeCopilotSessionsClient, NotesClient, PreferencesClient, ProcessesClient, PromptHistoryClient, PullRequestsClient, QueueClient, SchedulesClient, SeenStateClient, ServersClient, SkillsClient, StatsClient, SuggestionsClient, SyncClient, TaskGroupsClient, TasksClient, TemplatesClient, TriggersClient, WikiClient, WorkflowClient, WorkItemsClient, WorkspacesClient } from './domains';
 import { HttpTransport, normalizeOptions } from './http';
 import { EventsClient } from './realtime';
 import type { CocClientOptions, CocRequestOptions, NormalizedCocClientOptions } from './types';
@@ -9,6 +9,7 @@ export class CocClient {
   readonly agentProviders: AgentProvidersClient;
   readonly canvases: CanvasesClient;
   readonly dbBrowser: DbBrowserClient;
+  readonly decisions: DecisionsClient;
   readonly dreams: DreamsClient;
   readonly explorer: ExplorerClient;
   readonly forEach: ForEachClient;
@@ -55,6 +56,7 @@ export class CocClient {
     this.agentProviders = new AgentProvidersClient(this.transport);
     this.canvases = new CanvasesClient(this.transport);
     this.dbBrowser = new DbBrowserClient(this.transport);
+    this.decisions = new DecisionsClient(this.transport);
     this.dreams = new DreamsClient(this.transport);
     this.explorer = new ExplorerClient(this.transport);
     this.forEach = new ForEachClient(this.transport);

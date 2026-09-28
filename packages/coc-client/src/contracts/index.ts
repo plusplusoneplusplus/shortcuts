@@ -2,6 +2,7 @@ export * from './admin';
 export * from './canvases';
 export * from './common';
 export * from './db-browser';
+export * from './decisions';
 export * from './dreams';
 export * from './explorer';
 export * from './for-each';

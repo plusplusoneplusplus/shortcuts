@@ -135,6 +135,10 @@ import { NativeCopilotSessionService } from '../native-copilot-sessions/native-c
 import { createNativeCliSessionProviders } from '../native-copilot-sessions/native-cli-provider-registry';
 import { registerNativeCliSessionRoutes } from './native-cli-session-routes';
 import { registerDreamRoutes } from '../dreams/dream-routes';
+import { registerDecisionRoutes } from '../decisions/decision-routes';
+import { DecisionService } from '../decisions/decision-service';
+import { CopilotDecisionBackend } from '../decisions/copilot-decision-backend';
+import { TypeSafeDecisionBackend } from '../decisions/typesafe-decision-backend';
 import { FileDreamStore } from '../dreams/dream-store';
 import { DreamRunExecutor, type DreamRunRequestOptions } from '../dreams/dream-runner';
 import { DreamIdleScheduler } from '../dreams/dream-idle-scheduler';
@@ -220,6 +224,8 @@ export interface RegisterRoutesOptions {
     tokenTtlMs: number | undefined;
     globalWorkspaceRootPath: string;
     resolvedAiService: ISDKService;
+    /** Copilot SDK service for Copilot-only features (decision API), independent of the default chat provider. Undefined when Copilot is not registered. */
+    copilotAiService?: ISDKService;
     getWsServer: () => ProcessWebSocketServer;
     queuePersistence: SqliteQueuePersistence;
     wikiOptions?: WikiServerOptions;
@@ -1205,6 +1211,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store: dreamStore,
         enqueueRun: (workspaceId, options) => enqueueDreamRun(workspaceId, 'manual', options),
         getDreamsEnabled,
+    });
+
+    // Decision API — explicitly Copilot-backed, never the workspace's default chat provider.
+    registerDecisionRoutes({
+        routes,
+        store,
+        service: new DecisionService([
+            new CopilotDecisionBackend(opts.copilotAiService),
+            new TypeSafeDecisionBackend(),
+        ]),
     });
 
     // Work item routes
