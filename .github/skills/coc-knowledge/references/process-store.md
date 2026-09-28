@@ -38,6 +38,13 @@ Forge maps returned SQLite rows into the existing date- and JSON-rich
 ProcessStore shapes, including optional conversation/tool-call exclusions and
 chat-folder membership on summary entries.
 
+`upsertStreamingTurn` runs in an async Rust task under the writer mutex; Forge
+emits its process-change event after the write completes. `appendConversationTurn`
+uses a synchronous `NativeDatabase.transaction` because its turn factory and
+optional process-update callback can re-enter the same database. The transaction
+holds the writer through turn-index allocation, callback execution, updates,
+and rollback.
+
 ### Tables
 
 | Table | Purpose |

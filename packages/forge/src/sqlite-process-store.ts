@@ -1352,6 +1352,9 @@ export class SqliteProcessStore implements ProcessStore {
     ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined> {
         let appendResult: { turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined;
 
+        // Keep JS callbacks on the writer's thread: they can synchronously re-enter
+        // the database, and releasing the lock across an async handoff would let
+        // another append claim the same index or commit a turn before a callback throws.
         const appendTxn = this.db.transaction(() => {
             // Check process exists
             const processRow = this.getProcessStmt.get(processId) as ProcessRow | undefined;
