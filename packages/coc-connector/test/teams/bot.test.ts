@@ -60,6 +60,114 @@ describe('TeamsBot', () => {
         }
 
         describe('start', () => {
+            it('polls Graph channels only after live opt-in and skips the initial history', async () => {
+                mockGraphTeamResponse();
+                let enabled = false;
+                const bot = createGraphBot({ pollGraphChannel: () => enabled });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(mockFetch).toHaveBeenCalledTimes(1);
+
+                enabled = true;
+                mockFetch.mockResolvedValueOnce({
+                    ok: true, json: async () => ({ value: [{
+                        id: 'historic', body: { content: 'old ask' }, createdDateTime: '2026-01-01T00:00:00Z',
+                        from: { user: { id: 'human' } },
+                    }] }),
+                });
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).not.toHaveBeenCalled();
+
+                mockFetch.mockResolvedValueOnce({
+                    ok: true, json: async () => ({ value: [{
+                        id: 'new', body: { content: 'new ask' }, createdDateTime: '2026-01-01T00:00:01Z',
+                        from: { user: { id: 'human' } },
+                    }] }),
+                });
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledOnce();
+                expect(onMessage.mock.calls[0][0].messageId).toBe('new');
+                expect(String(mockFetch.mock.calls.at(-1)?.[0])).toContain('createdDateTime');
+                await bot.stop();
+            });
+
+            it('never polls Graph direct messages even if channel polling is enabled', async () => {
+                mockFetch.mockResolvedValueOnce({
+                    ok: true, json: async () => ({ id: 'user', displayName: 'User' }),
+                });
+                const bot = createGraphBot({ teamId: undefined, pollGraphChannel: () => true });
+                await bot.start();
+                await vi.advanceTimersByTimeAsync(2000);
+                expect(mockFetch).toHaveBeenCalledTimes(1);
+                await bot.stop();
+            });
+
+            it('uses an empty first poll as a watermark and reinitializes after disabling polling', async () => {
+                mockGraphTeamResponse();
+                let enabled = true;
+                const bot = createGraphBot({ pollGraphChannel: () => enabled });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ value: [] }) });
+                await vi.advanceTimersByTimeAsync(1000);
+                mockFetch.mockResolvedValueOnce({
+                    ok: true, json: async () => ({ value: [{
+                        id: 'fresh', body: { content: 'ask' }, createdDateTime: new Date(Date.now() + 1000).toISOString(),
+                    }] }),
+                });
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) => msg.messageId)).toEqual(['fresh']);
+                enabled = false;
+                await vi.advanceTimersByTimeAsync(1000);
+                enabled = true;
+                mockFetch.mockResolvedValueOnce({
+                    ok: true, json: async () => ({ value: [{
+                        id: 'while-off', body: { content: 'ask' }, createdDateTime: new Date().toISOString(),
+                    }] }),
+                });
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledTimes(1);
+                await bot.stop();
+            });
+
+            it('can Like a newly polled Graph post before inbound routing', async () => {
+                mockGraphTeamResponse();
+                const order: string[] = [];
+                let bot!: TeamsBot;
+                bot = createGraphBot({
+                    pollGraphChannel: () => true,
+                    onMessage: async msg => {
+                        await bot.reactToChannelMessage(msg);
+                        order.push('route');
+                    },
+                });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                mockFetch.mockResolvedValueOnce({
+                    ok: true, json: async () => ({ value: [{
+                        id: 'old', body: { content: 'history' }, createdDateTime: '2026-01-01T00:00:00Z',
+                    }] }),
+                });
+                await vi.advanceTimersByTimeAsync(1000);
+                mockFetch.mockImplementationOnce(async () => ({
+                    ok: true, json: async () => ({ value: [{
+                        id: 'new', body: { content: 'ask' }, createdDateTime: '2026-01-01T00:00:01Z',
+                    }] }),
+                }));
+                mockFetch.mockImplementationOnce(async (_url: string, options?: RequestInit) => {
+                    expect(options?.method).toBe('POST');
+                    expect(options?.body).toBe(JSON.stringify({ reactionType: '👍' }));
+                    order.push('like');
+                    return { status: 204 };
+                });
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(order).toEqual(['like', 'route']);
+                expect(String(mockFetch.mock.calls.at(-1)?.[0]))
+                    .toContain('/teams/team-123/channels/channel-123/messages/new/setReaction');
+                await bot.stop();
+            });
+
             it('should connect successfully via Graph API', async () => {
                 mockGraphTeamResponse();
 
@@ -587,7 +695,8 @@ describe('TeamsBot', () => {
                 await first.start();
                 first.setChannelId('channel-123');
                 await vi.advanceTimersByTimeAsync(1000);
-                expect(onMessage.mock.calls.map(([msg]) => msg.messageId)).toEqual(['new-ask', 'next-ask']);
+                expect(onMessage.mock.calls.map(([msg]) => [msg.messageId, msg.initializationReplay]))
+                    .toEqual([['new-ask', true], ['next-ask', true]]);
                 await first.stop();
 
                 const restarted = createMcpBot(options);

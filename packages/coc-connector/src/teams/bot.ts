@@ -224,8 +224,8 @@ export class TeamsBot implements MessagingConnector {
     private static readonly MAX_BACKOFF_MS = 300_000;
 
     private startPolling(): void {
-        // Graph mode is send-only — do not poll for messages
-        if (this.mode === 'graph') {
+        // Graph DMs remain send-only; channel polling is opt-in and can be toggled live.
+        if (this.mode === 'graph' && !this.opts.teamId) {
             console.log('[teams-bot] Graph mode is send-only — polling disabled');
             return;
         }
@@ -273,6 +273,11 @@ export class TeamsBot implements MessagingConnector {
         }
 
         try {
+            if (this.mode === 'graph' && !this.opts.pollGraphChannel?.()) {
+                this._lastSeenTimestamp = null;
+                this.schedulePoll();
+                return;
+            }
             const since = this.mode === 'graph' ? this._lastSeenTimestamp ?? undefined : this._lastPolledId ?? undefined;
             const { messages, nextSince } = await this.transport.poll(this._channelId, since);
 
@@ -350,7 +355,8 @@ export class TeamsBot implements MessagingConnector {
                     this.observeInbound('skipped', 'bot');
                 } else {
                     this.observeInbound('observed');
-                    await this.opts.onMessage(msg);
+                    await this.opts.onMessage(initial && trackedReply
+                        ? { ...msg, initializationReplay: true } : msg);
                     activity = true;
                 }
                 this._seenChannelMessageIds.add(msg.messageId);
@@ -437,6 +443,11 @@ export class TeamsBot implements MessagingConnector {
 
     /** Graph poll logic: process all new messages since last timestamp. */
     private async handleGraphPoll(messages: InboundTeamsMessage[], nextSince: string): Promise<void> {
+        if (!this._lastSeenTimestamp) {
+            this._lastSeenTimestamp = nextSince || new Date().toISOString();
+            this.observeInbound('skipped', 'initial');
+            return;
+        }
         for (const msg of messages) {
             if (this._sentMessageIds.has(msg.messageId)) {
                 this._sentMessageIds.delete(msg.messageId);

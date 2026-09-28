@@ -127,6 +127,16 @@ describe('Teams channel Like admission', () => {
         expect(events.some(event => event.startsWith('reply:'))).toBe(true);
     });
 
+    it('routes initial tracked-thread replies without reacting to historical posts', async () => {
+        const { handle, message, react, events, setEnabled } = setup(true);
+        setEnabled(true);
+        await handle(message('root', 'new request'));
+        events.length = 0;
+        await handle({ ...message('historical', 'follow-up', 'root'), initializationReplay: true });
+        expect(react).toHaveBeenCalledTimes(1);
+        expect(events).toEqual(['enqueue-follow-up', expect.stringContaining('reply:root:')]);
+    });
+
     it('logs a rejected Like and still dispatches, replies, and processes the next post', async () => {
         const { handle, message, react, events, setEnabled } = setup();
         setEnabled(true);

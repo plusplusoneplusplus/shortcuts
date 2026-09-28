@@ -148,6 +148,7 @@ export function registerTeamsMessagingRoutes(
             const boundReply = !!msg.replyToMessageId && opts.getAnswerRelayEnabled?.() === true
                 && !!relay?.threadRoots(manager.getStatus().teamId ?? '', msg.channelId).includes(msg.replyToMessageId);
             if (opts.getMessageReactionEnabled?.() === true && msg.text.trim() && !msg.botAuthored
+                && !msg.initializationReplay
                 && (!msg.replyToMessageId || boundReply)) {
                 try {
                     await manager.reactToChannelMessage(msg);

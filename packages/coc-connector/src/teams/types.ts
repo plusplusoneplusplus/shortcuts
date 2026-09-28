@@ -12,6 +12,8 @@ export interface InboundTeamsMessage {
     /** Teams identifies the sender as an application rather than a human user. */
     botAuthored?: boolean;
     createdDateTime?: string;
+    /** This tracked reply was discovered while establishing the initial channel watermark. */
+    initializationReplay?: boolean;
 }
 
 /**
@@ -46,6 +48,8 @@ export interface TeamsBotOptions {
     pollIntervalMs?: number;
     /** Opt in to polling channel thread replies and dispatching each unseen post. */
     pollChannelReplies?: () => boolean;
+    /** Enable Graph channel polling; omitted means Graph remains send-only. */
+    pollGraphChannel?: () => boolean;
     /** Live channel thread roots supplied by the owner of durable thread bindings. */
     channelThreadRoots?: (channelId: string) => readonly string[];
     /** Recognize outbound thread messages whose IDs survived a connector restart. */
