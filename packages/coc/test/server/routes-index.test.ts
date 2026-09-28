@@ -166,6 +166,7 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
         queuePersistence: makeQueuePersistence(),
         notesSearchService: { search: vi.fn() } as any,
         runtimeConfigService: {
+            onChange: vi.fn().mockReturnValue(() => {}),
             config: {
                 codex: { enabled: false },
                 claude: { enabled: false },
@@ -255,11 +256,13 @@ describe('registerAllRoutes', () => {
 
     it('subscribes the Teams answer relay to queue terminal events', () => {
         const queueFacade = makeQueueFacade();
-        registerAllRoutes([], makeOpts({ queueFacade }));
+        const opts = makeOpts({ queueFacade });
+        registerAllRoutes([], opts);
 
         expect(queueFacade.on.mock.calls.map(([event]: [string]) => event)).toEqual([
             'taskCompleted', 'taskFailed', 'taskCancelled',
         ]);
+        expect(opts.runtimeConfigService?.onChange).toHaveBeenCalledWith(expect.any(Function));
     });
 
     it('routes authorized Notes searches through the required scoped service', async () => {

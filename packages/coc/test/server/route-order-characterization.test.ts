@@ -123,6 +123,7 @@ describe('registerAllRoutes - Route Order Characterization', () => {
             notesSearchService: { search: vi.fn() } as any,
             aiInvoker: vi.fn(),
             runtimeConfigService: {
+                onChange: vi.fn().mockReturnValue(() => {}),
                 config: {
                     codex: { enabled: false },
                     claude: { enabled: false },
