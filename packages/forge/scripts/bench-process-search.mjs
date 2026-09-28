@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import assert from 'node:assert/strict';
 
 const require = createRequire(import.meta.url);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,11 +49,12 @@ export function seed(store, turns) {
     const db = store.getDatabase();
     const insertProcess = db.prepare(
         `INSERT INTO processes (id, workspace_id, type, prompt_preview, status, start_time,
-            last_event_at, title) VALUES (?, ?, 'chat', ?, 'completed', ?, ?, ?)`,
+            last_event_at, title, metadata, full_prompt, result, structured_result)
+         VALUES (?, ?, 'chat', ?, 'completed', ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertTurn = db.prepare(
-        `INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp)
-         VALUES (?, ?, 'user', ?, ?)`,
+        `INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp,
+            timeline, token_usage, tool_calls) VALUES (?, ?, 'user', ?, ?, ?, ?, ?)`,
     );
     const timestamp = '2026-01-01T00:00:00.000Z';
     const batch = db.transaction((start, end) => {
@@ -61,10 +63,17 @@ export function seed(store, turns) {
             const processId = `fixture-${processIndex}`;
             if (index % 10 === 0) {
                 insertProcess.run(processId, processIndex % 2 ? 'ws-b' : 'ws-a',
-                    `prompt ${processIndex}`, timestamp, timestamp, `Chat ${processIndex}`);
+                    `prompt ${processIndex}`, timestamp, timestamp, `Chat ${processIndex}`,
+                    JSON.stringify({ model: 'fixture', __pendingMessages: [] }),
+                    `full prompt ${processIndex}`, `result ${processIndex}`, `structured ${processIndex}`);
             }
+            const toolCalls = index % 100 === 0
+                ? JSON.stringify([{ id: `tool-${index}`, name: 'fixture', status: 'completed',
+                    startTime: timestamp, args: { index } }]) : null;
             insertTurn.run(processId, index % 10,
-                index % 100 === 0 ? `${TURN_CONTENT} needle` : TURN_CONTENT, timestamp);
+                index % 100 === 0 ? `${TURN_CONTENT} needle` : TURN_CONTENT, timestamp,
+                index % 100 === 0 ? JSON.stringify([{ type: 'message', timestamp, content: 'fixture' }]) : '[]',
+                '{"inputTokens":12,"outputTokens":4}', toolCalls);
         }
     });
     for (let start = 0; start < turns; start += 1_000) {
@@ -98,63 +107,235 @@ function baselineSearch(db, query, filter) {
     const params = filter.workspaceId ? [query, filter.workspaceId] : [query];
     const total = db.prepare(`SELECT COUNT(*) AS total ${from}`).get(...params).total;
     if (total === 0) return { total, results: [] };
-    const results = db.prepare(`SELECT ct.process_id AS processId, ct.turn_index AS turnIndex,
+    const rows = db.prepare(`SELECT ct.process_id AS processId, ct.turn_index AS turnIndex,
         ct.role, snippet(conversation_search, 0, '<mark>', '</mark>', '…', 48) AS snippet,
         cs.rank, p.title AS processTitle, p.prompt_preview AS promptPreview,
         p.status AS processStatus, p.type AS processType, p.workspace_id AS workspaceId,
         p.start_time AS startTime ${from} ORDER BY cs.rank LIMIT ? OFFSET ?`)
         .all(...params, filter.limit, 0);
+    const results = rows.map(({ processTitle, promptPreview, ...row }) => ({
+        ...row, ...(processTitle == null ? {} : { processTitle }), promptPreview: promptPreview ?? '',
+    }));
     return { total, results };
+}
+
+const optional = value => value ?? undefined;
+const date = value => value ? new Date(value) : undefined;
+const json = value => value == null ? undefined : JSON.parse(value);
+const bool = value => value ? true : undefined;
+
+function hydrateToolCall(raw) {
+    return {
+        id: raw.id ?? '',
+        name: raw.name ?? '',
+        status: raw.status ?? 'completed',
+        startTime: new Date(raw.startTime ?? 0),
+        endTime: date(raw.endTime),
+        args: raw.args ?? {},
+        result: raw.result,
+        error: raw.error,
+        parentToolCallId: raw.parentToolCallId,
+        progressMessage: raw.progressMessage,
+        permissionRequest: raw.permissionRequest ? {
+            kind: raw.permissionRequest.kind,
+            timestamp: new Date(raw.permissionRequest.timestamp ?? 0),
+            resource: raw.permissionRequest.resource,
+            operation: raw.permissionRequest.operation,
+        } : undefined,
+        permissionResult: raw.permissionResult ? {
+            approved: raw.permissionResult.approved,
+            timestamp: new Date(raw.permissionResult.timestamp ?? 0),
+            reason: raw.permissionResult.reason,
+        } : undefined,
+    };
+}
+
+function hydrateTurn(row) {
+    const toolCalls = json(row.tool_calls)?.map(hydrateToolCall);
+    return {
+        role: row.role,
+        content: row.content ?? '',
+        timestamp: new Date(row.timestamp),
+        turnIndex: row.turn_index,
+        streaming: bool(row.streaming),
+        interrupted: bool(row.interrupted),
+        interruptionReason: optional(row.interruption_reason),
+        toolCalls: toolCalls?.length ? toolCalls : undefined,
+        timeline: json(row.timeline)?.map(item => ({
+            type: item.type,
+            timestamp: new Date(item.timestamp ?? 0),
+            content: item.content,
+            toolCall: item.toolCall ? hydrateToolCall(item.toolCall) : undefined,
+        })) ?? [],
+        images: json(row.images),
+        historical: bool(row.historical),
+        suggestions: json(row.suggestions),
+        tokenUsage: json(row.token_usage),
+        pasteExternalized: bool(row.paste_externalized),
+        displayOnly: bool(row.display_only),
+        ...(row.compaction_summary ? { compactionSummary: row.compaction_summary } : {}),
+        ...(row.repo_group_context ? { repoGroupContext: row.repo_group_context } : {}),
+        ...(row.chat_mode_context ? { chatModeContext: row.chat_mode_context } : {}),
+        ...(row.model ? { model: row.model } : {}),
+        ...(row.mode ? { mode: row.mode } : {}),
+        ...(row.provider ? { provider: row.provider } : {}),
+        ...(row.segment_id ? { segmentId: row.segment_id } : {}),
+        ...(row.relay_request_id !== null ? { relayRequestId: row.relay_request_id } : {}),
+        ...(row.sdk_event_id ? { sdkEventId: row.sdk_event_id } : {}),
+        deletedAt: date(row.deleted_at),
+        pinnedAt: date(row.pinned_at),
+        archived: bool(row.archived),
+    };
+}
+
+function hydrateProcess(row, turns, excludeConversation = false) {
+    const { __codeReviewMetadata, __discoveryMetadata, __codeReviewGroupMetadata,
+        __pendingMessages, __pendingAskUser, __pendingAskUserAnswer, ...metadata } = json(row.metadata) ?? {};
+    const process = {
+        id: row.id,
+        type: row.type ?? 'clarification',
+        promptPreview: row.prompt_preview ?? '',
+        status: row.status,
+        startTime: new Date(row.start_time),
+        endTime: date(row.end_time),
+        error: optional(row.error),
+        resultFilePath: optional(row.result_file_path),
+        rawStdoutFilePath: optional(row.raw_stdout_file_path),
+        metadata: Object.keys(metadata).length ? metadata : undefined,
+        groupMetadata: json(row.group_metadata),
+        codeReviewMetadata: __codeReviewMetadata,
+        discoveryMetadata: __discoveryMetadata,
+        codeReviewGroupMetadata: __codeReviewGroupMetadata,
+        structuredResult: optional(row.structured_result),
+        parentProcessId: optional(row.parent_process_id),
+        sdkSessionId: optional(row.sdk_session_id),
+        activeProviderSession: json(row.active_provider_session),
+        backend: optional(row.backend),
+        workingDirectory: optional(row.working_directory),
+        title: optional(row.title),
+        customTitle: optional(row.custom_title),
+        lastMessagePreview: optional(row.last_message_preview),
+        tokenLimit: optional(row.token_limit),
+        currentTokens: optional(row.current_tokens),
+        systemTokens: optional(row.system_tokens),
+        toolDefinitionsTokens: optional(row.tool_definitions_tokens),
+        conversationTokens: optional(row.conversation_tokens),
+        cumulativeTokenUsage: json(row.cumulative_token_usage),
+        stale: bool(row.stale),
+        dataFilePath: optional(row.data_file_path),
+        pendingMessages: __pendingMessages,
+        pendingAskUser: __pendingAskUser,
+        pendingAskUserAnswer: __pendingAskUserAnswer,
+        lastEventAt: date(row.last_event_at),
+        pinnedAt: optional(row.pinned_at),
+        archived: bool(row.archived),
+    };
+    if (!excludeConversation) {
+        process.fullPrompt = row.full_prompt ?? '';
+        process.result = optional(row.result);
+        process.conversationTurns = turns;
+    }
+    return process;
 }
 
 function baselineTurns(db) {
     const results = db.prepare(
         'SELECT * FROM conversation_turns WHERE process_id = ? ORDER BY turn_index',
-    ).all('fixture-0').map(turn => ({
-        processId: 'fixture-0', turnIndex: turn.turn_index, role: turn.role, snippet: turn.content,
-    }));
+    ).all('fixture-0').map(hydrateTurn);
     return { total: results.length, results };
 }
 
-function baselineProcesses(db) {
+function baselineProcesses(db, excludeConversation = false) {
+    const columns = excludeConversation
+        ? `id, workspace_id, type, prompt_preview, NULL AS full_prompt, status,
+           start_time, end_time, error, NULL AS result, result_file_path, raw_stdout_file_path,
+           metadata, group_metadata, NULL AS structured_result, parent_process_id,
+           sdk_session_id, active_provider_session, backend, working_directory,
+           title, custom_title, last_message_preview, token_limit, current_tokens,
+           cumulative_token_usage, stale, data_file_path, archived, pinned_at, seen_at, last_event_at`
+        : '*';
     const rows = db.prepare(
-        'SELECT * FROM processes WHERE workspace_id = ? ORDER BY last_event_at DESC LIMIT ?',
+        `SELECT ${columns} FROM processes WHERE workspace_id = ? ORDER BY last_event_at DESC LIMIT ?`,
     ).all('ws-a', 100);
     const turns = db.prepare('SELECT * FROM conversation_turns WHERE process_id = ? ORDER BY turn_index');
-    const results = rows.map(row => ({
-        processId: row.id, turnIndex: turns.all(row.id).length,
-        role: 'process', snippet: row.prompt_preview,
-    }));
+    const results = rows.map(row => hydrateProcess(row,
+        excludeConversation ? undefined : turns.all(row.id).map(hydrateTurn), excludeConversation));
     return { total: results.length, results };
 }
 
-async function measure(run, runs, observeTimer = false) {
+function hydrateIndex(row, summary = false) {
+    const startMs = new Date(row.start_time).getTime();
+    const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
+    return {
+        id: row.id,
+        workspaceId: row.workspace_id,
+        status: row.status,
+        type: row.type || 'clarification',
+        startTime: new Date(row.start_time).toISOString(),
+        endTime: row.end_time ? new Date(row.end_time).toISOString() : undefined,
+        promptPreview: row.prompt_preview ?? '',
+        error: optional(row.error),
+        parentProcessId: optional(row.parent_process_id),
+        title: optional(row.title),
+        customTitle: optional(row.custom_title),
+        lastMessagePreview: optional(row.last_message_preview),
+        duration: endMs !== undefined ? endMs - startMs : undefined,
+        lastEventAt: row.last_event_at ? new Date(row.last_event_at).toISOString() : undefined,
+        activityAt: new Date(row.last_event_at ?? row.start_time).toISOString(),
+        pinnedAt: optional(row.pinned_at),
+        archived: bool(row.archived) || undefined,
+        ...(summary ? { pendingAskUserCount: row.pending_ask_user_count > 0
+            ? row.pending_ask_user_count : undefined } : {}),
+        compaction: json(row.compaction_json),
+    };
+}
+
+function baselineSummaries(db) {
+    const where = 'WHERE workspace_id = ?';
+    const total = db.prepare(`SELECT COUNT(*) AS cnt FROM processes ${where}`).get('ws-a').cnt;
+    const rows = db.prepare(`SELECT id, workspace_id, status, type, start_time, end_time,
+        prompt_preview, error, parent_process_id, title, custom_title, last_message_preview,
+        last_event_at, pinned_at, archived,
+        COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count,
+        json_extract(metadata, '$.compaction') AS compaction_json
+        FROM processes ${where} ORDER BY last_event_at DESC LIMIT ?`).all('ws-a', 100);
+    return { total, results: rows.map(row => hydrateIndex(row, true)) };
+}
+
+function baselineRecent(db) {
+    const rows = db.prepare(`SELECT id, workspace_id, status, type, start_time, end_time,
+        prompt_preview, error, parent_process_id, title, custom_title, last_message_preview,
+        last_event_at, pinned_at, archived,
+        json_extract(metadata, '$.compaction') AS compaction_json
+        FROM processes WHERE archived = 0 AND workspace_id = ?
+        ORDER BY last_event_at DESC LIMIT ? OFFSET ?`).all('ws-a', 100, 0);
+    return { total: rows.length, results: rows.map(row => hydrateIndex(row)) };
+}
+
+export async function measure(run, runs, observeTimer = false) {
     const samplesMs = [];
     let timerFiredDuringSearch = false;
     let result;
     for (let i = 0; i <= runs; i++) {
         let timer;
-        let fired = false;
+        let pending = true;
         const start = performance.now();
-        const pending = run();
         if (observeTimer && i === 1) {
-            timer = setTimeout(() => { fired = true; }, 0);
+            timer = setTimeout(() => {
+                if (pending) timerFiredDuringSearch = true;
+            }, 0);
         }
-        result = await pending;
-        if (timer) {
-            timerFiredDuringSearch = fired;
-            clearTimeout(timer);
+        try {
+            result = await run();
+        } finally {
+            pending = false;
+            if (timer) clearTimeout(timer);
         }
         if (i > 0) samplesMs.push(performance.now() - start);
     }
     return { p50Ms: p50(samplesMs), samplesMs, total: result.total,
         resultCount: result.results.length,
-        firstHit: result.results.length ? {
-            processId: result.results[0].processId,
-            turnIndex: result.results[0].turnIndex,
-            role: result.results[0].role,
-            snippet: result.results[0].snippet,
-        } : null,
+        results: result.results,
         timerFiredDuringSearch };
 }
 
@@ -176,10 +357,7 @@ export async function benchmark(options, { baselineFactory = openBaseline } = {}
                 name: 'getConversationTurns',
                 production: async () => {
                     const turns = await store.getConversationTurns('fixture-0');
-                    return { total: turns.length, results: turns.map(turn => ({
-                        processId: 'fixture-0', turnIndex: turn.turnIndex,
-                        role: turn.role, snippet: turn.content,
-                    })) };
+                    return { total: turns.length, results: turns };
                 },
                 baseline: () => baselineTurns(baseline.db),
             },
@@ -187,12 +365,35 @@ export async function benchmark(options, { baselineFactory = openBaseline } = {}
                 name: 'getAllProcesses (100, ws-a)',
                 production: async () => {
                     const processes = await store.getAllProcesses({ workspaceId: 'ws-a', limit: 100 });
-                    return { total: processes.length, results: processes.map(process => ({
-                        processId: process.id, turnIndex: process.conversationTurns.length,
-                        role: 'process', snippet: process.promptPreview,
-                    })) };
+                    return { total: processes.length, results: processes };
                 },
                 baseline: () => baselineProcesses(baseline.db),
+            },
+            {
+                name: 'getAllProcesses (100, ws-a, exclude conversation)',
+                production: async () => {
+                    const processes = await store.getAllProcesses({
+                        workspaceId: 'ws-a', limit: 100, exclude: ['conversation'],
+                    });
+                    return { total: processes.length, results: processes };
+                },
+                baseline: () => baselineProcesses(baseline.db, true),
+            },
+            {
+                name: 'getProcessSummaries (100, ws-a)',
+                production: async () => {
+                    const page = await store.getProcessSummaries({ workspaceId: 'ws-a', limit: 100 });
+                    return { total: page.total, results: page.entries };
+                },
+                baseline: () => baselineSummaries(baseline.db),
+            },
+            {
+                name: 'listRecentProcesses (100, ws-a)',
+                production: async () => {
+                    const results = await store.listRecentProcesses({ workspaceId: 'ws-a', limit: 100 });
+                    return { total: results.length, results };
+                },
+                baseline: () => baselineRecent(baseline.db),
             },
         ];
         const workloads = [
@@ -210,18 +411,20 @@ export async function benchmark(options, { baselineFactory = openBaseline } = {}
             let comparison = null;
             if (baseline.status === 'available') {
                 comparison = await measure(runBaseline, options.runs);
-                if (comparison.total !== production.total ||
-                    comparison.resultCount !== production.resultCount ||
-                    JSON.stringify(comparison.firstHit) !== JSON.stringify(production.firstHit)) {
-                    throw new Error(`${name}: baseline result shape differs from production`);
-                }
+                assert.deepStrictEqual(
+                    { total: comparison.total, results: comparison.results },
+                    { total: production.total, results: production.results },
+                    `${name}: baseline result differs from production`);
             }
+            delete production.results;
+            if (comparison) delete comparison.results;
             cases.push({ name, production, baseline: comparison,
                 speedup: comparison ? comparison.p50Ms / production.p50Ms : null });
         }
         return {
             turns: options.turns, processes: Math.ceil(options.turns / 10),
             runs: options.runs, fixtureMs,
+            comparison: baseline.status === 'available' ? 'output-equivalent' : 'unavailable',
             baseline: baseline.status === 'available'
                 ? { status: 'available' } : { status: 'unavailable', reason: baseline.reason },
             cases,
@@ -237,12 +440,13 @@ export function formatReport(report) {
     return [
         `Fixture: ${report.turns} turns, ${report.processes} processes (${report.fixtureMs.toFixed(1)} ms seed)`,
         `Baseline: ${report.baseline.status}${report.baseline.reason ? ` — ${report.baseline.reason}` : ''}`,
-        'Read baselines fetch the same rows without production object hydration.',
+        `Comparison: ${report.comparison}`,
+        'Read baselines hydrate full ProcessStore objects; p50 ratios are measurements, not pass criteria.',
         ...report.cases.map(({ name, production, baseline, speedup }) =>
             `${name}: production p50 ${production.p50Ms.toFixed(2)} ms; ` +
             `better-sqlite3 p50 ${baseline ? `${baseline.p50Ms.toFixed(2)} ms` : 'unavailable'}; ` +
             `speedup ${speedup === null ? 'unavailable' : `${speedup.toFixed(2)}x`}; ` +
-            `${production.total} matches, ${production.resultCount} returned` +
+            `${production.total} total, ${production.resultCount} returned` +
             (name === 'dense' ? `; timer fired during async search: ${production.timerFiredDuringSearch}` : '')),
     ].join('\n');
 }

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { test } from 'node:test';
-import { benchmark, formatReport, p50, parseArgs } from './bench-process-search.mjs';
+import { benchmark, formatReport, measure, p50, parseArgs } from './bench-process-search.mjs';
+
+const require = createRequire(import.meta.url);
 
 test('CLI options and p50 reject invalid fixtures and summarize even samples', () => {
     assert.deepEqual(parseArgs([]), { turns: 50_000, runs: 5, json: false });
@@ -22,37 +25,74 @@ test('real compiled production search reports counts, p50, and timer responsiven
     assert.deepEqual(report.baseline, { status: 'unavailable', reason: 'not installed' });
     assert.deepEqual(report.cases.map(item => [item.name, item.production.total]),
         [['dense', 4_000], ['workspace', 2_000], ['sparse', 40],
-            ['getConversationTurns', 10], ['getAllProcesses (100, ws-a)', 100]]);
+            ['getConversationTurns', 10], ['getAllProcesses (100, ws-a)', 100],
+            ['getAllProcesses (100, ws-a, exclude conversation)', 100],
+            ['getProcessSummaries (100, ws-a)', 200],
+            ['listRecentProcesses (100, ws-a)', 100]]);
     for (const item of report.cases) {
         assert.equal(item.production.samplesMs.length, 2);
         assert.ok(item.production.p50Ms > 0);
         assert.equal(item.production.resultCount, item.name === 'getConversationTurns' ? 10
-            : item.name.startsWith('getAllProcesses') ? 100 : 20);
-        assert.match(item.production.firstHit.processId, /^fixture-/);
-        if (['dense', 'workspace', 'sparse'].includes(item.name)) {
-            assert.match(item.production.firstHit.snippet, /<mark>/);
-            assert.equal(item.production.firstHit.role, 'user');
-        }
+            : ['dense', 'workspace', 'sparse'].includes(item.name) ? 20 : 100);
         assert.equal(item.baseline, null);
         assert.equal(item.speedup, null);
     }
     assert.equal(report.cases[0].production.timerFiredDuringSearch, true);
+    assert.equal(report.comparison, 'unavailable');
     assert.match(formatReport(report), /better-sqlite3 p50 unavailable/);
+    assert.match(formatReport(report), /Comparison: unavailable/);
     assert.match(formatReport(report), /timer fired during async search: true/);
+});
+
+test('timer observation requires callback before completion, not just eventual firing', async () => {
+    const result = { total: 0, results: [] };
+    assert.equal((await measure(() => Promise.resolve(result), 1, true)).timerFiredDuringSearch, false);
+    assert.equal((await measure(() => new Promise(resolve =>
+        setTimeout(() => resolve(result), 20)), 1, true)).timerFiredDuringSearch, true);
 });
 
 test('local better-sqlite3 baseline, when present, matches production result shape', async (context) => {
     const report = await benchmark({ turns: 120, runs: 1 });
     if (report.baseline.status === 'unavailable') {
         context.diagnostic(report.baseline.reason);
+        assert.equal(report.comparison, 'unavailable');
         assert.ok(report.cases.every(item => item.baseline === null && item.speedup === null));
         return;
     }
+    assert.equal(report.comparison, 'output-equivalent');
     for (const item of report.cases) {
         assert.equal(item.baseline.total, item.production.total);
         assert.equal(item.baseline.resultCount, item.production.resultCount);
-        assert.deepEqual(item.baseline.firstHit, item.production.firstHit);
         assert.ok(item.baseline.p50Ms > 0);
         assert.ok(item.speedup > 0);
     }
+});
+
+test('rejects mismatched hydrated output instead of reporting speedup', async context => {
+    let BetterSqlite3;
+    try {
+        BetterSqlite3 = require('better-sqlite3');
+    } catch (error) {
+        if (error.code !== 'MODULE_NOT_FOUND') throw error;
+        context.skip('optional better-sqlite3 not installed');
+        return;
+    }
+    await assert.rejects(benchmark({ turns: 120, runs: 1 }, {
+        baselineFactory: dbPath => {
+            const db = new BetterSqlite3(dbPath, { readonly: true });
+            return { status: 'available', db: {
+                prepare(sql) {
+                    const statement = db.prepare(sql);
+                    if (!sql.startsWith('SELECT * FROM conversation_turns')) return statement;
+                    return {
+                        all(...args) {
+                            return statement.all(...args).map((row, index) =>
+                                index === 0 ? { ...row, content: 'incorrect turn' } : row);
+                        },
+                    };
+                },
+                close() { db.close(); },
+            } };
+        },
+    }), /baseline result differs from production/);
 });
