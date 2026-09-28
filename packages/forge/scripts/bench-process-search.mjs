@@ -607,7 +607,8 @@ export function assertP50(report) {
     if (report.baseline.status !== 'available' || report.comparison !== 'output-equivalent') {
         throw new Error('p50 gate requires an available, output-equivalent better-sqlite3 baseline');
     }
-    const required = ['dense', 'getConversationTurns', 'getAllProcesses (100, ws-a)',
+    const required = ['dense', 'workspace', 'sparse', 'getConversationTurns',
+        'getAllProcesses (100, ws-a)', 'getAllProcesses (100, ws-a, exclude conversation)',
         'getProcessSummaries (100, ws-a)', 'listRecentProcesses (100, ws-a)',
         'upsertStreamingTurn', 'appendConversationTurn'];
     const missing = required.filter(name => !report.cases.some(item => item.name === name));

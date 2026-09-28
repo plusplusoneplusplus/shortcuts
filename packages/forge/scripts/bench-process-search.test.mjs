@@ -24,12 +24,13 @@ test('CLI options and p50 reject invalid fixtures and summarize even samples', (
     assert.equal(p50([3, 1, 4, 2]), 2.5);
 });
 
-test('p50 gate requires a real 50k baseline, all methods no slower, and an active timer', () => {
+test('p50 gate requires a real 50k baseline, all workloads no slower, and an active timer', () => {
     const dense = { name: 'dense', production: { p50Ms: 3, timerFiredDuringSearch: true },
         baseline: { p50Ms: 3 } };
     const reads = { name: 'getConversationTurns', production: { p50Ms: 2 },
         baseline: { p50Ms: 3 } };
-    const otherReads = ['getAllProcesses (100, ws-a)', 'getProcessSummaries (100, ws-a)',
+    const otherReads = ['workspace', 'sparse', 'getAllProcesses (100, ws-a)',
+        'getAllProcesses (100, ws-a, exclude conversation)', 'getProcessSummaries (100, ws-a)',
         'listRecentProcesses (100, ws-a)', 'upsertStreamingTurn', 'appendConversationTurn']
         .map(name => ({ ...reads, name }));
     const report = { turns: 50_000, baseline: { status: 'available' },
@@ -39,9 +40,16 @@ test('p50 gate requires a real 50k baseline, all methods no slower, and an activ
     assert.throws(() => assertP50({ ...report, baseline: { status: 'unavailable' } }), /available/);
     assert.throws(() => assertP50({ ...report, comparison: 'unavailable' }), /output-equivalent/);
     assert.throws(() => assertP50({ ...report, cases: [reads, ...otherReads] }), /missing AC-07 workloads.*dense/);
+    for (const name of ['workspace', 'sparse', 'getAllProcesses (100, ws-a, exclude conversation)']) {
+        assert.throws(() => assertP50({ ...report, cases: report.cases.filter(item => item.name !== name) }),
+            error => error.message.includes(`missing AC-07 workloads: ${name}`));
+    }
     assert.throws(() => assertP50({ ...report, cases: [{ ...dense, production: { p50Ms: 4 } }, reads,
         ...otherReads] }),
         /p50 slower.*dense/);
+    assert.throws(() => assertP50({ ...report, cases: [dense, reads, ...otherReads.map(item =>
+        item.name === 'workspace' ? { ...item, production: { p50Ms: 4 } } : item)] }),
+    /p50 slower.*workspace/);
     assert.throws(() => assertP50({ ...report, cases: [{ ...dense, production: {
         p50Ms: 3, timerFiredDuringSearch: false,
     } }, reads, ...otherReads] }), /event-loop timer/);
