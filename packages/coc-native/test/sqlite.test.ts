@@ -50,6 +50,13 @@ describe('NativeDatabase statements', () => {
         ]);
     });
 
+    it('get reads only the first row, even when a later row cannot be decoded', () => {
+        const database = open();
+        const statement = database.prepare("SELECT 'valid' AS value UNION ALL SELECT CAST(x'FF' AS TEXT)");
+        expect(statement.get()).toEqual({ value: 'valid' });
+        expect(() => statement.all()).toThrow();
+    });
+
     it('binds bare and prefixed names for @, :, and $ parameters', () => {
         const database = open();
         const statement = database.prepare('SELECT @at AS at, :colon AS colon, $dollar AS dollar');

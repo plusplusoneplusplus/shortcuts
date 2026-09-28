@@ -87,11 +87,16 @@ fn all_and_iterate_return_every_row() {
 fn get_returns_the_first_row() {
     let database = Database::open(":memory:", false).unwrap();
     let row = database
-        .prepare("SELECT 1 AS value UNION ALL SELECT 2")
+        .prepare("SELECT 1 AS value UNION ALL SELECT CAST(x'FF' AS TEXT)")
         .get(&Parameters::None)
         .unwrap()
         .unwrap();
     assert_eq!(row["value"], Value::Integer(1));
+    assert!(database
+        .prepare("SELECT 1 AS value UNION ALL SELECT CAST(x'FF' AS TEXT)")
+        .all(&Parameters::None)
+        .is_err());
+    assert_eq!(database.prepare("SELECT 1 WHERE 0").get(&Parameters::None).unwrap(), None);
 }
 
 #[test]

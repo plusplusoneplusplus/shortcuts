@@ -363,7 +363,12 @@ impl Statement {
 
     pub fn get(&self, parameters: &Parameters) -> Result<Option<Row>> {
         self.database.with_writer(|connection| {
-            Ok(query(connection, &self.sql, parameters)?.into_iter().next())
+            let mut statement = connection.prepare(&self.sql)?;
+            let column_names: Vec<String> =
+                statement.column_names().iter().map(ToString::to_string).collect();
+            bind(&mut statement, parameters)?;
+            let mut cursor = statement.raw_query();
+            cursor.next()?.map(|row| read_row(row, &column_names)).transpose()
         })
     }
 
