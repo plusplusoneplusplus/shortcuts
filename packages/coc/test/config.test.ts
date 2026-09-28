@@ -26,7 +26,9 @@ import {
     getDefaultValues,
     writeConfigFile,
     resolveLoggingConfig,
+    createProcessStore,
 } from '../src/config';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { CLIConfig, ResolvedCLIConfig, ConfigSourceKey } from '../src/config';
 
 describe('Config', () => {
@@ -477,7 +479,7 @@ timeout: 300
                 pullRequests: { enabled: false },
                 servers: { enabled: false },
                 ralph: { enabled: false },
-                store: { backend: 'file' },
+                store: { backend: 'sqlite' },
             };
             const override: CLIConfig = {};
             const result = mergeConfig(base, override);
@@ -818,6 +820,49 @@ timeout: 300
             fs.writeFileSync(configPath, 'store:\n  backend: sqlite\n');
             const result = resolveConfig(configPath);
             expect(result.store.backend).toBe('sqlite');
+        });
+
+        it('should ignore a configured file backend when resolving settings', () => {
+            const configPath = path.join(tmpDir, 'config-file.yaml');
+            fs.writeFileSync(configPath, 'store:\n  backend: file\n');
+            expect(resolveConfig(configPath).store.backend).toBe('sqlite');
+        });
+    });
+
+    describe('createProcessStore', () => {
+        let tmpDir: string;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-store-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it.each([undefined, 'sqlite'] as const)('creates a native SQLite store for %s', (backend) => {
+            const store = createProcessStore(tmpDir, backend);
+            try {
+                expect(store).toBeInstanceOf(SqliteProcessStore);
+                expect(fs.existsSync(path.join(tmpDir, 'processes.db'))).toBe(true);
+            } finally {
+                store.close();
+            }
+        });
+
+        it('warns and ignores a configured file backend', () => {
+            const warning = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+            try {
+                const store = createProcessStore(tmpDir, 'file');
+                try {
+                    expect(store).toBeInstanceOf(SqliteProcessStore);
+                    expect(warning).toHaveBeenCalledWith(expect.stringContaining('store.backend: file is unsupported'));
+                } finally {
+                    store.close();
+                }
+            } finally {
+                warning.mockRestore();
+            }
         });
     });
 
@@ -1541,7 +1586,7 @@ timeout: 300
                     "globalExtraFolders": [],
                   },
                   "store": {
-                    "backend": "file",
+                    "backend": "sqlite",
                   },
                   "taskCardDensity": "compact",
                   "terminal": {

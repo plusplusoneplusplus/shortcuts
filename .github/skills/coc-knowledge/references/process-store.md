@@ -1,12 +1,12 @@
 # Process Store
 
-Abstract `ProcessStore` interface with two implementations: `SqliteProcessStore` (default)
-and `FileProcessStore`. Location: `packages/forge/src/` (`process-store.ts`,
+Abstract `ProcessStore` interface with a production `SqliteProcessStore` and a
+test-only `FileProcessStore`. Location: `packages/forge/src/` (`process-store.ts`,
 `sqlite-process-store.ts`, `file-process-store.ts`).
 
 ```typescript
 import { createProcessStore } from 'packages/coc/src/config';
-const store = createProcessStore(dataDir, backend?); // 'sqlite' | 'file'
+const store = createProcessStore(dataDir, backend?); // always SqliteProcessStore
 ```
 
 ## SqliteProcessStore
@@ -195,8 +195,8 @@ like `reducing`, `approved`, or `grilling` ride in `extra.detailStatus`. Child t
 `payload.context.taskGroup = { groupId, groupType, role, itemKey?, workspaceId }`, mirrored into
 `AIProcess.metadata.taskGroup` and forwarded on history items. Dream groups are `hidden`
 (linkage-only). `backfillTaskGroups` idempotently projects existing runs on server start.
-Registry writes are best-effort: failures log and never break orchestration. With the file
-backend the registry is in-memory only.
+Registry writes are best-effort: failures log and never break orchestration.
+Tests injecting a file store get an in-memory registry.
 
 `parent_group_id` (schema v29) lets a group name a containing group; it is `NULL` for every
 run-style group and for flat chat folders. Membership helpers: `unlinkChild(workspaceId,
@@ -222,8 +222,10 @@ HTTP, so a client cannot touch a live for-each run's group record. UI is gated b
 
 ## FileProcessStore
 
-Per-repo directory layout under `~/.coc/repos/<workspaceId>/processes/`, selected by
-`store.backend: file` in config. 500-process cap.
+Tests may inject this forge implementation directly. It uses per-repo directories
+under `~/.coc/repos/<workspaceId>/processes/` and has a 500-process cap.
+Production accepts a configured `store.backend: file` value for existing config
+files, warns at store creation, and uses native SQLite.
 
 ## Process Lifecycle
 

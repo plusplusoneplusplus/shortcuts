@@ -202,7 +202,7 @@ export function createConfigNamespaceRegistry(defaultBundledSkills: readonly str
         },
         {
             name: 'store',
-            merge: (base, override) => ({ store: { backend: override?.store?.backend ?? base.store?.backend ?? 'sqlite' } }),
+            merge: () => ({ store: { backend: 'sqlite' } }),
         },
         {
             name: 'monitoring',

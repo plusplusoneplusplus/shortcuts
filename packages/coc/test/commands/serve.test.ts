@@ -459,7 +459,7 @@ describe('Serve Command', () => {
     // 13. FileProcessStore wired into createExecutionServer
     // ========================================================================
 
-    describe('FileProcessStore wiring', () => {
+    describe('Process store wiring', () => {
         it('should pass a store option to createExecutionServer', async () => {
             await runServeWithSigint({ dataDir: tmpDir, open: false });
 
@@ -475,18 +475,18 @@ describe('Serve Command', () => {
 
             const opts = mockCreateExecutionServer.mock.calls[0][0];
             expect(opts.store).toBeInstanceOf(SqliteProcessStore);
-            // Close the SQLite database to release the file lock before tmpDir cleanup
-            (opts.store as InstanceType<typeof SqliteProcessStore>).close();
         });
 
-        it('should configure FileProcessStore with the resolved dataDir', async () => {
+        it('should open processes.db under the resolved dataDir', async () => {
             const customDir = path.join(tmpDir, 'custom-data');
 
             await runServeWithSigint({ dataDir: customDir, open: false });
 
             const opts = mockCreateExecutionServer.mock.calls[0][0];
-            expect(opts.store).toBeDefined();
+            const { SqliteProcessStore } = await import('@plusplusoneplusplus/forge');
+            expect(opts.store).toBeInstanceOf(SqliteProcessStore);
             expect(opts.dataDir).toBe(customDir);
+            expect(fs.existsSync(path.join(customDir, 'processes.db'))).toBe(true);
         });
     });
 
@@ -533,18 +533,17 @@ describe('Serve Command', () => {
 
             const opts = mockCreateExecutionServer.mock.calls[0][0];
             expect(opts.store).toBeInstanceOf(SqliteProcessStore);
-            // Close the SQLite database to release the file lock before tmpDir cleanup
-            (opts.store as InstanceType<typeof SqliteProcessStore>).close();
         });
 
-        it('should create FileProcessStore when config has store.backend: file', async () => {
+        it('should warn and create SqliteProcessStore when config has store.backend: file', async () => {
             mockLoadConfigFile.mockReturnValue({ store: { backend: 'file' } });
-            const { FileProcessStore } = await import('@plusplusoneplusplus/forge');
+            const { SqliteProcessStore } = await import('@plusplusoneplusplus/forge');
 
             await runServeWithSigint({ dataDir: tmpDir, open: false });
 
             const opts = mockCreateExecutionServer.mock.calls[0][0];
-            expect(opts.store).toBeInstanceOf(FileProcessStore);
+            expect(opts.store).toBeInstanceOf(SqliteProcessStore);
+            expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('store.backend: file is unsupported'));
         });
 
         it('should default to SqliteProcessStore when store config is absent', async () => {
@@ -555,8 +554,6 @@ describe('Serve Command', () => {
 
             const opts = mockCreateExecutionServer.mock.calls[0][0];
             expect(opts.store).toBeInstanceOf(SqliteProcessStore);
-            // Close the SQLite database to release the file lock before tmpDir cleanup
-            (opts.store as InstanceType<typeof SqliteProcessStore>).close();
         });
     });
 });
