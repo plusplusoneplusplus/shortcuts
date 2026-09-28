@@ -7,7 +7,7 @@ An npm workspaces monorepo of published Node packages. This file owns the cross-
 | Product | Location | Description |
 |---------|----------|-------------|
 | **CoC CLI** | `packages/coc/` | CLI + dashboard server for YAML-based AI workflows |
-| **CoC Container** | `packages/coccontainer/` | Container-oriented CoC server with messaging integrations and service entry points |
+| **CoC Container** | `packages/coccontainer/` | Container-oriented CoC server with messaging integrations, native SQLite agent/message stores, and service entry points |
 | **CoC Client** | `packages/coc-client/` | Framework-free TypeScript client for CoC REST and realtime APIs (Node/browser) |
 | **Deep Wiki** | `packages/deep-wiki/` | CLI that generates wikis for codebases (`deep-wiki seeds\|discover\|generate\|theme\|init`) |
 

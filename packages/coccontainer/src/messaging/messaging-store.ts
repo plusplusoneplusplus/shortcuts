@@ -4,7 +4,7 @@
  * Stored at {dataDir}/messaging.db. Only instantiated when messaging is enabled.
  */
 
-import Database from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -27,7 +27,7 @@ export interface ProcessSender {
 }
 
 export class MessagingStore {
-    private db: ReturnType<typeof Database>;
+    private db: NativeDatabase;
 
     // In-memory LRU cache for recent message bindings (avoids SQLite lookups)
     private static readonly CACHE_MAX = 50;
@@ -36,7 +36,7 @@ export class MessagingStore {
     constructor(dataDir: string) {
         fs.mkdirSync(dataDir, { recursive: true });
         const dbPath = path.join(dataDir, 'messaging.db');
-        this.db = new Database(dbPath);
+        this.db = new NativeDatabase(dbPath);
         this.db.pragma('journal_mode = WAL');
         this.ensureTables();
     }

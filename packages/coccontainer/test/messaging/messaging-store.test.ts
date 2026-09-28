@@ -137,7 +137,7 @@ describe('MessagingStore', () => {
         expect(result?.processId).toBe('proc-999');
         expect(result?.workspaceId).toBe('ws-saved');
         expect(store2.getGlobalSession('carol@s.whatsapp.net')?.processId).toBe('proc-888');
-        store2.close();
+        store = store2;
     });
 
     describe('push watermarks', () => {
@@ -162,7 +162,7 @@ describe('MessagingStore', () => {
 
             const store2 = new MessagingStore(tmpDir);
             expect(store2.getWatermark('proc-001')).toBe(10);
-            store2.close();
+            store = store2;
         });
 
         it('should track independent watermarks per process', () => {
@@ -170,6 +170,20 @@ describe('MessagingStore', () => {
             store.setWatermark('proc-b', 8);
             expect(store.getWatermark('proc-a')).toBe(3);
             expect(store.getWatermark('proc-b')).toBe(8);
+        });
+
+        it('reopens completion state, sender metadata, and message bindings from disk', () => {
+            store.bindMessage('wamid.persisted', 'proc-persisted', 'agent-1', 'label', 'ws-1');
+            store.setProcessSender('proc-persisted', 'sender-aad', 'sender');
+            store.setUserTurnCount('proc-persisted', 4);
+            store.markCompletionSent('proc-persisted');
+            store.close();
+            store = new MessagingStore(tmpDir);
+
+            expect(store.lookupMessage('wamid.persisted')?.workspaceId).toBe('ws-1');
+            expect(store.getProcessSender('proc-persisted')).toEqual({ senderAadId: 'sender-aad', senderName: 'sender' });
+            expect(store.getUserTurnCount('proc-persisted')).toBe(4);
+            expect(store.isCompletionSent('proc-persisted')).toBe(true);
         });
     });
 
