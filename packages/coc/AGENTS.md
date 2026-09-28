@@ -113,6 +113,8 @@ all have their own `references/*.md`.
   enabled, the bridge persists each inbound request's team/channel/thread and
   task or turn correlation in its physical workspace's `teams-answer-relay/`
   directory.
+  The independent default-off live `features.teamsMessageReaction` setting is
+  also exposed in the Features card.
   Acknowledgements remain immediate receipts; saved terminal assistant turns
   (or safe failure/cancellation notices) are separate bounded HTML replies
   under the original thread root. Follow-ups use an opaque per-request turn

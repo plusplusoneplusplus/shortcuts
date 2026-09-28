@@ -171,6 +171,44 @@ describe('AdminPanel — Workspace Features search', () => {
         });
     });
 
+    it('saves the Teams message reaction toggle through admin config', async () => {
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        const toggle = await screen.findByTestId('toggle-teams-message-reaction-enabled') as HTMLInputElement;
+        expect(toggle.checked).toBe(false);
+        fireEvent.click(toggle);
+        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
+        fireEvent.click(featuresSave!);
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'PUT' && url.includes('/admin/config'),
+            );
+            expect(putCalls.length).toBe(1);
+            expect(JSON.parse(putCalls[0][1].body)['features.teamsMessageReaction']).toBe(true);
+        });
+    });
+
+    it('loads an enabled Teams message reaction and saves disabling it', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) =>
+            url.includes('/admin/config') && opts?.method !== 'PUT'
+                ? Promise.resolve(mockConfigResponse({ features: { teamsMessageReaction: true } }))
+                : defaultFetchImpl(url, opts));
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        const toggle = await screen.findByTestId('toggle-teams-message-reaction-enabled') as HTMLInputElement;
+        expect(toggle.checked).toBe(true);
+        fireEvent.click(toggle);
+        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
+        fireEvent.click(featuresSave!);
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'PUT' && url.includes('/admin/config'),
+            );
+            expect(putCalls.length).toBe(1);
+            expect(JSON.parse(putCalls[0][1].body)['features.teamsMessageReaction']).toBe(false);
+        });
+    });
+
     it('saves the Teams answer relay toggle through admin config', async () => {
         render(<AdminPanel />);
         await gotoFeaturesSubTab();

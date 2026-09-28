@@ -97,6 +97,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `nativeCliSessions` | off | Read-only CLI Sessions surface over native Copilot/Codex/Claude stores |
 | `teamsBridgeObservability` | off | Normal Teams channel-bridge connection history collection and inspection, independent of the container relay |
 | `teamsAiAnswerRelay` | off | Admin -> Configure -> Features exposes the Teams AI answer relay toggle beside bridge observability. When enabled, the normal Teams channel bridge saves per-workspace reply receipts and relays completed Ask answers or safe terminal notices for new requests to their originating threads; independent of connection observability |
+| `teamsMessageReaction` | off | Live Teams channel message Like attempts before routing, independent of answer relay and bridge observability |
 | `arxivPaperIngest` | off | Only the Notes editor interception embedding a lone pasted arXiv link; the paper-ingest API stays callable |
 | `canvasHostApis` | off | Extension-canvas host APIs (below) |
 | `chatStyleSelector` | on | Chat Style chip (below) |

@@ -13,6 +13,7 @@ import { RuntimeConfigService } from '../../src/config/runtime-config-service';
 import type { RuntimeConfigSnapshot } from '../../src/config/runtime-config-service';
 import { DEFAULT_CONFIG } from '../../src/config';
 import type { CLIConfig } from '../../src/config';
+import { buildRuntimeDashboardConfig } from '../../src/server/config/runtime-config-handler';
 
 describe('RuntimeConfigService', () => {
     let tmpDir: string;
@@ -193,6 +194,27 @@ describe('RuntimeConfigService', () => {
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
+        it('applies Teams message reaction updates to the live runtime snapshot', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.teamsMessageReactionEnabled;
+            expect(runtimeFlag()).toBe(false);
+
+            const enabled = await svc.updateConfig({ 'features.teamsMessageReaction': true });
+            expect(enabled.effects).toEqual([{
+                field: 'features.teamsMessageReaction', runtime: 'live', requiresRestart: false,
+            }]);
+            expect(enabled.sources['features.teamsMessageReaction']).toBe('file');
+            expect(runtimeFlag()).toBe(true);
+            expect(svc.config.features.teamsAiAnswerRelay).toBe(false);
+            expect(svc.config.features.teamsBridgeObservability).toBe(false);
+            expect((yaml.load(fs.readFileSync(configPath, 'utf-8')) as CLIConfig).features?.teamsMessageReaction).toBe(true);
+
+            await svc.updateConfig({ 'features.teamsMessageReaction': false });
+            expect(runtimeFlag()).toBe(false);
+            await expect(svc.updateConfig({ 'features.teamsMessageReaction': 'yes' })).rejects.toThrow();
+            expect(runtimeFlag()).toBe(false);
+        });
+
         it('should apply valid update and increment revision', async () => {
             const svc = new RuntimeConfigService({ configPath });
             expect(svc.config.ralph.enabled).toBe(false);
