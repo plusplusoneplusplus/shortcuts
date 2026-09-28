@@ -4,8 +4,10 @@
  */
 
 import * as url from 'url';
+import * as fs from 'fs';
+import * as path from 'path';
 import type * as http from 'http';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { Route } from '../types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
@@ -39,7 +41,7 @@ interface DbBrowserSourceMetadata {
 
 interface ResolvedDbSource {
     metadata: DbBrowserSourceMetadata;
-    db?: DatabaseType;
+    db?: NativeDatabase;
     missing?: boolean;
     close?: () => void;
 }
@@ -72,12 +74,15 @@ function parseSourceId(rawSourceId: string): DbBrowserSourceId {
     throw notFound(`DB browser source "${sourceId}"`);
 }
 
-function resolveSource(sourceId: DbBrowserSourceId, _req: http.IncomingMessage, store: ProcessStore, _dataDir: string): ResolvedDbSource {
+function resolveSource(sourceId: DbBrowserSourceId, _req: http.IncomingMessage, store: ProcessStore, dataDir: string): ResolvedDbSource {
     if (sourceId === 'process-db') {
         if (!(store instanceof SqliteProcessStore)) {
             throw new APIError(501, 'Database browser source "process-db" is only available with the SQLite store backend.', 'NOT_IMPLEMENTED');
         }
-        return { metadata: PROCESS_DB_SOURCE, db: store.getDatabase() };
+        const dbPath = path.join(dataDir, 'processes.db');
+        if (!fs.existsSync(dbPath)) return { metadata: PROCESS_DB_SOURCE, missing: true };
+        const db = new NativeDatabase(dbPath);
+        return { metadata: PROCESS_DB_SOURCE, db, close: () => db.close() };
     }
     throw notFound(`DB browser source "${sourceId}"`);
 }

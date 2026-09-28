@@ -13,6 +13,16 @@ const store = createProcessStore(dataDir, backend?); // 'sqlite' | 'file'
 
 Single `processes.db` at `~/.coc/processes.db`. Schema version 38.
 
+`SqliteProcessStore` opens the file through `NativeDatabase` from `coc-native`.
+The schema definition and v1→v38 migration ladder stay in TypeScript and run
+through that synchronous handle. Startup treats a missing or stale native addon
+as a hard failure; the process store has no JavaScript SQLite fallback.
+
+`getDatabase()` returns the shared `NativeDatabase` handle used by queue, cron,
+wakeup, schedule, trigger, turn-performance, chat-binding, task-group, startup
+repair, and route stores. The admin database browser opens `processes.db` by path
+through its own short-lived native handle so each request closes what it owns.
+
 ### Tables
 
 | Table | Purpose |

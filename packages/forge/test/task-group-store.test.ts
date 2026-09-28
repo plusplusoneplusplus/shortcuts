@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database, type NativeDatabase } from '@plusplusoneplusplus/coc-native';
 
 import { initializeDatabase } from '../src/sqlite-schema';
 import { SqliteTaskGroupStore, TaskGroupRecord } from '../src/task-group-store';
@@ -22,7 +22,7 @@ function makeGroup(overrides?: Partial<TaskGroupRecord>): TaskGroupRecord {
 }
 
 describe('SqliteTaskGroupStore', () => {
-    let db: Database.Database;
+    let db: NativeDatabase;
     let store: SqliteTaskGroupStore;
 
     beforeEach(() => {

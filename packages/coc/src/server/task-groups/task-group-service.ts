@@ -15,7 +15,6 @@
  */
 
 import {
-    Database,
     getLogger,
     initializeDatabase,
     LogCategory,
@@ -27,6 +26,7 @@ import {
     type TaskGroupStatus,
     type TaskGroupSummaryRecord,
 } from '@plusplusoneplusplus/forge';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { ChatFolderGroupStore } from '../processes/chat-folder-handler';
 
 export interface CreateTaskGroupInput {
@@ -66,11 +66,11 @@ export class TaskGroupService {
      * in-memory database when the process store is not SQLite-backed.
      */
     static fromProcessStore(processStore: ProcessStore): TaskGroupService {
-        let db: Database.Database;
+        let db: NativeDatabase;
         if (processStore instanceof SqliteProcessStore) {
             db = processStore.getDatabase();
         } else {
-            db = new Database(':memory:');
+            db = new NativeDatabase(':memory:');
             initializeDatabase(db);
         }
         return new TaskGroupService(new SqliteTaskGroupStore(db));

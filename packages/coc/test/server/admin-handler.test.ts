@@ -269,7 +269,7 @@ describe('Admin Handler', () => {
 
         it('should delete queue rows when wiping', async () => {
             // Use SqliteProcessStore so queue rows are counted/deleted from SQLite
-            const sqliteStore = new SqliteProcessStore({ dataDir });
+            const sqliteStore = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
             server = await createExecutionServer({ port: 0, host: 'localhost', store: sqliteStore, dataDir });
             const srv = server;
 

@@ -10,10 +10,10 @@
  * feature-specific orchestration state (plans, items, journals, cards) stays
  * in each feature's own store.
  *
- * All methods are synchronous (better-sqlite3).
+ * All methods use the synchronous coc-native SQLite handle.
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 
 /**
  * Normalized group lifecycle. Feature-specific states (e.g. 'reducing',
@@ -161,9 +161,9 @@ function memberRowToLink(row: TaskGroupMemberRow): TaskGroupChildLink {
 // ============================================================================
 
 export class SqliteTaskGroupStore {
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
 
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         this.db = db;
     }
 

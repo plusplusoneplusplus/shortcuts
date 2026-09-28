@@ -7,7 +7,7 @@
  * shared Database handle, uses prepared statements for hot paths.
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase, NativeStatement } from '@plusplusoneplusplus/coc-native';
 import type { ScheduleRunRecord } from './schedule-manager';
 import { scheduleRuntimeKey, type ScheduleRuntimeKey } from './schedule-runtime-key';
 
@@ -22,20 +22,20 @@ const MAX_RUNS_DEFAULT = 100;
 // ============================================================================
 
 export class SqliteScheduleRunPersistence {
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
     private readonly maxRuns: number;
 
     // Prepared statements (cached at construction time)
-    private readonly stmtUpsert: Database.Statement;
-    private readonly stmtLoadByRepo: Database.Statement;
-    private readonly stmtLoadAll: Database.Statement;
-    private readonly stmtDeleteByRepo: Database.Statement;
-    private readonly stmtDeleteById: Database.Statement;
-    private readonly stmtDeleteAll: Database.Statement;
-    private readonly stmtCount: Database.Statement;
-    private readonly stmtCountByRepo: Database.Statement;
+    private readonly stmtUpsert: NativeStatement;
+    private readonly stmtLoadByRepo: NativeStatement;
+    private readonly stmtLoadAll: NativeStatement;
+    private readonly stmtDeleteByRepo: NativeStatement;
+    private readonly stmtDeleteById: NativeStatement;
+    private readonly stmtDeleteAll: NativeStatement;
+    private readonly stmtCount: NativeStatement;
+    private readonly stmtCountByRepo: NativeStatement;
 
-    constructor(db: Database.Database, maxRuns: number = MAX_RUNS_DEFAULT) {
+    constructor(db: NativeDatabase, maxRuns: number = MAX_RUNS_DEFAULT) {
         this.db = db;
         this.maxRuns = maxRuns;
 

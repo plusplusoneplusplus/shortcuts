@@ -65,6 +65,25 @@ describe('NativeDatabase statements', () => {
         });
     });
 
+    it('ignores extra named parameters for better-sqlite3 compatibility', () => {
+        const database = open();
+        database.exec('CREATE TABLE values_table (value TEXT)');
+        database.prepare('INSERT INTO values_table (value) VALUES (@value)').run({
+            value: 'kept',
+            unused: 'ignored',
+        });
+        expect(database.prepare('SELECT value FROM values_table').get()).toEqual({ value: 'kept' });
+    });
+
+    it('normalizes undefined and boolean bind values like better-sqlite3', () => {
+        const database = open();
+        expect(database.prepare('SELECT ? AS missing, ? AS enabled, ? AS disabled').get(
+            undefined,
+            true,
+            false,
+        )).toEqual({ missing: null, enabled: 1, disabled: 0 });
+    });
+
     it('preserves SQLite null, integer, real, text, and blob values', () => {
         const database = open();
         const blob = Buffer.from([0, 127, 255]);
@@ -108,6 +127,20 @@ describe('NativeDatabase lifecycle', () => {
             throw new Error('stop');
         });
         expect(fail).toThrow('stop');
+        expect(database.prepare('SELECT value FROM items').all()).toEqual([]);
+    });
+
+    it('uses savepoints for nested transactions', () => {
+        const database = open();
+        database.exec('CREATE TABLE items (value TEXT)');
+        const insert = database.prepare('INSERT INTO items(value) VALUES (?)');
+        const inner = database.transaction(() => insert.run('nested'));
+        const outer = database.transaction(() => {
+            inner();
+            throw new Error('roll back outer');
+        });
+
+        expect(outer).toThrow('roll back outer');
         expect(database.prepare('SELECT value FROM items').all()).toEqual([]);
     });
 

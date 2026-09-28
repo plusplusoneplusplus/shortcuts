@@ -11,10 +11,12 @@ import type { NativeAddonStatus } from './types';
 
 export type NativeSqliteValue = number | string | Buffer | null;
 export type NativeSqliteRow = Record<string, NativeSqliteValue>;
-export type NativeSqliteParameters =
-    | NativeSqliteValue
-    | readonly NativeSqliteValue[]
-    | Record<string, NativeSqliteValue>;
+/**
+ * Parameters intentionally accept unknown application row shapes, matching
+ * better-sqlite3's structural call surface. The native boundary remains the
+ * authority that rejects values SQLite cannot bind.
+ */
+export type NativeSqliteParameters = unknown;
 export type NativeDatabaseOptions = Bindings.NativeDatabaseOptions;
 
 export interface NativeRunResult {
@@ -29,6 +31,12 @@ export interface NativePragmaOptions {
 interface NormalizedParameters {
     values?: NativeSqliteValue[];
     names?: string[];
+}
+
+function normalizeValue(value: unknown): NativeSqliteValue {
+    if (value === undefined) return null;
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    return value as NativeSqliteValue;
 }
 
 export interface NativeSqliteAddon {
@@ -64,7 +72,7 @@ export function nativeSqliteStatus(): NativeAddonStatus {
     };
 }
 
-function isNamedParameters(value: NativeSqliteParameters): value is Record<string, NativeSqliteValue> {
+function isNamedParameters(value: NativeSqliteParameters): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value) && !Buffer.isBuffer(value);
 }
 
@@ -72,13 +80,13 @@ function normalizeParameters(parameters: NativeSqliteParameters[]): NormalizedPa
     if (parameters.length === 0) return {};
     const first = parameters[0];
     if (parameters.length === 1 && Array.isArray(first)) {
-        return { values: [...first] };
+        return { values: first.map(normalizeValue) };
     }
     if (parameters.length === 1 && isNamedParameters(first)) {
         const names = Object.keys(first);
-        return { names, values: names.map(name => first[name]) };
+        return { names, values: names.map(name => normalizeValue(first[name])) };
     }
-    return { values: parameters as NativeSqliteValue[] };
+    return { values: parameters.map(normalizeValue) };
 }
 
 function withSqliteError<T>(operation: () => T): T {
@@ -104,19 +112,19 @@ export class NativeStatement {
         });
     }
 
-    public get<T extends NativeSqliteRow = NativeSqliteRow>(
+    public get<T = any>(
         ...parameters: NativeSqliteParameters[]
     ): T | undefined {
         const { values, names } = normalizeParameters(parameters);
         return withSqliteError(() => (this.handle.get(values, names) as T | null) ?? undefined);
     }
 
-    public all<T extends NativeSqliteRow = NativeSqliteRow>(...parameters: NativeSqliteParameters[]): T[] {
+    public all<T = any>(...parameters: NativeSqliteParameters[]): T[] {
         const { values, names } = normalizeParameters(parameters);
         return withSqliteError(() => this.handle.all(values, names) as T[]);
     }
 
-    public iterate<T extends NativeSqliteRow = NativeSqliteRow>(
+    public iterate<T = any>(
         ...parameters: NativeSqliteParameters[]
     ): IterableIterator<T> {
         const { values, names } = normalizeParameters(parameters);
@@ -137,7 +145,7 @@ export class NativeDatabase {
         return this;
     }
 
-    public pragma<T = NativeSqliteRow[]>(sql: string, options?: NativePragmaOptions): T {
+    public pragma<T = any>(sql: string, options?: NativePragmaOptions): T {
         return withSqliteError(() => {
             const rows = this.handle.pragma(sql) as NativeSqliteRow[];
             if (!options?.simple) return rows as T;

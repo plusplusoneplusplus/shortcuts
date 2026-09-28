@@ -7,7 +7,7 @@
  * separators (callers must normalize before invoking).
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase, NativeStatement } from '@plusplusoneplusplus/coc-native';
 import { ChatBindingStore, type ChatBinding, type ChatBindings } from '../shared/chat-binding-store';
 
 // ============================================================================
@@ -25,12 +25,12 @@ export type NoteChatBindings = ChatBindings;
 // ============================================================================
 
 export class NoteChatBindingStore extends ChatBindingStore {
-    private readonly stmtUnbindByTask: Database.Statement;
-    private readonly stmtRenamePath: Database.Transaction<(workspaceId: string, oldPath: string, newPath: string) => number>;
-    private readonly stmtRenamePrefix: Database.Transaction<(workspaceId: string, oldPrefix: string, newPrefix: string) => number>;
-    private readonly stmtDeletePrefix: Database.Statement;
+    private readonly stmtUnbindByTask: NativeStatement;
+    private readonly stmtRenamePath: (workspaceId: string, oldPath: string, newPath: string) => number;
+    private readonly stmtRenamePrefix: (workspaceId: string, oldPrefix: string, newPrefix: string) => number;
+    private readonly stmtDeletePrefix: NativeStatement;
 
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         super(db, 'note_chat_bindings', 'note_path');
 
         this.stmtUnbindByTask = db.prepare(

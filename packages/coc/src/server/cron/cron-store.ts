@@ -7,7 +7,7 @@
  * `sqlite-schema.ts`.
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase, NativeStatement } from '@plusplusoneplusplus/coc-native';
 import type { CronEntry, CronStatus } from './cron-types';
 import { MAX_ACTIVE_CRONS } from './cron-types';
 
@@ -16,22 +16,22 @@ import { MAX_ACTIVE_CRONS } from './cron-types';
 // ============================================================================
 
 export class CronStore {
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
 
     // Prepared statements
-    private readonly stmtInsert: Database.Statement;
-    private readonly stmtUpdate: Database.Statement;
-    private readonly stmtGetById: Database.Statement;
-    private readonly stmtGetByProcess: Database.Statement;
-    private readonly stmtGetByWorkspace: Database.Statement;
-    private readonly stmtGetActive: Database.Statement;
-    private readonly stmtGetAll: Database.Statement;
-    private readonly stmtDelete: Database.Statement;
-    private readonly stmtDeleteAll: Database.Statement;
-    private readonly stmtCountActive: Database.Statement;
-    private readonly stmtPauseActive: Database.Statement;
+    private readonly stmtInsert: NativeStatement;
+    private readonly stmtUpdate: NativeStatement;
+    private readonly stmtGetById: NativeStatement;
+    private readonly stmtGetByProcess: NativeStatement;
+    private readonly stmtGetByWorkspace: NativeStatement;
+    private readonly stmtGetActive: NativeStatement;
+    private readonly stmtGetAll: NativeStatement;
+    private readonly stmtDelete: NativeStatement;
+    private readonly stmtDeleteAll: NativeStatement;
+    private readonly stmtCountActive: NativeStatement;
+    private readonly stmtPauseActive: NativeStatement;
 
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         this.db = db;
         this.ensureTable();
 

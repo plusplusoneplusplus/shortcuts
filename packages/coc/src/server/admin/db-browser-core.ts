@@ -1,5 +1,5 @@
 import * as url from 'url';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { badRequest } from '../errors';
 
 export interface DbBrowserColumn {
@@ -59,7 +59,7 @@ export function parseTableDataQuery(reqUrl: string | undefined): {
     };
 }
 
-export function validateTableAndGetMeta(db: DatabaseType, tableName: string): {
+export function validateTableAndGetMeta(db: NativeDatabase, tableName: string): {
     columns: ColumnInfo[];
     columnNames: Set<string>;
     pkColumnNames: Set<string>;
@@ -83,7 +83,7 @@ export function validateTableAndGetMeta(db: DatabaseType, tableName: string): {
     return { columns, columnNames, pkColumnNames };
 }
 
-export function listTables(db: DatabaseType): DbBrowserTable[] {
+export function listTables(db: NativeDatabase): DbBrowserTable[] {
     const rows = db.prepare(
         `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
     ).all() as { name: string }[];
@@ -94,7 +94,7 @@ export function listTables(db: DatabaseType): DbBrowserTable[] {
     });
 }
 
-export function getTableData(db: DatabaseType, tableName: string, reqUrl: string | undefined): DbBrowserTableData {
+export function getTableData(db: NativeDatabase, tableName: string, reqUrl: string | undefined): DbBrowserTableData {
     const { columns, columnNames } = validateTableAndGetMeta(db, tableName);
     const { page, pageSize, sortColumn, sortOrder, offset } = parseTableDataQuery(reqUrl);
     const hasValidSort = sortColumn !== undefined && sortColumn !== '' && columnNames.has(sortColumn);
@@ -131,7 +131,7 @@ export function validateColumnNames(columnNames: Set<string>, providedNames: str
 }
 
 export function updateRow(
-    db: DatabaseType,
+    db: NativeDatabase,
     tableName: string,
     pkColumns: Record<string, unknown>,
     updates: Record<string, unknown>,
@@ -161,7 +161,7 @@ export function updateRow(
 }
 
 export function deleteRow(
-    db: DatabaseType,
+    db: NativeDatabase,
     tableName: string,
     pkColumns: Record<string, unknown>,
 ): number {
@@ -174,7 +174,7 @@ export function deleteRow(
 }
 
 export function deleteRowsBulk(
-    db: DatabaseType,
+    db: NativeDatabase,
     tableName: string,
     rows: Record<string, unknown>[],
 ): { deleted: number; requested: number } {

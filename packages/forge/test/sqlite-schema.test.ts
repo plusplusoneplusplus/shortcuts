@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database, type NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { initializeDatabase, getSchemaVersion, SCHEMA_VERSION } from '../src/sqlite-schema';
+import { SqliteProcessStore } from '../src/sqlite-process-store';
 
 describe('sqlite-schema', () => {
-    let db: Database.Database;
+    let db: NativeDatabase;
 
     beforeEach(() => {
         db = new Database(':memory:');
@@ -233,10 +234,13 @@ describe('sqlite-schema', () => {
         });
 
         it('migrates a V1 database without data loss', () => {
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sqlite-v1-migration-'));
+            const dbPath = path.join(tmpDir, 'processes.db');
+            const oldDb = new Database(dbPath);
             // Simulate a V1 database by creating the table WITHOUT seen_at
-            db.pragma('journal_mode = WAL');
-            db.pragma('foreign_keys = ON');
-            db.exec(`
+            oldDb.pragma('journal_mode = WAL');
+            oldDb.pragma('foreign_keys = ON');
+            oldDb.exec(`
                 CREATE TABLE processes (
                     id                    TEXT PRIMARY KEY,
                     workspace_id          TEXT NOT NULL,
@@ -266,29 +270,36 @@ describe('sqlite-schema', () => {
                     archived              INTEGER DEFAULT 0
                 )
             `);
-            db.pragma('user_version = 1');
+            oldDb.pragma('user_version = 1');
 
             // Insert a row before migration
-            db.prepare(`
+            oldDb.prepare(`
                 INSERT INTO processes (id, workspace_id, status, start_time, end_time)
                 VALUES (?, ?, ?, ?, ?)
             `).run('p1', 'ws1', 'completed', '2024-01-01T00:00:00Z', '2024-01-01T00:01:00Z');
+            oldDb.close();
 
-            // Run initialization (should migrate V1 → V2)
-            initializeDatabase(db);
+            // Reopen the real file through the production store constructor.
+            const store = new SqliteProcessStore({ dbPath });
+            const migratedDb = store.getDatabase();
 
-            // Version should be current
-            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
+            try {
+                // Version should be current
+                expect(getSchemaVersion(migratedDb)).toBe(SCHEMA_VERSION);
 
-            // seen_at column should exist
-            const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
-            expect(cols.map(c => c.name)).toContain('seen_at');
+                // seen_at column should exist
+                const cols = migratedDb.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
+                expect(cols.map(c => c.name)).toContain('seen_at');
 
-            // Existing data should be preserved with seen_at = NULL
-            const row = db.prepare('SELECT id, status, seen_at FROM processes WHERE id = ?').get('p1') as any;
-            expect(row.id).toBe('p1');
-            expect(row.status).toBe('completed');
-            expect(row.seen_at).toBeNull();
+                // Existing data should be preserved with seen_at = NULL
+                const row = migratedDb.prepare('SELECT id, status, seen_at FROM processes WHERE id = ?').get('p1') as any;
+                expect(row.id).toBe('p1');
+                expect(row.status).toBe('completed');
+                expect(row.seen_at).toBeNull();
+            } finally {
+                store.close();
+                fs.rmSync(tmpDir, { recursive: true, force: true });
+            }
         });
 
         it('migration is idempotent on a V2 database', () => {
@@ -303,7 +314,7 @@ describe('sqlite-schema', () => {
 
     describe('V4 → V5 migration (FTS5 conversation_search)', () => {
         /** Helper to insert a process + turn */
-        function insertTurn(turnDb: Database.Database, processId: string, turnIndex: number, content: string): void {
+        function insertTurn(turnDb: NativeDatabase, processId: string, turnIndex: number, content: string): void {
             turnDb.prepare(`
                 INSERT OR IGNORE INTO processes (id, workspace_id, status, start_time)
                 VALUES (?, 'ws1', 'running', '2024-01-01T00:00:00Z')
@@ -1744,7 +1755,7 @@ describe('sqlite-schema', () => {
 });
 
 describe('V35 -> V36 migration (active provider/session binding)', () => {
-    let db: Database.Database;
+    let db: NativeDatabase;
 
     beforeEach(() => {
         db = new Database(':memory:');
@@ -1804,14 +1815,14 @@ describe('V35 -> V36 migration (active provider/session binding)', () => {
 });
 
 describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
-    let db: Database.Database;
+    let db: NativeDatabase;
 
     beforeEach(() => {
         db = new Database(':memory:');
     });
 
     describe('V37 -> V38 migration (Teams request correlation)', () => {
-        let db: Database.Database;
+        let db: NativeDatabase;
 
         beforeEach(() => {
             db = new Database(':memory:');
@@ -1845,7 +1856,10 @@ describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
     });
 
     it('adds a nullable segment_id column without backfilling existing turns', () => {
-        db.exec(`
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sqlite-v36-migration-'));
+        const dbPath = path.join(tmpDir, 'processes.db');
+        const oldDb = new Database(dbPath);
+        oldDb.exec(`
             CREATE TABLE processes (
                 id                    TEXT PRIMARY KEY,
                 workspace_id          TEXT NOT NULL,
@@ -1877,25 +1891,32 @@ describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
                 UNIQUE(process_id, turn_index)
             );
         `);
-        db.prepare(`
+        oldDb.prepare(`
             INSERT INTO conversation_turns (process_id, turn_index, role, content, timestamp, provider)
             VALUES (?, ?, ?, ?, ?, ?)
         `).run('p-v36', 0, 'assistant', 'hi', '2026-01-01T00:00:00.000Z', 'codex');
-        db.pragma('user_version = 36');
+        oldDb.pragma('user_version = 36');
+        oldDb.close();
 
-        initializeDatabase(db);
+        const store = new SqliteProcessStore({ dbPath });
+        const migratedDb = store.getDatabase();
 
-        expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        const columns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
-        expect(columns.map(column => column.name)).toContain('segment_id');
-        // No backfill: the current binding is not evidence about which native
-        // session ran an already-recorded turn.
-        expect(db.prepare(`
-            SELECT provider, segment_id FROM conversation_turns WHERE process_id = ?
-        `).get('p-v36')).toEqual({
-            provider: 'codex',
-            segment_id: null,
-        });
+        try {
+            expect(getSchemaVersion(migratedDb)).toBe(SCHEMA_VERSION);
+            const columns = migratedDb.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
+            expect(columns.map(column => column.name)).toContain('segment_id');
+            // No backfill: the current binding is not evidence about which native
+            // session ran an already-recorded turn.
+            expect(migratedDb.prepare(`
+                SELECT provider, segment_id FROM conversation_turns WHERE process_id = ?
+            `).get('p-v36')).toEqual({
+                provider: 'codex',
+                segment_id: null,
+            });
+        } finally {
+            store.close();
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
     });
 
     it('is idempotent when initializeDatabase runs twice', () => {

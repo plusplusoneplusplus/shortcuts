@@ -5,8 +5,7 @@
  * Follows the same pattern as `schedule-infrastructure.ts`.
  */
 
-import DatabaseConstructor from 'better-sqlite3';
-import type Database from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { ISDKService, TaskQueueManager, ProcessStore } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, initializeDatabase, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { CronStore } from '../cron/cron-store';
@@ -83,7 +82,7 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
     const { dataDir, queueFacade, store, emit, resolveWorkspaceId, executeFollowUp, emitWakeup } = options;
 
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
-    let db: Database.Database;
+    let db: NativeDatabase;
     let ownsDb = false;
     if (store instanceof SqliteProcessStore) {
         db = store.getDatabase();
@@ -91,7 +90,7 @@ export async function createCronInfrastructure(options: CronInfrastructureOption
         const path = require('path');
         const fs = require('fs');
         fs.mkdirSync(dataDir, { recursive: true });
-        db = new DatabaseConstructor(path.join(dataDir, 'processes.db'));
+        db = new NativeDatabase(path.join(dataDir, 'processes.db'));
         initializeDatabase(db);
         ownsDb = true;
     }

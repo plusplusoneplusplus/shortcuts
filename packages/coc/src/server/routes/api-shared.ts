@@ -7,7 +7,7 @@
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { GitOpsStore } from '@plusplusoneplusplus/forge';
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { Route } from '../types';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -21,7 +21,7 @@ export interface ApiRouteContext {
     getWsServer?: () => ProcessWebSocketServer | undefined;
     activeWorkspaceTracker?: ActiveWorkspaceTracker;
     gitOpsStore: GitOpsStore;
-    db?: Database.Database;
+    db?: NativeDatabase;
     /**
      * Whether the cron/recurring follow-up subsystem is enabled.
      * Remains startup-captured because cron infrastructure (executor, timers)

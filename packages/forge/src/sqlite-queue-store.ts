@@ -1,9 +1,9 @@
 /**
  * Persists queue tasks and per-repo queue state in the existing SQLite
- * database.  All methods are synchronous (better-sqlite3).
+ * database. All methods use the synchronous coc-native SQLite handle.
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { QueuedTask, QueueStatus, PauseReason, QueueItem, PauseMarker, PauseDurationHours, PauseScope, TaskDelayMinutes, RepoGateState } from './queue/types';
 
 // ============================================================================
@@ -209,13 +209,13 @@ function jsonToRepoGate(value: string | null | undefined): RepoGateState | undef
 // ============================================================================
 
 export interface SqliteQueueStoreOptions {
-    db: Database.Database;
+    db: NativeDatabase;
 }
 
 export class SqliteQueueStore {
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
 
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         this.db = db;
     }
 

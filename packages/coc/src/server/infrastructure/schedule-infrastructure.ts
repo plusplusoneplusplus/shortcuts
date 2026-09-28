@@ -4,8 +4,7 @@
  * used by the execution server and returns them as a plain object.
  */
 
-import DatabaseConstructor from 'better-sqlite3';
-import type Database from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
@@ -44,7 +43,7 @@ export async function createScheduleInfrastructure(
     store: ProcessStore,
 ): Promise<ScheduleInfrastructure> {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
-    let db: Database.Database;
+    let db: NativeDatabase;
     let ownsDb = false;
     if (store instanceof SqliteProcessStore) {
         db = store.getDatabase();
@@ -52,7 +51,7 @@ export async function createScheduleInfrastructure(
         const path = require('path');
         const fs = require('fs');
         fs.mkdirSync(dataDir, { recursive: true });
-        db = new DatabaseConstructor(path.join(dataDir, 'processes.db'));
+        db = new NativeDatabase(path.join(dataDir, 'processes.db'));
         initializeDatabase(db);
         ownsDb = true;
     }

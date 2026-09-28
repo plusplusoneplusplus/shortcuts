@@ -1,5 +1,5 @@
 /**
- * Single-file process store using better-sqlite3.
+ * Single-file process store using coc-native's SQLite driver.
  * All methods are synchronous at the SQLite level, wrapped in async
  * to satisfy the ProcessStore interface's Promise return types.
  *
@@ -8,8 +8,7 @@
 
 import * as fs from 'fs';
 import { createProcessEventBus } from './process-event-bus';
-import Database from 'better-sqlite3';
-import type { Statement } from 'better-sqlite3';
+import { NativeDatabase, type NativeStatement } from '@plusplusoneplusplus/coc-native';
 
 import {
     ProcessStore,
@@ -636,24 +635,24 @@ function rowToWiki(row: WikiRow): WikiInfo {
 // ============================================================================
 
 export class SqliteProcessStore implements ProcessStore {
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
     private readonly dbPath: string;
     private readonly bus = createProcessEventBus();
     private readonly flushHandlers = new Map<string, () => Promise<void>>();
 
     // Cached prepared statements
-    private readonly insertProcessStmt: Statement;
-    private readonly insertTurnStmt: Statement;
-    private readonly getProcessStmt: Statement;
-    private readonly getTurnsStmt: Statement;
-    private readonly upsertStreamingStmt: Statement;
-    private readonly maxTurnIndexStmt: Statement;
+    private readonly insertProcessStmt: NativeStatement;
+    private readonly insertTurnStmt: NativeStatement;
+    private readonly getProcessStmt: NativeStatement;
+    private readonly getTurnsStmt: NativeStatement;
+    private readonly upsertStreamingStmt: NativeStatement;
+    private readonly maxTurnIndexStmt: NativeStatement;
 
     onProcessChange?: ProcessChangeCallback;
 
     constructor(options: SqliteProcessStoreOptions) {
         this.dbPath = options.dbPath;
-        this.db = new Database(options.dbPath);
+        this.db = new NativeDatabase(options.dbPath);
         initializeDatabase(this.db);
 
         // Prepare cached statements
@@ -711,11 +710,11 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     /**
-     * Returns the underlying `better-sqlite3` Database instance.
+     * Returns the underlying coc-native database handle.
      * Used by trusted callers (e.g. SqliteQueuePersistence) that need direct
      * access to the shared database connection.
      */
-    getDatabase(): Database.Database {
+    getDatabase(): NativeDatabase {
         return this.db;
     }
 

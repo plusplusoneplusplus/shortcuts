@@ -6,7 +6,7 @@
  * test databases).
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase, NativeStatement } from '@plusplusoneplusplus/coc-native';
 import type { WakeupEntry, WakeupStatus } from './wakeup-types';
 
 // ============================================================================
@@ -14,22 +14,22 @@ import type { WakeupEntry, WakeupStatus } from './wakeup-types';
 // ============================================================================
 
 export class WakeupStore {
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
 
-    private readonly stmtInsert: Database.Statement;
-    private readonly stmtGetById: Database.Statement;
-    private readonly stmtGetByProcess: Database.Statement;
-    private readonly stmtGetByWorkspace: Database.Statement;
-    private readonly stmtGetPending: Database.Statement;
-    private readonly stmtGetAll: Database.Statement;
-    private readonly stmtMarkFired: Database.Statement;
-    private readonly stmtMarkFailed: Database.Statement;
-    private readonly stmtCancel: Database.Statement;
-    private readonly stmtDelete: Database.Statement;
-    private readonly stmtDeleteAll: Database.Statement;
-    private readonly stmtPruneTerminalBefore: Database.Statement;
+    private readonly stmtInsert: NativeStatement;
+    private readonly stmtGetById: NativeStatement;
+    private readonly stmtGetByProcess: NativeStatement;
+    private readonly stmtGetByWorkspace: NativeStatement;
+    private readonly stmtGetPending: NativeStatement;
+    private readonly stmtGetAll: NativeStatement;
+    private readonly stmtMarkFired: NativeStatement;
+    private readonly stmtMarkFailed: NativeStatement;
+    private readonly stmtCancel: NativeStatement;
+    private readonly stmtDelete: NativeStatement;
+    private readonly stmtDeleteAll: NativeStatement;
+    private readonly stmtPruneTerminalBefore: NativeStatement;
 
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         this.db = db;
         this.ensureTable();
 

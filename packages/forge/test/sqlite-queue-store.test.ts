@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database, type NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '../src/sqlite-schema';
 import { SqliteQueueStore } from '../src/sqlite-queue-store';
 import { createTaskQueueManager } from '../src/queue/task-queue-manager';
 import type { QueuedTask, PauseReason, PauseMarker } from '../src/queue/types';
 
-let db: Database.Database;
+let db: NativeDatabase;
 let store: SqliteQueueStore;
 
 function makeTask(id: string, overrides?: Partial<QueuedTask>): QueuedTask {

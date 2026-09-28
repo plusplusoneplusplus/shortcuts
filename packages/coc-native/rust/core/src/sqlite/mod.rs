@@ -10,6 +10,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -189,6 +190,7 @@ impl ReadPool {
 struct DatabaseInner {
     writer: ReentrantMutex<RefCell<Option<Connection>>>,
     readers: Option<ReadPool>,
+    next_savepoint: AtomicU64,
 }
 
 /// One open SQLite file: a serialized writer plus a bounded pool for typed reads.
@@ -213,6 +215,7 @@ impl Database {
             inner: Arc::new(DatabaseInner {
                 writer: ReentrantMutex::new(RefCell::new(Some(writer))),
                 readers,
+                next_savepoint: AtomicU64::new(0),
             }),
         })
     }
@@ -252,21 +255,40 @@ impl Database {
         callback: impl FnOnce() -> std::result::Result<T, E>,
     ) -> Result<std::result::Result<T, E>> {
         let _guard = self.inner.writer.lock();
-        self.with_writer(|connection| {
-            connection.execute_batch("BEGIN")?;
-            Ok(())
+        let savepoint = self.with_writer(|connection| {
+            if connection.is_autocommit() {
+                connection.execute_batch("BEGIN")?;
+                Ok(None)
+            } else {
+                let name = format!(
+                    "coc_native_{}",
+                    self.inner.next_savepoint.fetch_add(1, Ordering::Relaxed)
+                );
+                connection.execute_batch(&format!("SAVEPOINT {name}"))?;
+                Ok(Some(name))
+            }
         })?;
         match callback() {
             Ok(value) => {
                 self.with_writer(|connection| {
-                    connection.execute_batch("COMMIT")?;
+                    if let Some(name) = &savepoint {
+                        connection.execute_batch(&format!("RELEASE SAVEPOINT {name}"))?;
+                    } else {
+                        connection.execute_batch("COMMIT")?;
+                    }
                     Ok(())
                 })?;
                 Ok(Ok(value))
             }
             Err(error) => {
                 let _ = self.with_writer(|connection| {
-                    connection.execute_batch("ROLLBACK")?;
+                    if let Some(name) = &savepoint {
+                        connection.execute_batch(&format!(
+                            "ROLLBACK TO SAVEPOINT {name}; RELEASE SAVEPOINT {name}"
+                        ))?;
+                    } else {
+                        connection.execute_batch("ROLLBACK")?;
+                    }
                     Ok(())
                 });
                 Ok(Err(error))
@@ -355,9 +377,9 @@ fn bind(statement: &mut SqliteStatement<'_>, parameters: &Parameters) -> Result<
         }
         Parameters::Named(values) => {
             for (name, value) in values {
-                let index = named_parameter_index(statement, name)?
-                    .ok_or_else(|| rusqlite::Error::InvalidParameterName(name.clone()))?;
-                statement.raw_bind_parameter(index, value)?;
+                if let Some(index) = named_parameter_index(statement, name)? {
+                    statement.raw_bind_parameter(index, value)?;
+                }
             }
         }
     }
