@@ -1,19 +1,43 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
-import { benchmark, formatReport, measure, p50, parseArgs } from './bench-process-search.mjs';
+import { assertP50, benchmark, formatReport, measure, p50, parseArgs } from './bench-process-search.mjs';
 
 const require = createRequire(import.meta.url);
 
 test('CLI options and p50 reject invalid fixtures and summarize even samples', () => {
-    assert.deepEqual(parseArgs([]), { turns: 50_000, runs: 5, json: false });
+    assert.deepEqual(parseArgs([]), { turns: 50_000, runs: 5, json: false, assertP50: false });
     assert.deepEqual(parseArgs(['--turns', '250', '--runs', '2', '--json']),
-        { turns: 250, runs: 2, json: true });
+        { turns: 250, runs: 2, json: true, assertP50: false });
+    assert.equal(parseArgs(['--assert-p50']).assertP50, true);
     for (const args of [['--turns', '0'], ['--runs', '-1'], ['--turns', '1.5'],
         ['--turns'], ['--runs', '9007199254740992'], ['--unknown']]) {
         assert.throws(() => parseArgs(args));
     }
     assert.equal(p50([3, 1, 4, 2]), 2.5);
+});
+
+test('p50 gate requires a real 50k baseline, all methods no slower, and an active timer', () => {
+    const dense = { name: 'dense', production: { p50Ms: 3, timerFiredDuringSearch: true },
+        baseline: { p50Ms: 3 } };
+    const reads = { name: 'getConversationTurns', production: { p50Ms: 2 },
+        baseline: { p50Ms: 3 } };
+    const otherReads = ['getAllProcesses (100, ws-a)', 'getProcessSummaries (100, ws-a)',
+        'listRecentProcesses (100, ws-a)', 'upsertStreamingTurn', 'appendConversationTurn']
+        .map(name => ({ ...reads, name }));
+    const report = { turns: 50_000, baseline: { status: 'available' },
+        comparison: 'output-equivalent', cases: [dense, reads, ...otherReads] };
+    assert.doesNotThrow(() => assertP50(report));
+    assert.throws(() => assertP50({ ...report, turns: 4_000 }), /50,000 turns/);
+    assert.throws(() => assertP50({ ...report, baseline: { status: 'unavailable' } }), /available/);
+    assert.throws(() => assertP50({ ...report, comparison: 'unavailable' }), /output-equivalent/);
+    assert.throws(() => assertP50({ ...report, cases: [reads, ...otherReads] }), /missing AC-07 workloads.*dense/);
+    assert.throws(() => assertP50({ ...report, cases: [{ ...dense, production: { p50Ms: 4 } }, reads,
+        ...otherReads] }),
+        /p50 slower.*dense/);
+    assert.throws(() => assertP50({ ...report, cases: [{ ...dense, production: {
+        p50Ms: 3, timerFiredDuringSearch: false,
+    } }, reads, ...otherReads] }), /event-loop timer/);
 });
 
 test('real compiled production search reports counts, p50, and timer responsiveness', async () => {

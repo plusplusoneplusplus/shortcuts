@@ -2,6 +2,7 @@
  * Independent process-search benchmark. Run after building forge and coc-native:
  * npm run bench:process-search -w @plusplusoneplusplus/forge -- --turns 50000
  * A locally installed better-sqlite3 is optional; it is never installed by this script.
+ * --assert-p50 requires every AC-07 workload and an output-equivalent baseline.
  */
 import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -21,11 +22,13 @@ const SEARCHES = [
 ];
 
 export function parseArgs(argv) {
-    const options = { turns: 50_000, runs: 5, json: false };
+    const options = { turns: 50_000, runs: 5, json: false, assertP50: false };
     for (let i = 0; i < argv.length; i++) {
         const flag = argv[i];
         if (flag === '--json') {
             options.json = true;
+        } else if (flag === '--assert-p50') {
+            options.assertP50 = true;
         } else if (flag === '--turns' || flag === '--runs') {
             const value = argv[++i];
             if (!/^[1-9]\d*$/.test(value ?? '') || !Number.isSafeInteger(Number(value))) {
@@ -451,10 +454,36 @@ export function formatReport(report) {
     ].join('\n');
 }
 
+export function assertP50(report) {
+    if (report.turns < 50_000) {
+        throw new Error('p50 gate requires at least 50,000 turns');
+    }
+    if (report.baseline.status !== 'available' || report.comparison !== 'output-equivalent') {
+        throw new Error('p50 gate requires an available, output-equivalent better-sqlite3 baseline');
+    }
+    const required = ['dense', 'getConversationTurns', 'getAllProcesses (100, ws-a)',
+        'getProcessSummaries (100, ws-a)', 'listRecentProcesses (100, ws-a)',
+        'upsertStreamingTurn', 'appendConversationTurn'];
+    const missing = required.filter(name => !report.cases.some(item => item.name === name));
+    if (missing.length > 0) {
+        throw new Error(`p50 gate missing AC-07 workloads: ${missing.join(', ')}`);
+    }
+    const slower = report.cases.filter(({ baseline, production }) =>
+        !baseline || production.p50Ms > baseline.p50Ms);
+    if (slower.length > 0) {
+        throw new Error(`p50 slower than better-sqlite3: ${slower.map(item => item.name).join(', ')}`);
+    }
+    if (!report.cases.find(item => item.name === 'dense')?.production.timerFiredDuringSearch) {
+        throw new Error('event-loop timer did not fire during dense search');
+    }
+}
+
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
     try {
-        const report = await benchmark(parseArgs(process.argv.slice(2)));
-        console.log(process.argv.includes('--json') ? JSON.stringify(report, null, 2) : formatReport(report));
+        const options = parseArgs(process.argv.slice(2));
+        const report = await benchmark(options);
+        console.log(options.json ? JSON.stringify(report, null, 2) : formatReport(report));
+        if (options.assertP50) assertP50(report);
     } catch (error) {
         console.error(`process-search benchmark: ${error instanceof Error ? error.message : String(error)}`);
         process.exitCode = 1;
