@@ -91,6 +91,15 @@ describe('Dockerfile contract', () => {
         expect(dockerfile).toMatch(/^RUN rm -rf node_modules && find packages .* -name node_modules .*-exec rm -rf \{\} \+$/m);
     });
 
+    it('includes the Teams Markdown renderer in production dependencies', () => {
+        const cocPkg = JSON.parse(readRepoFile('packages/coc/package.json'));
+        const lock = JSON.parse(readRepoFile('package-lock.json'));
+        expect(cocPkg.dependencies.marked).toBeDefined();
+        expect(cocPkg.devDependencies.marked).toBeUndefined();
+        expect(lock.packages['packages/coc'].dependencies.marked).toBe(cocPkg.dependencies.marked);
+        expect(lock.packages['node_modules/marked'].dev).not.toBe(true);
+    });
+
     it('passes the build commit through so /api/health reports it (no .git in the context)', () => {
         expect(dockerignore.split('\n')).toContain('.git');
         expect(dockerfile).toMatch(/^ARG BUILD_COMMIT=unknown$/m);
