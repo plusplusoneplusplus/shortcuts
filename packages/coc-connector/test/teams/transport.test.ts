@@ -108,6 +108,26 @@ describe('GraphTransport', () => {
         expect(result.nextSince).toBe('2026-01-01T00:01:00Z');
     });
 
+    it('filters recent Graph channel posts locally without unsupported OData filters', async () => {
+        mockFetch.mockResolvedValueOnce({
+            ok: true, json: async () => ({ id: 'team-1' }),
+        });
+        await transport.initialize('token', { teamId: 'team-1', channelId: 'ch-1' });
+        mockFetch.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ value: [
+                { id: 'new', body: { content: 'Fresh' }, createdDateTime: '2026-01-01T00:01:00Z' },
+                { id: 'old', body: { content: 'Edited old post' }, createdDateTime: '2026-01-01T00:00:00Z' },
+            ] }),
+        });
+
+        const result = await transport.poll('ch-1', '2026-01-01T00:00:00Z');
+        expect(result.messages.map(msg => msg.messageId)).toEqual(['new']);
+        expect(result.nextSince).toBe('2026-01-01T00:01:00Z');
+        expect(mockFetch.mock.calls[1][0]).toContain('%24top=50');
+        expect(mockFetch.mock.calls[1][0]).not.toContain('%24filter');
+    });
+
     it('should list channels', async () => {
         // Initialize
         mockFetch.mockResolvedValueOnce({

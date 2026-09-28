@@ -380,14 +380,12 @@ export class GraphClient {
     /**
      * List recent channel messages (for polling).
      * @param top Number of messages to fetch (default: 20).
-     * @param filter OData filter (e.g., "createdDateTime gt 2026-05-19T00:00:00Z").
      */
-    async listChannelMessages(opts?: { top?: number; filter?: string }): Promise<GraphMessage[]> {
+    async listChannelMessages(opts?: { top?: number }): Promise<GraphMessage[]> {
         if (!this.channelId) throw new Error('No channelId configured');
         if (!this.teamId) throw new Error('No teamId configured');
         const params = new URLSearchParams();
         if (opts?.top) params.set('$top', String(opts.top));
-        if (opts?.filter) params.set('$filter', opts.filter);
         const qs = params.toString() ? `?${params.toString()}` : '';
         const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages${qs}`;
         const data = await this.get<GraphListResponse>(url);

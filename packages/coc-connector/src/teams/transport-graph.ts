@@ -100,15 +100,17 @@ export class GraphTransport implements TeamsTransport {
 
     private async pollChannel(channelId: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         this.client!.setChannelId(channelId);
-        const filter = since ? `createdDateTime gt ${since}` : undefined;
-        const rawMessages = await this.client!.listChannelMessages({ top: 20, filter });
+        const rawMessages = await this.client!.listChannelMessages({ top: 50 });
 
         // Sort oldest-first
         const sorted = [...rawMessages].sort((a, b) =>
             new Date(a.createdDateTime).getTime() - new Date(b.createdDateTime).getTime(),
         );
 
-        const messages: InboundTeamsMessage[] = sorted
+        const fresh = since
+            ? sorted.filter(msg => new Date(msg.createdDateTime).getTime() > new Date(since).getTime())
+            : sorted;
+        const messages: InboundTeamsMessage[] = fresh
             .filter(msg => (msg.body?.content ?? '').trim())
             .map(msg => ({
                 channelId,
@@ -120,7 +122,7 @@ export class GraphTransport implements TeamsTransport {
                 replyToMessageId: msg.replyToId,
             }));
 
-        const nextSince = sorted.length > 0 ? sorted[sorted.length - 1].createdDateTime : (since ?? '');
+        const nextSince = fresh.length > 0 ? fresh[fresh.length - 1].createdDateTime : (since ?? '');
         return { messages, nextSince };
     }
 

@@ -137,7 +137,7 @@ describe('GraphClient', () => {
     });
 
     describe('listChannelMessages', () => {
-        it('should GET channel messages with filter', async () => {
+        it('requests recent channel messages using only supported OData parameters', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
                 json: async () => ({
@@ -149,14 +149,14 @@ describe('GraphClient', () => {
             } as any);
 
             const client = createClient();
-            const messages = await client.listChannelMessages({ top: 10, filter: 'createdDateTime gt 2026-05-18T00:00:00Z' });
+            const messages = await client.listChannelMessages({ top: 10 });
 
             expect(messages).toHaveLength(2);
             expect(messages[0].id).toBe('msg-1');
 
             const [url] = mockFetch.mock.calls[0];
             expect(url).toContain('top=10');
-            expect(url).toContain('filter=');
+            expect(url).not.toContain('filter=');
         });
     });
 

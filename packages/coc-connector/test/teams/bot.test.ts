@@ -88,7 +88,7 @@ describe('TeamsBot', () => {
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage).toHaveBeenCalledOnce();
                 expect(onMessage.mock.calls[0][0].messageId).toBe('new');
-                expect(String(mockFetch.mock.calls.at(-1)?.[0])).toContain('createdDateTime');
+                expect(String(mockFetch.mock.calls.at(-1)?.[0])).not.toContain('%24filter');
                 await bot.stop();
             });
 
@@ -131,7 +131,7 @@ describe('TeamsBot', () => {
                 await bot.stop();
             });
 
-            it('can Like a newly polled Graph post before inbound routing', async () => {
+            it('can Like a newly polled Graph post before inbound routing without replaying recent history', async () => {
                 mockGraphTeamResponse();
                 const order: string[] = [];
                 let bot!: TeamsBot;
@@ -151,9 +151,10 @@ describe('TeamsBot', () => {
                 });
                 await vi.advanceTimersByTimeAsync(1000);
                 mockFetch.mockImplementationOnce(async () => ({
-                    ok: true, json: async () => ({ value: [{
-                        id: 'new', body: { content: 'ask' }, createdDateTime: '2026-01-01T00:00:01Z',
-                    }] }),
+                    ok: true, json: async () => ({ value: [
+                        { id: 'new', body: { content: 'ask' }, createdDateTime: '2026-01-01T00:00:01Z' },
+                        { id: 'old', body: { content: 'history' }, createdDateTime: '2026-01-01T00:00:00Z' },
+                    ] }),
                 }));
                 mockFetch.mockImplementationOnce(async (_url: string, options?: RequestInit) => {
                     expect(options?.method).toBe('POST');
@@ -163,6 +164,7 @@ describe('TeamsBot', () => {
                 });
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(order).toEqual(['like', 'route']);
+                expect(String(mockFetch.mock.calls[2]?.[0])).not.toContain('%24filter');
                 expect(String(mockFetch.mock.calls.at(-1)?.[0]))
                     .toContain('/teams/team-123/channels/channel-123/messages/new/setReaction');
                 await bot.stop();
