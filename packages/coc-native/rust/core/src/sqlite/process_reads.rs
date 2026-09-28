@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::Connection;
+use rusqlite::{params_from_iter, Connection};
 
 use super::{check_process_schema, query, Database, Error, Parameters, Result, Row, Value};
 
@@ -92,130 +92,191 @@ pub fn get_conversation_turns(database: &Database, process_id: &str) -> Result<V
     })
 }
 
+fn process_query(filter: &ProcessFilter) -> (String, Vec<Value>) {
+    let (where_clause, mut values) = where_clause(filter, false);
+    let select = if filter.exclude_conversation {
+        "id, workspace_id, type, prompt_preview, NULL AS full_prompt, status, \
+             start_time, end_time, error, NULL AS result, result_file_path, \
+             raw_stdout_file_path, metadata, group_metadata, NULL AS structured_result, \
+             parent_process_id, sdk_session_id, active_provider_session, backend, working_directory, \
+             title, custom_title, last_message_preview, token_limit, current_tokens, \
+             cumulative_token_usage, stale, data_file_path, archived, pinned_at, seen_at, last_event_at"
+    } else {
+        "*"
+    };
+    let mut sql =
+        format!("SELECT {select} FROM processes {where_clause} ORDER BY last_event_at DESC");
+    if let Some(limit) = filter.limit {
+        sql.push_str(" LIMIT ?");
+        values.push(Value::Integer(limit));
+    }
+    if let Some(offset) = filter.offset {
+        sql.push_str(" OFFSET ?");
+        values.push(Value::Integer(offset));
+    }
+    (sql, values)
+}
+
+fn process_id(row: &Row, column: &str) -> Result<String> {
+    match row.get(column) {
+        Some(Value::Text(id)) => Ok(id.clone()),
+        _ => Err(Error::Sqlite(rusqlite::Error::InvalidColumnName(column.into()))),
+    }
+}
+
+fn turn_batch_query(ids: &[Value]) -> String {
+    let placeholders = vec!["?"; ids.len()].join(", ");
+    format!(
+        "SELECT * FROM conversation_turns WHERE process_id IN ({placeholders}) \
+         ORDER BY process_id, turn_index"
+    )
+}
+
 pub fn get_all_processes(
     database: &Database,
     filter: &ProcessFilter,
 ) -> Result<Vec<ProcessWithTurns>> {
     database.with_read_connection(|connection| {
         check_process_schema(connection)?;
-        let (where_clause, mut values) = where_clause(filter, false);
-        let select = if filter.exclude_conversation {
-            "id, workspace_id, type, prompt_preview, NULL AS full_prompt, status, \
-             start_time, end_time, error, NULL AS result, result_file_path, \
-             raw_stdout_file_path, metadata, group_metadata, NULL AS structured_result, \
-             parent_process_id, sdk_session_id, active_provider_session, backend, working_directory, \
-             title, custom_title, last_message_preview, token_limit, current_tokens, \
-             cumulative_token_usage, stale, data_file_path, archived, pinned_at, seen_at, last_event_at"
-        } else {
-            "*"
-        };
-        let mut sql = format!("SELECT {select} FROM processes {where_clause} ORDER BY last_event_at DESC");
-        if let Some(limit) = filter.limit {
-            sql.push_str(" LIMIT ?");
-            values.push(Value::Integer(limit));
-        }
-        if let Some(offset) = filter.offset {
-            sql.push_str(" OFFSET ?");
-            values.push(Value::Integer(offset));
-        }
+        let (sql, values) = process_query(filter);
         let rows = query(connection, &sql, &Parameters::Positional(values))?;
         if filter.exclude_conversation {
-            return Ok(rows.into_iter().map(|process| ProcessWithTurns { process, turns: None }).collect());
+            return Ok(rows
+                .into_iter()
+                .map(|process| ProcessWithTurns { process, turns: None })
+                .collect());
         }
 
         let mut turns_by_process: HashMap<String, Vec<Row>> = HashMap::new();
         for chunk in rows.chunks(500) {
-            let ids: Vec<Value> = chunk.iter().map(|process| {
-                match process.get("id") {
-                    Some(Value::Text(id)) => Ok(Value::Text(id.clone())),
-                    _ => Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("id".into()))),
-                }
-            }).collect::<Result<_>>()?;
-            let placeholders = vec!["?"; ids.len()].join(", ");
-            let sql = format!(
-                "SELECT * FROM conversation_turns WHERE process_id IN ({placeholders}) \
-                 ORDER BY process_id, turn_index"
-            );
-            for turn in query(connection, &sql, &Parameters::Positional(ids))? {
-                let id = match turn.get("process_id") {
-                    Some(Value::Text(id)) => id.clone(),
-                    _ => return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("process_id".into()))),
-                };
+            let ids = chunk
+                .iter()
+                .map(|row| process_id(row, "id").map(Value::Text))
+                .collect::<Result<Vec<_>>>()?;
+            for turn in query(connection, &turn_batch_query(&ids), &Parameters::Positional(ids))? {
+                let id = process_id(&turn, "process_id")?;
                 turns_by_process.entry(id).or_default().push(turn);
             }
         }
-        rows.into_iter().map(|process| {
-            let id = match process.get("id") {
-                Some(Value::Text(id)) => id,
-                _ => return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("id".into()))),
-            };
-            let turns = Some(turns_by_process.remove(id).unwrap_or_default());
-            Ok(ProcessWithTurns { process, turns })
-        }).collect()
+        rows.into_iter()
+            .map(|process| {
+                let id = process_id(&process, "id")?;
+                let turns = Some(turns_by_process.remove(&id).unwrap_or_default());
+                Ok(ProcessWithTurns { process, turns })
+            })
+            .collect()
     })
 }
 
-fn write_json_row(output: &mut String, row: &Row) {
-    output.push('{');
-    for (index, (name, value)) in row.iter().enumerate() {
-        if index != 0 {
-            output.push(',');
+fn write_json_value(output: &mut String, value: &Value) {
+    match value {
+        Value::Null => output.push_str("null"),
+        Value::Integer(value) => output.push_str(&value.to_string()),
+        Value::Real(value) if value.is_finite() => {
+            output.push_str(&serde_json::to_string(value).expect("finite real serializes"));
         }
-        output.push_str(&serde_json::to_string(name).expect("SQLite column names serialize"));
-        output.push(':');
-        match value {
-            Value::Null => output.push_str("null"),
-            Value::Integer(value) => output.push_str(&value.to_string()),
-            Value::Real(value) if value.is_finite() => {
-                output.push_str(&serde_json::to_string(value).expect("finite real serializes"));
-            }
-            Value::Real(value) => {
-                let number = if value.is_nan() {
-                    "NaN"
-                } else if value.is_sign_positive() {
-                    "Infinity"
-                } else {
-                    "-Infinity"
-                };
-                output.push_str(&format!(r#"{{"$sqliteNumber":"{number}"}}"#));
-            }
-            Value::Text(value) => {
-                output.push_str(&serde_json::to_string(value).expect("SQLite text serializes"));
-            }
-            Value::Blob(bytes) => {
-                output.push_str(r#"{"$sqliteBlob":"#);
-                output.push_str(&serde_json::to_string(bytes).expect("SQLite blob serializes"));
-                output.push('}');
-            }
+        Value::Real(value) => {
+            let number = if value.is_nan() {
+                "NaN"
+            } else if value.is_sign_positive() {
+                "Infinity"
+            } else {
+                "-Infinity"
+            };
+            output.push_str(&format!(r#"{{"$sqliteNumber":"{number}"}}"#));
+        }
+        Value::Text(value) => {
+            output.push_str(&serde_json::to_string(value).expect("SQLite text serializes"));
+        }
+        Value::Blob(bytes) => {
+            output.push_str(r#"{"$sqliteBlob":"#);
+            output.push_str(&serde_json::to_string(bytes).expect("SQLite blob serializes"));
+            output.push('}');
         }
     }
-    output.push('}');
+}
+
+fn query_json_rows(
+    connection: &Connection,
+    sql: &str,
+    parameters: &[Value],
+    id_column: &str,
+) -> Result<Vec<(String, String)>> {
+    let mut statement = connection.prepare(sql)?;
+    let mut columns: Vec<(usize, String)> = statement
+        .column_names()
+        .iter()
+        .enumerate()
+        .map(|(index, name)| (index, (*name).to_owned()))
+        .collect();
+    columns.sort_unstable_by(|left, right| left.1.cmp(&right.1));
+    let mut cursor = statement.query(params_from_iter(parameters))?;
+    let mut rows = Vec::new();
+    while let Some(row) = cursor.next()? {
+        let id = match row.get::<_, rusqlite::types::Value>(id_column)? {
+            rusqlite::types::Value::Text(id) => id,
+            _ => {
+                return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName(id_column.into())));
+            }
+        };
+        let mut json = String::new();
+        json.push('{');
+        for (index, (column_index, name)) in columns.iter().enumerate() {
+            if index != 0 {
+                json.push(',');
+            }
+            json.push_str(&serde_json::to_string(name).expect("SQLite column names serialize"));
+            json.push(':');
+            let value: rusqlite::types::Value = row.get(*column_index)?;
+            write_json_value(&mut json, &value.into());
+        }
+        json.push('}');
+        rows.push((id, json));
+    }
+    Ok(rows)
 }
 
 pub fn get_all_processes_json(database: &Database, filter: &ProcessFilter) -> Result<String> {
-    let rows = get_all_processes(database, filter)?;
-    let mut output = String::new();
-    output.push('[');
-    for (index, entry) in rows.iter().enumerate() {
-        if index != 0 {
-            output.push(',');
-        }
-        output.push_str(r#"{"process":"#);
-        write_json_row(&mut output, &entry.process);
-        if let Some(turns) = &entry.turns {
-            output.push_str(r#","turns":["#);
-            for (turn_index, turn) in turns.iter().enumerate() {
-                if turn_index != 0 {
-                    output.push(',');
+    database.with_read_connection(|connection| {
+        check_process_schema(connection)?;
+        let (sql, values) = process_query(filter);
+        let processes = query_json_rows(connection, &sql, &values, "id")?;
+        let mut turns_by_process: HashMap<String, Vec<String>> = HashMap::new();
+        if !filter.exclude_conversation {
+            for chunk in processes.chunks(500) {
+                let ids = chunk.iter().map(|(id, _)| Value::Text(id.clone())).collect::<Vec<_>>();
+                for (id, turn) in
+                    query_json_rows(connection, &turn_batch_query(&ids), &ids, "process_id")?
+                {
+                    turns_by_process.entry(id).or_default().push(turn);
                 }
-                write_json_row(&mut output, turn);
             }
-            output.push(']');
         }
-        output.push('}');
-    }
-    output.push(']');
-    Ok(output)
+        let mut output = String::new();
+        output.push('[');
+        for (index, (id, process)) in processes.iter().enumerate() {
+            if index != 0 {
+                output.push(',');
+            }
+            output.push_str(r#"{"process":"#);
+            output.push_str(process);
+            if !filter.exclude_conversation {
+                output.push_str(r#","turns":["#);
+                for (turn_index, turn) in
+                    turns_by_process.remove(id).unwrap_or_default().iter().enumerate()
+                {
+                    if turn_index != 0 {
+                        output.push(',');
+                    }
+                    output.push_str(turn);
+                }
+                output.push(']');
+            }
+            output.push('}');
+        }
+        output.push(']');
+        Ok(output)
+    })
 }
 
 pub fn get_process_summaries(database: &Database, filter: &ProcessFilter) -> Result<SummaryPage> {

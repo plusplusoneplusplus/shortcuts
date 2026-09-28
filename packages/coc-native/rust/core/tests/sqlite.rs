@@ -1,8 +1,8 @@
 use std::fs;
 
 use coc_native_core::sqlite::process_reads::{
-    get_all_processes, get_conversation_turns, get_process_summaries, list_recent_processes,
-    ProcessFilter, RecentFilter,
+    get_all_processes, get_all_processes_json, get_conversation_turns, get_process_summaries,
+    list_recent_processes, ProcessFilter, RecentFilter,
 };
 use coc_native_core::sqlite::process_search::{
     sanitize_fts_query, search_conversations, SearchFilter,
@@ -387,6 +387,16 @@ fn get_all_processes_batches_turns_without_changing_process_or_turn_order() {
         );
         assert_eq!(processes[index].turns.as_ref().unwrap()[0]["turn_index"], Value::Integer(0));
     }
+    let json: serde_json::Value =
+        serde_json::from_str(&get_all_processes_json(&database, &filter).unwrap()).unwrap();
+    assert_eq!(json.as_array().unwrap().len(), 502);
+    assert_eq!(json[0]["process"]["id"], "p-501");
+    assert_eq!(json[0]["turns"], serde_json::json!([]));
+    for index in [1, 499, 500, 501] {
+        assert_eq!(json[index]["process"]["id"], format!("p-{:03}", 501 - index));
+        assert_eq!(json[index]["turns"][0]["turn_index"], 0);
+        assert_eq!(json[index]["turns"][1]["turn_index"], 2);
+    }
     let page = get_all_processes(
         &database,
         &ProcessFilter { limit: Some(2), offset: Some(500), ..filter.clone() },
@@ -396,6 +406,17 @@ fn get_all_processes_batches_turns_without_changing_process_or_turn_order() {
     assert_eq!(page[0].process["id"], Value::Text("p-001".into()));
     assert_eq!(page[1].process["id"], Value::Text("p-000".into()));
     assert_eq!(page[0].turns.as_ref().unwrap().len(), 2);
+    insert_process
+        .run(&positional([
+            Value::Blob(vec![0xff]),
+            Value::Text("ws-a".into()),
+            Value::Text("999".into()),
+        ]))
+        .unwrap();
+    assert!(matches!(
+        get_all_processes_json(&database, &filter),
+        Err(Error::Sqlite(rusqlite::Error::InvalidColumnName(column))) if column == "id"
+    ));
     assert!(get_all_processes(
         &database,
         &ProcessFilter { workspace_id: Some("missing".into()), ..filter }
