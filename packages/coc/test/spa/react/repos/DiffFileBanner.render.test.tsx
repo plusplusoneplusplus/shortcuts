@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { fireEvent, render } from '@testing-library/react';
 import {
     UnifiedDiffViewer,
     computeDiffLines,
@@ -210,12 +210,35 @@ describe.each(VIEWERS)('file-name banner — $name mode', ({ Viewer }) => {
         expect(viewer.className).not.toContain('overflow-y-clip');
     });
 
-    it('exposes the dropped blob hashes and mode on a details tooltip', () => {
+    it('shows the dropped blob hashes and mode in a real tooltip on hover', () => {
         const { container } = render(<Viewer diff={NEW_FILE_DIFF} showFileBanners data-testid="diff" />);
         const details = container.querySelector<HTMLElement>('[data-testid="diff-file-banner-details"]')!;
-        const title = details.getAttribute('title')!;
-        expect(title).toContain('index 0000000..e69de29');
-        expect(title).toContain('mode 100644');
+        expect(details.getAttribute('title')).toBeNull();
+        expect(document.querySelector('[role="tooltip"]')).toBeNull();
+
+        fireEvent.mouseEnter(details);
+
+        const tooltip = document.querySelector<HTMLElement>('[role="tooltip"]')!;
+        expect(tooltip.textContent).toContain('index 0000000..e69de29');
+        expect(tooltip.textContent).toContain('mode 100644');
+        expect(details.getAttribute('aria-describedby')).toBe(tooltip.id);
+
+        fireEvent.mouseLeave(details);
+        expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    });
+
+    it('shows the details tooltip for keyboard focus and hides it on blur', () => {
+        const { container } = render(<Viewer diff={NEW_FILE_DIFF} showFileBanners data-testid="diff" />);
+        const details = container.querySelector<HTMLButtonElement>('[data-testid="diff-file-banner-details"]')!;
+
+        expect(details.tagName).toBe('BUTTON');
+        expect(details.getAttribute('aria-label')).toBe('Show Git file details');
+
+        fireEvent.focus(details);
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('mode 100644');
+
+        fireEvent.blur(details);
+        expect(document.querySelector('[role="tooltip"]')).toBeNull();
     });
 
     it('renders no banner and keeps existing behavior when the prop is off', () => {

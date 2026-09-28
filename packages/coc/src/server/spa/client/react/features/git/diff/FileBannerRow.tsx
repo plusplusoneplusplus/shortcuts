@@ -14,6 +14,8 @@
  * exposed on the details control's tooltip.
  */
 
+import { useId, useState, type FocusEvent, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
     BANNER_ACCENT_CLASSES,
     BANNER_STATUS_CLASSES,
@@ -28,6 +30,61 @@ export interface FileBannerRowProps {
     banner: FileBanner;
     pinned?: boolean;
     'data-testid'?: string;
+}
+
+interface TooltipPosition {
+    left: number;
+    top: number;
+    above: boolean;
+}
+
+function FileBannerDetails({ details }: { details: string }) {
+    const tooltipId = useId();
+    const [position, setPosition] = useState<TooltipPosition | null>(null);
+
+    const showTooltip = (target: HTMLElement) => {
+        const rect = target.getBoundingClientRect();
+        const maxTooltipWidth = Math.min(360, window.innerWidth - 16);
+        setPosition({
+            left: Math.max(8, Math.min(rect.left, window.innerWidth - maxTooltipWidth - 8)),
+            top: rect.top >= 96 ? rect.top - 6 : rect.bottom + 6,
+            above: rect.top >= 96,
+        });
+    };
+
+    return (
+        <>
+            <button
+                type="button"
+                className="shrink-0 cursor-help select-none rounded text-[10px] leading-none text-[#8b949e] hover:text-[#57606a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:text-[#6e7681] dark:hover:text-[#8b949e]"
+                aria-label="Show Git file details"
+                aria-describedby={position ? tooltipId : undefined}
+                data-testid="diff-file-banner-details"
+                onMouseEnter={(event: MouseEvent<HTMLButtonElement>) => showTooltip(event.currentTarget)}
+                onMouseLeave={() => setPosition(null)}
+                onFocus={(event: FocusEvent<HTMLButtonElement>) => showTooltip(event.currentTarget)}
+                onBlur={() => setPosition(null)}
+            >
+                ⓘ
+            </button>
+            {position && createPortal(
+                <div
+                    id={tooltipId}
+                    role="tooltip"
+                    className="pointer-events-none fixed z-[1000] max-w-[min(360px,calc(100vw-16px))] whitespace-pre-line rounded border border-[#d0d7de] bg-white px-2.5 py-2 font-mono text-[11px] leading-4 text-[#24292f] shadow-lg dark:border-[#30363d] dark:bg-[#161b22] dark:text-[#c9d1d9]"
+                    style={{
+                        left: position.left,
+                        top: position.top,
+                        transform: position.above ? 'translateY(-100%)' : undefined,
+                    }}
+                    data-testid="diff-file-banner-tooltip"
+                >
+                    {details}
+                </div>,
+                document.body,
+            )}
+        </>
+    );
 }
 
 export function FileBannerRow({ banner, pinned = false, 'data-testid': testId = 'diff-file-banner' }: FileBannerRowProps) {
@@ -77,15 +134,7 @@ export function FileBannerRow({ banner, pinned = false, 'data-testid': testId = 
                 <span className="mx-1 text-[#8b949e]" aria-hidden="true">·</span>
                 <span className="text-rose-700 dark:text-rose-400">−{banner.deletions}</span>
             </span>
-            {details && (
-                <span
-                    className="shrink-0 cursor-help select-none text-[10px] text-[#8b949e] dark:text-[#6e7681]"
-                    title={details}
-                    data-testid="diff-file-banner-details"
-                >
-                    ⓘ
-                </span>
-            )}
+            {details && <FileBannerDetails details={details} />}
         </div>
     );
 }
