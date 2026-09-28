@@ -220,6 +220,24 @@ fn process_search_uses_pooled_reads_and_rejects_unsupported_versions() {
 }
 
 #[test]
+fn json_process_rows_escape_column_names_once_for_every_row() {
+    let database = Database::open(":memory:", false).unwrap();
+    database
+        .exec(
+            "PRAGMA user_version=38;
+             CREATE TABLE conversation_turns (
+               process_id TEXT, turn_index INTEGER, \"quoted\"\"name\" TEXT
+             );
+             INSERT INTO conversation_turns VALUES ('one', 0, 'first'), ('one', 1, 'second');",
+        )
+        .unwrap();
+    let rows = get_conversation_turns_json(&database, "one").unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&rows).unwrap();
+    assert_eq!(parsed[0]["quoted\"name"], "first");
+    assert_eq!(parsed[1]["quoted\"name"], "second");
+}
+
+#[test]
 fn process_reads_filter_and_group_turns_on_the_read_pool() {
     let directory = tempdir().unwrap();
     let database = Database::open(directory.path().join("reads.db"), false).unwrap();

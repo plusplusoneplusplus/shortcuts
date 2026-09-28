@@ -235,6 +235,9 @@ fn query_json_rows<Key>(
         .map(|(index, name)| (index, (*name).to_owned()))
         .collect();
     columns.sort_unstable_by(|left, right| left.1.cmp(&right.1));
+    for (_, name) in &mut columns {
+        *name = format!("{}:", serde_json::to_string(name).expect("SQLite column names serialize"));
+    }
     let mut cursor = statement.query(params_from_iter(parameters))?;
     let mut rows = Vec::new();
     while let Some(row) = cursor.next()? {
@@ -245,8 +248,7 @@ fn query_json_rows<Key>(
             if index != 0 {
                 json.push(',');
             }
-            json.push_str(&serde_json::to_string(name).expect("SQLite column names serialize"));
-            json.push(':');
+            json.push_str(name);
             let value: rusqlite::types::Value = row.get(*column_index)?;
             write_json_value(&mut json, &value.into());
         }
