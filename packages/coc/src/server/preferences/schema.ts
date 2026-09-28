@@ -451,7 +451,7 @@ export const GlobalPreferencesSchema = z.object({
     activityFilters: GlobalActivityFiltersSchema.optional().catch(undefined),
     /** Persisted UI layout mode ('classic' | 'dev-workflow'). */
     uiLayoutMode: z.enum(['classic', 'dev-workflow']).optional().catch(undefined),
-    /** Engine for the working-tree file diff ('legacy' | 'monaco'). Absent means 'legacy'. */
+    /** Engine for the working-tree file diff ('legacy' | 'monaco'). Absent means 'monaco'. */
     diffEngine: z.enum(['legacy', 'monaco']).optional().catch(undefined),
     /**
      * Per-handler enabled/disabled overrides for the link-handler feature.

@@ -117,7 +117,16 @@ beforeEach(() => {
 });
 
 describe('WorkingTreeFileDiff — diff engine', () => {
-    it('renders the classic viewer by default and does not load full sides', async () => {
+    it('renders the editor by default with no cached or server choice', async () => {
+        await renderDiff();
+        expect(screen.getByTestId('diff-engine-toggle-monaco').getAttribute('aria-pressed')).toBe('true');
+        expect(clients['ws-a'].git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-a', '/repo/src/a.ts', 'unstaged');
+        expect(screen.getByTestId('working-tree-file-diff-editor')).toBeTruthy();
+        expect(screen.queryByTestId('classic-viewer')).toBeNull();
+    });
+
+    it('renders the classic viewer for the Classic choice and does not load full sides', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
         await renderDiff();
         expect(screen.getByTestId('classic-viewer')).toBeTruthy();
         expect(screen.queryByTestId('working-tree-file-diff-editor')).toBeNull();
@@ -152,6 +161,7 @@ describe('WorkingTreeFileDiff — diff engine', () => {
     });
 
     it('switches engine in place from the toolbar and persists the choice', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
         await renderDiff();
         await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle-monaco')); });
         await act(async () => {});

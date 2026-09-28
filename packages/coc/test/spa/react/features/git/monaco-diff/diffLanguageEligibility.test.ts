@@ -115,9 +115,9 @@ describe('AC-06 source assertions', () => {
         expect(rule).toMatch(/stage !== 'unstaged'/);
     });
 
-    it('both diff editors stay read-only and the engine default is still legacy', () => {
+    it('both diff editors stay read-only and the engine default is monaco', () => {
         expect(read('monacoDiffOptions.ts')).toMatch(/readOnly: true,\s*originalEditable: false,/);
-        expect(readFileSync(join(SRC, 'features/git/hooks/useDiffEngine.ts'), 'utf8')).toMatch(/DEFAULT_DIFF_ENGINE: DiffEngine = 'legacy'/);
+        expect(readFileSync(join(SRC, 'features/git/hooks/useDiffEngine.ts'), 'utf8')).toMatch(/DEFAULT_DIFF_ENGINE: DiffEngine = 'monaco'/);
     });
 
     it('adds no TODOs and no Monaco value import', () => {

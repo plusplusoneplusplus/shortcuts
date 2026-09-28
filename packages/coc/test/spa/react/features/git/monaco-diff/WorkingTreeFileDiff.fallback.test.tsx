@@ -136,6 +136,7 @@ const banner = () => screen.queryByTestId('diff-engine-fallback-banner');
 
 describe('WorkingTreeFileDiff — classic fallback', () => {
     it('shows no banner when the user chose Classic', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
         await renderDiff();
         expect(screen.getByTestId('classic-viewer')).toBeTruthy();
         expect(banner()).toBeNull();
@@ -235,6 +236,7 @@ describe('WorkingTreeFileDiff — classic fallback', () => {
     });
 
     it('passes the same comments and patch to the classic viewer on fallback', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
         await renderDiff();
         const classicDefault = classicProps.mock.calls.at(-1)![0];
         classicProps.mockClear();

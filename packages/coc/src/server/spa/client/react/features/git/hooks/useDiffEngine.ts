@@ -24,7 +24,7 @@ import { getSpaCocClient } from '../../../api/cocClient';
 export type DiffEngine = 'legacy' | 'monaco';
 
 /** Engine used when neither the cache nor the server has a valid value. */
-export const DEFAULT_DIFF_ENGINE: DiffEngine = 'legacy';
+export const DEFAULT_DIFF_ENGINE: DiffEngine = 'monaco';
 
 export const DIFF_ENGINE_STORAGE_KEY = 'coc-diff-engine';
 

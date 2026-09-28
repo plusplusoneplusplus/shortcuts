@@ -51,9 +51,9 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('resolveDiffEngine', () => {
-    it('defaults to legacy for absent or unknown values', () => {
-        expect(DEFAULT_DIFF_ENGINE).toBe('legacy');
-        for (const v of [undefined, null, '', 'editor', 1, {}]) expect(resolveDiffEngine(v)).toBe('legacy');
+    it('defaults to monaco for absent or unknown values', () => {
+        expect(DEFAULT_DIFF_ENGINE).toBe('monaco');
+        for (const v of [undefined, null, '', 'editor', 1, {}]) expect(resolveDiffEngine(v)).toBe('monaco');
         expect(resolveDiffEngine('monaco')).toBe('monaco');
         expect(resolveDiffEngine('legacy')).toBe('legacy');
     });
@@ -67,14 +67,14 @@ describe('createDiffEngineStore', () => {
         expect(getGlobal).not.toHaveBeenCalled();
     });
 
-    it('uses legacy when no cache and storage throws', () => {
+    it('uses monaco when no cache and storage throws', () => {
         const store = createDiffEngineStore({
             storage: () => ({ getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } }),
             getGlobal, patchGlobal,
         });
-        expect(store.getSnapshot()).toBe('legacy');
-        expect(() => store.set('monaco')).not.toThrow();
         expect(store.getSnapshot()).toBe('monaco');
+        expect(() => store.set('legacy')).not.toThrow();
+        expect(store.getSnapshot()).toBe('legacy');
     });
 
     it('lets the server value win over a stale cache and refreshes the cache', async () => {
@@ -182,11 +182,11 @@ describe('useDiffEngine', () => {
         expect(seen[0]).toBe('monaco');
     });
 
-    it('defaults to legacy with no cache and no server value', async () => {
+    it('defaults to monaco with no cache and no server value', async () => {
         getGlobal.mockResolvedValue({});
         const { result } = renderHook(() => useDiffEngine());
         await act(async () => {});
-        expect(result.current[0]).toBe('legacy');
+        expect(result.current[0]).toBe('monaco');
     });
 
     it('reconciles to the server value', async () => {

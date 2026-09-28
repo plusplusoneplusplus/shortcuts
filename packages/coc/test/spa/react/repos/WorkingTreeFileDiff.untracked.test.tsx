@@ -58,6 +58,13 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffVi
     HunkNavButtons: () => null,
 }));
 
+// These tests cover the classic viewer; pin the Classic diff engine
+// (the working-tree default is the Monaco editor).
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine')>()),
+    useDiffEngine: () => ['legacy', () => {}],
+}));
+
 import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
 
 function makeHook(overrides: Record<string, unknown> = {}) {

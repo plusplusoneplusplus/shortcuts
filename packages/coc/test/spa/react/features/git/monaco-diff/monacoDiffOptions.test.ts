@@ -163,9 +163,9 @@ describe('source assertions', () => {
         expect(readers.filter(f => !f.endsWith('hooks/useDiffEngine.ts'))).toEqual(['features/git/working-tree/WorkingTreeFileDiff.tsx']);
     });
 
-    it('diffEngine resolves to legacy by default and the preference code adds no TODOs', () => {
+    it('diffEngine resolves to monaco by default and the preference code adds no TODOs', () => {
         const hook = readFileSync(join(SRC, 'features/git/hooks/useDiffEngine.ts'), 'utf8');
-        expect(hook).toMatch(/DEFAULT_DIFF_ENGINE: DiffEngine = 'legacy'/);
+        expect(hook).toMatch(/DEFAULT_DIFF_ENGINE: DiffEngine = 'monaco'/);
         for (const file of ['features/git/hooks/useDiffEngine.ts', 'features/git/diff/DiffViewToggle.tsx', 'features/git/working-tree/WorkingTreeFileDiff.tsx']) {
             expect(readFileSync(join(SRC, file), 'utf8'), file).not.toMatch(/TODO|FIXME/);
         }

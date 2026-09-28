@@ -84,8 +84,11 @@ test.describe('Git right-panel — WorkingTreeFileDiff', () => {
             await expect(page.getByTestId('working-tree-file-diff-header')).toBeVisible();
             // Wait for diff to load
             await expect(page.getByTestId('working-tree-file-diff-loading')).toBeHidden({ timeout: 10_000 });
-            // Should show diff content (the file was modified)
-            await expect(page.getByTestId('working-tree-file-diff-content')).toBeVisible({ timeout: 5_000 });
+            // Should show diff content (the file was modified): the Monaco
+            // editor by default, or the classic viewer on fallback.
+            await expect(
+                page.getByTestId('working-tree-file-diff-editor').or(page.getByTestId('working-tree-file-diff-content')),
+            ).toBeVisible({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);
         }
