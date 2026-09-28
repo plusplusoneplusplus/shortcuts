@@ -85,6 +85,14 @@ export function seed(store, turns) {
     for (let start = 0; start < turns; start += 1_000) {
         batch(start, Math.min(start + 1_000, turns));
     }
+    db.prepare(`INSERT INTO task_groups
+        (workspace_id, group_id, type, title, status, created_at, updated_at)
+        VALUES ('ws-a', 'bench-folder', 'chat-folder', 'Bench folder', 'completed', ?, ?)`)
+        .run(timestamp, timestamp);
+    db.prepare(`INSERT INTO task_group_members
+        (workspace_id, group_id, role, process_id, linked_at)
+        VALUES ('ws-a', 'bench-folder', 'item', 'fixture-0', ?)`)
+        .run(timestamp);
 }
 
 function openBaseline(dbPath) {
@@ -305,7 +313,21 @@ function baselineSummaries(db) {
         COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count,
         json_extract(metadata, '$.compaction') AS compaction_json
         FROM processes ${where} ORDER BY last_event_at DESC LIMIT ?`).all('ws-a', 100);
-    return { total, results: rows.map(row => hydrateIndex(row, true)) };
+    const results = rows.map(row => hydrateIndex(row, true));
+    if (results.length > 0) {
+        const placeholders = results.map(() => '?').join(', ');
+        const members = db.prepare(`SELECT m.process_id, m.group_id FROM task_group_members m
+            JOIN task_groups g ON g.workspace_id = m.workspace_id AND g.group_id = m.group_id
+            WHERE g.type = ? AND m.process_id IN (${placeholders})
+            ORDER BY m.linked_at ASC, m.id ASC`)
+            .all('chat-folder', ...results.map(entry => entry.id));
+        const folders = new Map(members.map(member => [member.process_id, member.group_id]));
+        for (const entry of results) {
+            const folderId = folders.get(entry.id);
+            if (folderId !== undefined) entry.folderId = folderId;
+        }
+    }
+    return { total, results };
 }
 
 function baselineRecent(db) {

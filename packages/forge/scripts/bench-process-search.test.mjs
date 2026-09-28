@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
-import { assertP50, benchmark, formatReport, measure, p50, parseArgs } from './bench-process-search.mjs';
+import { SqliteProcessStore } from '../dist/sqlite-process-store.js';
+import { assertP50, benchmark, formatReport, measure, p50, parseArgs, seed } from './bench-process-search.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -108,6 +112,19 @@ test('local better-sqlite3 baseline, when present, matches production result sha
         assert.equal(item.baseline.resultCount, item.production.resultCount);
         assert.ok(item.baseline.p50Ms > 0);
         assert.ok(item.speedup > 0);
+    }
+});
+
+test('the summary workload includes a folder whose baseline must resolve its membership', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'forge-search-folder-bench-'));
+    const store = new SqliteProcessStore({ dbPath: path.join(dir, 'processes.db') });
+    try {
+        seed(store, 120);
+        const page = await store.getProcessSummaries({ workspaceId: 'ws-a', limit: 100 });
+        assert.equal(page.entries.find(entry => entry.id === 'fixture-0')?.folderId, 'bench-folder');
+    } finally {
+        store.close();
+        rmSync(dir, { recursive: true, force: true });
     }
 });
 

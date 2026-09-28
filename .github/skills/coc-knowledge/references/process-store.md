@@ -59,9 +59,10 @@ and rollback.
 AC-07 reads and writes against an optional local better-sqlite3 baseline. The
 `--assert-p50` gate requires output-equivalent results, a 50k-turn fixture,
 every workload at least as fast at p50, and an event-loop timer firing during
-dense async search. `--profile` also measures direct `NativeDatabase` read
-calls against Forge's hydrated reads, using the same filters and result counts
-to separate native/transport cost from Forge hydration.
+dense async search. The fixture includes a chat-folder membership, so both
+summary readers resolve folder IDs. `--profile` measures direct `NativeDatabase`
+read calls against Forge's hydrated reads with the same filters and result
+counts to separate native/transport cost from Forge hydration.
 
 ### Tables
 
