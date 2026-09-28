@@ -66,6 +66,7 @@ test.describe('Admin Panel (008)', () => {
         expect(Object.keys(byLabel)).toEqual([
             'Configure',
             'Knowledge',
+            'Connections',
             'Operations',
             'Developer / Internals',
         ]);
@@ -75,6 +76,7 @@ test.describe('Admin Panel (008)', () => {
             'Servers',
         ]);
         expect(byLabel.Knowledge).toEqual(['Memory', 'Skills', 'Dreams']);
+        expect(byLabel.Connections).toEqual(['Teams']);
         expect(byLabel.Operations).toEqual(['Usage & Costs', 'Logs', 'Server', 'Backup & Reset']);
         expect(byLabel['Developer / Internals']).toEqual(['System Prompts', 'Database Browser', 'Advanced']);
 
@@ -100,6 +102,7 @@ test.describe('Admin Panel (008)', () => {
 
         expect(byLabel.Configure).toEqual(expect.arrayContaining(['settings:configure', 'admin:agents']));
         expect(byLabel.Knowledge).toEqual(expect.arrayContaining(['tool:memory', 'tool:skills']));
+        expect(byLabel.Connections).toEqual(['admin:messaging']);
         expect(byLabel.Operations).toEqual(expect.arrayContaining(['tool:stats', 'tool:logs', 'admin:data']));
         expect(byLabel['Developer / Internals']).toEqual(expect.arrayContaining(['admin:prompts', 'admin:database', 'settings:advanced']));
 
