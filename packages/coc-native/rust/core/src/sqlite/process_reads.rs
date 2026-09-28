@@ -6,6 +6,9 @@ use rusqlite::{params_from_iter, Connection, Row as SqliteRow};
 
 use super::{check_process_schema, query, Database, Error, Parameters, Result, Row, Value};
 
+const TURN_QUERY: &str =
+    "SELECT * FROM conversation_turns WHERE process_id = ? ORDER BY turn_index";
+
 #[derive(Clone, Debug, Default)]
 pub struct ProcessFilter {
     pub workspace_id: Option<String>,
@@ -80,7 +83,7 @@ fn where_clause(filter: &ProcessFilter, activity_time: bool) -> (String, Vec<Val
 fn load_turns(connection: &Connection, process_id: &str) -> Result<Vec<Row>> {
     query(
         connection,
-        "SELECT * FROM conversation_turns WHERE process_id = ? ORDER BY turn_index",
+        TURN_QUERY,
         &Parameters::Positional(vec![Value::Text(process_id.to_owned())]),
     )
 }
@@ -89,6 +92,27 @@ pub fn get_conversation_turns(database: &Database, process_id: &str) -> Result<V
     database.with_read_connection(|connection| {
         check_process_schema(connection)?;
         load_turns(connection, process_id)
+    })
+}
+
+pub fn get_conversation_turns_json(database: &Database, process_id: &str) -> Result<String> {
+    database.with_read_connection(|connection| {
+        check_process_schema(connection)?;
+        let rows = query_json_rows(
+            connection,
+            TURN_QUERY,
+            &[Value::Text(process_id.to_owned())],
+            |_| Ok(()),
+        )?;
+        let mut output = String::from("[");
+        for (index, (_, row)) in rows.iter().enumerate() {
+            if index != 0 {
+                output.push(',');
+            }
+            output.push_str(row);
+        }
+        output.push(']');
+        Ok(output)
     })
 }
 

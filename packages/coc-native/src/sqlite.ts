@@ -180,7 +180,12 @@ export class NativeDatabase {
 
     public async getConversationTurns(processId: string): Promise<NativeSqliteRow[]> {
         try {
-            return await this.handle.getConversationTurns(processId);
+            const json = await this.handle.getConversationTurnsJson(processId);
+            const rows = JSON.parse(json) as NativeSqliteRow[];
+            if (json.includes('"$sqliteBlob"') || json.includes('"$sqliteNumber"')) {
+                for (const row of rows) restoreJsonSqliteValues(row);
+            }
+            return rows;
         } catch (error) {
             return withSqliteError(() => { throw error; });
         }

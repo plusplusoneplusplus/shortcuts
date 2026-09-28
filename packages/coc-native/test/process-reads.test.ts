@@ -31,6 +31,14 @@ describe('pooled native process reads', () => {
             expect(pending).toBeInstanceOf(Promise);
             expect((await pending).map(row => row.content)).toEqual(['first', 'later']);
             expect(await db.getConversationTurns('missing')).toEqual([]);
+            const raw = new (loadNativeSqlite().NativeDatabaseHandle)(path.join(dir, 'processes.db'));
+            try {
+                expect(JSON.parse(await raw.getConversationTurnsJson('one'))).toEqual(
+                    await raw.getConversationTurns('one'),
+                );
+            } finally {
+                raw.close();
+            }
             const processes = db.getAllProcesses({ workspaceId: 'ws-a', statuses: ['completed'] });
             expect(processes).toBeInstanceOf(Promise);
             expect(await processes).toEqual([{
@@ -45,6 +53,11 @@ describe('pooled native process reads', () => {
                 ],
             }]);
             expect(await db.getAllProcesses({ statuses: [] })).toEqual([]);
+            db.exec("UPDATE conversation_turns SET content = X'00FF' WHERE turn_index = 0");
+            db.prepare('UPDATE conversation_turns SET id = ? WHERE turn_index = 1').run(Infinity);
+            const encodedTurns = await db.getConversationTurns('one');
+            expect(encodedTurns[0].content).toEqual(Buffer.from([0, 255]));
+            expect(encodedTurns[1].id).toBe(Infinity);
             db.pragma('user_version = 99');
             await expect(db.getConversationTurns('one')).rejects.toThrow('unsupported process database user_version: 99');
             await expect(db.getAllProcesses()).rejects.toThrow('unsupported process database user_version: 99');

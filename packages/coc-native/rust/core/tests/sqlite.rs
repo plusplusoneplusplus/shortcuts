@@ -1,9 +1,9 @@
 use std::fs;
 
 use coc_native_core::sqlite::process_reads::{
-    get_all_processes, get_all_processes_json, get_conversation_turns, get_process_summaries,
-    get_process_summaries_json, list_recent_processes, list_recent_processes_json, ProcessFilter,
-    RecentFilter,
+    get_all_processes, get_all_processes_json, get_conversation_turns,
+    get_conversation_turns_json, get_process_summaries, get_process_summaries_json,
+    list_recent_processes, list_recent_processes_json, ProcessFilter, RecentFilter,
 };
 use coc_native_core::sqlite::process_search::{
     sanitize_fts_query, search_conversations, SearchFilter,
@@ -250,6 +250,11 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     let turns = get_conversation_turns(&database, "one").unwrap();
     assert_eq!(turns.len(), 2);
     assert_eq!(turns[0]["content"], Value::Text("first".into()));
+    let turns_json: serde_json::Value =
+        serde_json::from_str(&get_conversation_turns_json(&database, "one").unwrap()).unwrap();
+    assert_eq!(turns_json[0]["content"], "first");
+    assert_eq!(turns_json[1]["content"], "second");
+    assert_eq!(get_conversation_turns_json(&database, "missing").unwrap(), "[]");
 
     let all = get_all_processes(&database, &ProcessFilter::default()).unwrap();
     assert_eq!(all.len(), 2);
@@ -352,6 +357,10 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     .is_empty());
     database.pragma("user_version = 39").unwrap();
     assert!(matches!(get_conversation_turns(&database, "one"), Err(Error::UnsupportedVersion(39))));
+    assert!(matches!(
+        get_conversation_turns_json(&database, "one"),
+        Err(Error::UnsupportedVersion(39))
+    ));
     assert!(matches!(get_all_processes(&database, &filter), Err(Error::UnsupportedVersion(39))));
     assert!(matches!(
         get_process_summaries(&database, &filter),

@@ -37,6 +37,7 @@ export declare class NativeDatabaseHandle {
   transaction(callback: () => unknown): unknown
   searchConversations(query: string, filter?: NativeConversationSearchFilter | undefined | null): Promise<NativeConversationSearchPage>
   getConversationTurns(processId: string): Promise<Array<Record<string, number | string | Buffer | null>>>
+  getConversationTurnsJson(processId: string): Promise<string>
   getAllProcesses(filter?: NativeProcessReadFilter | undefined | null): Promise<Array<NativeProcessWithTurns>>
   getAllProcessesJson(filter?: NativeProcessReadFilter | undefined | null): Promise<string>
   getProcessSummariesJson(filter?: NativeProcessReadFilter | undefined | null): Promise<string>

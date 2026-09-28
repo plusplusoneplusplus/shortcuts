@@ -228,6 +228,25 @@ pub struct ProcessTurnsTask {
     process_id: String,
 }
 
+pub struct ProcessTurnsJsonTask {
+    database: Database,
+    process_id: String,
+}
+
+impl Task for ProcessTurnsJsonTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_reads::get_conversation_turns_json(&self.database, &self.process_id)
+            .map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, json: Self::Output) -> Result<Self::JsValue> {
+        Ok(json)
+    }
+}
+
 impl Task for ProcessTurnsTask {
     type Output = Vec<Row>;
     type JsValue = Vec<JsSqliteRow>;
@@ -500,6 +519,14 @@ impl NativeDatabaseHandle {
     #[napi(ts_return_type = "Promise<Array<Record<string, number | string | Buffer | null>>>")]
     pub fn get_conversation_turns(&self, process_id: String) -> AsyncTask<ProcessTurnsTask> {
         AsyncTask::new(ProcessTurnsTask { database: self.database.clone(), process_id })
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn get_conversation_turns_json(
+        &self,
+        process_id: String,
+    ) -> AsyncTask<ProcessTurnsJsonTask> {
+        AsyncTask::new(ProcessTurnsJsonTask { database: self.database.clone(), process_id })
     }
 
     #[napi(ts_return_type = "Promise<Array<NativeProcessWithTurns>>")]
