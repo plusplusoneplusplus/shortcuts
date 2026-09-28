@@ -9,6 +9,8 @@ export interface InboundTeamsMessage {
     text: string;
     senderName?: string;
     senderAadId?: string;
+    /** Teams identifies the sender as an application rather than a human user. */
+    botAuthored?: boolean;
     createdDateTime?: string;
 }
 
@@ -122,6 +124,8 @@ export interface TeamsTransport {
     initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void>;
     /** Send a message to a target (channelId or chatId). Returns the message ID. */
     send(target: string, text: string, opts?: TransportSendOptions): Promise<string>;
+    /** Like an original channel post or its thread reply. Unsupported modes reject. */
+    reactToChannelMessage?(target: InboundTeamsMessage): Promise<void>;
     /** Poll for new messages since a timestamp or watermark. */
     poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }>;
     /** List channels in the team. */

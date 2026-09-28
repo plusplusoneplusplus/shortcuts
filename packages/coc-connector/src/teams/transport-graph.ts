@@ -82,6 +82,7 @@ export class GraphTransport implements TeamsTransport {
                 text: msg.body?.content ?? '',
                 senderName: msg.from?.user?.displayName,
                 senderAadId: msg.from?.user?.id,
+                botAuthored: !!msg.from?.application,
                 replyToMessageId: msg.replyToId,
             }));
 
@@ -107,6 +108,7 @@ export class GraphTransport implements TeamsTransport {
                 text: msg.body?.content ?? '',
                 senderName: msg.from?.user?.displayName,
                 senderAadId: msg.from?.user?.id,
+                botAuthored: !!msg.from?.application,
                 replyToMessageId: msg.replyToId,
             }));
 

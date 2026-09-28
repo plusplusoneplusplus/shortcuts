@@ -26,7 +26,7 @@ export interface GraphClientOptions {
 export interface GraphMessage {
     id: string;
     body: { content: string; contentType?: string };
-    from?: { user?: { displayName?: string; id?: string } };
+    from?: { user?: { displayName?: string; id?: string }; application?: { id?: string } };
     createdDateTime: string;
     replyToId?: string;
 }

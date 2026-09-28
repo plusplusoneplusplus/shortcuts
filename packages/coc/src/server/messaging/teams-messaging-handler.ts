@@ -54,6 +54,7 @@ export interface TeamsMessagingRoutesOptions {
     enqueuePendingRelayFollowUp?: (workspaceId: string, processId: string, message: string, requestId: string) => Promise<string>;
     relayQueue?: ScheduleQueueEventBus;
     getAnswerRelayEnabled?: () => boolean;
+    getMessageReactionEnabled?: () => boolean;
     onAnswerRelayConfigChanged?: (callback: () => void) => () => void;
     /** Send a follow-up message to an existing process. */
     executeFollowUp?: (processId: string, message: string) => Promise<void>;
@@ -144,6 +145,17 @@ export function registerTeamsMessagingRoutes(
         manager.setMessageHandler(async (msg, observe) => {
             await ready;
             if (opts.getAnswerRelayEnabled?.() === true && relay?.hasInbound(msg)) return;
+            const boundReply = !!msg.replyToMessageId && opts.getAnswerRelayEnabled?.() === true
+                && !!relay?.threadRoots(manager.getStatus().teamId ?? '', msg.channelId).includes(msg.replyToMessageId);
+            if (opts.getMessageReactionEnabled?.() === true && msg.text.trim() && !msg.botAuthored
+                && (!msg.replyToMessageId || boundReply)) {
+                try {
+                    await manager.reactToChannelMessage(msg);
+                } catch (err) {
+                    console.error('[teams-messaging] Teams Like reaction unavailable or failed:',
+                        err instanceof Error ? err.name : 'unknown error');
+                }
+            }
             await router.handle(msg, observe);
         });
     }

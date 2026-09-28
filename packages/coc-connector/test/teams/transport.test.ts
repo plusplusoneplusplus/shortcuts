@@ -270,6 +270,24 @@ describe('McpTransport', () => {
         });
     });
 
+    it('preserves application authorship on inbound channel posts', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
+            { id: 'human', body: { content: '/list repos' }, from: { user: { id: 'human-id' } } },
+            { id: 'bot', body: { content: '/list repos' }, from: { application: { id: 'bot-id' } } },
+        ]) }] }));
+        const result = await transport.poll('channel-1');
+        expect(result.messages.map(msg => [msg.messageId, msg.botAuthored])).toEqual([
+            ['human', false], ['bot', true],
+        ]);
+    });
+
     it('accepts empty Teams reply lists without dropping channel roots', async () => {
         transport = new McpTransport('https://mcp.test.com/server', () => true);
         const response = (result: unknown) => ({

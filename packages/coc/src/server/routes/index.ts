@@ -886,6 +886,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
         getAnswerRelayEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay === true,
+        getMessageReactionEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsMessageReaction === true,
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
         enqueueRelayChat: (workspaceId, message, taskId) => enqueueMessagingChat(workspaceId, message, taskId),

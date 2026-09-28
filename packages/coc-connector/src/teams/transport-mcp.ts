@@ -332,7 +332,7 @@ export class McpTransport implements TeamsTransport {
             body?: { content?: string };
             text?: string;
             content?: string;
-            from?: { user?: { displayName?: string; id?: string; userId?: string }; displayName?: string; userId?: string };
+            from?: { user?: { displayName?: string; id?: string; userId?: string }; application?: unknown; displayName?: string; userId?: string };
             senderName?: string;
             senderAadId?: string;
             replyToId?: string;
@@ -389,6 +389,7 @@ export class McpTransport implements TeamsTransport {
                 text,
                 senderName: msg.from?.user?.displayName ?? msg.from?.displayName ?? msg.senderName,
                 senderAadId: msg.from?.user?.id ?? msg.from?.userId ?? msg.senderAadId,
+                botAuthored: !!msg.from?.application,
                 replyToMessageId: msg.replyToId,
                 ...(msg.createdDateTime ? { createdDateTime: msg.createdDateTime } : {}),
             };

@@ -159,6 +159,14 @@ export class TeamsBot implements MessagingConnector {
         }
     }
 
+    /** React only in channel mode; the caller handles best-effort failures. */
+    async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
+        if (this._status !== 'connected' || !this.opts.teamId || !this.transport.reactToChannelMessage) {
+            throw new Error('Teams channel Like reaction is unavailable');
+        }
+        await this.transport.reactToChannelMessage(msg);
+    }
+
     /** List available Teams channels. */
     async listChannels(): Promise<TeamsChannel[]> {
         if (this._status !== 'connected') {

@@ -439,6 +439,16 @@ export class TeamsMessagingManager {
         }
     }
 
+    async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
+        const context = this.inboundContext.getStore();
+        if (context && context.generation !== this.generation) throw new TeamsMessageNotSentError();
+        if (!this.bot || this._status !== 'connected' || !this.config.teamId
+            || !this.config.channelId || msg.channelId !== this.config.channelId) {
+            throw new TeamsMessageNotSentError();
+        }
+        await this.bot.reactToChannelMessage(msg);
+    }
+
     // ── Private helpers ──────────────────────────────────────
 
     private loadConfig(): TeamsMessagingConfig {
