@@ -241,6 +241,10 @@ fn json_process_rows_escape_column_names_once_for_every_row() {
         )
         .unwrap();
     let rows = get_conversation_turns_json(&database, "one").unwrap();
+    assert_eq!(
+        rows,
+        r#"[{"bytes":{"$sqliteBlob":[0,255]},"nonfinite":{"$sqliteNumber":"Infinity"},"process_id":"one","quoted\"name":"first","turn_index":0},{"bytes":null,"nonfinite":null,"process_id":"one","quoted\"name":"second","turn_index":1}]"#
+    );
     let parsed: serde_json::Value = serde_json::from_str(&rows).unwrap();
     let original = get_conversation_turns(&database, "one").unwrap();
     assert_eq!(parsed[0]["quoted\"name"], "first");
