@@ -2,9 +2,7 @@
 
 use rusqlite::params_from_iter;
 
-use super::{Database, Error, Result};
-
-const SCHEMA_VERSION: i64 = 38;
+use super::{check_process_schema, Database, Result};
 
 #[derive(Clone, Debug, Default)]
 pub struct SearchFilter {
@@ -71,10 +69,7 @@ pub fn search_conversations(
     filter: &SearchFilter,
 ) -> Result<SearchPage> {
     database.with_read_connection(|connection| {
-        let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version != SCHEMA_VERSION {
-            return Err(Error::UnsupportedVersion(version));
-        }
+        check_process_schema(connection)?;
         let sanitized = sanitize_fts_query(query);
         if sanitized.is_empty() {
             return Ok(SearchPage { results: vec![], total: 0 });

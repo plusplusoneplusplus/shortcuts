@@ -877,40 +877,25 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
-        const { sql, params } = this.buildProcessWhereClause(filter);
-
         const excludeConversation = filter?.exclude?.includes('conversation');
         const excludeToolCalls = filter?.exclude?.includes('toolCalls');
-
-        // When the caller is only interested in the list-view fields (i.e. is
-        // already discarding fullPrompt/result/conversation), skip reading the
-        // heavy text columns from disk. For a workspace with 100 history items
-        // whose prompts/results/structured_results can each be several KB,
-        // this trims tens of KB to ~1 MB of I/O off every history fetch.
-        const selectCols = excludeConversation
-            ? `id, workspace_id, type, prompt_preview, NULL AS full_prompt, status, ` +
-              `start_time, end_time, error, NULL AS result, result_file_path, ` +
-              `raw_stdout_file_path, metadata, group_metadata, NULL AS structured_result, ` +
-              `parent_process_id, sdk_session_id, active_provider_session, backend, working_directory, ` +
-              `title, custom_title, last_message_preview, token_limit, current_tokens, ` +
-              `cumulative_token_usage, stale, data_file_path, archived, pinned_at, ` +
-              `seen_at, last_event_at`
-            : '*';
-        const query = `SELECT ${selectCols} FROM processes ${sql} ORDER BY last_event_at DESC` +
-            (filter?.limit !== undefined ? ` LIMIT ?` : '') +
-            (filter?.offset !== undefined ? ` OFFSET ?` : '');
-
-        const queryParams = [...params];
-        if (filter?.limit !== undefined) queryParams.push(filter.limit);
-        if (filter?.offset !== undefined) queryParams.push(filter.offset);
-
-        // Use .iterate() to avoid materializing all rows at once
+        const rows = await this.db.getAllProcesses({
+            workspaceId: filter?.workspaceId,
+            parentProcessId: filter?.parentProcessId,
+            statuses: filter?.status === undefined ? undefined :
+                Array.isArray(filter.status) ? filter.status : [filter.status],
+            processType: filter?.type,
+            since: filter?.since?.toISOString(),
+            until: filter?.until?.toISOString(),
+            limit: filter?.limit,
+            offset: filter?.offset,
+            excludeConversation,
+        });
         const results: AIProcess[] = [];
-        for (const row of this.db.prepare(query).iterate(...queryParams) as IterableIterator<ProcessRow>) {
+        for (const entry of rows) {
             let turns: ConversationTurn[] | undefined;
             if (!excludeConversation) {
-                const turnRows = this.getTurnsStmt.all(row.id) as TurnRow[];
-                turns = turnRows.map(rowToTurn);
+                turns = entry.turns?.map(row => rowToTurn(row as unknown as TurnRow));
                 if (excludeToolCalls && turns) {
                     turns = turns.map(t => {
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -920,7 +905,7 @@ export class SqliteProcessStore implements ProcessStore {
                 }
             }
 
-            const process = rowToProcess(row, turns);
+            const process = rowToProcess(entry.process as unknown as ProcessRow, turns);
             if (excludeConversation) {
                 const { conversationTurns: _ct, fullPrompt: _fp, result: _r, ...rest } = process;
                 results.push(rest as AIProcess);
@@ -2273,8 +2258,8 @@ export class SqliteProcessStore implements ProcessStore {
     // ========================================================================
 
     async getConversationTurns(processId: string): Promise<ConversationTurn[]> {
-        const turnRows = this.getTurnsStmt.all(processId) as TurnRow[];
-        return turnRows.map(rowToTurn);
+        const turnRows = await this.db.getConversationTurns(processId);
+        return turnRows.map(row => rowToTurn(row as unknown as TurnRow));
     }
 
     // ========================================================================

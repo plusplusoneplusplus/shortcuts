@@ -36,6 +36,8 @@ export declare class NativeDatabaseHandle {
   close(): void
   transaction(callback: () => unknown): unknown
   searchConversations(query: string, filter?: NativeConversationSearchFilter | undefined | null): Promise<NativeConversationSearchPage>
+  getConversationTurns(processId: string): Promise<Array<Record<string, number | string | Buffer | null>>>
+  getAllProcesses(filter?: NativeProcessReadFilter | undefined | null): Promise<Array<NativeProcessWithTurns>>
 }
 
 export declare class NativeStatementHandle {
@@ -779,6 +781,23 @@ export interface NativeConversationSearchPage {
 
 export interface NativeDatabaseOptions {
   readonly?: boolean
+}
+
+export interface NativeProcessReadFilter {
+  workspaceId?: string
+  parentProcessId?: string
+  statuses?: Array<string>
+  processType?: string
+  since?: string
+  until?: string
+  limit?: number
+  offset?: number
+  excludeConversation?: boolean
+}
+
+export interface NativeProcessWithTurns {
+  process: Record<string, number | string | Buffer | null>
+  turns?: Array<Record<string, number | string | Buffer | null>>
 }
 
 export interface NativeRunResult {

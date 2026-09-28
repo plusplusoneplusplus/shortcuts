@@ -169,6 +169,24 @@ export class NativeDatabase {
         }
     }
 
+    public async getConversationTurns(processId: string): Promise<NativeSqliteRow[]> {
+        try {
+            return await this.handle.getConversationTurns(processId);
+        } catch (error) {
+            return withSqliteError(() => { throw error; });
+        }
+    }
+
+    public async getAllProcesses(
+        filter?: Bindings.NativeProcessReadFilter,
+    ): Promise<Bindings.NativeProcessWithTurns[]> {
+        try {
+            return await this.handle.getAllProcesses(filter);
+        } catch (error) {
+            return withSqliteError(() => { throw error; });
+        }
+    }
+
     public transaction<Arguments extends unknown[], Return>(
         callback: (...args: Arguments) => Return,
     ): (...args: Arguments) => Return {

@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use coc_native_core::sqlite::process_reads::{self, ProcessFilter, ProcessWithTurns};
 use coc_native_core::sqlite::process_search::{self, SearchFilter, SearchPage};
 use coc_native_core::sqlite::{
     Database, Error as SqliteError, Parameters, Row, RunResult, Statement, Value,
@@ -58,6 +59,68 @@ pub struct NativeConversationSearchHit {
 pub struct NativeConversationSearchPage {
     pub results: Vec<NativeConversationSearchHit>,
     pub total: f64,
+}
+
+#[napi(object)]
+pub struct NativeProcessReadFilter {
+    pub workspace_id: Option<String>,
+    pub parent_process_id: Option<String>,
+    pub statuses: Option<Vec<String>>,
+    pub process_type: Option<String>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+    pub exclude_conversation: Option<bool>,
+}
+
+#[napi(object)]
+pub struct NativeProcessWithTurns {
+    pub process: HashMap<String, Either4<f64, String, Buffer, Null>>,
+    pub turns: Option<Vec<HashMap<String, Either4<f64, String, Buffer, Null>>>>,
+}
+
+pub struct ProcessTurnsTask {
+    database: Database,
+    process_id: String,
+}
+
+impl Task for ProcessTurnsTask {
+    type Output = Vec<Row>;
+    type JsValue = Vec<JsSqliteRow>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_reads::get_conversation_turns(&self.database, &self.process_id)
+            .map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, rows: Self::Output) -> Result<Self::JsValue> {
+        Ok(to_js_rows(rows))
+    }
+}
+
+pub struct AllProcessesTask {
+    database: Database,
+    filter: ProcessFilter,
+}
+
+impl Task for AllProcessesTask {
+    type Output = Vec<ProcessWithTurns>;
+    type JsValue = Vec<NativeProcessWithTurns>;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_reads::get_all_processes(&self.database, &self.filter).map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, rows: Self::Output) -> Result<Self::JsValue> {
+        Ok(rows
+            .into_iter()
+            .map(|entry| NativeProcessWithTurns {
+                process: to_js_row(entry.process),
+                turns: entry.turns.map(to_js_rows),
+            })
+            .collect())
+    }
 }
 
 pub struct ConversationSearchTask {
@@ -271,5 +334,31 @@ impl NativeDatabaseHandle {
             })
             .unwrap_or_else(|| SearchFilter { limit: 50, ..SearchFilter::default() });
         AsyncTask::new(ConversationSearchTask { database: self.database.clone(), query, filter })
+    }
+
+    #[napi(ts_return_type = "Promise<Array<Record<string, number | string | Buffer | null>>>")]
+    pub fn get_conversation_turns(&self, process_id: String) -> AsyncTask<ProcessTurnsTask> {
+        AsyncTask::new(ProcessTurnsTask { database: self.database.clone(), process_id })
+    }
+
+    #[napi(ts_return_type = "Promise<Array<NativeProcessWithTurns>>")]
+    pub fn get_all_processes(
+        &self,
+        filter: Option<NativeProcessReadFilter>,
+    ) -> AsyncTask<AllProcessesTask> {
+        let filter = filter
+            .map(|filter| ProcessFilter {
+                workspace_id: filter.workspace_id,
+                parent_process_id: filter.parent_process_id,
+                statuses: filter.statuses,
+                process_type: filter.process_type,
+                since: filter.since,
+                until: filter.until,
+                limit: filter.limit.map(i64::from),
+                offset: filter.offset.map(i64::from),
+                exclude_conversation: filter.exclude_conversation.unwrap_or(false),
+            })
+            .unwrap_or_default();
+        AsyncTask::new(AllProcessesTask { database: self.database.clone(), filter })
     }
 }

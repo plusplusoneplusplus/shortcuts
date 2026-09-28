@@ -1,5 +1,8 @@
 use std::fs;
 
+use coc_native_core::sqlite::process_reads::{
+    get_all_processes, get_conversation_turns, ProcessFilter,
+};
 use coc_native_core::sqlite::process_search::{
     sanitize_fts_query, search_conversations, SearchFilter,
 };
@@ -211,4 +214,56 @@ fn process_search_uses_pooled_reads_and_rejects_unsupported_versions() {
         search_conversations(&database, "search", &filter),
         Err(Error::UnsupportedVersion(39))
     ));
+}
+
+#[test]
+fn process_reads_filter_and_group_turns_on_the_read_pool() {
+    let directory = tempdir().unwrap();
+    let database = Database::open(directory.path().join("reads.db"), false).unwrap();
+    database
+        .exec(
+            "
+        PRAGMA journal_mode=WAL; PRAGMA user_version=38;
+        CREATE TABLE processes (
+          id TEXT PRIMARY KEY, workspace_id TEXT, parent_process_id TEXT, status TEXT,
+          type TEXT, start_time TEXT, last_event_at TEXT
+        );
+        CREATE TABLE conversation_turns (
+          id INTEGER PRIMARY KEY, process_id TEXT, turn_index INTEGER, content TEXT
+        );
+        INSERT INTO processes VALUES
+          ('one', 'ws-a', NULL, 'completed', 'chat', '2026-01-01', '2026-01-02'),
+          ('two', 'ws-b', 'one', 'running', 'chat', '2026-02-01', '2026-02-02');
+        INSERT INTO conversation_turns VALUES (1, 'one', 2, 'second'), (2, 'one', 0, 'first');
+    ",
+        )
+        .unwrap();
+    assert!(get_conversation_turns(&database, "missing").unwrap().is_empty());
+    let turns = get_conversation_turns(&database, "one").unwrap();
+    assert_eq!(turns.len(), 2);
+    assert_eq!(turns[0]["content"], Value::Text("first".into()));
+
+    let all = get_all_processes(&database, &ProcessFilter::default()).unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0].process["id"], Value::Text("two".into()));
+    assert_eq!(all[1].turns.as_ref().unwrap(), &turns);
+    let filter = ProcessFilter {
+        workspace_id: Some("ws-a".into()),
+        statuses: Some(vec!["completed".into()]),
+        since: Some("2026-01-01".into()),
+        until: Some("2026-01-02".into()),
+        limit: Some(1),
+        offset: Some(0),
+        ..ProcessFilter::default()
+    };
+    assert_eq!(get_all_processes(&database, &filter).unwrap().len(), 1);
+    assert!(get_all_processes(
+        &database,
+        &ProcessFilter { statuses: Some(vec![]), ..ProcessFilter::default() }
+    )
+    .unwrap()
+    .is_empty());
+    database.pragma("user_version = 39").unwrap();
+    assert!(matches!(get_conversation_turns(&database, "one"), Err(Error::UnsupportedVersion(39))));
+    assert!(matches!(get_all_processes(&database, &filter), Err(Error::UnsupportedVersion(39))));
 }

@@ -100,6 +100,15 @@ impl std::fmt::Display for Error {
 }
 
 pub mod process_search;
+pub mod process_reads;
+
+pub(super) fn check_process_schema(connection: &Connection) -> Result<()> {
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version != 38 {
+        return Err(Error::UnsupportedVersion(version));
+    }
+    Ok(())
+}
 
 impl std::error::Error for Error {}
 
