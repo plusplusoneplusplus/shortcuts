@@ -39,6 +39,19 @@ describe('formatTeamsAnswerChunks', () => {
         expect(parts[0]).toContain('Repo A&amp;B · Chat &lt;topic&gt;');
         expect(parts[0]).toContain('<p>Done</p>');
     });
+    it('reserves context bytes without displaying the label or changing later part boundaries', () => {
+        const answer = '&'.repeat(10_000);
+        const label = 'Repo A&B · Chat <topic>';
+        const unlabeled = formatTeamsAnswerChunks(answer, 'reserved', undefined, label);
+        const labeled = formatTeamsAnswerChunks(answer, 'reserved', label, label);
+        expect(unlabeled.length).toBeGreaterThan(1);
+        expectValid(unlabeled, 'reserved');
+        expectValid(labeled, 'reserved');
+        expect(unlabeled.map(part => part.replace(/^<p><strong>.*?<\/strong><\/p>/, '')))
+            .toEqual(labeled.map(part => part.replace(/^<p><strong>.*?<\/strong><\/p><p>.*?<\/p>/, '')));
+        expect(unlabeled.join('')).not.toContain('Repo A');
+        expect(labeled.every(part => part.includes('Repo A&amp;B · Chat &lt;topic&gt;'))).toBe(true);
+    });
     it('formats paragraphs, headings, lists, links, and code without discarding content', () => {
         const answer = '## Summary\nFirst & <safe> line\n\n- one\n2. two\n' +
             '[docs](https://example.org/a?x=1&y=2) and `C:\\work\\repo` and **bold** *em*\n' +

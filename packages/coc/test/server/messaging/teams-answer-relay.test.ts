@@ -1066,6 +1066,175 @@ describe('TeamsAnswerRelay new topics', () => {
         }
     });
 
+    it('labels a continuation after the first part was confirmed before a repo switch', async () => {
+        const root = message('multipart-switch');
+        const id = (await relay.admitNew(root, 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        finish(id, 'workspace-a', 'large & answer '.repeat(3_000));
+        send.mockImplementationOnce(async () => {
+            enabled = false;
+            return 'confirmed-first-part';
+        });
+        await relay.acknowledged(id);
+        expect(send).toHaveBeenCalledTimes(1);
+        const firstPart = send.mock.calls[0][0] as string;
+        expect(firstPart).toContain('Part 1/');
+        expect(firstPart).not.toContain('Repo A');
+        const partCount = Number(firstPart.match(/Part 1\/(\d+)/)?.[1]);
+        expect(partCount).toBeGreaterThan(1);
+
+        enabled = true;
+        await relay.selectThreadTarget(
+            { ...message('switch-during-multipart'), replyToMessageId: root.messageId },
+            'workspace-b', null,
+        );
+        relay.dispose();
+        send.mockRejectedValueOnce(new TeamsMessageNotSentError());
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            expect(send).toHaveBeenCalledTimes(2);
+            expect(send.mock.calls[0][0]).toBe(firstPart);
+            expect(send.mock.calls[1][0]).toContain('Repo A · Chat');
+            await new Promise(resolve => setTimeout(resolve, 1100));
+            await restored.reconcile();
+            expect(send).toHaveBeenCalledTimes(partCount + 1);
+            expect(send.mock.calls[2][0]).toBe(send.mock.calls[1][0]);
+            for (const [index, [body, target]] of send.mock.calls.slice(2).entries()) {
+                expect(body).toContain(`Part ${index + 2}/${partCount}`);
+                expect(target).toBe(root.messageId);
+                expect(body).toContain('Repo A · Chat');
+                expect(Buffer.byteLength(`AI: ${body}`, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+            }
+            await restored.reconcile();
+            expect(send).toHaveBeenCalledTimes(partCount + 1);
+        } finally {
+            restored.dispose();
+        }
+    });
+
+    it('labels subsequent parts when the repo switches during an active multipart send', async () => {
+        const root = message('switch-while-sending');
+        const id = (await relay.admitNew(root, 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        finish(id, 'workspace-a', 'large & answer '.repeat(3_000));
+        send.mockImplementationOnce(async () => {
+            await relay.selectThreadTarget(
+                { ...message('switch-mid-delivery'), replyToMessageId: root.messageId },
+                'workspace-b', null,
+            );
+            return 'accepted-first-part';
+        });
+        await relay.acknowledged(id);
+        expect(send.mock.calls.length).toBeGreaterThan(1);
+        expect(send.mock.calls[0][0]).not.toContain('Repo A');
+        for (const [part] of send.mock.calls.slice(1)) {
+            expect(part).toContain('Repo A · Chat');
+            expect(Buffer.byteLength(`AI: ${part}`, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+        }
+        await relay.reconcile();
+        expect(send.mock.calls.length).toBe(Number((send.mock.calls[0][0] as string).match(/Part 1\/(\d+)/)?.[1]));
+    });
+
+    it('labels a previously persisted multipart continuation without replaying confirmed parts', async () => {
+        const root = message('older-multipart');
+        const id = (await relay.admitNew(root, 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        finish(id, 'workspace-a', 'large & answer '.repeat(3_000));
+        send.mockImplementationOnce(async () => {
+            enabled = false;
+            return 'confirmed-first-part';
+        });
+        await relay.acknowledged(id);
+        const folder = getRepoDataPath(dataDir, 'workspace-a', 'teams-answer-relay');
+        const receipt = path.join(folder, fs.readdirSync(folder)[0]);
+        const saved = JSON.parse(fs.readFileSync(receipt, 'utf8'));
+        delete saved.sourceContext;
+        fs.writeFileSync(receipt, JSON.stringify(saved));
+        enabled = true;
+        await relay.selectThreadTarget(
+            { ...message('older-switch'), replyToMessageId: root.messageId }, 'workspace-b', null,
+        );
+        relay.dispose();
+        send.mockRejectedValueOnce(new TeamsMessageNotSentError());
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            expect(send.mock.calls[1][0]).toContain('Repo A · Chat');
+            expect(send.mock.calls[1][0]).toContain('Continuation');
+            expect(send).toHaveBeenCalledTimes(2);
+            await new Promise(resolve => setTimeout(resolve, 1100));
+            await restored.reconcile();
+            expect(send.mock.calls[2][0]).toBe(send.mock.calls[1][0]);
+            expect(send.mock.calls[3][0]).toContain('Part 2/');
+            expect(send.mock.calls[3][1]).toBe(root.messageId);
+            const count = send.mock.calls.length;
+            await restored.reconcile();
+            expect(send).toHaveBeenCalledTimes(count);
+        } finally {
+            restored.dispose();
+        }
+    });
+
+    it('labels a legacy continuation when a switch occurs during its first send', async () => {
+        const root = message('legacy-mid-send');
+        const id = (await relay.admitNew(root, 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        finish(id, 'workspace-a', 'large & answer '.repeat(3_000));
+        send.mockRejectedValueOnce(new TeamsMessageNotSentError());
+        await relay.acknowledged(id);
+        const folder = getRepoDataPath(dataDir, 'workspace-a', 'teams-answer-relay');
+        const receipt = path.join(folder, fs.readdirSync(folder)[0]);
+        const saved = JSON.parse(fs.readFileSync(receipt, 'utf8'));
+        delete saved.sourceContext;
+        delete saved.nextAttemptAt;
+        saved.status = 'awaiting';
+        fs.writeFileSync(receipt, JSON.stringify(saved));
+        relay.dispose();
+
+        let restored: TeamsAnswerRelay;
+        send.mockImplementationOnce(async () => {
+            await restored.selectThreadTarget(
+                { ...message('legacy-mid-switch'), replyToMessageId: root.messageId },
+                'workspace-b', null,
+            );
+            return 'confirmed-first';
+        });
+        restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            expect(send.mock.calls[1][0]).toContain('Part 1/');
+            expect(send.mock.calls[2][0]).toContain('Repo A · Chat');
+            expect(send.mock.calls[2][0]).toContain('Continuation');
+            expect(send.mock.calls[3][0]).toContain('Part 2/');
+            await restored.reconcile();
+            expect(send.mock.calls.filter(([part]) => part.includes('Continuation'))).toHaveLength(1);
+        } finally {
+            restored.dispose();
+        }
+    });
+
     it('stops retrying after the finite definite-rejection budget', async () => {
         const id = (await relay.admitNew(message('max-retries'), 'workspace-a', async taskId => {
             tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);

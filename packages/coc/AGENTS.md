@@ -138,8 +138,12 @@ all have their own `references/*.md`.
   Bound replies route by the thread selection independently of the sender's
   topic. An unselected reply asks for `/list repos` and `/select repo <name>`;
   a selected root starts a fresh chat on its next question. A late answer after
-  a switch identifies its source repo and chat, including when a definite
-  send rejection is retried after the switch.
+  a switch identifies its source repo and chat. Multipart receipts reserve
+  space for a source label before the first send, so confirmed parts keep their
+  numbering if a switch occurs before later parts. Receipts with confirmed
+  parts but no reserved space send one request-linked continuation label before
+  resuming; definite rejections retry, while uncertain sends require manual
+  reconciliation.
   Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
   for discovery, PKCE, exchange, and read-only
   handshake verification; verified tokens enter the shared Copilot OAuth cache

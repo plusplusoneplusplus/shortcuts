@@ -111,7 +111,9 @@ Machines sharing a hostname still need distinct channels to avoid duplicate proc
 
 ### Teams bridge receipts and connection history
 
-With `features.teamsAiAnswerRelay` on, `TeamsAnswerRelay` persists one receipt per accepted request under its physical workspace's `teams-answer-relay/` directory. Chat root receipts retain their original chat/workspace; shared thread selections live in repo-scoped `teams-thread-roots/`. Server-global `teams-thread-discovery/` contains only team/channel/root identities. Paginated MCP discovery and rotating reply polling keep older threads eligible; dated historical commands in recent and backfilled roots restore routing silently without replaying old questions. Answers retried after a thread switch are labeled with their originating repo/chat before their first confirmed part.
+With `features.teamsAiAnswerRelay` on, `TeamsAnswerRelay` persists one receipt per accepted request under its physical workspace's `teams-answer-relay/` directory. Chat root receipts retain their original chat/workspace; shared thread selections live in repo-scoped `teams-thread-roots/`. Server-global `teams-thread-discovery/` contains only team/channel/root identities. Paginated MCP discovery and rotating reply polling keep older threads eligible; dated historical commands in recent and backfilled roots restore routing silently without replaying old questions.
+
+Multipart receipts reserve room for a source label so answers delivered after a switch identify their originating repo/chat without renumbering confirmed parts. Receipts lacking reserved space send a request-linked continuation label before remaining parts.
 
 Thread replies resolve shared selection before sender state, requesting explicit repo selection for unbound roots. Selecting a repo or creating a topic prepares a fresh chat under the same root; late answers use their captured source repo/chat. The polling startup cutoff excludes pre-start and undated questions even under tracked roots. The new-chat task ID and process reservation are allocated before enqueue; each follow-up carries an opaque request ID into its user turn.
 

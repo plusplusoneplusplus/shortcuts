@@ -8,6 +8,7 @@ import { getRepoDataPath } from '../paths';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { TeamsMessageNotSentError } from './teams-messaging-manager';
+import { escapeTeamsHtml } from './teams-outbound-format';
 
 type BindingStatus = 'admitting' | 'awaiting' | 'retryable' | 'sending' | 'delivered' | 'ambiguous' | 'failed';
 
@@ -29,6 +30,8 @@ interface AnswerBinding {
     nextPart?: number;
     answerHash?: string;
     answerContext?: string;
+    sourceContext?: string;
+    continuationNoticeSent?: boolean;
     acceptedMessageId?: string;
     sentMessageIds?: string[];
     lastReplyAt?: string;
@@ -102,6 +105,8 @@ function readBinding(file: string): AnswerBinding | undefined {
             || row.commandIds.some(id => typeof id !== 'string' || !id)))
         || (row.answerHash !== undefined && (typeof row.answerHash !== 'string' || !/^[a-f0-9]{64}$/.test(row.answerHash)))
         || (row.answerContext !== undefined && (typeof row.answerContext !== 'string' || row.answerContext.length > 140))
+        || (row.sourceContext !== undefined && (typeof row.sourceContext !== 'string' || row.sourceContext.length > 140))
+        || (row.continuationNoticeSent !== undefined && typeof row.continuationNoticeSent !== 'boolean')
         || (row.acceptedMessageId !== undefined && (typeof row.acceptedMessageId !== 'string'
             || !/^[A-Za-z0-9:_@.-]{1,256}$/.test(row.acceptedMessageId)))
         || (row.sentMessageIds !== undefined && (!Array.isArray(row.sentMessageIds)
@@ -746,6 +751,25 @@ export class TeamsAnswerRelay {
         for (const id of ids) await this.reconcileTask(id);
     }
 
+    private hasThreadSwitched(binding: AnswerBinding): boolean {
+        const root = [...this.bindings.values()].find(({ value }) =>
+            !value.requestId && value.teamId === binding.teamId && value.channelId === binding.channelId
+            && value.messageId === binding.rootId)?.value;
+        const selected = this.threadSelections.get(bindingName(binding.teamId, binding.channelId, binding.rootId))?.value;
+        const activeProcessId = selected ? selected.processId
+            : root && root.selectedProcessId !== undefined ? root.selectedProcessId : root?.processId;
+        return !!(root || selected)
+            && ((selected?.workspaceId ?? root?.selectedWorkspaceId ?? root?.workspaceId) !== binding.workspaceId
+                || (activeProcessId !== undefined && activeProcessId !== binding.processId));
+    }
+
+    private async sourceLabel(binding: AnswerBinding, process: AIProcess | undefined): Promise<string> {
+        const saved = binding.sourceContext ?? binding.answerContext;
+        if (saved) return saved;
+        const workspace = (await this.deps.store.getWorkspaces()).find(w => w.id === binding.workspaceId);
+        return `Repo ${workspace?.name ?? 'unavailable'} · Chat ${process?.title ?? process?.customTitle ?? createHash('sha256').update(binding.processId).digest('hex').slice(0, 8)}`.slice(0, 140);
+    }
+
     private async deliver(file: string, binding: AnswerBinding): Promise<void> {
         const candidate = this.deps.queue.getTask(binding.taskId);
         const task = binding.requestId
@@ -808,21 +832,22 @@ export class TeamsAnswerRelay {
         } else {
             return;
         }
-        const root = [...this.bindings.values()].find(({ value }) =>
-            !value.requestId && value.teamId === binding.teamId && value.channelId === binding.channelId
-            && value.messageId === binding.rootId)?.value;
-        const selected = this.threadSelections.get(bindingName(binding.teamId, binding.channelId, binding.rootId))?.value;
-        const activeProcessId = selected ? selected.processId
-            : root && root.selectedProcessId !== undefined ? root.selectedProcessId : root?.processId;
-        const switched = !!(root || selected)
-            && ((selected?.workspaceId ?? root?.selectedWorkspaceId ?? root?.workspaceId) !== binding.workspaceId
-                || (activeProcessId !== undefined && activeProcessId !== binding.processId));
-        const workspace = switched && !binding.answerContext
-            ? (await this.deps.store.getWorkspaces()).find(w => w.id === binding.workspaceId) : undefined;
-        const context = (binding.answerContext ?? (switched && (binding.nextPart ?? 0) === 0
-            ? `Repo ${workspace?.name ?? 'unavailable'} · Chat ${process?.title ?? process?.customTitle ?? createHash('sha256').update(binding.processId).digest('hex').slice(0, 8)}`
-            : undefined))?.slice(0, 140);
-        const parts = formatTeamsAnswerChunks(text, answerLabel(binding), context);
+        const switched = this.hasThreadSwitched(binding);
+        const label = answerLabel(binding);
+        const plainParts = !binding.answerHash && !switched
+            ? formatTeamsAnswerChunks(text, label) : undefined;
+        const needsContext = switched || !!binding.answerContext || !!binding.sourceContext
+            || (plainParts !== undefined && plainParts.length > 1);
+        let sourceContext = needsContext ? await this.sourceLabel(binding, process) : undefined;
+        const legacyContinuation = !!(binding.answerHash && (binding.nextPart ?? 0) > 0
+            && !binding.sourceContext && !binding.answerContext);
+        const context = binding.answerContext ?? (switched && !legacyContinuation ? sourceContext : undefined);
+        let notice = legacyContinuation && switched && !binding.continuationNoticeSent && sourceContext
+            ? `<p><strong>Request ${label} · Continuation</strong></p><p>${escapeTeamsHtml(sourceContext)}</p>`
+            : undefined;
+        const parts = plainParts && !sourceContext ? plainParts : formatTeamsAnswerChunks(
+            text, label, context, !binding.answerHash || binding.sourceContext ? sourceContext : undefined,
+        );
         const answerHash = createHash('sha256').update(text).digest('hex');
         if (binding.answerHash && (binding.answerHash !== answerHash
             || ((binding.nextPart ?? 0) > 0 && binding.partCount !== parts.length))) {
@@ -834,13 +859,36 @@ export class TeamsAnswerRelay {
             && (binding.partCount !== parts.length || binding.answerContext !== context)) {
             this.update(file, 'awaiting', {
                 answerHash, partCount: parts.length, nextPart: 0,
+                ...(sourceContext ? { sourceContext } : {}),
                 ...(context ? { answerContext: context.slice(0, 140) } : {}),
             });
+        } else if (binding.sourceContext && context && binding.answerContext !== context) {
+            this.update(file, 'awaiting', { answerContext: context });
         }
-        for (let index = binding.nextPart ?? 0; index < parts.length; index++) {
+        const startPart = binding.nextPart ?? 0;
+        let resumePart = startPart;
+        let noticeSent = !!binding.continuationNoticeSent;
+        let sendingParts = parts;
+        for (let index = notice ? -1 : startPart; index < parts.length; index = index < 0 ? resumePart : index + 1) {
             const target = this.deps.target();
             if (!target.connected || target.teamId !== binding.teamId || target.channelId !== binding.channelId
                 || !this.deps.isEnabled() || this.disposed) return;
+            if (index > 0 && !sourceContext && !noticeSent && this.hasThreadSwitched(binding)) {
+                sourceContext = await this.sourceLabel(binding, process);
+                notice = `<p><strong>Request ${label} · Continuation</strong></p><p>${escapeTeamsHtml(sourceContext)}</p>`;
+                resumePart = index;
+                index = -1;
+            }
+            if (index >= 0 && !context && sourceContext && (!binding.answerHash || !!binding.sourceContext)
+                && sendingParts === parts && this.hasThreadSwitched(binding)) {
+                sendingParts = formatTeamsAnswerChunks(text, label, sourceContext, sourceContext);
+                if (sendingParts.length !== parts.length) {
+                    this.update(file, 'ambiguous');
+                    console.error('[teams-answer-relay] Saved answer changed during delivery');
+                    return;
+                }
+                this.update(file, 'awaiting', { answerContext: sourceContext });
+            }
             this.update(file, 'sending');
             let sendStarted = false;
             try {
@@ -851,15 +899,16 @@ export class TeamsAnswerRelay {
                     return;
                 }
                 sendStarted = true;
-                const acceptedId = await this.deps.send(parts[index], binding.rootId);
+                const acceptedId = await this.deps.send(index < 0 ? notice! : sendingParts[index], binding.rootId);
                 if (!/^[A-Za-z0-9:_@.-]{1,256}$/.test(acceptedId)) {
                     this.update(file, 'ambiguous');
                     console.error('[teams-answer-relay] Send confirmation missing; manual reconciliation required');
                     return;
                 }
-                this.update(file, index === parts.length - 1 ? 'delivered' : 'awaiting', {
-                    nextPart: index + 1, acceptedMessageId: acceptedId,
-                });
+                this.update(file, index === parts.length - 1 ? 'delivered' : 'awaiting',
+                    index < 0 ? { continuationNoticeSent: true, acceptedMessageId: acceptedId }
+                        : { nextPart: index + 1, acceptedMessageId: acceptedId });
+                if (index < 0) noticeSent = true;
                 if (index === parts.length - 1) this.compact();
             } catch (error) {
                 if (!sendStarted) {
