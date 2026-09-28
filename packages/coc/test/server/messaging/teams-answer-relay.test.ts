@@ -159,10 +159,127 @@ describe('TeamsAnswerRelay new topics', () => {
             tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
             return taskId;
         });
+
         const crossWorkspaceEnqueue = vi.fn();
         const duplicate = await relay.admitNew(message('same-post'), 'workspace-b', crossWorkspaceEnqueue);
         expect(duplicate).toEqual({ taskId: first.taskId, duplicate: true });
         expect(crossWorkspaceEnqueue).not.toHaveBeenCalled();
+    });
+
+    it('retains tracked roots and outbound IDs across restore without leaking other channels', async () => {
+        const root = await relay.admitNew(message('old-root'), 'workspace-b', async id => {
+            tasks.set(id, { id, repoId: 'workspace-b', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        await relay.acknowledged(root.taskId);
+        finish(root.taskId, 'workspace-b', 'completed');
+        await relay.reconcileTask(root.taskId);
+        relay.recordOutbound('team-1', 'channel-1', 'old-root', 'sent-acceptance');
+        expect(relay.threadRoots('team-1', 'channel-1')).toEqual(['old-root']);
+        expect(relay.threadRoots('team-1', 'other-channel')).toEqual([]);
+        expect(relay.isOwnReply('team-1', { ...message('sent-acceptance'), replyToMessageId: 'old-root' })).toBe(true);
+        expect(relay.isOwnReply('other-team', { ...message('sent-acceptance'), replyToMessageId: 'old-root' })).toBe(false);
+
+        relay.dispose();
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        await restored.restore();
+        expect(restored.threadRoots('team-1', 'channel-1')).toEqual(['old-root']);
+        expect(restored.isOwnReply('team-1', { ...message('sent-acceptance'), replyToMessageId: 'old-root' })).toBe(true);
+        restored.dispose();
+    });
+
+    it('retains a per-root reply cursor after a follow-up receipt is compacted', async () => {
+        const root = await relay.admitNew(message('root-cursor'), 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const reply = {
+            ...message('reply-cursor'), replyToMessageId: 'root-cursor',
+            createdDateTime: '2026-01-01T00:00:00Z',
+        };
+        await relay.admitPendingFollowUp(reply, root.taskId, async () => 'followup-task');
+        relay.recordSeenReply('team-1', reply);
+        expect(relay.hasSeenReply('team-1', reply)).toBe(true);
+        expect(relay.hasSeenReply('team-1', {
+            ...reply, messageId: 'new-same-millisecond',
+        })).toBe(false);
+        relay.dispose();
+        const folder = getRepoDataPath(dataDir, 'workspace-a', 'teams-answer-relay');
+        const followUpFile = fs.readdirSync(folder).map(name => path.join(folder, name))
+            .find(file => JSON.parse(fs.readFileSync(file, 'utf8')).messageId === reply.messageId)!;
+        fs.unlinkSync(followUpFile);
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        await restored.restore();
+        expect(restored.threadRoots('team-1', 'channel-1')).toEqual(['root-cursor']);
+        expect(restored.hasSeenReply('team-1', reply)).toBe(true);
+        expect(restored.hasSeenReply('team-1', { ...reply, messageId: 'old-reply',
+            createdDateTime: '2025-12-31T23:59:59Z' })).toBe(true);
+        expect(restored.hasSeenReply('team-1', { ...reply, messageId: 'newer-reply',
+            createdDateTime: '2026-01-01T00:00:01Z' })).toBe(false);
+        restored.dispose();
+    });
+
+    it('recognizes an answer returned before its outbound ID can be persisted', async () => {
+        const root = await relay.admitNew(message('root-crash'), 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        finish(root.taskId, 'workspace-a', 'answer after send');
+        send.mockRejectedValueOnce(new Error('send confirmation interrupted'));
+        await relay.acknowledged(root.taskId);
+        expect(send).toHaveBeenCalledOnce();
+        const outbound = { ...message('unrecorded-id'), replyToMessageId: 'root-crash',
+            text: send.mock.calls[0][0] as string };
+        relay.dispose();
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        await restored.restore();
+        expect(restored.isOwnReply('team-1', outbound)).toBe(true);
+        expect(restored.isOwnReply('team-1', { ...outbound, replyToMessageId: 'other-root' })).toBe(false);
+        expect(send).toHaveBeenCalledTimes(1);
+        restored.dispose();
+    });
+
+    it('resolves a bound thread only in its physical workspace, including a queued root', async () => {
+        const accepted = await relay.admitNew(message('root-b'), 'workspace-b', async id => {
+            tasks.set(id, { id, repoId: 'workspace-b', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const reply = { ...message('reply-b'), replyToMessageId: 'root-b' };
+        expect(await relay.resolveThread(reply)).toEqual({
+            taskId: accepted.taskId, workspaceId: 'workspace-b',
+        });
+        finish(accepted.taskId, 'workspace-b', 'answer');
+        const bound = await relay.resolveThread(reply);
+        expect(bound?.process?.id).toBe(toQueueProcessId(accepted.taskId));
+        expect(bound?.workspaceId).toBe('workspace-b');
+        expect(await relay.resolveThread({ ...reply, replyToMessageId: 'missing-root' })).toBeNull();
+
+        processes.get(toQueueProcessId(accepted.taskId)).metadata.workspaceId = 'workspace-a';
+        await expect(relay.resolveThread(reply)).rejects.toThrow('Teams thread chat is unavailable');
+        expect(await relay.resolveThread({ ...reply, channelId: 'other-channel' })).toBeNull();
+    });
+
+    it('rejects a stale queued binding before admitting a thread follow-up', async () => {
+        const accepted = await relay.admitNew(message('root-a'), 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const reply = { ...message('new-reply'), replyToMessageId: 'root-a' };
+        tasks.get(accepted.taskId)!.repoId = 'workspace-b';
+        const enqueue = vi.fn();
+        await expect(relay.resolveThread(reply)).rejects.toThrow('Teams thread chat is unavailable');
+        await expect(relay.admitPendingFollowUp(reply, accepted.taskId, enqueue))
+            .rejects.toThrow('Teams thread chat is unavailable');
+        expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('honors disabling before admission and delivery', async () => {
@@ -274,7 +391,7 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[0]).toEqual([expect.stringContaining('the final saved answer'), 'multi-part-turn']);
     });
 
-    it('uses the root of an inbound Teams thread reply for both ACK and answer', async () => {
+    it('rejects an unbound Teams thread reply without creating a chat', async () => {
         const ack = vi.fn().mockResolvedValue(undefined);
         const router = new TeamsCommandRouter({
             store, dataDir, sendReply: ack,
@@ -288,10 +405,9 @@ describe('TeamsAnswerRelay new topics', () => {
         });
         await router.handle({ ...message('reply-1'), replyToMessageId: 'thread-root' });
         expect(ack.mock.calls[0][1]).toBe('thread-root');
-        const id = [...tasks.keys()][0];
-        finish(id, 'workspace-a', 'answer in root');
-        await relay.reconcile();
-        expect(send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('answer in root'), 'thread-root');
+        expect(ack.mock.calls[0][0]).toContain('unavailable');
+        expect(tasks.size).toBe(0);
+        expect(send).not.toHaveBeenCalled();
     });
 
     it('labels two users asking in one thread with distinct opaque request labels', async () => {

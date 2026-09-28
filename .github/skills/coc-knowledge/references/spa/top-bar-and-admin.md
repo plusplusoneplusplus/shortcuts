@@ -38,7 +38,9 @@ global Teams MCP endpoint and team/channel inbound bridge; container mode render
 connection and OAuth status, saves the endpoint and channel separately, and returns
 a user-clickable Microsoft sign-in link for the server-local PKCE flow. It polls the
 shared MCP OAuth pending state and enables or reconnects the bridge after credentials
-are cached.
+are cached. The channel input stays editable and reflects the owning server's configured
+name, including its per-machine default for new settings. The card advises a unique
+channel per machine to prevent multiple bridges from processing the same messages.
 
 With `features.teamsBridgeObservability` enabled, the normal Teams card loads
 server-global, newest-first connection attempts from the guarded messaging API.

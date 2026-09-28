@@ -25,6 +25,9 @@ interface AnswerBinding {
     nextPart?: number;
     answerHash?: string;
     acceptedMessageId?: string;
+    sentMessageIds?: string[];
+    lastReplyAt?: string;
+    lastReplyIds?: string[];
     retryCount?: number;
     nextAttemptAt?: string;
     terminalStatus?: 'completed' | 'failed' | 'cancelled';
@@ -49,6 +52,14 @@ function bindingPath(dataDir: string, workspaceId: string, name: string): string
     return getRepoDataPath(dataDir, workspaceId, path.join('teams-answer-relay', name));
 }
 
+function answerLabel(binding: AnswerBinding): string {
+    return bindingName(binding.teamId, binding.channelId, binding.messageId).slice(0, 10);
+}
+
+function isRelayAnswer(text: string, label: string): boolean {
+    return new RegExp(`(?:^|>)Request ${label} \u00b7 Part [1-9]\\d*/[1-9]\\d*(?:<|\\s|$)`).test(text);
+}
+
 function readBinding(file: string): AnswerBinding | undefined {
     if (!fs.existsSync(file)) return undefined;
     const raw: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -62,6 +73,12 @@ function readBinding(file: string): AnswerBinding | undefined {
         || (row.answerHash !== undefined && (typeof row.answerHash !== 'string' || !/^[a-f0-9]{64}$/.test(row.answerHash)))
         || (row.acceptedMessageId !== undefined && (typeof row.acceptedMessageId !== 'string'
             || !/^[A-Za-z0-9:_@.-]{1,256}$/.test(row.acceptedMessageId)))
+        || (row.sentMessageIds !== undefined && (!Array.isArray(row.sentMessageIds)
+            || row.sentMessageIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9:_@.-]{1,256}$/.test(id))))
+        || (row.lastReplyAt !== undefined && (typeof row.lastReplyAt !== 'string'
+            || !Number.isFinite(Date.parse(row.lastReplyAt))))
+        || (row.lastReplyIds !== undefined && (!Array.isArray(row.lastReplyIds)
+            || row.lastReplyIds.some(id => typeof id !== 'string' || !/^[A-Za-z0-9:_@.-]{1,256}$/.test(id))))
         || (row.partCount !== undefined && (!Number.isSafeInteger(row.partCount) || (row.partCount as number) < 1))
         || (row.nextPart !== undefined && (row.partCount === undefined || !Number.isSafeInteger(row.nextPart)
             || (row.nextPart as number) < 0 || (row.nextPart as number) > (row.partCount as number)))
@@ -132,6 +149,91 @@ export class TeamsAnswerRelay {
         return [...this.bindings.values()].some(({ value }) =>
             value.teamId === target.teamId && value.channelId === msg.channelId
             && value.messageId === msg.messageId);
+    }
+
+    threadRoots(teamId: string, channelId: string): string[] {
+        return [...new Set([...this.bindings.values()]
+            .filter(({ value }) => value.teamId === teamId && value.channelId === channelId
+                && !value.requestId && value.messageId === value.rootId)
+            .map(({ value }) => value.rootId))].sort();
+    }
+
+    async resolveThread(msg: InboundTeamsMessage): Promise<{
+        process?: AIProcess; taskId?: string; workspaceId: string;
+    } | null> {
+        const target = this.deps.target();
+        if (!msg.replyToMessageId || !target.teamId || target.channelId !== msg.channelId) return null;
+        const root = [...this.bindings.values()].find(({ value }) =>
+            !value.requestId && value.teamId === target.teamId
+            && value.channelId === msg.channelId && value.messageId === msg.replyToMessageId)?.value;
+        if (!root) return null;
+        if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === root.workspaceId)) {
+            throw new Error('Teams thread workspace is unavailable');
+        }
+        const process = await this.deps.store.getProcess(root.processId, root.workspaceId);
+        if (process) {
+            if (process.id !== root.processId || process.metadata?.workspaceId !== root.workspaceId
+                || ['failed', 'cancelled'].includes(process.status)) {
+                throw new Error('Teams thread chat is unavailable');
+            }
+            return { process, workspaceId: root.workspaceId };
+        }
+        const task = this.deps.queue.getTask(root.taskId);
+        if (!task || task.repoId !== root.workspaceId || task.processId !== root.processId
+            || !['queued', 'running'].includes(task.status)) {
+            throw new Error('Teams thread chat is unavailable');
+        }
+        return { taskId: root.taskId, workspaceId: root.workspaceId };
+    }
+
+    isOwnReply(teamId: string, msg: InboundTeamsMessage): boolean {
+        if (!msg.replyToMessageId) return false;
+        return [...this.bindings.values()].some(({ value }) =>
+            value.teamId === teamId && value.channelId === msg.channelId
+            && value.rootId === msg.replyToMessageId && (
+                value.sentMessageIds?.includes(msg.messageId)
+                || (value.answerHash && isRelayAnswer(msg.text, answerLabel(value)))
+            ));
+    }
+
+    hasSeenReply(teamId: string, msg: InboundTeamsMessage): boolean {
+        if (this.hasInbound(msg)) return true;
+        if (!msg.replyToMessageId || !msg.createdDateTime) return false;
+        const root = [...this.bindings.values()].find(({ value }) =>
+            !value.requestId && value.messageId === msg.replyToMessageId
+            && value.teamId === teamId && value.channelId === msg.channelId)?.value;
+        if (!root?.lastReplyAt) return false;
+        const time = Date.parse(msg.createdDateTime);
+        if (!Number.isFinite(time)) return false;
+        return time < Date.parse(root.lastReplyAt)
+            || (time === Date.parse(root.lastReplyAt) && !!root.lastReplyIds?.includes(msg.messageId));
+    }
+
+    recordSeenReply(teamId: string, msg: InboundTeamsMessage): void {
+        if (!msg.replyToMessageId || !msg.createdDateTime) return;
+        const time = Date.parse(msg.createdDateTime);
+        if (!Number.isFinite(time)) return;
+        for (const [file, { value }] of this.bindings) {
+            if (value.requestId || value.messageId !== msg.replyToMessageId
+                || value.teamId !== teamId || value.channelId !== msg.channelId) continue;
+            const previous = value.lastReplyAt ? Date.parse(value.lastReplyAt) : -Infinity;
+            if (time < previous || (time === previous && value.lastReplyIds?.includes(msg.messageId))) return;
+            this.update(file, value.status, {
+                lastReplyAt: new Date(time).toISOString(),
+                lastReplyIds: time === previous ? [...(value.lastReplyIds ?? []), msg.messageId] : [msg.messageId],
+            });
+            return;
+        }
+    }
+
+    recordOutbound(teamId: string, channelId: string, rootId: string, messageId: string): void {
+        if (!/^[A-Za-z0-9:_@.-]{1,256}$/.test(messageId)) return;
+        for (const [file, { value }] of this.bindings) {
+            if (value.requestId || value.teamId !== teamId || value.channelId !== channelId
+                || value.rootId !== rootId || value.sentMessageIds?.includes(messageId)) continue;
+            this.update(file, value.status, { sentMessageIds: [...(value.sentMessageIds ?? []), messageId] });
+            break;
+        }
     }
 
     async restore(): Promise<void> {
@@ -254,6 +356,13 @@ export class TeamsAnswerRelay {
         if (this.disposed || !this.deps.isEnabled()) throw new Error('Teams answer relay is unavailable');
         const target = this.deps.target();
         const workspaceId = process.metadata?.workspaceId;
+        if (msg.replyToMessageId) {
+            const bound = await this.resolveThread(msg);
+            if (!bound?.process || bound.process.id !== process.id
+                || bound.workspaceId !== workspaceId) {
+                throw new Error('Teams thread chat is unavailable');
+            }
+        }
         if (typeof workspaceId !== 'string' || !workspaceId || !target.connected
             || !target.teamId || target.channelId !== msg.channelId || !msg.messageId
             || !(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) {
@@ -292,6 +401,12 @@ export class TeamsAnswerRelay {
     ): Promise<{ duplicate: boolean } | null> {
         if (this.disposed || !this.deps.isEnabled()) return null;
         const target = this.deps.target();
+        if (msg.replyToMessageId) {
+            const bound = await this.resolveThread(msg);
+            if (!bound?.taskId || bound.taskId !== selectedTaskId) {
+                throw new Error('Teams thread chat is unavailable');
+            }
+        }
         const parent = [...this.bindings.values()].find(({ value }) =>
             !value.requestId && (value.taskId === selectedTaskId || value.processId === selectedTaskId)
             && value.teamId === target.teamId && value.channelId === msg.channelId)?.value;
@@ -436,7 +551,7 @@ export class TeamsAnswerRelay {
         } else {
             return;
         }
-        const parts = formatTeamsAnswerChunks(text, bindingName(binding.teamId, binding.channelId, binding.messageId).slice(0, 10));
+        const parts = formatTeamsAnswerChunks(text, answerLabel(binding));
         const answerHash = createHash('sha256').update(text).digest('hex');
         if (binding.answerHash && (binding.answerHash !== answerHash || binding.partCount !== parts.length)) {
             this.update(file, 'ambiguous');
@@ -532,7 +647,8 @@ export class TeamsAnswerRelay {
         for (const { file, value } of delivered) {
             const count = (counts.get(value.workspaceId) ?? 0) + 1;
             counts.set(value.workspaceId, count);
-            if (Date.parse(value.createdAt) >= retentionCutoff && count <= 2_000) continue;
+            if ((!value.requestId && value.messageId === value.rootId)
+                || (Date.parse(value.createdAt) >= retentionCutoff && count <= 2_000)) continue;
             try {
                 fs.unlinkSync(file);
                 this.bindings.delete(file);

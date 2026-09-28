@@ -25,9 +25,17 @@ export class McpTransport implements TeamsTransport {
     private _useChat = false;
     private _chatId: string | null = null;
     private _initMessageId: string | null = null;
+    private nextTrackedRoot = 0;
+    private readonly replyPages = new Map<string, string>();
+    private readonly bufferedReplies = new Map<string, InboundTeamsMessage[]>();
+    private static readonly TRACKED_ROOTS_PER_POLL = 5;
     debug = false;
 
-    constructor(serverUrl: string, private readonly pollChannelReplies: () => boolean = () => false) {
+    constructor(
+        serverUrl: string,
+        private readonly pollChannelReplies: () => boolean = () => false,
+        private readonly channelThreadRoots: (channelId: string) => readonly string[] = () => [],
+    ) {
         this.serverUrl = serverUrl;
     }
 
@@ -231,22 +239,68 @@ export class McpTransport implements TeamsTransport {
         };
 
         const result = await this.client.callTool('ListChannelMessages', args);
+        if (result.isError) throw new Error('Teams channel messages could not be polled');
         const responseText = result.content?.[0]?.text ?? '[]';
 
-        const roots = this.parseMessages(responseText, channelId);
-        if (!this.pollChannelReplies() || !this._availableTools.includes('ListChannelMessageReplies')) return roots;
+        const roots = this.parseMessages(responseText, channelId, true);
+        if (!this.pollChannelReplies() || !this._availableTools.includes('ListChannelMessageReplies')) {
+            this.replyPages.clear();
+            this.bufferedReplies.clear();
+            return roots;
+        }
 
         const messages = [...roots.messages];
-        for (const root of roots.messages) {
+        const tracked = [...new Set(this.channelThreadRoots(channelId).filter(Boolean))];
+        for (const key of this.replyPages.keys()) {
+            const [trackedChannel, trackedRoot] = JSON.parse(key) as [string, string];
+            if (trackedChannel === channelId && !tracked.includes(trackedRoot)) {
+                this.replyPages.delete(key);
+                this.bufferedReplies.delete(key);
+            }
+        }
+        const batch: string[] = [];
+        if (tracked.length) {
+            for (let i = 0; i < Math.min(tracked.length, McpTransport.TRACKED_ROOTS_PER_POLL); i++) {
+                batch.push(tracked[(this.nextTrackedRoot + i) % tracked.length]);
+            }
+            this.nextTrackedRoot = (this.nextTrackedRoot + batch.length) % tracked.length;
+        }
+        for (const rootId of new Set([...roots.messages.map(root => root.messageId), ...batch])) {
+            const key = JSON.stringify([channelId, rootId]);
+            const trackedRoot = tracked.includes(rootId);
+            const nextLink = trackedRoot ? this.replyPages.get(key) : undefined;
             const replies = await this.client.callTool('ListChannelMessageReplies', {
-                teamId: this.teamId, channelId, messageId: root.messageId,
+                teamId: this.teamId, channelId, messageId: rootId,
+                ...(nextLink ? { nextLink } : {}),
+                maxReplies: 50,
             });
             if (replies.isError) throw new Error('Teams channel replies could not be polled');
-            const parsed = this.parseMessages(replies.content?.[0]?.text ?? '[]', channelId);
-            messages.push(...parsed.messages
-                .filter(reply => reply.messageId !== root.messageId)
-                .map(reply => ({ ...reply, replyToMessageId: root.messageId })));
+            const response = replies.content?.[0]?.text ?? '[]';
+            const parsed = this.parseMessages(response, channelId, true);
+            const pageReplies = parsed.messages
+                .filter(reply => reply.messageId !== rootId)
+                .map(reply => ({ ...reply, replyToMessageId: rootId }));
+            if (trackedRoot) {
+                const page: unknown = JSON.parse(response);
+                if (page && typeof page === 'object' && !Array.isArray(page)
+                    && (page as { hasMoreResults?: unknown }).hasMoreResults === true) {
+                    const cursor = (page as { nextLink?: unknown }).nextLink;
+                    if (typeof cursor !== 'string' || !cursor) throw new Error('Teams reply page cursor is missing');
+                    this.replyPages.set(key, cursor);
+                    this.bufferedReplies.set(key, [...(this.bufferedReplies.get(key) ?? []), ...pageReplies]);
+                    continue;
+                } else {
+                    this.replyPages.delete(key);
+                }
+            }
+            messages.push(...(this.bufferedReplies.get(key) ?? []), ...pageReplies);
+            this.bufferedReplies.delete(key);
         }
+        messages.sort((a, b) => {
+            const left = a.createdDateTime ? Date.parse(a.createdDateTime) : 0;
+            const right = b.createdDateTime ? Date.parse(b.createdDateTime) : 0;
+            return (Number.isFinite(left) ? left : 0) - (Number.isFinite(right) ? right : 0);
+        });
         return { messages, nextSince: roots.nextSince };
     }
 
@@ -271,7 +325,7 @@ export class McpTransport implements TeamsTransport {
     }
 
     /** Parse raw MCP message response into InboundTeamsMessage array. */
-    private parseMessages(responseText: string, targetId: string): { messages: InboundTeamsMessage[]; nextSince: string } {
+    private parseMessages(responseText: string, targetId: string, strict = false): { messages: InboundTeamsMessage[]; nextSince: string } {
 
         let rawMessages: Array<{
             id: string;
@@ -288,8 +342,14 @@ export class McpTransport implements TeamsTransport {
 
         try {
             const parsed = JSON.parse(responseText);
-            rawMessages = Array.isArray(parsed) ? parsed : (parsed.value ?? parsed.messages ?? []);
-        } catch {
+            if (strict && !Array.isArray(parsed)
+                && !Array.isArray(parsed?.value) && !Array.isArray(parsed?.messages)) {
+                throw new Error('Invalid Teams message list');
+            }
+            rawMessages = Array.isArray(parsed) ? parsed : (parsed?.value ?? parsed?.messages ?? []);
+            if (!Array.isArray(rawMessages)) throw new Error('Invalid Teams message list');
+        } catch (error) {
+            if (strict) throw new Error('Invalid Teams message list', { cause: error });
             return { messages: [], nextSince: '' };
         }
 
@@ -332,6 +392,7 @@ export class McpTransport implements TeamsTransport {
                 senderName: msg.from?.user?.displayName ?? msg.from?.displayName ?? msg.senderName,
                 senderAadId: msg.from?.user?.id ?? msg.from?.userId ?? msg.senderAadId,
                 replyToMessageId: msg.replyToId,
+                ...(msg.createdDateTime ? { createdDateTime: msg.createdDateTime } : {}),
             };
         }).filter(m => m.text.length > 0);
 

@@ -32,6 +32,7 @@ export interface TeamsCommandRouterDeps {
     acknowledgeNewChat?: (taskId: string) => Promise<void>;
     admitFollowUp?: (msg: InboundTeamsMessage, process: AIProcess, message: string) => Promise<{ duplicate: boolean }>;
     admitPendingFollowUp?: (msg: InboundTeamsMessage, taskId: string, message: string) => Promise<{ duplicate: boolean } | null>;
+    resolveThreadReply?: (msg: InboundTeamsMessage) => Promise<{ process?: AIProcess; taskId?: string; workspaceId: string } | null>;
     acknowledgeFollowUp?: (msg: InboundTeamsMessage) => Promise<void>;
     isAnswerRelayEnabled?: () => boolean;
     /** Send a follow-up message to an existing process. */
@@ -105,10 +106,42 @@ export class TeamsCommandRouter {
     }
 
     async handle(msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
-        const command = parseCommand(msg.text);
-        const userKey = msg.senderAadId ?? msg.senderName ?? 'anonymous';
+        let command: ParsedCommand | undefined;
+        let boundThread = false;
 
         try {
+            if (msg.replyToMessageId && this.deps.resolveThreadReply
+                && this.deps.isAnswerRelayEnabled?.() !== true) {
+                await this.deps.sendReply('❌ Teams thread follow-ups are unavailable.', msg.replyToMessageId);
+                return;
+            }
+            if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
+                const binding = await this.deps.resolveThreadReply?.(msg);
+                if (!binding) throw new Error('Teams thread binding is unavailable');
+                boundThread = true;
+                const message = msg.text.trim();
+                if (!message) {
+                    return;
+                }
+                const admission = binding.process
+                    ? await this.deps.admitFollowUp?.(msg, binding.process, message)
+                    : binding.taskId
+                        ? await this.deps.admitPendingFollowUp?.(msg, binding.taskId, message)
+                        : null;
+                if (!admission) {
+                    throw new Error('Teams thread target is unavailable');
+                }
+                if (admission.duplicate) {
+                    return;
+                }
+                observe?.('dispatch-follow-up');
+                await this.sendAcceptance('💬 Message sent to thread', msg, () =>
+                    this.deps.acknowledgeFollowUp?.(msg));
+                return;
+            }
+
+            command = parseCommand(msg.text);
+            const userKey = msg.senderAadId ?? msg.senderName ?? 'anonymous';
             if (command.type !== 'chat' && command.type !== 'chat-explicit') observe?.('dispatch-command');
             switch (command.type) {
                 case 'list-agents':
@@ -136,7 +169,9 @@ export class TeamsCommandRouter {
             }
         } catch (err: any) {
             observe?.('dispatch-failed');
-            if (this.deps.isAnswerRelayEnabled?.() === true && (command.type === 'chat' || command.type === 'chat-explicit')) {
+            if (boundThread || (msg.replyToMessageId && !command && this.deps.isAnswerRelayEnabled?.() === true)) {
+                await this.deps.sendReply('❌ Teams thread target is unavailable.', msg.replyToMessageId);
+            } else if (this.deps.isAnswerRelayEnabled?.() === true && (msg.replyToMessageId || command?.type === 'chat' || command?.type === 'chat-explicit')) {
                 await this.deps.sendReply('❌ Unable to accept the request. Please try again later.', msg.replyToMessageId || msg.messageId);
             } else {
                 await this.deps.sendReply(`❌ Error: ${err.message ?? 'Unknown error'}`, msg.messageId);

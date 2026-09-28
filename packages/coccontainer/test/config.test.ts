@@ -64,7 +64,7 @@ describe('config', () => {
         const config = resolveConfig();
         expect(config.messaging.teams.enabled).toBe(false);
         expect(config.messaging.teams.botName).toBe('CoC');
-        expect(config.messaging.teams.pollIntervalMs).toBe(3000);
+        expect(config.messaging.teams.pollIntervalMs).toBe(12_000);
         expect(config.messaging.teams.mcpServerUrl).toContain('agent365.svc.cloud.microsoft');
     });
 

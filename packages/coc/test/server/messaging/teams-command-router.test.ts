@@ -352,4 +352,93 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('Fix the bug', { senderAadId: 'user-A' }));
         expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug');
     });
+
+    describe('channel-thread replies', () => {
+        beforeEach(() => {
+            deps.isAnswerRelayEnabled = () => true;
+            deps.admitFollowUp = vi.fn().mockResolvedValue({ duplicate: false });
+            deps.admitPendingFollowUp = vi.fn().mockResolvedValue({ duplicate: false });
+            deps.acknowledgeFollowUp = vi.fn().mockResolvedValue(undefined);
+            deps.resolveThreadReply = vi.fn().mockImplementation(async (msg: InboundTeamsMessage) => {
+                if (msg.replyToMessageId === 'root-a') {
+                    return { process: { id: 'proc-a', metadata: { workspaceId: 'ws-1' } }, workspaceId: 'ws-1' };
+                }
+                if (msg.replyToMessageId === 'root-b') {
+                    return { process: { id: 'proc-b', metadata: { workspaceId: 'ws-2' } }, workspaceId: 'ws-2' };
+                }
+                if (msg.replyToMessageId === 'pending') return { taskId: 'task-pending', workspaceId: 'ws-1' };
+                return null;
+            });
+            router = new TeamsCommandRouter(deps);
+        });
+
+        it('routes interleaved roots across workspaces despite the sender selecting another topic', async () => {
+            await router.handle(makeMsg('/select topic proc-111'));
+            await router.handle(makeMsg('/select repo ProjectB'));
+            sendReplySpy.mockClear();
+
+            const first = makeMsg('/select topic proc-222', { replyToMessageId: 'root-a' });
+            const second = makeMsg('[proc-111] ignore this chat ID', { replyToMessageId: 'root-b' });
+            const third = makeMsg('again', { replyToMessageId: 'root-a' });
+            await router.handle(first);
+            await router.handle(second);
+            await router.handle(third);
+
+            expect(deps.admitFollowUp).toHaveBeenCalledTimes(3);
+            expect(vi.mocked(deps.admitFollowUp).mock.calls.map(([, proc, text]) =>
+                [proc.id, proc.metadata?.workspaceId, text])).toEqual([
+                ['proc-a', 'ws-1', '/select topic proc-222'],
+                ['proc-b', 'ws-2', '[proc-111] ignore this chat ID'],
+                ['proc-a', 'ws-1', 'again'],
+            ]);
+            expect(sendReplySpy.mock.calls.map(([, root]) => root)).toEqual(['root-a', 'root-b', 'root-a']);
+            expect(deps.executeFollowUp).not.toHaveBeenCalled();
+            expect(deps.enqueueChat).not.toHaveBeenCalled();
+            await router.handle(makeMsg('still selected', { replyToMessageId: 'unrelated-root' }));
+            expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('unavailable'), 'unrelated-root');
+            expect(deps.admitFollowUp).toHaveBeenCalledTimes(3);
+        });
+
+        it('admits pending thread replies by the bound task ID without changing the selected topic', async () => {
+            await router.handle(makeMsg('/select topic proc-111'));
+            sendReplySpy.mockClear();
+            const reply = makeMsg('queued reply', { replyToMessageId: 'pending' });
+            await router.handle(reply);
+            expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(reply, 'task-pending', 'queued reply');
+            expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('Message sent'), 'pending');
+            expect(deps.acknowledgeFollowUp).toHaveBeenCalledWith(reply);
+            await router.handle(makeMsg('ordinary message'));
+            expect(deps.admitFollowUp).toHaveBeenCalledWith(
+                expect.any(Object), expect.objectContaining({ id: 'proc-111' }), 'ordinary message');
+        });
+
+        it('reports missing bound targets in the same thread and never falls back', async () => {
+            await router.handle(makeMsg('/select topic proc-111'));
+            sendReplySpy.mockClear();
+            vi.mocked(deps.admitPendingFollowUp!).mockResolvedValueOnce(null);
+            await router.handle(makeMsg('lost task', { replyToMessageId: 'pending' }));
+            expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('unavailable'), 'pending');
+            expect(deps.enqueueChat).not.toHaveBeenCalled();
+            expect(deps.executeFollowUp).not.toHaveBeenCalled();
+
+            vi.mocked(deps.resolveThreadReply!).mockRejectedValueOnce(new Error('private store details'));
+            await router.handle(makeMsg('lost binding', { replyToMessageId: 'root-a' }));
+            expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('unavailable'), 'root-a');
+            expect(sendReplySpy.mock.lastCall?.[0]).not.toContain('private store details');
+            expect(deps.admitFollowUp).not.toHaveBeenCalled();
+        });
+
+        it('ignores already-admitted replies and rejects thread replies when disabled', async () => {
+            vi.mocked(deps.admitFollowUp!).mockResolvedValueOnce({ duplicate: true });
+            await router.handle(makeMsg('duplicate', { replyToMessageId: 'root-a' }));
+            expect(sendReplySpy).not.toHaveBeenCalled();
+            expect(deps.acknowledgeFollowUp).not.toHaveBeenCalled();
+
+            deps.isAnswerRelayEnabled = () => false;
+            await router.handle(makeMsg('new topic', { replyToMessageId: 'root-a' }));
+            expect(deps.resolveThreadReply).toHaveBeenCalledTimes(1);
+            expect(deps.enqueueChat).not.toHaveBeenCalled();
+            expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('unavailable'), 'root-a');
+        });
+    });
 });

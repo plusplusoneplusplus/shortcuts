@@ -13,6 +13,30 @@ export interface McpClientOptions {
     bearerToken?: string;
 }
 
+export class McpHttpError extends Error {
+    constructor(
+        readonly status: number,
+        statusText: string,
+        readonly retryAfterMs?: number,
+    ) {
+        super(`MCP HTTP error: ${status} ${statusText}`);
+        this.name = 'McpHttpError';
+    }
+}
+
+function parseRetryAfter(value: string | null): number | undefined {
+    if (value === null) return undefined;
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed)) {
+        const ms = Number(trimmed) * 1000;
+        return Number.isSafeInteger(ms) && ms <= Number.MAX_SAFE_INTEGER - Date.now() ? ms : undefined;
+    }
+    const date = Date.parse(trimmed);
+    if (!trimmed || !Number.isFinite(date)) return undefined;
+    const ms = Math.max(0, date - Date.now());
+    return ms <= Number.MAX_SAFE_INTEGER - Date.now() ? ms : undefined;
+}
+
 export class McpClient {
     private readonly serverUrl: string;
     private sessionId: string | null = null;
@@ -82,7 +106,7 @@ export class McpClient {
     }
 
     /** Send a JSON-RPC request to the MCP server. */
-    private async sendRequest(body: Record<string, unknown>, notification = false): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+    private async sendRequest(body: Record<string, unknown>, notification = false, retryExpiredSession = true): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
@@ -103,14 +127,20 @@ export class McpClient {
             body: JSON.stringify(body),
         });
 
-        // Capture session ID from response header
+        if (!res.ok) {
+            if (res.status === 404 && this.sessionId && retryExpiredSession
+                && body.method !== 'initialize' && body.method !== 'notifications/initialized') {
+                this.sessionId = null;
+                this.protocolVersion = null;
+                await this.initialize();
+                return this.sendRequest(body, notification, false);
+            }
+            throw new McpHttpError(res.status, res.statusText, parseRetryAfter(res.headers.get('Retry-After')));
+        }
+
         const newSessionId = res.headers.get('Mcp-Session-Id');
         if (newSessionId) {
             this.sessionId = newSessionId;
-        }
-
-        if (!res.ok) {
-            throw new Error(`MCP HTTP error: ${res.status} ${res.statusText}`);
         }
         if (notification) {
             await res.body?.cancel();

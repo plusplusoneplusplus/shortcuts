@@ -139,7 +139,7 @@ export class TeamsAuthController {
                         mode: (this.teamsConfig?.mode ?? 'graph') as 'graph' | 'mcp',
                         mcpServerUrl,
                         botName: this.teamsConfig?.botName ?? 'CoC',
-                        pollIntervalMs: this.teamsConfig?.pollIntervalMs ?? 3000,
+                        pollIntervalMs: this.teamsConfig?.pollIntervalMs ?? 12_000,
                     } as ResolvedTeamsConfig;
                     await this.runtime.startTeamsBridge(resolvedTeamsConfig);
                 } catch (err: any) {

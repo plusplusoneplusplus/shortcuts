@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import type { Route } from '../../../src/server/types';
-import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
+import { TeamsMessagingManager, defaultTeamsChannelName } from '../../../src/server/messaging/teams-messaging-manager';
 import { acquireMcpOAuthToken, McpClient, TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 
@@ -75,8 +75,24 @@ describe('TeamsMessagingManager', () => {
         expect(status.status).toBe('disconnected');
         expect(status.botName).toBe('CoC');
         expect(status.teamName).toBe('Coc');
-        expect(status.channelName).toBe('Coc-General');
+        expect(status.channelName).toBe(defaultTeamsChannelName(os.hostname()));
         expect(status.error).toBeNull();
+        expect(fs.existsSync(path.join(tmpDir, 'teams-messaging.json'))).toBe(false);
+    });
+
+    it.each([
+        ['Workstation-01', 'CoC-Workstation-01'],
+        ['  host.name_01  ', 'CoC-host-name-01'],
+        ['.. / :? % #', 'CoC-Machine'],
+        ['', 'CoC-Machine'],
+        ['  ---  ', 'CoC-Machine'],
+        ['üñîçødé', 'CoC-d'],
+        ['a'.repeat(60), `CoC-${'a'.repeat(46)}`],
+        [`${'a'.repeat(45)}-bad`, `CoC-${'a'.repeat(45)}`],
+    ])('generates a valid channel name for hostname %s', (hostname, expected) => {
+        expect(defaultTeamsChannelName(hostname)).toBe(expected);
+        expect(expected.length).toBeLessThanOrEqual(50);
+        expect(expected).toMatch(/^CoC-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*$/);
     });
 
     it('updateConfig persists changes', async () => {
@@ -443,6 +459,18 @@ describe('TeamsMessagingManager', () => {
         expect(s.channelName).toBe('DiskChannel');
         expect(s.teamId).toBe('tid-from-disk');
         expect(s.channelId).toBe('cid-from-disk');
+        expect(fs.readFileSync(configPath, 'utf-8')).toContain('"channelName":"DiskChannel"');
+    });
+
+    it('keeps the original channel fallback for an existing partial config without migrating it', async () => {
+        const configPath = path.join(tmpDir, 'teams-messaging.json');
+        const original = JSON.stringify({ enabled: true, teamId: 'existing-team', channelId: 'existing-channel' });
+        fs.writeFileSync(configPath, original);
+        const restored = new TeamsMessagingManager(tmpDir);
+        expect(restored.getStatus()).toMatchObject({
+            enabled: true, channelName: 'Coc-General', teamId: 'existing-team', channelId: 'existing-channel',
+        });
+        expect(fs.readFileSync(configPath, 'utf-8')).toBe(original);
     });
 
     it('setMessageHandler registers a callback', () => {
@@ -571,6 +599,7 @@ describe('Teams messaging routes (integration)', () => {
             const post = (path: string, body: object) => fetch(base + path, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
             });
+            expect((await (await fetch(base + '/status')).json()).channelName).toBe(defaultTeamsChannelName(os.hostname()));
             expect((await post('/server', { url: 'http://example.test/teams' })).status).toBe(400);
             expect((await post('/server', { url: 'https://example.test/teams' })).status).toBe(200);
             expect((await post('/config', { teamName: 'Team', channelName: 'General', enabled: true })).status).toBe(200);

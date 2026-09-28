@@ -29,12 +29,18 @@ export interface TeamsMessagingConfig {
     channelId?: string;
 }
 
-const DEFAULT_CONFIG: TeamsMessagingConfig = {
+const PERSISTED_CONFIG_DEFAULTS: TeamsMessagingConfig = {
     enabled: false,
     botName: 'CoC',
     teamName: 'Coc',
     channelName: 'Coc-General',
 };
+
+export function defaultTeamsChannelName(hostname: string): string {
+    const machine = hostname.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+        .slice(0, 46).replace(/-+$/g, '');
+    return `CoC-${machine || 'Machine'}`;
+}
 
 export const TEAMS_MCP_SERVER_NAME = 'Microsoft Teams';
 
@@ -273,10 +279,20 @@ export class TeamsMessagingManager {
                 },
                 botName: this.config.botName,
                 pollChannelReplies: () => this.getAnswerRelayEnabled(),
+                channelThreadRoots: channelId => this.getAnswerRelayEnabled()
+                    ? this.answerRelay?.threadRoots(resolved.teamId, channelId) ?? [] : [],
+                isOwnChannelReply: msg => this.getAnswerRelayEnabled()
+                    && (this.answerRelay?.isOwnReply(resolved.teamId, msg) ?? false),
+                isKnownChannelReply: msg => this.getAnswerRelayEnabled()
+                    && (this.answerRelay?.hasSeenReply(resolved.teamId, msg) ?? false),
                 onMessage: async (msg) => {
                     if (generation !== this.generation || !this.onInboundMessage) return;
                     await this.inboundContext.run({ generation, attemptId: attemptId ?? null },
                         () => this.onInboundMessage!(msg, (type) => this.recordEvent(type)));
+                    if (msg.replyToMessageId && this.getAnswerRelayEnabled()
+                        && this.answerRelay?.hasInbound(msg)) {
+                        this.answerRelay?.recordSeenReply(resolved.teamId, msg);
+                    }
                 },
                 onPoll: (outcome) => {
                     if (generation === this.generation && attemptId && this.getObservabilityEnabled()) history?.poll(attemptId, outcome);
@@ -412,6 +428,9 @@ export class TeamsMessagingManager {
             const targetChannelId = this.config.channelId;
             const bot = this.bot;
             const messageId = await bot.send(targetChannelId, text, replyToId ? { replyToId } : undefined);
+            if (replyToId && this.getAnswerRelayEnabled() && this.config.teamId && messageId) {
+                this.answerRelay?.recordOutbound(this.config.teamId, targetChannelId, replyToId, messageId);
+            }
             if (id && generation === this.generation && this.getObservabilityEnabled()) this.history?.send(id, 'accepted');
             return messageId;
         } catch (err) {
@@ -426,13 +445,14 @@ export class TeamsMessagingManager {
         try {
             if (fs.existsSync(this.configPath)) {
                 const raw = fs.readFileSync(this.configPath, 'utf-8');
-                return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+                return { ...PERSISTED_CONFIG_DEFAULTS, ...JSON.parse(raw) };
             }
         } catch (err) {
             this._status = 'error';
             this._lastError = `Cannot read Teams settings: ${err instanceof Error ? err.message : String(err)}`;
+            return { ...PERSISTED_CONFIG_DEFAULTS };
         }
-        return { ...DEFAULT_CONFIG };
+        return { ...PERSISTED_CONFIG_DEFAULTS, channelName: defaultTeamsChannelName(os.hostname()) };
     }
 
     private saveConfig(): void {

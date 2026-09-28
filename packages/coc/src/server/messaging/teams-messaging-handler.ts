@@ -101,6 +101,8 @@ export function registerTeamsMessagingRoutes(
             store: opts.store,
             enqueueChat: opts.enqueueChat,
             isAnswerRelayEnabled: opts.getAnswerRelayEnabled,
+            ...(relay ? { resolveThreadReply: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
+                relay.resolveThread(msg) } : {}),
             ...(relay && opts.enqueueRelayChat ? {
                 admitNewChat: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string) =>
                     opts.getAnswerRelayEnabled?.() === true

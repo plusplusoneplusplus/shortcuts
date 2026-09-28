@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { McpClient } from '../../src/teams/mcp-client';
+import { McpClient, McpHttpError } from '../../src/teams/mcp-client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -47,5 +47,96 @@ describe('McpClient streamable HTTP', () => {
         vi.stubGlobal('fetch', fetch);
         await expect(new McpClient({ serverUrl: 'https://example.test/mcp' }).initialize())
             .rejects.toThrow('MCP HTTP error: 401');
+    });
+
+    it.each([
+        ['seconds', '8', 8_000],
+        ['HTTP date', new Date(Date.now() + 60_000).toUTCString(), 60_000],
+        ['invalid value', 'not-a-delay', undefined],
+    ])('surfaces Retry-After %s on an HTTP 429 without exposing request headers', async (_label, header, expected) => {
+        const fetch = vi.fn().mockResolvedValue(new Response(null, {
+            status: 429, statusText: 'Too Many Requests', headers: { 'Retry-After': header },
+        }));
+        vi.stubGlobal('fetch', fetch);
+        const client = new McpClient({ serverUrl: 'https://example.test/mcp', bearerToken: 'test-token' });
+        try {
+            await client.callTool('ListChannelMessages');
+            throw new Error('Expected HTTP 429');
+        } catch (error) {
+            expect(error).toBeInstanceOf(McpHttpError);
+            expect(error).toMatchObject({ status: 429 });
+            if (_label === 'HTTP date') {
+                expect((error as McpHttpError).retryAfterMs).toBeGreaterThanOrEqual(59_000);
+                expect((error as McpHttpError).retryAfterMs).toBeLessThanOrEqual(60_000);
+            } else {
+                expect((error as McpHttpError).retryAfterMs).toBe(expected);
+            }
+            expect(String(error)).not.toContain('test-token');
+        }
+        expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('reinitializes an expired MCP session once, then replays the failed tool call', async () => {
+        let toolCalls = 0;
+        const fetch = vi.fn(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            const headers = options.headers as Record<string, string>;
+            if (body.method === 'initialize') {
+                const session = headers['Mcp-Session-Id'] ? 'unexpected-old-session' : toolCalls ? 'new-session' : 'old-session';
+                return new Response(JSON.stringify({ result: { protocolVersion: '2025-03-26' } }), {
+                    headers: { 'Mcp-Session-Id': session },
+                });
+            }
+            if (body.method === 'notifications/initialized') return new Response(null, { status: 202 });
+            toolCalls++;
+            if (toolCalls === 1) return new Response(null, { status: 404, statusText: 'Not Found' });
+            return new Response(JSON.stringify({ result: { content: [{ type: 'text', text: '[]' }] } }));
+        });
+        vi.stubGlobal('fetch', fetch);
+        const client = new McpClient({ serverUrl: 'https://example.test/mcp', bearerToken: 'test-token' });
+        await client.initialize();
+        await expect(client.callTool('ListChannelMessages')).resolves.toMatchObject({ content: [{ text: '[]' }] });
+        expect(toolCalls).toBe(2);
+        expect(client.getSessionId()).toBe('new-session');
+        expect((fetch.mock.calls.at(-1)![1].headers as Record<string, string>)['Mcp-Session-Id']).toBe('new-session');
+    });
+
+    it('surfaces a 404 without a session, or after a single failed session recovery', async () => {
+        const noSessionFetch = vi.fn().mockResolvedValue(new Response(null, { status: 404, statusText: 'Not Found' }));
+        vi.stubGlobal('fetch', noSessionFetch);
+        await expect(new McpClient({ serverUrl: 'https://example.test/wrong' }).callTool('ListChannelMessages'))
+            .rejects.toMatchObject({ status: 404 });
+        expect(noSessionFetch).toHaveBeenCalledTimes(1);
+
+        let initializeCalls = 0;
+        const fetch = vi.fn(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            if (body.method === 'initialize') {
+                initializeCalls++;
+                return new Response(JSON.stringify({ result: { protocolVersion: '2025-03-26' } }), {
+                    headers: { 'Mcp-Session-Id': `session-${initializeCalls}` },
+                });
+            }
+            if (body.method === 'notifications/initialized') return new Response(null, { status: 202 });
+            return new Response(null, { status: 404, statusText: 'Not Found' });
+        });
+        vi.stubGlobal('fetch', fetch);
+        const client = new McpClient({ serverUrl: 'https://example.test/mcp' });
+        await client.initialize();
+        await expect(client.callTool('ListChannelMessages')).rejects.toMatchObject({ status: 404 });
+        expect(initializeCalls).toBe(2);
+        expect(fetch).toHaveBeenCalledTimes(6);
+    });
+
+    it('does not loop if the initialized notification fails with 404', async () => {
+        const fetch = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify({ result: { protocolVersion: '2025-03-26' } }), {
+                headers: { 'Mcp-Session-Id': 'session-1' },
+            }))
+            .mockResolvedValueOnce(new Response(null, { status: 404, statusText: 'Not Found' }));
+        vi.stubGlobal('fetch', fetch);
+        await expect(new McpClient({ serverUrl: 'https://example.test/mcp' }).initialize())
+            .rejects.toMatchObject({ status: 404 });
+        expect(fetch).toHaveBeenCalledTimes(2);
     });
 });

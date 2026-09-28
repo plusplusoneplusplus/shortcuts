@@ -237,6 +237,44 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         expect(repliesFor('thread-follow')).toHaveLength(0);
         expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
             ?.filter(turn => turn.role === 'user').at(-1)?.relayRequestId).toMatch(/^[a-f0-9-]{36}$/);
+
+        // The sender still has Beta selected; threaded replies must follow their root, not that selection.
+        await handle(inbound('thread-a-1', '/select topic ignored', 'root-a'));
+        await handle(inbound('thread-b-1', 'beta threaded reply', 'root-b'));
+        await handle(inbound('thread-a-2', 'alpha again', 'root-a'));
+        expect(repliesFor('root-a').at(-2)).toContain('Message sent');
+        expect(repliesFor('root-b').at(-1)).toContain('Message sent');
+        await until(() => entered.includes('/select topic ignored') && entered.includes('beta threaded reply'));
+        gates.get('/select topic ignored')!.resolve();
+        gates.get('beta threaded reply')!.resolve();
+        await until(() => entered.includes('alpha again'));
+        gates.get('alpha again')!.resolve();
+        await until(async () => (await store.getProcess(toQueueProcessId(taskA.id)))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').length === 3);
+        expect((await store.getProcess(toQueueProcessId(taskA.id)))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').map(turn => turn.content).slice(-2))
+            .toEqual(['/select topic ignored', 'alpha again']);
+        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('beta threaded reply');
+        await until(() => repliesFor('root-a').length === 6 && repliesFor('root-b').length === 6);
+        const taskCount = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll().length
+            + registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll().length;
+        await handle(inbound('unknown-reply', 'must not become a new topic', 'unknown-root'));
+        expect(repliesFor('unknown-root')).toEqual([expect.stringContaining('unavailable')]);
+        expect(registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll().length
+            + registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll().length).toBe(taskCount);
+        const sentCount = calls.length;
+        await handle(inbound('thread-a-1', '/select topic ignored', 'root-a'));
+        expect(calls).toHaveLength(sentCount);
+        await handle(inbound('thread-a-3', 'another turn after the answer', 'root-a'));
+        await until(() => entered.includes('another turn after the answer'));
+        gates.get('another turn after the answer')!.resolve();
+        await until(() => repliesFor('root-a').length === 8);
+        expect(repliesFor('root-a').at(-1)).toContain('Answer for another turn after the answer');
+        expect(repliesFor('thread-a-3')).toHaveLength(0);
+        expect((await store.getProcess(toQueueProcessId(taskA.id)))?.conversationTurns
+            ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('another turn after the answer');
+
         expect(calls.every(call => call.name === 'ReplyToChannelMessage'
             && call.arguments.teamId === teamId && call.arguments.channelId === channelId)).toBe(true);
         const terminalListeners = registry.listenerCount('taskCompleted');
