@@ -242,6 +242,7 @@ describe('McpTransport', () => {
             ok: true, headers: new Map(),
             json: async () => ({ jsonrpc: '2.0', id: 1, result }),
         });
+
         mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
         mockFetch.mockResolvedValueOnce(response({ tools: [{ name: 'ListChannelMessageReplies' }] }));
         await transport.initialize('token', { teamId: 'team-1' });
@@ -263,6 +264,58 @@ describe('McpTransport', () => {
             name: 'ListChannelMessageReplies',
             arguments: { teamId: 'team-1', channelId: 'channel-1', messageId: 'root' },
         });
+    });
+
+    it('rotates a bounded set of persisted roots beyond the recent channel posts', async () => {
+        const tracked = Array.from({ length: 12 }, (_, i) => `tracked-${i}`);
+        transport = new McpTransport('https://mcp.test.com/server', () => true, () => tracked);
+        const requested: string[] = [];
+        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            const tool = body.params?.name;
+            if (tool === 'ListChannelMessageReplies') requested.push(body.params.arguments.messageId);
+            const result = body.method === 'initialize'
+                ? { protocolVersion: '2025-03-26' }
+                : body.method === 'tools/list'
+                    ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : tool === 'ListChannelMessages'
+                        ? { content: [{ text: JSON.stringify([{ id: 'recent', body: { content: 'root' } }]) }] }
+                        : { content: [{ text: JSON.stringify(body.params.arguments.messageId === 'tracked-11'
+                            ? [{ id: 'reply-old', body: { content: 'follow up' } }] : []) }] };
+            return { ok: true, headers: new Map(),
+                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+        });
+        await transport.initialize('token', { teamId: 'team-1' });
+        await transport.poll('channel-1');
+        await transport.poll('channel-1');
+        const last = await transport.poll('channel-1');
+
+        expect(requested).toEqual([
+            'recent', ...tracked.slice(0, 5),
+            'recent', ...tracked.slice(5, 10),
+            'recent', ...tracked.slice(10), ...tracked.slice(0, 3),
+        ]);
+        expect(last.messages).toContainEqual(expect.objectContaining({
+            messageId: 'reply-old', replyToMessageId: 'tracked-11',
+        }));
+    });
+
+    it('deduplicates recent roots against tracked roots without additional reply calls', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true, () => ['recent', 'recent']);
+        const requested: string[] = [];
+        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+            const body = JSON.parse(String(options.body));
+            if (body.params?.name === 'ListChannelMessageReplies') requested.push(body.params.arguments.messageId);
+            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : { content: [{ text: JSON.stringify(body.params?.name === 'ListChannelMessages'
+                        ? [{ id: 'recent', body: { content: 'root' } }] : []) }] };
+            return { ok: true, headers: new Map(),
+                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+        });
+        await transport.initialize('token', { teamId: 'team-1' });
+        await transport.poll('channel-1');
+        expect(requested).toEqual(['recent']);
     });
 
     it.each([

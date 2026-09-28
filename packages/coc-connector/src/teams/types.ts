@@ -43,6 +43,8 @@ export interface TeamsBotOptions {
     pollIntervalMs?: number;
     /** Opt in to polling channel thread replies and dispatching each unseen post. */
     pollChannelReplies?: () => boolean;
+    /** Live channel thread roots supplied by the owner of durable thread bindings. */
+    channelThreadRoots?: (channelId: string) => readonly string[];
     /** Display name for the bot in Teams (default: "CoC"). */
     botName?: string;
     /** Azure AD auth config for token acquisition. */

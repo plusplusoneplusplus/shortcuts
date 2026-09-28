@@ -17,10 +17,11 @@ import { acquireTokenViaAzCli } from './auth';
 
 export function createTransport(mode: TeamsTransportMode, opts: {
     mcpServerUrl?: string; pollChannelReplies?: () => boolean;
+    channelThreadRoots?: (channelId: string) => readonly string[];
 }): TeamsTransport {
     if (mode === 'mcp') {
         if (!opts.mcpServerUrl) throw new Error('mcpServerUrl is required for MCP mode');
-        return new McpTransport(opts.mcpServerUrl, opts.pollChannelReplies);
+        return new McpTransport(opts.mcpServerUrl, opts.pollChannelReplies, opts.channelThreadRoots);
     }
     return new GraphTransport();
 }
@@ -57,6 +58,7 @@ export class TeamsBot implements MessagingConnector {
         this.mode = opts.mode ?? 'graph';
         this.transport = createTransport(this.mode, {
             mcpServerUrl: opts.mcpServerUrl, pollChannelReplies: opts.pollChannelReplies,
+            channelThreadRoots: opts.channelThreadRoots,
         });
         this.transport.debug = opts.debug ?? false;
     }

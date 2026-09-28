@@ -25,9 +25,15 @@ export class McpTransport implements TeamsTransport {
     private _useChat = false;
     private _chatId: string | null = null;
     private _initMessageId: string | null = null;
+    private nextTrackedRoot = 0;
+    private static readonly TRACKED_ROOTS_PER_POLL = 5;
     debug = false;
 
-    constructor(serverUrl: string, private readonly pollChannelReplies: () => boolean = () => false) {
+    constructor(
+        serverUrl: string,
+        private readonly pollChannelReplies: () => boolean = () => false,
+        private readonly channelThreadRoots: (channelId: string) => readonly string[] = () => [],
+    ) {
         this.serverUrl = serverUrl;
     }
 
@@ -237,15 +243,23 @@ export class McpTransport implements TeamsTransport {
         if (!this.pollChannelReplies() || !this._availableTools.includes('ListChannelMessageReplies')) return roots;
 
         const messages = [...roots.messages];
-        for (const root of roots.messages) {
+        const tracked = [...new Set(this.channelThreadRoots(channelId).filter(Boolean))];
+        const batch: string[] = [];
+        if (tracked.length) {
+            for (let i = 0; i < Math.min(tracked.length, McpTransport.TRACKED_ROOTS_PER_POLL); i++) {
+                batch.push(tracked[(this.nextTrackedRoot + i) % tracked.length]);
+            }
+            this.nextTrackedRoot = (this.nextTrackedRoot + batch.length) % tracked.length;
+        }
+        for (const rootId of new Set([...roots.messages.map(root => root.messageId), ...batch])) {
             const replies = await this.client.callTool('ListChannelMessageReplies', {
-                teamId: this.teamId, channelId, messageId: root.messageId,
+                teamId: this.teamId, channelId, messageId: rootId,
             });
             if (replies.isError) throw new Error('Teams channel replies could not be polled');
             const parsed = this.parseMessages(replies.content?.[0]?.text ?? '[]', channelId);
             messages.push(...parsed.messages
-                .filter(reply => reply.messageId !== root.messageId)
-                .map(reply => ({ ...reply, replyToMessageId: root.messageId })));
+                .filter(reply => reply.messageId !== rootId)
+                .map(reply => ({ ...reply, replyToMessageId: rootId })));
         }
         return { messages, nextSince: roots.nextSince };
     }
