@@ -28,16 +28,20 @@ export const AUTO_PULL_STATE_FILE_NAME = 'auto-pull-state.json';
 export type AutoPullOutcome =
     | 'success'
     | 'failed'
+    | 'failed-conflict'
     | 'skipped-dirty'
     | 'skipped-precheck-error'
-    | 'skipped-in-flight';
+    | 'skipped-in-flight'
+    | 'skipped-in-progress';
 
 const OUTCOMES: readonly AutoPullOutcome[] = [
     'success',
     'failed',
+    'failed-conflict',
     'skipped-dirty',
     'skipped-precheck-error',
     'skipped-in-flight',
+    'skipped-in-progress',
 ];
 
 /** One repo's last auto-pull result, as persisted and as served to the client. */

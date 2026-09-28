@@ -57,6 +57,10 @@ describe('describeLastRun', () => {
             .toBe('skipped — could not check the working tree');
         expect(describeLastRun({ enabled: true, outcome: 'skipped-in-flight' }))
             .toBe('skipped — a pull was already running');
+        expect(describeLastRun({ enabled: true, outcome: 'failed-conflict' }))
+            .toBe('rolled back — would conflict');
+        expect(describeLastRun({ enabled: true, outcome: 'skipped-in-progress' }))
+            .toBe('skipped — rebase, merge, or cherry-pick in progress');
     });
 
     it('falls back to the raw value for an outcome it does not know', () => {

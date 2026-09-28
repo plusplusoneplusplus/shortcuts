@@ -5,7 +5,6 @@ import {
     canNavigateHistory,
     finishNavigationReplay,
     navigationLocationsEqual,
-    pruneClosedNavigationTabs,
     recordNavigationLocation,
     sameNavigationLocationIdentity,
     stepNavigationHistory,
@@ -22,6 +21,7 @@ function location(
     return {
         scopeWorkspaceId,
         tabId,
+        file: { ownerWorkspaceId: scopeWorkspaceId, resourceId: tabId, label: tabId },
         selection: {
             selectionStartLineNumber: line,
             selectionStartColumn: column,
@@ -37,6 +37,10 @@ function record(
     reason: NavigationLocationReason = 'user',
 ): UnifiedPanelNavigationHistory {
     return recordNavigationLocation(history, next, reason);
+}
+
+function step(history: UnifiedPanelNavigationHistory, direction: 'back' | 'forward') {
+    return stepNavigationHistory(history, direction, 'workspace-a');
 }
 
 describe('unified panel navigation history — location comparison', () => {
@@ -98,12 +102,12 @@ describe('unified panel navigation history — VS Code-style recording', () => {
         let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
         history = record(history, location('a', 20));
         history = record(history, location('b', 1));
-        const back = stepNavigationHistory(history, 'back')!;
+        const back = step(history, 'back')!;
         history = finishNavigationReplay(back.history);
         history = record(history, location('c', 1));
 
         expect(history.entries.map(entry => entry.tabId)).toEqual(['a', 'a', 'c']);
-        expect(canNavigateHistory(history, 'forward')).toBe(false);
+        expect(canNavigateHistory(history, 'forward', 'workspace-a')).toBe(false);
     });
 
     // Regression: replacing the current entry used to truncate the forward
@@ -114,13 +118,13 @@ describe('unified panel navigation history — VS Code-style recording', () => {
             let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
             history = record(history, location('a', 40));
             history = record(history, location('b', 1));
-            history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+            history = finishNavigationReplay(step(history, 'back')!.history);
 
             history = record(history, location('a', 45, { column: 4 }), reason);
 
             expect(history.entries).toEqual([location('a', 1), location('a', 45, { column: 4 }), location('b', 1)]);
             expect(history.index).toBe(1);
-            expect(stepNavigationHistory(history, 'forward')?.location).toEqual(location('b', 1));
+            expect(step(history, 'forward')?.location).toEqual(location('b', 1));
         },
     );
 
@@ -128,20 +132,20 @@ describe('unified panel navigation history — VS Code-style recording', () => {
         let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
         history = record(history, location('b', 1));
         history = record(history, location('c', 1));
-        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
-        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+        history = finishNavigationReplay(step(history, 'back')!.history);
+        history = finishNavigationReplay(step(history, 'back')!.history);
 
         history = record(history, location('a', 1, { column: 9 }));
 
         expect(history.entries.map(entry => entry.tabId)).toEqual(['a', 'b', 'c']);
         expect(history.index).toBe(0);
-        expect(canNavigateHistory(history, 'forward')).toBe(true);
+        expect(canNavigateHistory(history, 'forward', 'workspace-a')).toBe(true);
     });
 
     it('truncates the forward branch when a distant move after Back adds a new entry', () => {
         let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
         history = record(history, location('b', 1));
-        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+        history = finishNavigationReplay(step(history, 'back')!.history);
 
         history = record(history, location('a', 50));
 
@@ -149,7 +153,7 @@ describe('unified panel navigation history — VS Code-style recording', () => {
             ['a', 1],
             ['a', 50],
         ]);
-        expect(canNavigateHistory(history, 'forward')).toBe(false);
+        expect(canNavigateHistory(history, 'forward', 'workspace-a')).toBe(false);
     });
 
     it('keeps only the newest fifty locations', () => {
@@ -164,55 +168,28 @@ describe('unified panel navigation history — VS Code-style recording', () => {
     });
 });
 
-describe('unified panel navigation history — replay and pruning', () => {
+describe('unified panel navigation history — replay', () => {
     it('steps both ways, does nothing at boundaries, and suppresses replay events', () => {
         let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
         history = record(history, location('b', 1));
 
-        const back = stepNavigationHistory(history, 'back')!;
+        const back = step(history, 'back')!;
         expect(back.location.tabId).toBe('a');
-        expect(stepNavigationHistory(back.history, 'back')).toBeNull();
+        expect(step(back.history, 'back')).toBeNull();
         expect(record(back.history, location('c', 1))).toBe(back.history);
 
         const settled = finishNavigationReplay(back.history);
-        const forward = stepNavigationHistory(settled, 'forward')!;
+        const forward = step(settled, 'forward')!;
         expect(forward.location.tabId).toBe('b');
-        expect(stepNavigationHistory(finishNavigationReplay(forward.history), 'forward')).toBeNull();
+        expect(step(finishNavigationReplay(forward.history), 'forward')).toBeNull();
     });
 
-    it('prunes closed tabs and keeps the current exact location when adjacent repeats collapse', () => {
+    it('keeps closed tabs available for replay', () => {
         let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
         history = record(history, location('b', 1));
-        history = record(history, location('a', 1, { column: 8 }));
-        history = record(history, location('c', 1));
-        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
+        history = record(history, location('a', 1));
 
-        history = pruneClosedNavigationTabs(history, new Set(['a', 'c']));
-
-        expect(history.entries).toEqual([
-            location('a', 1, { column: 8 }),
-            location('c', 1),
-        ]);
-        expect(history.index).toBe(0);
-        expect(history.replaying).toBe(false);
-    });
-
-    it('preserves a forward branch when pruning a different closed tab', () => {
-        let history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
-        history = record(history, location('b', 1));
-        history = record(history, location('c', 1));
-        history = record(history, location('d', 1));
-        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
-        history = finishNavigationReplay(stepNavigationHistory(history, 'back')!.history);
-
-        history = pruneClosedNavigationTabs(history, new Set(['a', 'b', 'c']));
-
-        expect(history.index).toBe(1);
-        expect(stepNavigationHistory(history, 'forward')?.location).toEqual(location('c', 1));
-    });
-
-    it('returns the same state when every referenced tab remains open', () => {
-        const history = record(EMPTY_UNIFIED_PANEL_NAVIGATION_HISTORY, location('a', 1));
-        expect(pruneClosedNavigationTabs(history, new Set(['a']))).toBe(history);
+        const back = step(history, 'back');
+        expect(back?.location).toEqual(location('b', 1));
     });
 });

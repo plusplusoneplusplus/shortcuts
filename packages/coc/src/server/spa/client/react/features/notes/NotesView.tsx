@@ -327,6 +327,25 @@ export function NotesView({
             : 'hidden'
         : undefined;
 
+    // The compact overlay is click-toggled, so a mousedown outside the tree and
+    // the rail closes it. Presses inside the sidebar's portals (menus, dialogs)
+    // count as inside: React bubbles them through the wrapper, which flags them
+    // before the document listener runs.
+    const compactOverlayOpen = isCompact && compactSidebarOpen;
+    const pressInsideSidebarRef = useRef(false);
+    const railRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (!compactOverlayOpen) return;
+        const handleMouseDown = (e: MouseEvent) => {
+            const inside = pressInsideSidebarRef.current
+                || (e.target instanceof Node && !!railRef.current?.contains(e.target));
+            pressInsideSidebarRef.current = false;
+            if (!inside) setCompactSidebarOpen(false);
+        };
+        document.addEventListener('mousedown', handleMouseDown);
+        return () => document.removeEventListener('mousedown', handleMouseDown);
+    }, [compactOverlayOpen]);
+
     // Keep the app-shell status dock flush under the notes tree sidebar (not the
     // wider workspace default) by publishing this sidebar's live width — but only
     // while this Notes tab is the active one, since the view stays mounted-hidden
@@ -633,6 +652,7 @@ export function NotesView({
                     // pin button stays uncovered and clickable at a fixed spot
                     // instead of being hidden behind the auto-expanded panel.
                     className="relative z-40 w-9 flex-shrink-0 border-r border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f3f3f3] dark:bg-[#252526] flex flex-col items-center pt-2 gap-1"
+                    ref={railRef}
                     data-testid="notes-sidebar-rail"
                     onMouseEnter={hoverPeek.onRailPointerEnter}
                     onMouseLeave={hoverPeek.onRailPointerLeave}
@@ -667,6 +687,7 @@ export function NotesView({
                 ref={peekPanelRef}
                 className="flex min-h-0 flex-shrink-0"
                 data-testid="notes-sidebar-peek-panel"
+                onMouseDown={compactOverlayOpen ? () => { pressInsideSidebarRef.current = true; } : undefined}
                 onMouseEnter={sidebarCollapsedDesktop ? hoverPeek.onPanelPointerEnter : undefined}
                 onMouseLeave={sidebarCollapsedDesktop ? hoverPeek.onPanelPointerLeave : undefined}
             >

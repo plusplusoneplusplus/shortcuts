@@ -20,6 +20,17 @@ export function keyboardNavigationDirection(
     return null;
 }
 
+/**
+ * Alt+Arrow on a focused tab-strip tab reorders that tab (the strip's own
+ * handler), so history navigation must stand aside for it.
+ */
+export function tabStripClaimsKey(
+    event: Pick<KeyboardEvent, 'altKey'>,
+    focused: Element | null,
+): boolean {
+    return event.altKey && focused?.closest('[role="tab"]') != null;
+}
+
 export function mouseNavigationDirection(
     event: Pick<MouseEvent, 'button'>,
 ): NavigationDirection | null {

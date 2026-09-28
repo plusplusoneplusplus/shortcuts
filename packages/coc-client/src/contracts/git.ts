@@ -273,9 +273,11 @@ export interface GitWorkingTreeChangesResponse {
 export type GitAutoPullOutcome =
   | 'success'
   | 'failed'
+  | 'failed-conflict'
   | 'skipped-dirty'
   | 'skipped-precheck-error'
-  | 'skipped-in-flight';
+  | 'skipped-in-flight'
+  | 'skipped-in-progress';
 
 /**
  * A repo's server-side auto-pull schedule and last run, as served by

@@ -3,6 +3,7 @@ import {
     keyboardNavigationDirection,
     mouseNavigationDirection,
     panelOwnsFileNavigation,
+    tabStripClaimsKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/fileNavigationRouting';
 
 describe('file navigation input routing', () => {
@@ -48,5 +49,19 @@ describe('file navigation input routing', () => {
         expect(panelOwnsFileNavigation({
             panelVisible: true, interactionOwned: true, activeFile: false,
         })).toBe(false);
+    });
+
+    it('yields Alt+Arrow to a focused strip tab, including its close button', () => {
+        const tab = document.createElement('div');
+        tab.setAttribute('role', 'tab');
+        const close = document.createElement('button');
+        tab.appendChild(close);
+        const editor = document.createElement('textarea');
+
+        expect(tabStripClaimsKey({ altKey: true }, tab)).toBe(true);
+        expect(tabStripClaimsKey({ altKey: true }, close)).toBe(true);
+        expect(tabStripClaimsKey({ altKey: false }, tab)).toBe(false);
+        expect(tabStripClaimsKey({ altKey: true }, editor)).toBe(false);
+        expect(tabStripClaimsKey({ altKey: true }, null)).toBe(false);
     });
 });

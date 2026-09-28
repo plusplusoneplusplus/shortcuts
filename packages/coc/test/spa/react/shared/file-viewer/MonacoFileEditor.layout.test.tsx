@@ -115,6 +115,21 @@ describe('MonacoFileEditor — layout ownership', () => {
         expect(stub.editor.layout).toHaveBeenCalledWith({ width: 800, height: 600 });
     });
 
+    it('lays the editor out at its real size before the mount-time reveal', async () => {
+        // Regression: a `file:line` link opening a new tab revealed the line while
+        // Monaco still had its placeholder 5x5 size. With word wrap on, that
+        // scrolled to where the line sits when every line wraps into many rows —
+        // far from the target once the real width arrived.
+        render(<MonacoFileEditor value={'a\n'.repeat(500)} language="typescript" revealLine={216} />);
+        await flushMount();
+
+        expect(stub.editor.revealLineInCenter).toHaveBeenCalledWith(216);
+        const firstLayout = stub.editor.layout.mock.invocationCallOrder[0];
+        const firstReveal = stub.editor.revealLineInCenter.mock.invocationCallOrder[0];
+        expect(stub.editor.layout).toHaveBeenNthCalledWith(1, { width: 800, height: 600 });
+        expect(firstLayout).toBeLessThan(firstReveal);
+    });
+
     it('re-lays out when the wrapper resizes, which nothing else would do', async () => {
         render(<MonacoFileEditor value="a" language="typescript" />);
         await flushMount();

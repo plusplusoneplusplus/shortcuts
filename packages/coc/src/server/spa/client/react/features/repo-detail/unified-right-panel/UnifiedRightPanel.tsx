@@ -80,6 +80,7 @@ import {
     keyboardNavigationDirection,
     mouseNavigationDirection,
     panelOwnsFileNavigation,
+    tabStripClaimsKey,
 } from './fileNavigationRouting';
 import { explorerFileTabInput } from './unifiedExplorerFiles';
 import {
@@ -105,12 +106,15 @@ import type {
     EditorNavigationSnapshot,
 } from '../../../shared/file-viewer/MonacoFileEditor';
 import {
+    dropReplayedNavigationEntry,
     finishNavigationReplay,
+    navigationFileOf,
     navigationHistoryDestination,
-    pruneClosedNavigationTabs,
+    navigationReopenInput,
     recordNavigationLocation,
     stepNavigationHistory,
     type NavigationDirection,
+    type UnifiedPanelNavigationFile,
     type UnifiedPanelNavigationLocation,
 } from './unifiedPanelNavigationHistory';
 import {
@@ -175,6 +179,11 @@ export interface UnifiedRightPanelProps {
         baseUrl?: string;
     };
 }
+
+type PendingNavigationReplay = UnifiedPanelNavigationLocation & {
+    direction: NavigationDirection;
+    reopened: boolean;
+};
 
 /** Basename of a workspace-relative path. */
 function fileNameOf(path: string): string {
@@ -404,13 +413,20 @@ export function UnifiedRightPanel({
 
     const navigationHistoryRef = useRef(readUnifiedPanelNavigationHistory(workspaceId));
     const navigationControllers = useRef(new Map<string, EditorNavigationController>());
+    // Every file tab seen in this scope, closed ones included, so a location
+    // recorded as its tab closes still carries what reopening it needs.
+    const navigationFiles = useRef(new Map<string, UnifiedPanelNavigationFile>());
     const pendingNavigationReason = useRef<{ tabId: string; reason: EditorNavigationReason } | null>(null);
-    const pendingReplay = useRef<UnifiedPanelNavigationLocation | null>(null);
+    // The entry a Back/Forward is bringing up, until its editor restores it.
+    // `reopened` marks a tab the replay itself opened, so a missing file's
+    // tab is closed again when the entry is skipped.
+    const pendingReplay = useRef<PendingNavigationReplay | null>(null);
     const navigationScope = useRef(workspaceId);
     if (navigationScope.current !== workspaceId) {
         navigationScope.current = workspaceId;
         navigationHistoryRef.current = readUnifiedPanelNavigationHistory(workspaceId);
         navigationControllers.current.clear();
+        navigationFiles.current.clear();
         pendingNavigationReason.current = null;
         pendingReplay.current = null;
     }
@@ -418,6 +434,9 @@ export function UnifiedRightPanel({
     activeIdRef.current = activeId;
     const tabsRef = useRef(tabs);
     tabsRef.current = tabs;
+    for (const tab of tabs) {
+        if (tab.kind === 'file') navigationFiles.current.set(tab.id, navigationFileOf(tab));
+    }
     const setNavigationHistory = useCallback((history: typeof navigationHistoryRef.current) => {
         navigationHistoryRef.current = history;
         writeUnifiedPanelNavigationHistory(workspaceId, history);
@@ -428,9 +447,11 @@ export function UnifiedRightPanel({
         snapshot: EditorNavigationSnapshot,
         reason: EditorNavigationReason,
     ) => {
+        const file = navigationFiles.current.get(tabId);
+        if (!file) return;
         setNavigationHistory(recordNavigationLocation(
             navigationHistoryRef.current,
-            { scopeWorkspaceId: workspaceId, tabId, ...snapshot },
+            { scopeWorkspaceId: workspaceId, tabId, file, ...snapshot },
             reason,
         ));
     }, [setNavigationHistory, workspaceId]);
@@ -481,28 +502,6 @@ export function UnifiedRightPanel({
         recordFileLocation(tabId, snapshot, effectiveReason);
     }, [recordFileLocation]);
 
-    const navigateFileHistory = useCallback((direction: NavigationDirection): boolean => {
-        const destination = navigationHistoryDestination(navigationHistoryRef.current, direction);
-        if (
-            destination === null
-            || destination.scopeWorkspaceId !== workspaceId
-            || !tabsRef.current.some(tab => tab.kind === 'file' && tab.id === destination.tabId)
-        ) return false;
-
-        const step = stepNavigationHistory(navigationHistoryRef.current, direction);
-        if (step === null) return false;
-        setNavigationHistory(step.history);
-        pendingNavigationReason.current = null;
-        const controller = navigationControllers.current.get(step.location.tabId);
-        if (controller && activeIdRef.current === step.location.tabId) {
-            restoreNavigationLocation(step.location, controller);
-        } else {
-            pendingReplay.current = step.location;
-            activate(step.location.tabId);
-        }
-        return true;
-    }, [activate, restoreNavigationLocation, setNavigationHistory, workspaceId]);
-
     const activateWithNavigation = useCallback((tabId: string) => {
         if (tabId === activeIdRef.current) return;
         const target = tabsRef.current.find(tab => tab.id === tabId);
@@ -533,19 +532,6 @@ export function UnifiedRightPanel({
         const controller = navigationControllers.current.get(replay.tabId);
         if (controller) restoreNavigationLocation(replay, controller);
     }, [activeId, restoreNavigationLocation]);
-
-    // Tab descriptors span every chat in the panel scope. Prune only tabs that
-    // are actually closed, not tabs hidden by a chat switch.
-    useEffect(() => {
-        const openFileIds = new Set([
-            ...state.workspaceTabs,
-            ...Object.values(state.chatTabs).flat(),
-        ].filter(tab => tab.kind === 'file').map(tab => tab.id));
-        setNavigationHistory(pruneClosedNavigationTabs(
-            navigationHistoryRef.current,
-            openFileIds,
-        ));
-    }, [setNavigationHistory, state]);
 
     // Per-tab dirty / error state, reported by the views. It lives here rather
     // than in each view because the strip has to show it for tabs that are not
@@ -617,7 +603,7 @@ export function UnifiedRightPanel({
     // A preview replacement that is waiting on the unsaved-edits prompt: the
     // outgoing buffer has to be saved or discarded before the slot can be
     // reused, and the new file must still open once it is.
-    const pendingPreviewOpen = useRef<{ tabId: string; input: OpenUnifiedPreviewTabInput } | null>(null);
+    const pendingPreviewOpen = useRef<{ tabId: string; open: () => void } | null>(null);
 
     const closeTab = useCallback((id: string) => {
         close(id);
@@ -641,14 +627,13 @@ export function UnifiedRightPanel({
         const queued = pendingPreviewOpen.current;
         if (queued !== null && queued.tabId === id) {
             pendingPreviewOpen.current = null;
-            prepareFileNavigation(unifiedTabId({ kind: 'file', ...queued.input }), 'navigation');
-            openPreview(queued.input);
+            queued.open();
         }
         // No flag clearing here on purpose: closing unmounts the view, and the
         // views report clean/ready from their own unmount cleanup, so a second
         // reset would be dead code. Verified by removing the cleanup's effect in
         // the close/reopen case rather than assumed.
-    }, [close, openPreview, prepareFileNavigation]);
+    }, [close]);
 
     const [pendingClose, setPendingClose] = useState<
         { tabId: string; workspaceId: string; sessionIds: readonly string[] } | null
@@ -763,6 +748,65 @@ export function UnifiedRightPanel({
         }
     }, [dirtyIds, dock, mode, promote, requestBulkClose, requestClose, rootPathForTab, tabs, tree]);
 
+    // Reusing the preview slot destroys the outgoing buffer, so it goes through
+    // the same unsaved-edits guard a close does. Cancel or a failed save leaves
+    // the old buffer, and the queued open is dropped with the prompt.
+    const openPreviewGuarded = useCallback((input: OpenUnifiedPreviewTabInput, openIt: () => void) => {
+        const outgoing = previewToReplace(input);
+        if (outgoing !== null && dirtyIds.has(outgoing.id)) {
+            pendingPreviewOpen.current = { tabId: outgoing.id, open: openIt };
+            requestClose(outgoing.id);
+            return;
+        }
+        openIt();
+    }, [dirtyIds, previewToReplace, requestClose]);
+
+    // Back/Forward. A destination whose tab is still visible is activated; a
+    // closed one reopens as a preview in the current chat's view (VS Code).
+    const navigateFileHistory = useCallback((direction: NavigationDirection): boolean => {
+        const destination = navigationHistoryDestination(navigationHistoryRef.current, direction, workspaceId);
+        if (destination === null) return false;
+
+        const replay = (tabId: string, reopen: OpenUnifiedPreviewTabInput | null) => {
+            const step = stepNavigationHistory(navigationHistoryRef.current, direction, workspaceId);
+            if (step === null) return;
+            setNavigationHistory(step.history);
+            pendingNavigationReason.current = null;
+            const location = { ...step.location, tabId };
+            const controller = navigationControllers.current.get(tabId);
+            if (reopen === null && controller && activeIdRef.current === tabId) {
+                restoreNavigationLocation(location, controller);
+                return;
+            }
+            pendingReplay.current = { ...location, direction, reopened: reopen !== null };
+            if (reopen === null) activate(tabId);
+            else openPreview(reopen);
+        };
+
+        if (tabsRef.current.some(tab => tab.kind === 'file' && tab.id === destination.tabId)) {
+            replay(destination.tabId, null);
+            return true;
+        }
+        const reopen = navigationReopenInput(destination, chatId);
+        openPreviewGuarded(reopen, () => replay(unifiedTabId({ kind: 'file', ...reopen }), reopen));
+        return true;
+    }, [
+        activate, chatId, openPreview, openPreviewGuarded, restoreNavigationLocation,
+        setNavigationHistory, workspaceId,
+    ]);
+
+    // A replayed file that fails to read is gone: drop its entries and keep
+    // stepping the same way. With nothing left the key has already been
+    // taken — the read only fails after the keypress.
+    useEffect(() => {
+        const replay = pendingReplay.current;
+        if (replay === null || replay.tabId !== activeId || !errorIds.has(replay.tabId)) return;
+        pendingReplay.current = null;
+        setNavigationHistory(dropReplayedNavigationEntry(navigationHistoryRef.current, replay.direction));
+        if (replay.reopened) closeTab(replay.tabId);
+        navigateFileHistory(replay.direction);
+    }, [activeId, closeTab, errorIds, navigateFileHistory, setNavigationHistory]);
+
     // A file picked in the tree opens against the dock's target, exactly as an
     // Explorer navigator tab's selection does — same descriptor builder, so the
     // tree column and the `+` menu file the same kind of tab.
@@ -795,19 +839,12 @@ export function UnifiedRightPanel({
             // already promoted the tab (AC-04), so this is a safety net: cancel
             // or a failed save leaves the old buffer, and the queued open is
             // dropped with the prompt.
-            const outgoing = previewToReplace(previewInput);
-            if (outgoing !== null && dirtyIds.has(outgoing.id)) {
-                pendingPreviewOpen.current = { tabId: outgoing.id, input: previewInput };
-                requestClose(outgoing.id);
-                return;
-            }
-            prepareFileNavigation(unifiedTabId({ kind: 'file', ...previewInput }), 'navigation');
-            openPreview(previewInput);
+            openPreviewGuarded(previewInput, () => {
+                prepareFileNavigation(unifiedTabId({ kind: 'file', ...previewInput }), 'navigation');
+                openPreview(previewInput);
+            });
         },
-        [
-            workspaceId, chatId, open, openPreview, previewToReplace, dirtyIds,
-            requestClose, prepareFileNavigation,
-        ],
+        [workspaceId, chatId, open, openPreview, openPreviewGuarded, prepareFileNavigation],
     );
     const openTreeFile = useCallback(
         (
@@ -1131,7 +1168,7 @@ export function UnifiedRightPanel({
     }, [isOpen, active, activeId, requestClose]);
 
     // Alt+Left/Right belongs to the panel only when focus is inside a visible
-    // file view and the requested history destination can actually be restored.
+    // file view (a focused strip tab keeps Alt+Arrow for reordering) and the requested history destination can actually be restored.
     // Calling preventDefault after the successful step preserves browser
     // navigation at both boundaries and everywhere outside this panel.
     useEffect(() => {
@@ -1140,6 +1177,7 @@ export function UnifiedRightPanel({
             if (direction === null) return;
             const root = panelRootRef.current;
             const focused = document.activeElement;
+            if (tabStripClaimsKey(event, focused)) return;
             if (!panelOwnsFileNavigation({
                 panelVisible: isOpen && root?.offsetParent !== null,
                 interactionOwned: root !== null

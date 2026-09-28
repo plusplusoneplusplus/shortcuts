@@ -312,18 +312,26 @@ workspace and concrete clone route continue to own file reads and saves.
 Rendered tabs keep a navigation handle for history replay into Raw.
 The standalone Explorer and the read-only source canvas are unaffected.
 
-The panel's file editors share one session-only navigation history per panel
-scope. Its pure model stores concrete tab identity and the Monaco selection (no
-scroll state), coalesces nearby cursor movement in place without dropping the
+The panel's file editors share one navigation history per panel scope,
+persisted to localStorage (`unified-right-panel:<scope>:navigation`, versioned;
+unreadable entries drop on load). Its pure model stores concrete tab identity,
+the file's reopen descriptor, and the Monaco selection (no scroll state).
+It coalesces nearby cursor movement in place without dropping the
 forward branch, bounds the stack at 50 entries, and suppresses location
 recording while replaying Back or Forward. Replay reveals the selection centered
-only when it is off-screen, and scrolling never records. Closing a file prunes
-its locations without moving the history cursor or discarding a surviving
-forward branch. Alt+Left/Alt+Right (Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary
-mouse buttons 3/4 use the same
-replay path only when a visible panel owns the interaction, its active tab is a
-file, and the destination is still accessible; otherwise browser behavior is left
-untouched.
+only when it is off-screen, and scrolling never records. Closing a file keeps
+its locations: replaying one reopens the file as a preview tab (through the
+preview slot's unsaved-edits guard) in the current chat's view and restores the
+saved selection. If the replayed file fails to read, all its entries are
+dropped, the reopened tab closes, and replay continues in the same direction.
+The initiating input is claimed before an asynchronous read failure is known;
+after missing entries are exhausted, subsequent inputs retain native behavior.
+Entries of another scope are never replayed.
+Alt+Left/Alt+Right (Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse buttons
+3/4 use the same replay path only when a visible panel owns the interaction,
+its active tab is a file, and a destination exists; otherwise browser behavior
+is left untouched. Alt+Arrow on a focused strip tab reorders the tab instead
+of stepping history.
 
 Unified-panel tabs close on middle-click through the same dirty-buffer and live
 terminal guards as their close buttons. Their accessible context menu provides

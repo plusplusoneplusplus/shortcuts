@@ -14,7 +14,7 @@ tree does not contain the path, the local selection clears without activating th
 The `layout` prop defaults to `viewport` (window breakpoints). The right panel passes
 `container`: a `ResizeObserver` on the view root compares its width with
 `NOTES_CONTAINER_WIDE_WIDTH` (720px). Narrower views show the rail, whose button opens
-the tree as an overlay, and start with the note chat collapsed without changing the
+the tree as an overlay (closed by picking a note or pressing outside the tree and rail), and start with the note chat collapsed without changing the
 persisted chat-open state shared with the main sub-tab.
 
 ## AI chat surface

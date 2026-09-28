@@ -16,7 +16,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { GitChange } from '@plusplusoneplusplus/forge';
+import type { GitChange, RepoOperationType } from '@plusplusoneplusplus/forge';
 import { GitOperationRunner, type GitOperationOutcome } from '../../src/server/git/git-operation-runner';
 import { AUTO_PULL_MESSAGES, hasBlockingChanges, runAutoPullTick } from '../../src/server/git/auto-pull-tick';
 import { readAutoPullState } from '../../src/server/git/auto-pull-state';
@@ -74,6 +74,8 @@ interface Overrides {
     isPullRunning?: () => Promise<boolean>;
     getChanges?: (repoRoot: string) => Promise<readonly GitChange[]>;
     pull?: (repoRoot: string) => Promise<GitOperationOutcome>;
+    getRepoOperation?: (repoRoot: string) => Promise<RepoOperationType>;
+    abortRebase?: (repoRoot: string) => Promise<GitOperationOutcome>;
 }
 
 function deps(overrides: Overrides = {}) {
@@ -86,6 +88,8 @@ function deps(overrides: Overrides = {}) {
         isPullRunning: overrides.isPullRunning ?? (async () => false),
         getChanges: overrides.getChanges ?? (async () => []),
         pull: overrides.pull ?? (async (): Promise<GitOperationOutcome> => ({ success: true })),
+        getRepoOperation: overrides.getRepoOperation ?? (async (): Promise<RepoOperationType> => 'none'),
+        abortRebase: overrides.abortRebase ?? (async (): Promise<GitOperationOutcome> => ({ success: true })),
     };
 }
 
@@ -239,5 +243,110 @@ describe('runAutoPullTick outcomes', () => {
         }));
 
         expect(result.outcome).toBe('started-job');
+    });
+});
+
+describe('runAutoPullTick never leaves a conflicted rebase behind', () => {
+    /** A repo whose `pull --rebase` stops on a conflict until the rebase is aborted. */
+    function conflictingRepo(abortSucceeds = true) {
+        let operation: RepoOperationType = 'none';
+        return {
+            getRepoOperation: vi.fn(async () => operation),
+            pull: vi.fn(async (): Promise<GitOperationOutcome> => {
+                operation = 'rebase';
+                return { success: false, error: 'could not apply 34c746cbc... feat: keep closed files' };
+            }),
+            abortRebase: vi.fn(async (): Promise<GitOperationOutcome> => {
+                if (!abortSucceeds) return { success: false, error: 'abort failed' };
+                operation = 'none';
+                return { success: true };
+            }),
+            current: () => operation,
+        };
+    }
+
+    it('aborts the rebase a conflicted pull left and records failed-conflict', async () => {
+        const repo = conflictingRepo();
+
+        await runAutoPullTick(deps(repo));
+        await flush();
+
+        expect(repo.abortRebase).toHaveBeenCalledWith(REPO_ROOT);
+        expect(repo.current()).toBe('none');
+        expect(readAutoPullState(dataDir, WS)).toEqual({
+            lastRunAt: new Date(NOW).toISOString(),
+            outcome: 'failed-conflict',
+            message: AUTO_PULL_MESSAGES.conflictRolledBack,
+        });
+        expect(store.jobs).toEqual([expect.objectContaining({ op: 'pull', status: 'failed' })]);
+    });
+
+    it('reports a stuck rebase when the abort itself fails', async () => {
+        const repo = conflictingRepo(false);
+
+        await runAutoPullTick(deps(repo));
+        await flush();
+
+        expect(readAutoPullState(dataDir, WS)).toEqual({
+            lastRunAt: new Date(NOW).toISOString(),
+            outcome: 'failed-conflict',
+            message: AUTO_PULL_MESSAGES.conflictStuck,
+        });
+    });
+
+    it('rolls back when the pull throws mid-rebase', async () => {
+        let operation: RepoOperationType = 'none';
+        const abortRebase = vi.fn(async () => { operation = 'none'; return { success: true }; });
+
+        await runAutoPullTick(deps({
+            getRepoOperation: async () => operation,
+            pull: async () => { operation = 'rebase'; throw new Error('pull exploded'); },
+            abortRebase,
+        }));
+        await flush();
+
+        expect(abortRebase).toHaveBeenCalledOnce();
+        expect(readAutoPullState(dataDir, WS)?.outcome).toBe('failed-conflict');
+    });
+
+    it('does not abort anything when a failed pull left no rebase', async () => {
+        const abortRebase = vi.fn(async () => ({ success: true }));
+
+        await runAutoPullTick(deps({
+            pull: async () => ({ success: false, error: 'network down' }),
+            abortRebase,
+        }));
+        await flush();
+
+        expect(abortRebase).not.toHaveBeenCalled();
+        expect(readAutoPullState(dataDir, WS)?.outcome).toBe('failed');
+    });
+
+    it.each(['rebase', 'merge', 'cherry-pick'] as const)(
+        'skips without pulling while a %s is already in progress',
+        async (operation) => {
+            const pull = vi.fn(async () => ({ success: true }));
+            const abortRebase = vi.fn(async () => ({ success: true }));
+
+            const result = await runAutoPullTick(deps({ getRepoOperation: async () => operation, pull, abortRebase }));
+
+            expect(result).toEqual({ outcome: 'skipped-in-progress', message: AUTO_PULL_MESSAGES.inProgress });
+            expect(pull).not.toHaveBeenCalled();
+            // Someone else's operation is theirs to finish — never abort it.
+            expect(abortRebase).not.toHaveBeenCalled();
+            expect(readAutoPullState(dataDir, WS)?.outcome).toBe('skipped-in-progress');
+        },
+    );
+
+    it('skips when the in-progress probe throws', async () => {
+        const pull = vi.fn(async () => ({ success: true }));
+
+        const result = await runAutoPullTick(deps({
+            getRepoOperation: async () => { throw new Error('git dir unreadable'); },
+            pull,
+        }));
+
+        expect(result.outcome).toBe('skipped-precheck-error');
+        expect(pull).not.toHaveBeenCalled();
     });
 });
