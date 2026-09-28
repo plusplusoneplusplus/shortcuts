@@ -28,6 +28,22 @@ export declare class FileIndex {
   refresh(): Promise<void>
 }
 
+export declare class NativeDatabaseHandle {
+  constructor(path: string, options?: NativeDatabaseOptions | undefined | null)
+  exec(sql: string): void
+  pragma(sql: string): Array<Record<string, number | string | Buffer | null>>
+  prepare(sql: string): NativeStatementHandle
+  close(): void
+  transaction(callback: () => unknown): unknown
+}
+
+export declare class NativeStatementHandle {
+  run(values?: Array<number | string | Buffer | null>, names?: string[]): NativeRunResult
+  get(values?: Array<number | string | Buffer | null>, names?: string[]): Record<string, number | string | Buffer | null> | null
+  all(values?: Array<number | string | Buffer | null>, names?: string[]): Array<Record<string, number | string | Buffer | null>>
+  iterate(values?: Array<number | string | Buffer | null>, names?: string[]): Array<Record<string, number | string | Buffer | null>>
+}
+
 /** An in-memory content index for one already-authorized Notes root. */
 export declare class NotesIndex {
   /**
@@ -730,6 +746,15 @@ export declare function gitValidateRef(repoRoot: string, rev: string): Promise<s
  * core module for what that costs and why it is the trade taken.
  */
 export declare function matchDangerousCommand(command: string): DangerousCommandVerdict
+
+export interface NativeDatabaseOptions {
+  readonly?: boolean
+}
+
+export interface NativeRunResult {
+  changes: number
+  lastInsertRowid: number
+}
 
 /** Which regime a content read or write runs under. */
 export interface NotesContentOptions {

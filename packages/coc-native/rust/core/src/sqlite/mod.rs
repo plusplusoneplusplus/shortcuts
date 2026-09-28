@@ -224,6 +224,12 @@ impl Database {
         })
     }
 
+    pub fn pragma(&self, sql: &str) -> Result<Vec<Row>> {
+        self.with_writer(|connection| {
+            query(connection, &format!("PRAGMA {sql}"), &Parameters::None)
+        })
+    }
+
     pub fn prepare(&self, sql: impl Into<String>) -> Statement {
         Statement { database: self.clone(), sql: sql.into() }
     }
@@ -234,6 +240,17 @@ impl Database {
     /// acquire the same writer on the same thread. Other threads remain blocked
     /// until commit or rollback.
     pub fn transaction<T>(&self, callback: impl FnOnce() -> Result<T>) -> Result<T> {
+        self.transaction_with(callback)?
+    }
+
+    /// Run a callback whose own error type must cross a language boundary.
+    ///
+    /// SQLite failures remain the outer result; a callback failure is returned
+    /// unchanged in the inner result after the transaction has rolled back.
+    pub fn transaction_with<T, E>(
+        &self,
+        callback: impl FnOnce() -> std::result::Result<T, E>,
+    ) -> Result<std::result::Result<T, E>> {
         let _guard = self.inner.writer.lock();
         self.with_writer(|connection| {
             connection.execute_batch("BEGIN")?;
@@ -245,14 +262,14 @@ impl Database {
                     connection.execute_batch("COMMIT")?;
                     Ok(())
                 })?;
-                Ok(value)
+                Ok(Ok(value))
             }
             Err(error) => {
                 let _ = self.with_writer(|connection| {
                     connection.execute_batch("ROLLBACK")?;
                     Ok(())
                 });
-                Err(error)
+                Ok(Err(error))
             }
         }
     }

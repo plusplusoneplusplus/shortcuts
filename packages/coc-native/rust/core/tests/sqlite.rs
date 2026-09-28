@@ -86,6 +86,15 @@ fn get_returns_the_first_row() {
 }
 
 #[test]
+fn pragma_returns_rows_and_applies_assignments() {
+    let database = Database::open(":memory:", false).unwrap();
+    database.pragma("user_version = 17").unwrap();
+    let rows = database.pragma("user_version").unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["user_version"], Value::Integer(17));
+}
+
+#[test]
 fn transaction_commits_and_rolls_back_callback_failures() {
     let database = Database::open(":memory:", false).unwrap();
     database.exec("CREATE TABLE items (value INTEGER UNIQUE)").unwrap();
