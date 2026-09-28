@@ -29,12 +29,18 @@ export interface TeamsMessagingConfig {
     channelId?: string;
 }
 
-const DEFAULT_CONFIG: TeamsMessagingConfig = {
+const PERSISTED_CONFIG_DEFAULTS: TeamsMessagingConfig = {
     enabled: false,
     botName: 'CoC',
     teamName: 'Coc',
     channelName: 'Coc-General',
 };
+
+export function defaultTeamsChannelName(hostname: string): string {
+    const machine = hostname.trim().replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+        .slice(0, 46).replace(/-+$/g, '');
+    return `CoC-${machine || 'Machine'}`;
+}
 
 export const TEAMS_MCP_SERVER_NAME = 'Microsoft Teams';
 
@@ -439,13 +445,14 @@ export class TeamsMessagingManager {
         try {
             if (fs.existsSync(this.configPath)) {
                 const raw = fs.readFileSync(this.configPath, 'utf-8');
-                return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+                return { ...PERSISTED_CONFIG_DEFAULTS, ...JSON.parse(raw) };
             }
         } catch (err) {
             this._status = 'error';
             this._lastError = `Cannot read Teams settings: ${err instanceof Error ? err.message : String(err)}`;
+            return { ...PERSISTED_CONFIG_DEFAULTS };
         }
-        return { ...DEFAULT_CONFIG };
+        return { ...PERSISTED_CONFIG_DEFAULTS, channelName: defaultTeamsChannelName(os.hostname()) };
     }
 
     private saveConfig(): void {

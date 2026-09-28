@@ -105,6 +105,9 @@ all have their own `references/*.md`.
 - **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
   team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
   with a prompt in the selected workspace (or the first registered workspace).
+  A missing `teams-messaging.json` defaults the channel to a sanitized
+  `CoC-<machine-name>`; saved channels and routing IDs stay untouched on startup.
+  Machines sharing a name must choose distinct channels to avoid duplicate work.
   Admin → Configure → Features exposes the default-off live
   `features.teamsAiAnswerRelay` toggle beside Teams bridge observability. When
   enabled, the bridge persists each inbound request's team/channel/thread and

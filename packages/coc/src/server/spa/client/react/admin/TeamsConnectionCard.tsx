@@ -250,6 +250,7 @@ export function TeamsConnectionCard() {
                     Configure a global Teams MCP endpoint, complete Microsoft sign-in, then connect.
                     This bridge polls a team channel for inbound messages; it does not relay agent output to a self-chat.
                     A missing team or channel is created when you connect.
+                    Use a different channel on each machine (including machines with the same name) to avoid duplicate replies.
                     Users can run <code>list repos</code> and <code>select repo &lt;name&gt;</code> to choose their workspace.
                 </p>
                 <p role="status" className="ar-teams-status">

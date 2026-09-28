@@ -456,7 +456,7 @@ See [mcp-settings.md](mcp-settings.md).
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/mcp-config` | Effective + source-separated MCP servers. `?forceReload=true` bypasses cache |
 | PUT | `/api/workspaces/:id/mcp-config` | Partial patch of the MCP policy: `enabledMcpServers` and/or `enabledMcpTools`, applied by property presence. Returns the canonical resulting policy |
-| GET | `/api/messaging/teams/status` | Normal-CoC Teams channel bridge status, global MCP URL, OAuth cache status and availability, plus `teamsBridgeObservabilityEnabled` for the owning server |
+| GET | `/api/messaging/teams/status` | Normal-CoC Teams channel bridge status and configured `channelName` (per-machine default only when settings are new), global MCP URL, OAuth cache status and availability, plus `teamsBridgeObservabilityEnabled` for the owning server |
 | GET | `/api/messaging/teams/attempts` | Flag-gated (`features.teamsBridgeObservability`) newest-first safe connection summaries; `?offset=0&limit=20` (limit 1–100) returns `{attempts,total,nextOffset}`. Disabled → 404; invalid pagination → 400 |
 | GET | `/api/messaging/teams/attempts/:id` | Flag-gated safe attempt detail: phases, bounded non-routine events, aggregate totals and poll/send health. Unknown UUID → 404; invalid ID → 400 |
 | POST | `/api/messaging/teams/server` | Register or update the global `Microsoft Teams` HTTP MCP endpoint; body `{url}` (HTTPS) |

@@ -98,6 +98,16 @@ src/
 | `spa/` | Dashboard SPA (HTML template, React client) |
 | `dashboard/` | Server-side dashboard state helpers: recent active-workspace tracking and interval-based proactive refresh of warm active-workspace caches |
 
+### Teams bridge channel configuration
+
+`TeamsMessagingManager` keeps server-global settings in `teams-messaging.json`. Without
+a settings file, it offers `CoC-<machine-name>` as the channel, sanitizing the hostname
+to ASCII letters, digits, and hyphens within Teams' 50-character limit; unusable names
+fall back to `CoC-Machine`. Existing settings retain their saved channel and routing IDs,
+including the `Coc-General` fallback for partial records. The bridge never changes
+channel targets on startup; channel edits require an explicit save and reconnect.
+Machines sharing a hostname still need distinct channels to avoid duplicate processing.
+
 ### Teams bridge receipts and connection history
 
 With `features.teamsAiAnswerRelay` on, `TeamsAnswerRelay` persists one receipt per inbound message under the resolved physical workspace's `teams-answer-relay/` directory. Root receipts identify the bound chat and workspace, remain after answer delivery, and retain accepted outbound IDs. Thread replies resolve that binding before sender topic selection; missing or stale roots receive an error in the original thread without enqueuing elsewhere. The new-chat task ID and process reservation are allocated before enqueue; each follow-up carries an opaque request ID into its user turn.

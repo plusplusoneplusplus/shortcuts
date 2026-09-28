@@ -147,6 +147,24 @@ describe('TeamsConnectionCard', () => {
             expect.objectContaining({ body: '{"enabled":true}' }));
     });
 
+    it('shows the server-provided machine channel and saves an edited channel', async () => {
+        const initial = { ...status, channelName: 'CoC-Desktop-01' };
+        const fetch = vi.fn(async (url: string) => ({
+            ok: true, json: async () => url.endsWith('/status') ? initial : { ok: true },
+        }));
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        const channel = await screen.findByDisplayValue('CoC-Desktop-01');
+        expect(screen.getByText(/including machines with the same name/)).toBeDefined();
+        fireEvent.change(channel, { target: { value: 'Private-Channel' } });
+        expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByText('Save channel'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/messaging\/teams\/config$/),
+            expect.objectContaining({ body: '{"teamName":"Engineering","channelName":"Private-Channel","botName":"CoC"}' }),
+        ));
+    });
+
     it('does not offer OAuth when the server lacks support and displays connection errors', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => ({
             ok: true,
