@@ -13,4 +13,5 @@ pub mod git;
 pub mod notes_fs;
 pub mod notes_index;
 pub mod repo_index;
+pub mod sqlite;
 pub mod symbol_index;
