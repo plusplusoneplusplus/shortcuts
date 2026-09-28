@@ -22,6 +22,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@plusplusoneplusplus/coc-native": "^0.1.0",
     "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {

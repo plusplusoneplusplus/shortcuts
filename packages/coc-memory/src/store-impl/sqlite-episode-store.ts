@@ -3,7 +3,7 @@
  * Episodes are append-only (no update method) and scoped to either
  * global or workspace-isolated storage.
  */
-import Database, { type Database as BetterDatabase } from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { randomUUID } from 'crypto';
 import type { IMemoryEpisodeStore } from '../store-interface';
 import type {
@@ -68,10 +68,10 @@ function rowToEpisode(row: DbRow): MemoryEpisode {
 // ---------------------------------------------------------------------------
 
 export class SqliteEpisodeStore implements IMemoryEpisodeStore {
-    private readonly db: BetterDatabase;
+    private readonly db: NativeDatabase;
 
     constructor(dbPath: string) {
-        this.db = new Database(dbPath);
+        this.db = new NativeDatabase(dbPath);
         this.db.exec(SCHEMA_SQL);
     }
 

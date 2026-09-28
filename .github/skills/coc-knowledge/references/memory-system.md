@@ -16,7 +16,9 @@ addon, REST routes, and dashboard UI.
 The two scopes are **independent**, not alternatives — both can be on, and the addon reads
 facts from every enabled scope. `createMemoryStores(dir)`
 (`coc-memory/src/store-impl/store-factory.ts`) creates the directory, opens `facts.db` and
-`episodes.db` inside it, and returns a handle with `close()`.
+`episodes.db` inside it through `coc-native`'s synchronous `NativeDatabase`, and returns a
+handle with `close()`. The fact store keeps its FTS5 index and embedding BLOBs; both stores
+retain their async interfaces and existing schemas.
 
 ## coc-memory package
 
