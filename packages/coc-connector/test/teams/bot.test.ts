@@ -448,6 +448,34 @@ describe('TeamsBot', () => {
                 await bot.stop();
             });
 
+            it('never infers a new channel root from a preceding bot reply in another thread', async () => {
+                let poll = 0;
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : body.params?.name === 'ListChannelMessages'
+                                ? { content: [{ text: JSON.stringify([
+                                    { id: 'bot-post', body: { content: 'CoC\nAgent: A\nRepo: A\nMessage:\nanswer' },
+                                        createdDateTime: '2026-01-01T00:00:00Z' },
+                                    ...(poll++ ? [{ id: 'new-root', body: { content: 'new request' },
+                                        createdDateTime: '2026-01-01T00:00:01Z' }] : []),
+                                ]) }] }
+                                : { content: [{ text: '[]' }] };
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                const bot = createMcpBot({ pollChannelReplies: () => true });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    messageId: 'new-root', replyToMessageId: undefined,
+                }));
+                await bot.stop();
+            });
+
             it('keeps default channel polling unchanged until thread polling is enabled', async () => {
                 let enabled = false;
                 let replyPolls = 0;

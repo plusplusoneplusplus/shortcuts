@@ -301,7 +301,7 @@ export class TeamsBot implements MessagingConnector {
         if (this.opts.teamId && (this._channelBatchPolling || this.opts.pollChannelReplies?.())) {
             const initial = !this._channelBatchPolling;
             this._channelBatchPolling = true;
-            for (const [index, msg] of messages.entries()) {
+            for (const msg of messages) {
                 if (this._seenChannelMessageIds.has(msg.messageId)) continue;
                 const trackedReply = !!msg.replyToMessageId
                     && this.opts.channelThreadRoots?.(msg.channelId).includes(msg.replyToMessageId);
@@ -318,12 +318,6 @@ export class TeamsBot implements MessagingConnector {
                 } else if (this.isBotFormattedMessage(msg.text)) {
                     this.observeInbound('skipped', 'bot');
                 } else {
-                    const preceding = messages[index - 1];
-                    if (!msg.replyToMessageId && preceding
-                        && (this._sentMessageIds.has(preceding.messageId)
-                            || this.isBotFormattedMessage(preceding.text))) {
-                        msg.replyToMessageId = preceding.messageId;
-                    }
                     this.observeInbound('observed');
                     await this.opts.onMessage(msg);
                 }

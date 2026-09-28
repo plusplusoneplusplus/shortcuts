@@ -251,6 +251,13 @@ export class McpTransport implements TeamsTransport {
 
         const messages = [...roots.messages];
         const tracked = [...new Set(this.channelThreadRoots(channelId).filter(Boolean))];
+        for (const key of this.replyPages.keys()) {
+            const [trackedChannel, trackedRoot] = JSON.parse(key) as [string, string];
+            if (trackedChannel === channelId && !tracked.includes(trackedRoot)) {
+                this.replyPages.delete(key);
+                this.bufferedReplies.delete(key);
+            }
+        }
         const batch: string[] = [];
         if (tracked.length) {
             for (let i = 0; i < Math.min(tracked.length, McpTransport.TRACKED_ROOTS_PER_POLL); i++) {
