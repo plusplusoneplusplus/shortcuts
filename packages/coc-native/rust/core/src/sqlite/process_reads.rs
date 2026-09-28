@@ -126,9 +126,10 @@ pub fn get_all_processes(
         let mut turns_by_process: HashMap<String, Vec<Row>> = HashMap::new();
         for chunk in rows.chunks(500) {
             let ids: Vec<Value> = chunk.iter().map(|process| {
-                process.get("id").cloned().ok_or_else(|| {
-                    Error::Sqlite(rusqlite::Error::InvalidColumnName("id".into()))
-                })
+                match process.get("id") {
+                    Some(Value::Text(id)) => Ok(Value::Text(id.clone())),
+                    _ => Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("id".into()))),
+                }
             }).collect::<Result<_>>()?;
             let placeholders = vec!["?"; ids.len()].join(", ");
             let sql = format!(
