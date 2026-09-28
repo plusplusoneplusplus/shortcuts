@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { TeamsAnswerRelay } from '../../../src/server/messaging/teams-answer-relay';
+import { TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
 import { TeamsMessageNotSentError } from '../../../src/server/messaging/teams-messaging-manager';
 import { getRepoDataPath } from '../../../src/server/paths';
@@ -1029,6 +1030,40 @@ describe('TeamsAnswerRelay new topics', () => {
         await relay.reconcile();
         expect(send).toHaveBeenCalledTimes(2);
         expect(send.mock.calls[1][0]).toContain('recovered answer');
+    });
+
+    it('labels an old-chat answer after a rejected send and a repo switch across restart', async () => {
+        const id = (await relay.admitNew(message('retry-after-switch'), 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        finish(id, 'workspace-a', 'x'.repeat(TEAMS_ANSWER_MAX_BYTES - 65));
+        send.mockRejectedValueOnce(new TeamsMessageNotSentError());
+        await relay.acknowledged(id);
+        expect(send.mock.calls[0][0]).not.toContain('Repo A');
+        const command = { ...message('switch-after-rejection'), replyToMessageId: 'retry-after-switch' };
+        await relay.selectThreadTarget(command, 'workspace-b', null);
+        relay.dispose();
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            await new Promise(resolve => setTimeout(resolve, 1100));
+            await restored.reconcile();
+            expect(send.mock.calls[0][0]).toContain('Part 1/1');
+            expect(send.mock.calls[1][0]).toContain('Part 1/2');
+            expect(send).toHaveBeenCalledTimes(3);
+            expect(send.mock.calls[1][0]).toContain('Repo A · Chat');
+            expect(send.mock.calls[2][0]).toContain('Part 2/2');
+            expect(send.mock.calls[2][0]).toContain('Repo A · Chat');
+            await restored.reconcile();
+            expect(send).toHaveBeenCalledTimes(3);
+        } finally {
+            restored.dispose();
+        }
     });
 
     it('stops retrying after the finite definite-rejection budget', async () => {

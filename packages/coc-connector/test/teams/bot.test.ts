@@ -926,6 +926,46 @@ describe('TeamsBot', () => {
                 await bot.stop();
             });
 
+            it('restores dated controls in a recent command thread without replaying its questions', async () => {
+                let polls = 0;
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const tool = body.params?.name;
+                    if (tool === 'ListChannelMessageReplies') polls++;
+                    const replies = [
+                        { id: 'old-select', body: { content: '/select repo example' },
+                            createdDateTime: '2020-01-01T00:00:00Z' },
+                        { id: 'old-ask', body: { content: 'old question' },
+                            createdDateTime: '2020-01-01T00:00:01Z' },
+                        ...(polls > 1 ? [{ id: 'new-ask', body: { content: 'new question' },
+                            createdDateTime: new Date(Date.now() + 1_000).toISOString() }] : []),
+                    ];
+                    const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                                ? { value: [{ id: 'recent-root', body: { content: '/list repos' } }] }
+                                : { replies }) }] };
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                const discovered: string[] = [];
+                const bot = createMcpBot({
+                    pollChannelReplies: () => true,
+                    channelThreadRoots: () => discovered,
+                    onChannelRootDiscovered: async root => { discovered.push(root.messageId); },
+                });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) =>
+                    [msg.messageId, msg.historicalSelectionReplay]))
+                    .toEqual([['old-select', true]]);
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) => msg.messageId))
+                    .toEqual(['old-select', 'new-ask']);
+                await bot.stop();
+            });
+
             it('does not conflate identical root and reply IDs after switching channels', async () => {
                 mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
                     const body = JSON.parse(String(options.body));

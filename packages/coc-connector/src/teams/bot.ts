@@ -376,20 +376,16 @@ export class TeamsBot implements MessagingConnector {
             this._channelBaselineTime ??= Date.now();
             for (const msg of messages) {
                 if (this._seenChannelMessageIds.has(msg.messageId)) continue;
-                const discoveredHistoricalReply = !!msg.replyToMessageId
-                    && msg.initializationReplay === true
-                    && this.transport instanceof McpTransport
-                    && this.transport.hasDiscoveredRoot(msg.channelId, msg.replyToMessageId);
                 const timestamp = msg.createdDateTime ? Date.parse(msg.createdDateTime) : NaN;
-                const historicalSelectionReplay = discoveredHistoricalReply
-                    && Number.isFinite(timestamp)
-                    && timestamp <= this._channelBaselineTime
-                    && isHistoricalSelectionCommand(msg.text);
                 const notProvenPostStart = !(timestamp > this._channelBaselineTime);
                 const trackedReply = !!msg.replyToMessageId
                     && (this.opts.channelThreadRoots?.(msg.channelId).includes(msg.replyToMessageId)
                         || (this.transport instanceof McpTransport
                             && this.transport.hasDiscoveredRoot(msg.channelId, msg.replyToMessageId)));
+                const historicalSelectionReplay = trackedReply
+                    && Number.isFinite(timestamp)
+                    && notProvenPostStart
+                    && isHistoricalSelectionCommand(msg.text);
                 if (initial && !trackedReply && notProvenPostStart) {
                     this._seenChannelMessageIds.add(msg.messageId);
                     continue;

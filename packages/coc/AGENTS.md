@@ -133,11 +133,13 @@ all have their own `references/*.md`.
   persisted in repo-scoped `teams-thread-roots/`. The original chat's answer correlation stays
   in its physical workspace. Root discovery metadata contains only team/channel
   and root identity and lives in `teams-thread-discovery/`. Historic repository
-  commands restore selection without replaying old questions or sending status.
+  commands in recent or backfilled roots restore selection without replaying
+  old questions or sending status.
   Bound replies route by the thread selection independently of the sender's
   topic. An unselected reply asks for `/list repos` and `/select repo <name>`;
   a selected root starts a fresh chat on its next question. A late answer after
-  a switch identifies its source repo and chat.
+  a switch identifies its source repo and chat, including when a definite
+  send rejection is retried after the switch.
   Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
   for discovery, PKCE, exchange, and read-only
   handshake verification; verified tokens enter the shared Copilot OAuth cache

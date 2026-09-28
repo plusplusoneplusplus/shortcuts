@@ -817,20 +817,26 @@ export class TeamsAnswerRelay {
         const switched = !!(root || selected)
             && ((selected?.workspaceId ?? root?.selectedWorkspaceId ?? root?.workspaceId) !== binding.workspaceId
                 || (activeProcessId !== undefined && activeProcessId !== binding.processId));
-        const workspace = switched ? (await this.deps.store.getWorkspaces()).find(w => w.id === binding.workspaceId) : undefined;
-        const context = binding.answerHash ? binding.answerContext : (switched
+        const workspace = switched && !binding.answerContext
+            ? (await this.deps.store.getWorkspaces()).find(w => w.id === binding.workspaceId) : undefined;
+        const context = (binding.answerContext ?? (switched && (binding.nextPart ?? 0) === 0
             ? `Repo ${workspace?.name ?? 'unavailable'} · Chat ${process?.title ?? process?.customTitle ?? createHash('sha256').update(binding.processId).digest('hex').slice(0, 8)}`
-            : undefined);
+            : undefined))?.slice(0, 140);
         const parts = formatTeamsAnswerChunks(text, answerLabel(binding), context);
         const answerHash = createHash('sha256').update(text).digest('hex');
-        if (binding.answerHash && (binding.answerHash !== answerHash || binding.partCount !== parts.length)) {
+        if (binding.answerHash && (binding.answerHash !== answerHash
+            || ((binding.nextPart ?? 0) > 0 && binding.partCount !== parts.length))) {
             this.update(file, 'ambiguous');
             console.error('[teams-answer-relay] Saved answer changed during delivery');
             return;
         }
-        if (!binding.answerHash) this.update(file, 'awaiting', {
-            answerHash, partCount: parts.length, nextPart: 0, ...(context ? { answerContext: context.slice(0, 140) } : {}),
-        });
+        if (!binding.answerHash || (binding.nextPart ?? 0) === 0
+            && (binding.partCount !== parts.length || binding.answerContext !== context)) {
+            this.update(file, 'awaiting', {
+                answerHash, partCount: parts.length, nextPart: 0,
+                ...(context ? { answerContext: context.slice(0, 140) } : {}),
+            });
+        }
         for (let index = binding.nextPart ?? 0; index < parts.length; index++) {
             const target = this.deps.target();
             if (!target.connected || target.teamId !== binding.teamId || target.channelId !== binding.channelId
