@@ -165,6 +165,24 @@ describe('TeamsBot', () => {
                 const bot = createGraphBot();
                 await expect(bot.send('channel-1', 'Hello')).rejects.toThrow('TeamsBot is not connected');
             });
+
+            it('forwards a channel Like to the transport but never reacts in DM mode', async () => {
+                mockGraphTeamResponse();
+                const bot = createGraphBot();
+                await bot.start();
+                const react = vi.spyOn((bot as unknown as { transport: TeamsTransport }).transport, 'reactToChannelMessage')
+                    .mockResolvedValue(undefined);
+                const msg = { channelId: 'channel-1', messageId: 'reply', replyToMessageId: 'root', text: 'ask' };
+                await bot.reactToChannelMessage(msg);
+                expect(react).toHaveBeenCalledExactlyOnceWith(msg);
+                await bot.stop();
+
+                mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'user-id' }) });
+                const dm = createGraphBot({ teamId: undefined });
+                await dm.start();
+                await expect(dm.reactToChannelMessage(msg)).rejects.toThrow('unavailable');
+                await dm.stop();
+            });
         });
 
         describe('listChannels', () => {

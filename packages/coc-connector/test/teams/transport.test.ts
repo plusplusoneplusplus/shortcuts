@@ -177,6 +177,10 @@ describe('GraphTransport', () => {
 
             const sendCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
             expect(sendCall[0]).toContain('/chats/chat-1/messages');
+            await expect(t.reactToChannelMessage({
+                channelId: 'chat-1', messageId: 'msg-chat-1', text: 'DM',
+            })).rejects.toThrow('unavailable in direct messages');
+            expect(mockFetch).toHaveBeenCalledTimes(2);
         });
 
         it('should use pre-configured chatId if provided in opts', async () => {
@@ -286,6 +290,94 @@ describe('McpTransport', () => {
         expect(result.messages.map(msg => [msg.messageId, msg.botAuthored])).toEqual([
             ['human', false], ['bot', true],
         ]);
+    });
+
+    it('calls only an advertised compatible MCP channel reaction tool for roots and replies', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        const tool = {
+            name: 'AddReactionToChannelMessage',
+            inputSchema: { properties: {
+                teamId: {}, channelId: {}, messageId: {}, replyId: {},
+                reactionType: { enum: ['like', 'heart'] },
+            } },
+        };
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [
+            { ...tool, name: 'RemoveReactionFromChannelMessage' }, tool,
+        ] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValue(response({ content: [] }));
+        await transport.reactToChannelMessage({ channelId: 'channel-1', messageId: 'root', text: 'ask' });
+        await transport.reactToChannelMessage({
+            channelId: 'channel-1', messageId: 'reply', replyToMessageId: 'root', text: 'follow-up',
+        });
+        const calls = mockFetch.mock.calls.slice(-2).map(([, init]) => JSON.parse(init.body).params);
+        expect(calls).toEqual([
+            { name: tool.name, arguments: {
+                teamId: 'team-1', channelId: 'channel-1', messageId: 'root', reactionType: 'like',
+            } },
+            { name: tool.name, arguments: {
+                teamId: 'team-1', channelId: 'channel-1', messageId: 'root', replyId: 'reply', reactionType: 'like',
+            } },
+        ]);
+        expect(mockFetch.mock.calls.at(-1)![1].signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('reports unavailable reaction capability without calling an unadvertised tool or blocking later polls', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [{ name: 'SendMessageToChannel' }] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        await expect(transport.reactToChannelMessage({
+            channelId: 'channel-1', messageId: 'root', text: 'ask',
+        })).rejects.toThrow('no compatible channel reaction tool');
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
+            { id: 'root', body: { content: 'ask' } },
+        ]) }] }));
+        expect((await transport.poll('channel-1')).messages).toHaveLength(1);
+    });
+
+    it('reports rejected or timed-out MCP reactions while keeping the connection usable', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [{
+            name: 'ReactToChannelMessage',
+            inputSchema: { properties: { teamId: {}, channelId: {}, messageId: {}, reactionType: {} } },
+        }] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        const msg = { channelId: 'channel-1', messageId: 'root', text: 'ask' };
+        mockFetch.mockResolvedValueOnce(response({
+            isError: true, content: [{ text: 'private provider response' }],
+        }));
+        await expect(transport.reactToChannelMessage(msg)).rejects.toThrow('rejected by MCP tool');
+        mockFetch.mockResolvedValueOnce({
+            ok: false, status: 401, statusText: 'Unauthorized', headers: new Headers(),
+        });
+        await expect(transport.reactToChannelMessage(msg)).rejects.toMatchObject({ status: 401 });
+        const controller = new AbortController();
+        const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+        mockFetch.mockImplementationOnce((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }));
+        try {
+            const pending = transport.reactToChannelMessage(msg);
+            controller.abort();
+            await expect(pending).rejects.toThrow('timed out');
+        } finally {
+            timeout.mockRestore();
+        }
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: '[]' }] }));
+        expect((await transport.poll('channel-1')).messages).toEqual([]);
     });
 
     it('accepts empty Teams reply lists without dropping channel roots', async () => {
@@ -632,6 +724,10 @@ describe('McpTransport', () => {
             await t.initialize('mcp-token', {}); // no teamId → DM mode
 
             expect(t.getChatId()).toBe('19:self-chat@unq.gbl.spaces');
+            await expect(t.reactToChannelMessage({
+                channelId: '19:self-chat@unq.gbl.spaces', messageId: 'msg', text: 'DM',
+            })).rejects.toThrow('unavailable in direct messages');
+            expect(mockFetch).toHaveBeenCalledTimes(3);
         });
 
         it('should send via SendMessageToSelf in DM mode', async () => {

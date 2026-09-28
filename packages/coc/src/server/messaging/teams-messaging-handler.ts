@@ -153,7 +153,10 @@ export function registerTeamsMessagingRoutes(
                     await manager.reactToChannelMessage(msg);
                 } catch (err) {
                     console.error('[teams-messaging] Teams Like reaction unavailable or failed:',
-                        err instanceof Error ? err.name : 'unknown error');
+                        err instanceof Error && err.message.startsWith('Teams channel Like ')
+                            ? err.message : err instanceof Error
+                                ? `${err.name}${'status' in err && typeof err.status === 'number' ? ` (HTTP ${err.status})` : ''}`
+                                : 'unknown error');
                 }
             }
             await router.handle(msg, observe);

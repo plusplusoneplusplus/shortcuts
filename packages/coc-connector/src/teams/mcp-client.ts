@@ -54,7 +54,7 @@ export class McpClient {
     }
 
     /** Initialize the MCP session. */
-    async initialize(): Promise<void> {
+    async initialize(signal?: AbortSignal): Promise<void> {
         const response = await this.sendRequest({
             jsonrpc: '2.0',
             id: 1,
@@ -64,7 +64,7 @@ export class McpClient {
                 capabilities: {},
                 clientInfo: { name: 'coc-teams-bot', version: '0.1.0' },
             },
-        });
+        }, false, true, signal);
         if (response.error) {
             throw new Error(`MCP initialize failed: ${response.error.message}`);
         }
@@ -73,7 +73,7 @@ export class McpClient {
             throw new Error('MCP initialize did not return a protocol version');
         }
         this.protocolVersion = result.protocolVersion;
-        await this.sendRequest({ jsonrpc: '2.0', method: 'notifications/initialized' }, true);
+        await this.sendRequest({ jsonrpc: '2.0', method: 'notifications/initialized' }, true, true, signal);
     }
 
     /** List available tools on the MCP server. */
@@ -91,14 +91,14 @@ export class McpClient {
     }
 
     /** Call a tool on the MCP server. */
-    async callTool(name: string, args?: Record<string, unknown>): Promise<McpToolResult> {
+    async callTool(name: string, args?: Record<string, unknown>, signal?: AbortSignal): Promise<McpToolResult> {
         const request: { jsonrpc: string; id: number; method: string; params: McpToolCall['params'] } = {
             jsonrpc: '2.0',
             id: Date.now(),
             method: 'tools/call',
             params: { name, arguments: args },
         };
-        const response = await this.sendRequest(request);
+        const response = await this.sendRequest(request, false, true, signal);
         if (response.error) {
             throw new Error(`MCP tool call "${name}" failed: ${response.error.message}`);
         }
@@ -106,7 +106,7 @@ export class McpClient {
     }
 
     /** Send a JSON-RPC request to the MCP server. */
-    private async sendRequest(body: Record<string, unknown>, notification = false, retryExpiredSession = true): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
+    private async sendRequest(body: Record<string, unknown>, notification = false, retryExpiredSession = true, signal?: AbortSignal): Promise<{ result?: unknown; error?: { code: number; message: string } }> {
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
@@ -125,6 +125,7 @@ export class McpClient {
             method: 'POST',
             headers,
             body: JSON.stringify(body),
+            ...(signal ? { signal } : {}),
         });
 
         if (!res.ok) {
@@ -132,8 +133,8 @@ export class McpClient {
                 && body.method !== 'initialize' && body.method !== 'notifications/initialized') {
                 this.sessionId = null;
                 this.protocolVersion = null;
-                await this.initialize();
-                return this.sendRequest(body, notification, false);
+                await this.initialize(signal);
+                return this.sendRequest(body, notification, false, signal);
             }
             throw new McpHttpError(res.status, res.statusText, parseRetryAfter(res.headers.get('Retry-After')));
         }

@@ -340,6 +340,34 @@ export class GraphClient {
         return res.id;
     }
 
+    /** Set Teams' native thumbs-up reaction on a channel root or reply. */
+    async reactToChannelMessage(messageId: string, replyToMessageId?: string): Promise<void> {
+        if (!this.channelId || !this.teamId) throw new Error('Teams channel Like reaction unavailable: no channel');
+        const rootId = replyToMessageId ?? messageId;
+        const url = `${this.graphBase}/teams/${encodeURIComponent(this.teamId)}/channels/${encodeURIComponent(this.channelId)}`
+            + `/messages/${encodeURIComponent(rootId)}`
+            + (replyToMessageId ? `/replies/${encodeURIComponent(messageId)}` : '')
+            + '/setReaction';
+        const signal = AbortSignal.timeout(5_000);
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + this.bearerToken,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ reactionType: '👍' }),
+                signal,
+            });
+            if (response.status !== 204) {
+                throw new Error(`Teams channel Like reaction rejected (HTTP ${response.status})`);
+            }
+        } catch (error) {
+            if (signal.aborted) throw new Error('Teams channel Like reaction timed out', { cause: error });
+            throw error;
+        }
+    }
+
     /** Post a message to a 1:1 or group chat. Returns the message ID. */
     async postChatMessage(content: string, chatId?: string): Promise<string> {
         const target = chatId ?? this.chatId;

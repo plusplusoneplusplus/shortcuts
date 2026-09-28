@@ -142,6 +142,22 @@ describe('Teams channel Like admission', () => {
                 '[teams-messaging] Teams Like reaction unavailable or failed:', 'Error',
             );
             expect(errors.mock.calls.flat().join(' ')).not.toContain('private provider details');
+            react.mockRejectedValueOnce(new Error(
+                'Teams channel Like reaction unavailable: MCP advertises no compatible channel reaction tool',
+            ));
+            await handle(message('unavailable', '/list repos'));
+            expect(events.some(event => event.startsWith('reply:unavailable:'))).toBe(true);
+            expect(errors).toHaveBeenCalledWith(
+                '[teams-messaging] Teams Like reaction unavailable or failed:',
+                'Teams channel Like reaction unavailable: MCP advertises no compatible channel reaction tool',
+            );
+            react.mockRejectedValueOnce(Object.assign(new Error('private authorization response'), { status: 401 }));
+            await handle(message('unauthorized', '/list repos'));
+            expect(events.some(event => event.startsWith('reply:unauthorized:'))).toBe(true);
+            expect(errors).toHaveBeenCalledWith(
+                '[teams-messaging] Teams Like reaction unavailable or failed:', 'Error (HTTP 401)',
+            );
+            expect(errors.mock.calls.flat().join(' ')).not.toContain('private authorization response');
         } finally {
             errors.mockRestore();
         }

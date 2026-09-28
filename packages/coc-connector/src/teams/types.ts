@@ -125,7 +125,7 @@ export interface TeamsTransport {
     /** Send a message to a target (channelId or chatId). Returns the message ID. */
     send(target: string, text: string, opts?: TransportSendOptions): Promise<string>;
     /** Like an original channel post or its thread reply. Unsupported modes reject. */
-    reactToChannelMessage?(target: InboundTeamsMessage): Promise<void>;
+    reactToChannelMessage(target: InboundTeamsMessage): Promise<void>;
     /** Poll for new messages since a timestamp or watermark. */
     poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }>;
     /** List channels in the team. */

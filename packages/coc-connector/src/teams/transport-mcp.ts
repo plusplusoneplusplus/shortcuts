@@ -3,7 +3,7 @@
  * Supports both channel messaging and direct chat messaging.
  */
 
-import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from './types';
+import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions, McpToolsListResult } from './types';
 import { McpClient } from './mcp-client';
 
 export class TeamsMcpSendRejectedError extends Error {
@@ -17,11 +17,18 @@ function escapeMcpContent(text: string): string {
     return text.replace(/\\/g, '\\\\');
 }
 
+function reactionProperties(tool: McpToolsListResult['tools'][number]): Record<string, unknown> | null {
+    const properties = tool.inputSchema?.properties;
+    return properties && typeof properties === 'object' && !Array.isArray(properties)
+        ? properties as Record<string, unknown> : null;
+}
+
 export class McpTransport implements TeamsTransport {
     private client: McpClient | null = null;
     private serverUrl: string;
     private teamId: string | null = null;
     private _availableTools: string[] = [];
+    private _reactionTools: McpToolsListResult['tools'] = [];
     private _useChat = false;
     private _chatId: string | null = null;
     private _initMessageId: string | null = null;
@@ -48,9 +55,14 @@ export class McpTransport implements TeamsTransport {
         });
         await this.client.initialize();
 
+        this._availableTools = [];
+        this._reactionTools = [];
         try {
             const toolsResult = await this.client.listTools();
-            this._availableTools = (toolsResult.tools ?? []).map((t: any) => t.name);
+            this._availableTools = (toolsResult.tools ?? []).map(t => t.name);
+            this._reactionTools = (toolsResult.tools ?? []).filter(tool =>
+                /^(set|add|react|like)/i.test(tool.name)
+                && /reaction|react|like/i.test(tool.name) && !!reactionProperties(tool));
             console.log(`[mcp-transport] Available tools: ${this._availableTools.join(', ')}`);
         } catch (err: any) {
             console.warn(`[mcp-transport] Failed to list tools: ${err.message}`);
@@ -175,6 +187,45 @@ export class McpTransport implements TeamsTransport {
             return parsed.messageId ?? parsed.id ?? '';
         } catch {
             return responseText;
+        }
+    }
+
+    async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
+        if (!this.client || this._useChat || !this.teamId) {
+            throw new Error('Teams channel Like reaction unavailable in direct messages or while disconnected');
+        }
+        const tool = this._reactionTools.find(candidate => {
+            const properties = reactionProperties(candidate);
+            const replyKey = properties && ('replyId' in properties ? 'replyId'
+                : 'replyMessageId' in properties ? 'replyMessageId' : null);
+            const required = candidate.inputSchema?.required;
+            return properties && ['teamId', 'channelId', 'messageId', 'reactionType'].every(key => key in properties)
+                && (msg.replyToMessageId ? !!replyKey : !Array.isArray(required)
+                    || !required.some(key => key === 'replyId' || key === 'replyMessageId'));
+        });
+        if (!tool) throw new Error('Teams channel Like reaction unavailable: MCP advertises no compatible channel reaction tool');
+        const properties = reactionProperties(tool)!;
+        const replyKey = 'replyId' in properties ? 'replyId' : 'replyMessageId';
+        const typeSchema = properties.reactionType;
+        const allowed = typeSchema && typeof typeSchema === 'object' && 'enum' in typeSchema
+            ? (typeSchema as { enum: unknown }).enum : undefined;
+        const reactionType = Array.isArray(allowed)
+            ? allowed.includes('like') ? 'like' : allowed.includes('👍') ? '👍' : null
+            : '👍';
+        if (!reactionType) throw new Error('Teams channel Like reaction unavailable: MCP tool does not advertise Like');
+        const signal = AbortSignal.timeout(5_000);
+        try {
+            const result = await this.client.callTool(tool.name, {
+                teamId: this.teamId, channelId: msg.channelId,
+                messageId: msg.replyToMessageId ?? msg.messageId, reactionType,
+                ...(msg.replyToMessageId ? { [replyKey]: msg.messageId } : {}),
+            }, signal);
+            if (result.isError || result.content?.some(item => item.text?.startsWith('Error:'))) {
+                throw new Error('Teams channel Like reaction rejected by MCP tool');
+            }
+        } catch (error) {
+            if (signal.aborted) throw new Error('Teams channel Like reaction timed out', { cause: error });
+            throw error;
         }
     }
 

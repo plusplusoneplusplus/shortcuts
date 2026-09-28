@@ -21,6 +21,7 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', () => ({
             }),
             stop: vi.fn().mockResolvedValue(undefined),
             send: vi.fn().mockResolvedValue('msg-123'),
+            reactToChannelMessage: vi.fn().mockResolvedValue(undefined),
             setChannelId: vi.fn(),
             isConnected: vi.fn().mockReturnValue(true),
             getStatus: vi.fn().mockReturnValue('connected'),
@@ -146,6 +147,23 @@ describe('TeamsMessagingManager', () => {
         expect(m2.getStatus().error).toBe('Polling unavailable');
         botOptions?.onStatusChange?.('connected');
         expect(m2.getStatus().error).toBeNull();
+    });
+
+    it('forwards a channel Like target without treating direct-message targets as channels', async () => {
+        const fakeHome = path.join(tmpDir, 'reaction-home');
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: fakeHome });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+        const msg = { channelId: 'channel-id-resolved', messageId: 'reply', replyToMessageId: 'root', text: 'ask' };
+        await m2.reactToChannelMessage(msg);
+        expect(bot.reactToChannelMessage).toHaveBeenCalledExactlyOnceWith(msg);
+        await expect(m2.reactToChannelMessage({ ...msg, channelId: 'dm-chat' }))
+            .rejects.toThrow('Teams channel is unavailable');
+        expect(bot.reactToChannelMessage).toHaveBeenCalledTimes(1);
+        await m2.disconnect();
     });
 
     it('records separate manual, reconnect and startup attempts only with observability enabled', async () => {

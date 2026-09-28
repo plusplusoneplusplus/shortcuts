@@ -52,6 +52,14 @@ export class GraphTransport implements TeamsTransport {
         return this.client.postChannelMessage(text, opts?.mentions);
     }
 
+    async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
+        if (!this.client || this._useChat || !this.teamId) {
+            throw new Error('Teams channel Like reaction unavailable in direct messages or while disconnected');
+        }
+        this.client.setChannelId(msg.channelId);
+        await this.client.reactToChannelMessage(msg.messageId, msg.replyToMessageId);
+    }
+
     async poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('GraphTransport not initialized');
 
