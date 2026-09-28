@@ -154,6 +154,25 @@ impl Task for ProcessSummariesTask {
     }
 }
 
+pub struct ProcessSummariesJsonTask {
+    database: Database,
+    filter: ProcessFilter,
+}
+
+impl Task for ProcessSummariesJsonTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        process_reads::get_process_summaries_json(&self.database, &self.filter)
+            .map_err(to_napi_error)
+    }
+
+    fn resolve(&mut self, _env: Env, json: Self::Output) -> Result<Self::JsValue> {
+        Ok(json)
+    }
+}
+
 pub struct RecentProcessesTask {
     database: Database,
     filter: RecentFilter,
@@ -468,6 +487,17 @@ impl NativeDatabaseHandle {
         filter: Option<NativeProcessReadFilter>,
     ) -> AsyncTask<AllProcessesJsonTask> {
         AsyncTask::new(AllProcessesJsonTask {
+            database: self.database.clone(),
+            filter: process_read_filter(filter),
+        })
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn get_process_summaries_json(
+        &self,
+        filter: Option<NativeProcessReadFilter>,
+    ) -> AsyncTask<ProcessSummariesJsonTask> {
+        AsyncTask::new(ProcessSummariesJsonTask {
             database: self.database.clone(),
             filter: process_read_filter(filter),
         })

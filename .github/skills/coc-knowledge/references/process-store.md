@@ -38,10 +38,11 @@ retain the ProcessStore interface. The TypeScript wrapper maps native rows to
 `listRecentProcesses` use typed Rust read-pool tasks with the same schema check.
 Forge maps returned SQLite rows into the existing date- and JSON-rich
 ProcessStore shapes, including optional conversation/tool-call exclusions and
-chat-folder membership on summary entries. `getAllProcesses` serializes process and turn rows directly into JSON in
-bounded batches of process IDs while preserving each process's turn order.
-Its rows cross N-API as one JSON payload; the native TypeScript wrapper restores
-BLOB buffers and non-finite REAL values before exposing the standard row shape.
+chat-folder membership on summary entries. `getAllProcesses` serializes process
+and turn rows into bulk JSON in bounded process-ID batches while preserving
+turn order. `getProcessSummaries` serializes its count and page in one read
+snapshot. The native TypeScript wrapper restores BLOB buffers and non-finite
+REAL values in both JSON paths before exposing the standard row shapes.
 
 `upsertStreamingTurn` runs in an async Rust task under the writer mutex; Forge
 emits its process-change event after the write completes. `appendConversationTurn`

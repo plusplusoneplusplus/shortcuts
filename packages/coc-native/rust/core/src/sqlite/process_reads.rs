@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{params_from_iter, Connection};
+use rusqlite::{params_from_iter, Connection, Row as SqliteRow};
 
 use super::{check_process_schema, query, Database, Error, Parameters, Result, Row, Value};
 
@@ -196,12 +196,19 @@ fn write_json_value(output: &mut String, value: &Value) {
     }
 }
 
-fn query_json_rows(
+fn json_row_id(row: &SqliteRow<'_>, column: &str) -> Result<String> {
+    match row.get::<_, rusqlite::types::Value>(column)? {
+        rusqlite::types::Value::Text(id) => Ok(id),
+        _ => Err(Error::Sqlite(rusqlite::Error::InvalidColumnName(column.into()))),
+    }
+}
+
+fn query_json_rows<Key>(
     connection: &Connection,
     sql: &str,
     parameters: &[Value],
-    id_column: &str,
-) -> Result<Vec<(String, String)>> {
+    key: impl Fn(&SqliteRow<'_>) -> Result<Key>,
+) -> Result<Vec<(Key, String)>> {
     let mut statement = connection.prepare(sql)?;
     let mut columns: Vec<(usize, String)> = statement
         .column_names()
@@ -213,12 +220,7 @@ fn query_json_rows(
     let mut cursor = statement.query(params_from_iter(parameters))?;
     let mut rows = Vec::new();
     while let Some(row) = cursor.next()? {
-        let id = match row.get::<_, rusqlite::types::Value>(id_column)? {
-            rusqlite::types::Value::Text(id) => id,
-            _ => {
-                return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName(id_column.into())));
-            }
-        };
+        let id = key(row)?;
         let mut json = String::new();
         json.push('{');
         for (index, (column_index, name)) in columns.iter().enumerate() {
@@ -240,13 +242,15 @@ pub fn get_all_processes_json(database: &Database, filter: &ProcessFilter) -> Re
     database.with_read_connection(|connection| {
         check_process_schema(connection)?;
         let (sql, values) = process_query(filter);
-        let processes = query_json_rows(connection, &sql, &values, "id")?;
+        let processes = query_json_rows(connection, &sql, &values, |row| json_row_id(row, "id"))?;
         let mut turns_by_process: HashMap<String, Vec<String>> = HashMap::new();
         if !filter.exclude_conversation {
             for chunk in processes.chunks(500) {
                 let ids = chunk.iter().map(|(id, _)| Value::Text(id.clone())).collect::<Vec<_>>();
                 for (id, turn) in
-                    query_json_rows(connection, &turn_batch_query(&ids), &ids, "process_id")?
+                    query_json_rows(connection, &turn_batch_query(&ids), &ids, |row| {
+                        json_row_id(row, "process_id")
+                    })?
                 {
                     turns_by_process.entry(id).or_default().push(turn);
                 }
@@ -279,17 +283,20 @@ pub fn get_all_processes_json(database: &Database, filter: &ProcessFilter) -> Re
     })
 }
 
-pub fn get_process_summaries(database: &Database, filter: &ProcessFilter) -> Result<SummaryPage> {
+fn with_summary_page<T>(
+    database: &Database,
+    filter: &ProcessFilter,
+    read: impl FnOnce(&Connection, &str, &[Value]) -> Result<T>,
+) -> Result<(i64, T)> {
     database.with_read_connection(|connection| {
         check_process_schema(connection)?;
         let snapshot = connection.unchecked_transaction()?;
         let (where_clause, mut values) = where_clause(filter, true);
-        let count = query(&snapshot, &format!("SELECT COUNT(*) AS cnt FROM processes {where_clause}"),
-            &Parameters::Positional(values.clone()))?;
-        let total = match count.first().and_then(|row| row.get("cnt")) {
-            Some(Value::Integer(total)) => *total,
-            _ => return Err(Error::Sqlite(rusqlite::Error::InvalidColumnName("cnt".into()))),
-        };
+        let total = snapshot.query_row(
+            &format!("SELECT COUNT(*) FROM processes {where_clause}"),
+            params_from_iter(&values),
+            |row| row.get(0),
+        )?;
         let mut sql = format!(
             "SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, \
              parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, \
@@ -305,10 +312,32 @@ pub fn get_process_summaries(database: &Database, filter: &ProcessFilter) -> Res
             sql.push_str(" OFFSET ?");
             values.push(Value::Integer(offset));
         }
-        let rows = query(&snapshot, &sql, &Parameters::Positional(values))?;
+        let rows = read(&snapshot, &sql, &values)?;
         snapshot.commit()?;
-        Ok(SummaryPage { rows, total })
+        Ok((total, rows))
     })
+}
+
+pub fn get_process_summaries(database: &Database, filter: &ProcessFilter) -> Result<SummaryPage> {
+    let (total, rows) = with_summary_page(database, filter, |connection, sql, values| {
+        query(connection, sql, &Parameters::Positional(values.to_vec()))
+    })?;
+    Ok(SummaryPage { rows, total })
+}
+
+pub fn get_process_summaries_json(database: &Database, filter: &ProcessFilter) -> Result<String> {
+    let (total, rows) = with_summary_page(database, filter, |connection, sql, values| {
+        query_json_rows(connection, sql, values, |_| Ok(()))
+    })?;
+    let mut output = format!(r#"{{"total":{total},"rows":["#);
+    for (index, (_, row)) in rows.iter().enumerate() {
+        if index != 0 {
+            output.push(',');
+        }
+        output.push_str(row);
+    }
+    output.push_str("]}");
+    Ok(output)
 }
 
 pub fn list_recent_processes(database: &Database, filter: &RecentFilter) -> Result<Vec<Row>> {

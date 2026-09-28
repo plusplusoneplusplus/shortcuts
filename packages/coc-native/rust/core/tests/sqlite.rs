@@ -2,7 +2,7 @@ use std::fs;
 
 use coc_native_core::sqlite::process_reads::{
     get_all_processes, get_all_processes_json, get_conversation_turns, get_process_summaries,
-    list_recent_processes, ProcessFilter, RecentFilter,
+    get_process_summaries_json, list_recent_processes, ProcessFilter, RecentFilter,
 };
 use coc_native_core::sqlite::process_search::{
     sanitize_fts_query, search_conversations, SearchFilter,
@@ -282,6 +282,27 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     assert_eq!(summaries.total, 1);
     assert_eq!(summaries.rows[0]["pending_ask_user_count"], Value::Integer(1));
     assert_eq!(summaries.rows[0]["compaction_json"], Value::Text("{\"count\":2}".into()));
+    let summary_json = get_process_summaries_json(
+        &database,
+        &ProcessFilter {
+            workspace_id: Some("ws-a".into()),
+            limit: Some(1),
+            ..ProcessFilter::default()
+        },
+    )
+    .unwrap();
+    let page: serde_json::Value = serde_json::from_str(&summary_json).unwrap();
+    assert_eq!(page["total"], 1);
+    assert_eq!(page["rows"][0]["pending_ask_user_count"], 1);
+    assert_eq!(page["rows"][0]["compaction_json"], "{\"count\":2}");
+    assert_eq!(
+        get_process_summaries_json(
+            &database,
+            &ProcessFilter { statuses: Some(vec![]), ..ProcessFilter::default() }
+        )
+        .unwrap(),
+        r#"{"total":0,"rows":[]}"#
+    );
     let recent = list_recent_processes(
         &database,
         &RecentFilter {
@@ -308,6 +329,10 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     assert!(matches!(get_all_processes(&database, &filter), Err(Error::UnsupportedVersion(39))));
     assert!(matches!(
         get_process_summaries(&database, &filter),
+        Err(Error::UnsupportedVersion(39))
+    ));
+    assert!(matches!(
+        get_process_summaries_json(&database, &filter),
         Err(Error::UnsupportedVersion(39))
     ));
     assert!(matches!(

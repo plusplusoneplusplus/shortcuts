@@ -208,7 +208,12 @@ export class NativeDatabase {
         filter?: Bindings.NativeProcessReadFilter,
     ): Promise<Bindings.NativeProcessSummaryPage> {
         try {
-            return await this.handle.getProcessSummaries(filter);
+            const json = await this.handle.getProcessSummariesJson(filter);
+            const page = JSON.parse(json) as Bindings.NativeProcessSummaryPage;
+            if (json.includes('"$sqliteBlob"') || json.includes('"$sqliteNumber"')) {
+                for (const row of page.rows) restoreJsonSqliteValues(row);
+            }
+            return page;
         } catch (error) {
             return withSqliteError(() => { throw error; });
         }
