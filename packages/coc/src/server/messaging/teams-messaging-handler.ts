@@ -84,7 +84,7 @@ export function registerTeamsMessagingRoutes(
                     const status = manager.getStatus();
                     return { connected: status.enabled && status.status === 'connected', teamId: status.teamId, channelId: status.channelId };
                 },
-                send: (text, rootId) => manager.sendMessage(text, rootId),
+                send: (text, rootId) => manager.sendMessage(text, rootId, 'html'),
             })
             : undefined;
         const ready = relay?.restore();

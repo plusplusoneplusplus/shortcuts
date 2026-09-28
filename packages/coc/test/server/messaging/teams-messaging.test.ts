@@ -11,6 +11,8 @@ import { EventEmitter } from 'node:events';
 import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { Route } from '../../../src/server/types';
 import { TeamsMessagingManager, defaultTeamsChannelName } from '../../../src/server/messaging/teams-messaging-manager';
+import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
+import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
 import { getRepoDataPath } from '../../../src/server/paths';
 import { acquireMcpOAuthToken, McpClient, TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
@@ -150,6 +152,49 @@ describe('TeamsMessagingManager', () => {
         expect(m2.getStatus().error).toBe('Polling unavailable');
         botOptions?.onStatusChange?.('connected');
         expect(m2.getStatus().error).toBeNull();
+    });
+
+    it('prefixes command, status, error, and every formatted relay part at the channel send boundary', async () => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home') });
+        const inbound = { channelId: 'channel-id-resolved', messageId: 'user-msg', text: '/list repos', senderAadId: 'user-id' };
+        const getWorkspaces = vi.fn().mockResolvedValue([
+            { id: 'ws-a', name: 'Alpha', rootPath: 'C:\\repo\\alpha' },
+        ]);
+        const router = new TeamsCommandRouter({
+            store: { getWorkspaces } as ProcessStore,
+            enqueueChat: vi.fn().mockResolvedValue('task-1'),
+            executeFollowUp: vi.fn().mockResolvedValue(undefined),
+            sendReply: async (text, replyToId) => { await m2.sendMessage(text, replyToId); },
+            dataDir: tmpDir,
+        });
+        m2.setMessageHandler(msg => router.handle(msg));
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+        const options = vi.mocked(TeamsBot).mock.lastCall![0];
+
+        await options.onMessage(inbound);
+        expect(inbound.text).toBe('/list repos');
+        expect(bot.send).toHaveBeenLastCalledWith('channel-id-resolved',
+            expect.stringMatching(/^AI: \*\*Agents \/ Repos\*\*/), { replyToId: 'user-msg' });
+
+        await options.onMessage({ ...inbound, messageId: 'missing', text: '/select repo Missing' });
+        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: ❌ Repo/);
+        getWorkspaces.mockRejectedValueOnce(new Error('offline'));
+        await options.onMessage({ ...inbound, messageId: 'error' });
+        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: ❌ Error: offline/);
+
+        const parts = formatTeamsAnswerChunks('👩‍💻 <unsafe> & '.repeat(4000), 'opaque-1');
+        expect(parts.length).toBeGreaterThan(1);
+        for (const part of parts) await m2.sendMessage(part, 'user-msg', 'html');
+        for (const [index, call] of bot.send.mock.calls.slice(-parts.length).entries()) {
+            const html = call[1] as string;
+            expect(html).toMatch(new RegExp(`^AI: <p><strong>Request opaque-1 · Part ${index + 1}/${parts.length}</strong></p>`));
+            expect(Buffer.byteLength(html, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+            expect(html).not.toContain('<unsafe>');
+            expect(call[2]).toEqual({ replyToId: 'user-msg' });
+        }
     });
 
     it('forwards a channel Like target without treating direct-message targets as channels', async () => {

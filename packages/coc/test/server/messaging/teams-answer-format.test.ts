@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
+import { TEAMS_CHANNEL_PREFIX } from '../../../src/server/messaging/teams-outbound-format';
 
 const size = (text: string) => Buffer.byteLength(text, 'utf8');
 
@@ -17,7 +18,7 @@ function expectValid(parts: string[], label: string): void {
     expect(parts.length).toBeGreaterThan(0);
     parts.forEach((part, index) => {
         expect(part.startsWith(`<p><strong>Request ${label} · Part ${index + 1}/${parts.length}</strong></p>`)).toBe(true);
-        expect(size(part)).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+        expect(size(TEAMS_CHANNEL_PREFIX + part)).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
         expect(part).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
         expect(part).not.toMatch(/&(?:amp|lt|gt|quot|#39)(?!;)/);
         const tags = part.match(/<\/?(?:p|strong|em|code|pre|a|br)\b[^>]*>/g) ?? [];

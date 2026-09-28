@@ -235,7 +235,7 @@ describe('TeamsAnswerRelay new topics', () => {
         await relay.acknowledged(root.taskId);
         expect(send).toHaveBeenCalledOnce();
         const outbound = { ...message('unrecorded-id'), replyToMessageId: 'root-crash',
-            text: send.mock.calls[0][0] as string };
+            text: `AI: ${send.mock.calls[0][0] as string}` };
         relay.dispose();
         const restored = new TeamsAnswerRelay({
             dataDir, store, queue, isEnabled: () => enabled,

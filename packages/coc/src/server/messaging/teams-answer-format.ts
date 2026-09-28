@@ -1,5 +1,7 @@
 /** Pure, bounded formatting for outbound Teams thread replies. */
 
+import { TEAMS_CHANNEL_PREFIX } from './teams-outbound-format';
+
 export const TEAMS_ANSWER_MAX_BYTES = 20_000;
 
 const EMPTY_ANSWER = '(No answer provided.)';
@@ -150,7 +152,7 @@ export function formatTeamsAnswerChunks(answer: string, requestLabel: string): s
     for (;;) {
         const header = (part: number, total: number) =>
             `<p><strong>Request ${requestLabel} · Part ${part}/${total}</strong></p>`;
-        const budget = TEAMS_ANSWER_MAX_BYTES - bytes(header(expected, expected));
+        const budget = TEAMS_ANSWER_MAX_BYTES - bytes(TEAMS_CHANNEL_PREFIX + header(expected, expected));
         const bodies: string[] = [];
         let body = '';
         let length = 0;
@@ -174,7 +176,7 @@ export function formatTeamsAnswerChunks(answer: string, requestLabel: string): s
             continue;
         }
         const result = bodies.map((content, index) => header(index + 1, bodies.length) + content);
-        if (result.every(part => bytes(part) <= TEAMS_ANSWER_MAX_BYTES)) {
+        if (result.every(part => bytes(TEAMS_CHANNEL_PREFIX + part) <= TEAMS_ANSWER_MAX_BYTES)) {
             return result;
         }
         expected = bodies.length + 1;
