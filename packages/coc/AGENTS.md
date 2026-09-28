@@ -130,10 +130,14 @@ all have their own `references/*.md`.
   eligible across reconnects; their reply cursor prevents old requests from
   replaying after receipt compaction, and outbound IDs identify the connector's
   own replies. Bound thread command selections are shared by participants and
-  persisted on the original root receipt; the original chat's answer correlation
-  stays in its physical workspace. Bound replies route by the thread selection,
-  independently of the sender's selected topic. Unbound or unavailable chat
-  thread replies receive an error in the same thread.
+  persisted in repo-scoped `teams-thread-roots/`. The original chat's answer correlation stays
+  in its physical workspace. Root discovery metadata contains only team/channel
+  and root identity and lives in `teams-thread-discovery/`. Historic repository
+  commands restore selection without replaying old questions or sending status.
+  Bound replies route by the thread selection independently of the sender's
+  topic. An unselected reply asks for `/list repos` and `/select repo <name>`;
+  a selected root starts a fresh chat on its next question. A late answer after
+  a switch identifies its source repo and chat.
   Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
   for discovery, PKCE, exchange, and read-only
   handshake verification; verified tokens enter the shared Copilot OAuth cache

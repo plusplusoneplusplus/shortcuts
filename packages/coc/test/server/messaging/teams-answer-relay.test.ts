@@ -68,12 +68,14 @@ describe('TeamsAnswerRelay new topics', () => {
             tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
             return id;
         });
+
         const reply = { ...message('reply-selection'), replyToMessageId: root.messageId };
         processes.set('chosen-topic', {
             id: 'chosen-topic', status: 'completed', metadata: { workspaceId: 'workspace-b' },
         });
         await relay.selectThreadTarget(reply, 'workspace-b', 'chosen-topic');
         expect((await relay.resolveThread(reply))?.process?.id).toBe('chosen-topic');
+        expect(fs.existsSync(getRepoDataPath(dataDir, 'workspace-b', 'teams-thread-roots'))).toBe(true);
         const restored = new TeamsAnswerRelay({
             dataDir, store, queue, isEnabled: () => enabled,
             target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
@@ -88,7 +90,271 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(await relay.resolveThread(reply)).toEqual({ workspaceId: 'workspace-b' });
         finish(admitted.taskId, 'workspace-a', 'Original answer');
         await relay.acknowledged(admitted.taskId);
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Repo A · Chat'), root.messageId);
         expect(send).toHaveBeenCalledWith(expect.stringContaining('Original answer'), root.messageId);
+    });
+
+    it('turns a command-only root into a chat in its selected workspace and restores its routing', async () => {
+        const reply = { ...message('first-question'), replyToMessageId: 'command-root' };
+        await relay.selectThreadTarget(reply, 'workspace-b', null);
+        const enqueue = vi.fn(async (id: string) => {
+            tasks.set(id, { id, repoId: 'workspace-b', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const admission = await relay.admitThreadNew(reply, 'workspace-b', enqueue);
+        expect(admission.duplicate).toBe(false);
+        expect((await relay.resolveThread(reply))?.taskId).toBe(admission.taskId);
+        await relay.acknowledged(admission.taskId);
+        expect(await relay.admitThreadNew(reply, 'workspace-b', enqueue)).toEqual({
+            taskId: admission.taskId, duplicate: true,
+        });
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            expect(restored.threadRoots('team-1', 'channel-1')).toContain('command-root');
+            expect((await restored.resolveThread(reply))?.workspaceId).toBe('workspace-b');
+            finish(admission.taskId, 'workspace-b', 'Response in command thread');
+            await restored.reconcileTask(admission.taskId);
+            expect(send).toHaveBeenCalledWith(expect.stringContaining('Response in command thread'), 'command-root');
+        } finally {
+            restored.dispose();
+        }
+    });
+
+    it('deduplicates selected thread commands without changing other roots', async () => {
+        const command = { ...message('command-id'), replyToMessageId: 'root-one' };
+        await relay.selectThreadTarget(command, 'workspace-a', null);
+        relay.recordCommand(command);
+        expect(relay.hasCommand(command)).toBe(true);
+        expect(relay.hasCommand({ ...command, replyToMessageId: 'root-two' })).toBe(false);
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+
+        try {
+            await restored.restore();
+            expect(restored.hasCommand(command)).toBe(true);
+        } finally {
+            restored.dispose();
+        }
+    });
+
+    it('persists discovered roots without workspace data and scopes them by team and channel', async () => {
+        relay.recordDiscoveredRoot('team-1', { ...message('historic-root'), channelId: 'channel-1' });
+        relay.recordDiscoveredRoot('team-1', { ...message('other-root'), channelId: 'channel-2' });
+        expect(relay.threadRoots('team-1', 'channel-1')).toContain('historic-root');
+        expect(relay.threadRoots('team-2', 'channel-1')).not.toContain('historic-root');
+        const folder = path.join(dataDir, 'teams-thread-discovery');
+        const stored = fs.readFileSync(path.join(folder, fs.readdirSync(folder)[0]), 'utf8');
+        expect(stored).not.toMatch(/workspaceId|workspace-a|workspace-b|request/);
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            expect(restored.threadRoots('team-1', 'channel-1')).toContain('historic-root');
+            expect(restored.threadRoots('team-1', 'channel-2')).toContain('other-root');
+        } finally {
+            restored.dispose();
+        }
+    });
+
+    it('does not acknowledge a repo switch when selection persistence fails', async () => {
+        const blocked = path.join(dataDir, 'not-a-directory');
+        fs.writeFileSync(blocked, 'block writes');
+        const failing = new TeamsAnswerRelay({
+            dataDir: blocked, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        const msg = { ...message('switch'), replyToMessageId: 'root' };
+        try {
+            await expect(failing.selectThreadTarget(msg, 'workspace-b', null)).rejects.toThrow();
+            expect(failing.getThreadSelection(msg)).toBeNull();
+        } finally {
+            failing.dispose();
+        }
+    });
+
+    it('rejects cross-workspace and deleted topics without losing the active chat', async () => {
+        const msg = { ...message('choose-topic'), replyToMessageId: 'root' };
+        await relay.selectThreadTarget(msg, 'workspace-b', null);
+        processes.set('foreign-topic', {
+            id: 'foreign-topic', status: 'completed', metadata: { workspaceId: 'workspace-a' },
+        });
+        await expect(relay.selectThreadTarget(msg, 'workspace-b', 'foreign-topic'))
+            .rejects.toThrow('Teams thread chat is unavailable');
+        await expect(relay.selectThreadTarget(msg, 'workspace-b', 'missing-topic'))
+            .rejects.toThrow('Teams thread chat is unavailable');
+        expect(await relay.resolveThread(msg)).toEqual({ workspaceId: 'workspace-b' });
+    });
+
+    it('runs a command-only thread across two senders without sender fallback or command prompts', async () => {
+        const ack = vi.fn().mockResolvedValue(undefined);
+        const enqueue = vi.fn(async (ws: string, _prompt: string, id: string) => {
+            tasks.set(id, { id, repoId: ws, processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const router = new TeamsCommandRouter({
+            store: {
+                ...store,
+                getAllProcesses: vi.fn().mockResolvedValue([]),
+            } as ProcessStore,
+            dataDir, sendReply: ack, enqueueChat: vi.fn(), executeFollowUp: vi.fn(),
+            isAnswerRelayEnabled: () => enabled,
+            resolveThreadReply: msg => relay.resolveThread(msg),
+            getThreadSelection: msg => relay.getThreadSelection(msg),
+            selectThreadTarget: (msg, ws, proc) => relay.selectThreadTarget(msg, ws, proc),
+            hasThreadCommand: msg => relay.hasCommand(msg),
+            recordThreadCommand: msg => relay.recordCommand(msg),
+            admitThreadNew: (msg, ws) => relay.admitThreadNew(msg, ws, id => enqueue(ws, msg.text, id)),
+            acknowledgeNewChat: id => relay.acknowledged(id),
+            admitPendingFollowUp: vi.fn().mockResolvedValue({ duplicate: false }),
+            acknowledgeFollowUp: vi.fn(),
+        });
+        const inbound = (id: string, text: string, senderAadId: string) => ({
+            ...message(id), text, senderAadId, replyToMessageId: 'existing-root',
+        });
+        await router.handle(inbound('list', '/list repos', 'person-a'));
+        await router.handle(inbound('before', 'Question before selection', 'person-b'));
+        expect(ack.mock.calls[1][0]).toContain('/select repo <name>');
+        await router.handle(inbound('select', '/select repo B', 'person-b'));
+        await router.handle(inbound('select', '/select repo B', 'person-b'));
+        expect(ack).toHaveBeenCalledTimes(3);
+        await router.handle(inbound('malformed', '/select repo', 'person-a'));
+        expect(ack.mock.lastCall?.[0]).toContain('Invalid command');
+        await router.handle(inbound('question', 'Question after selection', 'person-a'));
+        expect(enqueue).toHaveBeenCalledExactlyOnceWith('workspace-b', 'Question after selection', expect.any(String));
+        expect(ack.mock.lastCall?.[1]).toBe('existing-root');
+        await router.handle(inbound('question', 'Question after selection', 'person-a'));
+        expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('reconstructs a historical repo command silently and never admits old questions', async () => {
+        const ack = vi.fn().mockResolvedValue(undefined);
+        const enqueue = vi.fn();
+        const router = new TeamsCommandRouter({
+            store, dataDir, sendReply: ack, enqueueChat: enqueue, executeFollowUp: vi.fn(),
+            isAnswerRelayEnabled: () => enabled,
+            getThreadSelection: msg => relay.getThreadSelection(msg),
+            resolveThreadReply: msg => relay.resolveThread(msg),
+            selectThreadTarget: (msg, ws, proc) => relay.selectThreadTarget(msg, ws, proc),
+            hasThreadCommand: msg => relay.hasCommand(msg),
+        });
+        const historic = { ...message('historical-select'), text: '/select repo B',
+            replyToMessageId: 'historic-root', initializationReplay: true, historicalSelectionReplay: true };
+        relay.recordDiscoveredRoot('team-1', { ...message('historic-root'), channelId: 'channel-1' });
+        await router.handle({ ...message('old-question'), replyToMessageId: 'historic-root', historicalSelectionReplay: true });
+        await router.handle(historic);
+        expect(relay.getThreadSelection(historic)).toEqual({ workspaceId: 'workspace-b' });
+        processes.set('historic-topic', {
+            id: 'historic-topic', status: 'completed', metadata: { workspaceId: 'workspace-b' },
+        });
+        await router.handle({ ...historic, messageId: 'historic-topic-command', text: '/select topic historic-topic' });
+        expect((await relay.resolveThread(historic))?.process?.id).toBe('historic-topic');
+        await router.handle({ ...historic, messageId: 'historic-new-command', text: '/create topic' });
+        expect(await relay.resolveThread(historic)).toEqual({ workspaceId: 'workspace-b' });
+        expect(ack).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
+        const freshRouter = new TeamsCommandRouter({
+            store, dataDir, sendReply: ack, enqueueChat: enqueue, executeFollowUp: vi.fn(),
+            isAnswerRelayEnabled: () => enabled,
+            getThreadSelection: msg => relay.getThreadSelection(msg),
+            resolveThreadReply: msg => relay.resolveThread(msg),
+            selectThreadTarget: (msg, ws, proc) => relay.selectThreadTarget(msg, ws, proc),
+        });
+        await freshRouter.handle({ ...historic, messageId: 'older-select', text: '/select repo A' });
+        expect(relay.getThreadSelection(historic)).toEqual({ workspaceId: 'workspace-b' });
+        expect(ack).not.toHaveBeenCalled();
+    });
+
+    it('keeps the newer selection when a prior chat admission finishes after a repo switch', async () => {
+        const first = { ...message('first-question'), replyToMessageId: 'shared-root' };
+        await relay.selectThreadTarget(first, 'workspace-a', null);
+        let finishEnqueue: ((id: string) => void) | undefined;
+        const queued = relay.admitThreadNew(first, 'workspace-a', id => new Promise(resolve => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            finishEnqueue = resolve;
+        }));
+        await vi.waitFor(() => expect(finishEnqueue).toBeDefined());
+        await relay.selectThreadTarget({ ...message('switch'), replyToMessageId: 'shared-root' }, 'workspace-b', null);
+        finishEnqueue!(tasks.keys().next().value!);
+        const admitted = await queued;
+        expect((await relay.resolveThread(first))).toEqual({ workspaceId: 'workspace-b' });
+        finish(admitted.taskId, 'workspace-a', 'Earlier repo answer');
+        await relay.acknowledged(admitted.taskId);
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Repo A · Chat'), 'shared-root');
+    });
+
+    it('restores the selected workspace even when the original root workspace is removed', async () => {
+        const root = message('old-root');
+        await relay.admitNew(root, 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const reply = { ...message('switch-command'), replyToMessageId: root.messageId };
+        await relay.selectThreadTarget(reply, 'workspace-b', null);
+        vi.mocked(store.getWorkspaces).mockResolvedValue([
+            { id: 'workspace-b', name: 'B', rootPath: path.join(dataDir, 'b') },
+        ] as Awaited<ReturnType<typeof store.getWorkspaces>>);
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            expect(await restored.resolveThread(reply)).toEqual({ workspaceId: 'workspace-b' });
+            expect(restored.threadRoots('team-1', 'channel-1')).toContain(root.messageId);
+        } finally {
+            restored.dispose();
+        }
+    });
+
+    it('rejects a removed selected workspace after restart rather than falling back to its original chat', async () => {
+        const root = message('old-chat-root');
+        await relay.admitNew(root, 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const reply = { ...message('move-to-b'), replyToMessageId: root.messageId };
+        await relay.selectThreadTarget(reply, 'workspace-b', null);
+        vi.mocked(store.getWorkspaces).mockResolvedValue([
+            { id: 'workspace-a', name: 'A', rootPath: path.join(dataDir, 'a') },
+        ] as Awaited<ReturnType<typeof store.getWorkspaces>>);
+        const restored = new TeamsAnswerRelay({
+            dataDir, store, queue, isEnabled: () => enabled,
+            target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+        });
+        try {
+            await restored.restore();
+            await expect(restored.resolveThread(reply)).rejects.toThrow('workspace is unavailable');
+        } finally {
+            restored.dispose();
+        }
+    });
+
+    it('attaches a second question to a pending chat started in a command-only thread', async () => {
+        const first = { ...message('first'), replyToMessageId: 'command-root' };
+        await relay.selectThreadTarget(first, 'workspace-a', null);
+        const admitted = await relay.admitThreadNew(first, 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        const second = { ...message('second'), replyToMessageId: 'command-root' };
+        const enqueue = vi.fn(async (workspaceId: string, processId: string, requestId: string) => {
+            expect(workspaceId).toBe('workspace-a');
+            expect(processId).toBe(toQueueProcessId(admitted.taskId));
+            expect(requestId).toBeTruthy();
+            return 'followup-task';
+        });
+        expect(await relay.admitPendingFollowUp(second, admitted.taskId, enqueue)).toEqual({ duplicate: false });
+        expect(await relay.admitPendingFollowUp(second, admitted.taskId, enqueue)).toEqual({ duplicate: true });
+        expect(enqueue).toHaveBeenCalledTimes(1);
     });
 
     it('acknowledges before sending the saved assistant turn and deduplicates inbound polling', async () => {
@@ -434,7 +700,7 @@ describe('TeamsAnswerRelay new topics', () => {
         });
         await router.handle({ ...message('reply-1'), replyToMessageId: 'thread-root' });
         expect(ack.mock.calls[0][1]).toBe('thread-root');
-        expect(ack.mock.calls[0][0]).toContain('unavailable');
+        expect(ack.mock.calls[0][0]).toContain('/select repo <name>');
         expect(tasks.size).toBe(0);
         expect(send).not.toHaveBeenCalled();
     });

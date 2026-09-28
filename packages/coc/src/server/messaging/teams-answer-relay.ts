@@ -22,10 +22,13 @@ interface AnswerBinding {
     processId: string;
     selectedWorkspaceId?: string;
     selectedProcessId?: string | null;
+    selectedTaskId?: string;
+    commandIds?: string[];
     requestId?: string;
     partCount?: number;
     nextPart?: number;
     answerHash?: string;
+    answerContext?: string;
     acceptedMessageId?: string;
     sentMessageIds?: string[];
     lastReplyAt?: string;
@@ -35,6 +38,25 @@ interface AnswerBinding {
     terminalStatus?: 'completed' | 'failed' | 'cancelled';
     status: BindingStatus;
     createdAt: string;
+}
+
+interface ThreadSelection {
+    version: 1;
+    teamId: string;
+    channelId: string;
+    rootId: string;
+    workspaceId: string;
+    processId: string | null;
+    taskId?: string;
+    commandIds?: string[];
+    updatedAt?: string;
+}
+
+interface DiscoveredRoot {
+    teamId: string;
+    channelId: string;
+    rootId: string;
+    commandIds?: string[];
 }
 
 export interface TeamsAnswerRelayDeps {
@@ -75,7 +97,11 @@ function readBinding(file: string): AnswerBinding | undefined {
         || (row.selectedWorkspaceId !== undefined && (typeof row.selectedWorkspaceId !== 'string' || !row.selectedWorkspaceId))
         || (row.selectedProcessId !== undefined && row.selectedProcessId !== null
             && (typeof row.selectedProcessId !== 'string' || !row.selectedProcessId))
+        || (row.selectedTaskId !== undefined && (typeof row.selectedTaskId !== 'string' || !row.selectedTaskId))
+        || (row.commandIds !== undefined && (!Array.isArray(row.commandIds)
+            || row.commandIds.some(id => typeof id !== 'string' || !id)))
         || (row.answerHash !== undefined && (typeof row.answerHash !== 'string' || !/^[a-f0-9]{64}$/.test(row.answerHash)))
+        || (row.answerContext !== undefined && (typeof row.answerContext !== 'string' || row.answerContext.length > 140))
         || (row.acceptedMessageId !== undefined && (typeof row.acceptedMessageId !== 'string'
             || !/^[A-Za-z0-9:_@.-]{1,256}$/.test(row.acceptedMessageId)))
         || (row.sentMessageIds !== undefined && (!Array.isArray(row.sentMessageIds)
@@ -96,7 +122,7 @@ function readBinding(file: string): AnswerBinding | undefined {
     return row as unknown as AnswerBinding;
 }
 
-function writeBinding(file: string, binding: AnswerBinding): void {
+function writeBinding<T>(file: string, binding: T): void {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const tmp = `${file}.${randomUUID()}.tmp`;
     try {
@@ -110,6 +136,9 @@ function writeBinding(file: string, binding: AnswerBinding): void {
 /** Workspace-scoped receipts for new Ask chats and their correlated follow-ups. */
 export class TeamsAnswerRelay {
     private readonly bindings = new Map<string, { file: string; value: AnswerBinding }>();
+    private readonly threadSelections = new Map<string, { file: string; value: ThreadSelection }>();
+    private readonly discoveredRoots = new Map<string, DiscoveredRoot>();
+    private readonly admittingThreads = new Map<string, Promise<{ taskId: string; duplicate: boolean }>>();
     private readonly active = new Set<string>();
     private disposed = false;
     private retryTimer: NodeJS.Timeout | undefined;
@@ -160,7 +189,38 @@ export class TeamsAnswerRelay {
         return [...new Set([...this.bindings.values()]
             .filter(({ value }) => value.teamId === teamId && value.channelId === channelId
                 && !value.requestId && value.messageId === value.rootId)
-            .map(({ value }) => value.rootId))].sort();
+            .map(({ value }) => value.rootId)
+            .concat([...this.threadSelections.values()]
+                .filter(({ value }) => value.teamId === teamId && value.channelId === channelId)
+                .map(({ value }) => value.rootId))
+            .concat([...this.discoveredRoots.values()]
+                .filter(value => value.teamId === teamId && value.channelId === channelId)
+                .map(value => value.rootId)))].sort();
+    }
+
+    recordDiscoveredRoot(teamId: string, msg: InboundTeamsMessage): void {
+        if (!this.deps.isEnabled() || !teamId || !msg.channelId || !msg.messageId) return;
+        const name = bindingName(teamId, msg.channelId, msg.messageId);
+        if (this.discoveredRoots.has(name)) return;
+        const value: DiscoveredRoot = { teamId, channelId: msg.channelId, rootId: msg.messageId };
+        writeBinding(path.join(this.deps.dataDir, 'teams-thread-discovery', name), value);
+        this.discoveredRoots.set(name, value);
+    }
+
+    private rootEntry(msg: InboundTeamsMessage): [string, { file: string; value: AnswerBinding }] | undefined {
+        const target = this.deps.target();
+        return [...this.bindings.entries()].find(([, { value }]) =>
+            !value.requestId && value.teamId === target.teamId && value.channelId === msg.channelId
+            && value.messageId === msg.replyToMessageId);
+    }
+
+    getThreadSelection(msg: InboundTeamsMessage): { workspaceId: string } | null {
+        const target = this.deps.target();
+        if (!msg.replyToMessageId || !target.teamId || target.channelId !== msg.channelId) return null;
+        const root = this.rootEntry(msg)?.[1].value;
+        const state = this.threadSelections.get(bindingName(target.teamId, msg.channelId, msg.replyToMessageId))?.value;
+        return state ? { workspaceId: state.workspaceId }
+            : root ? { workspaceId: root.selectedWorkspaceId ?? root.workspaceId } : null;
     }
 
     async resolveThread(msg: InboundTeamsMessage): Promise<{
@@ -168,16 +228,16 @@ export class TeamsAnswerRelay {
     } | null> {
         const target = this.deps.target();
         if (!msg.replyToMessageId || !target.teamId || target.channelId !== msg.channelId) return null;
-        const root = [...this.bindings.values()].find(({ value }) =>
-            !value.requestId && value.teamId === target.teamId
-            && value.channelId === msg.channelId && value.messageId === msg.replyToMessageId)?.value;
-        if (!root) return null;
-        const workspaceId = root.selectedWorkspaceId ?? root.workspaceId;
+        const root = this.rootEntry(msg)?.[1].value;
+        const state = this.threadSelections.get(bindingName(target.teamId, msg.channelId, msg.replyToMessageId))?.value;
+        if (!root && !state) return null;
+        const workspaceId = state?.workspaceId ?? root?.selectedWorkspaceId ?? root!.workspaceId;
         if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) {
             throw new Error('Teams thread workspace is unavailable');
         }
-        if (root.selectedProcessId === null) return { workspaceId };
-        const processId = root.selectedProcessId ?? root.processId;
+        if (state?.processId === null || (!state && root?.selectedProcessId === null)) return { workspaceId };
+        const processId = state?.processId ?? root?.selectedProcessId ?? root?.processId;
+        if (!processId) return { workspaceId };
         const process = await this.deps.store.getProcess(processId, workspaceId);
         if (process) {
             if (process.id !== processId || process.metadata?.workspaceId !== workspaceId
@@ -186,13 +246,14 @@ export class TeamsAnswerRelay {
             }
             return { process, workspaceId };
         }
-        if (root.selectedProcessId !== undefined) throw new Error('Teams thread chat is unavailable');
-        const task = this.deps.queue.getTask(root.taskId);
+        const taskId = state?.taskId ?? (!state ? root?.selectedTaskId ?? root?.taskId : undefined);
+        if (!taskId) throw new Error('Teams thread chat is unavailable');
+        const task = this.deps.queue.getTask(taskId!);
         if (!task || task.repoId !== workspaceId || task.processId !== processId
             || !['queued', 'running'].includes(task.status)) {
             throw new Error('Teams thread chat is unavailable');
         }
-        return { taskId: root.taskId, workspaceId };
+        return { taskId: taskId!, workspaceId };
     }
 
     async selectThreadTarget(msg: InboundTeamsMessage, workspaceId: string, processId: string | null): Promise<void> {
@@ -201,10 +262,6 @@ export class TeamsAnswerRelay {
         if (!target.connected || !target.teamId || target.channelId !== msg.channelId || !msg.replyToMessageId) {
             throw new Error('Teams thread target is unavailable');
         }
-        const entry = [...this.bindings.entries()].find(([, { value }]) =>
-            !value.requestId && value.teamId === target.teamId && value.channelId === msg.channelId
-            && value.messageId === msg.replyToMessageId);
-        if (!entry) throw new Error('Teams thread binding is unavailable');
         if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) {
             throw new Error('Teams thread workspace is unavailable');
         }
@@ -215,7 +272,100 @@ export class TeamsAnswerRelay {
                 throw new Error('Teams thread chat is unavailable');
             }
         }
-        this.update(entry[0], entry[1].value.status, { selectedWorkspaceId: workspaceId, selectedProcessId: processId });
+        this.saveThreadSelection(msg, workspaceId, processId, undefined, msg.messageId);
+    }
+
+    private saveThreadSelection(msg: InboundTeamsMessage, workspaceId: string, processId: string | null, taskId?: string, commandId?: string): void {
+        const teamId = this.deps.target().teamId!;
+        const name = bindingName(teamId, msg.channelId, msg.replyToMessageId!);
+        const existing = this.threadSelections.get(name);
+        const file = getRepoDataPath(this.deps.dataDir, workspaceId, path.join('teams-thread-roots', name));
+        const value: ThreadSelection = {
+            version: 1, teamId, channelId: msg.channelId, rootId: msg.replyToMessageId!,
+            workspaceId, processId, ...(taskId ? { taskId } : {}),
+            updatedAt: new Date().toISOString(),
+            ...(existing?.value.commandIds || commandId
+                ? { commandIds: [...new Set([...(existing?.value.commandIds ?? []), ...(commandId ? [commandId] : [])])].slice(-500) }
+                : {}),
+        };
+        writeBinding(file, value);
+        if (existing && existing.file !== file) fs.unlinkSync(existing.file);
+        this.threadSelections.set(name, { file, value });
+    }
+
+    async admitThreadNew(
+        msg: InboundTeamsMessage, workspaceId: string, enqueue: (taskId: string) => Promise<string>,
+    ): Promise<{ taskId: string; duplicate: boolean }> {
+        const target = this.deps.target();
+        if (!target.teamId || !msg.replyToMessageId) throw new Error('Teams thread target is unavailable');
+        const key = bindingName(target.teamId, msg.channelId, msg.replyToMessageId);
+        const pending = this.admittingThreads.get(key);
+        if (pending) {
+            const prior = await pending;
+            if (this.hasInbound(msg)) return { taskId: prior.taskId, duplicate: true };
+            throw new Error('Teams thread chat is starting. Retry your question shortly.');
+        }
+        const admission = this.startThreadChat(msg, workspaceId, enqueue);
+        this.admittingThreads.set(key, admission);
+        try {
+            return await admission;
+        } finally {
+            this.admittingThreads.delete(key);
+        }
+    }
+
+    private async startThreadChat(
+        msg: InboundTeamsMessage, workspaceId: string, enqueue: (taskId: string) => Promise<string>,
+    ): Promise<{ taskId: string; duplicate: boolean }> {
+        const prior = [...this.bindings.values()].find(({ value }) =>
+            value.teamId === this.deps.target().teamId && value.channelId === msg.channelId
+            && value.messageId === msg.messageId)?.value;
+        if (prior) return { taskId: prior.taskId, duplicate: true };
+        const selected = this.getThreadSelection(msg);
+        const bound = await this.resolveThread(msg);
+        if (!selected || selected.workspaceId !== workspaceId || bound?.process || bound?.taskId) {
+            throw new Error('Teams thread is not ready for a new chat');
+        }
+        const taskId = `${Date.now()}-${randomUUID()}`;
+        this.saveThreadSelection(msg, workspaceId, toQueueProcessId(taskId), taskId);
+        return this.admitNew(msg, workspaceId, enqueue, taskId);
+    }
+
+    hasCommand(msg: InboundTeamsMessage): boolean {
+        const target = this.deps.target();
+        if (!target.teamId || !msg.replyToMessageId) return false;
+        const root = this.rootEntry(msg)?.[1].value;
+        const state = this.threadSelections.get(bindingName(target.teamId, msg.channelId, msg.replyToMessageId))?.value;
+        const discovery = this.discoveredRoots.get(bindingName(target.teamId, msg.channelId, msg.replyToMessageId));
+        return !!root?.commandIds?.includes(msg.messageId) || !!state?.commandIds?.includes(msg.messageId)
+            || !!discovery?.commandIds?.includes(msg.messageId);
+    }
+
+    recordCommand(msg: InboundTeamsMessage): void {
+        const target = this.deps.target();
+        if (!target.teamId || !msg.replyToMessageId) throw new Error('Teams thread target is unavailable');
+        const name = bindingName(target.teamId, msg.channelId, msg.replyToMessageId);
+        const state = this.threadSelections.get(name);
+        if (state) {
+            const value = { ...state.value, commandIds: [...new Set([...(state.value.commandIds ?? []), msg.messageId])].slice(-500) };
+            writeBinding(state.file, value);
+            this.threadSelections.set(name, { file: state.file, value });
+            return;
+        }
+        const root = this.rootEntry(msg);
+        if (root) {
+            this.update(root[0], root[1].value.status, {
+                commandIds: [...new Set([...(root[1].value.commandIds ?? []), msg.messageId])].slice(-500),
+            });
+            return;
+        }
+        const existing = this.discoveredRoots.get(name);
+        const value: DiscoveredRoot = {
+            teamId: target.teamId, channelId: msg.channelId, rootId: msg.replyToMessageId,
+            commandIds: [...new Set([...(existing?.commandIds ?? []), msg.messageId])].slice(-500),
+        };
+        writeBinding(path.join(this.deps.dataDir, 'teams-thread-discovery', name), value);
+        this.discoveredRoots.set(name, value);
     }
 
     isOwnReply(teamId: string, msg: InboundTeamsMessage): boolean {
@@ -271,7 +421,81 @@ export class TeamsAnswerRelay {
     async restore(): Promise<void> {
         const seen = new Map<string, string>();
         const conflicts = new Set<string>();
-        for (const workspace of await this.deps.store.getWorkspaces()) {
+        const discovery = path.join(this.deps.dataDir, 'teams-thread-discovery');
+        if (fs.existsSync(discovery)) {
+            for (const name of fs.readdirSync(discovery).filter(n => /^[a-f0-9]{64}\.json$/.test(n))) {
+                try {
+                    const row: unknown = JSON.parse(fs.readFileSync(path.join(discovery, name), 'utf8'));
+                    if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Invalid Teams root');
+                    const root = row as Record<string, unknown>;
+                    if (typeof root.teamId !== 'string' || typeof root.channelId !== 'string'
+                        || typeof root.rootId !== 'string'
+                        || (root.commandIds !== undefined && (!Array.isArray(root.commandIds)
+                            || root.commandIds.some(id => typeof id !== 'string' || !id)))
+                        || bindingName(root.teamId, root.channelId, root.rootId) !== name) {
+                        throw new Error('Invalid Teams root identity');
+                    }
+                    this.discoveredRoots.set(name, {
+                        teamId: root.teamId, channelId: root.channelId, rootId: root.rootId,
+                        ...(Array.isArray(root.commandIds) ? { commandIds: root.commandIds } : {}),
+                    });
+                } catch {
+                    console.error('[teams-answer-relay] Invalid discovered thread root');
+                }
+            }
+        }
+        const workspaces = await this.deps.store.getWorkspaces();
+        const repoFolder = path.join(this.deps.dataDir, 'repos');
+        const scopeIds = new Set(workspaces.map(workspace => workspace.id));
+        if (fs.existsSync(repoFolder)) {
+            for (const entry of fs.readdirSync(repoFolder, { withFileTypes: true })) {
+                if (entry.isDirectory()) scopeIds.add(entry.name);
+            }
+        }
+        for (const workspaceId of scopeIds) {
+            const rootsFolder = getRepoDataPath(this.deps.dataDir, workspaceId, 'teams-thread-roots');
+            if (fs.existsSync(rootsFolder)) {
+                for (const name of fs.readdirSync(rootsFolder).filter(n => /^[a-f0-9]{64}\.json$/.test(n))) {
+                    const file = path.join(rootsFolder, name);
+                    try {
+                        const value: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+                        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid Teams thread root');
+                        const state = value as Record<string, unknown>;
+                        if (state.version !== 1 || typeof state.teamId !== 'string' || !state.teamId
+                            || typeof state.channelId !== 'string' || !state.channelId
+                            || typeof state.rootId !== 'string' || !state.rootId
+                            || typeof state.workspaceId !== 'string' || !state.workspaceId
+                            || state.workspaceId !== workspaceId
+                            || (state.processId !== null && (typeof state.processId !== 'string' || !state.processId))
+                            || (state.taskId !== undefined && (typeof state.taskId !== 'string' || !state.taskId))
+                            || (state.updatedAt !== undefined && (typeof state.updatedAt !== 'string'
+                                || !Number.isFinite(Date.parse(state.updatedAt))))
+                            || (state.commandIds !== undefined && (!Array.isArray(state.commandIds)
+                                || state.commandIds.some(id => typeof id !== 'string' || !id)))
+                            || bindingName(state.teamId, state.channelId, state.rootId) !== name) {
+                            throw new Error('Invalid Teams thread root');
+                        }
+                        const prior = this.threadSelections.get(name);
+                        if (prior && (Date.parse(prior.value.updatedAt ?? '') || 0) >= (
+                            Date.parse(typeof state.updatedAt === 'string' ? state.updatedAt : '') || 0)) continue;
+                        this.threadSelections.set(name, {
+                            file,
+                            value: {
+                                version: 1, teamId: state.teamId, channelId: state.channelId,
+                                rootId: state.rootId, workspaceId: state.workspaceId,
+                                processId: state.processId,
+                                ...(state.taskId ? { taskId: state.taskId } : {}),
+                                ...(Array.isArray(state.commandIds) ? { commandIds: state.commandIds } : {}),
+                                ...(state.updatedAt ? { updatedAt: state.updatedAt } : {}),
+                            } as ThreadSelection,
+                        });
+                    } catch {
+                        console.error('[teams-answer-relay] Invalid persisted thread root');
+                    }
+                }
+            }
+        }
+        for (const workspace of workspaces) {
             const folder = getRepoDataPath(this.deps.dataDir, workspace.id, 'teams-answer-relay');
             if (!fs.existsSync(folder)) continue;
             for (const name of fs.readdirSync(folder).filter(n => /^[a-f0-9]{64}\.json$/.test(n))) {
@@ -331,6 +555,7 @@ export class TeamsAnswerRelay {
         msg: InboundTeamsMessage,
         workspaceId: string,
         enqueue: (taskId: string) => Promise<string>,
+        reservedTaskId?: string,
     ): Promise<{ taskId: string; duplicate: boolean }> {
         if (this.disposed || !this.deps.isEnabled()) throw new Error('Teams answer relay is unavailable');
         const target = this.deps.target();
@@ -352,7 +577,7 @@ export class TeamsAnswerRelay {
             return { taskId: existing.taskId, duplicate: true };
         }
         this.ensureCapacity(workspaceId);
-        const taskId = `${Date.now()}-${randomUUID()}`;
+        const taskId = reservedTaskId ?? `${Date.now()}-${randomUUID()}`;
         const value: AnswerBinding = {
             version: 1, workspaceId, teamId: target.teamId, channelId: msg.channelId,
             messageId: msg.messageId, rootId: msg.replyToMessageId || msg.messageId,
@@ -583,14 +808,29 @@ export class TeamsAnswerRelay {
         } else {
             return;
         }
-        const parts = formatTeamsAnswerChunks(text, answerLabel(binding));
+        const root = [...this.bindings.values()].find(({ value }) =>
+            !value.requestId && value.teamId === binding.teamId && value.channelId === binding.channelId
+            && value.messageId === binding.rootId)?.value;
+        const selected = this.threadSelections.get(bindingName(binding.teamId, binding.channelId, binding.rootId))?.value;
+        const activeProcessId = selected ? selected.processId
+            : root && root.selectedProcessId !== undefined ? root.selectedProcessId : root?.processId;
+        const switched = !!(root || selected)
+            && ((selected?.workspaceId ?? root?.selectedWorkspaceId ?? root?.workspaceId) !== binding.workspaceId
+                || (activeProcessId !== undefined && activeProcessId !== binding.processId));
+        const workspace = switched ? (await this.deps.store.getWorkspaces()).find(w => w.id === binding.workspaceId) : undefined;
+        const context = binding.answerHash ? binding.answerContext : (switched
+            ? `Repo ${workspace?.name ?? 'unavailable'} · Chat ${process?.title ?? process?.customTitle ?? createHash('sha256').update(binding.processId).digest('hex').slice(0, 8)}`
+            : undefined);
+        const parts = formatTeamsAnswerChunks(text, answerLabel(binding), context);
         const answerHash = createHash('sha256').update(text).digest('hex');
         if (binding.answerHash && (binding.answerHash !== answerHash || binding.partCount !== parts.length)) {
             this.update(file, 'ambiguous');
             console.error('[teams-answer-relay] Saved answer changed during delivery');
             return;
         }
-        if (!binding.answerHash) this.update(file, 'awaiting', { answerHash, partCount: parts.length, nextPart: 0 });
+        if (!binding.answerHash) this.update(file, 'awaiting', {
+            answerHash, partCount: parts.length, nextPart: 0, ...(context ? { answerContext: context.slice(0, 140) } : {}),
+        });
         for (let index = binding.nextPart ?? 0; index < parts.length; index++) {
             const target = this.deps.target();
             if (!target.connected || target.teamId !== binding.teamId || target.channelId !== binding.channelId

@@ -280,6 +280,10 @@ export class TeamsMessagingManager {
                 },
                 botName: this.config.botName,
                 pollChannelReplies: () => this.getAnswerRelayEnabled(),
+                onChannelRootDiscovered: async root => {
+                    if (generation !== this.generation || !this.getAnswerRelayEnabled()) return;
+                    this.answerRelay?.recordDiscoveredRoot(resolved.teamId, root);
+                },
                 channelThreadRoots: channelId => this.getAnswerRelayEnabled()
                     ? this.answerRelay?.threadRoots(resolved.teamId, channelId) ?? [] : [],
                 isOwnChannelReply: msg => this.getAnswerRelayEnabled()

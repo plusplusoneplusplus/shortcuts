@@ -34,6 +34,11 @@ function expectValid(parts: string[], label: string): void {
 }
 
 describe('formatTeamsAnswerChunks', () => {
+    it('escapes an optional source context in the reply header', () => {
+        const parts = formatTeamsAnswerChunks('Done', 'request-1', 'Repo A&B · Chat <topic>');
+        expect(parts[0]).toContain('Repo A&amp;B · Chat &lt;topic&gt;');
+        expect(parts[0]).toContain('<p>Done</p>');
+    });
     it('formats paragraphs, headings, lists, links, and code without discarding content', () => {
         const answer = '## Summary\nFirst & <safe> line\n\n- one\n2. two\n' +
             '[docs](https://example.org/a?x=1&y=2) and `C:\\work\\repo` and **bold** *em*\n' +

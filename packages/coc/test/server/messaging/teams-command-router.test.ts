@@ -224,6 +224,7 @@ describe('TeamsCommandRouter', () => {
         expect(sendReplySpy.mock.calls[0][0]).toContain('not found');
     });
 
+
     // ── list topics ───────────────────────────────────────────
 
     it('lists topics', async () => {
@@ -395,7 +396,7 @@ describe('TeamsCommandRouter', () => {
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
                 expect.any(Object), expect.objectContaining({ id: 'proc-b' }), '[proc-111] explicit chat');
             await router.handle(makeMsg('still selected', { replyToMessageId: 'unrelated-root' }));
-            expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('unavailable'), 'unrelated-root');
+            expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('/select repo <name>'), 'unrelated-root');
             expect(deps.admitFollowUp).toHaveBeenCalledTimes(1);
         });
 
@@ -409,6 +410,12 @@ describe('TeamsCommandRouter', () => {
             expect(deps.admitFollowUp).not.toHaveBeenCalled();
         });
 
+        it('does not interpret a malformed thread repo index as a selection', async () => {
+            await router.handle(makeMsg('/select repo 2extra', { replyToMessageId: 'root-a' }));
+            expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('Repo not found'), 'root-a');
+            expect(deps.selectThreadTarget).not.toHaveBeenCalled();
+        });
+
         it('selects a valid topic within the current thread workspace', async () => {
             vi.mocked(deps.store.getProcess).mockResolvedValueOnce({
                 id: 'proc-111', status: 'completed', title: 'Fix bug',
@@ -417,6 +424,33 @@ describe('TeamsCommandRouter', () => {
             await router.handle(makeMsg('/select topic proc-111', { replyToMessageId: 'root-a' }));
             expect(deps.selectThreadTarget).toHaveBeenCalledWith(expect.any(Object), 'ws-1', 'proc-111');
             expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('next question continues'), 'root-a');
+        });
+
+        it('serializes commands from different senders and suppresses duplicate deliveries', async () => {
+            const admitted = new Set<string>();
+            let release: (() => void) | undefined;
+            deps.hasThreadCommand = msg => admitted.has(msg.messageId);
+            deps.selectThreadTarget = vi.fn(async msg => {
+                if (msg.messageId === 'switch-first') {
+                    await new Promise<void>(resolve => { release = resolve; });
+                }
+                admitted.add(msg.messageId);
+            });
+            router = new TeamsCommandRouter(deps);
+            const first = makeMsg('/select repo ProjectB', {
+                replyToMessageId: 'root-a', messageId: 'switch-first', senderAadId: 'person-a',
+            });
+            const second = makeMsg('/select repo ProjectA', {
+                replyToMessageId: 'root-a', messageId: 'switch-second', senderAadId: 'person-b',
+            });
+            const pending = Promise.all([router.handle(first), router.handle(second), router.handle(first)]);
+            await vi.waitFor(() => expect(release).toBeDefined());
+            expect(deps.selectThreadTarget).toHaveBeenCalledTimes(1);
+            release!();
+            await pending;
+            expect(vi.mocked(deps.selectThreadTarget).mock.calls.map(([msg]) => msg.messageId))
+                .toEqual(['switch-first', 'switch-second']);
+            expect(sendReplySpy).toHaveBeenCalledTimes(2);
         });
 
         it('admits pending thread replies by the bound task ID without changing the selected topic', async () => {

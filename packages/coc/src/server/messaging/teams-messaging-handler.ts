@@ -104,9 +104,17 @@ export function registerTeamsMessagingRoutes(
             isAnswerRelayEnabled: opts.getAnswerRelayEnabled,
             ...(relay ? { resolveThreadReply: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
                 relay.resolveThread(msg),
+                getThreadSelection: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
+                    relay.getThreadSelection(msg),
+                hasThreadCommand: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
+                    relay.hasCommand(msg),
+                recordThreadCommand: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
+                    relay.recordCommand(msg),
                 selectThreadTarget: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, processId: string | null) =>
                     relay.selectThreadTarget(msg, workspaceId, processId) } : {}),
             ...(relay && opts.enqueueRelayChat ? {
+                admitThreadNew: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string) =>
+                    relay.admitThreadNew(msg, workspaceId, taskId => opts.enqueueRelayChat!(workspaceId, message, taskId)),
                 admitNewChat: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string) =>
                     opts.getAnswerRelayEnabled?.() === true
                         ? relay.admitNew(msg, workspaceId, taskId => opts.enqueueRelayChat!(workspaceId, message, taskId))

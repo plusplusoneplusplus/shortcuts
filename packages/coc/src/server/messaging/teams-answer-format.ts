@@ -126,7 +126,7 @@ function splitOversized(block: Block, limit: number): string[] {
  * `requestLabel` must be an opaque identifier, never a prompt or user-provided excerpt.
  * The caller sends the returned parts in order under the originating thread root.
  */
-export function formatTeamsAnswerChunks(answer: string, requestLabel: string): string[] {
+export function formatTeamsAnswerChunks(answer: string, requestLabel: string, contextLabel?: string): string[] {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(requestLabel)) {
         throw new TypeError('Teams request label must be a compact opaque identifier');
     }
@@ -134,7 +134,8 @@ export function formatTeamsAnswerChunks(answer: string, requestLabel: string): s
     let expected = 1;
     for (;;) {
         const header = (part: number, total: number) =>
-            `<p><strong>Request ${requestLabel} · Part ${part}/${total}</strong></p>`;
+            `<p><strong>Request ${requestLabel} · Part ${part}/${total}</strong></p>`
+            + (contextLabel ? `<p>${escapeTeamsHtml(contextLabel.slice(0, 140))}</p>` : '');
         const budget = TEAMS_ANSWER_MAX_BYTES - bytes(TEAMS_CHANNEL_PREFIX + header(expected, expected));
         const bodies: string[] = [];
         let body = '';
