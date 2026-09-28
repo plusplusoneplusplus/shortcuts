@@ -7,8 +7,9 @@
  *
  * When the diff-engine preference is `monaco`, both full-text sides come from
  * GET .../changes/files/<path>/content?stage=<stage> and render in
- * MonacoFileDiffViewer. Binary, oversized or unloadable content stays on the
- * classic viewer.
+ * MonacoFileDiffViewer. Binary, oversized or unloadable content, or an editor
+ * that fails to start, falls back to the classic viewer with a visible reason
+ * (see diffEngineResolution).
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
@@ -21,6 +22,8 @@ import type { DiffSelectionDragSource } from '../diff/diffSelectionContext';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { DiffViewToggle, DiffEngineToggle } from '../diff/DiffViewToggle';
+import { DiffEngineFallbackBanner } from '../diff/DiffEngineFallbackBanner';
+import { resolveDiffEngineSelection, type DiffContentLoadState } from '../diff/diffEngineResolution';
 import { useDiffEngine } from '../hooks/useDiffEngine';
 import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from '../diff/MonacoFileDiffViewer';
 import type { DiffEditorFactory } from '../diff/monacoDiffEditorAdapter';
@@ -99,6 +102,11 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     const [diffEngine, setDiffEngine] = useDiffEngine();
     const monacoViewerRef = useRef<MonacoFileDiffViewerHandle>(null);
     const [editorContent, setEditorContent] = useState<EditorContentState | null>(null);
+    // Bumped by the fallback Retry button: re-fetches content and re-mounts the editor.
+    const [editorAttempt, setEditorAttempt] = useState(0);
+    // Key of the file + attempt whose editor failed. Sticky, so a failing file
+    // stays on the classic viewer instead of re-mounting the editor on every render.
+    const [editorFailedKey, setEditorFailedKey] = useState<string | null>(null);
     // The untracked file vanished from disk after the change list was fetched.
     const [fileMissing, setFileMissing] = useState(false);
     const fileMissingNotifiedRef = useRef(false);
@@ -115,7 +123,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
 
     // Monaco engine: load both full-text sides for this file and stage.
     const wantsEditor = diffEngine === 'monaco' && stage !== 'untracked';
-    const contentKey = `${workspaceId}\u0000${stage}\u0000${filePath}`;
+    const contentKey = `${workspaceId}\u0000${stage}\u0000${filePath}\u0000${editorAttempt}`;
     useEffect(() => {
         if (!wantsEditor) return;
         let cancelled = false;
@@ -127,14 +135,27 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     }, [wantsEditor, contentKey, workspaceId, filePath, stage, cloneClient]);
 
     const currentContent = editorContent?.key === contentKey ? editorContent : null;
-    const editorLoading = wantsEditor && (!currentContent || currentContent.status === 'loading');
-    const editorSides = wantsEditor && currentContent?.status === 'loaded'
-        && !currentContent.content.binary && !currentContent.content.tooLarge
+    const contentLoadState: DiffContentLoadState | null = !currentContent ? null
+        : currentContent.status === 'loaded'
+            ? { status: 'loaded', binary: currentContent.content.binary, tooLarge: currentContent.content.tooLarge }
+            : { status: currentContent.status };
+    const engineSelection = resolveDiffEngineSelection({
+        preference: diffEngine,
+        stage,
+        content: contentLoadState,
+        editorFailed: editorFailedKey === contentKey,
+    });
+    const editorLoading = engineSelection.engine === 'loading';
+    const editorSides = engineSelection.engine === 'monaco' && currentContent?.status === 'loaded'
         ? currentContent.content
         : null;
     const showEditor = editorSides !== null;
     // Classic renders for the legacy engine and when the editor cannot show this file.
-    const classicActive = !wantsEditor || (!editorLoading && !showEditor);
+    const classicActive = engineSelection.engine === 'legacy';
+    const fallbackReason = engineSelection.engine === 'legacy' ? engineSelection.fallback : null;
+
+    const handleEditorError = useCallback(() => setEditorFailedKey(contentKey), [contentKey]);
+    const retryEditor = useCallback(() => setEditorAttempt(a => a + 1), []);
 
     const hunkNavRef: RefObject<HunkNavigationHandle | null> = showEditor ? monacoViewerRef : viewerRef;
     const { handleNext, handlePrev } = useCrossFileNav({
@@ -288,6 +309,9 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
                 <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="working-tree-file-diff-section">
+                    {fallbackReason && (
+                        <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
+                    )}
                     {stage === 'untracked' && fileMissing ? (
                         <div
                             className="flex flex-col items-start gap-1 px-4 py-4"
@@ -321,6 +345,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                             viewMode={viewMode}
                             initialHunkTarget={initialHunkTarget}
                             onLinesReady={setDiffLines}
+                            onEditorError={handleEditorError}
                             createEditor={createDiffEditor}
                             data-testid="working-tree-file-diff-editor"
                         />
