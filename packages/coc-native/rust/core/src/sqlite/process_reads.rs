@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use rusqlite::{params_from_iter, Connection, Row as SqliteRow};
+use rusqlite::{params_from_iter, types::ValueRef, Connection, Row as SqliteRow};
 
 use super::{check_process_schema, query, Database, Error, Parameters, Result, Row, Value};
 
@@ -186,14 +186,16 @@ pub fn get_all_processes(
     })
 }
 
-fn write_json_value(output: &mut String, value: &Value) {
+fn write_json_value(output: &mut Vec<u8>, value: ValueRef<'_>, column_index: usize) -> Result<()> {
     match value {
-        Value::Null => output.push_str("null"),
-        Value::Integer(value) => output.push_str(&value.to_string()),
-        Value::Real(value) if value.is_finite() => {
-            output.push_str(&serde_json::to_string(value).expect("finite real serializes"));
+        ValueRef::Null => output.extend_from_slice(b"null"),
+        ValueRef::Integer(value) => {
+            serde_json::to_writer(output, &value).expect("SQLite integer serializes");
         }
-        Value::Real(value) => {
+        ValueRef::Real(value) if value.is_finite() => {
+            serde_json::to_writer(output, &value).expect("finite real serializes");
+        }
+        ValueRef::Real(value) => {
             let number = if value.is_nan() {
                 "NaN"
             } else if value.is_sign_positive() {
@@ -201,17 +203,22 @@ fn write_json_value(output: &mut String, value: &Value) {
             } else {
                 "-Infinity"
             };
-            output.push_str(&format!(r#"{{"$sqliteNumber":"{number}"}}"#));
+            output.extend_from_slice(br#"{"$sqliteNumber":""#);
+            output.extend_from_slice(number.as_bytes());
+            output.extend_from_slice(br#""}"#);
         }
-        Value::Text(value) => {
-            output.push_str(&serde_json::to_string(value).expect("SQLite text serializes"));
+        ValueRef::Text(value) => {
+            let text = std::str::from_utf8(value)
+                .map_err(|error| rusqlite::Error::Utf8Error(column_index, error))?;
+            serde_json::to_writer(output, text).expect("SQLite text serializes");
         }
-        Value::Blob(bytes) => {
-            output.push_str(r#"{"$sqliteBlob":"#);
-            output.push_str(&serde_json::to_string(bytes).expect("SQLite blob serializes"));
-            output.push('}');
+        ValueRef::Blob(bytes) => {
+            output.extend_from_slice(br#"{"$sqliteBlob":"#);
+            serde_json::to_writer(&mut *output, bytes).expect("SQLite blob serializes");
+            output.push(b'}');
         }
     }
+    Ok(())
 }
 
 fn json_row_id(row: &SqliteRow<'_>, column: &str) -> Result<String> {
@@ -242,18 +249,17 @@ fn query_json_rows<Key>(
     let mut rows = Vec::new();
     while let Some(row) = cursor.next()? {
         let id = key(row)?;
-        let mut json = String::new();
-        json.push('{');
+        let mut json = Vec::new();
+        json.push(b'{');
         for (index, (column_index, name)) in columns.iter().enumerate() {
             if index != 0 {
-                json.push(',');
+                json.push(b',');
             }
-            json.push_str(name);
-            let value: rusqlite::types::Value = row.get(*column_index)?;
-            write_json_value(&mut json, &value.into());
+            json.extend_from_slice(name.as_bytes());
+            write_json_value(&mut json, row.get_ref(*column_index)?, *column_index)?;
         }
-        json.push('}');
-        rows.push((id, json));
+        json.push(b'}');
+        rows.push((id, String::from_utf8(json).expect("SQLite JSON rows are UTF-8")));
     }
     Ok(rows)
 }

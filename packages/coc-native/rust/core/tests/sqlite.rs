@@ -226,15 +226,31 @@ fn json_process_rows_escape_column_names_once_for_every_row() {
         .exec(
             "PRAGMA user_version=38;
              CREATE TABLE conversation_turns (
-               process_id TEXT, turn_index INTEGER, \"quoted\"\"name\" TEXT
+               process_id TEXT, turn_index INTEGER, \"quoted\"\"name\" TEXT,
+               bytes BLOB, nonfinite REAL
              );
-             INSERT INTO conversation_turns VALUES ('one', 0, 'first'), ('one', 1, 'second');",
+             INSERT INTO conversation_turns VALUES
+               ('one', 0, 'first', X'00FF', 1e999),
+               ('one', 1, 'second', NULL, NULL),
+               ('bad', 0, CAST(X'80' AS TEXT), NULL, NULL);",
         )
         .unwrap();
     let rows = get_conversation_turns_json(&database, "one").unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&rows).unwrap();
+    let original = get_conversation_turns(&database, "one").unwrap();
     assert_eq!(parsed[0]["quoted\"name"], "first");
+    assert_eq!(parsed[0]["bytes"], serde_json::json!({"$sqliteBlob": [0, 255]}));
+    assert_eq!(parsed[0]["nonfinite"], serde_json::json!({"$sqliteNumber": "Infinity"}));
+    assert_eq!(original[1]["quoted\"name"], Value::Text("second".into()));
     assert_eq!(parsed[1]["quoted\"name"], "second");
+    assert!(matches!(
+        get_conversation_turns(&database, "bad"),
+        Err(Error::Sqlite(rusqlite::Error::Utf8Error(2, _)))
+    ));
+    assert!(matches!(
+        get_conversation_turns_json(&database, "bad"),
+        Err(Error::Sqlite(rusqlite::Error::Utf8Error(2, _)))
+    ));
 }
 
 #[test]
