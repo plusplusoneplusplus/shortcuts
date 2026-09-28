@@ -249,10 +249,14 @@ describe('McpTransport', () => {
         mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
             { id: 'root', body: { content: 'root' } },
         ]) }] }));
-        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
-            { id: 'reply-1', body: { content: 'first' } },
-            { id: 'reply-2', body: { content: 'second' }, replyToId: 'root' },
-        ]) }] }));
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify({
+            replies: [
+                { id: 'reply-1', body: { content: 'first' } },
+                { id: 'reply-2', body: { content: 'second' }, replyToId: 'root' },
+            ],
+            hasMoreResults: false,
+            parentMessageId: 'root',
+        }) }] }));
 
         const result = await transport.poll('channel-1');
         expect(result.messages).toEqual([
@@ -264,6 +268,42 @@ describe('McpTransport', () => {
             name: 'ListChannelMessageReplies',
             arguments: { teamId: 'team-1', channelId: 'channel-1', messageId: 'root', maxReplies: 50 },
         });
+    });
+
+    it('accepts empty Teams reply lists without dropping channel roots', async () => {
+        transport = new McpTransport('https://mcp.test.com/server', () => true);
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [{ name: 'ListChannelMessageReplies' }] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
+            { id: 'root', body: { content: 'root' } },
+        ]) }] }));
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify({
+            replies: [], hasMoreResults: false, parentMessageId: 'root',
+        }) }] }));
+
+        const result = await transport.poll('channel-1');
+        expect(result.messages).toEqual([
+            expect.objectContaining({ messageId: 'root', replyToMessageId: undefined }),
+        ]);
+        expect(result.nextSince).toBe('root');
+    });
+
+    it('rejects reply-list envelopes for channel root polls', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [] }));
+        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce(response({ content: [{ text: '{"replies":[]}' }] }));
+
+        await expect(transport.poll('channel-1')).rejects.toThrow('Invalid Teams message list');
     });
 
     it('rotates a bounded set of persisted roots beyond the recent channel posts', async () => {
@@ -370,19 +410,20 @@ describe('McpTransport', () => {
         expect(result.messages.map(msg => msg.messageId)).toEqual(['first', 'second']);
     });
 
-    it('rejects malformed channel reply lists rather than advancing the poll', async () => {
-        transport = new McpTransport('https://mcp.test.com/server', () => true, () => ['older-root']);
-        mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
-            const body = JSON.parse(String(options.body));
-            const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
-                : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
-                    : { content: [{ text: body.params?.name === 'ListChannelMessages' ? '[]' : '{invalid' }] };
-            return { ok: true, headers: new Map(),
-                json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+    it.each(['{invalid', '{"replies":{}}'])(
+        'rejects malformed channel reply lists rather than advancing the poll (%s)', async (payload) => {
+            transport = new McpTransport('https://mcp.test.com/server', () => true, () => ['older-root']);
+            mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                const body = JSON.parse(String(options.body));
+                const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                    : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                        : { content: [{ text: body.params?.name === 'ListChannelMessages' ? '[]' : payload }] };
+                return { ok: true, headers: new Map(),
+                    json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+            });
+            await transport.initialize('token', { teamId: 'team-1' });
+            await expect(transport.poll('channel-1')).rejects.toThrow('Invalid Teams message list');
         });
-        await transport.initialize('token', { teamId: 'team-1' });
-        await expect(transport.poll('channel-1')).rejects.toThrow('Invalid Teams message list');
-    });
 
     it.each([
         ['ReplyToChannelMessage', 'root-message'],

@@ -276,7 +276,7 @@ export class McpTransport implements TeamsTransport {
             });
             if (replies.isError) throw new Error('Teams channel replies could not be polled');
             const response = replies.content?.[0]?.text ?? '[]';
-            const parsed = this.parseMessages(response, channelId, true);
+            const parsed = this.parseMessages(response, channelId, true, true);
             const pageReplies = parsed.messages
                 .filter(reply => reply.messageId !== rootId)
                 .map(reply => ({ ...reply, replyToMessageId: rootId }));
@@ -325,7 +325,7 @@ export class McpTransport implements TeamsTransport {
     }
 
     /** Parse raw MCP message response into InboundTeamsMessage array. */
-    private parseMessages(responseText: string, targetId: string, strict = false): { messages: InboundTeamsMessage[]; nextSince: string } {
+    private parseMessages(responseText: string, targetId: string, strict = false, allowReplies = false): { messages: InboundTeamsMessage[]; nextSince: string } {
 
         let rawMessages: Array<{
             id: string;
@@ -342,12 +342,10 @@ export class McpTransport implements TeamsTransport {
 
         try {
             const parsed = JSON.parse(responseText);
-            if (strict && !Array.isArray(parsed)
-                && !Array.isArray(parsed?.value) && !Array.isArray(parsed?.messages)) {
-                throw new Error('Invalid Teams message list');
-            }
-            rawMessages = Array.isArray(parsed) ? parsed : (parsed?.value ?? parsed?.messages ?? []);
-            if (!Array.isArray(rawMessages)) throw new Error('Invalid Teams message list');
+            const list = Array.isArray(parsed) ? parsed
+                : (parsed?.value ?? parsed?.messages ?? (allowReplies ? parsed?.replies : undefined));
+            if (!Array.isArray(list)) throw new Error('Invalid Teams message list');
+            rawMessages = list;
         } catch (error) {
             if (strict) throw new Error('Invalid Teams message list', { cause: error });
             return { messages: [], nextSince: '' };
