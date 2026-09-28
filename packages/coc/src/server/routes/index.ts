@@ -838,15 +838,23 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     });
 
-    const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) => bridge.enqueue({
-        ...(taskId ? { id: taskId } : {}),
-        ...(taskId ? { processId: toQueueProcessId(taskId) } : {}),
-        type: 'chat',
-        repoId: workspaceId,
-        payload: { kind: 'chat', mode: 'ask', prompt: message, workspaceId },
-        config: {},
-        priority: 'normal' as const,
-    });
+    const messagingChatInput = (workspaceId: string, message: string, taskId?: string, mediumEffort = false): CreateTaskInput => {
+        const config: CreateTaskInput['config'] & { effortTier?: 'medium' } =
+            mediumEffort ? { effortTier: 'medium' } : {};
+        return {
+            ...(taskId ? { id: taskId } : {}),
+            ...(taskId ? { processId: toQueueProcessId(taskId) } : {}),
+            type: 'chat',
+            repoId: workspaceId,
+            payload: { kind: 'chat', mode: 'ask', prompt: message, workspaceId },
+            config,
+            priority: 'normal',
+        };
+    };
+    const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) =>
+        bridge.enqueue(messagingChatInput(workspaceId, message, taskId));
+    const enqueueTeamsChat = (workspaceId: string, message: string, taskId?: string) =>
+        enqueueWithResolvedDefaults(messagingChatInput(workspaceId, message, taskId, true));
 
     // Container default agent session routes (feature-flagged)
     if (opts.resolvedConfig?.containerDefaultAgent?.enabled) {
@@ -889,7 +897,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getMessageReactionEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsMessageReaction === true,
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
-        enqueueRelayChat: (workspaceId, message, taskId) => enqueueMessagingChat(workspaceId, message, taskId),
+        enqueueRelayChat: enqueueTeamsChat,
         admitRelayFollowUp: async (proc, message, requestId) => {
             const workspaceId = proc.metadata?.workspaceId;
             if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Teams conversation workspace is unavailable');
@@ -915,7 +923,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,
-        enqueueChat: enqueueMessagingChat,
+        enqueueChat: enqueueTeamsChat,
         executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
     });
 

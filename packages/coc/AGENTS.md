@@ -105,6 +105,9 @@ all have their own `references/*.md`.
 - **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
   team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
   with a prompt in the selected workspace (or the first registered workspace).
+  Both ordinary and relay-created Teams chats resolve the provider's Medium
+  effort tier through queue preparation; container-forwarded chats retain
+  their own default selection.
   A missing `teams-messaging.json` defaults the channel to a sanitized
   `CoC-<machine-name>`; saved channels and routing IDs stay untouched on startup.
   Machines sharing a name must choose distinct channels to avoid duplicate work.
