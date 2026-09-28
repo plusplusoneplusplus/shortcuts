@@ -89,14 +89,17 @@ describe('sqlite-schema', () => {
             expect(fk).toBe(1);
         });
 
-        it('sets journal_mode to WAL on a file-backed DB', () => {
+        it('sets WAL and NORMAL synchronous mode on a file-backed DB', () => {
             const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sqlite-schema-test-'));
             const dbPath = path.join(tmpDir, 'test.db');
             const fileDb = new Database(dbPath);
             try {
                 initializeDatabase(fileDb);
-                const mode = fileDb.pragma('journal_mode', { simple: true });
-                expect(mode).toBe('wal');
+                expect(fileDb.pragma('journal_mode', { simple: true })).toBe('wal');
+                expect(fileDb.pragma('synchronous', { simple: true })).toBe(1);
+                fileDb.pragma('synchronous = FULL');
+                initializeDatabase(fileDb);
+                expect(fileDb.pragma('synchronous', { simple: true })).toBe(1);
             } finally {
                 fileDb.close();
                 fs.rmSync(tmpDir, { recursive: true, force: true });

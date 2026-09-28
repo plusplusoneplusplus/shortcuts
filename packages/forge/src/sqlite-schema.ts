@@ -23,6 +23,7 @@ export function getSchemaVersion(db: NativeDatabase): number {
 export function initializeDatabase(db: NativeDatabase): void {
     // PRAGMAs must run outside the transaction
     db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
     db.pragma('foreign_keys = ON');
 
     const versionBefore = getSchemaVersion(db);
