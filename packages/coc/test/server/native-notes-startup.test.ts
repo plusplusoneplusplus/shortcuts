@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
     NativeAddonLoadError,
+    nativeAddonStatus,
     resetNativeAddonCache,
 } from '@plusplusoneplusplus/coc-native';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
@@ -42,8 +43,12 @@ describe('native Notes capability at server startup', () => {
 
     function useAddon(source: string, name = 'stub.js'): string {
         const addonPath = path.join(tempDir, name);
-        fs.writeFileSync(addonPath, source);
+        const { binaryPath } = nativeAddonStatus();
+        if (!binaryPath) throw new Error('The native addon must be built before running startup tests');
+        fs.writeFileSync(addonPath,
+            `${source}\nmodule.exports.NativeDatabaseHandle = require(${JSON.stringify(binaryPath)}).NativeDatabaseHandle;\n`);
         process.env.COC_NATIVE_PATH = addonPath;
+        resetNativeAddonCache();
         return addonPath;
     }
 

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { ContainerSessionStore } from '../../../src/server/container-sessions/container-session-store';
 import type { ContainerSessionTurn } from '../../../src/server/container-sessions/container-session-types';
 
@@ -12,7 +12,7 @@ import type { ContainerSessionTurn } from '../../../src/server/container-session
 // Helpers
 // ============================================================================
 
-function createDb(): Database.Database {
+function createDb(): Database {
     return new Database(':memory:');
 }
 
@@ -37,7 +37,7 @@ function makeTurn(overrides: Partial<ContainerSessionTurn> = {}): ContainerSessi
 // ============================================================================
 
 describe('ContainerSessionStore', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: ContainerSessionStore;
 
     beforeEach(() => {

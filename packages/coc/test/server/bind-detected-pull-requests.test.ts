@@ -6,7 +6,7 @@
  * bound because nobody opened it in the dashboard.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase, resolveCanonicalOriginId, type ConversationTurn, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import {
     bindDetectedPullRequestsForProcess,
@@ -56,7 +56,7 @@ function workspace(overrides: Partial<WorkspaceInfo> = {}): WorkspaceInfo {
 }
 
 describe('bindDetectedPullRequestsForProcess', () => {
-    let db: Database.Database;
+    let db: Database;
 
     function makeStore(overrides: Partial<PrBindingProcessStore> = {}, turns: ConversationTurn[] = [turn([SUBMIT_PR_TOOL_CALL])]): PrBindingProcessStore {
         return {

@@ -164,7 +164,7 @@ describe('repo schedule runtime scope isolation', () => {
     });
 
     it('restores run history separately per workspace for a shared schedule ID', async () => {
-        const Database = (await import('better-sqlite3')).default;
+        const { NativeDatabase: Database } = await import('@plusplusoneplusplus/coc-native');
         const { initializeDatabase } = await import('@plusplusoneplusplus/forge');
         const db = new Database(':memory:');
         try {

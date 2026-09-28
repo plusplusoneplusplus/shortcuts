@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Database, initializeDatabase, SqliteTaskGroupStore } from '@plusplusoneplusplus/forge';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { TaskGroupService } from '../../src/server/task-groups/task-group-service';
 import {
     syncDreamRunToTaskGroup,
@@ -24,7 +25,7 @@ import type { MapReduceItem } from '../../src/server/map-reduce/types';
 
 const WS = 'ws-sync';
 
-function makeService(): { service: TaskGroupService; db: Database.Database } {
+function makeService(): { service: TaskGroupService; db: NativeDatabase } {
     const db = new Database(':memory:');
     initializeDatabase(db);
     return { service: new TaskGroupService(new SqliteTaskGroupStore(db)), db };

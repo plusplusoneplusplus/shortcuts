@@ -1518,7 +1518,7 @@ describe('ScheduleManager', () => {
 
     describe('restoreRunHistory', () => {
         it('restores run history from persistence on startup', async () => {
-            const Database = (await import('better-sqlite3')).default;
+            const { NativeDatabase: Database } = await import('@plusplusoneplusplus/coc-native');
             const { initializeDatabase } = await import('@plusplusoneplusplus/forge');
             const { SqliteScheduleRunPersistence } = await import('../src/server/schedule/sqlite-schedule-run-persistence');
             const db = new Database(':memory:');
@@ -1553,7 +1553,7 @@ describe('ScheduleManager', () => {
         });
 
         it('does not persist run history when no runPersistence is wired', async () => {
-            const Database = (await import('better-sqlite3')).default;
+            const { NativeDatabase: Database } = await import('@plusplusoneplusplus/coc-native');
             const { initializeDatabase } = await import('@plusplusoneplusplus/forge');
             const { SqliteScheduleRunPersistence } = await import('../src/server/schedule/sqlite-schedule-run-persistence');
             const db = new Database(':memory:');

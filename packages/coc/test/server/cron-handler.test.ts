@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { CronStore } from '../../src/server/cron/cron-store';
 import { registerCronRoutes } from '../../src/server/cron/cron-handler';
 import type { CronRouteContext } from '../../src/server/cron/cron-handler';
@@ -110,7 +110,7 @@ function makeCron(overrides: Partial<CronEntry> = {}): CronEntry {
 // ============================================================================
 
 describe('Cron REST API Handler', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: CronStore;
     let routes: Route[];
     let mockExecutor: any;
@@ -419,7 +419,7 @@ describe('Cron REST API Handler', () => {
 // ============================================================================
 
 describe('Cron REST API Handler — workspace boundary', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: CronStore;
     let routes: Route[];
     let mockExecutor: any;
@@ -507,7 +507,7 @@ describe('Cron REST API Handler — workspace boundary', () => {
 // ============================================================================
 
 describe('Cron REST API Handler — event emission', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: CronStore;
     let routes: Route[];
     let mockExecutor: any;

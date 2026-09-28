@@ -11,8 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import DatabaseConstructor from 'better-sqlite3';
-import type { Database } from 'better-sqlite3';
+import { NativeAddonLoadError, NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type {
     NativeCopilotSessionDetail,
     NativeCopilotSessionDetailResult,
@@ -68,7 +67,7 @@ interface TurnRow {
 }
 
 type DbOpenResult =
-    | { ok: true; db: Database }
+    | { ok: true; db: NativeDatabase }
     | { ok: false; reason: 'db-missing' | 'db-invalid' };
 
 /** Normalize a filesystem path for cross-platform equality/prefix matching. */
@@ -396,14 +395,15 @@ export class NativeCopilotSessionService {
             return { ok: false, reason: 'db-missing' };
         }
         try {
-            const db = new DatabaseConstructor(this.dbPath, { readonly: true, fileMustExist: true });
+            const db = new NativeDatabase(this.dbPath, { readonly: true });
             return { ok: true, db };
-        } catch {
+        } catch (error) {
+            if (error instanceof NativeAddonLoadError) throw error;
             return { ok: false, reason: 'db-invalid' };
         }
     }
 
-    private hasValidSchema(db: Database): boolean {
+    private hasValidSchema(db: NativeDatabase): boolean {
         try {
             // prepare() fails when a table or expected column is absent.
             db.prepare('SELECT id, cwd, repository, host_type, branch, summary, created_at, updated_at FROM sessions LIMIT 0').all();
@@ -414,7 +414,7 @@ export class NativeCopilotSessionService {
         }
     }
 
-    private hasSearchIndex(db: Database): boolean {
+    private hasSearchIndex(db: NativeDatabase): boolean {
         try {
             const row = db.prepare(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'search_index'",
@@ -425,7 +425,7 @@ export class NativeCopilotSessionService {
         }
     }
 
-    private queryTextHits(db: Database, matchExpression: string): Map<string, string[]> {
+    private queryTextHits(db: NativeDatabase, matchExpression: string): Map<string, string[]> {
         const hits = new Map<string, string[]>();
         try {
             const rows = db.prepare(
@@ -449,7 +449,7 @@ export class NativeCopilotSessionService {
     }
 
     private querySessionRows(
-        db: Database,
+        db: NativeDatabase,
         options: NativeCopilotSessionListOptions,
         textHits: Map<string, string[]> | null,
     ): SessionRow[] {
@@ -477,7 +477,7 @@ export class NativeCopilotSessionService {
         ).all(...params) as SessionRow[];
     }
 
-    private queryTurnCounts(db: Database, sessionIds: string[]): Map<string, number> {
+    private queryTurnCounts(db: NativeDatabase, sessionIds: string[]): Map<string, number> {
         const counts = new Map<string, number>();
         if (sessionIds.length === 0) {
             return counts;
@@ -496,7 +496,7 @@ export class NativeCopilotSessionService {
      * is an automated background-job prompt (e.g. conversation-title
      * summarization). Chunked to stay within SQLite's bound-parameter limit.
      */
-    private queryBackgroundJobSessionIds(db: Database, sessionIds: string[]): Set<string> {
+    private queryBackgroundJobSessionIds(db: NativeDatabase, sessionIds: string[]): Set<string> {
         const matches = new Set<string>();
         if (sessionIds.length === 0 || BACKGROUND_JOB_PROMPT_PREFIXES.length === 0) {
             return matches;
@@ -533,7 +533,7 @@ export class NativeCopilotSessionService {
         return matches;
     }
 
-    private querySearchIndexDiagnostics(db: Database, sessionId: string): Map<string, number> {
+    private querySearchIndexDiagnostics(db: NativeDatabase, sessionId: string): Map<string, number> {
         const diagnostics = new Map<string, number>();
         if (!this.hasSearchIndex(db)) {
             return diagnostics;

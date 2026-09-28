@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as http from 'http';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
@@ -92,7 +92,7 @@ describe('Commit-Chat Binding API endpoints', () => {
     let server: http.Server;
     let port: number;
     let store: MockProcessStore;
-    let db: Database.Database;
+    let db: Database;
     let bindingStore: CommitChatBindingStore;
 
     const WORKSPACE_ID = 'ws-binding-test';

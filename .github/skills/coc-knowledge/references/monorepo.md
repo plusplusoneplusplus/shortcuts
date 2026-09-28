@@ -75,17 +75,14 @@ The image runs `coc serve --host 127.0.0.1 --port 4000 --data-dir /data/.coc` as
 - **Lint:** `npm run lint`
 - **Debug CoC:** `cd packages/coc && npm run build && npm link && cd ../..`, then `coc run <path>` or `coc serve --no-open`
 - **Debug Deep Wiki:** `cd packages/deep-wiki && npm run build && npm link && cd ../..`, then `deep-wiki generate <repo>`
-- **CoCContainer rebuild loop:** `./scripts/coccontainer-serve-loop.sh --port 8080` installs dependencies, builds and links the package chain, verifies native dependencies such as `better-sqlite3`, then starts `coccontainer serve --no-open`
+- **CoCContainer rebuild loop:** `./scripts/coccontainer-serve-loop.sh --port 8080` installs dependencies, ensures the coc-native binary is current, builds and links the package chain, then starts `coccontainer serve --no-open`
 - **Run CoC as a service:** see [coc-service.md](coc-service.md)
 
-## Native-module ABI (better-sqlite3 / node-pty)
+## Native binaries in desktop and server
 
-The plain-Node server and the Electron desktop share one hoisted `node_modules`, but better-sqlite3 is a V8-ABI addon: its compiled `.node` matches exactly one runtime's `NODE_MODULE_VERSION` at a time (node-pty is N-API and ABI-stable). `packages/coc-desktop/scripts/ensure-native-abi.mjs` keeps this self-healing, run by coc-desktop's `prestart` hook before every Electron launch. It probes by *exercising* each addon under Electron (`new Database(':memory:')` — better-sqlite3 dlopens lazily, so a bare `require()` proves nothing) and heals only the modules that fail. `scripts/ensure-native-dependency.mjs` (used by `coccontainer-serve-loop.sh`) is the equivalent standalone Node-side check.
-
-- `npm run ensure:native:node` (root) flips the tree back for the plain-Node runtime. The two runtimes cannot share the tree *simultaneously* — the last `ensure:*` run wins.
-- Every verified build is stashed per `{module version, ABI, platform, arch}` under `node_modules/.cache/coc-native-abi/`, so flipping runtimes is a sub-second restore after the first compile of each flavor. `rebuild:native` (`--force`, used by `build:desktop`) always recompiles.
-- **The Electron pin is tied to better-sqlite3.** Its Electron prebuilts trail Electron by a major or two: 11.x stops at electron-v133 (Electron 35), 12.x reaches electron-v146 (Electron 42). Electron 43 (ABI 148) has no prebuilt at any version and better-sqlite3's C++ does not compile against its V8 15 (`External::Value` needs a tag arg), so raising Electron past the covered range breaks `dev:desktop` and the mac release with a node-gyp error at install/packaging time. Check [better-sqlite3 releases](https://github.com/WiseLibs/better-sqlite3/releases) for a matching `electron-v<abi>` asset before bumping either version; `packages/coc-desktop/test/native-abi.test.ts` pins the pact.
-- Electron resolves through Node's module resolution, not a fixed path — npm nests it under `packages/coc-desktop/node_modules` or hoists it to the root depending on the tree, and both layouts must work.
+`coc-native` ships ABI-stable N-API binaries shared by Node and Electron. Desktop
+packaging unpacks the native addon and the symbols language-server executable;
+the serve loops use `ensure:native` to keep local binaries current.
 
 ## Desktop Server Ports & Bundled CLIs
 

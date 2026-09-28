@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { CronStore } from '../../src/server/cron/cron-store';
 
@@ -7,13 +7,13 @@ import { CronStore } from '../../src/server/cron/cron-store';
 // Helpers
 // ============================================================================
 
-function createTestDb(): Database.Database {
+function createTestDb(): Database {
     const db = new Database(':memory:');
     initializeDatabase(db);
     return db;
 }
 
-function createTestCronStore(db: Database.Database): CronStore {
+function createTestCronStore(db: Database): CronStore {
     return new CronStore(db);
 }
 
@@ -44,7 +44,7 @@ function makeCron(overrides: Partial<Record<string, unknown>> = {}) {
 // ============================================================================
 
 describe('Cron Infrastructure', () => {
-    let db: Database.Database;
+    let db: Database;
     let cronStore: CronStore;
 
     beforeEach(() => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import * as http from 'http';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
@@ -65,7 +65,7 @@ describe('Work-Item-Chat Binding API endpoints', () => {
     let server: http.Server;
     let port: number;
     let store: MockProcessStore;
-    let db: Database.Database;
+    let db: Database;
 
     const WORKSPACE_ID = 'ws-work-item-chat-test';
     const WORKSPACE_CLONE_ID = 'ws-work-item-chat-clone';

@@ -9,7 +9,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import DatabaseConstructor from 'better-sqlite3';
+import { NativeDatabase as DatabaseConstructor } from '@plusplusoneplusplus/coc-native';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { AIProcess, AIProcessStatus } from '@plusplusoneplusplus/forge';

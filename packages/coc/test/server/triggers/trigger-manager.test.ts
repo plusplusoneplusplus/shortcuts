@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { TriggerManager } from '../../../src/server/triggers/trigger-manager';
 import type {

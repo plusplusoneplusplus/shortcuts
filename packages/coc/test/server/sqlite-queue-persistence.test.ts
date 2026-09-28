@@ -4,14 +4,14 @@
  * and integration with createQueueInfrastructure.
  *
  * Uses real RepoQueueRegistry and TaskQueueManager with an in-memory
- * better-sqlite3 database, plus a file-backed restart case.
+ * native SQLite database, plus a file-backed restart case.
  */
 
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import {
     RepoQueueRegistry,
     TaskQueueManager,
@@ -42,7 +42,8 @@ import { SqliteQueuePersistence } from '../../src/server/queue/sqlite-queue-pers
 // Helpers
 // ============================================================================
 
-let db: Database.Database;
+let db: Database;
+let dbClosed = false;
 let store: SqliteQueueStore;
 let registry: RepoQueueRegistry;
 let bridge: MultiRepoQueueRouter;
@@ -51,6 +52,7 @@ const tempDirs: string[] = [];
 
 function createBridgeAndDb() {
     db = new Database(':memory:');
+    dbClosed = false;
     initializeDatabase(db);
     store = new SqliteQueueStore(db);
 
@@ -87,11 +89,16 @@ beforeEach(() => {
     createBridgeAndDb();
 });
 
+function closeDb() {
+    if (!dbClosed) {
+        db.close();
+        dbClosed = true;
+    }
+}
+
 afterEach(() => {
     persistence?.dispose();
-    if (db?.open) {
-        db.close();
-    }
+    closeDb();
     for (const tempDir of tempDirs.splice(0)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -406,13 +413,14 @@ describe('SqliteQueuePersistence', () => {
 
         it('restores per-repo task delays from the same SQLite file without active deadlines', () => {
             persistence?.dispose();
-            db.close();
+            closeDb();
 
             const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-queue-delay-'));
             tempDirs.push(tempDir);
             const dbPath = path.join(tempDir, 'processes.db');
 
             db = new Database(dbPath);
+            dbClosed = false;
             initializeDatabase(db);
             store = new SqliteQueueStore(db);
             registry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });
@@ -432,9 +440,10 @@ describe('SqliteQueuePersistence', () => {
             }
 
             persistence.dispose();
-            db.close();
+            closeDb();
 
             db = new Database(dbPath);
+            dbClosed = false;
             initializeDatabase(db);
             store = new SqliteQueueStore(db);
             registry = new RepoQueueRegistry({ maxQueueSize: 0, keepHistory: true, maxHistorySize: 100 });

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import type { TurnPerformanceEvent } from '@plusplusoneplusplus/forge';
 import { TurnPerformanceStore } from '../../../src/server/storage/turn-performance-store';
 
@@ -45,7 +45,7 @@ function makeEvent(overrides: Partial<TurnPerformanceEvent> = {}): TurnPerforman
 }
 
 describe('TurnPerformanceStore', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: TurnPerformanceStore;
 
     beforeEach(() => {

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { SqliteScheduleRunPersistence } from '../src/server/schedule/sqlite-schedule-run-persistence';
 import { scheduleRuntimeKey } from '../src/server/schedule/schedule-runtime-key';
@@ -13,7 +13,7 @@ import type { ScheduleRunRecord } from '../src/server/schedule/schedule-manager'
 // Helpers
 // ============================================================================
 
-function createDb(): Database.Database {
+function createDb(): Database {
     const db = new Database(':memory:');
     initializeDatabase(db);
     return db;
@@ -37,7 +37,7 @@ function createRun(overrides: Partial<ScheduleRunRecord> = {}): ScheduleRunRecor
 // ============================================================================
 
 describe('SqliteScheduleRunPersistence', () => {
-    let db: Database.Database;
+    let db: Database;
 
     beforeEach(() => {
         db = createDb();

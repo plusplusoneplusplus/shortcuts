@@ -5,6 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
@@ -858,9 +859,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
 
     // Container default agent session routes (feature-flagged)
     if (opts.resolvedConfig?.containerDefaultAgent?.enabled) {
-        const Database = require('better-sqlite3');
         fs.mkdirSync(path.join(dataDir, 'container-sessions'), { recursive: true });
-        const containerDb = new Database(path.join(dataDir, 'container-sessions', 'sessions.db'));
+        const containerDb = new NativeDatabase(path.join(dataDir, 'container-sessions', 'sessions.db'));
         const containerSessionStore = new ContainerSessionStore(containerDb);
         registerContainerSessionRoutes(routes, {
             store: containerSessionStore,

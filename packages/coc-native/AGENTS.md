@@ -138,7 +138,7 @@ Triples are `linux-<arch>-gnu`, `win32-<arch>-msvc`, `darwin-<arch>`; release CI
 
 `nativeAddonStatus()` reports whether the *binary* loaded; capability status accessors (`nativeFileIndexStatus()`, `nativeContentSearchStatus()`, `nativeNotesIndexStatus()`) additionally report `loaded: false` when the binary loaded but lacks their export. They return `{ loaded, binaryPath?, reason? }`, never throw, and cover missing, unloadable and capability-less states.
 
-N-API binaries are ABI-stable, so one binary per platform works under both Node 24 and Electron — there is no `electron-rebuild` step, unlike better-sqlite3.
+N-API binaries are ABI-stable, so one binary per platform works under both Node 24 and Electron without an Electron-specific rebuild.
 
 ## Dangerous command guard
 

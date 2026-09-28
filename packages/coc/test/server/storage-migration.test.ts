@@ -23,7 +23,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { StorageMigrationEngine } from '../../src/server/storage/storage-migration';
 import type { MigrationProgress, MigrationSummary } from '../../src/server/storage/storage-migration';
 import {

@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase, FileProcessStore } from '@plusplusoneplusplus/forge';
 import {
     backfillCommitChatMetadata,
@@ -21,7 +21,7 @@ import {
 const FULL_HASH = '5fdf6cd18f978b84fb02b7ac82c740a4d2d7d5e3';
 
 describe('backfillCommitChatMetadata', () => {
-    let db: Database.Database;
+    let db: Database;
 
     beforeEach(() => {
         db = new Database(':memory:');

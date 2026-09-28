@@ -7,7 +7,7 @@
  *
  *   - AC-02: probe `GET /api/health`, attach-or-start a forked coc server.
  *   - AC-03: splash window + `loadURL('http://127.0.0.1:<port>')`.  ← this file
- *   - AC-04: native-module (better-sqlite3 / node-pty) packaging.
+ *   - AC-04: native-module packaging.
  *   - AC-05: single-instance lock, tray, graceful drain on quit.
  *   - AC-06: agent-CLI preflight detection.
  */

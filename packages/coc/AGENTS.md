@@ -1122,7 +1122,7 @@ all have their own `references/*.md`.
   review-progress state.
 - **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
   must stay strictly read-only against the native store: open
-  `~/.copilot/session-store.db` with short-lived `readonly` SQLite connections,
+  `~/.copilot/session-store.db` with short-lived `readonly` NativeDatabase connections,
   keep every user-provided filter parameterized (FTS terms literal-quoted), and
   return typed `db-missing`/`db-invalid` states instead of throwing. Never route
   native session IDs into CoC process/chat action handlers. Rich detail

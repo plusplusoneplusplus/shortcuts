@@ -11,7 +11,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import * as http from 'http';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { createRouter } from '../../src/server/shared/router';
 import { registerNoteChatBindingRoutes } from '../../src/server/notes/note-chat-bindings-handler';
@@ -58,7 +58,7 @@ function request(
 describe('note-chat binding routes', () => {
     let server: http.Server;
     let baseUrl: string;
-    let db: Database.Database;
+    let db: Database;
     let bindings: NoteChatBindingStore;
 
     beforeAll(async () => {
