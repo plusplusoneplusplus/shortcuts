@@ -273,10 +273,20 @@ export class TeamsMessagingManager {
                 },
                 botName: this.config.botName,
                 pollChannelReplies: () => this.getAnswerRelayEnabled(),
+                channelThreadRoots: channelId => this.getAnswerRelayEnabled()
+                    ? this.answerRelay?.threadRoots(resolved.teamId, channelId) ?? [] : [],
+                isOwnChannelReply: msg => this.getAnswerRelayEnabled()
+                    && (this.answerRelay?.isOwnReply(resolved.teamId, msg) ?? false),
+                isKnownChannelReply: msg => this.getAnswerRelayEnabled()
+                    && (this.answerRelay?.hasSeenReply(resolved.teamId, msg) ?? false),
                 onMessage: async (msg) => {
                     if (generation !== this.generation || !this.onInboundMessage) return;
                     await this.inboundContext.run({ generation, attemptId: attemptId ?? null },
                         () => this.onInboundMessage!(msg, (type) => this.recordEvent(type)));
+                    if (msg.replyToMessageId && this.getAnswerRelayEnabled()
+                        && this.answerRelay?.hasInbound(msg)) {
+                        this.answerRelay?.recordSeenReply(resolved.teamId, msg);
+                    }
                 },
                 onPoll: (outcome) => {
                     if (generation === this.generation && attemptId && this.getObservabilityEnabled()) history?.poll(attemptId, outcome);
@@ -412,6 +422,9 @@ export class TeamsMessagingManager {
             const targetChannelId = this.config.channelId;
             const bot = this.bot;
             const messageId = await bot.send(targetChannelId, text, replyToId ? { replyToId } : undefined);
+            if (replyToId && this.getAnswerRelayEnabled() && this.config.teamId && messageId) {
+                this.answerRelay?.recordOutbound(this.config.teamId, targetChannelId, replyToId, messageId);
+            }
             if (id && generation === this.generation && this.getObservabilityEnabled()) this.history?.send(id, 'accepted');
             return messageId;
         } catch (err) {

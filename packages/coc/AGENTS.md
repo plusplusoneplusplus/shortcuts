@@ -117,7 +117,12 @@ all have their own `references/*.md`.
   unknown outcomes remain ambiguous. Disable, disconnect, or target changes
   must not redirect pending answers, and shutdown disposes queue listeners.
   The relay flag opts the MCP connector into channel-thread polling when the
-  reply-list tool is available; each unseen inbound post uses the same admission.
+  reply-list tool is available. Persisted root receipts keep older threads
+  eligible across reconnects; their reply cursor prevents old requests from
+  replaying after receipt compaction, and outbound IDs identify the connector's
+  own replies. Bound thread replies route to their physical workspace and chat
+  independently of the sender's selected topic. Unbound or unavailable thread
+  replies receive an error in the same thread, never a new chat.
   Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
   for discovery, PKCE, exchange, and read-only
   handshake verification; verified tokens enter the shared Copilot OAuth cache
