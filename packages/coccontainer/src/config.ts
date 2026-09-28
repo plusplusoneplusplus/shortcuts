@@ -39,7 +39,7 @@ export interface TeamsConfig {
     channelId?: string;
     /** Display name for bot in Teams messages (default: "CoC") */
     botName?: string;
-    /** Polling interval in ms for checking new messages (default: 3000) */
+    /** Active polling interval in ms (default: 12000; idle: 30000) */
     pollIntervalMs?: number;
     /** Agent ID to host global sessions (falls back to first online agent) */
     defaultAgentId?: string;
@@ -135,7 +135,7 @@ const DEFAULTS: ResolvedContainerConfig = {
             channelName: 'Coc-General',
             mcpServerUrl: 'https://agent365.svc.cloud.microsoft/agents/tenants/72f988bf-86f1-41af-91ab-2d7cd011db47/servers/mcp_TeamsServer',
             botName: 'CoC',
-            pollIntervalMs: 3000,
+            pollIntervalMs: 12_000,
         },
     },
 };

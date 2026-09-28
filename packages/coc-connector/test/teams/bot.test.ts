@@ -15,7 +15,8 @@ vi.stubGlobal('fetch', (url: string, options?: RequestInit) => {
 });
 
 import { TeamsBot } from '../../src/teams/bot';
-import type { InboundTeamsMessage } from '../../src/teams/types';
+import { McpHttpError } from '../../src/teams/mcp-client';
+import type { InboundTeamsMessage, TeamsTransport } from '../../src/teams/types';
 
 describe('TeamsBot', () => {
     let onMessage: ReturnType<typeof vi.fn>;
@@ -31,6 +32,7 @@ describe('TeamsBot', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         vi.useRealTimers();
     });
 
@@ -248,6 +250,158 @@ describe('TeamsBot', () => {
             await vi.advanceTimersByTimeAsync(1000);
             expect(bot.getLastError()).toBeNull();
             expect(onStatusChange).toHaveBeenCalledWith('connected');
+            await bot.stop();
+        });
+
+        it('uses a 12-second active cadence and 30-second idle cadence even when old roots remain visible', async () => {
+            mockMcpResponse({ protocolVersion: '2025-03-26' });
+            const bot = createMcpBot({ pollIntervalMs: undefined });
+            await bot.start();
+            bot.setChannelId('channel-123');
+            const poll = vi.spyOn((bot as unknown as { transport: TeamsTransport }).transport, 'poll')
+                .mockResolvedValue({ messages: [{
+                    channelId: 'channel-123', messageId: 'old-root', text: 'old',
+                }], nextSince: 'old-root' });
+
+            await vi.advanceTimersByTimeAsync(11_999);
+            expect(poll).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1);
+            expect(poll).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(48_000);
+            expect(poll).toHaveBeenCalledTimes(5);
+            await vi.advanceTimersByTimeAsync(29_999);
+            expect(poll).toHaveBeenCalledTimes(5);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(poll).toHaveBeenCalledTimes(6);
+            await bot.stop();
+        });
+
+        it('backs off on 429 with bounded jitter, then returns to the active cadence after success', async () => {
+            mockMcpResponse({ protocolVersion: '2025-03-26' });
+            const bot = createMcpBot();
+            await bot.start();
+            bot.setChannelId('channel-123');
+            vi.spyOn(Math, 'random').mockReturnValue(0);
+            const poll = vi.spyOn((bot as unknown as { transport: TeamsTransport }).transport, 'poll')
+                .mockRejectedValueOnce(new McpHttpError(429, 'Too Many Requests'))
+                .mockRejectedValueOnce(new McpHttpError(429, 'Too Many Requests'))
+                .mockResolvedValue({ messages: [], nextSince: '' });
+
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(onError).toHaveBeenCalledWith('MCP HTTP error: 429 Too Many Requests');
+            await vi.advanceTimersByTimeAsync(999);
+            expect(poll).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(poll).toHaveBeenCalledTimes(2);
+            await vi.advanceTimersByTimeAsync(1_999);
+            expect(poll).toHaveBeenCalledTimes(2);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(poll).toHaveBeenCalledTimes(3);
+            expect(bot.getLastError()).toBeNull();
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(poll).toHaveBeenCalledTimes(4);
+            await bot.stop();
+        });
+
+        it('caps consecutive 429 retries at five minutes', async () => {
+            mockMcpResponse({ protocolVersion: '2025-03-26' });
+            const bot = createMcpBot();
+            await bot.start();
+            bot.setChannelId('channel-123');
+            vi.spyOn(Math, 'random').mockReturnValue(1);
+            const times: number[] = [];
+            vi.spyOn((bot as unknown as { transport: TeamsTransport }).transport, 'poll')
+                .mockImplementation(async () => {
+                    times.push(Date.now());
+                    throw new McpHttpError(429, 'Too Many Requests');
+                });
+            for (let i = 0; i < 11; i++) await vi.advanceTimersToNextTimerAsync();
+            expect(times).toHaveLength(11);
+            expect(times[10] - times[9]).toBe(300_000);
+            await bot.stop();
+        });
+
+        it('honors Retry-After across reply fan-out and does not let sending bypass the cooldown', async () => {
+            let replyCalls = 0;
+            const tools: string[] = [];
+            mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                const body = JSON.parse(String(options.body));
+                const tool = body.params?.name;
+                if (tool) tools.push(tool);
+                if (tool === 'ListChannelMessageReplies' && ++replyCalls === 1) {
+                    return new Response(null, {
+                        status: 429, statusText: 'Too Many Requests', headers: { 'Retry-After': '7' },
+                    });
+                }
+                const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
+                    : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                        : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
+                            ? [{ id: 'root', body: { content: 'initial' } }] : []) }] };
+                return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
+            });
+            const bot = createMcpBot({ pollChannelReplies: () => true });
+            await bot.start();
+            bot.setChannelId('channel-123');
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(bot.getLastError()).toContain('429');
+            expect(tools).toEqual(['ListChannelMessages', 'ListChannelMessageReplies']);
+            // A send that succeeds during backoff must not bring forward the next poll.
+            await bot.send('channel-123', 'outbound');
+            await vi.advanceTimersByTimeAsync(6_999);
+            expect(tools.filter(t => t === 'ListChannelMessages')).toHaveLength(1);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(tools.filter(t => t === 'ListChannelMessages')).toHaveLength(2);
+            expect(bot.getLastError()).toBeNull();
+            await bot.stop();
+        });
+
+        it('recovers an expired MCP session during reply fan-out and still delivers the next thread reply', async () => {
+            let sessions = 0;
+            let replyCalls = 0;
+            mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                const body = JSON.parse(String(options.body));
+                if (body.method === 'initialize') {
+                    sessions++;
+                    return new Response(JSON.stringify({ result: { protocolVersion: '2025-03-26' } }), {
+                        headers: { 'Mcp-Session-Id': `session-${sessions}` },
+                    });
+                }
+                if (body.params?.name === 'ListChannelMessageReplies' && ++replyCalls === 1) {
+                    return new Response(null, { status: 404, statusText: 'Not Found' });
+                }
+                const result = body.method === 'tools/list'
+                    ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                    : { content: [{ text: JSON.stringify(body.params?.name === 'ListChannelMessages'
+                        ? [{ id: 'root', body: { content: 'old' } }]
+                        : replyCalls > 2 ? [{ id: 'new-reply', body: { content: '/list repos' } }] : []) }] };
+                return new Response(JSON.stringify({ result }));
+            });
+            const bot = createMcpBot({ pollChannelReplies: () => true });
+            await bot.start();
+            bot.setChannelId('channel-123');
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(sessions).toBe(2);
+            expect(onError).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                messageId: 'new-reply', replyToMessageId: 'root', text: '/list repos',
+            }));
+            await bot.stop();
+        });
+
+        it('keeps reporting non-429 failures at normal cadence and survives an error observer throwing', async () => {
+            mockMcpResponse({ protocolVersion: '2025-03-26' });
+            const bot = createMcpBot({ onError: vi.fn(() => { throw new Error('observer failed'); }) });
+            await bot.start();
+            bot.setChannelId('channel-123');
+            const poll = vi.spyOn((bot as unknown as { transport: TeamsTransport }).transport, 'poll')
+                .mockRejectedValueOnce(new McpHttpError(404, 'Not Found'))
+                .mockResolvedValue({ messages: [], nextSince: '' });
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(bot.getLastError()).toContain('404');
+            await vi.advanceTimersByTimeAsync(1_000);
+            expect(poll).toHaveBeenCalledTimes(2);
+            expect(bot.getLastError()).toBeNull();
             await bot.stop();
         });
 

@@ -40,7 +40,7 @@ export interface TeamsBotOptions {
     onPoll?: (outcome: 'success' | 'failure') => void;
     /** Safe inbound routing observer; never receives message content or IDs. */
     onInbound?: (outcome: 'observed' | 'skipped', reason?: 'initial' | 'unchanged' | 'own' | 'empty' | 'bot') => void;
-    /** Polling interval in ms for checking new messages (default: 3000). */
+    /** Active polling interval in ms (default: 12000; idle: 30000). */
     pollIntervalMs?: number;
     /** Opt in to polling channel thread replies and dispatching each unseen post. */
     pollChannelReplies?: () => boolean;

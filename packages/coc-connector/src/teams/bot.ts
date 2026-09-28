@@ -13,6 +13,7 @@ import type { TeamsBotOptions, BotStatus, InboundTeamsMessage, TeamsChannel, Tea
 import type { MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { GraphTransport } from './transport-graph';
 import { McpTransport } from './transport-mcp';
+import { McpHttpError } from './mcp-client';
 import { acquireTokenViaAzCli } from './auth';
 
 export function createTransport(mode: TeamsTransportMode, opts: {
@@ -34,7 +35,9 @@ export class TeamsBot implements MessagingConnector {
     private transport: TeamsTransport;
     private _status: BotStatus = 'disconnected';
     private _lastError: string | null = null;
-    private _pollTimer: ReturnType<typeof setInterval> | null = null;
+    private _pollTimer: ReturnType<typeof setTimeout> | null = null;
+    private _rateLimitFailures = 0;
+    private _retryAt = 0;
     private _channelId: string | null = null;
     /** DM watermark and channel-poll initialization marker. */
     private _lastPolledId: string | null = null;
@@ -51,9 +54,9 @@ export class TeamsBot implements MessagingConnector {
 
     constructor(opts: TeamsBotOptions) {
         this.opts = {
-            pollIntervalMs: 3000,
             botName: 'CoC',
             ...opts,
+            pollIntervalMs: opts.pollIntervalMs ?? 12_000,
         };
         this.mode = opts.mode ?? 'graph';
         this.transport = createTransport(this.mode, {
@@ -210,6 +213,7 @@ export class TeamsBot implements MessagingConnector {
     private _lastActivityTime: number = Date.now();
     private static readonly IDLE_TIMEOUT_MS = 60_000; // 1 minute
     private static readonly IDLE_POLL_MS = 30_000; // 30s when idle
+    private static readonly MAX_BACKOFF_MS = 300_000;
 
     private startPolling(): void {
         // Graph mode is send-only — do not poll for messages
@@ -219,6 +223,8 @@ export class TeamsBot implements MessagingConnector {
         }
         if (this._pollTimer) return;
         this._lastActivityTime = Date.now();
+        this._rateLimitFailures = 0;
+        this._retryAt = 0;
         this.schedulePoll();
     }
 
@@ -228,10 +234,11 @@ export class TeamsBot implements MessagingConnector {
         const interval = elapsed >= TeamsBot.IDLE_TIMEOUT_MS
             ? TeamsBot.IDLE_POLL_MS
             : this.opts.pollIntervalMs;
+        const delay = Math.min(2_147_483_647, Math.max(interval, this._retryAt - Date.now()));
         this._pollTimer = setTimeout(() => {
             this._pollTimer = null;
             void this.pollMessages();
-        }, interval);
+        }, delay);
     }
 
     private stopPolling(): void {
@@ -260,16 +267,18 @@ export class TeamsBot implements MessagingConnector {
         try {
             const since = this.mode === 'graph' ? this._lastSeenTimestamp ?? undefined : this._lastPolledId ?? undefined;
             const { messages, nextSince } = await this.transport.poll(this._channelId, since);
-            this.observePoll('success');
 
+            let activity = false;
             if (this.mode === 'mcp') {
-                await this.handleMcpPoll(messages, nextSince);
+                activity = await this.handleMcpPoll(messages, nextSince);
             } else {
                 await this.handleGraphPoll(messages, nextSince);
             }
 
-            // Reset activity timer when new messages arrive
-            if (messages.length > 0) {
+            this.observePoll('success');
+            this._rateLimitFailures = 0;
+            this._retryAt = 0;
+            if (activity) {
                 this._lastActivityTime = Date.now();
             }
             if (this._lastError) {
@@ -278,17 +287,24 @@ export class TeamsBot implements MessagingConnector {
             }
         } catch (err: any) {
             this.observePoll('failure');
+            if (err instanceof McpHttpError && err.status === 429) {
+                this._rateLimitFailures++;
+                const cap = Math.min(TeamsBot.MAX_BACKOFF_MS,
+                    this.opts.pollIntervalMs * 2 ** Math.min(this._rateLimitFailures, 20));
+                const delay = err.retryAfterMs ?? Math.round(cap * (0.5 + Math.random() * 0.5));
+                this._retryAt = Date.now() + delay;
+            }
             if (err.message?.includes('401') && !this._refreshingToken) {
                 if (!await this.refreshToken()) {
                     const message = this._lastError ?? err.message ?? 'Teams polling authorization failed';
                     this._lastError = message;
-                    this.opts.onError?.(message);
+                    this.reportPollError(message);
                 }
             } else {
                 console.error(`[teams-bot] ${this.mode} poll error:`, err.message);
                 const message = err.message ?? 'Teams polling failed';
                 this._lastError = message;
-                this.opts.onError?.(message);
+                this.reportPollError(message);
             }
         }
 
@@ -296,10 +312,17 @@ export class TeamsBot implements MessagingConnector {
         if (this._status === 'connected') this.schedulePoll();
     }
 
+    private reportPollError(message: string): void {
+        try { this.opts.onError?.(message); } catch (err) {
+            console.error('[teams-bot] Error reporting poll failure:', err);
+        }
+    }
+
     /** Channel polls process unseen IDs; DM polls retain last-message routing. */
-    private async handleMcpPoll(messages: InboundTeamsMessage[], nextSince: string): Promise<void> {
+    private async handleMcpPoll(messages: InboundTeamsMessage[], nextSince: string): Promise<boolean> {
         if (this.opts.teamId && (this._channelBatchPolling || this.opts.pollChannelReplies?.())) {
             const initial = !this._channelBatchPolling;
+            let activity = false;
             this._channelBatchPolling = true;
             for (const msg of messages) {
                 if (this._seenChannelMessageIds.has(msg.messageId)) continue;
@@ -320,6 +343,7 @@ export class TeamsBot implements MessagingConnector {
                 } else {
                     this.observeInbound('observed');
                     await this.opts.onMessage(msg);
+                    activity = true;
                 }
                 this._seenChannelMessageIds.add(msg.messageId);
                 if (this._seenChannelMessageIds.size > 1000) {
@@ -330,11 +354,11 @@ export class TeamsBot implements MessagingConnector {
                 this._lastPolledId = messages.at(-1)?.messageId ?? nextSince ?? '';
                 this.observeInbound('skipped', 'initial');
             }
-            return;
+            return activity;
         }
         if (messages.length === 0) {
             if (!this._lastPolledId && nextSince) this._lastPolledId = nextSince;
-            return;
+            return false;
         }
 
         const lastMsg = messages[messages.length - 1];
@@ -352,13 +376,13 @@ export class TeamsBot implements MessagingConnector {
             this._lastPolledId = lastMsg.messageId;
             this.observeInbound('skipped', 'initial');
             if (this.debug) console.log(`[teams-bot] First poll — setting watermark to ${lastMsg.messageId}`);
-            return;
+            return false;
         }
 
         // No new message since last poll
         if (lastMsg.messageId === this._lastPolledId) {
             this.observeInbound('skipped', 'unchanged');
-            return;
+            return false;
         }
 
         // Update watermark
@@ -368,19 +392,19 @@ export class TeamsBot implements MessagingConnector {
             if (this.debug) console.log(`[teams-bot] Skipping own sent message: ${lastMsg.messageId}`);
             this._sentMessageIds.delete(lastMsg.messageId);
             this.observeInbound('skipped', 'own');
-            return;
+            return false;
         }
 
         if (!lastMsg.text.trim()) {
             this.observeInbound('skipped', 'empty');
-            return;
+            return false;
         }
 
         // Skip bot-formatted messages (CoC outbound format)
         if (this.isBotFormattedMessage(lastMsg.text)) {
             this.observeInbound('skipped', 'bot');
             if (this.debug) console.log(`[teams-bot] Skipping bot-formatted message: ${lastMsg.messageId}`);
-            return;
+            return false;
         }
 
         // In DM mode: if user message has no replyToMessageId, infer it from
@@ -400,6 +424,7 @@ export class TeamsBot implements MessagingConnector {
         await this.opts.onMessage(lastMsg).catch((err) => {
             console.error('[teams-bot] Error handling message:', err);
         });
+        return true;
     }
 
     /** Graph poll logic: process all new messages since last timestamp. */
