@@ -105,9 +105,11 @@ all have their own `references/*.md`.
 - **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
   team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
   with a prompt in the selected workspace (or the first registered workspace).
-  With the default-off live `features.teamsAiAnswerRelay` flag, the bridge
-  persists each inbound request's team/channel/thread and task or turn
-  correlation in its physical workspace's `teams-answer-relay/` directory.
+  Admin → Configure → Features exposes the default-off live
+  `features.teamsAiAnswerRelay` toggle beside Teams bridge observability. When
+  enabled, the bridge persists each inbound request's team/channel/thread and
+  task or turn correlation in its physical workspace's `teams-answer-relay/`
+  directory.
   Acknowledgements remain immediate receipts; saved terminal assistant turns
   (or safe failure/cancellation notices) are separate bounded HTML replies
   under the original thread root. Follow-ups use an opaque per-request turn

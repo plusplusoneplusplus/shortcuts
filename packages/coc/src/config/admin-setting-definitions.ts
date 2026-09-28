@@ -826,6 +826,11 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     }),
     bool({
         key: 'features.teamsAiAnswerRelay', default: false, runtime: 'live',
+        ui: {
+            group: 'dashboard', order: 61.5, label: 'Teams AI answer relay', badge: 'experimental',
+            hint: 'Reply with completed Ask answers or terminal notices in their originating Teams threads for new requests. Disabled by default.',
+            testId: 'toggle-teams-ai-answer-relay-enabled',
+        },
     }),
     bool({
         key: 'features.quickAskSidenotes', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'quickAskSidenotesEnabled',
