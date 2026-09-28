@@ -194,6 +194,20 @@ describe('SqliteProcessStore — Process CRUD', () => {
         expect(result!.conversationTokens).toBe(333);
     });
 
+    it('persists opaque request IDs on appended and forked user turns and buffered messages', async () => {
+        await store.addProcess(makeProcess('p-correlated'));
+        await store.appendPendingMessage('p-correlated', {
+            id: 'pending-1', content: 'next', createdAt: new Date().toISOString(), relayRequestId: 'origin-2',
+        });
+        await store.appendConversationTurn('p-correlated', idx => makeTurn(idx, { relayRequestId: 'origin-1' }));
+
+        const process = await store.getProcess('p-correlated');
+        expect(process?.conversationTurns?.[0].relayRequestId).toBe('origin-1');
+        expect(process?.pendingMessages?.[0].relayRequestId).toBe('origin-2');
+        const fork = await store.forkProcess('p-correlated', 'p-correlated-fork');
+        expect(fork.conversationTurns?.[0].relayRequestId).toBe('origin-1');
+    });
+
     // All five context-window fields are mapped by updateProcess
     // (sqlite-process-store.ts:1012-1016), so a caller outside the turn-end path
     // can persist a fresh usage snapshot in one write. Zero must round-trip as 0

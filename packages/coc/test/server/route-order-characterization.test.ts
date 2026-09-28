@@ -69,6 +69,9 @@ describe('registerAllRoutes - Route Order Characterization', () => {
     function makeQueueFacade(): any {
         return {
             enqueue: vi.fn(),
+            on: vi.fn(),
+            off: vi.fn(),
+            getTask: vi.fn(),
             getAll: vi.fn().mockReturnValue([]),
             getQueue: vi.fn(),
             getHistory: vi.fn(),
@@ -120,6 +123,7 @@ describe('registerAllRoutes - Route Order Characterization', () => {
             notesSearchService: { search: vi.fn() } as any,
             aiInvoker: vi.fn(),
             runtimeConfigService: {
+                onChange: vi.fn().mockReturnValue(() => {}),
                 config: {
                     codex: { enabled: false },
                     claude: { enabled: false },

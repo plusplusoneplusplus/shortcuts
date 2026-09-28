@@ -15,10 +15,12 @@ import { GraphTransport } from './transport-graph';
 import { McpTransport } from './transport-mcp';
 import { acquireTokenViaAzCli } from './auth';
 
-export function createTransport(mode: TeamsTransportMode, opts: { mcpServerUrl?: string }): TeamsTransport {
+export function createTransport(mode: TeamsTransportMode, opts: {
+    mcpServerUrl?: string; pollChannelReplies?: () => boolean;
+}): TeamsTransport {
     if (mode === 'mcp') {
         if (!opts.mcpServerUrl) throw new Error('mcpServerUrl is required for MCP mode');
-        return new McpTransport(opts.mcpServerUrl);
+        return new McpTransport(opts.mcpServerUrl, opts.pollChannelReplies);
     }
     return new GraphTransport();
 }
@@ -33,8 +35,10 @@ export class TeamsBot implements MessagingConnector {
     private _lastError: string | null = null;
     private _pollTimer: ReturnType<typeof setInterval> | null = null;
     private _channelId: string | null = null;
-    /** Last polled message ID (MCP mode watermark). */
+    /** DM watermark and channel-poll initialization marker. */
     private _lastPolledId: string | null = null;
+    private readonly _seenChannelMessageIds = new Set<string>();
+    private _channelBatchPolling = false;
     /** Last seen timestamp for Graph API delta queries. */
     private _lastSeenTimestamp: string | null = null;
     /** Track message IDs sent by this bot to skip on poll. */
@@ -51,7 +55,9 @@ export class TeamsBot implements MessagingConnector {
             ...opts,
         };
         this.mode = opts.mode ?? 'graph';
-        this.transport = createTransport(this.mode, { mcpServerUrl: opts.mcpServerUrl });
+        this.transport = createTransport(this.mode, {
+            mcpServerUrl: opts.mcpServerUrl, pollChannelReplies: opts.pollChannelReplies,
+        });
         this.transport.debug = opts.debug ?? false;
     }
 
@@ -288,11 +294,43 @@ export class TeamsBot implements MessagingConnector {
         if (this._status === 'connected') this.schedulePoll();
     }
 
-    /**
-     * MCP poll logic: only process the LAST message if its ID differs from watermark.
-     * First poll just sets the watermark without processing.
-     */
+    /** Channel polls process unseen IDs; DM polls retain last-message routing. */
     private async handleMcpPoll(messages: InboundTeamsMessage[], nextSince: string): Promise<void> {
+        if (this.opts.teamId && (this._channelBatchPolling || this.opts.pollChannelReplies?.())) {
+            const initial = !this._channelBatchPolling;
+            this._channelBatchPolling = true;
+            for (const [index, msg] of messages.entries()) {
+                if (this._seenChannelMessageIds.has(msg.messageId)) continue;
+                this._seenChannelMessageIds.add(msg.messageId);
+                if (this._seenChannelMessageIds.size > 1000) {
+                    this._seenChannelMessageIds.delete(this._seenChannelMessageIds.values().next().value!);
+                }
+                if (initial) continue;
+                if (this._sentMessageIds.delete(msg.messageId)) {
+                    this.observeInbound('skipped', 'own');
+                } else if (!msg.text.trim()) {
+                    this.observeInbound('skipped', 'empty');
+                } else if (this.isBotFormattedMessage(msg.text)) {
+                    this.observeInbound('skipped', 'bot');
+                } else {
+                    const preceding = messages[index - 1];
+                    if (!msg.replyToMessageId && preceding
+                        && (this._sentMessageIds.has(preceding.messageId)
+                            || this.isBotFormattedMessage(preceding.text))) {
+                        msg.replyToMessageId = preceding.messageId;
+                    }
+                    this.observeInbound('observed');
+                    await this.opts.onMessage(msg).catch(err => {
+                        console.error('[teams-bot] Error handling message:', err);
+                    });
+                }
+            }
+            if (initial) {
+                this._lastPolledId = messages.at(-1)?.messageId ?? nextSince ?? '';
+                this.observeInbound('skipped', 'initial');
+            }
+            return;
+        }
         if (messages.length === 0) {
             if (!this._lastPolledId && nextSince) this._lastPolledId = nextSince;
             return;

@@ -16,6 +16,7 @@ import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
 import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult, type TeamsEventType, type TeamsSkipReason } from './teams-attempt-store';
+import type { TeamsAnswerRelay } from './teams-answer-relay';
 
 // ── Persisted Config ─────────────────────────────────────────
 
@@ -36,6 +37,13 @@ const DEFAULT_CONFIG: TeamsMessagingConfig = {
 };
 
 export const TEAMS_MCP_SERVER_NAME = 'Microsoft Teams';
+
+export class TeamsMessageNotSentError extends Error {
+    constructor() {
+        super('Teams channel is unavailable');
+        this.name = 'TeamsMessageNotSentError';
+    }
+}
 
 // ── Manager ──────────────────────────────────────────────────
 
@@ -67,6 +75,20 @@ export class TeamsMessagingManager {
     private history: TeamsAttemptStore | null = null;
     private attemptId: string | null = null;
     private readonly getObservabilityEnabled: () => boolean;
+    private answerRelay: TeamsAnswerRelay | null = null;
+    private answerRelayUnsubscribe: (() => void) | null = null;
+    private getAnswerRelayEnabled: () => boolean = () => false;
+
+    setAnswerRelay(relay: TeamsAnswerRelay, unsubscribe?: () => void, isEnabled?: () => boolean): void {
+        this.answerRelay = relay;
+        this.answerRelayUnsubscribe = unsubscribe ?? null;
+        this.getAnswerRelayEnabled = isEnabled ?? (() => false);
+    }
+
+    dispose(): void {
+        this.answerRelayUnsubscribe?.();
+        this.answerRelay?.dispose();
+    }
 
     setOAuthFlow(flow: TeamsOAuthFlow): void {
         this.oauthFlow = flow;
@@ -250,6 +272,7 @@ export class TeamsMessagingManager {
                     onTokenRefresh: () => acquireMcpOAuthToken(serverUrl, this._homeDir),
                 },
                 botName: this.config.botName,
+                pollChannelReplies: () => this.getAnswerRelayEnabled(),
                 onMessage: async (msg) => {
                     if (generation !== this.generation || !this.onInboundMessage) return;
                     await this.inboundContext.run({ generation, attemptId: attemptId ?? null },
@@ -291,6 +314,7 @@ export class TeamsMessagingManager {
                 throw new Error('Teams connection cancelled');
             }
             if (!bot.isConnected()) throw new Error(this._lastError ?? 'Teams bot did not connect');
+            await this.answerRelay?.reconnected();
         } catch (err: any) {
             if (generation === this.generation) {
                 this._lastError = err.message ?? 'Failed to connect';
@@ -383,10 +407,11 @@ export class TeamsMessagingManager {
         const id = context ? (context.generation === this.generation ? context.attemptId : null) : this.attemptId;
         const generation = this.generation;
         try {
-            if (context && context.generation !== generation) throw new Error('Teams connection cancelled');
-            if (!this.bot || this._status !== 'connected') throw new Error('Teams bot is not connected');
-            if (!this.config.channelId) throw new Error('No channel configured');
-            const messageId = await this.bot.send(this.config.channelId, text, replyToId ? { replyToId } : undefined);
+            if (context && context.generation !== generation) throw new TeamsMessageNotSentError();
+            if (!this.bot || this._status !== 'connected' || !this.config.channelId) throw new TeamsMessageNotSentError();
+            const targetChannelId = this.config.channelId;
+            const bot = this.bot;
+            const messageId = await bot.send(targetChannelId, text, replyToId ? { replyToId } : undefined);
             if (id && generation === this.generation && this.getObservabilityEnabled()) this.history?.send(id, 'accepted');
             return messageId;
         } catch (err) {

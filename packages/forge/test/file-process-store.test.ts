@@ -78,6 +78,23 @@ describe('FileProcessStore — per-workspace layout', () => {
         expect(result!.id).toBe('p1');
     });
 
+    it('persists request correlation on pending messages and user turns across store instances', async () => {
+        const store = new FileProcessStore({ dataDir: tmpDir });
+        const metadata = { type: 'ai', workspaceId: 'ws-a' };
+        await store.addProcess(makeProcess('correlated', { metadata, conversationTurns: [{
+            role: 'user', content: 'follow-up', timestamp: new Date(), turnIndex: 0,
+            timeline: [], relayRequestId: 'origin-1',
+        }] }));
+        await store.appendPendingMessage('correlated', {
+            id: 'pending-1', content: 'next', createdAt: new Date().toISOString(), relayRequestId: 'origin-2',
+        });
+
+        const reopened = new FileProcessStore({ dataDir: tmpDir });
+        const process = await reopened.getProcess('correlated', 'ws-a');
+        expect(process?.conversationTurns?.[0].relayRequestId).toBe('origin-1');
+        expect(process?.pendingMessages?.[0].relayRequestId).toBe('origin-2');
+    });
+
     // 4. getProcess without hint — uses index scan
     it('should find process via index scan when no workspaceId hint is given', async () => {
         const store = new FileProcessStore({ dataDir: tmpDir });

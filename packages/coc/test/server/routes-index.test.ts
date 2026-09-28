@@ -72,6 +72,9 @@ function makeBridge(): any {
 function makeQueueFacade(): any {
     return {
         enqueue: vi.fn(),
+        on: vi.fn(),
+        off: vi.fn(),
+        getTask: vi.fn(),
         getAll: vi.fn().mockReturnValue([]),
         getQueue: vi.fn(),
         getHistory: vi.fn(),
@@ -163,6 +166,7 @@ function makeOpts(overrides: Partial<RegisterRoutesOptions> = {}): RegisterRoute
         queuePersistence: makeQueuePersistence(),
         notesSearchService: { search: vi.fn() } as any,
         runtimeConfigService: {
+            onChange: vi.fn().mockReturnValue(() => {}),
             config: {
                 codex: { enabled: false },
                 claude: { enabled: false },
@@ -248,6 +252,17 @@ describe('registerAllRoutes', () => {
         registerAllRoutes(routes, makeOpts());
         // There should be many routes registered (well over 30)
         expect(routes.length).toBeGreaterThan(30);
+    });
+
+    it('subscribes the Teams answer relay to queue terminal events', () => {
+        const queueFacade = makeQueueFacade();
+        const opts = makeOpts({ queueFacade });
+        registerAllRoutes([], opts);
+
+        expect(queueFacade.on.mock.calls.map(([event]: [string]) => event)).toEqual([
+            'taskCompleted', 'taskFailed', 'taskCancelled',
+        ]);
+        expect(opts.runtimeConfigService?.onChange).toHaveBeenCalledWith(expect.any(Function));
     });
 
     it('routes authorized Notes searches through the required scoped service', async () => {
@@ -394,6 +409,7 @@ describe('registerAllRoutes', () => {
             store,
             bridge,
             runtimeConfigService: {
+                onChange: vi.fn().mockReturnValue(() => {}),
                 config: {
                     dreams: {
                         enabled: true,

@@ -341,6 +341,81 @@ describe('TeamsBot', () => {
         });
 
         describe('polling', () => {
+            it('delivers each new channel thread reply once, including two asks between polls', async () => {
+                let poll = 0;
+                const calls: string[] = [];
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const tool = body.params?.name;
+                    if (tool) calls.push(tool);
+                    const result = body.method === 'initialize'
+                        ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list'
+                            ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : tool === 'ListChannelMessages'
+                                ? { content: [{ text: JSON.stringify([{ id: 'root', body: { content: 'initial' } }]) }] }
+                                : tool === 'ListChannelMessageReplies'
+                                    ? { content: [{ text: JSON.stringify(poll++ === 0 ? [] : [
+                                        { id: 'first', body: { content: 'first ask' } },
+                                        { id: 'second', body: { content: 'second ask' } },
+                                        ...(poll > 2 ? [{ id: 'bot-reply', body: { content: 'answer' } }] : []),
+                                    ]) }] }
+                                    : tool === 'ReplyToChannelMessage'
+                                        ? { content: [{ text: '{"id":"bot-reply"}' }] }
+                                    : {};
+                    return {
+                        ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }),
+                    };
+                });
+                const bot = createMcpBot({ pollChannelReplies: () => true });
+                await bot.start();
+                bot.setChannelId('19:channel@thread.tacv2');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).not.toHaveBeenCalled();
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage.mock.calls.map(([msg]) => [msg.messageId, msg.replyToMessageId]))
+                    .toEqual([['first', 'root'], ['second', 'root']]);
+                await bot.send('19:channel@thread.tacv2', 'answer', { replyToId: 'root' });
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledTimes(2);
+                expect(calls).toContain('ListChannelMessageReplies');
+                await bot.stop();
+            });
+
+            it('keeps default channel polling unchanged until thread polling is enabled', async () => {
+                let enabled = false;
+                let replyPolls = 0;
+                mockFetch.mockImplementation(async (_url: string, options: RequestInit) => {
+                    const body = JSON.parse(String(options.body));
+                    const result = body.method === 'initialize'
+                        ? { protocolVersion: '2025-03-26' }
+                        : body.method === 'tools/list'
+                            ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            : body.params?.name === 'ListChannelMessages'
+                                ? { content: [{ text: JSON.stringify([{ id: 'root', body: { content: 'old' } }]) }] }
+                                : body.params?.name === 'ListChannelMessageReplies'
+                                    ? { content: [{ text: JSON.stringify(++replyPolls > 1
+                                        ? [{ id: 'new-reply', body: { content: 'new ask' } }] : []) }] }
+                                    : {};
+                    return { ok: true, headers: new Map(),
+                        json: async () => ({ jsonrpc: '2.0', id: body.id, result }) };
+                });
+                const bot = createMcpBot({ pollChannelReplies: () => enabled });
+                await bot.start();
+                bot.setChannelId('channel-123');
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(replyPolls).toBe(0);
+                enabled = true;
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).not.toHaveBeenCalled();
+                await vi.advanceTimersByTimeAsync(1000);
+                expect(onMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+                    messageId: 'new-reply', replyToMessageId: 'root',
+                }));
+                await bot.stop();
+            });
+
             it('should skip first poll (set watermark) then process new messages', async () => {
                 mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
 

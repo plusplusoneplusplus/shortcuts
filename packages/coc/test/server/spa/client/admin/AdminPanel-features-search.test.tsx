@@ -171,6 +171,52 @@ describe('AdminPanel — Workspace Features search', () => {
         });
     });
 
+    it('saves the Teams answer relay toggle through admin config', async () => {
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        const toggle = await screen.findByTestId('toggle-teams-ai-answer-relay-enabled') as HTMLInputElement;
+        expect(toggle.checked).toBe(false);
+
+        fireEvent.click(toggle);
+        expect(toggle.checked).toBe(true);
+        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
+        expect(featuresSave).toBeTruthy();
+        fireEvent.click(featuresSave!);
+
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'PUT' && url.includes('/admin/config'),
+            );
+            expect(putCalls.length).toBe(1);
+            expect(JSON.parse(putCalls[0][1].body)['features.teamsAiAnswerRelay']).toBe(true);
+        });
+    });
+
+    it('loads an enabled Teams answer relay and saves disabling it', async () => {
+        mockFetch.mockImplementation((url: string, opts?: any) =>
+            url.includes('/admin/config') && opts?.method !== 'PUT'
+                ? Promise.resolve(mockConfigResponse({ features: { teamsAiAnswerRelay: true } }))
+                : defaultFetchImpl(url, opts));
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        const toggle = await screen.findByTestId('toggle-teams-ai-answer-relay-enabled') as HTMLInputElement;
+        expect(toggle.checked).toBe(true);
+
+        fireEvent.click(toggle);
+        expect(toggle.checked).toBe(false);
+        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
+        expect(featuresSave).toBeTruthy();
+        fireEvent.click(featuresSave!);
+
+        await waitFor(() => {
+            const putCalls = mockFetch.mock.calls.filter(
+                ([url, opts]: [string, any]) => opts?.method === 'PUT' && url.includes('/admin/config'),
+            );
+            expect(putCalls.length).toBe(1);
+            expect(JSON.parse(putCalls[0][1].body)['features.teamsAiAnswerRelay']).toBe(false);
+        });
+    });
+
     it('(a) filters visible feature rows by label+hint and (b) hides empty groups', async () => {
         render(<AdminPanel />);
         await gotoFeaturesSubTab();

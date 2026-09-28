@@ -1425,6 +1425,34 @@ describe('ProcessLifecycleRunner — follow-up lifecycle status ordering', () =>
         runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
     });
 
+    it('persists a queued Teams user turn once before execution, including after retry', async () => {
+        const processId = 'queue_existing';
+        store.processes.set(processId, {
+            id: processId, type: 'clarification', status: 'completed',
+            promptPreview: 'initial', fullPrompt: 'initial', startTime: new Date(),
+            metadata: { workspaceId: 'ws-abc' },
+            conversationTurns: [
+                { role: 'user', content: 'initial', turnIndex: 0, timestamp: new Date(), timeline: [] },
+                { role: 'assistant', content: 'previous answer', turnIndex: 1, timestamp: new Date(), timeline: [] },
+            ],
+        } as any);
+        const task = makeTask({
+            id: 'teams-follow-up',
+            processId,
+            payload: { kind: 'chat', prompt: 'new request', processId, workspaceId: 'ws-abc',
+                relayRequestId: 'opaque-request' },
+        });
+        const executeFollowUpFn = vi.fn().mockResolvedValue(undefined);
+        await runner.run(task, makeOpts({ executeFollowUpFn }));
+        expect((await store.getProcess(processId))?.conversationTurns?.filter(turn => turn.relayRequestId === 'opaque-request'))
+            .toEqual([expect.objectContaining({ role: 'user', content: 'new request', turnIndex: 2 })]);
+        expect(executeFollowUpFn.mock.calls[0][11]).toMatchObject({ historyCutoffTurnIndex: 2 });
+
+        await runner.run(task, makeOpts({ executeFollowUpFn }));
+        expect((await store.getProcess(processId))?.conversationTurns?.filter(turn => turn.relayRequestId === 'opaque-request'))
+            .toHaveLength(1);
+    });
+
     it('marks the target process as running BEFORE invoking executeFollowUpFn', async () => {
         const processId = 'existing-process';
         store.processes.set(processId, {

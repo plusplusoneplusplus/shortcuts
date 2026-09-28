@@ -11,7 +11,7 @@ const store = createProcessStore(dataDir, backend?); // 'sqlite' | 'file'
 
 ## SqliteProcessStore
 
-Single `processes.db` at `~/.coc/processes.db`. Schema version 37.
+Single `processes.db` at `~/.coc/processes.db`. Schema version 38.
 
 ### Tables
 
@@ -88,6 +88,11 @@ empty chat. See [rest-api.md](rest-api.md).
   lifecycle runner to write). Carried through fork copies and the shared
   `serializeProcess`/`deserializeProcess` path used by `FileProcessStore`; build the fields with
   `turnProviderAttribution()` in `packages/coc/src/server/processes/active-provider-session.ts`.
+- **Teams reply correlation** — optional `ConversationTurn.relayRequestId` (`relay_request_id`
+  in SQLite) binds a Teams-origin user turn to its workspace-scoped outbound receipt.
+  The queued chat payload carries the same opaque ID through execution; a deferred
+  `PendingMessage` carries it into the drained user turn. It contains no sender or
+  message content and survives SQLite, file-backed serialization, and fork copies.
 - **Active provider/session binding** — `AIProcess.activeProviderSession` (`active_provider_session`,
   JSON) holds `{ provider, sessionId?, segmentId, firstTurnIndex }` as one value, so the provider
   that owns the conversation and the native session id that continues it can only ever be written

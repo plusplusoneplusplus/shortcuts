@@ -188,6 +188,19 @@ describe('admin validate/apply round-trip', () => {
 // ── resolved config merge ─────────────────────────────────────────────────────
 
 describe('resolved config merge honors file overrides', () => {
+    it('keeps Teams answer relay disabled independently of bridge observability', () => {
+        expect(DEFAULT_CONFIG.features.teamsAiAnswerRelay).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsBridgeObservability: true },
+        }).features.teamsAiAnswerRelay).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsAiAnswerRelay: true },
+        }).features.teamsBridgeObservability).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsAiAnswerRelay: true },
+        }).features.teamsAiAnswerRelay).toBe(true);
+    });
+
     it('with no override, every setting resolves to its default', () => {
         const resolved = mergeConfig(DEFAULT_CONFIG, undefined);
         for (const def of ADMIN_SETTING_DEFINITIONS) {
@@ -283,6 +296,23 @@ describe('readAdminSettingValue', () => {
 
 describe('Features card UI metadata', () => {
     const uiDefs = ADMIN_SETTING_DEFINITIONS.filter(d => d.ui);
+
+    it('exposes Teams answer relay as an independent live, default-off toggle beside bridge observability', () => {
+        const relay = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsAiAnswerRelay')!;
+        const dashboard = getFeatureCardSettings('dashboard');
+        expect(relay.default).toBe(false);
+        expect(relay.runtime).toBe('live');
+        expect(relay.ui).toMatchObject({
+            group: 'dashboard',
+            label: 'Teams AI answer relay',
+            testId: 'toggle-teams-ai-answer-relay-enabled',
+        });
+        expect(dashboard.indexOf(relay)).toBe(dashboard.indexOf(
+            ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsBridgeObservability')!,
+        ) + 1);
+        expect(readAdminSettingValue(relay, {})).toBe(false);
+        expect(readAdminSettingValue(relay, { features: { teamsAiAnswerRelay: true } })).toBe(true);
+    });
 
     it('has unique testIds', () => {
         const seen = new Set<string>();

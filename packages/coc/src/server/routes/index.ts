@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -832,7 +832,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     });
 
-    const enqueueMessagingChat = (workspaceId: string, message: string) => bridge.enqueue({
+    const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) => bridge.enqueue({
+        ...(taskId ? { id: taskId } : {}),
+        ...(taskId ? { processId: toQueueProcessId(taskId) } : {}),
         type: 'chat',
         repoId: workspaceId,
         payload: { kind: 'chat', mode: 'ask', prompt: message, workspaceId },
@@ -877,6 +879,32 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const teamsMessagingManager = registerTeamsMessagingRoutes(routes, {
         dataDir,
         getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
+        getAnswerRelayEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay === true,
+        onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
+        relayQueue: queueFacade,
+        enqueueRelayChat: (workspaceId, message, taskId) => enqueueMessagingChat(workspaceId, message, taskId),
+        admitRelayFollowUp: async (proc, message, requestId) => {
+            const workspaceId = proc.metadata?.workspaceId;
+            if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Teams conversation workspace is unavailable');
+            return {
+                taskId: await bridge.enqueue({
+                    type: 'chat', repoId: workspaceId, processId: proc.id, priority: 'normal',
+                    payload: {
+                        kind: 'chat', mode: 'ask', processId: proc.id, prompt: message,
+                        workspaceId, relayRequestId: requestId,
+                    },
+                    config: {},
+                }),
+            };
+        },
+        enqueuePendingRelayFollowUp: (workspaceId, processId, message, requestId) => bridge.enqueue({
+            type: 'chat', repoId: workspaceId, processId, priority: 'normal',
+            payload: {
+                kind: 'chat', mode: 'ask', processId, prompt: message,
+                workspaceId, relayRequestId: requestId,
+            },
+            config: {},
+        }),
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,
