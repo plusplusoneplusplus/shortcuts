@@ -469,7 +469,8 @@ all have their own `references/*.md`.
   passes writable roots as `additionalDirectories` and protected roots as
   `readOnlyDirectories`. Copilot and Claude enforce that contract through
   provider sandboxes; Codex and OpenCode fail before session creation because
-  their adapters cannot express mixed access safely.
+  their adapters cannot express mixed access safely. Copilot also searches all
+  member roots for custom instruction files (`instructionDirectories`).
 - **WSL file links.** On a Windows host a WSL workspace has a
   `\\wsl$\<distro>\...` `rootPath`. `react/utils/path-resolution.ts` keeps that
   UNC prefix intact (`isAbsolutePath`, `resolveRelativePath`, `deriveHomeDir`),

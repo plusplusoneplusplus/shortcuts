@@ -220,6 +220,57 @@ describe('RequestRunner.send() — non-streaming path', () => {
         }));
     });
 
+    it('searches every writable and read-only external root for custom instructions', async () => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: vi.fn().mockResolvedValue({ success: true }) } },
+            options: { update: vi.fn().mockResolvedValue({ success: true }) },
+        };
+        const root = path.resolve('/group');
+
+        await runner.send({
+            prompt: 'compare',
+            workingDirectory: root,
+            additionalDirectories: [path.resolve('/writable-a'), 'writable-b', path.resolve('/writable-a')],
+            readOnlyDirectories: [path.resolve('/reference')],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(mockClient.createSession).toHaveBeenCalledWith(expect.objectContaining({
+            instructionDirectories: [
+                path.resolve('/writable-a'),
+                path.join(root, 'writable-b'),
+                path.resolve('/reference'),
+            ],
+        }));
+    });
+
+    it('passes instruction directories when resuming a session', async () => {
+        const { runner, mockClient, mockSession } = makeRunner();
+        (mockSession as any).rpc = {
+            permissions: { paths: { add: vi.fn().mockResolvedValue({ success: true }) } },
+        };
+
+        await runner.send({
+            prompt: 'follow up',
+            sessionId: 'existing-session',
+            additionalDirectories: [path.resolve('/writable')],
+            loadDefaultMcpConfig: false,
+        });
+
+        expect(mockClient.resumeSession).toHaveBeenCalledWith('existing-session', expect.objectContaining({
+            instructionDirectories: [path.resolve('/writable')],
+        }));
+    });
+
+    it('omits instruction directories when there are no external roots', async () => {
+        const { runner, mockClient } = makeRunner();
+
+        await runner.send({ prompt: 'hello', workingDirectory: path.resolve('/repo'), loadDefaultMcpConfig: false });
+
+        expect(mockClient.createSession.mock.calls[0][0]).not.toHaveProperty('instructionDirectories');
+    });
+
     it('rejects sandbox bypass requests before the caller permission handler', async () => {
         const approve = vi.fn().mockReturnValue({ kind: 'approve-once' });
         const { runner, mockClient, mockSession } = makeRunner();
