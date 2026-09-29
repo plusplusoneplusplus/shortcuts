@@ -11,6 +11,8 @@ export type {
     RalphExitSignal,
     RalphFinalCheckRecord,
     RalphFinalCheckStatus,
+    RalphHumanAnswer,
+    RalphHumanInput,
     RalphIterationRecord,
     RalphPendingInput,
     RalphLoopRecord,

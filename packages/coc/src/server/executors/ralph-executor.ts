@@ -111,6 +111,7 @@ export class RalphExecutor extends ChatBaseExecutor {
                 contextPath,
                 currentIteration: ralphCtx?.currentIteration,
                 maxIterations: ralphCtx?.maxIterations,
+                humanInput: ralphCtx?.humanInput,
             })
             : prompt;
 

@@ -142,6 +142,8 @@ export interface RalphSessionRecord {
      * the session. Absent on sessions that never asked.
      */
     pendingInput?: RalphPendingInput;
+    /** Answers the user gave to earlier RALPH_NEEDS_INPUT batches, oldest first. */
+    humanInputs?: RalphHumanInput[];
 }
 
 /** A RALPH_NEEDS_INPUT request persisted on the session until answered. */
@@ -152,6 +154,21 @@ export interface RalphPendingInput {
     processId: string;
     requestedAt: string;
     request: RalphInputRequest;
+}
+
+/** One answered question from a RALPH_NEEDS_INPUT batch. */
+export interface RalphHumanAnswer {
+    question: string;
+    answer: string | string[];
+}
+
+/** The user's reply to a RALPH_NEEDS_INPUT batch, carried into the next iteration. */
+export interface RalphHumanInput {
+    /** The iteration that asked. */
+    iteration: number;
+    answeredAt: string;
+    answers: RalphHumanAnswer[];
+    note?: string;
 }
 
 export interface ParsedProgressSection {

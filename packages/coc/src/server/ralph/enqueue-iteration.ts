@@ -10,6 +10,7 @@
 import { buildRalphIterationPrompt } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { isEffortTierKey, type TaskExecutionConfig } from '@plusplusoneplusplus/forge';
 import { RalphSessionStore } from './ralph-session-store';
+import type { RalphHumanInput } from './types';
 import type { ChatContext, ChatProvider, ReasoningEffort } from '../tasks/task-types';
 
 export type RalphEffortTier = 'very-low' | 'low' | 'medium' | 'high';
@@ -73,6 +74,8 @@ export interface BuildRalphIterationTaskInput {
      * exclusive backlog. Should be the session's `sessionId`.
      */
     continuationOfSessionId?: string;
+    /** The user's answers to a RALPH_NEEDS_INPUT batch, carried in the prompt and ralph context. */
+    humanInput?: RalphHumanInput;
 }
 
 export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
@@ -85,6 +88,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
         progressPath,
         currentIteration: input.iteration,
         maxIterations: input.maxIterations,
+        humanInput: input.humanInput,
     });
     const displayName = input.displayName
         ?? `Ralph iteration ${input.iteration} (${input.sessionId})`;
@@ -119,6 +123,7 @@ export function buildRalphIterationTask(input: BuildRalphIterationTaskInput) {
                     originalGoal: input.originalGoal,
                     currentIteration: input.iteration,
                     maxIterations: input.maxIterations,
+                    ...(input.humanInput ? { humanInput: input.humanInput } : {}),
                 },
                 ...(input.workspaceId
                     ? {
@@ -143,6 +148,7 @@ function normaliseExtraRalphContext(value: unknown): Record<string, unknown> {
     const rest = { ...(value as Record<string, unknown>) };
     delete rest.currentIteration;
     delete rest.finalCheck;
+    delete rest.humanInput;
     delete rest.maxIterations;
     delete rest.originalGoal;
     delete rest.phase;

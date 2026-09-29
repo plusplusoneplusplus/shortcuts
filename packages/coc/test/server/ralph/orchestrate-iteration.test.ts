@@ -147,6 +147,35 @@ describe('orchestrateRalphIteration — RALPH_NEXT (continue)', () => {
         expect(enqueuedTask.payload.context.scheduleId).toBe('sch-1');
     });
 
+    it('does not carry human answers into the iteration after the one that resumed from them', async () => {
+        const humanInput = {
+            iteration: 1,
+            answeredAt: '2026-09-29T10:00:00.000Z',
+            answers: [{ question: 'Which layout?', answer: 'repo' }],
+        };
+        const deps = makeDeps({
+            dataDir,
+            existingPayloadContext: { ralph: { sessionId: SID, humanInput } },
+        });
+        await orchestrateRalphIteration({
+            responseText: makeNextResponse(),
+            completedTaskId: TASK_ID,
+            processId: PROCESS_ID,
+            workspaceId: WS,
+            sessionId: SID,
+            originalGoal: 'Do the goal.',
+            currentIteration: 2,
+            maxIterations: 5,
+            ralphCtx: { sessionId: SID, humanInput },
+            deps,
+        });
+
+        const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
+        expect(enqueuedTask.payload.context.ralph.currentIteration).toBe(3);
+        expect(enqueuedTask.payload.context.ralph).not.toHaveProperty('humanInput');
+        expect(enqueuedTask.payload.prompt).not.toContain('human_answers');
+    });
+
     it('keeps auto-provider routing requested for the next iteration instead of carrying the resolved provider', async () => {
         const deps = makeDeps({
             dataDir,

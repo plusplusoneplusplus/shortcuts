@@ -6,6 +6,8 @@ export type {
     RalphExitSignal,
     RalphFinalCheckRecord,
     RalphFinalCheckStatus,
+    RalphHumanAnswer,
+    RalphHumanInput,
     RalphInputOption,
     RalphInputQuestion,
     RalphInputQuestionType,
@@ -35,6 +37,7 @@ export {
     RALPH_NEEDS_INPUT_TOKEN,
 } from './needs-input-parser';
 export { formatProgressSection, parseProgressSections } from './progress-section';
+export { formatHumanInputSection, formatHumanAnswersBlock } from './human-input';
 export type { FormatProgressSectionInput } from './progress-section';
 export { classifyRalphProgressStagnation } from './progress-classifier';
 export type {

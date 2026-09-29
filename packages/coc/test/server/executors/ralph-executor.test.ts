@@ -69,6 +69,7 @@ function makeOptions(
 
 function makeRalphTask(ralphCtx?: {
     originalGoal?: string;
+    humanInput?: unknown;
     currentIteration?: number;
     maxIterations?: number;
     sessionId?: string;
@@ -178,6 +179,30 @@ describe('RalphExecutor system message — execution (AC-01)', () => {
         expect(call.prompt).toContain('context.md');
         expect(call.prompt).toContain('read this first');
         expect(call.prompt).toContain('rewrite it at the end');
+    });
+
+    it('user prompt carries the Human answers block when resuming from RALPH_NEEDS_INPUT', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+        const task = makeRalphTask({
+            originalGoal: 'Add auth',
+            sessionId: 'sess-xyz',
+            currentIteration: 4,
+            maxIterations: 10,
+            humanInput: {
+                iteration: 3,
+                answeredAt: '2026-09-29T10:00:00.000Z',
+                answers: [{ question: 'Which layout?', answer: 'repo' }],
+                note: 'Keep it small',
+            },
+        });
+
+        await executor.execute(task, 'Continue');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toContain('<human_answers>');
+        expect(call.prompt).toContain('1. Q: Which layout?\n   A: repo');
+        expect(call.prompt).toContain('Note: Keep it small');
+        expect(call.prompt.indexOf('<human_answers>')).toBeLessThan(call.prompt.indexOf('<goal>'));
     });
 });
 

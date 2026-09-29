@@ -209,7 +209,8 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                                 ...nextTask.payload.context,
                                 ...deps.existingPayloadContext,
                                 ralph: {
-                                    ...(ralphCtx ?? {}),
+                                    // Human answers belong only to the iteration that resumed from them.
+                                    ...withoutHumanInput(ralphCtx),
                                     ...nextTask.payload.context.ralph,
                                     originalGoal: action.originalGoal,
                                     currentIteration: action.iteration,
@@ -502,4 +503,11 @@ async function readRecentProgressSections(input: {
         logger.debug(LogCategory.AI, `[Ralph] Could not read recent progress sections for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;
     }
+}
+
+function withoutHumanInput<T extends object>(ralphCtx: T | null | undefined): Partial<T> {
+    if (!ralphCtx) return {};
+    const rest: Partial<T> & { humanInput?: unknown } = { ...ralphCtx };
+    delete rest.humanInput;
+    return rest;
 }

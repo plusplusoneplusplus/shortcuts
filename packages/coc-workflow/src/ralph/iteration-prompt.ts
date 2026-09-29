@@ -1,3 +1,6 @@
+import { formatHumanAnswersBlock } from './human-input';
+import type { RalphHumanInput } from './types';
+
 const SKILL_POINTER =
     'Load and follow the `ultra-ralph` skill, `execution` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.';
 const CONTEXT_PATH_INSTRUCTION = 'read this first; rewrite it at the end with the current best map';
@@ -13,6 +16,8 @@ export interface BuildRalphIterationPromptInput {
     currentIteration?: number;
     /** Maximum iterations allowed in this loop. Defaults to 20 when omitted. */
     maxIterations?: number;
+    /** The user's answers to the previous RALPH_NEEDS_INPUT batch, if resuming from one. */
+    humanInput?: RalphHumanInput;
 }
 
 /**
@@ -40,6 +45,10 @@ export function buildRalphIterationPrompt(input: BuildRalphIterationPromptInput 
         ].join('\n'));
     } else if (input.currentIteration !== undefined || input.maxIterations !== undefined) {
         parts.push(`Iteration ${current} of ${max}.`);
+    }
+
+    if (input.humanInput) {
+        parts.push(formatHumanAnswersBlock(input.humanInput));
     }
 
     const goal = (input.originalGoal ?? '').trim();
