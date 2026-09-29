@@ -1163,24 +1163,28 @@ function InterruptedTurnBanner({ reason, onContinue, action }: { reason?: string
                         {reason}
                     </div>
                 )}
-                {onContinue && (
-                    <button
-                        type="button"
-                        className={cn(
-                            'mt-2 inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-[12px] font-medium leading-none',
-                            'border-amber-300 bg-white text-amber-800 hover:bg-amber-100',
-                            'dark:border-amber-700 dark:bg-[#1e1e1e] dark:text-amber-200 dark:hover:bg-amber-950/70',
-                            'transition-colors',
+                {(onContinue || action) && (
+                    <div className="mt-2 flex items-center gap-2" data-testid="interrupted-turn-actions">
+                        {onContinue && (
+                            <button
+                                type="button"
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-[12px] font-medium leading-none',
+                                    'border-amber-300 bg-white text-amber-800 hover:bg-amber-100',
+                                    'dark:border-amber-700 dark:bg-[#1e1e1e] dark:text-amber-200 dark:hover:bg-amber-950/70',
+                                    'transition-colors',
+                                )}
+                                onClick={onContinue}
+                                data-testid="interrupted-turn-continue-btn"
+                                title="Focus the reply box to continue or retry"
+                            >
+                                <span aria-hidden="true">↪</span>
+                                <span>Continue / retry</span>
+                            </button>
                         )}
-                        onClick={onContinue}
-                        data-testid="interrupted-turn-continue-btn"
-                        title="Focus the reply box to continue or retry"
-                    >
-                        <span aria-hidden="true">↪</span>
-                        <span>Continue / retry</span>
-                    </button>
+                        {action && <div data-testid="interrupted-turn-restart">{action}</div>}
+                    </div>
                 )}
-                {action && <div className="mt-2" data-testid="interrupted-turn-restart">{action}</div>}
             </div>
         </aside>
     );

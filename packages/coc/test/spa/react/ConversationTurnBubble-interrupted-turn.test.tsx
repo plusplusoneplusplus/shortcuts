@@ -83,6 +83,22 @@ describe('ConversationTurnBubble — interrupted assistant turns', () => {
         expect(restart.querySelector('[data-testid="restart-action"]')).toBeTruthy();
     });
 
+    it('aligns the continue and restart controls in one action row', () => {
+        const { getByTestId } = render(
+            <ConversationTurnBubble
+                turn={makeTurn()}
+                onContinueInterrupted={vi.fn()}
+                interruptedAction={<button data-testid="restart-action">Restart</button>}
+            />,
+        );
+
+        const actions = getByTestId('interrupted-turn-actions');
+        expect(actions.classList.contains('flex')).toBe(true);
+        expect(actions.classList.contains('items-center')).toBe(true);
+        expect(actions.contains(getByTestId('interrupted-turn-continue-btn'))).toBe(true);
+        expect(actions.contains(getByTestId('interrupted-turn-restart'))).toBe(true);
+    });
+
     it('keeps already emitted tool-call history visible with the interrupted turn', () => {
         const { getByTestId } = render(
             <ConversationTurnBubble
