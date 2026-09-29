@@ -21,9 +21,11 @@ import type {
   RalphContinueRequest,
   RalphContinueResponse,
   RalphNewLoopResponse,
+  RalphInputSubmitRequest,
   RalphResumeRequest,
   RalphResumeResponse,
   RalphSessionResponse,
+  RalphStopResponse,
   RalphSubmitPrResponse,
   RegisterWorkspaceRequest,
   TerminalSessionsResponse,
@@ -350,26 +352,7 @@ export class WorkspacesClient {
     sessionId: string,
     request: RalphResumeRequest = {},
   ): Promise<RalphResumeResponse> {
-    const body: Record<string, unknown> = {};
-    if (request.provider) {
-      body.provider = request.provider;
-    }
-    const config: Record<string, unknown> = {};
-    if (request.config?.model) {
-      config.model = request.config.model;
-    }
-    if (request.config?.reasoningEffort) {
-      config.reasoningEffort = request.config.reasoningEffort;
-    }
-    if (request.config?.effortTier) {
-      config.effortTier = request.config.effortTier;
-    }
-    if (Object.keys(config).length > 0) {
-      body.config = config;
-    }
-    if (request.autoProviderRouting === true) {
-      body.autoProviderRouting = true;
-    }
+    const body = buildRalphAiSelectionBody(request);
     const options: CocRequestOptions = { method: 'POST' };
     if (Object.keys(body).length > 0) {
       options.body = body;
@@ -377,6 +360,39 @@ export class WorkspacesClient {
     return this.transport.request<RalphResumeResponse>(
       `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/resume`,
       options,
+    );
+  }
+
+  /**
+   * Answer the question batch of a Ralph session in `awaiting-input` phase.
+   * The server saves the answers, appends a `## Human input` section to
+   * `progress.md`, and enqueues the next iteration. Rejects with 409 unless
+   * the session is waiting for input.
+   */
+  submitRalphInput(
+    workspaceId: string,
+    sessionId: string,
+    request: RalphInputSubmitRequest,
+  ): Promise<RalphResumeResponse> {
+    const body: Record<string, unknown> = { answers: request.answers };
+    if (request.note) {
+      body.note = request.note;
+    }
+    Object.assign(body, buildRalphAiSelectionBody(request));
+    return this.transport.request<RalphResumeResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/input`,
+      { method: 'POST', body },
+    );
+  }
+
+  /**
+   * Stop a Ralph session waiting for input. The session completes with
+   * terminal reason `USER_STOPPED`; Submit PR stays available.
+   */
+  stopRalphSession(workspaceId: string, sessionId: string): Promise<RalphStopResponse> {
+    return this.transport.request<RalphStopResponse>(
+      `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/${encodePathSegment(sessionId)}/stop`,
+      { method: 'POST' },
     );
   }
 
@@ -434,4 +450,28 @@ export class WorkspacesClient {
       { method: 'POST' },
     );
   }
+}
+
+function buildRalphAiSelectionBody(request: RalphResumeRequest): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  if (request.provider) {
+    body.provider = request.provider;
+  }
+  const config: Record<string, unknown> = {};
+  if (request.config?.model) {
+    config.model = request.config.model;
+  }
+  if (request.config?.reasoningEffort) {
+    config.reasoningEffort = request.config.reasoningEffort;
+  }
+  if (request.config?.effortTier) {
+    config.effortTier = request.config.effortTier;
+  }
+  if (Object.keys(config).length > 0) {
+    body.config = config;
+  }
+  if (request.autoProviderRouting === true) {
+    body.autoProviderRouting = true;
+  }
+  return body;
 }
