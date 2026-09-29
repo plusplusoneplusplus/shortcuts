@@ -4,9 +4,17 @@
  * Fetches staged or unstaged diff for a single file via
  * GET /api/workspaces/:id/git/changes/files/<path>/diff?stage=<stage>
  * and renders it in UnifiedDiffViewer. Untracked files show a placeholder.
+ *
+ * When the diff-engine preference is `monaco`, both full-text sides come from
+ * GET .../changes/files/<path>/content?stage=<stage> and render in
+ * MonacoFileDiffViewer, with comment threads portalled into editor view zones.
+ * Binary, oversized or unloadable content, or an editor
+ * that fails to start, falls back to the classic viewer with a visible reason
+ * (see diffEngineResolution).
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
+import type { GitWorkingTreeFileContentResponse } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../../repos/cloneRouting';
 import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from '../diff/UnifiedDiffViewer';
@@ -14,14 +22,20 @@ import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewe
 import type { DiffSelectionDragSource } from '../diff/diffSelectionContext';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
-import { DiffViewToggle } from '../diff/DiffViewToggle';
+import { DiffViewToggle, DiffEngineToggle } from '../diff/DiffViewToggle';
+import { DiffEngineFallbackBanner } from '../diff/DiffEngineFallbackBanner';
+import { resolveDiffEngineSelection, type DiffContentLoadState } from '../diff/diffEngineResolution';
+import { useDiffEngine } from '../hooks/useDiffEngine';
+import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from '../diff/MonacoFileDiffViewer';
+import type { DiffEditorFactory } from '../diff/monacoDiffEditorAdapter';
 import { DiffMiniMap } from '../diff/DiffMiniMap';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
+import { CommentCard } from '../../../tasks/comments/CommentCard';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
-import { useCrossFileNav } from '../hooks/useCrossFileNav';
+import { useCrossFileNav, type HunkNavigationHandle } from '../hooks/useCrossFileNav';
 import { PreviewPane } from '../../repo-detail/explorer';
 import { repoRelative } from './WorkingTree';
 import { buildDiffContext } from '../../../../comments/diff-context-utils';
@@ -49,6 +63,8 @@ export interface WorkingTreeFileDiffProps {
      * so the ghost entry disappears.
      */
     onFileMissing?: () => void;
+    /** Monaco diff editor factory; tests pass an owned adapter. */
+    createDiffEditor?: DiffEditorFactory;
 }
 
 const STAGE_LABEL: Record<string, string> = {
@@ -63,7 +79,13 @@ type PopupState = {
     selectedText: string;
 } | null;
 
-export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing }: WorkingTreeFileDiffProps) {
+/** Both file sides for the Monaco engine, keyed by the request that loaded them. */
+type EditorContentState =
+    | { key: string; status: 'loading' }
+    | { key: string; status: 'loaded'; content: GitWorkingTreeFileContentResponse }
+    | { key: string; status: 'failed' };
+
+export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor }: WorkingTreeFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -79,6 +101,14 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
     const [viewMode, setViewMode] = useDiffViewMode();
+    const [diffEngine, setDiffEngine] = useDiffEngine();
+    const monacoViewerRef = useRef<MonacoFileDiffViewerHandle>(null);
+    const [editorContent, setEditorContent] = useState<EditorContentState | null>(null);
+    // Bumped by the fallback Retry button: re-fetches content and re-mounts the editor.
+    const [editorAttempt, setEditorAttempt] = useState(0);
+    // Key of the file + attempt whose editor failed. Sticky, so a failing file
+    // stays on the classic viewer instead of re-mounting the editor on every render.
+    const [editorFailedKey, setEditorFailedKey] = useState<string | null>(null);
     // The untracked file vanished from disk after the change list was fetched.
     const [fileMissing, setFileMissing] = useState(false);
     const fileMissingNotifiedRef = useRef(false);
@@ -93,17 +123,55 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     // Route this file's diff fetch to the selected clone's server (AC-07).
     const cloneClient = useCocClient(workspaceId);
 
+    // Monaco engine: load both full-text sides for this file and stage.
+    const wantsEditor = diffEngine === 'monaco' && stage !== 'untracked';
+    const contentKey = `${workspaceId}\u0000${stage}\u0000${filePath}\u0000${editorAttempt}`;
+    useEffect(() => {
+        if (!wantsEditor) return;
+        let cancelled = false;
+        setEditorContent({ key: contentKey, status: 'loading' });
+        cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage as 'staged' | 'unstaged')
+            .then(content => { if (!cancelled) setEditorContent({ key: contentKey, status: 'loaded', content }); })
+            .catch(() => { if (!cancelled) setEditorContent({ key: contentKey, status: 'failed' }); });
+        return () => { cancelled = true; };
+    }, [wantsEditor, contentKey, workspaceId, filePath, stage, cloneClient]);
+
+    const currentContent = editorContent?.key === contentKey ? editorContent : null;
+    const contentLoadState: DiffContentLoadState | null = !currentContent ? null
+        : currentContent.status === 'loaded'
+            ? { status: 'loaded', binary: currentContent.content.binary, tooLarge: currentContent.content.tooLarge }
+            : { status: currentContent.status };
+    const engineSelection = resolveDiffEngineSelection({
+        preference: diffEngine,
+        stage,
+        content: contentLoadState,
+        editorFailed: editorFailedKey === contentKey,
+    });
+    const editorLoading = engineSelection.engine === 'loading';
+    const editorSides = engineSelection.engine === 'monaco' && currentContent?.status === 'loaded'
+        ? currentContent.content
+        : null;
+    const showEditor = editorSides !== null;
+    // Classic renders for the legacy engine and when the editor cannot show this file.
+    const classicActive = engineSelection.engine === 'legacy';
+    const fallbackReason = engineSelection.engine === 'legacy' ? engineSelection.fallback : null;
+
+    const handleEditorError = useCallback(() => setEditorFailedKey(contentKey), [contentKey]);
+    const retryEditor = useCallback(() => setEditorAttempt(a => a + 1), []);
+
+    const hunkNavRef: RefObject<HunkNavigationHandle | null> = showEditor ? monacoViewerRef : viewerRef;
     const { handleNext, handlePrev } = useCrossFileNav({
         filePath,
         files: workingTreeFiles ?? [],
-        viewerRef,
+        viewerRef: hunkNavRef,
         onNavigateToFile,
     });
 
     // Auto-scroll to target hunk after diff loads (for cross-file navigation)
     const hasScrolledRef = useRef(false);
     useEffect(() => {
-        if (!initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
+        // The Monaco viewer applies initialHunkTarget itself once its diff is computed.
+        if (!initialHunkTarget || !diff || loading || !classicActive || hasScrolledRef.current) return;
         hasScrolledRef.current = true;
         const timer = setTimeout(() => {
             const viewer = viewerRef.current;
@@ -117,7 +185,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             }
         }, 50);
         return () => clearTimeout(timer);
-    }, [initialHunkTarget, diff, loading]);
+    }, [initialHunkTarget, diff, loading, classicActive]);
 
     const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
         () => ({ workspaceId, filePath, ref: stage === 'staged' ? { type: 'staged' } : { type: 'working-tree' } }),
@@ -207,6 +275,10 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        if (showEditor) {
+            monacoViewerRef.current?.revealComment(comment.id);
+            return;
+        }
         const dc = comment as DiffComment;
         const lineIdx = dc.selection?.diffLineStart;
         if (lineIdx == null) return;
@@ -215,7 +287,25 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('ring-2', 'ring-yellow-400');
         setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
-    }, []);
+    }, [showEditor]);
+
+    // Editor engine: the same thread card the sidebar shows, inline under the line.
+    const renderCommentThread = useCallback((comment: DiffComment) => (
+        <CommentCard
+            comment={comment}
+            onResolve={() => { void resolveComment(comment.id); }}
+            onUnresolve={() => { void unresolveComment(comment.id); }}
+            onEdit={(text) => { void updateComment(comment.id, { comment: text }); }}
+            onDelete={() => { void deleteComment(comment.id); }}
+            onAskAI={(commandId, question) => handleAskAI(comment.id, commandId, question)}
+            onClick={() => undefined}
+            aiLoading={aiLoadingIds.has(comment.id)}
+            aiError={aiErrors.get(comment.id) ?? null}
+            onClearAiError={() => clearAiError(comment.id)}
+            isResolving={resolvingIds.has(comment.id)}
+            isDeleting={deletingIds.has(comment.id)}
+        />
+    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
 
     return (
         <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff">
@@ -224,6 +314,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                 <div className="flex items-center gap-2">
                     <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
+                    {stage !== 'untracked' && <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />}
                     {stage !== 'untracked' && <DiffViewToggle mode={viewMode} onChange={setViewMode} />}
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">{STAGE_LABEL[stage]}</span>
                     {stage !== 'untracked' && (
@@ -242,6 +333,9 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
                 <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="working-tree-file-diff-section">
+                    {fallbackReason && (
+                        <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
+                    )}
                     {stage === 'untracked' && fileMissing ? (
                         <div
                             className="flex flex-col items-start gap-1 px-4 py-4"
@@ -264,7 +358,27 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                                 onNotFound={handlePreviewNotFound}
                             />
                         </div>
-                    ) : loading ? (
+                    ) : editorSides ? (
+                        <MonacoFileDiffViewer
+                            ref={monacoViewerRef}
+                            workspaceId={workspaceId}
+                            relativePath={repoRoot ? repoRelative(filePath, repoRoot) : filePath}
+                            stage={stage as 'staged' | 'unstaged'}
+                            original={editorSides.base.content}
+                            modified={editorSides.head.content}
+                            viewMode={viewMode}
+                            initialHunkTarget={initialHunkTarget}
+                            onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                            onEditorError={handleEditorError}
+                            comments={comments}
+                            renderCommentThread={renderCommentThread}
+                            onAddComment={handleAddComment}
+                            onAskAI={handleAskAIDiff}
+                            onCopyAsContext={handleCopyAsContext}
+                            createEditor={createDiffEditor}
+                            data-testid="working-tree-file-diff-editor"
+                        />
+                    ) : loading || editorLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="working-tree-file-diff-loading">
                             <Spinner size="sm" /> Loading diff...
                         </div>
@@ -325,7 +439,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                         <div className="text-xs text-[#848484]" data-testid="working-tree-file-diff-empty">(no changes)</div>
                     )}
                 </div>
-                {diff && !loading && !error && stage !== 'untracked' && (
+                {diff && !loading && !error && classicActive && stage !== 'untracked' && (
                     <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
                 )}
 

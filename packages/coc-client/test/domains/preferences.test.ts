@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PreferencesClient } from '../../src';
+import { PreferencesClient, type GlobalPreferences } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('PreferencesClient', () => {
@@ -49,6 +49,21 @@ describe('PreferencesClient', () => {
         path: '/workspaces/repo%2Fa/endev/revalidate',
         options: { method: 'POST' },
       },
+    ]);
+  });
+
+  it('sends the optional diffEngine global preference', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PreferencesClient(adapter);
+
+    await client.patchGlobal({ diffEngine: 'monaco' });
+    await client.patchGlobal({ diffEngine: 'legacy' });
+    const absent: GlobalPreferences = {};
+
+    expect(absent.diffEngine).toBeUndefined();
+    expect(adapter.calls).toMatchObject([
+      { path: '/preferences', options: { method: 'PATCH', body: { diffEngine: 'monaco' } } },
+      { path: '/preferences', options: { method: 'PATCH', body: { diffEngine: 'legacy' } } },
     ]);
   });
 

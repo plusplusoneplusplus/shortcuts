@@ -117,6 +117,18 @@ describe('computeDiffLines — line number assignment', () => {
         expect(result[1].newLine).toBeUndefined();
     });
 
+    // Regression: the marker used to take line numbers and shift every later
+    // row by one, misplacing comments below it (and breaking engine parity).
+    it('"\\ No newline at end of file" takes no line numbers and does not advance them', () => {
+        const lines = ['@@ -1,3 +1,4 @@', ' a', '-b', '-c', '\\ No newline at end of file', '+B', '+c', '+d', '\\ No newline at end of file'];
+        const result = computeDiffLines(lines);
+        expect(result[4].type).toBe('context');
+        expect(result[4].oldLine).toBeUndefined();
+        expect(result[4].newLine).toBeUndefined();
+        expect(result.slice(5, 8).map(l => l.newLine)).toEqual([2, 3, 4]);
+        expect(result[8].newLine).toBeUndefined();
+    });
+
     it('multi-hunk diff resets cursors at second @@ header', () => {
         const lines = [
             '@@ -1,2 +1,2 @@',

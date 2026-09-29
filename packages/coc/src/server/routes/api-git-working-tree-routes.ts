@@ -1,10 +1,19 @@
 /**
  * Endpoints for listing working-tree changes, staging, unstaging, discarding,
- * batch stage/unstage, deleting untracked files, and per-file working-tree diffs.
+ * batch stage/unstage, deleting untracked files, per-file working-tree diffs, and
+ * both full-text sides of a working-tree file.
  */
 
 import { WorkingTreeService, BranchService } from '@plusplusoneplusplus/forge';
-import { handleAPIError, missingFields } from '../errors';
+import { badRequest, handleAPIError, missingFields, notFound } from '../errors';
+import { gitCache } from '../git/git-cache';
+import {
+    WORKING_TREE_CONTENT_STAGES,
+    createWorkingTreeContentIO,
+    loadWorkingTreeFileContent,
+    resolveWorkingTreePath,
+} from '../git/working-tree-file-content';
+import type { WorkingTreeContentStage } from '../git/working-tree-file-content';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { truncateDiffIfNeeded } from './api-shared';
@@ -210,6 +219,48 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
                 return { ...truncateDiffIfNeeded(diff, full), path: filePath };
             } catch {
                 return { diff: '', path: filePath };
+            }
+        },
+    }));
+
+    // GET /api/workspaces/:id/git/changes/files/*/content?stage=staged|unstaged|untracked
+    // Both full-text sides of one working-tree file. A staged rename reads its
+    // base from the original path; the caller always passes the new path.
+    routes.push(createRoute({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/changes\/files\/(.+)\/content$/,
+        parseQuery: (q) => ({ stage: q.stage as string | undefined }),
+        handler: async ({ res, match, query }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            const filePath = decodeURIComponent(match[2]);
+
+            const stage = query.stage as WorkingTreeContentStage | undefined;
+            if (!stage || !WORKING_TREE_CONTENT_STAGES.includes(stage)) {
+                return void handleAPIError(res, badRequest(`Invalid stage: expected one of ${WORKING_TREE_CONTENT_STAGES.join(', ')}`));
+            }
+            const absPath = resolveWorkingTreePath(ws.rootPath, filePath);
+            if (!absPath) {
+                return void handleAPIError(res, badRequest(`Path is outside the workspace: ${filePath}`));
+            }
+
+            const changes = await workingTreeService.getAllChanges(ws.rootPath);
+            const change = changes.find(c => c.stage === stage && resolveWorkingTreePath(ws.rootPath, c.filePath) === absPath);
+            if (!change) {
+                return void handleAPIError(res, notFound(`Working-tree change (${stage}) for ${filePath}`));
+            }
+            const baseAbsPath = change.originalPath
+                ? resolveWorkingTreePath(ws.rootPath, change.originalPath) ?? absPath
+                : absPath;
+
+            try {
+                return await loadWorkingTreeFileContent(
+                    createWorkingTreeContentIO(ws.rootPath),
+                    { requestPath: filePath, absPath, baseAbsPath, repoRoot: ws.rootPath, stage },
+                    { service: gitCache, workspaceId: ws.id },
+                );
+            } catch (err: any) {
+                return void handleAPIError(res, badRequest('Failed to read working-tree file content: ' + (err?.message || 'unknown error')));
             }
         },
     }));

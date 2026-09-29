@@ -1565,6 +1565,23 @@ describe('validateGlobalPreferences', () => {
         expect(result.uiLayoutMode).toBe('dev-workflow');
     });
 
+    // -- diffEngine field --
+
+    it('accepts diffEngine legacy and monaco', () => {
+        expect(validateGlobalPreferences({ diffEngine: 'legacy' })).toEqual({ diffEngine: 'legacy' });
+        expect(validateGlobalPreferences({ diffEngine: 'monaco' })).toEqual({ diffEngine: 'monaco' });
+    });
+
+    it('drops invalid diffEngine values so readers fall back to legacy', () => {
+        expect(validateGlobalPreferences({ diffEngine: 'editor' })).toEqual({});
+        expect(validateGlobalPreferences({ diffEngine: 1 })).toEqual({});
+        expect(validateGlobalPreferences({ diffEngine: null })).toEqual({});
+    });
+
+    it('keeps diffEngine alongside other global fields', () => {
+        expect(validateGlobalPreferences({ theme: 'dark', diffEngine: 'monaco' })).toEqual({ theme: 'dark', diffEngine: 'monaco' });
+    });
+
     // -- linkHandlers field --
 
     it('accepts valid linkHandlers map of boolean values', () => {
