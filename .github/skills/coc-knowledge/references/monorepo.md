@@ -46,7 +46,7 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 
 `coc` and `deep-wiki` depend on published workspace packages via caret ranges; npm workspaces symlink them in local development. Nothing is bundled or copied into consumers — everything resolves from `node_modules` at runtime.
 
-The root and consuming workspaces pin `@github/copilot-sdk` to `1.0.9`; the root override pins its transitive `@github/copilot` CLI and platform packages to `1.0.78`. Copilot child processes disable CLI auto-update so cached versions cannot replace the installed runtime. `scripts/copilot-sdk-lock.test.mjs` guards the dependency pair in CI.
+The root and consuming workspaces pin `@github/copilot-sdk` to `1.0.9`; the root override pins its transitive `@github/copilot` CLI and platform packages to `1.0.78`. Copilot child processes disable CLI auto-update so cached versions cannot replace the installed runtime.
 
 **Build order:** `coc-native` -> `coc-agent-sdk` -> `coc-workflow` -> `forge`/`coc`. `coc-native` leads because `coc-agent-sdk` imports its git capability and has no `prebuild` hook of its own, so nothing else would build it first. `coc` also consumes compiled `coc-memory`, `coc-client`, `coc-connector`, and `coc-native` output. Root `build:packages` and `coc:link` build `coc-native` before `coc-agent-sdk`; `build:packages` then builds `coccontainer` before `coc-desktop` so both desktop server entry points exist for packaging. `scripts/prebuild.mjs` enforces the same dependency order for direct `packages/forge` and `packages/coc` builds; the `coc` build also cleans `dist` before `tsc`.
 
