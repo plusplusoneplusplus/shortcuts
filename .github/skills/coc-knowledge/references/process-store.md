@@ -28,7 +28,8 @@ through its own short-lived native handle so each request closes what it owns.
 ### Conversation search
 
 `searchConversations` runs through a typed Rust `AsyncTask` on the SQLite read
-pool. Rust validates `user_version` against the process schema, sanitizes FTS5
+pool, whose connections each cap SQLite's memory map at 64 MiB. Rust validates
+`user_version` against the process schema, sanitizes FTS5
 terms, and returns `<mark>` snippets (48 tokens) in BM25 rank order. Archived
 processes and interrupted turns are excluded; other filters and pagination
 retain the ProcessStore interface. The TypeScript wrapper maps native rows to

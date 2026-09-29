@@ -19,6 +19,7 @@ use rusqlite::{Connection, OpenFlags, Row as SqliteRow, Statement as SqliteState
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_READ_POOL_SIZE: usize = 4;
+const READ_MMAP_SIZE: i64 = 64 * 1024 * 1024;
 
 /// A SQLite value at the language-neutral core boundary.
 #[derive(Clone, Debug, PartialEq)]
@@ -164,7 +165,10 @@ impl ReadPool {
             }
             if state.open < self.max_size {
                 state.open += 1;
-                match open_connection(&self.path, self.flags) {
+                match open_connection(&self.path, self.flags).and_then(|connection| {
+                    connection.pragma_update(None, "mmap_size", READ_MMAP_SIZE)?;
+                    Ok(connection)
+                }) {
                     Ok(connection) => break connection,
                     Err(error) => {
                         state.open -= 1;

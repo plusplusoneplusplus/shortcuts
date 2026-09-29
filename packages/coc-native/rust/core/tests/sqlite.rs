@@ -144,6 +144,8 @@ fn file_database_supports_wal_pooled_reads_and_readonly_handles() {
         .with_read_connection(|connection| {
             let value: String =
                 connection.query_row("SELECT value FROM items", [], |row| row.get(0))?;
+            let mmap_size: i64 = connection.query_row("PRAGMA mmap_size", [], |row| row.get(0))?;
+            assert_eq!(mmap_size, 64 * 1024 * 1024);
             Ok(value)
         })
         .unwrap();
