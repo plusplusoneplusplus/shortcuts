@@ -420,3 +420,47 @@ describe('RalphExecutor', () => {
         expect(call.prompt).not.toContain('<goal>');
     });
 });
+
+// ============================================================================
+// ask_user lockdown (AC-09)
+// ============================================================================
+
+describe('RalphExecutor ask_user lockdown (AC-09)', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'RALPH_NEXT',
+            sessionId: 'sess-ralph',
+            toolCalls: [],
+        });
+    });
+
+    const cases: Array<[string, Parameters<typeof makeRalphTask>[0]]> = [
+        ['iteration', { originalGoal: 'Goal', sessionId: 'sess-1' }],
+        ['gap-fix iteration', { originalGoal: 'Goal', sessionId: 'sess-1', currentIteration: 7, maxIterations: 10 }],
+        ['final-check', {
+            originalGoal: 'Goal',
+            sessionId: 'sess-1',
+            finalCheck: { kind: 'goal-gap-check', checkIndex: 1, sourceIteration: 3, loopIndex: 0 },
+        }],
+        ['submit', { originalGoal: 'Goal', sessionId: 'sess-1', submit: { kind: 'submit-pr', submitIndex: 1 } }],
+    ];
+
+    for (const [label, ctx] of cases) {
+        it(`never offers ask_user to a ${label} task even when workspace askUser is enabled`, async () => {
+            const executor = new RalphExecutor(store, makeOptions(store, { askUser: { enabled: true } }));
+
+            await executor.execute(makeRalphTask(ctx), 'Run');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            const toolNames = (call.tools ?? []).map((tool: { name: string }) => tool.name);
+            expect(toolNames).not.toContain('ask_user');
+            expect(call.onUserInputRequest).toBeUndefined();
+        });
+    }
+});
