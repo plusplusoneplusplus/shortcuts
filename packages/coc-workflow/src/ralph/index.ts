@@ -52,6 +52,7 @@ export { parseRalphSubmitResult } from './submit-result-parser';
 export { decideRalphIterationActions } from './iteration-decision';
 export type {
     DecideRalphIterationActionsInput,
+    RalphAwaitInputAction,
     RalphCompleteSessionAction,
     RalphEnqueueFinalCheckAction,
     RalphEnqueueNextIterationAction,

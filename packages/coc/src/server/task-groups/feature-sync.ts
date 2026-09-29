@@ -111,6 +111,8 @@ export function ralphSessionToTaskGroupStatus(record: RalphSessionRecord): TaskG
         case 'grilling':
             return 'draft';
         case 'executing':
+        case 'awaiting-input':
+            // Waiting for a human answer keeps the session alive, not finished.
             return 'running';
         case 'complete':
             return record.terminalReason === 'CANCELLED' ? 'cancelled' : 'completed';

@@ -1,7 +1,10 @@
 import type { RalphParseResult, RalphSignal } from './types';
 import { normalizeNewlines } from '../utils/text';
 
-const RALPH_SIGNAL_TOKENS = ['RALPH_COMPLETE', 'RALPH_NEXT'] as const;
+// RALPH_NEEDS_INPUT is listed so a RALPH_PROGRESS block ends at it, but it is
+// never returned as the parsed signal: the decision layer only honours it when
+// `parseRalphNeedsInput` finds a valid question block.
+const RALPH_SIGNAL_TOKENS = ['RALPH_COMPLETE', 'RALPH_NEXT', 'RALPH_NEEDS_INPUT'] as const;
 type DetectableRalphSignal = typeof RALPH_SIGNAL_TOKENS[number];
 
 /**

@@ -5,7 +5,7 @@
  * route, WebSocket, or filesystem ownership types.
  */
 
-export type RalphExitSignal = 'RALPH_NEXT' | 'RALPH_COMPLETE' | 'NONE';
+export type RalphExitSignal = 'RALPH_NEXT' | 'RALPH_COMPLETE' | 'RALPH_NEEDS_INPUT' | 'NONE';
 
 export type RalphSignal = RalphExitSignal;
 
@@ -19,19 +19,21 @@ export interface RalphParseResult {
     progress: string;
 }
 
-export type RalphSessionPhase = 'grilling' | 'executing' | 'complete';
+export type RalphSessionPhase = 'grilling' | 'executing' | 'awaiting-input' | 'complete';
 
 export type RalphTerminalReason =
     | 'RALPH_COMPLETE'
     | 'MANUAL_VERIFICATION_ONLY'
     | 'CAP_REACHED'
     | 'CANCELLED'
-    | 'NO_SIGNAL';
+    | 'NO_SIGNAL'
+    | 'USER_STOPPED';
 
 export type RalphSessionCompleteReason =
     | 'signal'
     | 'manual-verification-only'
     | 'cap'
+    | 'user-stopped'
     | 'final-check-failed'
     | 'final-check-enqueue-failed'
     | 'final-check-session-missing'
