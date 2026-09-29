@@ -72,6 +72,17 @@ describe('NativeDatabase statements', () => {
         });
     });
 
+    it('resets reused all/iterate bindings and follows schema changes', () => {
+        const database = open();
+        database.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT); INSERT INTO items VALUES (1, 'one'), (2, 'two')");
+        const statement = database.prepare('SELECT value FROM items WHERE id >= @start ORDER BY id');
+        expect(statement.all({ start: 1 })).toEqual([{ value: 'one' }, { value: 'two' }]);
+        expect(statement.all({ start: 2 })).toEqual([{ value: 'two' }]);
+        expect(statement.all({})).toEqual([]);
+        database.exec('ALTER TABLE items ADD COLUMN extra TEXT');
+        expect([...statement.iterate({ start: 1 })]).toEqual([{ value: 'one' }, { value: 'two' }]);
+    });
+
     it('ignores extra named parameters for better-sqlite3 compatibility', () => {
         const database = open();
         database.exec('CREATE TABLE values_table (value TEXT)');

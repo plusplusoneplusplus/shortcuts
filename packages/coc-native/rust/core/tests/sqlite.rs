@@ -91,10 +91,27 @@ fn cached_writer_statements_clear_bindings_and_follow_schema_changes() {
         lookup.get(&positional([Value::Integer(2)])).unwrap().unwrap()["value"],
         Value::Null
     );
+    let list = database.prepare("SELECT value FROM items WHERE id >= @start ORDER BY id");
+    assert_eq!(
+        list.all(&Parameters::Named(vec![("start".into(), Value::Integer(1))]))
+            .unwrap()
+            .into_iter()
+            .map(|row| row["value"].clone())
+            .collect::<Vec<_>>(),
+        vec![Value::Text("first".into()), Value::Null]
+    );
+    assert_eq!(
+        list.all(&Parameters::Named(vec![("start".into(), Value::Integer(2))])).unwrap().len(),
+        1
+    );
     database.exec("ALTER TABLE items ADD COLUMN extra TEXT").unwrap();
     assert_eq!(
         lookup.get(&positional([Value::Integer(1)])).unwrap().unwrap()["value"],
         Value::Text("first".into())
+    );
+    assert_eq!(
+        list.all(&Parameters::Named(vec![("start".into(), Value::Integer(1))])).unwrap().len(),
+        2
     );
 }
 

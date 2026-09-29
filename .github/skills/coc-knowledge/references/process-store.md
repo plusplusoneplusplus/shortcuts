@@ -18,7 +18,7 @@ The schema definition and v1→v38 migration ladder stay in TypeScript and run
 through that synchronous handle. Startup treats a missing or stale native addon
 as a hard failure; the process store has no JavaScript SQLite fallback.
 The process writer runs in WAL mode with `synchronous=NORMAL`, including when
-opening existing process databases. Synchronous `run` and `get` statements
+opening existing process databases. Synchronous `run`, `get`, and `all`/`iterate`
 reuse SQLite's bounded per-writer statement cache, with bindings cleared
 between calls.
 

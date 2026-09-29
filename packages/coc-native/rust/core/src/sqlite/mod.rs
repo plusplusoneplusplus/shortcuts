@@ -377,7 +377,10 @@ impl Statement {
     }
 
     pub fn all(&self, parameters: &Parameters) -> Result<Vec<Row>> {
-        self.database.with_writer(|connection| query(connection, &self.sql, parameters))
+        self.database.with_writer(|connection| {
+            let mut statement = connection.prepare_cached(&self.sql)?;
+            query_statement(&mut statement, parameters)
+        })
     }
 
     /// Materialize rows with stable indices for the N-API iterator wrapper.
@@ -428,9 +431,16 @@ fn named_parameter_index(
 
 fn query(connection: &Connection, sql: &str, parameters: &Parameters) -> Result<Vec<Row>> {
     let mut statement = connection.prepare(sql)?;
+    query_statement(&mut statement, parameters)
+}
+
+fn query_statement(
+    statement: &mut SqliteStatement<'_>,
+    parameters: &Parameters,
+) -> Result<Vec<Row>> {
     let column_names: Vec<String> =
         statement.column_names().iter().map(ToString::to_string).collect();
-    bind(&mut statement, parameters)?;
+    bind(statement, parameters)?;
     let mut cursor = statement.raw_query();
     let mut result = Vec::new();
     while let Some(row) = cursor.next()? {
