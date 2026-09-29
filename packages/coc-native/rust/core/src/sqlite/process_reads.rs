@@ -384,17 +384,9 @@ pub fn get_process_summaries(database: &Database, filter: &ProcessFilter) -> Res
 
 pub fn get_process_summaries_json(database: &Database, filter: &ProcessFilter) -> Result<String> {
     let (total, rows) = with_summary_page(database, filter, |connection, sql, values| {
-        query_json_rows(connection, sql, values, |_| Ok(()))
+        query_json_array(connection, sql, values)
     })?;
-    let mut output = format!(r#"{{"total":{total},"rows":["#);
-    for (index, (_, row)) in rows.iter().enumerate() {
-        if index != 0 {
-            output.push(',');
-        }
-        output.push_str(row);
-    }
-    output.push_str("]}");
-    Ok(output)
+    Ok(format!(r#"{{"total":{total},"rows":{rows}}}"#))
 }
 
 fn recent_query(filter: &RecentFilter) -> (String, Vec<Value>) {

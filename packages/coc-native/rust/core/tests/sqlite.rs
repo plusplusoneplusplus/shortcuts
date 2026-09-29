@@ -344,6 +344,29 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     assert_eq!(page["total"], 1);
     assert_eq!(page["rows"][0]["pending_ask_user_count"], 1);
     assert_eq!(page["rows"][0]["compaction_json"], "{\"count\":2}");
+    database
+        .prepare("UPDATE processes SET title = ? WHERE id = 'two'")
+        .run(&positional([Value::Text("Title \"two\"\nnext".into())]))
+        .unwrap();
+    let full_summary_json =
+        get_process_summaries_json(&database, &ProcessFilter::default()).unwrap();
+    let full_page: serde_json::Value = serde_json::from_str(&full_summary_json).unwrap();
+    assert_eq!(full_page["total"], 2);
+    assert_eq!(full_page["rows"][0]["id"], "two");
+    assert_eq!(full_page["rows"][1]["id"], "one");
+    assert_eq!(full_page["rows"][0]["title"], "Title \"two\"\nnext");
+    assert!(full_summary_json.contains(r#""title":"Title \"two\"\nnext""#));
+    let offset_page: serde_json::Value = serde_json::from_str(
+        &get_process_summaries_json(
+            &database,
+            &ProcessFilter { limit: Some(1), offset: Some(1), ..ProcessFilter::default() },
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(offset_page["total"], 2);
+    assert_eq!(offset_page["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(offset_page["rows"][0]["id"], "one");
     assert_eq!(
         get_process_summaries_json(
             &database,
