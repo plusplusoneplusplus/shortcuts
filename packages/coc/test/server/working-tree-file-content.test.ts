@@ -168,13 +168,16 @@ describe('stage resolution', () => {
     });
 
     it('reads paths containing glob characters and spaces literally', async () => {
-        write('dir/a*b [x].txt', 'literal\n');
-        write('dir/aXb x.txt', 'decoy\n');
+        // Windows file names cannot contain `*`; `[x]` alone still exercises pathspec globbing there.
+        const star = process.platform === 'win32' ? '' : '*';
+        const target = `dir/a${star}b [x].txt`;
+        write(target, 'literal\n');
+        write(`dir/a${star ? 'X' : ''}b x.txt`, 'decoy\n');
         commitAll();
-        write('dir/a*b [x].txt', 'literal 2\n');
-        git('add', 'dir/a*b [x].txt');
+        write(target, 'literal 2\n');
+        git('add', target);
 
-        const result = await load('dir/a*b [x].txt', 'staged');
+        const result = await load(target, 'staged');
         expect(result.base.content).toBe('literal\n');
         expect(result.head.content).toBe('literal 2\n');
     });
