@@ -170,3 +170,80 @@ export function classifyHtmlPageWindowOpen(targetUrl: string): Exclude<HtmlPageN
         return 'deny';
     }
 }
+
+// ── IPC contract ────────────────────────────────────────────────────────────
+// preload.ts re-declares these as literals (its sandboxed `require` cannot load
+// this module); preload.test.ts keeps the two in sync.
+
+/** SPA → main (invoke): open a page tab `(pageId, filePath)` → {@link HtmlPageOpenResult}. */
+export const HTML_PAGE_OPEN_CHANNEL = 'coc-desktop:html-page-open';
+/** SPA → main: place the page view `(pageId, rect)`; a null/empty rect hides it. */
+export const HTML_PAGE_SET_BOUNDS_CHANNEL = 'coc-desktop:html-page-set-bounds';
+/** SPA → main: hide the page view `(pageId)` without destroying it. */
+export const HTML_PAGE_HIDE_CHANNEL = 'coc-desktop:html-page-hide';
+/** SPA → main: destroy the page view `(pageId)`. */
+export const HTML_PAGE_CLOSE_CHANNEL = 'coc-desktop:html-page-close';
+/** SPA → main: reload the page view `(pageId)`. */
+export const HTML_PAGE_RELOAD_CHANNEL = 'coc-desktop:html-page-reload';
+/** SPA → main: open the page's current `file://` URL in the system browser `(pageId)`. */
+export const HTML_PAGE_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:html-page-open-external';
+/** main → SPA: {@link HtmlPageLoadState} updates for every page view the SPA owns. */
+export const HTML_PAGE_STATE_CHANNEL = 'coc-desktop:html-page-state';
+
+/** Reply to an open request. The SPA falls back to the source viewer when `ok` is false. */
+export type HtmlPageOpenResult =
+    | { ok: true }
+    | { ok: false; reason: Extract<HtmlPagePathCheck, { ok: false }>['reason'] | 'bad-id' | 'no-window' };
+
+/** Load status pushed to the SPA so the tab can show a spinner or an inline error. */
+export interface HtmlPageLoadState {
+    pageId: string;
+    status: 'loading' | 'loaded' | 'failed';
+    /** Current page URL (a `file://` URL). */
+    url?: string;
+    /** Chromium's error description when `status` is `failed`. */
+    error?: string;
+}
+
+/** Page ids are SPA-chosen opaque keys; keep them short and printable. */
+export function isValidHtmlPageId(pageId: unknown): pageId is string {
+    return typeof pageId === 'string' && pageId.length > 0 && pageId.length <= 512
+        && !/[\u0000-\u001f]/.test(pageId);
+}
+
+/** A rectangle in the host window's content coordinates (DIP). */
+export interface HtmlPageBounds {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/**
+ * Turn the placeholder rect the SPA reports (CSS px from
+ * `getBoundingClientRect()`) into integer view bounds. CSS px scale with the
+ * SPA's zoom factor, so they are multiplied by it. Returns null — meaning
+ * "hide the view" — for a missing, non-finite or empty rect.
+ */
+export function toHtmlPageViewBounds(rect: unknown, zoomFactor = 1): HtmlPageBounds | null {
+    if (!rect || typeof rect !== 'object') {
+        return null;
+    }
+    const { x, y, width, height } = rect as Record<string, unknown>;
+    if (![x, y, width, height].every((n) => typeof n === 'number' && Number.isFinite(n))) {
+        return null;
+    }
+    const zoom = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
+    const left = Math.round((x as number) * zoom);
+    const top = Math.round((y as number) * zoom);
+    const right = Math.round(((x as number) + (width as number)) * zoom);
+    const bottom = Math.round(((y as number) + (height as number)) * zoom);
+    const clampedLeft = Math.max(0, left);
+    const clampedTop = Math.max(0, top);
+    const w = right - clampedLeft;
+    const h = bottom - clampedTop;
+    if (w <= 0 || h <= 0) {
+        return null;
+    }
+    return { x: clampedLeft, y: clampedTop, width: w, height: h };
+}

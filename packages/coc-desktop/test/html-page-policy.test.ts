@@ -13,6 +13,8 @@ import {
     classifyHtmlPageWindowOpen,
     hasHtmlExtension,
     htmlPageFileUrl,
+    isValidHtmlPageId,
+    toHtmlPageViewBounds,
     validateHtmlPagePath,
 } from '../src/html-page-policy';
 
@@ -164,5 +166,50 @@ describe('classifyHtmlPageWindowOpen', () => {
         expect(classifyHtmlPageWindowOpen('javascript:void(0)')).toBe('deny');
         expect(classifyHtmlPageWindowOpen('about:blank')).toBe('deny');
         expect(classifyHtmlPageWindowOpen('')).toBe('deny');
+    });
+});
+
+describe('toHtmlPageViewBounds', () => {
+    it('rounds a CSS-px rect to integer bounds at zoom 1', () => {
+        expect(toHtmlPageViewBounds({ x: 10.4, y: 20.6, width: 300.2, height: 200 }))
+            .toEqual({ x: 10, y: 21, width: 301, height: 200 });
+    });
+
+    it('scales by the SPA zoom factor', () => {
+        expect(toHtmlPageViewBounds({ x: 100, y: 50, width: 200, height: 100 }, 1.5))
+            .toEqual({ x: 150, y: 75, width: 300, height: 150 });
+    });
+
+    it('clamps a rect that starts above/left of the window', () => {
+        expect(toHtmlPageViewBounds({ x: -20, y: -10, width: 120, height: 60 }))
+            .toEqual({ x: 0, y: 0, width: 100, height: 50 });
+    });
+
+    it('treats a bad zoom factor as 1', () => {
+        expect(toHtmlPageViewBounds({ x: 1, y: 1, width: 2, height: 2 }, 0))
+            .toEqual({ x: 1, y: 1, width: 2, height: 2 });
+    });
+
+    it.each([
+        null,
+        undefined,
+        'rect',
+        { x: 0, y: 0, width: 0, height: 100 },
+        { x: 0, y: 0, width: 100, height: -5 },
+        { x: 0, y: 0, width: Number.NaN, height: 10 },
+        { x: 0, y: 0, width: '10', height: 10 },
+        { x: -200, y: 0, width: 100, height: 10 },
+    ])('returns null (hide) for %j', (rect) => {
+        expect(toHtmlPageViewBounds(rect)).toBeNull();
+    });
+});
+
+describe('isValidHtmlPageId', () => {
+    it('accepts a short printable id', () => {
+        expect(isValidHtmlPageId('html:/w/demo/index.html')).toBe(true);
+    });
+
+    it.each(['', 'a\nb', 'x'.repeat(513), 42, null])('rejects %j', (id) => {
+        expect(isValidHtmlPageId(id)).toBe(false);
     });
 });

@@ -41,6 +41,13 @@ const POPOUT_COPY_URL_CHANNEL = 'coc-desktop:popout-copy-url';
 const POPOUT_STATE_CHANNEL = 'coc-desktop:popout-state';
 const MENU_COPY_CHANNEL = 'coc-desktop:menu-copy';
 const MENU_COPY_HANDLED_CHANNEL = 'coc-desktop:menu-copy-handled';
+const HTML_PAGE_OPEN_CHANNEL = 'coc-desktop:html-page-open';
+const HTML_PAGE_SET_BOUNDS_CHANNEL = 'coc-desktop:html-page-set-bounds';
+const HTML_PAGE_HIDE_CHANNEL = 'coc-desktop:html-page-hide';
+const HTML_PAGE_CLOSE_CHANNEL = 'coc-desktop:html-page-close';
+const HTML_PAGE_RELOAD_CHANNEL = 'coc-desktop:html-page-reload';
+const HTML_PAGE_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:html-page-open-external';
+const HTML_PAGE_STATE_CHANNEL = 'coc-desktop:html-page-state';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
@@ -76,6 +83,25 @@ interface PopOutState {
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;
+}
+
+/** Reply to `htmlPage.open` (mirrors `HtmlPageOpenResult` in html-page-policy.ts). */
+type HtmlPageOpenResult = { ok: true } | { ok: false; reason: string };
+
+/** Load status of a page tab (mirrors `HtmlPageLoadState` in html-page-policy.ts). */
+interface HtmlPageLoadState {
+    pageId: string;
+    status: 'loading' | 'loaded' | 'failed';
+    url?: string;
+    error?: string;
+}
+
+/** Placeholder rect in SPA CSS px, straight from `getBoundingClientRect()`. */
+interface HtmlPageRect {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
 }
 
 const api = {
@@ -214,6 +240,29 @@ const api = {
             const listener = (_event: unknown, state: PopOutState) => callback(state);
             ipcRenderer.on(POPOUT_STATE_CHANNEL, listener);
             return () => ipcRenderer.removeListener(POPOUT_STATE_CHANNEL, listener);
+        },
+    },
+    /**
+     * HTML page tab bridge (see html-page-host.ts). The SPA picks an opaque
+     * `pageId` per tab, asks `open` to host a local `.html`/`.htm` file (the
+     * main process validates the path and replies `{ ok: false }` when it
+     * refuses, so the SPA can fall back to the source viewer), then keeps the
+     * view over its placeholder with `setBounds` (null hides it) / `hide`, and
+     * tears it down with `close`. `onState` reports loading / loaded / failed.
+     */
+    htmlPage: {
+        open: (pageId: string, filePath: string): Promise<HtmlPageOpenResult> =>
+            ipcRenderer.invoke(HTML_PAGE_OPEN_CHANNEL, pageId, filePath),
+        setBounds: (pageId: string, rect: HtmlPageRect | null) =>
+            ipcRenderer.send(HTML_PAGE_SET_BOUNDS_CHANNEL, pageId, rect),
+        hide: (pageId: string) => ipcRenderer.send(HTML_PAGE_HIDE_CHANNEL, pageId),
+        close: (pageId: string) => ipcRenderer.send(HTML_PAGE_CLOSE_CHANNEL, pageId),
+        reload: (pageId: string) => ipcRenderer.send(HTML_PAGE_RELOAD_CHANNEL, pageId),
+        openExternal: (pageId: string) => ipcRenderer.send(HTML_PAGE_OPEN_EXTERNAL_CHANNEL, pageId),
+        onState: (callback: (state: HtmlPageLoadState) => void) => {
+            const listener = (_event: unknown, state: HtmlPageLoadState) => callback(state);
+            ipcRenderer.on(HTML_PAGE_STATE_CHANNEL, listener);
+            return () => ipcRenderer.removeListener(HTML_PAGE_STATE_CHANNEL, listener);
         },
     },
 } as const;
