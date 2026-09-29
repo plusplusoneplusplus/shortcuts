@@ -321,6 +321,23 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
         expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
     });
 
+    it('bulk closes collapsed canvas siblings through the panel tab session', async () => {
+        const ids = Array.from({ length: 5 }, (_, index) => openUnifiedPanelTab(WS, {
+            kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT,
+            resourceId: `canvas-${index + 1}`, label: `Canvas ${index + 1}`,
+        }));
+        const activeId = ids[ids.length - 1];
+        renderPanel();
+
+        expect(screen.getByTestId(`unified-panel-tab-${activeId}`)).toBeTruthy();
+        fireEvent.click(screen.getByTestId('unified-panel-canvas-stack'));
+        fireEvent.click(screen.getByTestId('unified-panel-canvas-stack-close-others'));
+
+        await waitFor(() => expect(screen.queryByTestId('unified-panel-canvas-stack')).toBeNull());
+        expect(screen.getAllByRole('tab')).toHaveLength(1);
+        expect(screen.getByTestId(`unified-panel-tab-${activeId}`)).toBeTruthy();
+    });
+
     it('renders a registered group through the chat\'s own diff panel', () => {
         const input = whisperDiffTabInput({
             ctx: diffCtx(), ownerWorkspaceId: MEMBER, chatId: CHAT, workspaceRootPath: '/repo',

@@ -48,6 +48,12 @@ for a host that passes `availableCanvases`. `ChatDetail` no longer lists canvase
 it only routes live `canvas-updated` SSE events (`useChatSSE`'s `onCanvasUpdated`) to the
 panel.
 
+The unified tab strip compresses four or more open canvases into the active canvas tab and
+a fixed count chip. The chip opens a searchable switcher in stored order and routes
+individual or bulk closes through the panel's dirty-close queue. This is presentation-only:
+canvas ownership, active selection, clone routing, and the persisted tab set keep using the
+normal unified-panel model.
+
 ### Editing and conflicts
 
 Markdown canvases toggle between Preview (the shared `useMarkdownPreview` pipeline, its

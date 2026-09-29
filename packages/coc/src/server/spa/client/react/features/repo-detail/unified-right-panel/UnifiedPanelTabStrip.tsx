@@ -24,6 +24,10 @@
  *    scrolling row so labels truncate at a sane width instead of collapsing to
  *    nothing, and the trailing "+" sits outside that row so it stays reachable
  *    no matter how many tabs are open.
+ *  - **Canvas bursts collapse.** Four or more canvas tabs render as the active
+ *    canvas plus a fixed count chip. The chip opens the complete searchable
+ *    list; storage, ordering, ownership, dirty state, and close guards remain
+ *    with the normal tab session.
  *  - **The scrollbar is an overlay.** The native bar is hidden (it is thick on
  *    macOS and draws over the labels); a 3px thumb along the bottom edge shows
  *    on hover and can be dragged, and a plain vertical wheel scrolls the row
@@ -35,11 +39,12 @@
  * panel.
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { cn } from '../../../ui/cn';
 import { FileNameIcon } from '../explorer/FileTypeIcon';
 import { displayGroupForKind, scopeForKind, type UnifiedPanelTab, type UnifiedTabKind } from './unifiedPanelTabsModel';
 import { UnifiedPanelTabContextMenu } from './UnifiedPanelTabContextMenu';
+import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import {
     unifiedPanelTabMenuItems,
     type UnifiedPanelFileActionAvailability,
@@ -112,6 +117,8 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
     ),
 };
 
+const EMPTY_TAB_IDS: ReadonlySet<string> = new Set<string>();
+
 export interface UnifiedPanelTabStripProps {
     /** Visible tabs, in strip order: workspace-owned first, then the chat's. */
     tabs: readonly UnifiedPanelTab[];
@@ -125,6 +132,8 @@ export interface UnifiedPanelTabStripProps {
     onActivate: (id: string) => void;
     /** Close button, middle click, or Alt/Ctrl+W-style callers. */
     onClose: (id: string) => void;
+    /** Bulk close keeps dirty/terminal close guards serialized by the panel host. */
+    onCloseMany: (ids: readonly string[]) => void;
     /** Reorder: put `id` where `beforeId` sits, or at the end of its section. */
     onMove: (id: string, beforeId: string | null) => void;
     /**
@@ -164,6 +173,7 @@ export function UnifiedPanelTabStrip({
     errorIds,
     onActivate,
     onClose,
+    onCloseMany,
     onMove,
     onPromote,
     fileActionAvailability,
@@ -176,7 +186,11 @@ export function UnifiedPanelTabStrip({
     const tabRefs = useRef(new Map<string, HTMLDivElement>());
     const draggingId = useRef<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
-    const { listRef, thumb, onThumbPointerDown } = useOverlayScrollbar(tabs);
+    const { visibleTabs: stripTabs, canvasTabs: stackedCanvasTabs } = useMemo(
+        () => compressedCanvasTabs(tabs, activeId),
+        [activeId, tabs],
+    );
+    const { listRef, thumb, onThumbPointerDown } = useOverlayScrollbar(stripTabs);
 
     // Keep the active tab visible: it is routinely activated from far outside
     // the strip — a chat source link, a canvas event, a restored selection —
@@ -184,7 +198,7 @@ export function UnifiedPanelTabStrip({
     useEffect(() => {
         if (activeId === null) return;
         tabRefs.current.get(activeId)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-    }, [activeId, tabs]);
+    }, [activeId, stripTabs]);
 
     useEffect(() => {
         if (contextMenu && !tabs.some(tab => tab.id === contextMenu.tabId)) setContextMenu(null);
@@ -216,8 +230,7 @@ export function UnifiedPanelTabStrip({
         tabRefs.current.get(tab.id)?.focus?.();
     };
 
-    const onTabKeyDown = (event: ReactKeyboardEvent, index: number) => {
-        const tab = tabs[index];
+    const onTabKeyDown = (event: ReactKeyboardEvent, tab: UnifiedPanelTab) => {
         if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
             event.preventDefault();
             const rect = tabRefs.current.get(tab.id)?.getBoundingClientRect();
@@ -244,14 +257,15 @@ export function UnifiedPanelTabStrip({
         const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
         if (step !== 0) {
             event.preventDefault();
-            const next = tabs[(index + step + tabs.length) % tabs.length];
+            const index = stripTabs.findIndex(entry => entry.id === tab.id);
+            const next = stripTabs[(index + step + stripTabs.length) % stripTabs.length];
             onActivate(next.id);
             tabRefs.current.get(next.id)?.focus?.();
             return;
         }
         if (event.key === 'Home' || event.key === 'End') {
             event.preventDefault();
-            const next = event.key === 'Home' ? tabs[0] : tabs[tabs.length - 1];
+            const next = event.key === 'Home' ? stripTabs[0] : stripTabs[stripTabs.length - 1];
             onActivate(next.id);
             tabRefs.current.get(next.id)?.focus?.();
         }
@@ -275,7 +289,7 @@ export function UnifiedPanelTabStrip({
                 className="scrollbar-hide flex min-w-0 flex-1 items-stretch overflow-x-auto overflow-y-hidden"
                 data-testid="unified-panel-tab-list"
             >
-                {tabs.map((tab, index) => {
+                {stripTabs.map((tab, index) => {
                     const isActive = tab.id === activeId;
                     const isDirty = dirtyIds?.has(tab.id) ?? false;
                     const hasError = errorIds?.has(tab.id) ?? false;
@@ -284,7 +298,7 @@ export function UnifiedPanelTabStrip({
                     // begin — derived, never passed in.
                     const startsResourceSection = index > 0
                         && displayGroupForKind(tab.kind) === 'resources'
-                        && displayGroupForKind(tabs[index - 1].kind) === 'tools';
+                        && displayGroupForKind(stripTabs[index - 1].kind) === 'tools';
                     return (
                         <Fragment key={tab.id}>
                             {startsResourceSection && (
@@ -327,7 +341,7 @@ export function UnifiedPanelTabStrip({
                                 event.preventDefault();
                                 setContextMenu({ tabId: tab.id, x: event.clientX, y: event.clientY });
                             }}
-                            onKeyDown={event => onTabKeyDown(event, index)}
+                            onKeyDown={event => onTabKeyDown(event, tab)}
                             onDragStart={event => {
                                 draggingId.current = tab.id;
                                 event.dataTransfer?.setData('text/plain', tab.id);
@@ -357,6 +371,7 @@ export function UnifiedPanelTabStrip({
                                 isActive
                                     ? 'bg-white text-[#1f1f1f] shadow-[inset_0_-2px_0_0_#0078d4] dark:bg-[#1e1e1e] dark:text-white dark:shadow-[inset_0_-2px_0_0_#3794ff]'
                                     : 'text-[#616161] hover:text-[#1f1f1f] dark:text-[#9d9d9d] dark:hover:text-white',
+                                stackedCanvasTabs.length > 0 && tab.kind === 'canvas' && 'min-w-[160px] max-w-[260px]',
                             )}
                         >
                             <span className="flex-shrink-0 opacity-80" aria-hidden="true">
@@ -436,6 +451,17 @@ export function UnifiedPanelTabStrip({
             </div>
 
             {/* Outside the scrolling row, so they stay reachable at any tab count. */}
+            {stackedCanvasTabs.length > 0 && (
+                <UnifiedPanelCanvasStack
+                    tabs={stackedCanvasTabs}
+                    activeId={activeId}
+                    dirtyIds={dirtyIds ?? EMPTY_TAB_IDS}
+                    errorIds={errorIds ?? EMPTY_TAB_IDS}
+                    onActivate={onActivate}
+                    onClose={onClose}
+                    onCloseMany={onCloseMany}
+                />
+            )}
             {leadingControls}
             {onOpenMenu && (
                 <button
