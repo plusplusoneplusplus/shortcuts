@@ -1033,6 +1033,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             testId: 'toggle-markdown-panel-preview-enabled',
         },
     }),
+    bool({
+        key: 'features.htmlPageTab', default: true, runtime: 'live', runtimeFlag: 'htmlPageTabEnabled',
+        ui: {
+            group: 'dashboard', order: 72, label: 'HTML page tabs',
+            hint: 'Desktop app only: clicking a local .html/.htm link in a chat response opens the rendered page in a right-panel tab. When off, the link opens in the source viewer.',
+            testId: 'toggle-html-page-tab-enabled',
+        },
+    }),
 
     bool({
         key: 'features.canvasHostApis', default: false, runtime: 'live',

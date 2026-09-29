@@ -117,6 +117,8 @@ interface DashboardConfig {
     explorerEditorTabsEnabled?: boolean;
     /** Whether unified right-panel Markdown file tabs offer a rendered preview. Default false. */
     markdownPanelPreviewEnabled?: boolean;
+    /** Desktop: whether local .html/.htm chat links open as a rendered page tab. Default true. */
+    htmlPageTabEnabled?: boolean;
     /** Typing-driven client prewarm debounce (ms), resolved from env on the server. */
     prewarmDebounceMs?: number;
     /** Warm-client idle TTL (ms), resolved from env on the server. `0` means warming is disabled. */
@@ -319,6 +321,11 @@ export function getBackendEndpointInfo(): BackendEndpointInfo | undefined {
 
 export function isTerminalEnabled(): boolean {
     return getConfig().terminalEnabled !== false;
+}
+
+/** Desktop HTML page tabs (`features.htmlPageTab`); on unless the server says off. */
+export function isHtmlPageTabEnabled(): boolean {
+    return getConfig().htmlPageTabEnabled !== false;
 }
 
 export function isNotesEnabled(): boolean {

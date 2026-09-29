@@ -216,6 +216,7 @@ features default off.
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
 | `features.markdownPanelPreview` | `markdownPanelPreviewEnabled` | off |
+| `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 
