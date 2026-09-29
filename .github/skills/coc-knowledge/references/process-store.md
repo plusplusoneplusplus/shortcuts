@@ -41,7 +41,7 @@ ProcessStore shapes, including optional conversation/tool-call exclusions and
 chat-folder membership on summary entries. `getConversationTurns` serializes
 ordered turn rows into JSON; `getAllProcesses` serializes process and turn rows
 in bounded process-ID batches while preserving turn order. `getProcessSummaries`
-serializes its count and page in one read snapshot; `listRecentProcesses`
+serializes its count and page with chat-folder membership in one read snapshot; `listRecentProcesses`
 serializes its filtered page. The native TypeScript wrapper restores BLOB
 buffers and non-finite REAL values in these JSON paths before exposing the
 standard row shapes.
@@ -254,9 +254,10 @@ locates a group without knowing its workspace, so a caller can tell "no such gro
 User-created chat folders reuse the registry as `task_groups` rows of type `chat-folder`
 (`CHAT_FOLDER_GROUP_TYPE`), one `task_group_members` row per filed process, with `color` and
 `sortIndex` in the `extra` blob. They deliberately register no client task-group descriptor —
-a folder has no run lifecycle and must never render as a run header. `getProcessSummaries`
-stamps `folderId` onto each `ProcessIndexEntry` from a single membership query, so list views
-never join themselves. REST lives in `packages/coc/src/server/processes/chat-folder-handler.ts`
+a folder has no run lifecycle and must never render as a run header. The native
+`getProcessSummaries` page resolves each folder within its read snapshot, using the
+latest valid membership by `linked_at` and row ID; Forge maps it to `folderId`.
+List views do not query folder membership. REST lives in `packages/coc/src/server/processes/chat-folder-handler.ts`
 under a dedicated `/chat-folders` namespace — generic task-group mutation is never exposed over
 HTTP, so a client cannot touch a live for-each run's group record. UI is gated by the
 `features.chatFolders` flag; the routes and schema are not.

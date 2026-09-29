@@ -79,6 +79,12 @@ describe('pooled native process reads', () => {
                     title TEXT, custom_title TEXT, last_message_preview TEXT, last_event_at TEXT,
                     pinned_at TEXT, archived INTEGER, metadata TEXT
                 );
+                CREATE TABLE task_groups (workspace_id TEXT, group_id TEXT, type TEXT);
+                CREATE TABLE task_group_members (
+                    id INTEGER PRIMARY KEY, workspace_id TEXT, group_id TEXT, process_id TEXT, linked_at TEXT
+                );
+                INSERT INTO task_groups VALUES ('ws-a', 'folder', 'chat-folder');
+                INSERT INTO task_group_members VALUES (1, 'ws-a', 'folder', 'one', '2026-01-01');
                 INSERT INTO processes VALUES (
                     'one', 'ws-a', NULL, 'completed', 'chat',
                     '2026-01-01', NULL, 'prompt', NULL, NULL, NULL, NULL, '2026-01-02',
@@ -95,8 +101,9 @@ describe('pooled native process reads', () => {
             const page = await pending;
             expect(page.total).toBe(1);
             expect(page.rows[0]).toMatchObject({
-                id: 'one', pending_ask_user_count: 1, compaction_json: '{"count":2}',
+                id: 'one', pending_ask_user_count: 1, compaction_json: '{"count":2}', folder_id: 'folder',
             });
+            expect((await db.getProcessSummaries({ workspaceId: 'ws-b' })).rows[0].folder_id).toBeNull();
             const raw = new (loadNativeSqlite().NativeDatabaseHandle)(path.join(dir, 'processes.db'));
             try {
                 const filter = { workspaceId: 'ws-a' };

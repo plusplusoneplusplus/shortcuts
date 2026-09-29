@@ -150,7 +150,10 @@ describe('AC-07 typed summary/recent reads versus original SQL', () => {
         const timestamp = '2026-01-01T00:00:00Z';
         groups.upsertGroup({ groupId: 'folder', workspaceId: 'ws-a', type: CHAT_FOLDER_GROUP_TYPE,
             title: 'Filed', status: 'draft', createdAt: timestamp, updatedAt: timestamp });
-        groups.linkChild('ws-a', 'folder', { role: 'member', processId: 'one' });
+        groups.upsertGroup({ groupId: 'folder-later', workspaceId: 'ws-a', type: CHAT_FOLDER_GROUP_TYPE,
+            title: 'Moved', status: 'draft', createdAt: timestamp, updatedAt: timestamp });
+        groups.linkChild('ws-a', 'folder', { role: 'member', processId: 'one', linkedAt: timestamp });
+        groups.linkChild('ws-a', 'folder-later', { role: 'member', processId: 'one', linkedAt: timestamp });
         const filters: ProcessFilter[] = [
             {}, { workspaceId: 'ws-a' }, { parentProcessId: 'missing' }, { status: [] },
             { status: ['completed', 'running'], type: 'chat' },
@@ -167,7 +170,9 @@ describe('AC-07 typed summary/recent reads versus original SQL', () => {
                 limit: filter.limit, offset: filter.offset,
             });
             expect(native.total).toBe(oracle.total);
-            compareRows(native.rows, oracle.rows);
+            expect(native.rows.map(row => row.folder_id)).toEqual(
+                oracle.entries.map(entry => entry.folderId ?? null));
+            compareRows(native.rows.map(({ folder_id: _folderId, ...row }) => row), oracle.rows);
         }
         const options: RecentOptions[] = [
             {}, { workspaceId: 'ws-a' }, { excludeProcessId: 'one' },
@@ -183,7 +188,7 @@ describe('AC-07 typed summary/recent reads versus original SQL', () => {
                 limit: option.limit, offset: option.offset,
             }), oracle.rows);
         }
-        expect(originalSummaries(store, { workspaceId: 'ws-a' }).entries.find(entry => entry.id === 'one')?.folderId).toBe('folder');
+        expect(originalSummaries(store, { workspaceId: 'ws-a' }).entries.find(entry => entry.id === 'one')?.folderId).toBe('folder-later');
     });
 
     it('rejects unsupported schema versions for both new reads', async () => {

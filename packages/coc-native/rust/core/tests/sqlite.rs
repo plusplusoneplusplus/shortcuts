@@ -279,6 +279,10 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
         CREATE TABLE conversation_turns (
           id INTEGER PRIMARY KEY, process_id TEXT, turn_index INTEGER, content TEXT
         );
+        CREATE TABLE task_groups (workspace_id TEXT, group_id TEXT, type TEXT);
+        CREATE TABLE task_group_members (
+          id INTEGER PRIMARY KEY, workspace_id TEXT, group_id TEXT, process_id TEXT, linked_at TEXT
+        );
         INSERT INTO processes VALUES
           ('one', 'ws-a', NULL, 'completed', 'chat', '2026-01-01', '2026-01-02',
             NULL, 'first', NULL, NULL, NULL, NULL, NULL, 0,
@@ -286,6 +290,14 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
           ('two', 'ws-b', 'one', 'running', 'chat', '2026-02-01', '2026-02-02',
             NULL, 'second', NULL, NULL, NULL, NULL, NULL, 0, NULL);
         INSERT INTO conversation_turns VALUES (1, 'one', 2, 'second'), (2, 'one', 0, 'first');
+        INSERT INTO task_groups VALUES
+          ('ws-a', 'older', 'chat-folder'), ('ws-a', 'newer', 'chat-folder'),
+          ('ws-a', 'other', 'for-each');
+        INSERT INTO task_group_members VALUES
+          (1, 'ws-a', 'older', 'one', '2026-01-01'),
+          (2, 'ws-a', 'newer', 'one', '2026-01-01'),
+          (3, 'ws-a', 'other', 'two', '2026-02-01'),
+          (4, 'ws-a', 'missing', 'two', '2026-03-01');
     ",
         )
         .unwrap();
@@ -331,6 +343,7 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     assert_eq!(summaries.total, 1);
     assert_eq!(summaries.rows[0]["pending_ask_user_count"], Value::Integer(1));
     assert_eq!(summaries.rows[0]["compaction_json"], Value::Text("{\"count\":2}".into()));
+    assert_eq!(summaries.rows[0]["folder_id"], Value::Text("newer".into()));
     let summary_json = get_process_summaries_json(
         &database,
         &ProcessFilter {
@@ -344,6 +357,7 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     assert_eq!(page["total"], 1);
     assert_eq!(page["rows"][0]["pending_ask_user_count"], 1);
     assert_eq!(page["rows"][0]["compaction_json"], "{\"count\":2}");
+    assert_eq!(page["rows"][0]["folder_id"], "newer");
     database
         .prepare("UPDATE processes SET title = ? WHERE id = 'two'")
         .run(&positional([Value::Text("Title \"two\"\nnext".into())]))
@@ -355,6 +369,7 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     assert_eq!(full_page["rows"][0]["id"], "two");
     assert_eq!(full_page["rows"][1]["id"], "one");
     assert_eq!(full_page["rows"][0]["title"], "Title \"two\"\nnext");
+    assert!(full_page["rows"][0]["folder_id"].is_null());
     assert!(full_summary_json.contains(r#""title":"Title \"two\"\nnext""#));
     let offset_page: serde_json::Value = serde_json::from_str(
         &get_process_summaries_json(

@@ -358,7 +358,11 @@ fn with_summary_page<T>(
             "SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, \
              parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, \
              COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count, \
-             json_extract(metadata, '$.compaction') AS compaction_json \
+             json_extract(metadata, '$.compaction') AS compaction_json, \
+             (SELECT m.group_id FROM task_group_members m \
+              JOIN task_groups g ON g.workspace_id = m.workspace_id AND g.group_id = m.group_id \
+              WHERE g.type = 'chat-folder' AND m.process_id = processes.id \
+              ORDER BY m.linked_at DESC, m.id DESC LIMIT 1) AS folder_id \
              FROM processes {where_clause} ORDER BY last_event_at DESC"
         );
         if let Some(limit) = filter.limit {
