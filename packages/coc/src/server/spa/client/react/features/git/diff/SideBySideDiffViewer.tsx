@@ -34,7 +34,6 @@ import { DiffContextMenu } from '../../../tasks/comments/DiffContextMenu';
 import { FileBannerRow } from './FileBannerRow';
 import { parseFileBanners, type FileBanner } from './fileBannerModel';
 import { useDockedFileBanner } from './useDockedFileBanner';
-import { observeOffsetUntilCleanup } from './observeOffsetUntilCleanup';
 import { writeDiffSelectionDragStart } from './diffSelectionContext';
 import type { DiffComment, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 
@@ -177,9 +176,6 @@ export const SideBySideDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedD
                 const h = (el as HTMLElement).getBoundingClientRect?.().height;
                 return h && h > 0 ? h : DIFF_LINE_ESTIMATE_PX;
             },
-            // The stock observer leaves its scroll-stop timer running past
-            // unmount, which then re-renders a viewer that is already gone.
-            observeElementOffset: observeOffsetUntilCleanup,
         });
 
         // Row (sxsLines) indices where an edit group starts, and file-header rows —

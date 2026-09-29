@@ -1,15 +1,4 @@
-/**
- * Regression cover for the leaked virtualizer scroll-stop timer.
- *
- * virtual-core's `observeElementOffset` debounces a trailing "scrolling has
- * stopped" callback on every scroll event and its cleanup removes only the
- * scroll listeners, so the pending timer outlives unmount and re-renders a
- * component that is already gone. Under jsdom that killed whole shards: a timer
- * scheduled by the last scroll of one test file fired while the *next* file was
- * running, after the first file's `window` had been torn down, and React blew up
- * with `ReferenceError: window is not defined` reading event priority. Vitest
- * counts that as an unhandled error and fails the run.
- */
+/** Regression cover for virtualizer cleanup and the diff viewers' observer choice. */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
@@ -18,29 +7,24 @@ import { observeElementOffset, type Virtualizer } from '@tanstack/react-virtual'
 
 const { observeSpy } = vi.hoisted(() => ({ observeSpy: vi.fn() }));
 
-// Delegates to the real implementation — the spy only records that the viewers
-// still route their offset observation through it.
-vi.mock('../../../src/server/spa/client/react/features/git/diff/observeOffsetUntilCleanup', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../../../src/server/spa/client/react/features/git/diff/observeOffsetUntilCleanup')>();
+vi.mock('@tanstack/react-virtual', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('@tanstack/react-virtual')>();
     return {
         ...actual,
-        observeOffsetUntilCleanup: (...args: Parameters<typeof actual.observeOffsetUntilCleanup>) => {
-            observeSpy();
-            return actual.observeOffsetUntilCleanup(...args);
+        useVirtualizer: (...args: Parameters<typeof actual.useVirtualizer>) => {
+            observeSpy(args[0].observeElementOffset);
+            return actual.useVirtualizer(...args);
         },
     };
 });
 
-import { observeOffsetUntilCleanup } from '../../../src/server/spa/client/react/features/git/diff/observeOffsetUntilCleanup';
 import { UnifiedDiffViewer, VIRTUALIZE_THRESHOLD } from '../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import { SideBySideDiffViewer } from '../../../src/server/spa/client/react/features/git/diff/SideBySideDiffViewer';
 
 type OffsetCall = { offset: number; isScrolling: boolean };
 
 /**
- * The slice of a Virtualizer that `observeElementOffset` actually reads. Using
- * the real library observer (rather than a stub) is the point — the leak being
- * guarded against lives inside it.
+ * The slice of a Virtualizer that `observeElementOffset` actually reads.
  */
 function fakeVirtualizer(scrollElement: HTMLElement) {
     return {
@@ -61,12 +45,12 @@ afterEach(() => {
     observeSpy.mockClear();
 });
 
-describe('observeOffsetUntilCleanup', () => {
+describe('virtualizer offset cleanup', () => {
     it('forwards offsets while it is live', () => {
         vi.useFakeTimers();
         const el = document.createElement('div');
         const seen: OffsetCall[] = [];
-        const stop = observeOffsetUntilCleanup(fakeVirtualizer(el), (offset, isScrolling) =>
+        const stop = observeElementOffset(fakeVirtualizer(el), (offset, isScrolling) =>
             seen.push({ offset, isScrolling })
         );
 
@@ -83,24 +67,7 @@ describe('observeOffsetUntilCleanup', () => {
         stop();
     });
 
-    it('swallows the scroll-stop timer that lands after cleanup', () => {
-        vi.useFakeTimers();
-        const el = document.createElement('div');
-        const seen: OffsetCall[] = [];
-        const stop = observeOffsetUntilCleanup(fakeVirtualizer(el), (offset, isScrolling) =>
-            seen.push({ offset, isScrolling })
-        );
-
-        el.dispatchEvent(new Event('scroll'));
-        stop();
-        seen.length = 0;
-
-        // This is the timer that used to reach React after teardown.
-        vi.advanceTimersByTime(500);
-        expect(seen).toEqual([]);
-    });
-
-    it('canary: the stock observer still leaks, so the wrapper is still needed', () => {
+    it('cancels the scroll-stop timer on cleanup', () => {
         vi.useFakeTimers();
         const el = document.createElement('div');
         const seen: OffsetCall[] = [];
@@ -109,17 +76,29 @@ describe('observeOffsetUntilCleanup', () => {
         );
 
         el.dispatchEvent(new Event('scroll'));
-        stop?.();
+        stop();
         seen.length = 0;
-        vi.advanceTimersByTime(500);
 
-        // If this ever comes back empty, @tanstack/react-virtual has started
-        // clearing its debounce on cleanup and observeOffsetUntilCleanup can go.
-        expect(seen).toEqual([{ offset: 0, isScrolling: false }]);
+        vi.advanceTimersByTime(500);
+        expect(seen).toEqual([]);
+    });
+
+    it('removes the scroll listener on cleanup', () => {
+        vi.useFakeTimers();
+        const el = document.createElement('div');
+        const seen: OffsetCall[] = [];
+        const stop = observeElementOffset(fakeVirtualizer(el), (offset, isScrolling) =>
+            seen.push({ offset, isScrolling })
+        );
+
+        stop?.();
+        el.dispatchEvent(new Event('scroll'));
+        vi.advanceTimersByTime(500);
+        expect(seen).toEqual([]);
     });
 });
 
-describe('windowed diff viewers observe offsets through the wrapper', () => {
+describe('windowed diff viewers use native offset cleanup', () => {
     const DIFF = [
         'diff --git a/src/big.ts b/src/big.ts',
         'index 2793a9ad6..8cd4f108a 100644',
@@ -148,7 +127,7 @@ describe('windowed diff viewers observe offsets through the wrapper', () => {
     it.each([
         ['unified', UnifiedDiffViewer],
         ['split', SideBySideDiffViewer],
-    ])('%s mode passes observeOffsetUntilCleanup to its virtualizer', (_name, Viewer) => {
+    ])('%s mode uses the virtualizer default offset observer', (_name, Viewer) => {
         withMeasuredElements(() => {
             render(
                 <div data-testid="scroller" style={{ overflowY: 'scroll', height: 600 }}>
@@ -157,6 +136,6 @@ describe('windowed diff viewers observe offsets through the wrapper', () => {
             );
         });
 
-        expect(observeSpy).toHaveBeenCalled();
+        expect(observeSpy).toHaveBeenCalledWith(undefined);
     });
 });

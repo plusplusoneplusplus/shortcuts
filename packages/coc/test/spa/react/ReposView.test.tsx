@@ -923,7 +923,7 @@ describe('ReposContext — process events update in-memory (no throttled refetch
     it('dispatches process lifecycle events to AppContext instead of refetching repos', () => {
         const onMessageBlock = source.substring(
             source.indexOf('onMessage: useCallback'),
-            source.indexOf('}, [dispatch, refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, fetchRepos]),'),
+            source.indexOf('onConnect: useCallback'),
         );
         // Process events feed the in-memory AppContext process index; they must
         // NOT trigger a workspace rediscovery (fetchRepos) anymore.
@@ -954,7 +954,7 @@ describe('ReposContext — process events update in-memory (no throttled refetch
         expect(source).toContain('selectedRepoIdRef.current = appState.selectedRepoId');
         // Inside fetchRepos body, selectedRepoIdRef.current should be used instead of state.selectedRepoId
         const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
-        const fetchReposEnd = source.indexOf('}, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);', fetchReposStart);
+        const fetchReposEnd = source.indexOf('}, [dispatch,', fetchReposStart);
         const fetchReposBody = source.substring(fetchReposStart, fetchReposEnd + 15);
         expect(fetchReposBody).toContain('selectedRepoIdRef.current');
         // fetchRepos dependency array should NOT include state.selectedRepoId
@@ -988,7 +988,7 @@ describe('ReposContext — async git-info', () => {
 
     it('calls setLoading(false) and setRepos before git-info fetches (phase 1 renders first)', () => {
         const fetchReposStart = source.indexOf('const fetchRepos = useCallback');
-        const fetchReposEnd = source.indexOf('}, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);', fetchReposStart);
+        const fetchReposEnd = source.indexOf('}, [dispatch,', fetchReposStart);
         const fetchReposBody = source.substring(fetchReposStart, fetchReposEnd);
         // setRepos and setLoading(false) should appear before the phase-2 git-info loop.
         // `combined` = local enriched repos plus any merged remote-server repos.
