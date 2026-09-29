@@ -358,7 +358,7 @@ pub struct Statement {
 impl Statement {
     pub fn run(&self, parameters: &Parameters) -> Result<RunResult> {
         self.database.with_writer(|connection| {
-            let mut statement = connection.prepare(&self.sql)?;
+            let mut statement = connection.prepare_cached(&self.sql)?;
             bind(&mut statement, parameters)?;
             let changes = statement.raw_execute()? as u64;
             Ok(RunResult { changes, last_insert_rowid: connection.last_insert_rowid() })
@@ -367,7 +367,7 @@ impl Statement {
 
     pub fn get(&self, parameters: &Parameters) -> Result<Option<Row>> {
         self.database.with_writer(|connection| {
-            let mut statement = connection.prepare(&self.sql)?;
+            let mut statement = connection.prepare_cached(&self.sql)?;
             let column_names: Vec<String> =
                 statement.column_names().iter().map(ToString::to_string).collect();
             bind(&mut statement, parameters)?;

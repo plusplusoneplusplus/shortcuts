@@ -70,6 +70,35 @@ fn supports_all_sqlite_named_parameter_prefixes() {
 }
 
 #[test]
+fn cached_writer_statements_clear_bindings_and_follow_schema_changes() {
+    let database = Database::open(":memory:", false).unwrap();
+    database.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)").unwrap();
+    let insert = database.prepare("INSERT INTO items (id, value) VALUES (@id, @value)");
+    insert
+        .run(&Parameters::Named(vec![
+            ("id".into(), Value::Integer(1)),
+            ("value".into(), Value::Text("first".into())),
+        ]))
+        .unwrap();
+    insert.run(&Parameters::Named(vec![("id".into(), Value::Integer(2))])).unwrap();
+
+    let lookup = database.prepare("SELECT value FROM items WHERE id = ?");
+    assert_eq!(
+        lookup.get(&positional([Value::Integer(1)])).unwrap().unwrap()["value"],
+        Value::Text("first".into())
+    );
+    assert_eq!(
+        lookup.get(&positional([Value::Integer(2)])).unwrap().unwrap()["value"],
+        Value::Null
+    );
+    database.exec("ALTER TABLE items ADD COLUMN extra TEXT").unwrap();
+    assert_eq!(
+        lookup.get(&positional([Value::Integer(1)])).unwrap().unwrap()["value"],
+        Value::Text("first".into())
+    );
+}
+
+#[test]
 fn all_and_iterate_return_every_row() {
     let database = Database::open(":memory:", false).unwrap();
     database
