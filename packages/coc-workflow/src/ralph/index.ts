@@ -10,6 +10,7 @@ export type {
     RalphInputQuestion,
     RalphInputQuestionType,
     RalphInputRequest,
+    RalphPendingInput,
     RalphIterationRecord,
     RalphLoopRecord,
     RalphNeedsInputParseResult,

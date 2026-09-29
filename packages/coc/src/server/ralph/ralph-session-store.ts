@@ -20,6 +20,7 @@ import type {
     RalphExitSignal,
     RalphFinalCheckRecord,
     RalphLoopRecord,
+    RalphPendingInput,
     RalphSessionRecord,
     RalphSubmitRecord,
 } from './types';
@@ -287,6 +288,32 @@ export class RalphSessionStore {
 
     static parseProgressSections(progressMd: string): ParsedProgressSection[] {
         return parseProgressSections(progressMd);
+    }
+
+    /**
+     * Park the session on a RALPH_NEEDS_INPUT question batch: phase becomes
+     * `awaiting-input` and the request is persisted in `session.json` so it
+     * survives a server restart. No terminal reason is set — the session is
+     * paused, not finished.
+     *
+     * Throws if the session does not exist.
+     */
+    async setPendingInput(
+        workspaceId: string,
+        sessionId: string,
+        pending: RalphPendingInput,
+    ): Promise<RalphSessionRecord> {
+        const existing = await this.readSessionRecord(workspaceId, sessionId);
+        if (!existing) {
+            throw new Error(`Ralph session ${sessionId} not found in workspace ${workspaceId}`);
+        }
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? existing;
+            const next: RalphSessionRecord = { ...base, phase: 'awaiting-input', pendingInput: pending };
+            delete next.completedAt;
+            delete next.terminalReason;
+            return next;
+        });
     }
 
     /**

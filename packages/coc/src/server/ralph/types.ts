@@ -12,6 +12,7 @@ export type {
     RalphFinalCheckRecord,
     RalphFinalCheckStatus,
     RalphIterationRecord,
+    RalphPendingInput,
     RalphLoopRecord,
     RalphSessionCompleteReason,
     RalphSessionPhase,

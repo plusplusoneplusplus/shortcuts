@@ -48,6 +48,16 @@ export interface OrchestrateRalphIterationDeps {
         totalIterations: number;
         reason: string;
     }) => void;
+    /**
+     * Broadcast that a session paused on a RALPH_NEEDS_INPUT question batch.
+     * Optional: hosts without a live channel still persist the request.
+     */
+    broadcastAwaitingInput?: (params: {
+        workspaceId: string;
+        sessionId: string;
+        processId: string;
+        iteration: number;
+    }) => void;
     /** Working directory for next-iteration and final-check tasks. */
     workingDirectory?: string;
     /** folderPath for next-iteration and final-check tasks. */
@@ -247,6 +257,40 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                     }
                 });
                 break;
+
+            case 'awaitInput': {
+                // Park the session. Nothing is enqueued and no session-complete
+                // event fires, so scheduled runs stay active while waiting.
+                if (!deps.dataDir || !action.workspaceId || !action.sessionId) {
+                    logger.warn(LogCategory.AI, `[Ralph] RALPH_NEEDS_INPUT from ${processId} cannot be persisted (no journal); session left idle.`);
+                    break;
+                }
+                const store = new RalphSessionStore({ dataDir: deps.dataDir });
+                try {
+                    await store.setPendingInput(action.workspaceId, action.sessionId, {
+                        iteration: action.iteration,
+                        taskId: action.taskId,
+                        processId: action.processId,
+                        requestedAt: new Date().toISOString(),
+                        request: action.request,
+                    });
+                } catch (err) {
+                    logger.warn(LogCategory.AI, `[Ralph] Failed to persist pending input for ${action.sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+                    break;
+                }
+                logger.info(LogCategory.AI, `[Ralph] Session ${action.sessionId} awaiting user input after iteration ${action.iteration}`);
+                try {
+                    deps.broadcastAwaitingInput?.({
+                        workspaceId: action.workspaceId,
+                        sessionId: action.sessionId,
+                        processId: action.processId,
+                        iteration: action.iteration,
+                    });
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[Ralph] Failed to broadcast awaiting-input for ${action.sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+                }
+                break;
+            }
 
             case 'completeSession':
                 logger.debug(LogCategory.AI, `[Ralph] Session complete for ${processId} (reason: ${action.completionReason}, iterations: ${action.totalIterations})`);

@@ -366,6 +366,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     params.workspaceId, params.sessionId, params.processId,
                     params.totalIterations, params.reason,
                 ),
+                broadcastAwaitingInput: (params) => this.broadcastRalphAwaitingInput(params),
                 workingDirectory: payload.workingDirectory,
                 folderPath: (payload as any).folderPath,
                 provider: isAutoProviderRoutingRequested(payload.context) ? undefined : (payload as any).provider,
@@ -374,6 +375,23 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 existingTaskConfig: completedTask.config as Record<string, unknown>,
             },
         });
+    }
+
+    /** Broadcast a ralph-session-awaiting-input WS event. */
+    private broadcastRalphAwaitingInput(params: {
+        workspaceId: string;
+        sessionId: string;
+        processId: string;
+        iteration: number;
+    }): void {
+        try {
+            this.runtime.getWsServer?.()?.broadcastProcessEvent({
+                type: 'ralph-session-awaiting-input',
+                ...params,
+            });
+        } catch (err) {
+            getLogger().debug(LogCategory.AI, `[Ralph] Failed to broadcast ralph-session-awaiting-input: ${err instanceof Error ? err.message : String(err)}`);
+        }
     }
 
     /** Broadcast a ralph-session-complete WS event. */

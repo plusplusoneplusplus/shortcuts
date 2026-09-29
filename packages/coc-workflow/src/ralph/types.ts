@@ -136,6 +136,22 @@ export interface RalphSessionRecord {
      * Absent on non-worktree sessions.
      */
     worktree?: RalphWorktreeMetadata;
+    /**
+     * The question batch the session is waiting on while
+     * `phase === 'awaiting-input'`. Cleared when the user answers or stops
+     * the session. Absent on sessions that never asked.
+     */
+    pendingInput?: RalphPendingInput;
+}
+
+/** A RALPH_NEEDS_INPUT request persisted on the session until answered. */
+export interface RalphPendingInput {
+    /** The iteration that asked. */
+    iteration: number;
+    taskId: string;
+    processId: string;
+    requestedAt: string;
+    request: RalphInputRequest;
 }
 
 export interface ParsedProgressSection {
