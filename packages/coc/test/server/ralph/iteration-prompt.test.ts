@@ -56,7 +56,7 @@ describe('buildRalphIterationPrompt', () => {
         expect(prompt.indexOf('Context map:')).toBeLessThan(prompt.indexOf('<goal>'));
     });
 
-    it('keeps the progress/iteration block unchanged when context path is omitted', () => {
+    it('keeps the progress/iteration block before the input contract when context path is omitted', () => {
         const prompt = buildRalphIterationPrompt({
             originalGoal: 'goal text',
             progressPath: '/p/progress.md',
@@ -64,11 +64,9 @@ describe('buildRalphIterationPrompt', () => {
             maxIterations: 5,
         });
 
-        expect(prompt).toBe([
-            'Load and follow the `ultra-ralph` skill, `execution` section. The skill file is at ~/.coc/skills/ultra-ralph/SKILL.md.',
-            'Progress journal: /p/progress.md\nIteration 2 of 5.',
-            '<goal>\ngoal text\n</goal>',
-        ].join('\n\n'));
+        expect(prompt).toContain('Progress journal: /p/progress.md\nIteration 2 of 5.');
+        expect(prompt.indexOf('Progress journal:')).toBeLessThan(prompt.indexOf('Human input is a last resort'));
+        expect(prompt.indexOf('Human input is a last resort')).toBeLessThan(prompt.indexOf('<goal>'));
     });
 
     it('includes progress path and iteration counter before the <goal> block', () => {
@@ -133,14 +131,15 @@ describe('buildRalphIterationPrompt', () => {
         const prompt = buildRalphIterationPrompt({ originalGoal: 'some goal' });
         expect(prompt).not.toContain('<work_intent>');
         expect(prompt).not.toContain('<spec_contract>');
-        expect(prompt).not.toContain('RALPH_NEXT');
-        expect(prompt).not.toContain('RALPH_COMPLETE');
+        expect(prompt).not.toContain('Emit RALPH_NEXT');
+        expect(prompt).not.toContain('Emit RALPH_COMPLETE');
         expect(prompt).not.toContain('## Iteration <N>');
     });
 
-    it('returns empty input as just the skill pointer line', () => {
+    it('returns empty input with the skill pointer and needs-input contract', () => {
         const prompt = buildRalphIterationPrompt({});
         expect(prompt).toMatch(/^Load and follow the `ultra-ralph` skill/);
+        expect(prompt).toContain('Human input is a last resort');
         expect(prompt).not.toContain('<goal>');
     });
 });

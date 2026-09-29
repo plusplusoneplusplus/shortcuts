@@ -182,6 +182,18 @@ describe('buildRalphIterationPrompt', () => {
         expect(prompt).toContain('read this first');
         expect(prompt).toContain('rewrite it at the end');
         expect(prompt).toContain('Iteration 3 of 20.');
+        expect(prompt).toContain('Human input is a last resort');
+        expect(prompt).toContain('conflict with a [decision] item');
+        expect(prompt).toContain('destructive or irreversible action');
+        expect(prompt).toContain('missing credentials or external access');
+        expect(prompt).toContain('product choice that cannot be inferred and would be costly to redo');
+        expect(prompt).toContain('tag it [assumption], and record it in progress.md');
+        expect(prompt).toContain('Keep interruptions to a minimum');
+        expect(prompt).toContain('RALPH_NEEDS_INPUT as <SIGNAL>');
+        expect(prompt).toContain('at most 5 questions');
+        expect(prompt).toContain('Question type must be one of select, multi-select, yes-no, confirm, or text');
+        expect(prompt).toContain('"recommendation": "required recommended answer or array of answers"');
+        expect(prompt).toContain('Do not emit RALPH_NEEDS_INPUT without a valid block or emit more than one question batch');
         expect(prompt.endsWith('<goal>\nImplement the feature.\n</goal>')).toBe(true);
         expect(prompt).not.toContain('<work_intent>');
         expect(prompt).not.toContain('<spec_contract>');
