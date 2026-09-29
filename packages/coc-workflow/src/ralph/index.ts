@@ -6,8 +6,13 @@ export type {
     RalphExitSignal,
     RalphFinalCheckRecord,
     RalphFinalCheckStatus,
+    RalphInputOption,
+    RalphInputQuestion,
+    RalphInputQuestionType,
+    RalphInputRequest,
     RalphIterationRecord,
     RalphLoopRecord,
+    RalphNeedsInputParseResult,
     RalphParseResult,
     RalphSessionCompleteReason,
     RalphSessionPhase,
@@ -22,6 +27,12 @@ export type {
 } from './types';
 
 export { appendProgress, parseRalphSignal } from './signal-parser';
+export {
+    parseRalphNeedsInput,
+    RALPH_NEEDS_INPUT_MAX_BLOCK_CHARS,
+    RALPH_NEEDS_INPUT_MAX_QUESTIONS,
+    RALPH_NEEDS_INPUT_TOKEN,
+} from './needs-input-parser';
 export { formatProgressSection, parseProgressSections } from './progress-section';
 export type { FormatProgressSectionInput } from './progress-section';
 export { classifyRalphProgressStagnation } from './progress-classifier';

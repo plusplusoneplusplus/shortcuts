@@ -246,3 +246,34 @@ export interface FinalCheckResult {
     /** Raw error message when status is 'unparseable' or 'invalid'. */
     error?: string;
 }
+
+/** Answer types a RALPH_NEEDS_INPUT question may use (mirrors `ask_user`). */
+export type RalphInputQuestionType = 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+
+export interface RalphInputOption {
+    value: string;
+    label: string;
+    description?: string;
+}
+
+/** One question in a RALPH_NEEDS_INPUT batch; `ask_user` shape plus a recommendation. */
+export interface RalphInputQuestion {
+    question: string;
+    type: RalphInputQuestionType;
+    options?: RalphInputOption[];
+    defaultValue?: string | string[];
+    /** The agent's recommended answer, used by "Use recommendation". */
+    recommendation: string | string[];
+}
+
+/** The single question batch an iteration may raise with RALPH_NEEDS_INPUT. */
+export interface RalphInputRequest {
+    /** What the agent found and why it is blocked. */
+    context: string;
+    questions: RalphInputQuestion[];
+}
+
+export type RalphNeedsInputParseResult =
+    | { status: 'absent' }
+    | { status: 'ok'; request: RalphInputRequest }
+    | { status: 'invalid'; error: string };

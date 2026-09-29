@@ -13,6 +13,7 @@ import {
     formatProgressSection,
     parseFinalCheckResult,
     parseProgressSections,
+    parseRalphNeedsInput,
     parseRalphSignal,
     parseRalphSubmitResult,
     type FinalCheckResult,
@@ -40,6 +41,7 @@ describe('Ralph public module boundary', () => {
         expect(typeof decideRalphIterationActions).toBe('function');
         expect(typeof decideRalphFinalCheckActions).toBe('function');
         expect(typeof formatFinalCheckProgressSection).toBe('function');
+        expect(typeof parseRalphNeedsInput).toBe('function');
     });
 
     it('declares the ./ralph JavaScript and declaration subpath', () => {
