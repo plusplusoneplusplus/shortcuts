@@ -502,10 +502,11 @@ export interface SendMessageOptions {
     workingDirectory?: string;
     /**
      * Extra absolute directories the agent is allowed to access beyond the
-     * working directory. Consumed by the Claude and Codex providers, which map
-     * these to the SDK's `additionalDirectories` permission scope. Both services
-     * additionally always grant access to `~/.coc`; the Claude service also
-     * always grants the system temp directory.
+     * working directory. Claude and Codex map these to the SDK's
+     * `additionalDirectories` permission scope and always grant `~/.coc` too;
+     * Claude also grants the system temp directory. Copilot grants them as
+     * session path permissions and searches them (with `readOnlyDirectories`)
+     * for custom instruction files via `instructionDirectories`.
      */
     additionalDirectories?: string[];
     /**

@@ -85,6 +85,24 @@ export function applyDangerousCommandGuardToPermissionHandler(
     };
 }
 
+function resolvePolicyDirectory(options: SendMessageOptions, directory: string): string {
+    return path.resolve(options.workingDirectory ?? process.cwd(), directory);
+}
+
+/**
+ * Writable and read-only external roots (e.g. repo-group members), resolved
+ * against the working directory and de-duplicated. These roots get path
+ * permissions and are also searched for custom instruction files
+ * (`AGENTS.md`, `.github/copilot-instructions.md`), since Copilot only
+ * discovers those from the working directory by default.
+ */
+function resolveAccessibleDirectories(options: SendMessageOptions): string[] {
+    return [...new Set([
+        ...(options.additionalDirectories ?? []),
+        ...(options.readOnlyDirectories ?? []),
+    ].map(directory => resolvePolicyDirectory(options, directory)))];
+}
+
 // ============================================================================
 // RequestRunner
 // ============================================================================
@@ -106,13 +124,8 @@ export class RequestRunner {
         session: CopilotSession,
         options: SendMessageOptions,
     ): Promise<void> {
-        const resolveDirectory = (directory: string) => (
-            path.resolve(options.workingDirectory ?? process.cwd(), directory)
-        );
-        const accessibleDirectories = [...new Set([
-            ...(options.additionalDirectories ?? []),
-            ...(options.readOnlyDirectories ?? []),
-        ].map(resolveDirectory))];
+        const resolveDirectory = (directory: string) => resolvePolicyDirectory(options, directory);
+        const accessibleDirectories = resolveAccessibleDirectories(options);
         if (accessibleDirectories.length === 0) return;
 
         for (const directory of accessibleDirectories) {
@@ -238,6 +251,8 @@ export class RequestRunner {
             if (options.excludedTools) sessionOptions.excludedTools = options.excludedTools;
             if (options.skillDirectories?.length) sessionOptions.skillDirectories = options.skillDirectories;
             if (options.disabledSkills?.length) sessionOptions.disabledSkills = options.disabledSkills;
+            const instructionDirectories = resolveAccessibleDirectories(options);
+            if (instructionDirectories.length) sessionOptions.instructionDirectories = instructionDirectories;
             if (options.infiniteSessions !== undefined) sessionOptions.infiniteSessions = options.infiniteSessions;
             if (options.onUserInputRequest) sessionOptions.onUserInputRequest = options.onUserInputRequest;
 
