@@ -16,6 +16,14 @@ describe('WorkspacesClient mock server contract', () => {
     mock = undefined;
   });
 
+  it('requests workspace-scoped Ralph attention with an encoded workspace id', async () => {
+    mock = await startMockServer();
+    mock.on('GET', '/api/workspaces/repo%2Fone/ralph-sessions/attention', { body: { count: 2 } });
+    const client = createClient(mock);
+    await expect(client.workspaces.ralphAttention('repo/one')).resolves.toEqual({ count: 2 });
+    expectGetRequest(mock.requests[0], '/api/workspaces/repo%2Fone/ralph-sessions/attention');
+  });
+
   it('returns workspace lists including an empty server result', async () => {
     mock = await startMockServer();
     const workspace = mockWorkspace({ id: 'repo/one', name: 'Repo One' });

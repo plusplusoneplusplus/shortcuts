@@ -107,13 +107,6 @@ export function registerRalphInputRoutes(routes: Route[], ctx: RalphInputRouteCo
                 };
 
                 const recovered = await recoverIterationPaths(record, store, workspaceId);
-                const updated = await journal.resolvePendingInput(workspaceId, sessionId, humanInput);
-                if (!updated) {
-                    return sendError(res, 409, 'Session is no longer awaiting input');
-                }
-
-                await clearAwaitingProcessPhase(store, pending.processId, 'executing');
-
                 try {
                     await journal.appendHumanInputSection(workspaceId, sessionId, humanInput, pending.request);
                 } catch (err) {
@@ -121,7 +114,14 @@ export function registerRalphInputRoutes(routes: Route[], ctx: RalphInputRouteCo
                         LogCategory.AI,
                         `[Ralph] appendHumanInputSection failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`,
                     );
+                    return sendError(res, 500, 'Failed to save the answer in the progress journal; retry the submission');
                 }
+                const updated = await journal.resolvePendingInput(workspaceId, sessionId, humanInput);
+                if (!updated) {
+                    return sendError(res, 409, 'Session is no longer awaiting input');
+                }
+
+                await clearAwaitingProcessPhase(store, pending.processId, 'executing');
 
                 const provider = aiSelection.value.provider ?? recovered.provider;
                 const effortTier = aiSelection.value.effortTier;

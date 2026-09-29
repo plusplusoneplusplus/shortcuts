@@ -664,7 +664,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerGroupPinRoutes(routes, store, dataDir);
     const taskGroupService = TaskGroupService.fromProcessStore(store);
     registerTaskGroupRoutes({ routes, store, taskGroupService });
-    registerRalphSessionChangeListener(dataDir, record => syncRalphSessionToTaskGroup(taskGroupService, record));
+    registerRalphSessionChangeListener(dataDir, record => {
+        try {
+            syncRalphSessionToTaskGroup(taskGroupService, record);
+        } finally {
+            getWsServer().broadcastProcessEvent({
+                type: 'ralph-session-changed',
+                workspaceId: record.workspaceId,
+                sessionId: record.sessionId,
+            });
+        }
+    });
     registerPinArchiveRoutes(routes, store as any);
     registerPinOrderRoutes(routes, store, dataDir);
     const chatFolderStore = taskGroupService.getChatFolderStore();

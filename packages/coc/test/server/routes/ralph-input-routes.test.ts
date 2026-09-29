@@ -258,6 +258,22 @@ describe('Ralph input/stop routes', () => {
             expect(record?.phase).toBe('executing');
             expect(record?.humanInputs).toHaveLength(1);
         });
+
+        it('keeps the session awaiting input when the progress journal cannot be written', async () => {
+            await seedSession(dataDir, 'ws-1', 'sess-journal-fail');
+            const append = vi.spyOn(RalphSessionStore.prototype, 'appendHumanInputSection')
+                .mockRejectedValueOnce(new Error('journal unavailable'));
+            try {
+                const res = await post(baseUrl, inputUrl('ws-1', 'sess-journal-fail'), { answers: ['repo', 'no'] });
+                expect(res.status).toBe(500);
+                const record = await new RalphSessionStore({ dataDir }).readSessionRecord('ws-1', 'sess-journal-fail');
+                expect(record?.phase).toBe('awaiting-input');
+                expect(record?.humanInputs).toBeUndefined();
+                expect(enqueue).not.toHaveBeenCalled();
+            } finally {
+                append.mockRestore();
+            }
+        });
     });
 
     async function addAskingProcess(): Promise<void> {

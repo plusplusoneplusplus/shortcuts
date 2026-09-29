@@ -272,6 +272,13 @@ export class WorkspacesClient {
     });
   }
 
+  /** Count Ralph sessions waiting for human input in this workspace. */
+  ralphAttention(workspaceId: string): Promise<{ count: number }> {
+    return this.transport.request<{ count: number }>(
+      `/workspaces/${encodePathSegment(workspaceId)}/ralph-sessions/attention`,
+    );
+  }
+
   /** Read a Ralph session journal: `session.json` record + parsed `progress.md` sections. */
   ralphSession(
     workspaceId: string,

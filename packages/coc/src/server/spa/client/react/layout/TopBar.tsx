@@ -65,7 +65,8 @@ export interface TopBarProps {
 export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const { repos, unseenCounts, fetchRepos, remoteGroupWorkspaces } = useRepos();
+    const { repos, badgeCounts, unseenCounts: processUnseenCounts, fetchRepos, remoteGroupWorkspaces } = useRepos();
+    const unseenCounts = badgeCounts ?? processUnseenCounts;
     const { navigateToWorkspace } = useWorkspaceNavigation();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';

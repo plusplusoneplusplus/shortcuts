@@ -114,6 +114,17 @@ describe('parseRalphNeedsInput', () => {
         expect(result).toMatchObject({ status: 'invalid', error: expect.stringMatching(/one question batch/) });
     });
 
+    it.each(['bare', 'mixed'])('rejects a second %s question batch', (format) => {
+        const payload = JSON.stringify({ context: 'c', questions: [validQuestion] });
+        const response = format === 'bare'
+            ? `RALPH_NEEDS_INPUT\n${payload}\n${payload}`
+            : `${block(JSON.parse(payload))}\n${payload}`;
+        expect(parseRalphNeedsInput(response)).toMatchObject({
+            status: 'invalid',
+            error: expect.stringMatching(/one question batch/),
+        });
+    });
+
     it('does not count unrelated fenced JSON as a second batch', () => {
         const payload = { context: 'c', questions: [validQuestion] };
         const result = parseRalphNeedsInput(`${block(payload)}\n\`\`\`json\n{"note":1}\n\`\`\`\n`);

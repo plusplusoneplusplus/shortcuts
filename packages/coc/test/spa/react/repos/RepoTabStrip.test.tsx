@@ -148,7 +148,7 @@ describe('RepoTabStrip', () => {
         );
         const badge = screen.getByTestId('repo-tab-unseen-badge');
         expect(badge.textContent).toBe('5');
-        expect(badge.getAttribute('aria-label')).toBe('5 unread');
+        expect(badge.getAttribute('aria-label')).toBe('5 needing attention');
     });
 
     it('caps badge at 99+ for large unseen counts', () => {

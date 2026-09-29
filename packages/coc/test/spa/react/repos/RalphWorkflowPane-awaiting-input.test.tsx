@@ -182,6 +182,39 @@ describe('RalphWorkflowPane awaiting-input node', () => {
         await waitFor(() => expect(onSubmitInput).toHaveBeenCalledWith(['postgres', 'no', ['dev']], undefined));
     });
 
+    it('selects the visible Confirm choice for a yes recommendation', async () => {
+        const onSubmitInput = vi.fn().mockResolvedValue(undefined);
+        const view = makeView({
+            pendingInput: {
+                ...PENDING,
+                request: { context: 'Proceed?', questions: [{ question: 'Proceed?', type: 'confirm', recommendation: 'yes' }] },
+            },
+        });
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} onSubmitInput={onSubmitInput} />);
+        fireEvent.click(screen.getByTestId('ralph-awaiting-input-use-recommendation'));
+        const options = screen.getAllByTestId('ralph-awaiting-input-option') as HTMLInputElement[];
+        expect(options[0].checked).toBe(true);
+        expect(options[1].checked).toBe(false);
+        fireEvent.click(screen.getByTestId('ralph-awaiting-input-submit'));
+        await waitFor(() => expect(onSubmitInput).toHaveBeenCalledWith(['confirm'], undefined));
+    });
+
+    it('shows the matching option for a confirm default', () => {
+        const view = makeView({
+            pendingInput: {
+                ...PENDING,
+                request: {
+                    context: 'Proceed?',
+                    questions: [{ question: 'Proceed?', type: 'confirm', defaultValue: 'no', recommendation: 'yes' }],
+                },
+            },
+        });
+        render(<RalphWorkflowPane workspaceId="ws-1" sessionId="sess-1" view={view} />);
+        const options = screen.getAllByTestId('ralph-awaiting-input-option') as HTMLInputElement[];
+        expect(options[0].checked).toBe(false);
+        expect(options[1].checked).toBe(true);
+    });
+
     it('renders a textarea for text questions and trims the answer', async () => {
         const onSubmitInput = vi.fn().mockResolvedValue(undefined);
         const view = makeView({

@@ -141,20 +141,37 @@ function normalizeOption(raw: unknown): RalphInputOption | null {
 }
 
 /**
- * Count question batches after the first marker: fenced ```json blocks whose
- * root object carries a `questions` array. A single bare (unfenced) block
- * counts as one batch.
+ * Count both fenced and bare question batches after the first marker.
  */
 function countQuestionBatches(text: string): number {
     let count = 0;
-    for (const match of text.matchAll(/```json\s*\n([\s\S]*?)\n```/gm)) {
+    const withoutFences = text.replace(/```json\s*\n([\s\S]*?)\n```/gm, (_match, json: string) => {
         try {
-            const parsed: unknown = JSON.parse(match[1].trim());
+            const parsed: unknown = JSON.parse(json.trim());
             if (isRecord(parsed) && Array.isArray(parsed['questions'])) {
                 count += 1;
             }
         } catch {
             // Non-JSON fenced blocks are not question batches.
+        }
+        return '';
+    });
+    let remaining = withoutFences;
+    while (remaining.includes('{')) {
+        const start = remaining.indexOf('{');
+        const raw = extractJsonObjectString(remaining.slice(start));
+        if (!raw) {
+            remaining = remaining.slice(start + 1);
+            continue;
+        }
+        try {
+            const parsed: unknown = JSON.parse(raw);
+            if (isRecord(parsed) && Array.isArray(parsed['questions'])) {
+                count += 1;
+            }
+            remaining = remaining.slice(start + raw.length);
+        } catch {
+            remaining = remaining.slice(start + 1);
         }
     }
     return count;

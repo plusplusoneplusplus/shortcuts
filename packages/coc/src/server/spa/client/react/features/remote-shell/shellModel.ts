@@ -11,6 +11,7 @@
  */
 
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
+import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import type { RemoteConnectionStatus, RemoteQueueStatus } from '../../repos/remoteWorkspaceAggregation';
 import type { RepoSubTab } from '../../types/dashboard';
 import type { SubTabDef } from '../repo-detail/repoSubTabs';
@@ -236,7 +237,7 @@ export function summarizeRemote(
         const st = cloneStatus[id] ?? 'idle';
         if (st === 'running') running = true;
         else if (st === 'queued') queued = true;
-        unseen += unseenCounts[id] ?? 0;
+        unseen += unseenCounts[getRepoSelectionId(repo)] ?? unseenCounts[id] ?? 0;
     }
     const status: RemoteStatus = running ? 'running' : queued ? 'queued' : 'idle';
     const first = group.repos[0]?.workspace;

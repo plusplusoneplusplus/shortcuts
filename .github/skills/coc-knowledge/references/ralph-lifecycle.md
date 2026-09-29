@@ -58,6 +58,9 @@ including duplicate submissions. A successful submit appends `## Human input` to
 `progress.md`, stores the input in `humanInputs[]`, clears `pendingInput`, restores
 `phase='executing'`, and queues iteration `currentIteration + 1`. Provider/model fallback
 matches `/resume`, and the fresh iteration prompt includes the submitted human answers.
+If the journal append fails, submission returns an error and leaves the request awaiting
+input. If enqueue fails after the answer is saved, `/resume` carries the saved answers
+into its fresh iteration prompt.
 `coc-client` exposes `submitRalphInput()`.
 
 `POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/stop` accepts only an
@@ -68,10 +71,15 @@ awaiting-input session. It clears the pending request and completes the session 
 
 `RalphWorkflowPane` places an Awaiting input node after the asking iteration. It renders the
 agent context, question controls, a recommendation-fill action, an optional note, Submit,
-and Stop session. The session row carries a waiting marker, and the repo reuses its unseen
-activity count for attention. The asking process mirrors `metadata.ralph.phase` so history
-grouping preserves the marker; submitting resets it to `executing`, and stopping sets it to
-`complete`.
+and Stop session. The session row carries a waiting marker. Repo attention reads the
+persisted count of `phase='awaiting-input'` sessions via
+`GET /api/workspaces/:workspaceId/ralph-sessions/attention`; the server broadcasts
+`ralph-session-changed` on session-record writes, so local and remote clone badges
+refresh on pause, answer, or Stop. `ReposContext` keeps that count separate from
+process unseen counts and combines them only for badge presentation; initial load
+and clone reconnect fetch persisted state. The asking process mirrors
+`metadata.ralph.phase` so history grouping preserves the marker; submitting resets
+it to `executing`, and stopping sets it to `complete`.
 
 ### Continue a Completed Session
 

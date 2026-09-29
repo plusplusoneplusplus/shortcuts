@@ -79,7 +79,8 @@ function PinGroupGlyph() {
 export function ScopeSlideSwitcher({ repo, repos }: ScopeSlideSwitcherProps) {
     const { state } = useApp();
     const { state: queueState } = useQueue();
-    const { remoteGroupWorkspaces, unseenCounts } = useRepos();
+    const { remoteGroupWorkspaces, badgeCounts, unseenCounts: processUnseenCounts } = useRepos();
+    const unseenCounts = badgeCounts ?? processUnseenCounts;
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
     const pinnedScopesEnabled = usePinnedScopesEnabled();

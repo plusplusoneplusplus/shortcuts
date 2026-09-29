@@ -54,7 +54,8 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const { state } = useApp();
     const { state: queueState } = useQueue();
     const { selectClone, switchSubTab } = useShellNavigation();
-    const { unseenCounts } = useRepos();
+    const { badgeCounts, unseenCounts: processUnseenCounts } = useRepos();
+    const unseenCounts = badgeCounts ?? processUnseenCounts;
     const { toasts, addToast, removeToast } = useToast();
 
     const terminalEnabled = useTerminalEnabled();
@@ -97,7 +98,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const remoteLabel = group ? summarizeRemote(group, cloneStatus, {}).name : ws.name;
 
     const cloneUnreadTotal = useMemo(
-        () => clones.reduce((sum, c) => sum + (unseenCounts[String(c.workspace.id)] ?? 0), 0),
+        () => clones.reduce((sum, c) => sum + (unseenCounts[getRepoSelectionId(c)] ?? 0), 0),
         [clones, unseenCounts],
     );
 
@@ -281,7 +282,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                         <span
                             className={`absolute -top-0.5 -right-0.5 ${unreadBadgeClass}`}
                             data-testid="clone-switch-unseen-badge"
-                            aria-label={`${cloneUnreadTotal} unread conversations`}
+                            aria-label={`${cloneUnreadTotal} conversations needing attention`}
                         >
                             {formatUnreadCount(cloneUnreadTotal)}
                         </span>
@@ -308,7 +309,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                             const serverLabel = isRemote
                                 ? String((c.workspace as { remote?: { serverLabel?: unknown } }).remote?.serverLabel ?? 'remote')
                                 : null;
-                            const cloneUnreadCount = unseenCounts[cid] ?? 0;
+                            const cloneUnreadCount = unseenCounts[selectionId] ?? 0;
                             return (
                                 <button
                                     key={selectionId}
@@ -367,7 +368,7 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                                                 <span
                                                     className={`${unreadBadgeClass} flex-shrink-0`}
                                                     data-testid="clone-row-unseen-badge"
-                                                    aria-label={`${cloneUnreadCount} unread conversations`}
+                                                    aria-label={`${cloneUnreadCount} conversations needing attention`}
                                                 >
                                                     {formatUnreadCount(cloneUnreadCount)}
                                                 </span>

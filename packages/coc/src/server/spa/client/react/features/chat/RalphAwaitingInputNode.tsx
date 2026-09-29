@@ -46,18 +46,26 @@ function coerce(question: RalphInputQuestion, value: RalphInputAnswer | undefine
     return value ?? '';
 }
 
+function normalizeChoiceAnswer(question: RalphInputQuestion, value: RalphInputAnswer): RalphInputAnswer {
+    if (question.type === 'yes-no' || question.type === 'confirm') {
+        const normalized = typeof value === 'string' ? value.trim().toLowerCase() : value;
+        if (question.type === 'confirm') {
+            if (normalized === 'yes' || normalized === 'true') return 'confirm';
+            if (normalized === 'no' || normalized === 'false' || normalized === 'cancel') return 'decline';
+        }
+        return normalized;
+    }
+    return value;
+}
+
 /** Starting answer: the question's default when present, otherwise empty. */
 export function initialRalphAnswer(question: RalphInputQuestion): RalphInputAnswer {
-    return coerce(question, question.defaultValue);
+    return normalizeChoiceAnswer(question, coerce(question, question.defaultValue));
 }
 
 /** The agent's recommendation, shaped for the question type. */
 export function recommendedRalphAnswer(question: RalphInputQuestion): RalphInputAnswer {
-    const value = coerce(question, question.recommendation);
-    if (question.type === 'yes-no' || question.type === 'confirm') {
-        return typeof value === 'string' ? value.trim().toLowerCase() : value;
-    }
-    return value;
+    return normalizeChoiceAnswer(question, coerce(question, question.recommendation));
 }
 
 function isAnswered(question: RalphInputQuestion, value: RalphInputAnswer): boolean {

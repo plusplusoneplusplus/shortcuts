@@ -152,6 +152,7 @@ export type ServerMessage =
     | { type: 'turn-rewound'; processId: string; turnIndex: number; turnsRemoved: number }
     | { type: 'ralph-session-complete'; workspaceId: string; sessionId?: string; processId: string; totalIterations: number; reason: 'signal' | 'cap' | string }
     | { type: 'ralph-session-awaiting-input'; workspaceId: string; sessionId: string; processId: string; iteration: number }
+    | { type: 'ralph-session-changed'; workspaceId: string; sessionId: string }
     | { type: 'cron-created' | 'cron-updated' | 'cron-paused' | 'cron-resumed' | 'cron-cancelled' | 'cron-expired' | 'cron-tick'; cronId: string; processId: string; status: string; workspaceId?: string; timestamp: number }
     | { type: 'trigger-created' | 'trigger-updated' | 'trigger-fired' | 'trigger-disarmed' | 'trigger-expired' | 'trigger-paused'; triggerId: string; processId: string; status: string; workspaceId?: string; timestamp: number }
     | { type: 'wakeup-scheduled' | 'wakeup-fired' | 'wakeup-failed' | 'wakeup-cancelled'; wakeupId: string; processId: string; status: string; workspaceId?: string; timestamp: number };

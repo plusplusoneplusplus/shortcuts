@@ -223,6 +223,7 @@ All launch/continue/resume bodies take [Provider overrides](#provider-overrides)
 |--------|------|-------------|
 | POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Optional `worktree` opt-in (see [Worktree opt-in](#worktree-opt-in)); worktree creation is fail-before-queue and the resolved path is persisted on the session record so all iterations/resume/final-check run in it |
 | POST | `/api/ralph-launch` | Direct launch (skip grilling). Optional `folderPath` as goal source context and `workingDirectory` as explicit execution directory; omitted `workingDirectory` resolves from `workspaceId` via the multi-repo queue router. Optional `worktree` opt-in on the target server |
+| GET | `/api/workspaces/:wsId/ralph-sessions/attention` | `{ count }` of persisted `awaiting-input` sessions for this workspace; independent of process seen-state. Client: `workspaces.ralphAttention()` |
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Session journal: `record`, parsed progress `sections`, alphabetically ordered raw session `files`, optional transient `resumeDefaults` recovered from the latest iteration process for stuck-session Resume UI |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend a completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-cron` | New goal cron after RALPH_COMPLETE, preserving prior provider/model when recoverable |
