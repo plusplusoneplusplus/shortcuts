@@ -991,6 +991,35 @@ describe('ChatListPane', () => {
             expect(props.onSelectTask).toHaveBeenCalledWith('q-1', expect.anything());
         });
 
+        it('moves frozen tasks into a Frozen Tasks section below Queued', () => {
+            mockPinnedChatIds = new Set(['h-1']);
+            renderPane({
+                running: [makeRunningTask()],
+                queued: [
+                    makeQueuedTask({ id: 'q-1' }),
+                    makeQueuedTask({ id: 'q-frozen', frozen: true }),
+                ],
+                history: [makeHistoryTask({ id: 'h-1' }), makeHistoryTask({ id: 'h-2' })],
+            });
+            const queuedSection = document.querySelector('[data-section="queued"]')!;
+            const frozenSection = document.querySelector('[data-section="frozen"]')!;
+            expect(frozenSection).toBeTruthy();
+            expect(frozenSection.querySelector('[data-task-id="q-frozen"]')).toBeTruthy();
+            expect(queuedSection.querySelector('[data-task-id="q-frozen"]')).toBeNull();
+            expect(queuedSection.querySelector('[data-task-id="q-1"]')).toBeTruthy();
+
+            const order = Array.from(document.querySelectorAll('[data-section]'))
+                .map(el => el.getAttribute('data-section'))
+                .filter(id => ['running', 'queued', 'frozen', 'pinned', 'completed'].includes(id!));
+            expect(order).toEqual(['running', 'queued', 'frozen', 'pinned', 'completed']);
+        });
+
+        it('hides the Frozen Tasks section when no queued task is frozen', () => {
+            renderPane({ queued: [makeQueuedTask()] });
+            expect(document.querySelector('[data-section="frozen"]')).toBeNull();
+            expect(screen.queryByTestId('frozen-tasks-section-toggle')).toBeNull();
+        });
+
         it('renders pause marker for pause-marker items', () => {
             renderPane({
                 queued: [makeQueuedTask(), { id: 'pm-1', kind: 'pause-marker' }],

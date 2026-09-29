@@ -2404,6 +2404,18 @@ export function ChatListPane({
         [tabFilteredQueued, groupedTaskIds],
     );
 
+    /** Frozen tasks get their own "Frozen Tasks" section; the Queued section
+     *  keeps pause markers and the tasks that will actually run next. */
+    const { activeQueued, frozenQueued } = useMemo(() => {
+        const active: any[] = [];
+        const frozen: any[] = [];
+        for (const item of visibleTabFilteredQueued) {
+            if (item.kind !== 'pause-marker' && item.frozen) frozen.push(item);
+            else active.push(item);
+        }
+        return { activeQueued: active, frozenQueued: frozen };
+    }, [visibleTabFilteredQueued]);
+
     /** Source-bucketed counts for the scope segmented control. Counts come
      *  from the unfiltered task lists so the chips stay meaningful regardless
      *  of which scope the user is currently viewing. */
@@ -2762,6 +2774,7 @@ export function ChatListPane({
 
     const [showRunning, setShowRunning] = useState(true);
     const [showQueued, setShowQueued] = useState(true);
+    const [showFrozen, setShowFrozen] = useState(true);
     const [showPinned, setShowPinned] = useState(true);
     const [showHistory, setShowHistory] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
@@ -5145,7 +5158,7 @@ export function ChatListPane({
                     </div>
                 )}
 
-                {visibleTabFilteredQueued.length > 0 && (
+                {activeQueued.length > 0 && (
                     <div data-section="queued" className="-mx-2 md:-mx-4">
                         <button
                             type="button"
@@ -5158,7 +5171,7 @@ export function ChatListPane({
                                 <span className="text-[10px]">{showQueued ? '▼' : '▶'}</span>
                                 Queued Tasks
                             </span>
-                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{visibleTabFilteredQueued.filter((t: any) => t.kind !== 'pause-marker').length}</span>
+                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{activeQueued.filter((t: any) => t.kind !== 'pause-marker').length}</span>
                         </button>
                         {showQueued && (
                             <div className="flex flex-col">
@@ -5175,7 +5188,10 @@ export function ChatListPane({
                                         quotaData={quotaData}
                                     />
                                 )}
-                                {visibleTabFilteredQueued.map((item: any, index: number) => {
+                                {activeQueued.map((item: any) => {
+                                    // Drag indexes stay positions in the full visible queue
+                                    // (frozen rows included) so reorders keep their old mapping.
+                                    const index = visibleTabFilteredQueued.indexOf(item);
                                     const globalIndex = queued.findIndex((q: any) => q.id === item.id);
                                     if (item.kind === 'pause-marker') {
                                         return (
@@ -5207,7 +5223,7 @@ export function ChatListPane({
                                                     activeDropTargetIndex === index && activeDropPosition === 'below' && 'border-b-2 border-[#007fd4]',
                                                 )}
                                             >
-                                                {renderChatListRow(item, visibleTabFilteredQueued, { taskStatus: 'queued' })}
+                                                {renderChatListRow(item, activeQueued, { taskStatus: 'queued' })}
                                             </div>
                                             {!isMobile && (
                                                 <PauseInsertZone
@@ -5225,6 +5241,34 @@ export function ChatListPane({
                                         </div>
                                     );
                                 })}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {frozenQueued.length > 0 && (
+                    <div data-section="frozen" className="-mx-2 md:-mx-4">
+                        <button
+                            type="button"
+                            className="sticky top-0 z-[2] w-full flex items-center justify-between px-3 py-1 border-b backdrop-blur-md backdrop-saturate-150 bg-white/[0.94] dark:bg-[#1e1e1e]/[0.94] border-[#e0e0e0]/80 dark:border-[#3c3c3c]/80 hover:bg-[#f5f5f5] dark:hover:bg-[#252526] transition-colors"
+                            onClick={() => setShowFrozen(!showFrozen)}
+                            data-testid="frozen-tasks-section-toggle"
+                            aria-expanded={showFrozen}
+                        >
+                            <span className="inline-flex items-center gap-1.5 text-[10px] leading-none font-mono font-semibold uppercase tracking-[0.1em] text-[#848484] dark:text-[#a0a0a0]">
+                                <span className="text-[10px]">{showFrozen ? '▼' : '▶'}</span>
+                                <span aria-hidden="true">❄️</span>
+                                Frozen Tasks
+                            </span>
+                            <span className="text-[10px] leading-none font-mono tabular-nums text-[#848484] dark:text-[#a0a0a0]">{frozenQueued.length}</span>
+                        </button>
+                        {showFrozen && (
+                            <div className="flex flex-col">
+                                {frozenQueued.map((item: any) => (
+                                    <div key={item.id}>
+                                        {renderChatListRow(item, frozenQueued, { taskStatus: 'queued' })}
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
