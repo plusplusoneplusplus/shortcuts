@@ -291,11 +291,12 @@ actions), labeled with the registered workspace name (id fallback while loading)
 ### Group Git
 
 `RepoGroupGitTab` hosts one member's standalone `RepoGitTab`, keyed by member id
-to isolate panel state. `RepoGroupGitMemberPicker` is a native dropdown passed
-through `RepoGitTab.repositorySelector` into `GitPanelHeader`; the selector also
-stays available during loading and errors. Options include Git status from
-`useRepoGroupMemberGitInfo`; stale members are disabled with a reason. Git calls
-use the selected member's clone-routed workspace id.
+to isolate panel state. `RepoGroupGitMemberPicker` is a searchable, portaled
+listbox passed through `RepoGitTab.repositorySelector` into `GitPanelHeader`; the
+selector also stays available during loading and errors. Rows separate the repo
+name, path, branch and Git status from `useRepoGroupMemberGitInfo`; stale members
+stay visible but disabled with a reason. Git calls use the selected member's
+clone-routed workspace id.
 
 **The group owns the page, the member owns the data.** `RepoGitTab` takes
 `routeWorkspaceId` (the group) alongside `workspaceId` (the member), so its URLs

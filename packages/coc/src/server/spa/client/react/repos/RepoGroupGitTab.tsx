@@ -227,11 +227,11 @@ export function RepoGroupGitTab({
         }
     }, [selectedId, healthyIds, setPreferredId, routeOwnsThisGroup, selectionId]);
 
-    const selectorRef = useRef<HTMLSelectElement | null>(null);
+    const selectorRef = useRef<HTMLButtonElement | null>(null);
     const restoreSelectorFocus = useRef(false);
     // The keyed Git panel and its loading/error views remount the selector.
     // Carry keyboard focus with it so arrow-key navigation can continue.
-    const setSelectorRef = useCallback((element: HTMLSelectElement | null) => {
+    const setSelectorRef = useCallback((element: HTMLButtonElement | null) => {
         if (!element && selectorRef.current === document.activeElement) {
             restoreSelectorFocus.current = true;
         }

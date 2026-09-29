@@ -74,6 +74,15 @@ function member(id: string, overrides: Partial<RepoGroupMember> = {}): RepoGroup
     return { workspaceId: id, name: id, rootPath: `/r/${id}`, ...overrides } as RepoGroupMember;
 }
 
+function openMemberPicker() {
+    fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
+}
+
+function selectMember(id: string) {
+    openMemberPicker();
+    fireEvent.click(screen.getByTestId(`repo-group-git-member-${id}`));
+}
+
 beforeEach(() => {
     wsListener = undefined;
     panelMounts.length = 0;
@@ -140,21 +149,22 @@ describe('RepoGroupGitTab', () => {
 });
 
 describe('RepoGroupGitTab member picker (AC-02)', () => {
-    it('uses one dropdown inside the Git toolbar and switches the hosted panel', () => {
+    it('uses one listbox inside the Git toolbar and switches the hosted panel', () => {
         render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a'), member('repo-b')]} />);
 
-        const picker = screen.getByRole('combobox', { name: 'Member repository' }) as HTMLSelectElement;
-        expect(screen.getAllByRole('combobox')).toHaveLength(1);
+        const picker = screen.getByTestId('repo-group-git-member-trigger');
+        expect(screen.getAllByTestId('repo-group-git-member-trigger')).toHaveLength(1);
+        openMemberPicker();
         expect(screen.getAllByRole('option')).toHaveLength(2);
         expect(screen.queryByRole('tablist', { name: 'Member repositories' })).toBeNull();
         expect(screen.getByTestId('stub-git-toolbar').contains(picker)).toBe(true);
-        expect(picker.value).toBe('repo-a');
+        expect(screen.getByTestId('repo-group-git-member-picker').getAttribute('data-selected-member')).toBe('repo-a');
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-workspace')).toBe('repo-a');
 
-        fireEvent.change(picker, { target: { value: 'repo-b' } });
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
 
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-workspace')).toBe('repo-b');
-        expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('repo-b');
+        expect(screen.getByTestId('repo-group-git-member-picker').getAttribute('data-selected-member')).toBe('repo-b');
     });
 
     it('reads every badge from ONE batch request, not one call per member', async () => {
@@ -166,24 +176,26 @@ describe('RepoGroupGitTab member picker (AC-02)', () => {
         });
 
         render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a'), member('repo-b')]} />);
+        openMemberPicker();
 
-        await waitFor(() => expect(screen.getByRole('option', { name: 'repo-a — feature/x ● ↑2' })).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('repo-group-git-member-repo-a').textContent).toContain('feature/x'));
         expect(batchSpy).toHaveBeenCalledTimes(1);
         expect(batchSpy.mock.calls[0][0]).toEqual(['repo-a', 'repo-b']);
         expect(singleSpy).not.toHaveBeenCalled();
 
-        expect(screen.getByRole('option', { name: 'repo-b — main ↓3' })).toBeTruthy();
+        expect(screen.getByTestId('repo-group-git-member-repo-b').textContent).toContain('↓3');
     });
 
     it('refreshes just the changed member on a git-changed event', async () => {
         batchSpy.mockResolvedValue({ results: { 'repo-a': gitInfo({ ahead: 1 }), 'repo-b': gitInfo() } });
         render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a'), member('repo-b')]} />);
-        await waitFor(() => expect(screen.getByRole('option', { name: 'repo-a — main ↑1' })).toBeTruthy());
+        openMemberPicker();
+        await waitFor(() => expect(screen.getByTestId('repo-group-git-member-repo-a').textContent).toContain('↑1'));
 
         singleSpy.mockResolvedValue(gitInfo({ ahead: 0 }));
         await act(async () => { wsListener?.({ type: 'git-changed', workspaceId: 'repo-a' }); });
 
-        await waitFor(() => expect(screen.getByRole('option', { name: 'repo-a — main' })).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('repo-group-git-member-repo-a').textContent).not.toContain('↑1'));
         expect(singleSpy).toHaveBeenCalledTimes(1);
         expect(singleSpy).toHaveBeenCalledWith('repo-a');
         expect(batchSpy).toHaveBeenCalledTimes(1);
@@ -210,12 +222,13 @@ describe('RepoGroupGitTab member picker (AC-02)', () => {
             />
         );
 
-        const gone = screen.getByRole('option', { name: 'gone — removed' }) as HTMLOptionElement;
+        openMemberPicker();
+        const gone = screen.getByTestId('repo-group-git-member-gone') as HTMLButtonElement;
         expect(gone.disabled).toBe(true);
-        expect(gone.textContent).toContain('removed');
-        expect((screen.getByRole('option', { name: 'moved — path missing' }) as HTMLOptionElement).disabled).toBe(true);
+        expect(gone.textContent).toContain('Workspace removed');
+        expect((screen.getByTestId('repo-group-git-member-moved') as HTMLButtonElement).disabled).toBe(true);
 
-        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'gone' } });
+        fireEvent.click(gone);
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-workspace')).toBe('repo-a');
 
         // Stale members are never sent to the batch — they have no worktree.
@@ -226,7 +239,7 @@ describe('RepoGroupGitTab member picker (AC-02)', () => {
     it('falls back to the first healthy member when the selected one goes stale', () => {
         const healthy = [member('repo-a'), member('repo-b')];
         const { rerender } = render(<RepoGroupGitTab workspaceId={GROUP_ID} members={healthy} />);
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), { target: { value: 'repo-b' } });
+        selectMember('repo-b');
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-workspace')).toBe('repo-b');
 
         rerender(
@@ -247,15 +260,16 @@ describe('RepoGroupGitTab member picker (AC-02)', () => {
             />
         );
         expect(screen.getByTestId('repo-group-git-empty')).toBeTruthy();
+        openMemberPicker();
         expect(screen.getByTestId('repo-group-git-member-gone')).toBeTruthy();
-        expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('');
-        expect(screen.getByRole('option', { name: 'No usable repositories' })).toBeTruthy();
+        expect(screen.getByTestId('repo-group-git-member-picker').getAttribute('data-selected-member')).toBe('');
+        expect(screen.getByTestId('repo-group-git-member-label').textContent).toBe('No usable repositories');
         expect(batchSpy).not.toHaveBeenCalled();
     });
 
     it('disables the selector when the group has no members', () => {
         render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[]} />);
-        expect((screen.getByRole('combobox') as HTMLSelectElement).disabled).toBe(true);
+        expect((screen.getByTestId('repo-group-git-member-trigger') as HTMLButtonElement).disabled).toBe(true);
         expect(screen.getByTestId('repo-group-git-empty')).toBeTruthy();
         expect(batchSpy).not.toHaveBeenCalled();
     });
@@ -264,21 +278,22 @@ describe('RepoGroupGitTab member picker (AC-02)', () => {
         render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[
             member('repo-a', { name: 'api' }), member('repo-b', { name: 'api' }),
         ]} />);
-        expect(screen.getAllByRole('option', { name: 'api' })).toHaveLength(2);
-        fireEvent.change(screen.getByRole('combobox'), { target: { value: 'repo-b' } });
+        openMemberPicker();
+        expect(screen.getAllByRole('option').filter(option => option.textContent?.includes('api'))).toHaveLength(2);
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-workspace')).toBe('repo-b');
     });
 
     it('preserves keyboard focus when switching remounts the hosted panel', () => {
         render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a'), member('repo-b')]} />);
-        const picker = screen.getByRole('combobox');
+        const picker = screen.getByTestId('repo-group-git-member-trigger');
         picker.focus();
-        fireEvent.change(picker, { target: { value: 'repo-b' } });
-        const nextPicker = screen.getByRole('combobox');
+        selectMember('repo-b');
+        const nextPicker = screen.getByTestId('repo-group-git-member-trigger');
         expect(nextPicker).not.toBe(picker);
         expect(document.activeElement).toBe(nextPicker);
-        fireEvent.change(nextPicker, { target: { value: 'repo-a' } });
-        expect(document.activeElement).toBe(screen.getByRole('combobox'));
+        selectMember('repo-a');
+        expect(document.activeElement).toBe(screen.getByTestId('repo-group-git-member-trigger'));
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-workspace')).toBe('repo-a');
     });
 });
@@ -300,13 +315,13 @@ describe('RepoGroupGitTab panel isolation across members (AC-03)', () => {
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-scratch')).toBe('dirty');
 
         // Switch to B: a brand new panel, none of A's state.
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), { target: { value: 'repo-b' } });
+        selectMember('repo-b');
         expect(panelMounts).toEqual(['repo-a', 'repo-b']);
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-workspace')).toBe('repo-b');
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-scratch')).toBe('clean');
 
         // Back to A: also a fresh mount, so B's state cannot follow either.
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), { target: { value: 'repo-a' } });
+        selectMember('repo-a');
         expect(panelMounts).toEqual(['repo-a', 'repo-b', 'repo-a']);
         expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-scratch')).toBe('clean');
     });
@@ -319,7 +334,7 @@ describe('RepoGroupGitTab panel isolation across members (AC-03)', () => {
             />
         );
         expect(screen.getAllByTestId('stub-repo-git-tab')).toHaveLength(1);
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), { target: { value: 'repo-c' } });
+        selectMember('repo-c');
         expect(screen.getAllByTestId('stub-repo-git-tab')).toHaveLength(1);
         expect(panelMounts).toEqual(['repo-a', 'repo-c']);
         expect(panelMounts).not.toContain(GROUP_ID);

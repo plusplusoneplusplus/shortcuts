@@ -268,9 +268,8 @@ describe('changing member', () => {
         await navigate(`#repos/${GROUP}/git/member/repo-a/abc1234/src%2Fa.ts`);
         expect(probe('data-commit')).toBe('abc1234');
 
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), {
-            target: { value: 'repo-b' },
-        });
+        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
         await syncRoute();
 
         expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-b`);
@@ -285,9 +284,8 @@ describe('changing member', () => {
         await navigate(`#repos/${GROUP}/git/member/repo-a/abc1234`);
         expect(routeLog).toContain('repo-a|abc1234');
 
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), {
-            target: { value: 'repo-b' },
-        });
+        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
         await syncRoute();
 
         // Scope + revision move together, so this pairing never exists.
@@ -301,9 +299,8 @@ describe('changing member', () => {
         renderGroup([member('repo-a'), member('repo-b')]);
         await navigate(`#repos/${GROUP}/git/member/repo-a/abc1234`);
 
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), {
-            target: { value: 'repo-a' },
-        });
+        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-a'));
         await syncRoute();
 
         expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-a/abc1234`);
@@ -335,9 +332,8 @@ describe('an explicit member the group cannot show', () => {
         renderGroup([member('repo-a'), member('repo-b')]);
         await navigate(`#repos/${GROUP}/git/member/repo-gone/abc1234`);
 
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), {
-            target: { value: 'repo-a' },
-        });
+        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-a'));
         await syncRoute();
 
         expect(location.hash).toBe(`#repos/${GROUP}/git/member/repo-a`);
