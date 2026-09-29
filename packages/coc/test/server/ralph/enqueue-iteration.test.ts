@@ -66,7 +66,7 @@ describe('buildRalphIterationTask', () => {
             dataDir: '/home/user/.coc',
         });
 
-        expect(task.payload.prompt).toContain('progress.md');
+        expect(task.payload.prompt).toContain('Progress journal:');
         expect(task.payload.prompt).toContain('sess-3');
     });
 
@@ -79,7 +79,7 @@ describe('buildRalphIterationTask', () => {
             maxIterations: 5,
         });
 
-        expect(task.payload.prompt).not.toContain('progress.md');
+        expect(task.payload.prompt).not.toContain('Progress journal:');
     });
 
     it('preserves explicit caller context while keeping Ralph orchestration metadata', () => {
