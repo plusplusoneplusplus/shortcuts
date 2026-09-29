@@ -1078,6 +1078,44 @@ describe('ChatListPane', () => {
             expect(document.querySelector('[data-section="frozen"] [data-task-id="q-f1"]')).toBeNull();
         });
 
+        it('Frozen rows are static: no draggable wrapper and no pause insert zones', () => {
+            renderPane({
+                queued: [
+                    makeQueuedTask({ id: 'q-1' }),
+                    makeQueuedTask({ id: 'q-f1', frozen: true }),
+                    makeQueuedTask({ id: 'q-f2', frozen: true }),
+                ],
+            });
+            fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
+            const queuedSection = document.querySelector('[data-section="queued"]')!;
+            const frozenSection = document.querySelector('[data-section="frozen"]')!;
+            expect(frozenSection.querySelectorAll('[data-task-id]').length).toBe(2);
+            expect(frozenSection.querySelector('[draggable="true"]')).toBeNull();
+            expect(frozenSection.querySelector('[data-queue-index]')).toBeNull();
+            expect(frozenSection.querySelector('[data-testid^="pause-insert-zone"]')).toBeNull();
+            // Queued rows keep drag + insert zones.
+            expect(queuedSection.querySelector('[draggable="true"]')).toBeTruthy();
+            expect(queuedSection.querySelector('[data-testid^="pause-insert-zone"]')).toBeTruthy();
+        });
+
+        it('moves a task from Frozen to Queued at its queue position after unfreeze', () => {
+            const queued = [
+                makeQueuedTask({ id: 'q-1' }),
+                makeQueuedTask({ id: 'q-2', frozen: true }),
+                makeQueuedTask({ id: 'q-3' }),
+            ];
+            const { rerender, props } = renderPane({ queued });
+            fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
+            expect(document.querySelector('[data-section="frozen"] [data-task-id="q-2"]')).toBeTruthy();
+
+            const unfrozen = queued.map(t => (t.id === 'q-2' ? { ...t, frozen: false } : t));
+            rerender(<ChatListPane {...props} queued={unfrozen} />);
+            expect(document.querySelector('[data-section="frozen"]')).toBeNull();
+            const queuedIds = Array.from(document.querySelectorAll('[data-section="queued"] [data-task-id]'))
+                .map(el => el.getAttribute('data-task-id'));
+            expect(queuedIds).toEqual(['q-1', 'q-2', 'q-3']);
+        });
+
         it('renders pause marker for pause-marker items', () => {
             renderPane({
                 queued: [makeQueuedTask(), { id: 'pm-1', kind: 'pause-marker' }],
