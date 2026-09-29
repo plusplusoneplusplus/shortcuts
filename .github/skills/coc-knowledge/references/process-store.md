@@ -40,7 +40,8 @@ Forge maps returned SQLite rows into the existing date- and JSON-rich
 ProcessStore shapes, including optional conversation/tool-call exclusions and
 chat-folder membership on summary entries. `getConversationTurns` serializes
 ordered turn rows into JSON; `getAllProcesses` serializes process and turn rows
-in bounded process-ID batches while preserving turn order. `getProcessSummaries`
+in bounded process-ID batches, appending each process's turns into one grouped
+JSON buffer while preserving turn order. `getProcessSummaries`
 serializes its count and page with chat-folder membership in one read snapshot; `listRecentProcesses`
 serializes its filtered page. The native TypeScript wrapper restores BLOB
 buffers and non-finite REAL values in these JSON paths before exposing the

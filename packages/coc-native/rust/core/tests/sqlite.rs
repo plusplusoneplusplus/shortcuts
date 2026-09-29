@@ -230,6 +230,9 @@ fn json_process_rows_escape_column_names_once_for_every_row() {
     database
         .exec(
             "PRAGMA user_version=38;
+             CREATE TABLE processes (id TEXT, workspace_id TEXT, last_event_at TEXT);
+             INSERT INTO processes VALUES
+               ('one', 'ws-a', '2026-01-01'), ('empty', 'ws-a', '2026-01-02');
              CREATE TABLE conversation_turns (
                process_id TEXT, turn_index INTEGER, \"quoted\"\"name\" TEXT,
                bytes BLOB, nonfinite REAL
@@ -244,6 +247,12 @@ fn json_process_rows_escape_column_names_once_for_every_row() {
     assert_eq!(
         rows,
         r#"[{"bytes":{"$sqliteBlob":[0,255]},"nonfinite":{"$sqliteNumber":"Infinity"},"process_id":"one","quoted\"name":"first","turn_index":0},{"bytes":null,"nonfinite":null,"process_id":"one","quoted\"name":"second","turn_index":1}]"#
+    );
+    assert_eq!(
+        get_all_processes_json(&database, &ProcessFilter::default()).unwrap(),
+        format!(
+            r#"[{{"process":{{"id":"empty","last_event_at":"2026-01-02","workspace_id":"ws-a"}},"turns":[]}},{{"process":{{"id":"one","last_event_at":"2026-01-01","workspace_id":"ws-a"}},"turns":{rows}}}]"#
+        )
     );
     let parsed: serde_json::Value = serde_json::from_str(&rows).unwrap();
     let original = get_conversation_turns(&database, "one").unwrap();

@@ -300,43 +300,45 @@ pub fn get_all_processes_json(database: &Database, filter: &ProcessFilter) -> Re
         check_process_schema(connection)?;
         let (sql, values) = process_query(filter);
         let processes = query_json_rows(connection, &sql, &values, |row| json_row_id(row, "id"))?;
-        let mut turns_by_process: HashMap<String, Vec<String>> = HashMap::new();
+        let mut turns_by_process: HashMap<String, Vec<u8>> = HashMap::new();
         if !filter.exclude_conversation {
             for chunk in processes.chunks(500) {
                 let ids = chunk.iter().map(|(id, _)| Value::Text(id.clone())).collect::<Vec<_>>();
-                for (id, turn) in
-                    query_json_rows(connection, &turn_batch_query(&ids), &ids, |row| {
-                        json_row_id(row, "process_id")
-                    })?
-                {
-                    turns_by_process.entry(id).or_default().push(turn);
+                let sql = turn_batch_query(&ids);
+                let mut statement = connection.prepare(&sql)?;
+                let columns = json_columns(&statement);
+                let mut cursor = statement.query(params_from_iter(&ids))?;
+                while let Some(row) = cursor.next()? {
+                    let turns = turns_by_process
+                        .entry(json_row_id(row, "process_id")?)
+                        .or_insert_with(|| vec![b'[']);
+                    if turns.len() > 1 {
+                        turns.push(b',');
+                    }
+                    append_json_row(turns, row, &columns)?;
                 }
             }
         }
-        let mut output = String::new();
-        output.push('[');
+        let mut output = vec![b'['];
         for (index, (id, process)) in processes.iter().enumerate() {
             if index != 0 {
-                output.push(',');
+                output.push(b',');
             }
-            output.push_str(r#"{"process":"#);
-            output.push_str(process);
+            output.extend_from_slice(br#"{"process":"#);
+            output.extend_from_slice(process.as_bytes());
             if !filter.exclude_conversation {
-                output.push_str(r#","turns":["#);
-                for (turn_index, turn) in
-                    turns_by_process.remove(id).unwrap_or_default().iter().enumerate()
-                {
-                    if turn_index != 0 {
-                        output.push(',');
-                    }
-                    output.push_str(turn);
+                output.extend_from_slice(br#","turns":"#);
+                if let Some(mut turns) = turns_by_process.remove(id) {
+                    turns.push(b']');
+                    output.extend_from_slice(&turns);
+                } else {
+                    output.extend_from_slice(b"[]");
                 }
-                output.push(']');
             }
-            output.push('}');
+            output.push(b'}');
         }
-        output.push(']');
-        Ok(output)
+        output.push(b']');
+        Ok(String::from_utf8(output).expect("SQLite JSON rows are UTF-8"))
     })
 }
 
