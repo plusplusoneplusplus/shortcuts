@@ -24,15 +24,17 @@ async function setup(options: {
     workspaces?: Array<{ id: string; rootPath: string }>;
     response?: { ok: true } | { ok: false; reason: string };
     groupPreview?: { path: string; resolvedWorkspaceId: string };
+    panel?: boolean;
 } = {}) {
     const path = options.path ?? htmlPath;
     document.body.innerHTML = `<div class="chat-message assistant" data-ws-id="${options.groupPreview ? 'group-one' : 'ws-local'}">
         <a href="${path}">Open page</a>
     </div>`;
     const open = vi.fn().mockResolvedValue(options.response ?? { ok: true });
+    const close = vi.fn();
     if (options.desktop !== false) {
         Object.defineProperty(window, 'cocDesktop', {
-            value: { isDesktop: true, htmlPage: { open } },
+            value: { isDesktop: true, htmlPage: { open, close } },
             configurable: true,
         });
     }
@@ -50,14 +52,19 @@ async function setup(options: {
     vi.stubGlobal('fetch', fetch);
     await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
     const events: CustomEvent[] = [];
-    const collect = (event: Event) => events.push(event as CustomEvent);
+    const collect = (event: Event) => {
+        if (event.type === 'coc-open-html-page' && options.panel !== false) {
+            (event as CustomEvent<{ handled?: boolean }>).detail.handled = true;
+        }
+        events.push(event as CustomEvent);
+    };
     window.addEventListener('coc-open-html-page', collect);
     window.addEventListener('coc-open-source-canvas', collect);
     document.querySelector('a')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(events.length).toBe(1));
+    await vi.waitFor(() => expect(events.length).toBeGreaterThanOrEqual(options.panel === false ? 2 : 1));
     window.removeEventListener('coc-open-html-page', collect);
     window.removeEventListener('coc-open-source-canvas', collect);
-    return { events, open, fetch };
+    return { events, open, close, fetch };
 }
 
 describe('assistant HTML link routing', () => {
@@ -80,7 +87,10 @@ describe('assistant HTML link routing', () => {
         const { events, open } = await setup({ path: 'pages/index.html' });
         expect(open).toHaveBeenCalledWith('page-id', htmlPath);
         expect(events[0].type).toBe('coc-open-html-page');
-        expect(events[0].detail).toEqual({ pageId: 'page-id', filePath: htmlPath, wsId: 'ws-local' });
+        expect(events[0].detail).toEqual({
+            pageId: 'page-id', filePath: htmlPath, wsId: 'ws-local',
+            scopeWsId: 'ws-local', handled: true,
+        });
     });
 
     it('resolves a repo-group relative link to its owning local member', async () => {
@@ -97,6 +107,12 @@ describe('assistant HTML link routing', () => {
         const { events, open } = await setup({ desktop: false });
         expect(open).not.toHaveBeenCalled();
         expect(events[0].type).toBe('coc-open-source-canvas');
+    });
+
+    it('closes a view and falls back when no right panel owns the link', async () => {
+        const { events, close } = await setup({ panel: false });
+        expect(events.map(event => event.type)).toEqual(['coc-open-html-page', 'coc-open-source-canvas']);
+        expect(close).toHaveBeenCalledWith('page-id');
     });
 
     it('keeps remote workspace links in the source viewer', async () => {

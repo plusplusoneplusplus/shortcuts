@@ -44,6 +44,7 @@ interface HtmlPageEntry {
     view: WebContentsView;
     pageId: string;
     filePath: string;
+    lastState?: HtmlPageLoadState;
 }
 
 /** Keyed by SPA webContents id, then by the SPA-chosen page id. */
@@ -117,8 +118,10 @@ function wireOwner(win: BrowserWindow): void {
 function wirePageView(entry: HtmlPageEntry): void {
     const wc = entry.view.webContents;
     const owner = entry.win.webContents;
-    const state = (status: HtmlPageLoadState['status'], error?: string) =>
-        pushState(owner, { pageId: entry.pageId, status, url: wc.isDestroyed() ? undefined : wc.getURL(), error });
+    const state = (status: HtmlPageLoadState['status'], error?: string) => {
+        entry.lastState = { pageId: entry.pageId, status, url: wc.isDestroyed() ? undefined : wc.getURL(), error };
+        pushState(owner, entry.lastState);
+    };
 
     wc.setWindowOpenHandler(({ url }) => {
         if (classifyHtmlPageWindowOpen(url) === 'external') {
@@ -177,6 +180,7 @@ function openPage(sender: WebContents, pageId: unknown, filePath: unknown): Html
     const entries = ownerEntries(sender.id);
     const existing = entries.get(pageId);
     if (existing && existing.filePath === check.path && !existing.view.webContents.isDestroyed()) {
+        if (existing.lastState) pushState(sender, existing.lastState);
         return { ok: true };
     }
     if (existing) {

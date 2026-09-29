@@ -248,8 +248,13 @@ links resolve through `resolveSourceCanvasTarget` and open through
 preview endpoint to identify the owning member. Only absolute paths attributed
 unambiguously to a local workspace reach the desktop host, which checks that
 the file exists. A successful open emits `coc-open-html-page` with
-`{ pageId, filePath, wsId }` for the right panel. Rejected, unresolved, remote,
-and browser-hosted links dispatch the ordinary source-canvas event.
+`{ pageId, filePath, wsId, scopeWsId }`; the owning right panel claims the
+event and opens a workspace-scoped, session-only tab. Without a matching panel
+the native view closes and the ordinary source-canvas event fires. Rejected,
+unresolved, remote, and browser-hosted links use that source-canvas path too.
+The page tab's View source action sets `forceSourceViewer` on the source-canvas
+event so `ChatDetail` opens the read-only viewer even when an editable file tab
+would otherwise be eligible.
 
 Separately, the shared `MarkdownView` intercepts assistant-prose deep-links with
 `#/process/<id>`, `#/session/<id>`, or `#/processes/<id>` hrefs; the router resolves the

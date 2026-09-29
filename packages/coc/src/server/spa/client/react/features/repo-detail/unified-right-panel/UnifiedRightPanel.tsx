@@ -98,6 +98,8 @@ import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
+import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
+import { desktopHtmlPageBridge, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import type {
@@ -569,6 +571,26 @@ export function UnifiedRightPanel({
         [setFlag],
     );
 
+    useEffect(() => {
+        const onOpenPage = (event: Event) => {
+            const detail = (event as CustomEvent<OpenHtmlPageDetail>).detail;
+            if (!detail || detail.scopeWsId !== workspaceId || !desktopHtmlPageBridge()) return;
+            detail.handled = true;
+            open({
+                kind: 'html-page',
+                ownerWorkspaceId: detail.wsId,
+                ownerRoutingRef: null,
+                chatId,
+                resourceId: detail.filePath,
+                label: fileNameOf(detail.filePath.replace(/\\/g, '/')),
+                htmlPageId: detail.pageId,
+            });
+            setWorkspaceDockOpen(workspaceId, true);
+        };
+        window.addEventListener('coc-open-html-page', onOpenPage);
+        return () => window.removeEventListener('coc-open-html-page', onOpenPage);
+    }, [chatId, open, workspaceId]);
+
     // ------------------------------------------------------------------
     // Close guard (AC-05)
     // ------------------------------------------------------------------
@@ -606,6 +628,10 @@ export function UnifiedRightPanel({
     const pendingPreviewOpen = useRef<{ tabId: string; open: () => void } | null>(null);
 
     const closeTab = useCallback((id: string) => {
+        const tab = tabsRef.current.find(candidate => candidate.id === id);
+        if (tab?.kind === 'html-page' && tab.htmlPageId) {
+            desktopHtmlPageBridge()?.close(tab.htmlPageId);
+        }
         close(id);
         navigationControllers.current.delete(id);
         setMountedIds(prev => {
@@ -1501,7 +1527,18 @@ export function UnifiedRightPanel({
                                 data-testid={`unified-panel-view-${tab.id}`}
                                 data-active={tab.id === activeId ? 'true' : 'false'}
                             >
-                                <UnifiedTabView
+                                {tab.kind === 'html-page' && tab.htmlPageId ? (
+                                    <UnifiedHtmlPageTab
+                                        tabId={tab.id}
+                                        pageId={tab.htmlPageId}
+                                        filePath={tab.resourceId}
+                                        wsId={tab.ownerWorkspaceId}
+                                        active={tab.id === activeId}
+                                        visible={isOpen && !menuOpen && !quickOpenVisible && !exactOpenVisible
+                                            && pendingClose === null && pendingDirty === null}
+                                        onErrorChange={handleErrorChange}
+                                    />
+                                ) : <UnifiedTabView
                                     tab={tab}
                                     scopeWorkspaceId={workspaceId}
                                     definitionPreviewOwners={definitionPreviewOwners}
@@ -1515,7 +1552,7 @@ export function UnifiedRightPanel({
                                     onFileNavigationMount={handleFileNavigationMount}
                                     onFileNavigationLocation={handleFileNavigationLocation}
                                     onNotesSelectionChange={updateNotesSelection}
-                                />
+                                />}
                             </div>
                         ))
                     )}

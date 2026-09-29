@@ -75,6 +75,34 @@ describe('unifiedPanelTabsModel — ownership', () => {
         }
     });
 
+    describe('desktop HTML page tab identity', () => {
+        const path = '/workspace/pages/index.html';
+        it('keeps one page per file across chats and focuses it when opened again', () => {
+            const first = open(EMPTY_UNIFIED_PANEL, {
+                kind: 'html-page', resourceId: path, label: 'index.html',
+                chatId: CHAT_1, htmlPageId: 'view-1',
+            });
+            const second = open(first, {
+                kind: 'html-page', resourceId: path, label: 'index.html',
+                chatId: CHAT_2, htmlPageId: 'view-1',
+            });
+            expect(second.workspaceTabs).toHaveLength(1);
+            expect(visibleTabs(second, CHAT_2)[0].htmlPageId).toBe('view-1');
+            expect(activeTabId(second, CHAT_2)).toBe(first.workspaceTabs[0].id);
+        });
+
+        it('does not restore a native view or a dangling selection from storage', () => {
+            const state = open(EMPTY_UNIFIED_PANEL, {
+                kind: 'html-page', resourceId: path, label: 'index.html',
+                chatId: CHAT_1, htmlPageId: 'view-1',
+            });
+            const serialized = serializeUnifiedPanelState(state);
+            expect(serialized).not.toContain('html-page');
+            expect(serialized).not.toContain('view-1');
+            expect(parseUnifiedPanelState(serialized)).toEqual(EMPTY_UNIFIED_PANEL);
+        });
+    });
+
     it('files opened files, canvases and diffs under the selected chat', () => {
         for (const kind of ['file', 'canvas', 'diff'] as const) {
             expect(scopeForKind(kind)).toBe('chat');

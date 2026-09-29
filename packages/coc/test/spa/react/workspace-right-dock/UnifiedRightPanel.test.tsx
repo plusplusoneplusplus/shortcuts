@@ -10,7 +10,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 // Mock the reused heavy views by source path so Monaco / xterm / API clients
 // never load here, and so mount and unmount are observable.
@@ -142,6 +142,141 @@ describe('UnifiedRightPanel', () => {
         cleanup();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
+        delete (window as { cocDesktop?: unknown }).cocDesktop;
+    });
+
+    describe('desktop HTML page tabs', () => {
+        let stateListener: ((state: { pageId: string; status: 'loading' | 'loaded' | 'failed'; error?: string }) => void) | undefined;
+        const bridge = {
+            open: vi.fn(async () => ({ ok: true as const })),
+            close: vi.fn(),
+            hide: vi.fn(),
+            reload: vi.fn(),
+            openExternal: vi.fn(),
+            setBounds: vi.fn(),
+            onState: vi.fn((callback: typeof stateListener) => {
+                stateListener = callback;
+                return () => { stateListener = undefined; };
+            }),
+        };
+        const filePath = '/workspace/pages/demo.html';
+        const tabId = unifiedTabId({
+            kind: 'html-page', ownerWorkspaceId: WS, ownerRoutingRef: null,
+            chatId: null, resourceId: filePath,
+        });
+        const openPage = (path = filePath, pageId = 'page-1', scopeWsId = WS, wsId = WS) => {
+            const detail = { pageId, filePath: path, wsId, scopeWsId, handled: false };
+            act(() => {
+                window.dispatchEvent(new CustomEvent('coc-open-html-page', { detail }));
+            });
+            return detail;
+        };
+
+        beforeEach(() => {
+            localStorage.clear();
+            clearUnifiedPanelState();
+            clearUnifiedTreeState();
+            vi.clearAllMocks();
+            stateListener = undefined;
+            Object.defineProperty(window, 'cocDesktop', { value: { htmlPage: bridge }, configurable: true });
+        });
+        afterEach(() => {
+            cleanup();
+            clearUnifiedPanelState();
+            clearUnifiedTreeState();
+            delete (window as { cocDesktop?: unknown }).cocDesktop;
+        });
+
+        it('opens, deduplicates and focuses a per-file tab with its filename', async () => {
+            renderPanel({ chatId: 'chat-1' });
+            expect(openPage().handled).toBe(true);
+            expect(screen.getByTestId(`unified-panel-tab-${tabId}`).textContent).toContain('demo.html');
+            openPage('/workspace/other.htm', 'page-2');
+            expect(screen.getAllByRole('tab')).toHaveLength(2);
+            openPage();
+            expect(screen.getAllByRole('tab')).toHaveLength(2);
+            expect(screen.getByTestId(`unified-panel-tab-${tabId}`).getAttribute('aria-selected')).toBe('true');
+            expect(bridge.open).toHaveBeenCalledWith('page-1', filePath);
+            expect(screen.getAllByTestId('html-page-placeholder')).toHaveLength(2);
+        });
+
+        it('routes toolbar actions and inline failure fallback to the source viewer', () => {
+            renderPanel({ chatId: 'chat-1' });
+            openPage();
+            const sourceEvents: CustomEvent[] = [];
+            const collect = (event: Event) => sourceEvents.push(event as CustomEvent);
+            window.addEventListener('coc-open-source-canvas', collect);
+            try {
+                fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+                fireEvent.click(screen.getByRole('button', { name: 'Open in system browser' }));
+                fireEvent.click(screen.getByRole('button', { name: 'View source' }));
+                expect(bridge.reload).toHaveBeenCalledWith('page-1');
+                expect(bridge.openExternal).toHaveBeenCalledWith('page-1');
+                expect(sourceEvents[0].detail).toEqual({ filePath, wsId: WS, forceSourceViewer: true });
+
+                act(() => stateListener?.({ pageId: 'page-1', status: 'failed', error: 'File not found' }));
+                expect(screen.getByRole('alert').textContent).toContain('File not found');
+                expect(screen.getByTestId(`unified-panel-tab-error-${tabId}`)).toBeTruthy();
+                expect(bridge.hide).toHaveBeenCalledWith('page-1');
+                fireEvent.click(screen.getByRole('alert').querySelector('button')!);
+                expect(sourceEvents).toHaveLength(2);
+            } finally {
+                window.removeEventListener('coc-open-source-canvas', collect);
+            }
+        });
+
+        it('tracks geometry, hides on tab switch/collapse/menu, and closes the native view', async () => {
+            const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+                x: 50, y: 90, width: 300, height: 220,
+            } as DOMRect);
+            try {
+                const { rerender } = renderPanel({ chatId: 'chat-1' });
+                openPage();
+                expect(bridge.setBounds).toHaveBeenCalledWith('page-1', { x: 50, y: 90, width: 300, height: 220 });
+                rect.mockReturnValue({ x: 80, y: 90, width: 250, height: 220 } as DOMRect);
+                fireEvent(window, new Event('resize'));
+                await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith(
+                    'page-1', { x: 80, y: 90, width: 250, height: 220 },
+                ));
+                openViaMenu('unified-panel-open-terminal');
+                expect(bridge.hide).toHaveBeenCalledWith('page-1');
+                fireEvent.click(screen.getByTestId(`unified-panel-tab-${tabId}`));
+                fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+                expect(bridge.hide).toHaveBeenCalledWith('page-1');
+                fireEvent.keyDown(document, { key: 'Escape' });
+                bridge.hide.mockClear();
+                fireEvent.contextMenu(screen.getByTestId(`unified-panel-tab-${tabId}`));
+                await waitFor(() => expect(bridge.hide).toHaveBeenCalledWith('page-1'));
+                fireEvent.keyDown(document, { key: 'Escape' });
+                rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub({ isOpen: false })} />);
+                expect(bridge.hide).toHaveBeenCalledWith('page-1');
+                rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />);
+                fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+                expect(bridge.close).toHaveBeenCalledWith('page-1');
+                expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull();
+            } finally {
+                rect.mockRestore();
+            }
+        });
+
+        it('does not claim pages for another panel scope or persist a page tab', () => {
+            renderPanel({ chatId: 'chat-1' });
+            expect(openPage(filePath, 'page-1', 'group-other').handled).toBe(false);
+            expect(screen.queryAllByRole('tab')).toHaveLength(0);
+            openPage();
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
+            expect(localStorage.getItem(`unified-right-panel:${WS}:tabs`)).not.toContain('html-page');
+        });
+
+        it('accepts a group-scoped page owned by a local member repo', () => {
+            renderPanel({ workspaceId: 'group-one', chatId: 'chat-1' });
+            const detail = openPage('/workspace/member/index.htm', 'group-page', 'group-one', 'member-one');
+            expect(detail.handled).toBe(true);
+            const tabs = readUnifiedPanelState('group-one').workspaceTabs;
+            expect(tabs).toHaveLength(1);
+            expect(tabs[0].ownerWorkspaceId).toBe('member-one');
+            expect(tabs[0].label).toBe('index.htm');
+        });
     });
 
     it('starts empty, and its empty state creates nothing on its own', () => {

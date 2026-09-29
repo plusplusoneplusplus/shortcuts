@@ -99,8 +99,13 @@ app.whenReady().then(async () => {
     });
 
     // 3. Opening the same id + path again reuses the view.
+    const stateCount = (await spa('window.__states')).length;
     const reopen = await spa(`window.cocDesktop.htmlPage.open('p1', ${JSON.stringify(indexPath)})`);
-    emit('reuse', { reopen, viewCount: main.contentView.children.length });
+    await sleep(100);
+    emit('reuse', {
+        reopen, viewCount: main.contentView.children.length,
+        replayed: (await spa('window.__states')).slice(stateCount).map(s => s.status),
+    });
 
     // 4. The panel resizes: the SPA re-reports its placeholder and the view follows.
     await spa(`(function () { var s = document.getElementById('slot'); s.style.left = '300px'; s.style.width = '500px'; s.style.height = '350px'; window.__place('p1'); })()`);

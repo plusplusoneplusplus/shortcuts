@@ -767,18 +767,20 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             const filePath = typeof detail.filePath === 'string' ? detail.filePath : '';
             if (!filePath) return;
             const kind = detail.kind === 'note' || detail.kind === 'dir' ? detail.kind : 'code';
-            openFileRef({
+            const fileRef: Parameters<typeof openSourceCanvas>[0] = {
                 fullPath: filePath,
                 wsId: typeof detail.wsId === 'string' ? detail.wsId : undefined,
                 line: typeof detail.line === 'number' ? detail.line : undefined,
                 endLine: typeof detail.endLine === 'number' ? detail.endLine : undefined,
                 sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
                 kind,
-            });
+            };
+            if (detail.forceSourceViewer === true) openSourceCanvas(fileRef);
+            else openFileRef(fileRef);
         };
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
         return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
-    }, [openFileRef]);
+    }, [openFileRef, openSourceCanvas]);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;

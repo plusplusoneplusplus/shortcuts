@@ -118,7 +118,9 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
     });
 
     it('reuses the view when the same page is opened again', () => {
-        expect(steps.get('reuse')).toMatchObject({ reopen: { ok: true }, viewCount: 1 });
+        expect(steps.get('reuse')).toMatchObject({
+            reopen: { ok: true }, viewCount: 1, replayed: ['loaded'],
+        });
     });
 
     it('follows the placeholder when the panel resizes', () => {

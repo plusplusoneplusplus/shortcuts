@@ -115,6 +115,12 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
             <path d="M11 7.6c0 2.2-2.4 2.4-4.6 3.4" />
         </svg>
     ),
+    'html-page': (
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
+            <rect x="2" y="3" width="12" height="10" rx="1" />
+            <line x1="2" y1="6" x2="14" y2="6" />
+        </svg>
+    ),
 };
 
 const EMPTY_TAB_IDS: ReadonlySet<string> = new Set<string>();

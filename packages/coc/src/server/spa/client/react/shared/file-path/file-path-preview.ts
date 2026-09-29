@@ -20,6 +20,7 @@ import {
 import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
 import { isAbsolutePath } from '../../utils/path-resolution';
 import { isHtmlPageTabEnabled } from '../../utils/config';
+import { desktopHtmlPageBridge, type DesktopHtmlPageBridge, type OpenHtmlPageDetail } from './html-page-bridge';
 import {
     isExternalFileReferenceHref,
     isSourceCanvasDirectoryPath,
@@ -114,14 +115,6 @@ let workspacesFetchedAt = 0;
 let workspacesLoading: Promise<WorkspaceInfo[]> | null = null;
 let lastResolvedRootPath = '';
 const htmlPageIds = new Map<string, string>();
-
-interface HtmlPageBridge {
-    open(pageId: string, filePath: string): Promise<{ ok: true } | { ok: false; reason: string }>;
-}
-
-function getHtmlPageBridge(): HtmlPageBridge | undefined {
-    return (window as { cocDesktop?: { htmlPage?: HtmlPageBridge } }).cocDesktop?.htmlPage;
-}
 
 function escapeHtml(text: string): string {
     return text
@@ -276,7 +269,7 @@ function dispatchOpenSourceCanvas(ref: FileReference, kind?: 'note' | 'dir'): vo
     }));
 }
 
-async function openHtmlPageOrSource(ref: FileReference, bridge: HtmlPageBridge): Promise<void> {
+async function openHtmlPageOrSource(ref: FileReference, bridge: DesktopHtmlPageBridge): Promise<void> {
     try {
         const workspaces = await fetchWorkspaces();
         const target = resolveSourceCanvasTarget({
@@ -311,21 +304,28 @@ async function openHtmlPageOrSource(ref: FileReference, bridge: HtmlPageBridge):
             return;
         }
 
-        let pageId = htmlPageIds.get(filePath);
+        const pageKey = `${ref.wsId ?? owner.id}\0${filePath}`;
+        let pageId = htmlPageIds.get(pageKey);
         if (!pageId) {
             pageId = crypto.randomUUID();
-            htmlPageIds.set(filePath, pageId);
+            htmlPageIds.set(pageKey, pageId);
         }
         const result = await bridge.open(pageId, filePath);
         if (!result.ok) {
-            htmlPageIds.delete(filePath);
+            htmlPageIds.delete(pageKey);
             dispatchOpenSourceCanvas(ref);
             return;
         }
-        window.dispatchEvent(new CustomEvent('coc-open-html-page', {
-            detail: { pageId, filePath, wsId: owner.id },
-        }));
-    } catch {
+        const detail: OpenHtmlPageDetail = {
+            pageId, filePath, wsId: owner.id, scopeWsId: ref.wsId ?? owner.id,
+        };
+        window.dispatchEvent(new CustomEvent('coc-open-html-page', { detail }));
+        if (!detail.handled) {
+            bridge.close(pageId);
+            dispatchOpenSourceCanvas(ref);
+        }
+    } catch (error) {
+        console.error('Failed to open HTML page:', error);
         dispatchOpenSourceCanvas(ref);
     }
 }
@@ -383,7 +383,7 @@ function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
             return;
         }
         if (!isSourceCanvasNotePath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
-            const bridge = getHtmlPageBridge();
+            const bridge = desktopHtmlPageBridge();
             if (bridge && isHtmlPageTabEnabled() && /\.html?$/i.test(ref.filePath)) {
                 void openHtmlPageOrSource(ref, bridge);
                 return;
