@@ -1020,6 +1020,39 @@ describe('ChatListPane', () => {
             expect(screen.queryByTestId('frozen-tasks-section-toggle')).toBeNull();
         });
 
+        it('Queued count leaves out frozen tasks and pause markers; Frozen shows its own count', () => {
+            renderPane({
+                queued: [
+                    makeQueuedTask({ id: 'q-1' }),
+                    makeQueuedTask({ id: 'q-2' }),
+                    { id: 'pm-1', kind: 'pause-marker' } as any,
+                    makeQueuedTask({ id: 'q-f1', frozen: true }),
+                    makeQueuedTask({ id: 'q-f2', frozen: true }),
+                    makeQueuedTask({ id: 'q-f3', frozen: true }),
+                ],
+            });
+            const queuedToggle = screen.getByTestId('queued-tasks-section-toggle');
+            const frozenToggle = screen.getByTestId('frozen-tasks-section-toggle');
+            expect(queuedToggle.textContent).toContain('Queued Tasks');
+            expect(queuedToggle.lastElementChild!.textContent).toBe('2');
+            expect(frozenToggle.textContent).toContain('Frozen Tasks');
+            expect(frozenToggle.textContent).toContain('❄️');
+            expect(frozenToggle.lastElementChild!.textContent).toBe('3');
+        });
+
+        it('hides Queued and shows Frozen when every queued task is frozen', () => {
+            renderPane({
+                queued: [
+                    makeQueuedTask({ id: 'q-f1', frozen: true }),
+                    makeQueuedTask({ id: 'q-f2', frozen: true }),
+                ],
+            });
+            expect(document.querySelector('[data-section="queued"]')).toBeNull();
+            expect(screen.queryByTestId('queued-tasks-section-toggle')).toBeNull();
+            const frozenToggle = screen.getByTestId('frozen-tasks-section-toggle');
+            expect(frozenToggle.lastElementChild!.textContent).toBe('2');
+        });
+
         it('renders pause marker for pause-marker items', () => {
             renderPane({
                 queued: [makeQueuedTask(), { id: 'pm-1', kind: 'pause-marker' }],
