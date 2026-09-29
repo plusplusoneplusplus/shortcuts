@@ -142,8 +142,9 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     );
     // Split Workspace panel: behind `splitWorkspacePanel` the group's chat and
     // git share the Chats tab through the same `SplitWorkspacePanel` shell a repo
-    // uses — chat list on top, the member git list below, one shared detail pane
-    // (desktop), or a segmented control with a full-screen detail push (mobile).
+    // uses — chat list on top and member git list below. Desktop keeps chat
+    // detail in the middle and opens Git detail in the far-right panel; mobile
+    // uses a segmented control with a full-screen detail push.
     const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     // Mobile pins only the merged Workspace tab; with the flag on neither
     // layout exposes a second, standalone Git tab.
@@ -196,8 +197,8 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         [dockAvailable, members, workspaceId]
     );
     const dock = useWorkspaceDock(workspaceId, dockTargets);
-    // Slots for the split Workspace panel: which list last drove the
-    // shared detail, and the DOM nodes the two tabs portal into. State-backed
+    // Slots for the split Workspace panel: mobile's last-clicked detail,
+    // the middle chat detail, and the shared Git toolbar. State-backed
     // (not refs) so the portals mount once the nodes exist — same shape as
     // RepoDetail's split wiring.
     const [splitLastClicked, setSplitLastClicked] = useState<'chat' | 'git'>('chat');
@@ -212,10 +213,10 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
         ? state.gitRouteScope.workspaceId
         : null;
     useEffect(() => {
-        if (splitWorkspacePanelEnabled && routedGitMember && state.selectedGitCommitHash) {
+        if (splitWorkspacePanelEnabled && isMobile && routedGitMember && state.selectedGitCommitHash) {
             setSplitLastClicked('git');
         }
-    }, [splitWorkspacePanelEnabled, routedGitMember, state.selectedGitCommitHash, state.selectedGitFilePath]);
+    }, [splitWorkspacePanelEnabled, isMobile, routedGitMember, state.selectedGitCommitHash, state.selectedGitFilePath]);
     // The group's selected chat owns the panel's chat-scoped tabs. `RepoChatTab`
     // below runs against the group workspace id, so that is the key its
     // selection is filed under; the per-repo entry only, never the global
@@ -284,7 +285,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         sourceSelectionId={groupRoutingRef ?? undefined}
                                         layout="split-workspace"
                                         detailContainer={splitDetailNode}
-                                        detailActive={splitLastClicked === 'chat' || !splitGitAvailable}
+                                        detailActive={dockAvailable || splitLastClicked === 'chat' || !splitGitAvailable}
                                         onActivateDetail={() => setSplitLastClicked('chat')}
                                     />
                                 }
@@ -297,6 +298,7 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
                                         detailContainer={splitDetailNode}
                                         detailActive={splitLastClicked === 'git'}
                                         onActivateDetail={() => setSplitLastClicked('git')}
+                                        rightPanel={dockAvailable ? { chatId: panelChatId, ownerRoutingRef: groupRoutingRef } : undefined}
                                         headerToolbarContainer={splitGitHeaderNode}
                                         active={activeTab === 'chats'}
                                     />

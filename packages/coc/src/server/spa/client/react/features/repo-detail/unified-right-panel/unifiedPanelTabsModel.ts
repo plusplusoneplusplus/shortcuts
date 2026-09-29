@@ -206,6 +206,8 @@ export interface UnifiedPanelTab {
      * diff content. It is what a reload refetches to restore the tab.
      */
     gitView?: PersistedGitView;
+    /** Data member that owns a group Git tab's view; absent for a standalone repo. */
+    gitMemberId?: string;
     /** A `notes` tab's panel-local selected note. */
     notesView?: PersistedNotesView;
 }
@@ -354,6 +356,7 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.symbolCandidate === b.symbolCandidate
         && a.preview === b.preview
         && gitViewKey(a.gitView) === gitViewKey(b.gitView)
+        && a.gitMemberId === b.gitMemberId
         && notesViewKey(a.notesView) === notesViewKey(b.notesView);
 }
 
@@ -483,6 +486,7 @@ export interface OpenUnifiedTabInput {
     symbolCandidate?: true;
     /** A `git` tab's new view. Omitted, re-focusing keeps the one it holds. */
     gitView?: PersistedGitView;
+    gitMemberId?: string;
 }
 
 /** Source of `revealNonce`. Monotonic for the life of the page. */
@@ -557,6 +561,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...revealFields(input),
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
         ...(input.kind === 'git' && input.gitView ? { gitView: input.gitView } : {}),
+        ...(input.kind === 'git' && input.gitMemberId ? { gitMemberId: input.gitMemberId } : {}),
     };
 
     let nextList: readonly UnifiedPanelTab[];
@@ -569,7 +574,8 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
             // pointed nor scrolls it back there. The column travels with its
             // line and is never kept without one.
             ...(input.line === undefined ? keptReveal(existing) : {}),
-            ...(opened.gitView === undefined && existing.gitView !== undefined ? { gitView: existing.gitView } : {}),
+            ...(opened.gitView === undefined && existing.gitView !== undefined && opened.gitMemberId === existing.gitMemberId
+                ? { gitView: existing.gitView } : {}),
             ...(existing.notesView === undefined ? {} : { notesView: existing.notesView }),
         };
         const copy = [...list];
@@ -944,6 +950,7 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         // the one entry point that creates one, and it only ever opens files.
         ...(value.preview === true && kind === 'file' ? { preview: true } : {}),
         ...(kind === 'git' ? gitViewField(value.gitView) : {}),
+        ...(kind === 'git' && isNonEmptyString(value.gitMemberId) ? { gitMemberId: value.gitMemberId } : {}),
         ...(kind === 'notes' ? notesViewField(value.notesView) : {}),
     };
     return tab;

@@ -81,6 +81,7 @@ export function unifiedGitTabInput(input: {
     chatId: string | null;
     /** What the tab now shows, persisted so a reload can restore it. */
     gitView?: PersistedGitView;
+    gitMemberId?: string;
 }): OpenUnifiedTabInput {
     return {
         kind: 'git',
@@ -90,6 +91,7 @@ export function unifiedGitTabInput(input: {
         resourceId: GIT_TAB_RESOURCE_ID,
         label: GIT_TAB_LABEL,
         ...(input.gitView === undefined ? {} : { gitView: input.gitView }),
+        ...(input.gitMemberId === undefined ? {} : { gitMemberId: input.gitMemberId }),
     };
 }
 

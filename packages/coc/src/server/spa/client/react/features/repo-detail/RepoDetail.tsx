@@ -49,9 +49,7 @@ import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { UnifiedRightPanel } from './unified-right-panel/UnifiedRightPanel';
 import { UnifiedPanelHostProvider } from './unified-right-panel/unifiedPanelHost';
-import { openUnifiedGitTab, useUnifiedGitTab, useUnifiedGitTabHost } from './unified-right-panel/unifiedGitTabHost';
-import { persistGitView, persistedViewIdentity } from '../git/repoGitTab/selectionModel';
-import type { RightPanelView } from '../git/repoGitTab/types';
+import { useSplitGitPanel } from './unified-right-panel/useSplitGitPanel';
 import { ContentSearchOverlayHost } from './content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from './content-search/ContentSearchOverlay';
 import { openContentSearchMatch } from './content-search/contentSearchOpen';
@@ -192,29 +190,12 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // the middle pane keeps the chat. `RepoGitTab` portals into the tab body
     // (null until the tab is mounted) and every new git selection opens and
     // focuses that tab — revealing the panel when it is collapsed.
-    const gitTabHostNode = useUnifiedGitTabHost(ws.id);
-    // Closing the Git tab hands back to RepoGitTab, which drops the selection.
-    // The tab also persists the view it shows, which RepoGitTab refetches after
-    // a reload.
-    const gitTab = useUnifiedGitTab(ws.id, {
-        ownerWorkspaceId: ws.id,
+    const splitGitPanel = useSplitGitPanel({
+        scopeWorkspaceId: ws.id,
         ownerRoutingRef: explorerRoutingRef,
+        chatId: panelChatId,
+        enabled: dockAvailable,
     });
-    const gitTabOpen = gitTab !== null;
-    const gitTabViewIdentity = persistedViewIdentity(gitTab?.gitView);
-    const handleSplitGitViewChange = useCallback((view: RightPanelView | null) => {
-        if (!view) return;
-        const gitView = persistGitView(view);
-        // Restoring the tab's own view after a reload is not a new click: leave
-        // the panel's focus where the user left it.
-        if (gitTabOpen && persistedViewIdentity(gitView) === gitTabViewIdentity) return;
-        openUnifiedGitTab(ws.id, {
-            ownerWorkspaceId: ws.id,
-            ownerRoutingRef: explorerRoutingRef,
-            chatId: panelChatId,
-            gitView,
-        });
-    }, [ws.id, explorerRoutingRef, panelChatId, gitTabOpen, gitTabViewIdentity]);
     const openSearchMatch = useCallback((match: ContentSearchOverlayMatch, signal: AbortSignal) => {
         if (!dockAvailable) {
             return Promise.resolve({
@@ -873,12 +854,12 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             key={`${ws.id}-split-git`}
                                             workspaceId={ws.id}
                                             layout="split-workspace"
-                                            detailContainer={dockAvailable ? gitTabHostNode : splitDetailNode}
+                                            detailContainer={dockAvailable ? splitGitPanel.detailContainer : splitDetailNode}
                                             detailActive={dockAvailable || splitLastClicked === 'git'}
                                             onActivateDetail={dockAvailable ? undefined : () => setSplitLastClicked('git')}
-                                            onViewChange={dockAvailable ? handleSplitGitViewChange : undefined}
-                                            detailOpen={dockAvailable ? gitTabOpen : undefined}
-                                            restoreView={dockAvailable ? gitTab?.gitView : undefined}
+                                            onViewChange={splitGitPanel.onViewChange}
+                                            detailOpen={splitGitPanel.detailOpen}
+                                            restoreView={splitGitPanel.restoreView}
                                             headerToolbarContainer={splitGitHeaderNode}
                                             active={activeSubTab === 'activity' || activeSubTab === 'chats'}
                                         />

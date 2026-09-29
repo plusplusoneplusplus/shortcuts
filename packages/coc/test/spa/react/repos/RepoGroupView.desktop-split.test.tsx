@@ -1,17 +1,19 @@
 /**
  * Repo group on desktop with the `splitWorkspacePanel` flag: the Chats tab uses
  * the same `SplitWorkspacePanel` a single repo does — chat list on top, the
- * group git list (member picker host) below, ONE shared detail pane on the
- * right. The shell is real; only the two leaf tabs are stubbed. Each stub
- * portals its detail into `detailContainer` while `detailActive`, and calls
- * `onActivateDetail` on click, exactly like the real tabs — so these tests
- * prove last-clicked-wins in the shared host.
+ * group git list below, the chat detail in the middle, and the Git detail in
+ * the far-right panel. The leaf tabs are stubbed; the real Git-panel hook
+ * exercises the shared desktop wiring.
  *
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 import { createPortal } from 'react-dom';
+import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
+import { UnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedGitTab';
+import { readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { useUnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
 import {
     resolveDashboardRoute,
     type RouteContext,
@@ -55,9 +57,9 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
 vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
     getRepoGroup: (...args: unknown[]) => mockGetRepoGroup(...args),
 }));
-// The right dock is out of scope here; keep it inert.
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel', () => ({
-    UnifiedRightPanel: () => <div data-testid="stub-right-panel" />,
+    UnifiedRightPanel: ({ workspaceId }: { workspaceId: string }) =>
+        <div data-testid="stub-right-panel"><StubGitTabSurface workspaceId={workspaceId} /></div>,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/content-search/ContentSearchOverlayHost', () => ({
     ContentSearchOverlayHost: () => null,
@@ -72,6 +74,7 @@ interface LeafProps {
     headerToolbarContainer?: HTMLElement | null;
     active?: boolean;
     members?: unknown;
+    rightPanel?: { chatId: string | null; ownerRoutingRef: string | null };
 }
 
 vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
@@ -83,22 +86,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () 
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupGitTab', () => ({
-    RepoGroupGitTab: ({ workspaceId, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer, active }: LeafProps) => (
-        <div
-            data-testid="stub-group-git-tab"
-            data-workspace={workspaceId}
-            data-layout={layout ?? ''}
-            data-active={String(!!active)}
-            data-header-hoisted={headerToolbarContainer ? 'true' : 'false'}
-            data-member={mockAppState.gitRouteScope?.workspaceId ?? ''}
-        >
-            <button data-testid="stub-git-row" onClick={() => onActivateDetail?.()}>commit</button>
-            {detailContainer && detailActive && createPortal(
-                <div data-testid="stub-git-detail" data-commit={mockAppState.selectedGitCommitHash ?? ''} />,
-                detailContainer,
-            )}
-        </div>
-    ),
+    RepoGroupGitTab: (props: LeafProps) => <StubGroupGitTab {...props} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({
     NotesView: () => <div data-testid="stub-notes-view" />,
@@ -110,6 +98,40 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab', ()
 import { RepoGroupView } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
 
 const GROUP_ID = 'group-ai-repos';
+function StubGitTabSurface({ workspaceId }: { workspaceId: string }) {
+    const tab = useUnifiedGitTab(workspaceId, { ownerWorkspaceId: workspaceId, ownerRoutingRef: null });
+    return tab ? <UnifiedGitTab scopeWorkspaceId={workspaceId} /> : null;
+}
+function StubGroupGitTab({
+    workspaceId, layout, detailContainer, detailActive, onActivateDetail, headerToolbarContainer, active, rightPanel,
+}: LeafProps) {
+    const memberId = mockAppState.gitRouteScope?.workspaceId ?? 'r1';
+    const panel = useSplitGitPanel({
+        scopeWorkspaceId: workspaceId,
+        ownerRoutingRef: rightPanel?.ownerRoutingRef,
+        chatId: rightPanel?.chatId ?? null,
+        memberId,
+        enabled: !!rightPanel,
+    });
+    const container = rightPanel ? panel.detailContainer : detailContainer;
+    return (
+        <div data-testid="stub-group-git-tab" data-workspace={workspaceId}
+            data-layout={layout ?? ''} data-active={String(!!active)}
+            data-header-hoisted={headerToolbarContainer ? 'true' : 'false'} data-member={memberId}>
+            <button data-testid="stub-git-row" onClick={() => {
+                onActivateDetail?.();
+                panel.onViewChange?.({ type: 'commit', commit: {
+                    hash: 'abc1234', shortHash: 'abc1234', subject: 'Example',
+                    author: 'Test', date: '2026-01-01', parentHashes: [],
+                } });
+            }}>commit</button>
+            {container && (rightPanel ? panel.detailActive : detailActive) && createPortal(
+                <div data-testid="stub-git-detail" data-commit={mockAppState.selectedGitCommitHash ?? 'abc1234'} />,
+                container,
+            )}
+        </div>
+    );
+}
 
 beforeEach(() => {
     cleanup();
@@ -154,13 +176,13 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
             .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
     });
 
-    it('restores chat detail if the Git list disappears after membership loads', async () => {
+    it('keeps chat detail if the Git list disappears after membership loads', async () => {
         let resolveGroup!: (group: { id: string; name: string; members: [] }) => void;
         mockGetRepoGroup.mockReturnValue(new Promise(resolve => { resolveGroup = resolve; }));
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         click('stub-git-row');
         expect(screen.getByTestId('split-workspace-detail-host')
-            .querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
+            .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
 
         await act(async () => { resolveGroup({ id: GROUP_ID, name: 'AI Repos', members: [] }); });
         expect(screen.queryByTestId('split-workspace-git')).toBeNull();
@@ -218,7 +240,7 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         expect(screen.getAllByTestId('stub-group-git-tab')).toHaveLength(1);
     });
 
-    it('routes a member commit deep link to Chats and opens it in the shared detail host', () => {
+    it('routes a member commit deep link to Chats without replacing chat detail', () => {
         const hash = `#repos/${GROUP_ID}/git/member/r1/abc1234`;
         location.hash = hash;
         const ctx: RouteContext = {
@@ -251,7 +273,7 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         expect(screen.getByTestId('stub-chat-tab').parentElement?.style.display).not.toBe('none');
         expect(screen.getByTestId('stub-group-git-tab').dataset.member).toBe('r1');
         expect(screen.getByTestId('split-workspace-detail-host')
-            .querySelector('[data-testid="stub-git-detail"]')?.getAttribute('data-commit')).toBe('abc1234');
+            .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
         click('stub-chat-row');
         expect(screen.getByTestId('split-workspace-detail-host')
             .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
@@ -276,18 +298,21 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         expect(git!.dataset.headerHoisted).toBe('true');
     });
 
-    it('shows the chat detail first, then whichever list was clicked last', () => {
+    it('opens Git in the far-right panel while leaving the chat detail in place', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         const host = screen.getByTestId('split-workspace-detail-host');
         expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
 
         click('stub-git-row');
-        expect(host.querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
-        expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeNull();
+        expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
+        expect(host.querySelector('[data-testid="stub-git-detail"]')).toBeNull();
+        expect(screen.getByTestId('unified-git-tab').querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
+        expect(readUnifiedPanelState(GROUP_ID).workspaceTabs.find(tab => tab.kind === 'git'))
+            .toMatchObject({ gitMemberId: 'r1', gitView: { type: 'commit', hash: 'abc1234' } });
 
         click('stub-chat-row');
         expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
-        expect(host.querySelector('[data-testid="stub-git-detail"]')).toBeNull();
+        expect(screen.getByTestId('unified-git-tab').querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
     });
 
     it('keeps the plain chat tab when the flag is off', () => {

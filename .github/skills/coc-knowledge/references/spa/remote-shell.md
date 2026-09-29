@@ -291,11 +291,12 @@ actions), labeled with the registered workspace name (id fallback while loading)
 ### Group Git
 
 `RepoGroupGitTab` hosts one member's standalone `RepoGitTab`, keyed by member id
-to isolate panel state. `RepoGroupGitMemberPicker` is a native dropdown passed
-through `RepoGitTab.repositorySelector` into `GitPanelHeader`; the selector also
-stays available during loading and errors. Options include Git status from
-`useRepoGroupMemberGitInfo`; stale members are disabled with a reason. Git calls
-use the selected member's clone-routed workspace id.
+to isolate panel state. `RepoGroupGitMemberPicker` is a searchable, portaled
+listbox passed through `RepoGitTab.repositorySelector` into `GitPanelHeader`; the
+selector also stays available during loading and errors. Rows separate the repo
+name, path, branch and Git status from `useRepoGroupMemberGitInfo`; stale members
+stay visible but disabled with a reason. Git calls use the selected member's
+clone-routed workspace id.
 
 **The group owns the page, the member owns the data.** `RepoGitTab` takes
 `routeWorkspaceId` (the group) alongside `workspaceId` (the member), so its URLs
@@ -320,8 +321,13 @@ open with a usable picker and no git request is made against another repo.
 Changing member is a navigation to that member's history route, so the previous
 commit/file is cleared before the keyed panel mounts.
 With the split flag on, group Git URLs select the Chats surface without
-discarding the member and commit route. A selected commit activates git detail
-in the split panel's shared detail host.
+discarding the member and commit route. On desktop, `useSplitGitPanel` gives
+single repos and groups the same unified right-panel Git tab: the chat stays
+in the middle, while the member's Git detail portals into the far-right tab.
+The group tab persists the selected member alongside its Git view, restores
+only for that member, and closes on member changes or unavailable links. Mobile
+keeps the split panel's full-screen detail push; the flag-off Git tab remains
+standalone.
 
 ### Group settings
 

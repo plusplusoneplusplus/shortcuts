@@ -82,7 +82,8 @@ describe('RepoGroupGitTab member persistence', () => {
         const { rerender } = render(
             <AppProvider><RepoGroupGitTab workspaceId={GROUP_ID} members={members} /></AppProvider>
         );
-        fireEvent.change(screen.getByRole('combobox', { name: 'Member repository' }), { target: { value: 'repo-b' } });
+        fireEvent.click(screen.getByTestId('repo-group-git-member-trigger'));
+        fireEvent.click(screen.getByTestId('repo-group-git-member-repo-b'));
         expect(selectedMember()).toBe('repo-b');
 
         rerender(<AppProvider><div data-testid="elsewhere" /></AppProvider>);

@@ -34,11 +34,13 @@ all have their own `references/*.md`.
 - **Repo-group split routing** keeps the group as the page workspace and a
   member as the Git data workspace. With `splitWorkspacePanel` on, desktop and
   mobile expose Git only inside the group's Chats tab; member/commit Git links
-  open that tab and activate the shared git detail. With the flag off, the
-  standalone group Git tab remains. New Chat and the queue counts use the group
-  workspace, while the remote desktop shell docks its status actions under
-  the split left column. A loaded group without healthy members hides the
-  desktop Git half so chats fill that column.
+  open that tab. Desktop Git detail lives in the unified far-right Git tab,
+  preserving the conversation in the middle; mobile uses its full-screen detail
+  push. The Git tab stores its data member with the view and drops that view
+  when the member changes. With the flag off, the standalone group Git tab
+  remains. New Chat and queue counts use the group workspace, while the remote
+  desktop shell docks status actions under the split left column. A loaded
+  group without healthy members hides the desktop Git half.
 - **Repo-group dashboard selection is server-qualified.** A local group uses
   its raw `group-<slug>` id; a remote group uses the existing
   `remote:<serverId>:<groupId>` clone key for selection, routes, and pins.

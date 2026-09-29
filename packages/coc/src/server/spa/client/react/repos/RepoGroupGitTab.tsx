@@ -32,6 +32,7 @@ import { useAppOptional } from '../contexts/AppContext';
 import { RepoGitTab } from '../features/git/RepoGitTab';
 import { buildGitRouteHash, buildGitRouteSuffix } from '../layout/gitRoute';
 import { RepoGroupGitMemberPicker } from './RepoGroupGitMemberPicker';
+import { useSplitGitPanel } from '../features/repo-detail/unified-right-panel/useSplitGitPanel';
 import type { RepoGroupMember } from './repoGroupService';
 import { useRepoGroupMemberGitInfo } from './useRepoGroupMemberGitInfo';
 
@@ -64,8 +65,8 @@ export interface RepoGroupGitTabProps {
     /**
      * Split-workspace wiring, forwarded verbatim to the hosted `RepoGitTab` so a
      * group's git list can live inside `SplitWorkspacePanel` exactly like a
-     * repo's does (AC-06). All optional: absent ⇒ the host renders the ordinary
-     * standalone Git tab, unchanged.
+     * repo's does (AC-06). On desktop, `rightPanel` routes detail into the
+     * unified Git tab; mobile uses the supplied shared detail container.
      */
     layout?: 'split-workspace';
     /** Portal target for the git detail pane when `layout === 'split-workspace'`. */
@@ -74,6 +75,8 @@ export interface RepoGroupGitTabProps {
     detailActive?: boolean;
     /** Fired when the user clicks in the git list. */
     onActivateDetail?: () => void;
+    /** Desktop panel context; mobile continues to use the shared detail slot. */
+    rightPanel?: { chatId: string | null; ownerRoutingRef: string | null };
     /** Portal target for the compact, hoisted git toolbar. */
     headerToolbarContainer?: HTMLElement | null;
     /** Whether the Git tab is displayed; forwarded to pause its timed refresh. */
@@ -105,6 +108,7 @@ export function RepoGroupGitTab({
     detailContainer,
     detailActive,
     onActivateDetail,
+    rightPanel,
     headerToolbarContainer,
     active,
 }: RepoGroupGitTabProps) {
@@ -143,6 +147,13 @@ export function RepoGroupGitTab({
         if (routedMemberId) return routedMemberIsHealthy ? routedMemberId : undefined;
         return resolveRepoGroupGitMember(members, preferredId);
     }, [routedMemberId, routedMemberIsHealthy, members, preferredId]);
+    const splitGitPanel = useSplitGitPanel({
+        scopeWorkspaceId: workspaceId,
+        ownerRoutingRef: rightPanel?.ownerRoutingRef,
+        chatId: rightPanel?.chatId ?? null,
+        memberId: selectedId,
+        enabled: !!rightPanel && layout === 'split-workspace' && membersLoaded,
+    });
 
     /**
      * An explicitly requested member that is stale, removed, or not in the
@@ -216,11 +227,11 @@ export function RepoGroupGitTab({
         }
     }, [selectedId, healthyIds, setPreferredId, routeOwnsThisGroup, selectionId]);
 
-    const selectorRef = useRef<HTMLSelectElement | null>(null);
+    const selectorRef = useRef<HTMLButtonElement | null>(null);
     const restoreSelectorFocus = useRef(false);
     // The keyed Git panel and its loading/error views remount the selector.
     // Carry keyboard focus with it so arrow-key navigation can continue.
-    const setSelectorRef = useCallback((element: HTMLSelectElement | null) => {
+    const setSelectorRef = useCallback((element: HTMLButtonElement | null) => {
         if (!element && selectorRef.current === document.activeElement) {
             restoreSelectorFocus.current = true;
         }
@@ -264,9 +275,12 @@ export function RepoGroupGitTab({
                         routeWorkspaceId={workspaceId}
                         repositorySelector={repositorySelector}
                         layout={layout}
-                        detailContainer={detailContainer}
-                        detailActive={detailActive}
+                        detailContainer={rightPanel ? splitGitPanel.detailContainer : detailContainer}
+                        detailActive={rightPanel ? splitGitPanel.detailActive : detailActive}
                         onActivateDetail={onActivateDetail}
+                        onViewChange={splitGitPanel.onViewChange}
+                        detailOpen={splitGitPanel.detailOpen}
+                        restoreView={splitGitPanel.restoreView}
                         headerToolbarContainer={headerToolbarContainer}
                         active={active}
                     />

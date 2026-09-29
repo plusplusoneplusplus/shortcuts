@@ -70,7 +70,9 @@ function hostedMember(page: Page) {
 }
 
 async function pickMember(page: Page, memberId: string): Promise<void> {
-    await page.getByRole('combobox', { name: 'Member repository' }).selectOption(memberId);
+    await page.getByTestId('repo-group-git-member-trigger').click();
+    await page.getByTestId(`repo-group-git-member-${memberId}`).click();
+    await expect(page.getByTestId('repo-group-git-member-list')).toBeHidden();
     await expect(hostedMember(page)).toHaveAttribute('data-member', memberId, { timeout: 20_000 });
     await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 20_000 });
 }

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, beforeEach } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import {
     clearUnifiedGitTabHost,
     getUnifiedGitTabHost,
@@ -13,11 +13,29 @@ import {
 import { UnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedGitTab';
 import { readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { updateUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
-import { closeTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { closeTab, parseUnifiedPanelState, serializeUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
 
 function HostProbe({ scope }: { scope: string }) {
     const node = useUnifiedGitTabHost(scope);
     return <div data-testid={`probe-${scope}`} data-has-node={node ? 'yes' : 'no'} />;
+}
+
+function SingleRepoProbe() {
+    const panel = useSplitGitPanel({ scopeWorkspaceId: 'single-repo', chatId: null, enabled: true });
+    return <>
+        <button data-testid="select-commit" onClick={() => panel.onViewChange?.({
+            type: 'commit', commit: {
+                hash: 'abc1234', shortHash: 'abc1234', subject: 'Example',
+                author: 'Test', date: '2026-01-01', parentHashes: [],
+            },
+        })}>commit</button>
+        <span data-testid="single-repo-status"
+            data-open={String(panel.detailOpen)}
+            data-restored={panel.restoreView?.type === 'commit' ? panel.restoreView.hash : ''}
+            data-host={String(!!panel.detailContainer)} />
+        {panel.detailOpen && <UnifiedGitTab scopeWorkspaceId="single-repo" />}
+    </>;
 }
 
 beforeEach(() => {
@@ -59,6 +77,21 @@ describe('unifiedGitTab host store', () => {
         expect(state.workspaceTabs.filter(tab => tab.kind === 'git')).toHaveLength(1);
     });
 
+    it('persists the data member with a group Git view when the same tab is reused', () => {
+        openUnifiedGitTab('group-example', {
+            ownerWorkspaceId: 'group-example', chatId: null, gitMemberId: 'repo-a',
+            gitView: { type: 'commit', hash: 'abc1234' },
+        });
+        openUnifiedGitTab('group-example', {
+            ownerWorkspaceId: 'group-example', chatId: null, gitMemberId: 'repo-b',
+            gitView: { type: 'commit', hash: 'def5678' },
+        });
+        const state = readUnifiedPanelState('group-example');
+        expect(state.workspaceTabs.filter(tab => tab.kind === 'git')).toHaveLength(1);
+        expect(parseUnifiedPanelState(serializeUnifiedPanelState(state)).workspaceTabs.find(tab => tab.kind === 'git'))
+            .toMatchObject({ gitMemberId: 'repo-b', gitView: { type: 'commit', hash: 'def5678' } });
+    });
+
     it('names the opened tab with unifiedGitTabId', () => {
         const id = openUnifiedGitTab('ws-e', { ownerWorkspaceId: 'ws-e', chatId: 'chat-1' });
         expect(unifiedGitTabId({ ownerWorkspaceId: 'ws-e' })).toBe(id);
@@ -77,5 +110,18 @@ describe('unifiedGitTab host store', () => {
         expect(probe.getAttribute('data-open')).toBe('yes');
         act(() => { updateUnifiedPanelState('ws-f', prev => closeTab(prev, id)); });
         expect(probe.getAttribute('data-open')).toBe('no');
+    });
+
+    it('keeps single-repo Git view in its existing right-panel tab across remounts', () => {
+        const view = render(<SingleRepoProbe />);
+        fireEvent.click(screen.getByTestId('select-commit'));
+        expect(screen.getByTestId('single-repo-status').dataset).toMatchObject({
+            open: 'true', restored: 'abc1234', host: 'true',
+        });
+        view.unmount();
+        render(<SingleRepoProbe />);
+        expect(screen.getByTestId('single-repo-status').dataset).toMatchObject({
+            open: 'true', restored: 'abc1234', host: 'true',
+        });
     });
 });
