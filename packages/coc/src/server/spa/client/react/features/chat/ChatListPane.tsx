@@ -144,6 +144,9 @@ function formatFrozenRemaining(frozenUntil: unknown): string | undefined {
 }
 const EMPTY_GROUP_PINS: ProcessGroupPin[] = [];
 
+/** localStorage key for the Frozen Tasks section's expanded state (collapsed by default). */
+export const FROZEN_SECTION_EXPANDED_KEY = 'coc.chatList.frozenSectionExpanded';
+
 /** Session category labels for display and filtering. */
 export const SESSION_CATEGORY_LABELS: Record<string, { label: string; icon: string; color: string }> = {
     'generating-code': { label: 'Generating Code', icon: '⚙️', color: 'text-blue-600 dark:text-blue-400' },
@@ -2774,7 +2777,14 @@ export function ChatListPane({
 
     const [showRunning, setShowRunning] = useState(true);
     const [showQueued, setShowQueued] = useState(true);
-    const [showFrozen, setShowFrozen] = useState(true);
+    // Frozen section is collapsed by default; the user's choice survives reloads.
+    const [showFrozen, setShowFrozenState] = useState<boolean>(() => {
+        try { return localStorage.getItem(FROZEN_SECTION_EXPANDED_KEY) === 'true'; } catch { return false; }
+    });
+    const setShowFrozen = useCallback((next: boolean) => {
+        setShowFrozenState(next);
+        try { localStorage.setItem(FROZEN_SECTION_EXPANDED_KEY, String(next)); } catch { /* ignore */ }
+    }, []);
     const [showPinned, setShowPinned] = useState(true);
     const [showHistory, setShowHistory] = useState(true);
     const [showArchived, setShowArchived] = useState(false);
