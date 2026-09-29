@@ -211,6 +211,17 @@ active-tab memory, target, mode, width, ordering, and mounted resource state sta
 untouched. The reconciliation does not rerun when tabs change, so explicitly
 opening an empty panel remains possible until the next chat selection or reload.
 
+A user close that empties `visibleTabs` collapses the panel through the same
+open bit (`setWorkspaceDockOpen(workspaceId, false)`), unless the navigator is
+showing (`isUnifiedTreeVisible`). This covers the strip ✕, middle click,
+Ctrl/Cmd+W, the tab menu's single and bulk closes, and views' own close buttons,
+all of which funnel through `closeTabByUser`. The decision
+(`shouldCollapseAfterClose` in `closeTabRouting.ts`) runs once, after the tabs
+update, and only after a bulk queue has drained; a cancelled or failed guard
+never reaches it. Tabs of other chats are not in `visibleTabs`, so they never
+hold the panel open. Programmatic removals (navigation replay, chat switches)
+do not trigger it.
+
 It **follows the host's active file**: `ExplorerPanel`'s `activeFilePath` prop
 is a tri-state, and the panel derives it from the same `unifiedToolbarBreadcrumbs`
 answer the breadcrumbs use. A path (a file tab whose owner is the tree's target)

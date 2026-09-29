@@ -58,3 +58,20 @@ export function closeTabOutcome(context: CloseTabOwnerContext): CloseTabOutcome 
     if (!hasActiveTab) return 'swallow';
     return 'close';
 }
+
+export interface CollapseAfterCloseContext {
+    /** Tabs still on the strip for this panel scope and the selected chat. */
+    visibleTabCount: number;
+    /** The Search/Explorer navigator column is showing (`isUnifiedTreeVisible`). */
+    navigatorVisible: boolean;
+}
+
+/**
+ * Whether a user close that just finished should collapse the panel. Only an
+ * empty strip collapses it, and the navigator keeps it open: a panel showing
+ * the tree still has something on it. Other chats' tabs never reach
+ * `visibleTabCount`, so they do not hold the panel open.
+ */
+export function shouldCollapseAfterClose(context: CollapseAfterCloseContext): boolean {
+    return context.visibleTabCount === 0 && !context.navigatorVisible;
+}
