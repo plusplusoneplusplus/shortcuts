@@ -43,6 +43,36 @@ iteration counter covers a first-iteration cancellation (`currentIteration === 0
 `=== false` check keeps Resume hidden when an older/remote server omits the field.
 `coc-client` exposes `resumeRalphSession()`.
 
+### Await Human Input
+
+A valid `RALPH_NEEDS_INPUT` result from an iteration or final-check gap-fix iteration sets
+`phase='awaiting-input'`, persists `pendingInput` in `session.json`, and queues nothing. The
+session holds no queue slot or live provider session and waits indefinitely across server
+restarts. Journal-only recovery does not create a pending request because the question
+payload must come from the response block.
+
+`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/input`
+(`routes/ralph-input-routes.ts`) accepts index-aligned `answers[]`, an optional `note`, and
+the shared optional AI controls. It returns 409 unless the session is awaiting input,
+including duplicate submissions. A successful submit appends `## Human input` to
+`progress.md`, stores the input in `humanInputs[]`, clears `pendingInput`, restores
+`phase='executing'`, and queues iteration `currentIteration + 1`. Provider/model fallback
+matches `/resume`, and the fresh iteration prompt includes the submitted human answers.
+`coc-client` exposes `submitRalphInput()`.
+
+`POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/stop` accepts only an
+awaiting-input session. It clears the pending request and completes the session with
+`terminalReason='USER_STOPPED'`, then broadcasts `ralph-session-complete` with reason
+`user-stopped`. The session remains eligible for Submit PR. `coc-client` exposes
+`stopRalphSession()`.
+
+`RalphWorkflowPane` places an Awaiting input node after the asking iteration. It renders the
+agent context, question controls, a recommendation-fill action, an optional note, Submit,
+and Stop session. The session row carries a waiting marker, and the repo reuses its unseen
+activity count for attention. The asking process mirrors `metadata.ralph.phase` so history
+grouping preserves the marker; submitting resets it to `executing`, and stopping sets it to
+`complete`.
+
 ### Continue a Completed Session
 
 `POST /api/workspaces/:workspaceId/ralph-sessions/:sessionId/continue`
@@ -116,7 +146,8 @@ context so the originating run stays active for the whole session.
 The queue bridge exposes an internal `ralphSessionComplete` callback alongside the dashboard
 WebSocket event. `ScheduleExecutor` uses it to finalize scheduled runs only at a terminal
 reason: queue failures and terminal final-check failure reasons mark the run failed; clean,
-capped, or normal terminal reasons complete it.
+capped, user-stopped, or normal terminal reasons complete it. An awaiting-input session
+emits no completion event, so its scheduled run stays active until the user submits or stops.
 
 ## Final Check Automation
 
@@ -148,6 +179,11 @@ prompts are built at enqueue time and pass through verbatim with no context-map 
 instructions are `'ask'` for final-check and `'ralph'` for the other two — submit needs write
 access to push the branch and open the PR. `agentMode` is `'autopilot'` for every kind. The
 queue bridge routes completions off the same helper.
+
+`RalphExecutor` excludes the blocking `ask_user` tool for every Ralph task kind regardless
+of workspace `askUser.enabled`. Only iteration tasks, including gap-fix iterations, may use
+the response-level `RALPH_NEEDS_INPUT` protocol. Final-check and submit parsers treat that
+marker as an unparseable result. The separate grill phase keeps its ask-user behavior.
 
 Final-check tasks are queued as Ralph chat tasks with autopilot capability, but
 `RalphExecutor` switches to validation-only system instructions when `context.ralph.finalCheck`

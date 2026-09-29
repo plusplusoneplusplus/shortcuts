@@ -23,9 +23,12 @@ Each session owns a journal directory under the repo data directory:
 
 `session.json` is a `RalphSessionRecord` (re-exported for CoC by
 `packages/coc/src/server/ralph/types.ts`): `sessionId`, `workspaceId`, `originalGoal`,
-`maxIterations`, `currentIteration`, `phase` (`executing` | `complete` | `failed`),
-`startedAt`, and `iterations[]` (each with `iteration`, `signal`, `startedAt`, optional
-`processId`/`completedAt`), plus optional `worktree`, `finalChecks`, and `submits[]`.
+`maxIterations`, `currentIteration`, `phase` (`executing` | `awaiting-input` | `complete`
+| `failed`), `startedAt`, and `iterations[]` (each with `iteration`, `signal`,
+`startedAt`, optional `processId`/`completedAt`), plus optional `worktree`,
+`finalChecks`, `submits[]`, `pendingInput`, and `humanInputs[]`. `pendingInput` stores the
+asking iteration/process and its structured question batch while the session waits;
+`humanInputs[]` preserves submitted question/answer pairs and optional notes.
 
 Non-worktree sessions also carry optional `baselineSha` — the checkout HEAD captured at
 creation by `captureRalphBaselineSha` (`capture-baseline-sha.ts`, best-effort: absent
@@ -53,12 +56,15 @@ Remaining: <what still has to happen, or "none">
 Findings: <what was newly learned this iteration>
 ```
 
-`SIGNAL` is `RALPH_NEXT`, `RALPH_COMPLETE`, or `NONE`. Parsing accepts standalone signal
-tokens and valid adjacent runs (`RALPH_COMPLETERALPH_COMPLETE`) but rejects arbitrary
-suffixes (`RALPH_NEXTEND`). The writer emits an em dash separator in headings; the parser
-also accepts a plain hyphen. The section parser recognizes only iteration headings and
-stores the body opaquely, so the `Files:`/`Decisions:`/`Remaining:`/`Findings:` labels do
-not affect signal extraction.
+`SIGNAL` is `RALPH_NEXT`, `RALPH_COMPLETE`, `RALPH_NEEDS_INPUT`, or `NONE`. Parsing accepts
+standalone signal tokens and valid adjacent runs (`RALPH_COMPLETERALPH_COMPLETE`) but
+rejects arbitrary suffixes (`RALPH_NEXTEND`). A `RALPH_NEEDS_INPUT` response is actionable
+only when its response text also contains one valid structured question batch; the journal
+signal alone never recovers the request. The writer emits an em dash separator in headings;
+the parser also accepts a plain hyphen. The section parser recognizes only iteration
+headings and stores the body opaquely, so the `Files:`/`Decisions:`/`Remaining:`/`Findings:`
+labels do not affect signal extraction. Submitted answers append a separate
+`## Human input — <ISO_TIMESTAMP>` section with questions, answers, and an optional note.
 
 `context.md` is owned by the agent. The store resolves it with `getContextPath(...)` and
 reads it with `readContext(...)` for diagnostics and tests; a missing file reads as an
@@ -110,6 +116,18 @@ itself; content is never injected.
 The prompt must not name repository-specific implementation skills, set `context.skills`,
 or begin with `<available_skills>`, `<additional_tool_instructions>`, or `<skill-context`,
 since the retriever skips messages with those prefixes when locating the user query.
+
+Iterations may emit `RALPH_NEEDS_INPUT` followed by one JSON question batch only for a
+conflict with a `[decision]`, a destructive or irreversible action, missing credentials or
+external access, or an uninferable product choice that would be costly to redo. Every other
+uncertainty becomes a documented `[assumption]`. The batch uses ask-user question shapes,
+adds batch-level `context` and a `recommendation` per question, contains one to five
+questions, and is parsed by `needs-input-parser.ts`. Malformed, missing, or multiple batches
+fall through to ordinary no-signal/journal recovery behavior.
+
+When an answer resumes the loop, the next iteration receives a `<human_answers>` block
+before `<goal>` containing the prior context, indexed question/answer pairs, and optional
+note. It is a fresh iteration task and session; no live model session is retained.
 
 See `docs/spec-slices.md` for the slice template, decision-tagging convention, and
 ready-for-Ralph checklist the bundled `grill-me` skill produces.

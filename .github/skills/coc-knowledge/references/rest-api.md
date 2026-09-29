@@ -227,6 +227,8 @@ All launch/continue/resume bodies take [Provider overrides](#provider-overrides)
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend a completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-cron` | New goal cron after RALPH_COMPLETE, preserving prior provider/model when recoverable |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume a stuck executing session (no in-flight task), preserving prior provider/model/reasoning-effort when recoverable |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/input` | Resolve an `awaiting-input` session with index-aligned `answers[]`, optional `note`, and optional AI controls; append the human input and enqueue a fresh next iteration. `409` outside the waiting phase or on duplicate submit. Client: `workspaces.submitRalphInput()` |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/stop` | Stop an `awaiting-input` session as `USER_STOPPED`, clear its pending request, and leave Submit PR available. Client: `workspaces.stopRalphSession()` |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/submit-pr` | Submit all commits of a `phase === 'complete'` session (any `terminalReason`) as a GitHub PR via an attached autopilot job; no body (workspace default provider/model). `409` when not complete, a Ralph task is in flight, or a submit is queued/running. Returns `{ submitted: true, sessionId, taskId, submitIndex }` and appends a `submits[]` record. Client: `workspaces.submitRalphPr()` |
 
 ## For Each Runs
