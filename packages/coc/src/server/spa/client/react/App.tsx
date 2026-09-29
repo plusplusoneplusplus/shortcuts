@@ -292,6 +292,11 @@ function AppInner() {
             case 'ralph-session-complete':
                 window.dispatchEvent(new CustomEvent('ralph-session-complete', { detail: { repoId: msg.repoId } }));
                 break;
+            case 'ralph-session-awaiting-input':
+                window.dispatchEvent(new CustomEvent('ralph-session-awaiting-input', {
+                    detail: { repoId: msg.workspaceId, sessionId: msg.sessionId },
+                }));
+                break;
         }
     }, [appDispatch, queueDispatch, workItemDispatch, appState.workspaces, addNotification, getWorkItemEventScopeIds]);
 

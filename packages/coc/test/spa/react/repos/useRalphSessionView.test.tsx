@@ -117,6 +117,27 @@ describe('useRalphSessionView', () => {
         await waitFor(() => expect(result.current.view?.record.phase).toBe('complete'));
     });
 
+    it('re-fetches on the ralph-session-awaiting-input window event for its workspace only', async () => {
+        ralphSessionMock.mockResolvedValue({
+            record: makeRecord({ phase: 'executing' }),
+            sections: [],
+        });
+
+        const { result } = renderHook(() => useRalphSessionView('ws-1', 'sess-1', 999_999));
+        await waitFor(() => expect(result.current.view).not.toBeUndefined());
+        expect(ralphSessionMock).toHaveBeenCalledTimes(1);
+
+        window.dispatchEvent(new CustomEvent('ralph-session-awaiting-input', { detail: { repoId: 'ws-other' } }));
+        ralphSessionMock.mockResolvedValue({
+            record: makeRecord({ phase: 'awaiting-input' }),
+            sections: [],
+        });
+        window.dispatchEvent(new CustomEvent('ralph-session-awaiting-input', { detail: { repoId: 'ws-1', sessionId: 'sess-1' } }));
+
+        await waitFor(() => expect(result.current.view?.record.phase).toBe('awaiting-input'));
+        expect(ralphSessionMock).toHaveBeenCalledTimes(2);
+    });
+
     it('ignores ralph-session-complete events for other repos', async () => {
         ralphSessionMock.mockResolvedValueOnce({
             record: makeRecord({ phase: 'executing' }),
