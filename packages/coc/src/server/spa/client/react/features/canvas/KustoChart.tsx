@@ -44,7 +44,7 @@ const CHART_HEIGHT = 320;
 const COMPACT_CHART_HEIGHT = 220;
 
 const AXIS_COLOR = '#888';
-const GRID_COLOR = '#8884';
+const GRID_COLOR = '#8883';
 
 /** X tick labels stay short, same as the static renderer. */
 function truncateLabel(label: string): string {
@@ -70,7 +70,7 @@ interface TooltipEntry {
 function TooltipCard({ label, entries }: { label: string; entries: TooltipEntry[] }) {
     return (
         <div
-            className="rounded-sm border border-[#8884] bg-white dark:bg-[#252526] px-2 py-1 text-[10px] text-[#616161] dark:text-[#cccccc] shadow-sm"
+            className="rounded-md border border-[#8884] bg-white dark:bg-[#252526] px-2.5 py-1.5 text-[11px] text-[#616161] dark:text-[#cccccc] shadow-md"
             data-testid="kusto-chart-tooltip"
         >
             <div className="mb-0.5 font-medium">{label}</div>
@@ -242,7 +242,7 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
             <ResponsiveContainer width="100%" height={height}>
                 <PieChart>
                     <Tooltip content={<SlicedTooltip />} isAnimationActive={false} />
-                    <Pie data={slices} dataKey="value" nameKey="name" isAnimationActive={false}>
+                    <Pie data={slices} dataKey="value" nameKey="name" innerRadius="55%" paddingAngle={1} isAnimationActive={false}>
                         {slices.map((slice: { __i: number }, i: number) => (
                             <Cell key={i} fill={seriesColor(slice.__i)} />
                         ))}
@@ -254,7 +254,7 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
 
     const axes = (
         <>
-            <CartesianGrid stroke={GRID_COLOR} />
+            <CartesianGrid stroke={GRID_COLOR} vertical={false} />
             <Tooltip
                 content={<SharedTooltip />}
                 shared
@@ -263,12 +263,13 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
             />
             <XAxis
                 dataKey="__x"
-                tick={{ fontSize: 10, fill: AXIS_COLOR }}
-                stroke={AXIS_COLOR}
+                tick={{ fontSize: 11, fill: AXIS_COLOR }}
+                axisLine={false}
+                tickLine={false}
                 tickFormatter={truncateLabel}
                 interval="preserveStartEnd"
             />
-            <YAxis tick={{ fontSize: 10, fill: AXIS_COLOR }} stroke={AXIS_COLOR} width={56} />
+            <YAxis tick={{ fontSize: 11, fill: AXIS_COLOR }} axisLine={false} tickLine={false} width={48} />
             {dragFrom !== null && dragTo !== null && (
                 <ReferenceArea x1={dragFrom} x2={dragTo} stroke={AXIS_COLOR} strokeOpacity={0.4} fillOpacity={0.15} />
             )}
@@ -288,10 +289,10 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
         switch (type) {
             case 'bar':
                 return (
-                    <BarChart data={viewRows} {...chartEvents}>
+                    <BarChart data={viewRows} barCategoryGap="24%" {...chartEvents}>
                         {axes}
                         {visible.map(si => (
-                            <Bar key={si} dataKey={`s${si}`} name={data.series[si].name} fill={seriesColor(si)} isAnimationActive={false} />
+                            <Bar key={si} dataKey={`s${si}`} name={data.series[si].name} fill={seriesColor(si)} radius={[3, 3, 0, 0]} maxBarSize={64} isAnimationActive={false} />
                         ))}
                     </BarChart>
                 );
@@ -317,7 +318,7 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
                                 stackId="kusto"
                                 stroke={seriesColor(si)}
                                 fill={seriesColor(si)}
-                                fillOpacity={0.6}
+                                fillOpacity={0.35}
                                 isAnimationActive={false}
                             />
                         ))}
@@ -336,7 +337,7 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
                                 name={data.series[si].name}
                                 stroke={seriesColor(si)}
                                 strokeWidth={2}
-                                dot={false}
+                                dot={viewRows.length <= 24 ? { r: 3 } : false}
                                 connectNulls={false}
                                 isAnimationActive={false}
                             />
@@ -352,7 +353,7 @@ function RechartsChart({ rc, data, type, compact, hidden }: RechartsChartProps) 
                 <button
                     type="button"
                     onClick={resetZoom}
-                    className="absolute right-1 top-1 z-10 rounded-sm border border-[#8884] bg-white dark:bg-[#252526] px-1.5 py-0.5 text-[10px] text-[#616161] dark:text-[#cccccc]"
+                    className="absolute right-1 top-1 z-10 rounded-md border border-[#8884] bg-white dark:bg-[#252526] px-1.5 py-0.5 text-[10px] text-[#616161] dark:text-[#cccccc]"
                     data-testid="kusto-chart-reset-zoom"
                 >
                     Reset zoom

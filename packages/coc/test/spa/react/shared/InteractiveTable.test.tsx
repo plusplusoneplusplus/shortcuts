@@ -469,6 +469,23 @@ describe('InteractiveTable', () => {
                 spy.mockRestore();
             }
         });
+
+        it('seeds fractional laid-out widths without rounding so no column moves on hover', () => {
+            // A container with an odd inner width lays columns out at half pixels;
+            // rounding them when seeding nudged every column on the first hover.
+            const spy = vi
+                .spyOn(HTMLTableCellElement.prototype, 'getBoundingClientRect')
+                .mockReturnValue({ width: 139.5, height: 20 } as DOMRect);
+            try {
+                const { container } = render(<InteractiveTable {...defaultProps} />);
+                fireEvent.pointerEnter(screen.getByTestId('interactive-table-resizer-col_0'));
+                const ths = Array.from(container.querySelectorAll('thead th')) as HTMLElement[];
+                expect(ths.map(th => th.style.width)).toEqual(['139.5px', '139.5px']);
+                expect((container.querySelector('table') as HTMLElement).style.width).toBe('279px');
+            } finally {
+                spy.mockRestore();
+            }
+        });
     });
 
     describe('content-proportional column widths', () => {

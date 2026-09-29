@@ -159,9 +159,16 @@ lives only inside an async capability's server-side `host`.
 
 `type: 'kusto'` renders `features/canvas/KustoView.tsx` (`KustoChart.tsx` for native SVG
 charts), gated by `kusto.enabled` (`isKustoEnabled()` in `utils/config.ts`, default off).
-It exposes an editable KQL query, cluster URL, and database, plus table/chart views and CSV
-download. Run executes server-side via `client.canvases.run(...)` with no AI turn; when
-linked to a chat, Ask AI sends a follow-up naming `kusto_query`.
+Layout, top to bottom: one connection bar (cluster + database, `kusto-connection`, or
+portaled into an embed header slot), a query editor card whose footer holds Run, the run
+status pill, and the Ask AI toggle, then a Results card whose header carries the row/column
+summary, the Table/Chart segmented switch, and CSV download. Chart controls are one toolbar:
+icon buttons for the chart type (`kusto-chart-type-<type>`), an X select, numeric Y
+columns as toggle chips (`aria-pressed`, swatch matches the plotted series), and a
+Split-by select. Run executes server-side via `client.canvases.run(...)` with no AI turn;
+Shift/Ctrl/Cmd+Enter in the editor also runs (`isRunShortcut`). When linked to a chat (and
+not compact or read-only), the Ask AI toggle opens a one-line prompt that sends a follow-up
+naming `kusto_query`.
 
 `CanvasPanel`'s header offers a new-Kusto action (`data-testid="canvas-panel-new-kusto"`)
 creating a blank `type: 'kusto'` canvas, best-effort seeding cluster/database from the

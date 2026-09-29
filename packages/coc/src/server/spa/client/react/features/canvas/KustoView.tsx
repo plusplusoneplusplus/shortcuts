@@ -23,7 +23,7 @@ import type {
 } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { InteractiveTable, tableToCsv } from '../../shared/InteractiveTable';
-import { KustoChart, numericColumnNames } from './KustoChart';
+import { KustoChart, numericColumnNames, seriesColor } from './KustoChart';
 
 export interface KustoViewProps {
     workspaceId: string;
@@ -87,15 +87,6 @@ function cellText(value: KustoCellValue): string {
     return String(value);
 }
 
-const INPUT_CLASS =
-    'w-full text-[11px] px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] '
-    + 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]';
-
-// Fixed-width variant for the header slot (no full-width; sits inline in the bar).
-const SLOT_INPUT_CLASS =
-    'text-[11px] px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] '
-    + 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]';
-
 function formatTimestamp(iso: string): string {
     try {
         return new Date(iso).toLocaleTimeString();
@@ -124,6 +115,68 @@ export function buildKustoAskAiMessage(query: string, instruction: string, canva
     ].join('\n\n');
 }
 
+
+/** Tiny stroke icons for the Kusto toolbar (24×24 viewBox, currentColor). */
+const ICON_PATHS = {
+    server: ['M3 5h18v6H3z', 'M3 13h18v6H3z', 'M7 8h.01', 'M7 16h.01'],
+    database: ['M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3z', 'M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6', 'M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'],
+    play: ['M7 4l13 8-13 8z'],
+    sparkle: ['M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z'],
+    send: ['M5 12h14', 'M13 6l6 6-6 6'],
+    download: ['M12 4v11', 'M7 10l5 5 5-5', 'M5 20h14'],
+    table: ['M3 5h18v14H3z', 'M3 10h18', 'M9 10v9'],
+    chart: ['M4 20V10', 'M10 20V4', 'M16 20v-7', 'M22 20H2'],
+    bar: ['M5 20V11', 'M12 20V5', 'M19 20v-6'],
+    line: ['M3 17l6-6 4 4 8-8'],
+    area: ['M3 18l6-7 4 4 8-8v11z'],
+    scatter: ['M6 16h.01', 'M10 9h.01', 'M15 13h.01', 'M18 6h.01', 'M8 19h.01'],
+    pie: ['M12 3v9h9', 'M21 12a9 9 0 1 1-9-9'],
+} as const;
+
+type IconName = keyof typeof ICON_PATHS;
+
+function KustoIcon({ name, size = 13, filled = false }: { name: IconName; size?: number; filled?: boolean }) {
+    return (
+        <svg
+            width={size}
+            height={size}
+            viewBox="0 0 24 24"
+            fill={filled ? 'currentColor' : 'none'}
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className="shrink-0"
+        >
+            {ICON_PATHS[name].map(d => <path key={d} d={d} />)}
+        </svg>
+    );
+}
+
+const BORDER = 'border-[#e0e0e0] dark:border-[#3c3c3c]';
+const CARD_CLASS = `rounded-lg border ${BORDER} bg-white dark:bg-[#252526] overflow-hidden`;
+const FIELD_INPUT_CLASS =
+    'flex-1 min-w-0 bg-transparent border-0 outline-none text-[12px] text-[#1e1e1e] dark:text-[#cccccc] placeholder:text-[#a0a0a0]';
+const GHOST_BTN_CLASS =
+    'inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[12px] text-[#616161] dark:text-[#cccccc] '
+    + 'hover:bg-[#f0f0f0] dark:hover:bg-[#2d2d2d] disabled:opacity-50 disabled:cursor-not-allowed';
+const SEGMENT_GROUP_CLASS = `inline-flex p-0.5 rounded-md border ${BORDER} bg-[#f5f5f5] dark:bg-[#1e1e1e]`;
+const SELECT_CLASS =
+    `h-7 text-[12px] px-2 rounded-md border ${BORDER} bg-white dark:bg-[#1e1e1e] `
+    + 'text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]';
+
+function segmentClass(active: boolean): string {
+    return active
+        ? 'bg-white dark:bg-[#37373d] text-[#1e1e1e] dark:text-white font-medium shadow-sm'
+        : 'text-[#616161] dark:text-[#a0a0a0] hover:text-[#1e1e1e] dark:hover:text-white';
+}
+
+/** Shift+Enter or Ctrl/Cmd+Enter in the query editor runs the query. */
+export function isRunShortcut(e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }): boolean {
+    return e.key === 'Enter' && (e.shiftKey || e.ctrlKey || e.metaKey);
+}
+
 export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false, readOnly = false, connectionInHeader = false, connectionSlot = null }: KustoViewProps) {
     const client = useCocClient(workspaceId);
     const parsed = useMemo(() => parseKustoContent(canvas.content), [canvas.content]);
@@ -149,9 +202,11 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
     const [running, setRunning] = useState(false);
     const [runError, setRunError] = useState<string | null>(null);
 
-    // AC-06 Ask-AI loop: a small prompt box that sends a follow-up into the
-    // owning conversation (canvas.processId) with the current query + the
-    // user's instruction, so the AI improves the query via the kusto_query tool.
+    // AC-06 Ask-AI loop: a small prompt row, opened from the editor toolbar,
+    // that sends a follow-up into the owning conversation (canvas.processId)
+    // with the current query + the user's instruction, so the AI improves the
+    // query via the kusto_query tool.
+    const [askOpen, setAskOpen] = useState(false);
     const [askInstruction, setAskInstruction] = useState('');
     const [asking, setAsking] = useState(false);
     const [askError, setAskError] = useState<string | null>(null);
@@ -179,7 +234,7 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
     }, [askInstruction, canvas.processId, canvas.id, asking, client, query, workspaceId, readOnly]);
 
     const handleRun = useCallback(async () => {
-        if (running || readOnly) return;
+        if (running || readOnly || !query.trim()) return;
         setRunning(true);
         setRunError(null);
         try {
@@ -261,238 +316,283 @@ export function KustoView({ workspaceId, canvas, onCanvasSaved, compact = false,
 
     const status = running ? 'loading' : (lastRun?.status ?? 'idle');
     const rowCount = lastRun?.rowCount ?? rows.length;
+    const hasResults = columns.length > 0;
+    const canAskAi = !compact && !readOnly && !!canvas.processId;
 
-    // Body connection editors (labeled two-column block) for the full/standalone view.
-    const inlineConnectionEditors = (
-        <div className="flex gap-2">
-            <label className="flex-1 min-w-0">
-                <span className="block text-[9px] uppercase text-[#848484] mb-0.5">Cluster URL</span>
+    const connectionFields = (inHeader: boolean) => (
+        <>
+            <label className={`flex flex-[3] items-center gap-2 min-w-0 ${inHeader ? '' : 'px-2.5'} text-[#848484]`} title="Cluster URL">
+                <KustoIcon name="server" />
+                <span className="sr-only">Cluster URL</span>
                 <input
                     type="text"
-                    className={INPUT_CLASS}
+                    className={`${FIELD_INPUT_CLASS} font-mono`}
                     value={clusterUrl}
                     onChange={e => setClusterUrl(e.target.value)}
                     placeholder="https://help.kusto.windows.net"
+                    spellCheck={false}
                     readOnly={readOnly}
                     data-testid="kusto-cluster"
                 />
             </label>
-            <label className="flex-1 min-w-0">
-                <span className="block text-[9px] uppercase text-[#848484] mb-0.5">Database</span>
+            <span className={`w-px self-stretch ${inHeader ? 'my-1' : ''} bg-[#e0e0e0] dark:bg-[#3c3c3c]`} />
+            <label className={`flex flex-[2] items-center gap-2 min-w-0 ${inHeader ? '' : 'px-2.5'} text-[#848484]`} title="Database">
+                <KustoIcon name="database" />
+                <span className="sr-only">Database</span>
                 <input
                     type="text"
-                    className={INPUT_CLASS}
+                    className={FIELD_INPUT_CLASS}
                     value={database}
                     onChange={e => setDatabase(e.target.value)}
                     placeholder="Samples"
+                    spellCheck={false}
                     readOnly={readOnly}
                     data-testid="kusto-database"
                 />
             </label>
+        </>
+    );
+
+    // Body connection bar: cluster + database share one compact row.
+    const inlineConnectionEditors = (
+        <div
+            className={`flex items-center h-8 rounded-lg border ${BORDER} bg-[#f8f8f8] dark:bg-[#1e1e1e]`}
+            data-testid="kusto-connection"
+        >
+            {connectionFields(false)}
         </div>
     );
 
-    // Connection editors mounted into the host header slot. They stretch to fill
-    // the row (cluster wider than database) with a leading label so each field is
-    // legible without relying on a placeholder that vanishes once filled.
+    // Connection editors mounted into the host header slot.
     const headerConnectionEditors = (
         <div className="flex flex-1 items-center gap-2 min-w-0" data-testid="kusto-connection-header">
-            <div className="flex flex-[3] items-center gap-1.5 min-w-0">
-                <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#848484]">Cluster</span>
-                <input
-                    type="text"
-                    className={`${SLOT_INPUT_CLASS} flex-1 min-w-0 font-mono`}
-                    value={clusterUrl}
-                    onChange={e => setClusterUrl(e.target.value)}
-                    placeholder="https://help.kusto.windows.net"
-                    title="Cluster URL"
-                    readOnly={readOnly}
-                    data-testid="kusto-cluster"
-                />
-            </div>
-            <div className="flex flex-[2] items-center gap-1.5 min-w-0">
-                <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-[#848484]">DB</span>
-                <input
-                    type="text"
-                    className={`${SLOT_INPUT_CLASS} flex-1 min-w-0`}
-                    value={database}
-                    onChange={e => setDatabase(e.target.value)}
-                    placeholder="database"
-                    title="Database"
-                    readOnly={readOnly}
-                    data-testid="kusto-database"
-                />
-            </div>
+            {connectionFields(true)}
         </div>
+    );
+
+    const statusBadge = (
+        <span className="flex-1 min-w-0 truncate text-[11px]" data-testid="kusto-status">
+            {status === 'loading' && <span className="text-[#848484]">Running query…</span>}
+            {status === 'success' && !running && (
+                <span className="inline-flex items-center gap-1.5 text-[#848484]">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-medium">
+                        {rowCount.toLocaleString()} row{rowCount === 1 ? '' : 's'}
+                        {truncated ? ' (truncated to 10,000)' : ''}
+                    </span>
+                    {lastRun?.timestamp ? <span>{formatTimestamp(lastRun.timestamp)}</span> : null}
+                </span>
+            )}
+            {status === 'error' && !running && (
+                <span className="px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" data-testid="kusto-error">
+                    {lastRun?.error ?? 'Query failed'}
+                </span>
+            )}
+            {status === 'idle' && !running && <span className="text-[#848484]">Not run yet</span>}
+        </span>
     );
 
     return (
         <div className="flex flex-col h-full min-h-0 text-[#1e1e1e] dark:text-[#cccccc]" data-testid="kusto-view">
-            {/* Query + connection editors */}
             {connectionInHeader && connectionSlot && createPortal(headerConnectionEditors, connectionSlot)}
-            <div className={`shrink-0 flex flex-col gap-2 p-3 border-b border-[#e0e0e0] dark:border-[#474749] ${compact ? 'gap-1.5 p-2' : ''}`}>
+            <div className={`shrink-0 flex flex-col ${compact ? 'gap-1.5 p-2' : 'gap-2.5 p-3'}`}>
                 {!connectionInHeader && inlineConnectionEditors}
-                <label className="block">
-                    <span className="block text-[9px] uppercase text-[#848484] mb-0.5">KQL query</span>
+
+                {/* Query editor card with its toolbar underneath */}
+                <div className={CARD_CLASS}>
                     <textarea
-                        className={`${INPUT_CLASS} font-mono resize-y ${compact ? 'min-h-[48px]' : 'min-h-[72px]'}`}
+                        className={`block w-full px-3 py-2 font-mono text-[12px] leading-5 resize-y outline-none bg-[#fafafa] dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#d4d4d4] ${compact ? 'min-h-[48px]' : 'min-h-[88px]'}`}
                         value={query}
                         onChange={e => setQuery(e.target.value)}
+                        onKeyDown={e => {
+                            if (!readOnly && isRunShortcut(e)) {
+                                e.preventDefault();
+                                void handleRun();
+                            }
+                        }}
                         placeholder="StormEvents | take 100"
+                        aria-label="KQL query"
                         spellCheck={false}
                         readOnly={readOnly}
                         data-testid="kusto-query"
                     />
-                </label>
-                <div className="flex items-center gap-2">
-                    {!readOnly && (
-                        <button
-                            type="button"
-                            className="px-3 py-1 text-[11px] rounded bg-[#0078d4] text-white font-medium hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
-                            onClick={() => void handleRun()}
-                            disabled={running || !query.trim()}
-                            data-testid="kusto-run"
-                        >
-                            {running ? 'Running…' : 'Run'}
-                        </button>
-                    )}
-                    <span className="flex-1 text-[10px]" data-testid="kusto-status">
-                        {status === 'loading' && <span className="text-[#848484]">Running query…</span>}
-                        {status === 'success' && !running && (
-                            <span className="text-emerald-600 dark:text-emerald-400">
-                                {rowCount.toLocaleString()} row{rowCount === 1 ? '' : 's'}
-                                {truncated ? ' (truncated to 10,000)' : ''}
-                                {lastRun?.timestamp ? ` · ${formatTimestamp(lastRun.timestamp)}` : ''}
-                            </span>
-                        )}
-                        {status === 'error' && !running && (
-                            <span className="text-red-500" data-testid="kusto-error">{lastRun?.error ?? 'Query failed'}</span>
-                        )}
-                        {status === 'idle' && !running && <span className="text-[#848484]">Not run yet</span>}
-                    </span>
-                    {columns.length > 0 && (
-                        <div className="inline-flex rounded border border-[#e0e0e0] dark:border-[#474749] overflow-hidden" role="group" aria-label="View">
+                    <div className={`flex items-center gap-2 px-2 py-1.5 border-t ${BORDER}`}>
+                        {!readOnly && (
                             <button
                                 type="button"
-                                className={`px-2 py-1 text-[11px] ${view === 'table' ? 'bg-[#0078d4] text-white' : 'text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
-                                onClick={() => setView('table')}
-                                data-testid="kusto-view-table"
+                                className="inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-[12px] bg-[#0078d4] text-white font-semibold hover:bg-[#106ebe] disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => void handleRun()}
+                                disabled={running || !query.trim()}
+                                title="Run (Shift+Enter)"
+                                data-testid="kusto-run"
                             >
-                                Table
+                                <KustoIcon name="play" size={10} filled />
+                                {running ? 'Running…' : 'Run'}
                             </button>
+                        )}
+                        {statusBadge}
+                        {canAskAi && (
                             <button
                                 type="button"
-                                className={`px-2 py-1 text-[11px] ${view === 'chart' ? 'bg-[#0078d4] text-white' : 'text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]'}`}
-                                onClick={() => setView('chart')}
-                                data-testid="kusto-view-chart"
+                                className={`${GHOST_BTN_CLASS} ${askOpen ? 'bg-[#f0f0f0] dark:bg-[#2d2d2d]' : ''}`}
+                                onClick={() => setAskOpen(open => !open)}
+                                aria-expanded={askOpen}
+                                data-testid="kusto-ask-toggle"
                             >
-                                Chart
+                                <span className="text-[#8b5cf6]"><KustoIcon name="sparkle" /></span>
+                                Ask AI
                             </button>
+                        )}
+                    </div>
+
+                    {/* AC-06 Ask-AI loop — only when the Kusto canvas is linked to a chat. */}
+                    {canAskAi && askOpen && (
+                        <div className={`flex flex-col gap-1 px-2 py-1.5 border-t ${BORDER} bg-[#f8f8f8] dark:bg-[#1e1e1e]`} data-testid="kusto-ask-ai">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[#8b5cf6] pl-1"><KustoIcon name="sparkle" /></span>
+                                <input
+                                    type="text"
+                                    className={`${FIELD_INPUT_CLASS} h-7`}
+                                    value={askInstruction}
+                                    onChange={e => { setAskInstruction(e.target.value); setAskSent(false); }}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            void handleAskAi();
+                                        }
+                                    }}
+                                    placeholder="Describe a change, e.g. add a 7-day rolling average"
+                                    aria-label="Ask AI to improve this query"
+                                    autoFocus
+                                    data-testid="kusto-ask-input"
+                                />
+                                <button
+                                    type="button"
+                                    className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] disabled:bg-[#d4d4d4] dark:disabled:bg-[#3c3c3c] disabled:cursor-not-allowed"
+                                    onClick={() => void handleAskAi()}
+                                    disabled={asking || !askInstruction.trim()}
+                                    title={asking ? 'Asking…' : 'Ask AI'}
+                                    aria-label="Ask AI"
+                                    data-testid="kusto-ask-send"
+                                >
+                                    <KustoIcon name="send" />
+                                </button>
+                            </div>
+                            {askSent && (
+                                <span className="pl-1 text-[11px] text-emerald-600 dark:text-emerald-400" data-testid="kusto-ask-sent">
+                                    Sent to the conversation — the AI will update this Kusto query.
+                                </span>
+                            )}
+                            {askError && (
+                                <span className="pl-1 text-[11px] text-red-500" data-testid="kusto-ask-error">{askError}</span>
+                            )}
                         </div>
-                    )}
-                    {columns.length > 0 && (
-                        <button
-                            type="button"
-                            className="px-2 py-1 text-[11px] rounded border border-[#e0e0e0] dark:border-[#474749] text-[#616161] dark:text-[#cccccc] hover:bg-[#e8e8e8] dark:hover:bg-[#2d2d2d]"
-                            onClick={handleCsvDownload}
-                            data-testid="kusto-csv"
-                        >
-                            CSV
-                        </button>
                     )}
                 </div>
                 {runError && (
-                    <div className="text-[10px] text-red-500" data-testid="kusto-run-error">{runError}</div>
-                )}
-
-                {/* AC-06 Ask-AI loop — only when the Kusto canvas is linked to a chat. */}
-                {!compact && !readOnly && canvas.processId && (
-                    <div className="flex flex-col gap-1 pt-1 border-t border-dashed border-[#e0e0e0] dark:border-[#474749]" data-testid="kusto-ask-ai">
-                        <span className="block text-[9px] uppercase text-[#848484]">Ask AI to improve this query</span>
-                        <div className="flex items-start gap-2">
-                            <textarea
-                                className={`${INPUT_CLASS} resize-y min-h-[32px]`}
-                                value={askInstruction}
-                                onChange={e => { setAskInstruction(e.target.value); setAskSent(false); }}
-                                placeholder="e.g. add a 7-day rolling average"
-                                data-testid="kusto-ask-input"
-                            />
-                            <button
-                                type="button"
-                                className="shrink-0 px-3 py-1 text-[11px] rounded bg-[#8b5cf6] text-white font-medium hover:bg-[#7c3aed] disabled:opacity-50 disabled:cursor-not-allowed"
-                                onClick={() => void handleAskAi()}
-                                disabled={asking || !askInstruction.trim()}
-                                data-testid="kusto-ask-send"
-                            >
-                                {asking ? 'Asking…' : 'Ask AI'}
-                            </button>
-                        </div>
-                        {askSent && (
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400" data-testid="kusto-ask-sent">
-                                Sent to the conversation — the AI will update this Kusto query.
-                            </span>
-                        )}
-                        {askError && (
-                            <span className="text-[10px] text-red-500" data-testid="kusto-ask-error">{askError}</span>
-                        )}
-                    </div>
+                    <div className="text-[11px] text-red-500" data-testid="kusto-run-error">{runError}</div>
                 )}
             </div>
 
-            {/* Results — table or chart. The table view owns its own vertical
-                scroll (so its header can stick), so the wrapper must not
-                scroll; chart and empty states keep the scrolling wrapper. */}
-            <div
-                className={
-                    columns.length > 0 && view !== 'chart'
-                        ? 'flex-1 min-h-0 overflow-hidden p-3 flex flex-col'
-                        : 'flex-1 min-h-0 overflow-auto p-3'
-                }
-            >
-                {columns.length === 0 ? (
-                    <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="kusto-empty">
-                        {status === 'error' ? 'Run failed — see the error above.' : 'Run a query to see results.'}
-                    </div>
-                ) : view === 'chart' ? (
-                    <div className="flex flex-col gap-3" data-testid="kusto-chart-view">
-                        <ChartControls
-                            columns={columns}
-                            numericColumns={numericColumns}
-                            config={chartConfig}
-                            onType={t => updateConfig({ type: t })}
-                            onX={x => updateConfig({ x: x || undefined })}
-                            onToggleY={toggleY}
-                            onSeries={s => updateConfig({ series: s || undefined })}
-                        />
-                        {chartConfig ? (
-                            <KustoChart columns={columns} rows={rows} config={chartConfig} compact={compact} />
-                        ) : (
-                            <div className="text-[11px] italic text-[#848484] text-center py-6" data-testid="kusto-chart-unconfigured">
-                                Pick a chart type and a Y column to draw a chart.
+            {/* Results card — table or chart. The table view owns its own
+                vertical scroll (so its header can stick), so its wrapper must
+                not scroll; chart and empty states keep a scrolling body. */}
+            <div className={`flex-1 min-h-0 flex flex-col ${compact ? 'px-2 pb-2' : 'px-3 pb-3'}`}>
+                <div className={`${CARD_CLASS} flex-1 min-h-0 flex flex-col`}>
+                    <div className={`shrink-0 flex items-center gap-2 pl-3 pr-1.5 py-1 border-b ${BORDER}`}>
+                        <span className="text-[12px] font-semibold">Results</span>
+                        {hasResults && (
+                            <span className="text-[11px] text-[#848484]" data-testid="kusto-result-summary">
+                                {rows.length.toLocaleString()} row{rows.length === 1 ? '' : 's'} · {columns.length} column{columns.length === 1 ? '' : 's'}
+                            </span>
+                        )}
+                        <span className="flex-1" />
+                        {hasResults && (
+                            <div className={SEGMENT_GROUP_CLASS} role="group" aria-label="View">
+                                <button
+                                    type="button"
+                                    className={`inline-flex items-center gap-1 h-6 px-2 rounded text-[12px] ${segmentClass(view === 'table')}`}
+                                    onClick={() => setView('table')}
+                                    aria-pressed={view === 'table'}
+                                    data-testid="kusto-view-table"
+                                >
+                                    <KustoIcon name="table" size={12} /> Table
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`inline-flex items-center gap-1 h-6 px-2 rounded text-[12px] ${segmentClass(view === 'chart')}`}
+                                    onClick={() => setView('chart')}
+                                    aria-pressed={view === 'chart'}
+                                    data-testid="kusto-view-chart"
+                                >
+                                    <KustoIcon name="chart" size={12} /> Chart
+                                </button>
                             </div>
                         )}
+                        {hasResults && (
+                            <button
+                                type="button"
+                                className={GHOST_BTN_CLASS}
+                                onClick={handleCsvDownload}
+                                title="Download CSV"
+                                data-testid="kusto-csv"
+                            >
+                                <KustoIcon name="download" /> CSV
+                            </button>
+                        )}
                     </div>
-                ) : (
-                    <InteractiveTable
-                        tableKey={`kusto-${canvas.id}-${canvas.revision}`}
-                        headers={headers}
-                        alignments={columns.map(() => 'left')}
-                        rows={stringRows}
-                        originalMarkdown=""
-                        fillHeight
-                    />
-                )}
+                    <div
+                        className={
+                            hasResults && view !== 'chart'
+                                ? 'flex-1 min-h-0 overflow-hidden flex flex-col'
+                                : 'flex-1 min-h-0 overflow-auto p-3'
+                        }
+                    >
+                        {!hasResults ? (
+                            <div className="text-[12px] text-[#848484] text-center py-8" data-testid="kusto-empty">
+                                {status === 'error' ? 'Run failed — see the error above.' : 'Run a query to see results.'}
+                            </div>
+                        ) : view === 'chart' ? (
+                            <div className="flex flex-col gap-3" data-testid="kusto-chart-view">
+                                <ChartControls
+                                    columns={columns}
+                                    numericColumns={numericColumns}
+                                    config={chartConfig}
+                                    onType={t => updateConfig({ type: t })}
+                                    onX={x => updateConfig({ x: x || undefined })}
+                                    onToggleY={toggleY}
+                                    onSeries={s => updateConfig({ series: s || undefined })}
+                                />
+                                {chartConfig ? (
+                                    <KustoChart columns={columns} rows={rows} config={chartConfig} compact={compact} />
+                                ) : (
+                                    <div className="text-[12px] text-[#848484] text-center py-8" data-testid="kusto-chart-unconfigured">
+                                        Pick a chart type and a Y column to draw a chart.
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <InteractiveTable
+                                tableKey={`kusto-${canvas.id}-${canvas.revision}`}
+                                headers={headers}
+                                alignments={columns.map(() => 'left')}
+                                rows={stringRows}
+                                originalMarkdown=""
+                                fillHeight
+                            />
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );
 }
 
-const CHART_TYPES: { value: KustoChartType; label: string }[] = [
-    { value: 'line', label: 'Line' },
-    { value: 'bar', label: 'Bar' },
-    { value: 'scatter', label: 'Scatter' },
-    { value: 'pie', label: 'Pie' },
-    { value: 'stackedArea', label: 'Stacked area' },
+const CHART_TYPES: { value: KustoChartType; label: string; icon: IconName }[] = [
+    { value: 'bar', label: 'Bar', icon: 'bar' },
+    { value: 'line', label: 'Line', icon: 'line' },
+    { value: 'stackedArea', label: 'Stacked area', icon: 'area' },
+    { value: 'scatter', label: 'Scatter', icon: 'scatter' },
+    { value: 'pie', label: 'Pie', icon: 'pie' },
 ];
 
 interface ChartControlsProps {
@@ -505,29 +605,34 @@ interface ChartControlsProps {
     onSeries: (s: string) => void;
 }
 
-const SELECT_CLASS =
-    'text-[11px] px-1.5 py-1 rounded border border-[#e0e0e0] dark:border-[#474749] '
-    + 'bg-white dark:bg-[#1e1e1e] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-[#0078d4]';
+const CONTROL_LABEL_CLASS = 'text-[11px] font-medium text-[#848484]';
 
 function ChartControls({ columns, numericColumns, config, onType, onX, onToggleY, onSeries }: ChartControlsProps) {
     const selectedY = config?.y ?? [];
+    const activeType = config?.type ?? 'bar';
+    // Chip swatches match the plotted series colors; a split recolors the
+    // series by value, so the chips drop their swatch color then.
+    const plottedY = selectedY.filter(name => numericColumns.includes(name));
     return (
-        <div className="flex flex-wrap items-start gap-3" data-testid="kusto-chart-controls">
-            <label className="flex flex-col gap-0.5">
-                <span className="text-[9px] uppercase text-[#848484]">Type</span>
-                <select
-                    className={SELECT_CLASS}
-                    value={config?.type ?? 'bar'}
-                    onChange={e => onType(e.target.value as KustoChartType)}
-                    data-testid="kusto-chart-type"
-                >
-                    {CHART_TYPES.map(t => (
-                        <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                </select>
-            </label>
-            <label className="flex flex-col gap-0.5">
-                <span className="text-[9px] uppercase text-[#848484]">X axis</span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2" data-testid="kusto-chart-controls">
+            <div className={SEGMENT_GROUP_CLASS} role="group" aria-label="Chart type" data-testid="kusto-chart-type" data-value={activeType}>
+                {CHART_TYPES.map(t => (
+                    <button
+                        key={t.value}
+                        type="button"
+                        className={`inline-flex items-center justify-center w-7 h-6 rounded ${segmentClass(activeType === t.value)}`}
+                        onClick={() => onType(t.value)}
+                        aria-pressed={activeType === t.value}
+                        aria-label={t.label}
+                        title={t.label}
+                        data-testid={`kusto-chart-type-${t.value}`}
+                    >
+                        <KustoIcon name={t.icon} size={14} />
+                    </button>
+                ))}
+            </div>
+            <label className="inline-flex items-center gap-1.5">
+                <span className={CONTROL_LABEL_CLASS}>X</span>
                 <select
                     className={SELECT_CLASS}
                     value={config?.x ?? ''}
@@ -540,35 +645,45 @@ function ChartControls({ columns, numericColumns, config, onType, onX, onToggleY
                     ))}
                 </select>
             </label>
-            <div className="flex flex-col gap-0.5">
-                <span className="text-[9px] uppercase text-[#848484]">Y (numeric)</span>
-                <div className="flex flex-wrap gap-x-2 gap-y-0.5 max-w-[220px]" data-testid="kusto-chart-y">
-                    {numericColumns.length === 0 ? (
-                        <span className="text-[10px] italic text-[#848484]">No numeric columns</span>
-                    ) : (
-                        numericColumns.map(name => (
-                            <label key={name} className="inline-flex items-center gap-1 text-[11px]">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedY.includes(name)}
-                                    onChange={() => onToggleY(name)}
-                                    data-testid={`kusto-chart-y-${name}`}
+            <div className="inline-flex flex-wrap items-center gap-1.5" data-testid="kusto-chart-y">
+                <span className={CONTROL_LABEL_CLASS}>Y</span>
+                {numericColumns.length === 0 ? (
+                    <span className="text-[11px] italic text-[#848484]">No numeric columns</span>
+                ) : (
+                    numericColumns.map(name => {
+                        const on = selectedY.includes(name);
+                        const plotIndex = plottedY.indexOf(name);
+                        const swatch = on && !config?.series && plotIndex >= 0 ? seriesColor(plotIndex) : undefined;
+                        return (
+                            <button
+                                key={name}
+                                type="button"
+                                className={`inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full border text-[12px] ${on
+                                    ? 'border-[#0078d4]/50 bg-[#0078d4]/10 text-[#1e1e1e] dark:text-white'
+                                    : `${BORDER} text-[#848484] hover:text-[#1e1e1e] dark:hover:text-white`}`}
+                                onClick={() => onToggleY(name)}
+                                aria-pressed={on}
+                                data-testid={`kusto-chart-y-${name}`}
+                            >
+                                <span
+                                    className="inline-block w-2 h-2 rounded-sm bg-[#c8c8c8] dark:bg-[#555]"
+                                    style={swatch ? { backgroundColor: swatch } : undefined}
                                 />
                                 {name}
-                            </label>
-                        ))
-                    )}
-                </div>
+                            </button>
+                        );
+                    })
+                )}
             </div>
-            <label className="flex flex-col gap-0.5">
-                <span className="text-[9px] uppercase text-[#848484]">Series</span>
+            <label className="inline-flex items-center gap-1.5">
+                <span className={CONTROL_LABEL_CLASS}>Split by</span>
                 <select
                     className={SELECT_CLASS}
                     value={config?.series ?? ''}
                     onChange={e => onSeries(e.target.value)}
                     data-testid="kusto-chart-series"
                 >
-                    <option value="">(none)</option>
+                    <option value="">None</option>
                     {columns.map(c => (
                         <option key={c.name} value={c.name}>{c.name}</option>
                     ))}
