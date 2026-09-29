@@ -207,8 +207,8 @@ export function UnifiedPanelTabStrip({
     }, [activeId, stripTabs]);
 
     useEffect(() => {
-        if (contextMenu && !tabs.some(tab => tab.id === contextMenu.tabId)) setContextMenu(null);
-    }, [contextMenu, tabs]);
+        if (contextMenu && !stripTabs.some(tab => tab.id === contextMenu.tabId)) setContextMenu(null);
+    }, [contextMenu, stripTabs]);
 
     const dismissContextMenu = useCallback(() => {
         const originId = contextMenu?.tabId;
