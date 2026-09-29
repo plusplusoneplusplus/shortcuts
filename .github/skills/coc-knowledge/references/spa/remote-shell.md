@@ -320,8 +320,13 @@ open with a usable picker and no git request is made against another repo.
 Changing member is a navigation to that member's history route, so the previous
 commit/file is cleared before the keyed panel mounts.
 With the split flag on, group Git URLs select the Chats surface without
-discarding the member and commit route. A selected commit activates git detail
-in the split panel's shared detail host.
+discarding the member and commit route. On desktop, `useSplitGitPanel` gives
+single repos and groups the same unified right-panel Git tab: the chat stays
+in the middle, while the member's Git detail portals into the far-right tab.
+The group tab persists the selected member alongside its Git view, restores
+only for that member, and closes on member changes or unavailable links. Mobile
+keeps the split panel's full-screen detail push; the flag-off Git tab remains
+standalone.
 
 ### Group settings
 
