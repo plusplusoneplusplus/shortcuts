@@ -305,6 +305,24 @@ describe('ChatListPane Activity tab — ralph session grouping (Plan 002)', () =
         expect(sessionRows[0].getAttribute('data-session-id')).toBe(SESSION_ID);
     });
 
+    it('marks a Ralph session waiting for input on its row (AC-05)', () => {
+        const waiting = makeRalphIteration(2);
+        waiting.payload.context.ralph.phase = 'awaiting-input';
+        renderActivity([makeRalphIteration(1), waiting]);
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('data-session-phase')).toBe('awaiting-input');
+        expect(body.getAttribute('data-awaiting-input')).toBe('true');
+        expect(screen.getByLabelText('phase: awaiting input')).toBeTruthy();
+        expect(screen.getByTestId('ralph-session-title').textContent).toContain('Waiting for your input');
+    });
+
+    it('drops the waiting marker once the session is no longer awaiting input', () => {
+        renderActivity([makeRalphIteration(1), makeRalphIteration(2)]);
+        const body = screen.getByTestId('ralph-session-body');
+        expect(body.getAttribute('data-awaiting-input')).toBeNull();
+        expect(screen.getByTestId('ralph-session-title').textContent).not.toContain('Waiting for your input');
+    });
+
     it('does not make Ralph session groups drag sources when context attachments are disabled', () => {
         renderActivity(fixtureFiveIterPlusThreeStandalone(), { workspaceId: 'ws-1' });
 

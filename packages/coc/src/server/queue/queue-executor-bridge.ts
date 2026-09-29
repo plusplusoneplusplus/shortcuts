@@ -367,6 +367,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     params.totalIterations, params.reason,
                 ),
                 broadcastAwaitingInput: (params) => this.broadcastRalphAwaitingInput(params),
+                processStore: this.store,
                 workingDirectory: payload.workingDirectory,
                 folderPath: (payload as any).folderPath,
                 provider: isAutoProviderRoutingRequested(payload.context) ? undefined : (payload as any).provider,

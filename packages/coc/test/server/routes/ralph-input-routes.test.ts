@@ -260,6 +260,39 @@ describe('Ralph input/stop routes', () => {
         });
     });
 
+    async function addAskingProcess(): Promise<void> {
+        await store.addProcess({
+            id: 'queue_p3',
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'asked',
+            metadata: { ralph: { sessionId: 'sess', phase: 'awaiting-input', currentIteration: 3 } },
+        } as any);
+    }
+
+    describe('chat-list attention marker (AC-05)', () => {
+        it('resets the asking process phase to executing after an answer', async () => {
+            await seedSession(dataDir, 'ws-1', 'sess-mark-in');
+            await addAskingProcess();
+
+            const res = await post(baseUrl, inputUrl('ws-1', 'sess-mark-in'), { answers: ['repo', 'no'] });
+
+            expect(res.status).toBe(200);
+            expect(((await store.getProcess('queue_p3'))?.metadata as any).ralph.phase).toBe('executing');
+        });
+
+        it('resets the asking process phase to complete after stop', async () => {
+            await seedSession(dataDir, 'ws-1', 'sess-mark-stop');
+            await addAskingProcess();
+
+            const res = await post(baseUrl, stopUrl('ws-1', 'sess-mark-stop'));
+
+            expect(res.status).toBe(200);
+            expect(((await store.getProcess('queue_p3'))?.metadata as any).ralph.phase).toBe('complete');
+        });
+    });
+
     describe('POST /stop', () => {
         it('ends the session with USER_STOPPED and broadcasts user-stopped', async () => {
             await seedSession(dataDir, 'ws-1', 'sess-stop');

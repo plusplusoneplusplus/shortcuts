@@ -220,6 +220,31 @@ describe('groupByRalphSession', () => {
         expect(session.phase).toBe('complete');
     });
 
+    it('session whose latest iteration is awaiting-input has phase=awaiting-input (AC-05)', () => {
+        const items = [
+            makeIterationHistoryItem('s1', 1),
+            makeIterationHistoryItem('s1', 2, { ralph: { sessionId: 's1', phase: 'awaiting-input', currentIteration: 2 } }),
+        ];
+        const session = groupByRalphSession(items)[0] as RalphSession;
+        expect(session.phase).toBe('awaiting-input');
+    });
+
+    it('awaiting-input clears once a newer iteration exists (answer submitted, stale history)', () => {
+        const items = [
+            makeIterationHistoryItem('s1', 2, { ralph: { sessionId: 's1', phase: 'awaiting-input', currentIteration: 2 } }),
+            makeIterationTask('s1', 3, { status: 'running' }),
+        ];
+        const session = groupByRalphSession(items)[0] as RalphSession;
+        expect(session.phase).toBe('executing');
+    });
+
+    it('awaiting-input clears when the server resets the asking process phase', () => {
+        const stopped = [
+            makeIterationHistoryItem('s1', 2, { ralph: { sessionId: 's1', phase: 'complete', currentIteration: 2 } }),
+        ];
+        expect((groupByRalphSession(stopped)[0] as RalphSession).phase).toBe('complete');
+    });
+
     it('session with failed Ralph phase has phase=failed', () => {
         const failedIter = makeIterationTask('sess-failed', 1, {
             createdAt: 2000,

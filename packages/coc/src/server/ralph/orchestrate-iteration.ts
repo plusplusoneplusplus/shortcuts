@@ -19,6 +19,8 @@ import {
     type RalphIterationCompletionReason,
 } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { setRalphProcessPhase } from './process-phase';
 import { RalphSessionStore } from './ralph-session-store';
 import { recordRalphIteration } from './record-iteration';
 import { buildRalphIterationTask, inheritRalphTaskConfig } from './enqueue-iteration';
@@ -58,6 +60,11 @@ export interface OrchestrateRalphIterationDeps {
         processId: string;
         iteration: number;
     }) => void;
+    /**
+     * Process store used to mark the asking iteration's process
+     * `metadata.ralph.phase = 'awaiting-input'` (chat-list attention marker).
+     */
+    processStore?: ProcessStore;
     /** Working directory for next-iteration and final-check tasks. */
     workingDirectory?: string;
     /** folderPath for next-iteration and final-check tasks. */
@@ -280,6 +287,11 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                     break;
                 }
                 logger.info(LogCategory.AI, `[Ralph] Session ${action.sessionId} awaiting user input after iteration ${action.iteration}`);
+                try {
+                    await setRalphProcessPhase(deps.processStore, action.processId, 'awaiting-input');
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[Ralph] Failed to mark process ${action.processId} awaiting input: ${err instanceof Error ? err.message : String(err)}`);
+                }
                 try {
                     deps.broadcastAwaitingInput?.({
                         workspaceId: action.workspaceId,

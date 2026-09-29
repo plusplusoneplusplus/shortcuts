@@ -21,6 +21,7 @@ import {
 } from '../../../src/server/ralph/orchestrate-iteration';
 import { RalphSessionStore } from '../../../src/server/ralph/ralph-session-store';
 import { _clearFinalCheckEnqueuedSet } from '../../../src/server/ralph/enqueue-final-check';
+import { createMockProcessStore } from '../helpers/mock-process-store';
 
 const WS = 'ws-needs-input';
 const SID = 'sess-needs-input';
@@ -150,6 +151,24 @@ describe('orchestrateRalphIteration — RALPH_NEEDS_INPUT', () => {
             processId: PROCESS_ID,
             iteration: 2,
         });
+    });
+
+    it('marks the asking process ralph.phase awaiting-input for the chat-list marker (AC-05)', async () => {
+        const store = createMockProcessStore();
+        await store.addProcess({
+            id: PROCESS_ID,
+            type: 'chat',
+            status: 'completed',
+            startTime: new Date(),
+            promptPreview: 'iteration 2',
+            metadata: { mode: 'ralph', ralph: { sessionId: SID, phase: 'executing', currentIteration: 2 } },
+        } as any);
+
+        await run(makeNeedsInputResponse(), 2, makeDeps({ dataDir, processStore: store }));
+
+        const proc = await store.getProcess(PROCESS_ID);
+        expect((proc?.metadata as any).ralph).toMatchObject({ sessionId: SID, phase: 'awaiting-input', currentIteration: 2 });
+        expect((proc?.metadata as any).mode).toBe('ralph');
     });
 
     it('still persists the request when no awaiting-input broadcaster is wired', async () => {

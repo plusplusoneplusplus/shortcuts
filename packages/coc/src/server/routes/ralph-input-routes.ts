@@ -24,6 +24,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { buildRalphIterationTask } from '../ralph/enqueue-iteration';
+import { setRalphProcessPhase } from '../ralph/process-phase';
 import type { RalphHumanAnswer, RalphHumanInput, RalphSessionRecord } from '../ralph/types';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import { parseRalphAiSelection, recoverIterationPaths } from './ralph-route-utils';
@@ -110,6 +111,8 @@ export function registerRalphInputRoutes(routes: Route[], ctx: RalphInputRouteCo
                 if (!updated) {
                     return sendError(res, 409, 'Session is no longer awaiting input');
                 }
+
+                await clearAwaitingProcessPhase(store, pending.processId, 'executing');
 
                 try {
                     await journal.appendHumanInputSection(workspaceId, sessionId, humanInput, pending.request);
@@ -202,6 +205,7 @@ export function registerRalphInputRoutes(routes: Route[], ctx: RalphInputRouteCo
                 const processId = pending?.processId
                     ?? updated.iterations[updated.iterations.length - 1]?.processId
                     ?? '';
+                await clearAwaitingProcessPhase(store, pending?.processId, 'complete');
                 const totalIterations = updated.currentIteration;
                 try {
                     bridge.publishRalphSessionComplete({
@@ -240,6 +244,19 @@ export function registerRalphInputRoutes(routes: Route[], ctx: RalphInputRouteCo
             }
         },
     });
+}
+
+/** Take the asking process out of `awaiting-input` so the chat-list marker clears. */
+async function clearAwaitingProcessPhase(
+    store: ProcessStore,
+    processId: string | undefined,
+    phase: 'executing' | 'complete',
+): Promise<void> {
+    try {
+        await setRalphProcessPhase(store, processId, phase);
+    } catch (err) {
+        getLogger().debug(LogCategory.AI, `[Ralph] Failed to reset process ${processId} phase: ${err instanceof Error ? err.message : String(err)}`);
+    }
 }
 
 function currentLoopIndex(record: RalphSessionRecord): number {

@@ -68,6 +68,7 @@ interface RalphSessionRowProps {
 const PHASE_DOT_CLASSES: Record<RalphSession['phase'], string> = {
     grilling: 'bg-amber-500',
     executing: 'bg-[#0078d4] dark:bg-[#3794ff] animate-pulse shadow-[0_0_0_3px_rgba(0,120,212,0.22)]',
+    'awaiting-input': 'bg-amber-500 dark:bg-amber-400 shadow-[0_0_0_3px_rgba(245,158,11,0.28)]',
     complete: 'bg-[#bbbbbb] dark:bg-[#5c5c5c]',
     failed: 'bg-[#e5534b] dark:bg-[#f85149]',
 };
@@ -75,6 +76,7 @@ const PHASE_DOT_CLASSES: Record<RalphSession['phase'], string> = {
 const PHASE_DOT_LABEL: Record<RalphSession['phase'], string> = {
     grilling: 'clarifying',
     executing: 'executing',
+    'awaiting-input': 'awaiting input',
     complete: 'done',
     failed: 'failed',
 };
@@ -111,6 +113,8 @@ export function RalphSessionRow({
     let subLabel: string;
     if (session.phase === 'grilling') {
         subLabel = 'Clarifying';
+    } else if (session.phase === 'awaiting-input') {
+        subLabel = 'Waiting for your input';
     } else if (RALPH_MULTI_LOOP && session.loopCount > 1) {
         subLabel = `${session.loopCount} loops · ${iterCount} iter`;
     } else {
@@ -175,6 +179,7 @@ export function RalphSessionRow({
                 'data-session-context-source': sessionContextPayload ? 'true' : undefined,
                 'data-session-context-kind': sessionContextPayload ? 'ralph-session' : undefined,
                 'data-session-context-status': sessionContextPayload?.status,
+                'data-awaiting-input': session.phase === 'awaiting-input' ? 'true' : undefined,
             }}
             bodyTitle={sessionContextPayload ? `${sessionContextPayload.displayLabel} - drag to attach as Ralph session context` : undefined}
             renderTaskCard={(task) => renderTaskCard(task, { isGroupChild: true })}
