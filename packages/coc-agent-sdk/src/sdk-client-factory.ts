@@ -377,6 +377,18 @@ export function createSdkClient(options: CopilotClientOptions = {}): CopilotClie
         // under plain Node it resolves and spawns index.js itself.
     }
 
+    const connection = clientOptions.connection;
+    const defaultInProcess = !connection && process.env.COPILOT_SDK_DEFAULT_CONNECTION?.toLowerCase() === 'inprocess';
+    if (!defaultInProcess
+        && (!connection || connection.kind === 'stdio' || connection.kind === 'tcp')
+        && !(connection && 'env' in connection && connection.env !== undefined)) {
+        clientOptions.env = {
+            ...process.env,
+            ...clientOptions.env,
+            COPILOT_AUTO_UPDATE: 'false',
+        };
+    }
+
     aiLog.debug({ clientOptions }, 'Creating new CopilotClient');
     return new sdk.CopilotClient(clientOptions);
 }

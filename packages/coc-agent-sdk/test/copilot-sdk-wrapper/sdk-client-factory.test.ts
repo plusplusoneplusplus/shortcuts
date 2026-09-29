@@ -78,6 +78,24 @@ import * as trustedFolder from '../../src/trusted-folder';
 import * as fs from 'fs';
 import * as workspaceExecution from '../../src/platform/workspace-execution';
 
+it('pins the SDK and CLI versions used by all workspaces', () => {
+    const root = path.resolve(__dirname, '../../../../');
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const lock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
+    expect(manifest.dependencies['@github/copilot-sdk']).toBe('1.0.9');
+    expect(manifest.overrides['@github/copilot']).toBe('1.0.78');
+    for (const workspace of ['coc-agent-sdk', 'coc', 'forge', 'deep-wiki']) {
+        const pkg = JSON.parse(fs.readFileSync(path.join(root, 'packages', workspace, 'package.json'), 'utf8'));
+        expect(pkg.dependencies?.['@github/copilot-sdk'] ?? pkg.peerDependencies?.['@github/copilot-sdk']).toBe('1.0.9');
+    }
+    expect(lock.packages['node_modules/@github/copilot-sdk'].version).toBe('1.0.9');
+    const cli = lock.packages['node_modules/@github/copilot'];
+    expect(cli.version).toBe('1.0.78');
+    for (const name of Object.keys(cli.optionalDependencies)) {
+        expect(lock.packages[`node_modules/${name}`]?.version).toBe('1.0.78');
+    }
+});
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -94,6 +112,20 @@ describe('createSdkClient', () => {
 
         expect(capturedOptions).toHaveLength(1);
         expect(capturedOptions[0].workingDirectory).toBeUndefined();
+    });
+
+    it('disables updates for spawned CLI without changing the host environment', () => {
+        vi.stubEnv('COPILOT_AUTO_UPDATE', 'true');
+        try {
+            createSdkClient({ env: { COPILOT_AUTO_UPDATE: 'true', TEST_VALUE: 'kept' } });
+            expect(capturedOptions[0].env).toMatchObject({
+                COPILOT_AUTO_UPDATE: 'false',
+                TEST_VALUE: 'kept',
+            });
+            expect(process.env.COPILOT_AUTO_UPDATE).toBe('true');
+        } finally {
+            vi.unstubAllEnvs();
+        }
     });
 
     it('creates a client with no workingDirectory when workingDirectory is undefined', () => {
@@ -184,7 +216,6 @@ describe('createSdkClient', () => {
         );
         expect(capturedOptions[0].workingDirectory).toBe(workingDirectory);
         expect(capturedOptions[0].connection).toBeUndefined();
-        expect(capturedOptions[0].env).toBeUndefined();
         expect(trustedFolder.ensureFolderTrusted).toHaveBeenCalledWith(workingDirectory);
         expect(fs.existsSync).toHaveBeenCalledWith(workingDirectory);
     });
@@ -257,7 +288,6 @@ describe('createSdkClient — Electron connection override', () => {
         createSdkClient({ workingDirectory: '/project' });
 
         expect(capturedOptions[0].connection).toBeUndefined();
-        expect(capturedOptions[0].env).toBeUndefined();
     });
 
     it('does NOT override an explicitly provided connection even under Electron', () => {
@@ -268,6 +298,18 @@ describe('createSdkClient — Electron connection override', () => {
 
         expect(capturedOptions[0].connection).toBe(callerConnection);
         expect(mockRuntimeConnection.forStdio).not.toHaveBeenCalled();
+    });
+
+    it('keeps a caller-owned connection environment unchanged', () => {
+        const connection = { kind: 'stdio' as const, env: { COPILOT_AUTO_UPDATE: 'true' } };
+        createSdkClient({ connection });
+        expect(capturedOptions[0].connection).toBe(connection);
+        expect(capturedOptions[0].env).toBeUndefined();
+    });
+
+    it('does not set a child environment for an in-process connection', () => {
+        createSdkClient({ connection: { kind: 'inprocess' } });
+        expect(capturedOptions[0].env).toBeUndefined();
     });
 
     it('does NOT set connection when copilot CLI cannot be found even under Electron', () => {
@@ -345,7 +387,7 @@ describe('createSdkClient — native binary override outside Electron', () => {
         createSdkClient({ workingDirectory: '/project' });
 
         expect(capturedOptions[0].connection).toBeUndefined();
-        expect(capturedOptions[0].env).toBeUndefined();
+        expect(capturedOptions[0].env.COPILOT_AUTO_UPDATE).toBe('false');
     });
 });
 

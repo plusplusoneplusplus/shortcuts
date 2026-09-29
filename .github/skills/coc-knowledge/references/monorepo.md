@@ -46,6 +46,8 @@ Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memo
 
 `coc` and `deep-wiki` depend on published workspace packages via caret ranges; npm workspaces symlink them in local development. Nothing is bundled or copied into consumers — everything resolves from `node_modules` at runtime.
 
+The root and consuming workspaces pin `@github/copilot-sdk` to `1.0.9`; the root override pins its transitive `@github/copilot` CLI and platform packages to `1.0.78`. Copilot child processes disable CLI auto-update so cached versions cannot replace the installed runtime.
+
 **Build order:** `coc-native` -> `coc-agent-sdk` -> `coc-workflow` -> `forge`/`coc`. `coc-native` leads because `coc-agent-sdk` imports its git capability and has no `prebuild` hook of its own, so nothing else would build it first. `coc` also consumes compiled `coc-memory`, `coc-client`, `coc-connector`, and `coc-native` output. Root `build:packages` and `coc:link` build `coc-native` before `coc-agent-sdk`; `build:packages` then builds `coccontainer` before `coc-desktop` so both desktop server entry points exist for packaging. `scripts/prebuild.mjs` enforces the same dependency order for direct `packages/forge` and `packages/coc` builds; the `coc` build also cleans `dist` before `tsc`.
 
 **Versioning:** `npm run changeset` (add), `npm run version-packages` (apply, bump versions/changelogs), `npm run publish-packages` (build all, then `changeset publish`). npm publishing is manual.
@@ -89,7 +91,7 @@ The plain-Node server and the Electron desktop share one hoisted `node_modules`,
 
 - **CoC desktop:** when Windows DevTunnel hosting is enabled and the configured tunnel has exactly one HTTP binding, that port is the preferred attach/start port; otherwise 4000. Either way it attaches to a healthy CoC server, starts the embedded server on the preferred port when free, and falls back to an ephemeral port only when the preferred one is unusable.
 - **CoCContainer desktop:** built from `packages/coc-desktop/electron-builder.container.cjs` with the dedicated `container-main` and `container-server-entry` outputs. Same DevTunnel port rule, otherwise port 5000 with free-port fallback. It shares the CLI's `~/.coccontainer` data directory and uses tunnel identity `<hostname>-coccontainer` so it does not contend with CoC desktop's `<hostname>-coc`.
-- **Packaged agent runtimes:** the desktop build prepends bundled standalone Codex/Claude CLI directories to the forked server `PATH`. Copilot runs the native wrapper from `@github/copilot-sdk-<platform>/prebuilds/<platform>/`; the SDK platform package is unpacked from `app.asar` so the wrapper and adjacent `runtime.node` stay executable and loadable.
+- **Packaged agent runtimes:** the desktop build prepends bundled standalone Codex/Claude CLI directories to the forked server `PATH`. Copilot runs the native binary from `@github/copilot-<platform>-<arch>/`; the platform package is unpacked from `app.asar` so the CLI stays executable.
 
 ## Cross-Package Conventions
 
