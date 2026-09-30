@@ -102,6 +102,22 @@ describe('CodexSDKService skills', () => {
         );
     });
 
+    it('forwards reasoning effort through the Codex SDK thread option', async () => {
+        svc = new CodexSDKService();
+        const codexMock = makeCodexSdkMock();
+        (svc as unknown as { sdk: unknown }).sdk = codexMock;
+        (svc as unknown as { availabilityCache: unknown }).availabilityCache = { available: true };
+
+        await svc.sendMessage({ prompt: 'test', reasoningEffort: 'xhigh' });
+
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.objectContaining({ modelReasoningEffort: 'xhigh' }),
+        );
+        expect(codexMock.startThread).toHaveBeenCalledWith(
+            expect.not.objectContaining({ reasoningLevel: expect.anything() }),
+        );
+    });
+
     it('uses full-access Codex sandbox options when mode is omitted', async () => {
         svc = new CodexSDKService();
         const codexMock = makeCodexSdkMock();

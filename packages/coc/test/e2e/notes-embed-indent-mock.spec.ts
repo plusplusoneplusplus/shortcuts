@@ -79,13 +79,18 @@ function trackPageErrors(page: import('@playwright/test').Page): Error[] {
 
 async function openFirstPage(page: import('@playwright/test').Page): Promise<void> {
     const pageRow = page.locator('[data-testid="notes-tree-item-getting-started.md"]');
+    const notebookRow = page.locator('[data-testid="notes-tree-item-Journal"]');
+    await expect(notebookRow).toBeVisible({ timeout: 15_000 });
     // Expand the Journal notebook only if the page row is not already visible.
-    // The tree's expansion state persists across a reload, so an unconditional
-    // click would collapse an already-expanded notebook and hide the page.
-    if (!(await pageRow.isVisible().catch(() => false))) {
-        await page.locator('[data-testid="notes-tree-item-Journal"]').click();
-    }
-    await expect(pageRow).toBeVisible({ timeout: 5_000 });
+    // After a reload the deep-linked note auto-expands its notebook in an effect
+    // that can land just after the tree renders, so a one-shot click may race it
+    // and collapse the notebook. Retry until the page row is actually visible.
+    await expect(async () => {
+        if (!(await pageRow.isVisible())) {
+            await notebookRow.click();
+        }
+        await expect(pageRow).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 10_000 });
     await pageRow.click();
 }
 

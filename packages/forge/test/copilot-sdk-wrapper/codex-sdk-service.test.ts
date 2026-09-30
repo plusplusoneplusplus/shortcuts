@@ -622,30 +622,30 @@ describe('CodexSDKService — SDK mocked', () => {
         }
     });
 
-    it('sendMessage passes reasoningLevel to startThread when reasoningEffort is set', async () => {
+    it('sendMessage passes modelReasoningEffort to startThread when reasoningEffort is set', async () => {
         const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
         await svc.sendMessage({ prompt: 'deep reasoning', reasoningEffort: 'xhigh' });
         expect(codexMock.startThread).toHaveBeenCalledOnce();
         expect(codexMock.startThread.mock.calls[0][0]).toEqual(
-            expect.objectContaining({ reasoningLevel: 'xhigh' }),
+            expect.objectContaining({ modelReasoningEffort: 'xhigh' }),
         );
     });
 
-    it('sendMessage omits reasoningLevel when no reasoningEffort is given', async () => {
+    it('sendMessage omits modelReasoningEffort when no reasoningEffort is given', async () => {
         const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
         await svc.sendMessage({ prompt: 'no effort' });
         expect(codexMock.startThread).toHaveBeenCalledOnce();
         const opts = codexMock.startThread.mock.calls[0][0] as Record<string, unknown>;
-        expect(opts['reasoningLevel']).toBeUndefined();
+        expect(opts['modelReasoningEffort']).toBeUndefined();
     });
 
-    it('sendMessage passes all valid effort levels as reasoningLevel', async () => {
+    it('sendMessage passes all valid effort levels as modelReasoningEffort', async () => {
         const codexMock = svc['sdk'] as ReturnType<typeof makeCodexSdkMock>;
         for (const effort of ['low', 'medium', 'high', 'xhigh'] as const) {
             (codexMock.startThread as ReturnType<typeof vi.fn>).mockClear();
             await svc.sendMessage({ prompt: 'effort test', reasoningEffort: effort });
             expect(codexMock.startThread.mock.calls[0][0]).toEqual(
-                expect.objectContaining({ reasoningLevel: effort }),
+                expect.objectContaining({ modelReasoningEffort: effort }),
             );
         }
     });

@@ -139,6 +139,9 @@ Quota and model-catalog lookups spawn the `@openai/codex` CLI shipped as a depen
 
 `mapCatalogModel` keeps only `visibility: 'list'` models and normalizes `supported_reasoning_levels` against `REASONING_LEVEL_ORDER` — a hardcoded low→high list mirroring `ModelReasoningEffort` in the Codex SDK's published TypeScript declaration (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, `persistent`). The intersection both sorts the catalog's arbitrary order and drops unknown levels, so a level the SDK adds is invisible in the UI until the list is extended — check it on every `@openai/codex-sdk` bump. `default_reasoning_level` is advertised only when it survives that filter.
 
+Per-turn reasoning is passed to `startThread()` as `modelReasoningEffort`, matching the
+published Codex SDK `ThreadOptions` contract.
+
 ### Compaction
 
 `compactSession()` compacts a thread in place over the same app-server stdio channel (shared `runAppServerRpc` helper). After the handshake it issues `thread/resume` (id 1) — **not** `thread/read`, which fails "thread not found" on a thread this app-server process never resumed — then `thread/compact/start` (id 2, `{ threadId }`), which rewrites the rollout JSONL under the same thread id and summarizes asynchronously.
