@@ -33,8 +33,10 @@ embed, and renders standard admin cards. Each tool's internal sub-tab scheme
 (`#skills/installed`, `#logs?sessionId=…`) is untouched.
 
 Connections uses `#admin/messaging`: normal CoC renders `TeamsConnectionCard` for the
-global Teams MCP endpoint and team/channel inbound bridge; container mode renders
-`IMSettingsSection` for its separate WhatsApp and Teams relay. The normal card shows
+global Teams MCP endpoint and team/channel inbound bridge, followed by
+`WhatsAppConnectionCard` for pairing and selecting a single group. Container
+mode renders `IMSettingsSection` for its separate WhatsApp and Teams relay;
+both WhatsApp surfaces share QR and connection-status presentation. The Teams card shows
 connection and OAuth status, saves the endpoint and channel separately, and returns
 a user-clickable Microsoft sign-in link for the server-local PKCE flow. It polls the
 shared MCP OAuth pending state and enables or reconnects the bridge after credentials

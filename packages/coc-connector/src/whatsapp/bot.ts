@@ -19,6 +19,7 @@ export class WhatsAppBot implements MessagingConnector {
     /** Stable provider id for the MessagingConnector contract. */
     readonly provider = 'whatsapp';
     private sock: WASocket | null = null;
+    private connectionAbort: AbortController | null = null;
     private readonly opts: Required<Pick<BotOptions, 'sessionDir' | 'onMessage' | 'printQR'>> & BotOptions;
     private _status: BotStatus = 'disconnected';
     private _lastQR: string | null = null;
@@ -35,10 +36,14 @@ export class WhatsAppBot implements MessagingConnector {
 
     /** Connect to WhatsApp. Prints QR on first run. */
     async start(): Promise<void> {
+        this.connectionAbort?.abort();
+        const controller = new AbortController();
+        this.connectionAbort = controller;
         this.setStatus('connecting');
         this._lastError = null;
-        this.sock = await createBaileysConnection({
+        const sock = await createBaileysConnection({
             sessionDir: this.opts.sessionDir,
+            signal: controller.signal,
             deviceName: this.opts.deviceName,
             onQR: (qr) => {
                 this._lastQR = qr;
@@ -55,6 +60,7 @@ export class WhatsAppBot implements MessagingConnector {
                 this.opts.onQR?.(qr);
             },
             onConnected: (newSock) => {
+                if (controller.signal.aborted) { newSock.end(); return; }
                 // Update socket reference — on reconnect, Baileys creates a new socket
                 this.sock = newSock;
                 this.sock.ev.on('messages.upsert', (upsert: any) => {
@@ -66,24 +72,29 @@ export class WhatsAppBot implements MessagingConnector {
                 console.log('[whatsapp-bot] Connected to WhatsApp');
             },
             onDisconnected: (loggedOut) => {
+                if (controller.signal.aborted) return;
                 this.setStatus('disconnected');
                 if (loggedOut) {
                     console.log('[whatsapp-bot] Logged out from WhatsApp');
                 }
             },
             onError: (error) => {
-                this._lastError = error;
+                if (!controller.signal.aborted) this._lastError = error;
             },
         });
+        if (controller.signal.aborted) sock.end();
+        else this.sock = sock;
     }
 
     /** Gracefully disconnect. */
     async stop(): Promise<void> {
+        this.connectionAbort?.abort();
+        this.connectionAbort = null;
         if (this.sock) {
             this.sock.end();
             this.sock = null;
-            this.setStatus('disconnected');
         }
+        this.setStatus('disconnected');
     }
 
     /** Send a text message, optionally quoting another message. Returns the WA message ID. */
@@ -99,6 +110,24 @@ export class WhatsAppBot implements MessagingConnector {
         const msgId = result.key.id ?? '';
         if (msgId) this._sentMessageIds.add(msgId);
         return msgId;
+    }
+
+    /** React to a message; reject if Baileys does not complete within five seconds. */
+    async react(chatJid: string, messageId: string, emoji: string): Promise<void> {
+        if (!this.sock) throw new Error('WhatsAppBot is not started');
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await Promise.race([
+                this.sock.sendMessage(chatJid, {
+                    react: { text: emoji, key: { remoteJid: chatJid, id: messageId, fromMe: true } },
+                }),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('WhatsApp reaction timed out')), 5_000);
+                }),
+            ]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     }
 
     /** List all WhatsApp groups the account participates in. */
@@ -185,6 +214,9 @@ export class WhatsAppBot implements MessagingConnector {
             if (!text) continue;
 
             const inbound: InboundWAMessage = {
+                chatJid: msg.key.remoteJid ?? '',
+                participantJid: msg.key.participant,
+                fromMe: msg.key.fromMe === true,
                 senderJid: msg.key.remoteJid ?? '',
                 messageId: msg.key.id ?? '',
                 text,

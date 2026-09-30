@@ -95,7 +95,7 @@ src/
 | `native-copilot-sessions/` | Read-only native session services; CoC never writes to native CLI stores. Copilot reads `~/.copilot/session-store.db` through short-lived read-only `NativeDatabase` handles, scoping by native `cwd`/`repository`, with parameterized FTS search and typed `db-missing`/`db-invalid` states. Codex and Claude filesystem providers scan `~/.codex/sessions` rollout JSONL and `~/.claude/projects/<dash-encoded-cwd>` transcript JSONL, scoping by transcript `cwd` (Claude requires every recorded `cwd` under the workspace root), collapsing duplicate native IDs to the newest transcript, with substring search and typed `store-missing`/`store-invalid` states. `NATIVE_CLI_PROVIDER_DESCRIPTORS` (in `@plusplusoneplusplus/coc-client`) is the single source of provider identity, labels, store hints, search strategy, and `available`/`planned` status; `native-cli-provider-registry.ts` builds the served map from it and throws at startup when an `available` descriptor lacks a factory or contradicts its search strategy, so dashboard tabs and the server registry cannot drift. `native-transcript-index.ts` holds an LRU stat-keyed (path + mtime + size) metadata cache so warm lists only stat. Parsers sit per provider under `parsers/` (`claude-transcript-parser.ts`, `codex-rollout-parser.ts`) over `transcript-parser-core.ts`, re-exported by `cli-session-parsers.ts` |
 | `models/` | Model registry endpoints |
 | `agent-providers/` | Quota cache, provider status routes, SDK install helpers, and the pure Auto router evaluating configured priority, availability, quota thresholds, weekly guards, fallback, and selection warnings before callers expand effort tiers. Queue/fresh-terminal defaults, explicit SPA Auto requests (`context.autoProviderRouting.requested`), Ralph, For Each, and work-item enqueue share the quota cache, refreshing only when missing or stale |
-| `messaging/` | Teams channel bridge: manager, inbound command router, user selection state, workspace-scoped answer relay, and privacy-allowlisted connection-attempt history. Free-form Teams messages enqueue Ask chats in the selected or first registered workspace with the provider's Medium effort tier resolved through queue preparation, including relay-created chats; the container forwarder shares the payload builder but retains its own default selection. All outbound channel sends receive an `AI:` lead-in at the manager boundary; command/status/error Markdown is safely rendered as Teams HTML, while relay replies pass preformatted HTML unchanged. The default-off `features.teamsAiAnswerRelay` independently gates durable terminal replies. `features.teamsBridgeObservability` independently gates connection history |
+| `messaging/` | Teams channel manager, inbound router, state, workspace-scoped answer relay and safe attempt history; independent WhatsApp manager, router, workspace-scoped receipts and final-answer relay. Teams uses its Medium effort-tier enqueue path and `AI:`-prefixed outbound formatting; WhatsApp uses resolved defaults with Ask by default and per-message `/autopilot`. The container forwarder remains separate |
 | `spa/` | Dashboard SPA (HTML template, React client) |
 | `dashboard/` | Server-side dashboard state helpers: recent active-workspace tracking and interval-based proactive refresh of warm active-workspace caches |
 
@@ -128,6 +128,29 @@ Queue terminal events and restart/reconnect reconciliation read the matching sav
 Each send part is marked `sending` on disk before calling Teams. Accepted IDs advance the part index; an uncertain result or interrupted send stays ambiguous for manual reconciliation. Explicit transport rejection and pre-send disconnection retry with capped backoff. The relay keeps one retry timer and three queue listeners, disposed with the server. Delivered receipts are retained for 30 days or the most recent 2,000 per workspace; unfinished receipts remain until resolved, with a 5,000-per-workspace admission cap. Disabling the flag stops admission and sends while preserving existing receipts.
 
 `features.teamsBridgeObservability` gates separate server-global connection history. Attempts retain at most 100 non-routine events with safe event categories; totals count events and successful polls independently of retained history. The detail projection tracks poll/send degradation and last successful timestamps. Ordinary poll/send failures keep the connected attempt active; unexpected bot disconnection closes it. Getters and disk records allowlist fields without provider data. The store retains up to 200 completed attempts for 30 days, preserves active attempts, and marks them interrupted on restart. Generation-scoped callbacks cannot update superseded attempts.
+
+### WhatsApp messaging
+
+`WhatsAppMessagingManager` stores disabled-by-default settings and Baileys auth
+under `messaging/whatsapp/`. It loads Baileys only on connect, reconnects at
+startup when enabled, and disconnects on disable/shutdown. Admin → Messaging
+exposes connection status, pairing QR, group listing/creation and repair.
+Container messaging uses its separate `/container/messaging/*` routes.
+
+`WhatsAppCommandRouter` accepts only paired-account messages from the bound
+group, skipping connector-authored echoes. `list repos` and `select repo`
+establish an explicit workspace; topics stay selected per workspace. Quoted
+answers route replies into their original workspace even when the account has
+selected another repo. Each accepted chat uses queue default resolution with
+Ask mode unless the message starts with `/autopilot`.
+
+Account selection and recent command-reply IDs live in `messaging/whatsapp/state.json`; accepted turn
+receipts live in `repos/<workspaceId>/whatsapp-bindings.json`. The relay listens
+for terminal queue events and sends only the final assistant turn, quoted to the
+incoming group message. It persists each accepted chunk's message ID and
+watermark before continuing, defers sends while disconnected, and does not
+automatically retry a send whose outcome is unknown. A changed group cannot
+receive an answer bound to the former group.
 
 ## Executors
 

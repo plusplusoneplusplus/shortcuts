@@ -123,6 +123,7 @@ interface CloseHandlerDeps {
     triggerInfraDispose?: () => void;
     mcpOauthDispose?: () => void;
     teamsMessagingManager?: { disconnect(): Promise<void>; dispose?(): void };
+    whatsappMessagingManager?: { disconnect(): Promise<void>; dispose(): void };
     syncEngines?: Map<string, SyncEngine>;
     autoPullManager?: { dispose(): void };
     workItemGitHubPullPoller?: { dispose(): void };
@@ -161,6 +162,8 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.mcpOauthDispose?.();
         await deps.teamsMessagingManager?.disconnect();
         deps.teamsMessagingManager?.dispose?.();
+        await deps.whatsappMessagingManager?.disconnect();
+        deps.whatsappMessagingManager?.dispose();
         deps.syncEngines?.forEach(e => e.stop());
         deps.autoPullManager?.dispose();
         deps.workItemGitHubPullPoller?.dispose();
@@ -794,7 +797,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, teamsMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
+    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -966,6 +969,11 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             process.stderr.write(`[TeamsMessaging] startup connection failed: ${err instanceof Error ? err.message : String(err)}\n`);
         });
     }
+    if (whatsappMessagingManager.getStatus().enabled) {
+        void whatsappMessagingManager.connect().catch(err => {
+            process.stderr.write(`[WhatsAppMessaging] startup connection failed: ${err instanceof Error ? err.message : String(err)}\n`);
+        });
+    }
     activateQueueProcessing();
     // Say which native search capabilities are active. All are required and
     // were validated before composition; reporting them separately is what
@@ -1084,6 +1092,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             triggerInfraDispose: triggerInfra?.dispose,
             mcpOauthDispose: mcpOauthInfra?.dispose,
             teamsMessagingManager,
+            whatsappMessagingManager,
             syncEngines,
             workItemGitHubPullPoller,
             workItemAzureBoardsPullPoller,

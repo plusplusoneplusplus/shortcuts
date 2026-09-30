@@ -163,6 +163,11 @@ import { registerSyncRoutes } from '../sync/sync-handler';
 import type { SyncEngine } from '../sync/sync-engine';
 import { registerTeamsMessagingRoutes } from '../messaging/teams-messaging-handler';
 import { TeamsMessagingManager } from '../messaging/teams-messaging-manager';
+import { registerWhatsAppMessagingRoutes } from '../messaging/whatsapp-messaging-handler';
+import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-manager';
+import { WhatsAppBindings } from '../messaging/whatsapp-bindings';
+import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
+import { WhatsAppAnswerRelay } from '../messaging/whatsapp-answer-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
@@ -279,7 +284,7 @@ export interface RegisterRoutesOptions {
     notesSearchService: NotesSearchService;
 }
 
-export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
+export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions): { wikiManager: WikiManager | undefined; teamsMessagingManager: TeamsMessagingManager; whatsappMessagingManager: WhatsAppMessagingManager; workItemGitHubPullPoller: WorkItemGitHubPullPoller; workItemAzureBoardsPullPoller: WorkItemAzureBoardsPullPoller; autoPullManager: AutoPullManager; agentProvidersQuotaCache?: AgentProvidersQuotaCache; quotaPauseWatcher?: QuotaPauseWatcher; activeWorkspaceBackgroundRefresher: ActiveWorkspaceBackgroundRefresher; dreamIdleScheduler: DreamIdleScheduler } {
     const {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
@@ -937,6 +942,47 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         enqueueChat: enqueueTeamsChat,
         executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
     });
+    const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
+    const whatsappBindings = new WhatsAppBindings(dataDir);
+    const whatsappRelay = new WhatsAppAnswerRelay({
+        bindings: whatsappBindings,
+        store,
+        queue: queueFacade,
+        connected: () => {
+            const status = whatsappMessagingManager.getStatus();
+            return status.enabled && status.status === 'connected' && !!status.groupJid;
+        },
+        groupJid: () => whatsappMessagingManager.getStatus().groupJid,
+        send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
+    });
+    const whatsappRouter = new WhatsAppCommandRouter({
+        store,
+        bindings: whatsappBindings,
+        groupJid: () => whatsappMessagingManager.getStatus().groupJid ?? undefined,
+        send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
+        react: messageId => whatsappMessagingManager.react(messageId),
+        enqueue: (workspaceId, message, mode, processId, taskId) =>
+            enqueueWithResolvedDefaults({
+                ...messagingChatInput(workspaceId, message, taskId, true),
+                processId,
+                payload: {
+                    kind: 'chat', mode, prompt: message, workspaceId,
+                    ...(processId !== toQueueProcessId(taskId) ? { processId } : {}),
+                    relayRequestId: taskId,
+                },
+            }),
+        queued: binding => { void whatsappRelay.reconcileTask(binding.taskId).catch(error =>
+            console.error('[whatsapp-answer-relay] Could not reconcile queued request:', error)); },
+    });
+    whatsappMessagingManager.setMessageHandler(async message => {
+        await whatsappBindings.restore(store);
+        await whatsappRouter.handle(message);
+    });
+    whatsappMessagingManager.setConnectedHandler(async () => {
+        await whatsappBindings.restore(store);
+        await whatsappRelay.reconnected();
+    });
+    whatsappMessagingManager.setDisposeHandler(() => whatsappRelay.dispose());
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime
     // config service is available, else from the resolved config snapshot).
@@ -1536,5 +1582,5 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     );
 
-    return { wikiManager, teamsMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
+    return { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler };
 }

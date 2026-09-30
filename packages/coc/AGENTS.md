@@ -163,6 +163,20 @@ all have their own `references/*.md`.
   persisted format allowlists safe stages, outcomes, and failure categories.
   `features.teamsBridgeObservability` gates collection and read-only history
   routes and defaults off; history responses must project allowlisted fields.
+- **Normal CoC WhatsApp** is independently enabled from Admin → Messaging and
+  persists account config/auth/selection under `messaging/whatsapp/`. Inbound
+  processing admits only paired-account messages from the one bound group;
+  workspace selection requires `select repo` and quote-replies to answer IDs
+  retain the originating workspace. Chat receipts live under each workspace's
+  `whatsapp-bindings.json`, never in an account-wide per-repo bindings file.
+  Account state also retains recent command-reply IDs so reconnects cannot
+  dispatch the connector's own command responses as new requests.
+  Enqueue uses the shared resolved-defaults path; Ask is the default mode,
+  `/autopilot` applies only to that message. The terminal relay sends one
+  quoted final answer per turn, storing each accepted part before advancing
+  its receipt; uncertain sends remain unsent on restart for reconciliation.
+  Disconnect and shutdown stop the Baileys reconnect loop and dispose the
+  relay's queue listeners. Container WhatsApp routes and bridge remain separate.
 - **Process mutation admission** uses the shared keyed coordinator in
   `src/server/processes/process-operation-admission.ts`. Follow-up delivery and
   rewind share that section. Follow-up delivery re-reads process/task state

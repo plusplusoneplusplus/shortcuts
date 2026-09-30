@@ -66,6 +66,23 @@ describe('WhatsAppBot', () => {
         expect(mockSocket.end).toHaveBeenCalled();
     });
 
+    it('should cancel the connection and ignore late connection callbacks after stop', async () => {
+        let connected: ((sock: WASocket) => void) | undefined;
+        let signal: AbortSignal | undefined;
+        mockCreateConnection.mockImplementation(async (opts) => {
+            signal = opts.signal;
+            connected = opts.onConnected;
+            return mockSocket;
+        });
+        const bot = new WhatsAppBot({ sessionDir: 'session', onMessage: async () => {}, printQR: false });
+        await bot.start();
+        await bot.stop();
+        expect(signal?.aborted).toBe(true);
+        connected?.(mockSocket);
+        expect(bot.getNativeStatus()).toBe('disconnected');
+        expect(mockSocket.handlers.has('messages.upsert')).toBe(false);
+    });
+
     it('should send messages and return message ID', async () => {
         const bot = new WhatsAppBot({
             sessionDir: '/tmp/test-session',
@@ -86,6 +103,34 @@ describe('WhatsAppBot', () => {
             printQR: false,
         });
         await expect(bot.send('jid', 'text')).rejects.toThrow('WhatsAppBot is not started');
+        await expect(bot.react('jid', 'msg', '👍')).rejects.toThrow('WhatsAppBot is not started');
+    });
+
+    it('should react to a message and propagate send failures', async () => {
+        const bot = new WhatsAppBot({ sessionDir: 'session', onMessage: async () => {}, printQR: false });
+        await bot.start();
+        await bot.react('group@g.us', 'incoming-id', '👍');
+        expect(mockSocket.sendMessage).toHaveBeenCalledWith('group@g.us', {
+            react: { text: '👍', key: { remoteJid: 'group@g.us', id: 'incoming-id', fromMe: true } },
+        });
+
+        vi.mocked(mockSocket.sendMessage).mockRejectedValueOnce(new Error('reaction rejected'));
+        await expect(bot.react('group@g.us', 'incoming-id', '👍')).rejects.toThrow('reaction rejected');
+    });
+
+    it('should time out a stalled reaction after five seconds', async () => {
+        const bot = new WhatsAppBot({ sessionDir: 'session', onMessage: async () => {}, printQR: false });
+        await bot.start();
+        vi.mocked(mockSocket.sendMessage).mockImplementationOnce(() => new Promise(() => {}));
+        vi.useFakeTimers();
+        try {
+            const reaction = bot.react('group@g.us', 'incoming-id', '👍');
+            const rejected = expect(reaction).rejects.toThrow('WhatsApp reaction timed out');
+            await vi.advanceTimersByTimeAsync(5_000);
+            await rejected;
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('should send with quoted message for reply threading', async () => {
@@ -132,6 +177,9 @@ describe('WhatsAppBot', () => {
 
         expect(receivedMessages).toHaveLength(1);
         expect(receivedMessages[0]).toEqual({
+            chatJid: 'alice@s.whatsapp.net',
+            participantJid: undefined,
+            fromMe: false,
             senderJid: 'alice@s.whatsapp.net',
             messageId: 'msg-001',
             text: 'Hello from WA',
@@ -152,7 +200,7 @@ describe('WhatsAppBot', () => {
         await handler!({
             type: 'notify',
             messages: [{
-                key: { remoteJid: 'group@g.us', id: 'msg-002', fromMe: false },
+                key: { remoteJid: 'group@g.us', participant: 'bob@s.whatsapp.net', id: 'msg-002', fromMe: false },
                 message: {
                     extendedTextMessage: {
                         text: 'Reply to agent',
@@ -167,6 +215,9 @@ describe('WhatsAppBot', () => {
 
         expect(receivedMessages).toHaveLength(1);
         expect(receivedMessages[0].quotedMessageId).toBe('original-msg-id');
+        expect(receivedMessages[0].chatJid).toBe('group@g.us');
+        expect(receivedMessages[0].participantJid).toBe('bob@s.whatsapp.net');
+        expect(receivedMessages[0].fromMe).toBe(false);
         expect(receivedMessages[0].text).toBe('Reply to agent');
     });
 
@@ -207,6 +258,8 @@ describe('WhatsAppBot', () => {
         await new Promise(r => setTimeout(r, 10));
         expect(receivedMessages).toHaveLength(1);
         expect(receivedMessages[0].text).toBe('User typed on phone');
+        expect(receivedMessages[0].chatJid).toBe('group@g.us');
+        expect(receivedMessages[0].fromMe).toBe(true);
     });
 
     it('should skip status broadcasts', async () => {
