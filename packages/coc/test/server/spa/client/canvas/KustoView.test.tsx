@@ -19,7 +19,7 @@ vi.mock('../../../../../src/server/spa/client/react/api/cocClient', () => {
     };
 });
 
-import { KustoView, parseKustoContent, buildKustoAskAiMessage } from '../../../../../src/server/spa/client/react/features/canvas/KustoView';
+import { KustoView, parseKustoContent, buildKustoAskAiMessage, isRunShortcut } from '../../../../../src/server/spa/client/react/features/canvas/KustoView';
 import type { KustoCanvasState } from '@plusplusoneplusplus/coc-client';
 
 function makeCanvas(state: Partial<KustoCanvasState>, overrides: Record<string, unknown> = {}) {
@@ -173,7 +173,7 @@ describe('KustoView read-only (historical revision)', () => {
     it('does not persist chart-config changes to the server in read-only mode', async () => {
         render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE, { revision: 2 })} readOnly />);
         fireEvent.click(screen.getByTestId('kusto-view-chart'));
-        fireEvent.change(screen.getByTestId('kusto-chart-type'), { target: { value: 'line' } });
+        fireEvent.click(screen.getByTestId('kusto-chart-type-line'));
         // The chart still toggles locally, but nothing is saved back to the snapshot.
         await waitFor(() => expect(screen.getByTestId('kusto-chart-view')).toBeInTheDocument());
         expect(mocks.save).not.toHaveBeenCalled();
@@ -234,12 +234,14 @@ describe('KustoView header connection slot (embed compaction)', () => {
         slot.remove();
     });
 
-    it('renders the inline labeled block when no header slot is used', () => {
+    it('renders the labeled connection bar in the body when no header slot is used', () => {
         render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);
-        // Default (standalone) layout keeps the labeled connection row in the body.
-        expect(screen.getByText('Cluster URL')).toBeInTheDocument();
-        expect(screen.getByText('Database')).toBeInTheDocument();
-        expect(screen.getByTestId('kusto-cluster')).toBeInTheDocument();
+        // Default (standalone) layout keeps one connection bar in the body,
+        // with accessible labels on both fields.
+        const bar = screen.getByTestId('kusto-connection');
+        expect(bar).toContainElement(screen.getByLabelText('Cluster URL'));
+        expect(bar).toContainElement(screen.getByLabelText('Database'));
+        expect(screen.getByLabelText('Cluster URL')).toHaveValue('https://help.kusto.windows.net');
     });
 });
 
@@ -265,7 +267,7 @@ describe('KustoView charts (AC-05)', () => {
         const onCanvasSaved = vi.fn();
         render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} onCanvasSaved={onCanvasSaved} />);
         fireEvent.click(screen.getByTestId('kusto-view-chart'));
-        fireEvent.change(screen.getByTestId('kusto-chart-type'), { target: { value: 'line' } });
+        fireEvent.click(screen.getByTestId('kusto-chart-type-line'));
 
         await waitFor(() => expect(mocks.save).toHaveBeenCalled());
         const [, , req] = mocks.save.mock.calls[0];
@@ -284,7 +286,8 @@ describe('KustoView charts (AC-05)', () => {
         // Opens directly into the chart view because a config exists.
         expect(screen.getByTestId('kusto-chart-view')).toBeInTheDocument();
         expect(screen.getByTestId('kusto-chart')).toBeInTheDocument();
-        expect((screen.getByTestId('kusto-chart-type') as HTMLSelectElement).value).toBe('bar');
+        expect(screen.getByTestId('kusto-chart-type-bar')).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByTestId('kusto-chart-type-line')).toHaveAttribute('aria-pressed', 'false');
     });
 });
 
@@ -308,18 +311,45 @@ describe('KustoView Ask-AI loop (AC-06)', () => {
     it('is hidden when the canvas has no owning conversation', () => {
         render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);
         expect(screen.queryByTestId('kusto-ask-ai')).toBeNull();
+        expect(screen.queryByTestId('kusto-ask-toggle')).toBeNull();
     });
 
     it('is hidden in compact (embed) mode even with a processId', () => {
         const canvas = makeCanvas(SUCCESS_STATE, { processId: 'proc-9' });
         render(<KustoView workspaceId="ws-1" canvas={canvas} compact />);
         expect(screen.queryByTestId('kusto-ask-ai')).toBeNull();
+        expect(screen.queryByTestId('kusto-ask-toggle')).toBeNull();
+    });
+
+    it('stays collapsed until the toolbar Ask AI toggle opens it', () => {
+        const canvas = makeCanvas(SUCCESS_STATE, { processId: 'proc-9' });
+        render(<KustoView workspaceId="ws-1" canvas={canvas} />);
+        const toggle = screen.getByTestId('kusto-ask-toggle');
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        expect(screen.queryByTestId('kusto-ask-ai')).toBeNull();
+        fireEvent.click(toggle);
+        expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        expect(screen.getByTestId('kusto-ask-input')).toBeInTheDocument();
+        fireEvent.click(toggle);
+        expect(screen.queryByTestId('kusto-ask-ai')).toBeNull();
+    });
+
+    it('sends on Enter in the instruction input', async () => {
+        mocks.sendMessage.mockResolvedValue({});
+        const canvas = makeCanvas(SUCCESS_STATE, { processId: 'proc-9' });
+        render(<KustoView workspaceId="ws-1" canvas={canvas} />);
+        fireEvent.click(screen.getByTestId('kusto-ask-toggle'));
+        fireEvent.change(screen.getByTestId('kusto-ask-input'), { target: { value: 'plot by day' } });
+        fireEvent.keyDown(screen.getByTestId('kusto-ask-input'), { key: 'Enter' });
+        await waitFor(() => expect(mocks.sendMessage).toHaveBeenCalledTimes(1));
+        expect(mocks.sendMessage.mock.calls[0][1].content).toContain('plot by day');
     });
 
     it('sends a follow-up containing the current query to the owning conversation', async () => {
         mocks.sendMessage.mockResolvedValue({});
         const canvas = makeCanvas({ ...SUCCESS_STATE, query: 'StormEvents | take 10' }, { processId: 'proc-9' });
         render(<KustoView workspaceId="ws-1" canvas={canvas} />);
+        fireEvent.click(screen.getByTestId('kusto-ask-toggle'));
 
         fireEvent.change(screen.getByTestId('kusto-ask-input'), { target: { value: 'add a 7-day rolling average' } });
         fireEvent.click(screen.getByTestId('kusto-ask-send'));
@@ -339,6 +369,7 @@ describe('KustoView Ask-AI loop (AC-06)', () => {
     it('disables the Ask AI button until an instruction is typed', () => {
         const canvas = makeCanvas(SUCCESS_STATE, { processId: 'proc-9' });
         render(<KustoView workspaceId="ws-1" canvas={canvas} />);
+        fireEvent.click(screen.getByTestId('kusto-ask-toggle'));
         expect(screen.getByTestId('kusto-ask-send')).toBeDisabled();
     });
 
@@ -346,8 +377,71 @@ describe('KustoView Ask-AI loop (AC-06)', () => {
         mocks.sendMessage.mockRejectedValue(new Error('Session expired'));
         const canvas = makeCanvas(SUCCESS_STATE, { processId: 'proc-9' });
         render(<KustoView workspaceId="ws-1" canvas={canvas} />);
+        fireEvent.click(screen.getByTestId('kusto-ask-toggle'));
         fireEvent.change(screen.getByTestId('kusto-ask-input'), { target: { value: 'do the thing' } });
         fireEvent.click(screen.getByTestId('kusto-ask-send'));
         await waitFor(() => expect(screen.getByTestId('kusto-ask-error')).toHaveTextContent('Session expired'));
+    });
+});
+
+describe('KustoView run shortcut', () => {
+    it('isRunShortcut accepts Shift/Ctrl/Cmd+Enter only', () => {
+        const base = { key: 'Enter', shiftKey: false, ctrlKey: false, metaKey: false };
+        expect(isRunShortcut(base)).toBe(false);
+        expect(isRunShortcut({ ...base, shiftKey: true })).toBe(true);
+        expect(isRunShortcut({ ...base, ctrlKey: true })).toBe(true);
+        expect(isRunShortcut({ ...base, metaKey: true })).toBe(true);
+        expect(isRunShortcut({ ...base, key: 'a', shiftKey: true })).toBe(false);
+    });
+
+    it('runs the query on Shift+Enter in the editor but not on plain Enter', async () => {
+        mocks.run.mockResolvedValue(makeCanvas(SUCCESS_STATE, { revision: 2 }));
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas({})} />);
+        const editor = screen.getByTestId('kusto-query');
+        fireEvent.keyDown(editor, { key: 'Enter' });
+        expect(mocks.run).not.toHaveBeenCalled();
+        fireEvent.keyDown(editor, { key: 'Enter', shiftKey: true });
+        await waitFor(() => expect(mocks.run).toHaveBeenCalledTimes(1));
+    });
+
+    it('ignores the shortcut in read-only history views and for an empty query', () => {
+        const { unmount } = render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} readOnly />);
+        fireEvent.keyDown(screen.getByTestId('kusto-query'), { key: 'Enter', ctrlKey: true });
+        unmount();
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas({ query: '   ' })} />);
+        fireEvent.keyDown(screen.getByTestId('kusto-query'), { key: 'Enter', ctrlKey: true });
+        expect(mocks.run).not.toHaveBeenCalled();
+    });
+});
+
+describe('KustoView results header and chart controls', () => {
+    it('summarizes the result shape in the results header', () => {
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas(SUCCESS_STATE)} />);
+        expect(screen.getByTestId('kusto-result-summary')).toHaveTextContent('2 rows · 2 columns');
+        expect(screen.getByTestId('kusto-view-table')).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('omits the summary and view toggle before any result exists', () => {
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas({})} />);
+        expect(screen.queryByTestId('kusto-result-summary')).toBeNull();
+        expect(screen.queryByTestId('kusto-view-chart')).toBeNull();
+    });
+
+    it('toggles a Y chip and persists the selection', async () => {
+        mocks.save.mockResolvedValue(makeCanvas(SUCCESS_STATE, { revision: 2 }));
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas({ ...SUCCESS_STATE, chartConfig: { type: 'bar', x: 'State', y: [] } })} />);
+        const chip = screen.getByTestId('kusto-chart-y-Count');
+        expect(chip).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.click(chip);
+        expect(screen.getByTestId('kusto-chart-y-Count')).toHaveAttribute('aria-pressed', 'true');
+        await waitFor(() => expect(mocks.save).toHaveBeenCalled());
+        expect(JSON.parse(mocks.save.mock.calls[0][2].content).chartConfig.y).toEqual(['Count']);
+    });
+
+    it('marks exactly one chart type as pressed', () => {
+        render(<KustoView workspaceId="ws-1" canvas={makeCanvas({ ...SUCCESS_STATE, chartConfig: { type: 'pie', y: ['Count'] } })} />);
+        const pressed = screen.getByTestId('kusto-chart-type').querySelectorAll('[aria-pressed="true"]');
+        expect(pressed).toHaveLength(1);
+        expect(pressed[0]).toHaveAttribute('data-testid', 'kusto-chart-type-pie');
     });
 });

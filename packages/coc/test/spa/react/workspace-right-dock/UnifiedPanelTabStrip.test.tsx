@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 import { UnifiedPanelTabStrip } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelTabStrip';
+import { CANVAS_TAB_COMPRESSION_THRESHOLD } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedPanelCanvasStack';
 import {
     ALL_UNIFIED_TAB_KINDS,
     openTab,
@@ -48,12 +49,26 @@ function tabsOfEveryKind(): readonly UnifiedPanelTab[] {
     return visibleTabs(state, CHAT);
 }
 
+function manyCanvasTabs(count = CANVAS_TAB_COMPRESSION_THRESHOLD): readonly UnifiedPanelTab[] {
+    let state = EMPTY_UNIFIED_PANEL;
+    state = openTab(state, { kind: 'terminal', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 's1', label: 'bash' });
+    state = openTab(state, { kind: 'file', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'src/a.ts', label: 'a.ts' });
+    for (let index = 1; index <= count; index++) {
+        state = openTab(state, {
+            kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT,
+            resourceId: `canvas-${index}`, label: `Canvas ${index}`,
+        });
+    }
+    return visibleTabs(state, CHAT);
+}
+
 function renderStrip(overrides: Partial<React.ComponentProps<typeof UnifiedPanelTabStrip>> = {}) {
     const props = {
         tabs: sampleTabs(),
         activeId: null,
         onActivate: vi.fn(),
         onClose: vi.fn(),
+        onCloseMany: vi.fn(),
         onMove: vi.fn(),
         onMenuAction: vi.fn(),
         ...overrides,
@@ -113,6 +128,78 @@ describe('UnifiedPanelTabStrip', () => {
         state = openTab(state, { kind: 'canvas', ownerWorkspaceId: WS, chatId: CHAT, resourceId: 'c1', label: 'Plan' });
         renderStrip({ tabs: visibleTabs(state, CHAT) });
         expect(screen.queryByTestId('unified-panel-tab-section-divider')).toBeNull();
+    });
+
+    describe('canvas tab compression', () => {
+        it('keeps small canvas sets as ordinary tabs', () => {
+            const tabs = manyCanvasTabs(CANVAS_TAB_COMPRESSION_THRESHOLD - 1);
+            renderStrip({ tabs, activeId: tabs.find(tab => tab.kind === 'canvas')!.id });
+
+            expect(screen.queryByTestId('unified-panel-canvas-stack')).toBeNull();
+            expect(screen.getAllByRole('tab')).toHaveLength(tabs.length);
+        });
+
+        it('keeps the active canvas readable and collapses its siblings into a count chip', () => {
+            const tabs = manyCanvasTabs();
+            const canvases = tabs.filter(tab => tab.kind === 'canvas');
+            const active = canvases[2];
+            renderStrip({ tabs, activeId: active.id });
+
+            expect(screen.getByTestId('unified-panel-canvas-stack').textContent).toContain(`Canvases ${canvases.length}`);
+            expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-tab-id')))
+                .toEqual([tabs[0].id, active.id, tabs[tabs.length - 1].id]);
+            expect(tabNode(active).className).toContain('min-w-[160px]');
+        });
+
+        it('shows only the stack when a non-canvas tab is active', () => {
+            const tabs = manyCanvasTabs();
+            const file = tabs.find(tab => tab.kind === 'file')!;
+            renderStrip({ tabs, activeId: file.id });
+
+            expect(screen.getByTestId('unified-panel-canvas-stack')).toBeTruthy();
+            expect(screen.getAllByRole('tab').map(tab => tab.getAttribute('data-kind')))
+                .toEqual(['terminal', 'file']);
+        });
+
+        it('searches and activates a collapsed canvas with the keyboard', () => {
+            const tabs = manyCanvasTabs(6);
+            const canvases = tabs.filter(tab => tab.kind === 'canvas');
+            const props = renderStrip({ tabs, activeId: canvases[0].id });
+
+            fireEvent.click(screen.getByTestId('unified-panel-canvas-stack'));
+            const search = screen.getByTestId('unified-panel-canvas-stack-search');
+            fireEvent.change(search, { target: { value: 'Canvas 5' } });
+            expect(screen.getByTestId('unified-panel-canvas-stack-results').textContent).toContain('Canvas 5');
+            expect(screen.getByTestId('unified-panel-canvas-stack-results').textContent).not.toContain('Canvas 1');
+            fireEvent.keyDown(search, { key: 'Enter' });
+
+            expect(props.onActivate).toHaveBeenCalledWith(canvases[4].id);
+            expect(screen.queryByTestId('unified-panel-canvas-stack-menu')).toBeNull();
+        });
+
+        it('closes one canvas or bulk closes every canvas except the active one', () => {
+            const tabs = manyCanvasTabs(5);
+            const canvases = tabs.filter(tab => tab.kind === 'canvas');
+            const onCloseMany = vi.fn();
+            const props = renderStrip({ tabs, activeId: canvases[1].id, onCloseMany });
+
+            fireEvent.click(screen.getByTestId('unified-panel-canvas-stack'));
+            fireEvent.click(screen.getByTestId(`unified-panel-canvas-stack-close-${canvases[3].id}`));
+            expect(props.onClose).toHaveBeenCalledWith(canvases[3].id);
+
+            fireEvent.click(screen.getByTestId('unified-panel-canvas-stack-close-others'));
+            expect(onCloseMany).toHaveBeenCalledWith(canvases.filter(tab => tab.id !== canvases[1].id).map(tab => tab.id));
+        });
+
+        it('moves keyboard focus across rendered tabs without targeting collapsed canvases', () => {
+            const tabs = manyCanvasTabs();
+            const canvases = tabs.filter(tab => tab.kind === 'canvas');
+            const file = tabs.find(tab => tab.kind === 'file')!;
+            const props = renderStrip({ tabs, activeId: canvases[0].id });
+
+            fireEvent.keyDown(tabNode(canvases[0]), { key: 'ArrowRight' });
+            expect(props.onActivate).toHaveBeenCalledWith(file.id);
+        });
     });
 
     it('stops Alt+Arrow at the divider between canvases and files', () => {

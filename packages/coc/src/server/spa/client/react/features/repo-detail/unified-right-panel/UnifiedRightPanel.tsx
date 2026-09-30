@@ -1420,6 +1420,7 @@ export function UnifiedRightPanel({
                     errorIds={errorIds}
                     onActivate={activateWithNavigation}
                     onClose={requestClose}
+                    onCloseMany={requestBulkClose}
                     onMove={move}
                     onPromote={promote}
                     fileActionAvailability={tab => unifiedPanelFileActionAvailability(tab, rootPathForTab(tab))}

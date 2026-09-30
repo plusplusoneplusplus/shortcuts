@@ -307,7 +307,9 @@ export function InteractiveTable({
         for (const cell of cells) {
             const id = cell.dataset.colId;
             if (!id) continue;
-            const width = Math.round(cell.getBoundingClientRect().width);
+            // Keep sub-pixel precision: rounding a fractional laid-out width
+            // shifts every column by up to half a pixel on the first hover.
+            const width = cell.getBoundingClientRect().width;
             measured[id] = width;
             total += width;
         }
