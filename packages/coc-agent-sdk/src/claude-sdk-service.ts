@@ -449,6 +449,11 @@ interface ClaudeQueryOptions {
          * SDK runs headless and auto-denies anything not in `allowedTools`.
          */
         canUseTool?: ClaudeCanUseTool;
+        /**
+         * Filesystem settings sources to load. `[]` skips user/project/local
+         * settings (and their hooks) — used by the credential-refresh probe.
+         */
+        settingSources?: Array<'user' | 'project' | 'local'>;
     };
 }
 
@@ -602,6 +607,14 @@ interface ClaudeExceptionLogContext extends ClaudeDiagnosticLogContext {
 
 const CLAUDE_AGENT_SDK_PACKAGE = '@anthropic-ai/claude-agent-sdk';
 const CLAUDE_MODEL_DISCOVERY_TIMEOUT_MS = 15_000;
+/** Wall-clock guard for the credential-refresh `accountInfo()` probe. */
+const CLAUDE_CREDENTIAL_REFRESH_TIMEOUT_MS = 30_000;
+/**
+ * Minimum gap between credential-refresh probes. The OAuth access token lives
+ * ~8h, so one successful refresh covers many quota polls; the gap keeps a
+ * logged-out or offline machine from spawning a probe on every poll.
+ */
+const CLAUDE_CREDENTIAL_REFRESH_MIN_INTERVAL_MS = 5 * 60_000;
 /**
  * Wall-clock guard for the `getContextUsage()` control request. It is now issued
  * while the SDK subprocess is still alive (before the input gate closes), so it
@@ -689,6 +702,8 @@ export class ClaudeSDKService implements ISDKService {
     private getSessionMessagesFn: ClaudeGetSessionMessagesFn | null = null;
     private lastRateLimitInfo: ClaudeRateLimitInfo | null = null;
     private lastAccountInfo: ClaudeAccountInfo | null = null;
+    private credentialRefresh: Promise<void> | null = null;
+    private lastCredentialRefreshAt = 0;
     private disposed = false;
 
     /** sessionId → active session metadata (request/active-session state only) */
@@ -993,22 +1008,72 @@ export class ClaudeSDKService implements ISDKService {
         if (this.disposed) throw new Error('ClaudeSDKService has been disposed');
         const avail = await this.isAvailable();
         if (!avail.available) throw new Error(avail.error ?? 'Claude Code SDK is not available');
-        // Linux reads the on-disk credentials file; macOS additionally falls back
-        // to the Keychain (where `claude login` stores credentials). Both route to
-        // the credential-backed OAuth usage path unconditionally.
-        if (process.platform === 'linux' || process.platform === 'darwin') return fetchClaudeOAuthQuota();
-        // Windows: `claude login` writes the same on-disk `~/.claude/.credentials.json`
-        // (identical path resolution and shape as Linux), so try the OAuth usage
-        // endpoint first. If it yields no snapshots — e.g. the token lives only in
-        // Windows Credential Manager, which has no reader here — fall through to the
-        // cached rate-limit / account-info snapshots below.
-        if (process.platform === 'win32') {
-            const oauthQuota = await fetchClaudeOAuthQuota();
-            if (Object.keys(oauthQuota.quotaSnapshots).length > 0) return oauthQuota;
-        }
+        // Every platform tries the OAuth usage endpoint first: `claude login`
+        // writes `~/.claude/.credentials.json` on Linux and Windows, and macOS
+        // additionally falls back to the Keychain. An expired or rejected token
+        // is refreshed through the Claude SDK (see refreshClaudeCredentials).
+        // If OAuth still yields no snapshots — e.g. the token lives only in
+        // Windows Credential Manager, or the refresh failed — fall through to
+        // the cached rate-limit / account-info snapshots below.
+        const oauthQuota = await fetchClaudeOAuthQuota({
+            refreshCredentials: () => this.refreshClaudeCredentials(),
+        });
+        if (Object.keys(oauthQuota.quotaSnapshots).length > 0) return oauthQuota;
         if (this.lastRateLimitInfo) return mapClaudeRateLimitInfoToQuota(this.lastRateLimitInfo);
         if (this.lastAccountInfo) return mapClaudeAccountInfoToQuota(this.lastAccountInfo);
         return { quotaSnapshots: {} };
+    }
+
+    /**
+     * Let the Claude SDK refresh the on-disk OAuth credentials. CoC never calls
+     * the token endpoint or writes credentials itself — refresh tokens rotate,
+     * so a second writer would log the CLI out. Instead a short promptless SDK
+     * session issues the `accountInfo()` control request, which makes the CLI
+     * refresh an expired access token and persist it. Concurrent callers share
+     * one probe, and probes are spaced by
+     * {@link CLAUDE_CREDENTIAL_REFRESH_MIN_INTERVAL_MS}.
+     */
+    private refreshClaudeCredentials(): Promise<void> {
+        if (this.credentialRefresh) return this.credentialRefresh;
+        if (Date.now() - this.lastCredentialRefreshAt < CLAUDE_CREDENTIAL_REFRESH_MIN_INTERVAL_MS) {
+            return Promise.resolve();
+        }
+        this.lastCredentialRefreshAt = Date.now();
+        this.credentialRefresh = this.runCredentialRefreshProbe()
+            .finally(() => { this.credentialRefresh = null; });
+        return this.credentialRefresh;
+    }
+
+    private async runCredentialRefreshProbe(): Promise<void> {
+        const queryFn = this.queryFn;
+        if (!queryFn) return;
+        // No initial message: the gate keeps input open so the control request
+        // can be answered, and no prompt is ever sent to the model.
+        const inputGate = new ClaudeInputGate([]);
+        const abortController = new AbortController();
+        const claudeExecutable = this.resolveClaudeExecutablePath();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const handle = queryFn({
+                prompt: inputGate.stream(),
+                abortController,
+                options: {
+                    ...(claudeExecutable ? { pathToClaudeCodeExecutable: claudeExecutable } : {}),
+                    settingSources: [],
+                },
+            });
+            const timeout = new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                    () => reject(new Error('Claude credential refresh timed out')),
+                    CLAUDE_CREDENTIAL_REFRESH_TIMEOUT_MS,
+                );
+            });
+            await Promise.race([handle.accountInfo?.(), timeout]);
+        } finally {
+            clearTimeout(timer);
+            inputGate.close();
+            abortController.abort();
+        }
     }
 
     // ── Message dispatch ──────────────────────────────────────────────────────
@@ -3414,47 +3479,100 @@ export function resolveClaudeCredentialsRaw(sources: ClaudeCredentialSources): s
 }
 
 /**
+ * Extracts the access token's expiry (epoch ms) from the Claude Code nested
+ * `claudeAiOauth.expiresAt` field. Returns `undefined` when absent, so tokens
+ * without a known expiry are simply used as-is.
+ */
+export function extractClaudeTokenExpiry(credentials: Record<string, unknown>): number | undefined {
+    const nested = credentials['claudeAiOauth'];
+    if (!nested || typeof nested !== 'object') return undefined;
+    const expiresAt = (nested as Record<string, unknown>)['expiresAt'];
+    return typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? expiresAt : undefined;
+}
+
+/** Treat the access token as expired this long before its `expiresAt`. */
+const CLAUDE_TOKEN_EXPIRY_SKEW_MS = 60_000;
+
+/**
  * Reads the current Claude OAuth credentials (file or, on macOS, the Keychain)
  * and calls the Anthropic OAuth usage endpoint. Credentials are read fresh on
- * every call — no token is cached here. Returns empty snapshots on any I/O,
- * Keychain, parse, or network error so callers never need to handle rejections;
- * CoC never writes credentials back.
+ * every call — no token is cached here, and CoC never writes credentials back.
+ *
+ * The access token expires after a few hours and only the Claude CLI refreshes
+ * it. When `refreshCredentials` is given, it is invoked (at most once per call)
+ * if the token is already expired or the endpoint answers 401; the credentials
+ * are then re-read and the request is retried only if the token changed.
+ *
+ * Returns empty snapshots on any I/O, Keychain, parse, or network error so
+ * callers never need to handle rejections.
  */
 export async function fetchClaudeOAuthQuota(deps: {
     readKeychain?: () => string | undefined;
     readFile?: (filePath: string) => string | undefined;
     homeDir?: string;
+    refreshCredentials?: () => Promise<void>;
+    now?: () => number;
 } = {}): Promise<IAccountQuotaResult> {
-    try {
+    const readToken = (): { accessToken: string; expiresAt?: number } | undefined => {
         const rawContent = resolveClaudeCredentialsRaw({
             credentialsFileEnv: process.env['CLAUDE_CREDENTIALS_FILE'],
             homeDir: deps.homeDir ?? os.homedir(),
             readFile: deps.readFile ?? safeReadFileUtf8,
             readKeychain: deps.readKeychain ?? readKeychainCredentials,
         });
-        if (!rawContent) return { quotaSnapshots: {} };
-
+        if (!rawContent) return undefined;
         let credentials: unknown;
         try {
             credentials = JSON.parse(rawContent);
         } catch {
-            return { quotaSnapshots: {} };
+            return undefined;
         }
-
-        if (!credentials || typeof credentials !== 'object') return { quotaSnapshots: {} };
+        if (!credentials || typeof credentials !== 'object') return undefined;
         const accessToken = extractClaudeAccessToken(credentials as Record<string, unknown>);
-        if (!accessToken) return { quotaSnapshots: {} };
+        if (!accessToken) return undefined;
+        return { accessToken, expiresAt: extractClaudeTokenExpiry(credentials as Record<string, unknown>) };
+    };
 
-        let response: Response;
-        try {
-            response = await fetch('https://api.anthropic.com/api/oauth/usage', {
-                headers: { 'Authorization': `Bearer ${accessToken}` },
-            });
-        } catch {
-            return { quotaSnapshots: {} };
+    try {
+        let token = readToken();
+        if (!token) return { quotaSnapshots: {} };
+
+        let refreshAttempted = false;
+        /** Refreshes via the SDK once; resolves true only if a new token was written. */
+        const refresh = async (): Promise<boolean> => {
+            if (refreshAttempted || !deps.refreshCredentials) return false;
+            refreshAttempted = true;
+            try {
+                await deps.refreshCredentials();
+            } catch {
+                return false;
+            }
+            const next = readToken();
+            if (!next || next.accessToken === token!.accessToken) return false;
+            token = next;
+            return true;
+        };
+
+        const now = deps.now ?? Date.now;
+        if (token.expiresAt !== undefined && token.expiresAt <= now() + CLAUDE_TOKEN_EXPIRY_SKEW_MS) {
+            await refresh();
         }
 
-        if (!response.ok) return { quotaSnapshots: {} };
+        const requestUsage = async (accessToken: string): Promise<Response | undefined> => {
+            try {
+                return await fetch('https://api.anthropic.com/api/oauth/usage', {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                });
+            } catch {
+                return undefined;
+            }
+        };
+
+        let response = await requestUsage(token.accessToken);
+        if (response?.status === 401 && await refresh()) {
+            response = await requestUsage(token.accessToken);
+        }
+        if (!response?.ok) return { quotaSnapshots: {} };
 
         let data: unknown;
         try {
