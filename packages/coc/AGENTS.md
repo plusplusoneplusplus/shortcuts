@@ -169,6 +169,8 @@ all have their own `references/*.md`.
   workspace selection requires `select repo` and quote-replies to answer IDs
   retain the originating workspace. Chat receipts live under each workspace's
   `whatsapp-bindings.json`, never in an account-wide per-repo bindings file.
+  Account state also retains recent command-reply IDs so reconnects cannot
+  dispatch the connector's own command responses as new requests.
   Enqueue uses the shared resolved-defaults path; Ask is the default mode,
   `/autopilot` applies only to that message. The terminal relay sends one
   quoted final answer per turn, storing each accepted part before advancing

@@ -91,6 +91,7 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('select repo 1', 'two', { chatJid: 'other@g.us' }));
         expect(send).not.toHaveBeenCalled();
         await router.handle(inbound('select repo 1', 'three'));
+        await router.handle(inbound('bot output', 'outbound'));
         await router.handle(inbound('hello', 'four'));
         await router.handle(inbound('echo', 'four'));
         expect(enqueue).toHaveBeenCalledTimes(1);
@@ -117,5 +118,6 @@ describe('WhatsApp workspace command routing', () => {
         await restored.restore({ getWorkspaces: async () => workspaces } as WhatsAppRouterDeps['store']);
         expect(restored.selectedRepo).toBe('ws-b');
         expect(restored.findMessage('original')?.workspaceId).toBe('ws-b');
+        expect(restored.isKnownMessage('outbound')).toBe(true);
     });
 });

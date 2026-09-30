@@ -144,7 +144,7 @@ answers route replies into their original workspace even when the account has
 selected another repo. Each accepted chat uses queue default resolution with
 Ask mode unless the message starts with `/autopilot`.
 
-Account selection lives in `messaging/whatsapp/state.json`; accepted turn
+Account selection and recent command-reply IDs live in `messaging/whatsapp/state.json`; accepted turn
 receipts live in `repos/<workspaceId>/whatsapp-bindings.json`. The relay listens
 for terminal queue events and sends only the final assistant turn, quoted to the
 incoming group message. It persists each accepted chunk's message ID and

@@ -18,9 +18,12 @@ export class WhatsAppCommandRouter {
 
     async handle(msg: InboundWAMessage): Promise<void> {
         if (!msg.fromMe || !this.deps.groupJid() || msg.chatJid !== this.deps.groupJid()
-            || !msg.messageId || this.deps.bindings.findMessage(msg.messageId)) return;
+            || !msg.messageId || this.deps.bindings.isKnownMessage(msg.messageId)) return;
         const command = parseWhatsAppCommand(msg.text);
-        const reply = (text: string) => this.deps.send(text, msg.messageId);
+        const reply = async (text: string) => {
+            const id = await this.deps.send(text, msg.messageId);
+            this.deps.bindings.recordOutbound(id);
+        };
         try {
             const workspaces = await this.deps.store.getWorkspaces();
             const repoId = this.deps.bindings.selectedRepo;

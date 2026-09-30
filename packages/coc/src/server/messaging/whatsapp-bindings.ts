@@ -31,15 +31,18 @@ function writeJSON(file: string, value: unknown): void {
 export class WhatsAppBindings {
     private readonly receipts = new Map<string, WhatsAppBinding[]>();
     private readonly stateFile: string;
-    private state: { selectedRepo: string | null; topics: Record<string, string | null> };
+    private state: { selectedRepo: string | null; topics: Record<string, string | null>; outboundIds: string[] };
 
     constructor(private readonly dataDir: string) {
         this.stateFile = path.join(dataDir, 'messaging', 'whatsapp', 'state.json');
         this.state = fs.existsSync(this.stateFile)
             ? JSON.parse(fs.readFileSync(this.stateFile, 'utf8')) as typeof this.state
-            : { selectedRepo: null, topics: {} };
+            : { selectedRepo: null, topics: {}, outboundIds: [] };
         if (!this.state || typeof this.state !== 'object' || typeof this.state.topics !== 'object'
-            || this.state.topics === null || (this.state.selectedRepo !== null && typeof this.state.selectedRepo !== 'string')) {
+            || this.state.topics === null || Array.isArray(this.state.topics)
+            || !Array.isArray(this.state.outboundIds)
+            || this.state.outboundIds.some(id => typeof id !== 'string')
+            || (this.state.selectedRepo !== null && typeof this.state.selectedRepo !== 'string')) {
             throw new Error('Invalid WhatsApp selection state');
         }
     }
@@ -68,9 +71,20 @@ export class WhatsAppBindings {
         return this.entries().find(binding => binding.inboundId === messageId || binding.outboundIds.includes(messageId));
     }
 
+    isKnownMessage(messageId: string): boolean {
+        return this.state.outboundIds.includes(messageId) || !!this.findMessage(messageId);
+    }
+
+    recordOutbound(messageId: string): void {
+        if (!messageId) throw new Error('WhatsApp send did not return a message ID');
+        this.state.outboundIds.push(messageId);
+        if (this.state.outboundIds.length > 2_000) this.state.outboundIds.shift();
+        writeJSON(this.stateFile, this.state);
+    }
+
     add(binding: WhatsAppBinding): boolean {
         const rows = this.load(binding.workspaceId);
-        if (this.findMessage(binding.inboundId)) return false;
+        if (this.isKnownMessage(binding.inboundId)) return false;
         rows.push(binding);
         this.save(binding.workspaceId);
         return true;
