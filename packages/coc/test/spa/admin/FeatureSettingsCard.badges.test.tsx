@@ -28,7 +28,7 @@ function def(key: string): AdminSettingDefinition {
 
 /** All feature-card definitions, in render order. */
 function featureCardDefs(): AdminSettingDefinition[] {
-    return FEATURE_CARD_GROUPS.flatMap(group => getFeatureCardSettings(group.id));
+    return FEATURE_CARD_GROUPS.flatMap(group => getFeatureCardSettings(group.id, 'features'));
 }
 
 function renderCard(search = '') {
@@ -50,6 +50,7 @@ function renderCard(search = '') {
             onCancel={vi.fn()}
             sources={{}}
             isDefaultValue={() => true}
+            onNavigateToTab={vi.fn()}
         />,
     );
 }

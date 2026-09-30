@@ -203,7 +203,7 @@ export function AdminPanel() {
         chat: { dirty: configFormCtl.chatDirty, saving: configFormCtl.chatSaving, onSave: configFormCtl.handleSaveChat },
         'chat-style': { dirty: chatStyle.dirty, saving: chatStyle.saving, onSave: chatStyle.handleSave },
         appearance: { dirty: prefsCtl.appearanceDirty, saving: prefsCtl.appearanceSaving, onSave: prefsCtl.handleSaveAppearance },
-        features: { dirty: features.featuresDirty, saving: features.featuresSaving, onSave: features.handleSaveFeatures },
+        features: { dirty: features.isTabDirty('features'), saving: features.savingTab === 'features', onSave: () => features.handleSaveTab('features') },
     };
     useAdminSaveShortcut(
         activeTab === 'settings' && !isToolEmbedded && settingsSubTab !== 'advanced',
@@ -665,10 +665,11 @@ export function AdminPanel() {
                                                     setFeatureValues={features.setFeatureValues}
                                                     featureSearch={features.featureSearch}
                                                     setFeatureSearch={features.setFeatureSearch}
-                                                    dirty={features.featuresDirty}
-                                                    saving={features.featuresSaving}
-                                                    onSave={features.handleSaveFeatures}
-                                                    onCancel={features.handleCancelFeatures}
+                                                    dirty={features.isTabDirty('features')}
+                                                    saving={features.savingTab === 'features'}
+                                                    onSave={() => { void features.handleSaveTab('features'); }}
+                                                    onCancel={() => features.handleCancelTab('features')}
+                                                    onNavigateToTab={handleSettingsSubTabChange}
                                                     sources={sources}
                                                     isDefaultValue={isDefaultValue}
                                                 />

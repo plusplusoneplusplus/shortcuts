@@ -91,11 +91,12 @@ import {
     ADMIN_SETTING_DEFINITIONS,
     FEATURE_CARD_GROUPS,
     getFeatureCardSettings,
+    getFeatureSettingTab,
 } from '../../../../../src/config/admin-setting-definitions';
 
 /** Config keys that legitimately appear in the Features save payload. */
 const FEATURE_KEYS = new Set(
-    ADMIN_SETTING_DEFINITIONS.filter(def => def.ui !== undefined).map(def => def.key),
+    ADMIN_SETTING_DEFINITIONS.filter(def => def.ui !== undefined && getFeatureSettingTab(def) === 'features').map(def => def.key),
 );
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -169,15 +170,16 @@ describe('AdminPanel — Workspace Features search', () => {
             expect(screen.getByTestId('feature-search-input')).toBeTruthy();
             expect(screen.getByTestId('toggle-terminal-enabled')).toBeTruthy();
         });
+        expect(screen.queryByTestId('toggle-vim-navigation-enabled')).toBeNull();
     });
 
     it('saves the Teams message reaction toggle through admin config', async () => {
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        fireEvent.click(await screen.findByTestId('settings-subtab-integrations'));
         const toggle = await screen.findByTestId('toggle-teams-message-reaction-enabled') as HTMLInputElement;
         expect(toggle.checked).toBe(false);
         fireEvent.click(toggle);
-        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
+        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-tab-features-integrations"]'));
         fireEvent.click(featuresSave!);
         await waitFor(() => {
             const putCalls = mockFetch.mock.calls.filter(
@@ -194,11 +196,11 @@ describe('AdminPanel — Workspace Features search', () => {
                 ? Promise.resolve(mockConfigResponse({ features: { teamsMessageReaction: true } }))
                 : defaultFetchImpl(url, opts));
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        fireEvent.click(await screen.findByTestId('settings-subtab-integrations'));
         const toggle = await screen.findByTestId('toggle-teams-message-reaction-enabled') as HTMLInputElement;
         expect(toggle.checked).toBe(true);
         fireEvent.click(toggle);
-        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
+        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-tab-features-integrations"]'));
         fireEvent.click(featuresSave!);
         await waitFor(() => {
             const putCalls = mockFetch.mock.calls.filter(
@@ -211,13 +213,13 @@ describe('AdminPanel — Workspace Features search', () => {
 
     it('saves the Teams answer relay toggle through admin config', async () => {
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        fireEvent.click(await screen.findByTestId('settings-subtab-integrations'));
         const toggle = await screen.findByTestId('toggle-teams-ai-answer-relay-enabled') as HTMLInputElement;
         expect(toggle.checked).toBe(false);
 
         fireEvent.click(toggle);
         expect(toggle.checked).toBe(true);
-        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
+        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-tab-features-integrations"]'));
         expect(featuresSave).toBeTruthy();
         fireEvent.click(featuresSave!);
 
@@ -236,13 +238,13 @@ describe('AdminPanel — Workspace Features search', () => {
                 ? Promise.resolve(mockConfigResponse({ features: { teamsAiAnswerRelay: true } }))
                 : defaultFetchImpl(url, opts));
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        fireEvent.click(await screen.findByTestId('settings-subtab-integrations'));
         const toggle = await screen.findByTestId('toggle-teams-ai-answer-relay-enabled') as HTMLInputElement;
         expect(toggle.checked).toBe(true);
 
         fireEvent.click(toggle);
         expect(toggle.checked).toBe(false);
-        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-features"]'));
+        const featuresSave = screen.getAllByText('Save').find(btn => btn.closest('[data-testid="settings-tab-features-integrations"]'));
         expect(featuresSave).toBeTruthy();
         fireEvent.click(featuresSave!);
 
@@ -278,6 +280,44 @@ describe('AdminPanel — Workspace Features search', () => {
         for (const group of emptyGroups) {
             expect(screen.queryByTestId(group.testId)).toBeNull();
         }
+    });
+
+    it('finds Vim navigation across tabs and links to Appearance without showing a duplicate toggle', async () => {
+        render(<AdminPanel />);
+        await gotoFeaturesSubTab();
+        fireEvent.change(screen.getByTestId('feature-search-input'), { target: { value: 'vim' } });
+        const link = screen.getByRole('link', { name: 'in Appearance' });
+        expect(link.getAttribute('href')).toBe('#admin/settings/appearance');
+        expect(screen.queryByTestId('toggle-vim-navigation-enabled')).toBeNull();
+        fireEvent.click(link);
+        expect(window.location.hash).toBe('#admin/settings/appearance');
+        expect(screen.getByTestId('settings-tab-features-appearance')).toBeTruthy();
+    });
+
+    it('keeps pending Appearance edits when canceling or saving the Features card', async () => {
+        render(<AdminPanel />);
+        fireEvent.click(await screen.findByTestId('settings-subtab-appearance'));
+        const vim = await screen.findByTestId('toggle-vim-navigation-enabled') as HTMLInputElement;
+        fireEvent.click(vim);
+        expect(vim.checked).toBe(true);
+
+        await gotoFeaturesSubTab();
+        const terminal = await screen.findByTestId('toggle-terminal-enabled') as HTMLInputElement;
+        fireEvent.click(terminal);
+        const card = screen.getByTestId('settings-features');
+        fireEvent.click(Array.from(card.querySelectorAll('button')).find(b => b.textContent === 'Cancel')!);
+        expect(terminal.checked).toBe(true);
+
+        fireEvent.click(terminal);
+        fireEvent.click(Array.from(card.querySelectorAll('button')).find(b => b.textContent === 'Save')!);
+        await waitFor(() => {
+            const put = mockFetch.mock.calls.find(([url, opts]: [string, any]) =>
+                opts?.method === 'PUT' && url.includes('/admin/config'));
+            expect(put).toBeDefined();
+            expect(JSON.parse(put![1].body)['vimNavigation.enabled']).toBeUndefined();
+        });
+        fireEvent.click(screen.getByTestId('settings-subtab-appearance'));
+        expect((screen.getByTestId('toggle-vim-navigation-enabled') as HTMLInputElement).checked).toBe(true);
     });
 
     it('is case-insensitive and matches against hint text', async () => {

@@ -11,8 +11,10 @@ import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 import {
     FEATURE_CARD_GROUPS,
     getFeatureCardSettings,
+    getFeatureSettingTab,
 } from '../../../../../config/admin-setting-definitions';
 import type { AdminSettingDefinition, FeatureSettingTab } from '../../../../../config/admin-setting-definitions';
+import { getSettingsSubTabMeta } from './adminNavigation';
 import type { FeatureValues } from './useAdminFeatureSettings';
 
 const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
@@ -87,6 +89,7 @@ export interface FeatureSettingsCardProps {
     onCancel: () => void;
     sources: Record<string, string>;
     isDefaultValue: (key: string) => boolean | undefined;
+    onNavigateToTab: (tab: Exclude<FeatureSettingTab, 'features'>) => void;
 }
 
 export function FeatureSettingsCard({
@@ -100,6 +103,7 @@ export function FeatureSettingsCard({
     onCancel,
     sources,
     isDefaultValue,
+    onNavigateToTab,
 }: FeatureSettingsCardProps) {
     // Case-insensitive substring match against label + hint. Whitespace-only
     // query is treated as empty (full list).
@@ -111,7 +115,7 @@ export function FeatureSettingsCard({
                 const ui = def.ui!;
                 // dependsOn-hidden rows never appear, regardless of text match.
                 if (ui.dependsOn && featureValues[ui.dependsOn] !== true) return false;
-                if (!query) return true;
+                if (!query) return getFeatureSettingTab(def) === 'features';
                 return ui.label.toLowerCase().includes(query)
                     || ui.hint.toLowerCase().includes(query);
             }),
@@ -160,16 +164,29 @@ export function FeatureSettingsCard({
                 groups.map(({ group, defs }) => (
                     <div className="ar-feature-group" data-testid={group.testId} key={group.id}>
                         <div className="ar-feature-group-head">{group.heading}</div>
-                        {defs.map(def => (
-                            <FeatureSettingRow
-                                key={def.key}
-                                def={def}
-                                featureValues={featureValues}
-                                setFeatureValues={setFeatureValues}
-                                sources={sources}
-                                isDefaultValue={isDefaultValue}
-                            />
-                        ))}
+                        {defs.map(def => {
+                            const tab = getFeatureSettingTab(def);
+                            return tab === 'features' ? (
+                                <FeatureSettingRow
+                                    key={def.key}
+                                    def={def}
+                                    featureValues={featureValues}
+                                    setFeatureValues={setFeatureValues}
+                                    sources={sources}
+                                    isDefaultValue={isDefaultValue}
+                                />
+                            ) : (
+                                <AdminRow key={def.key} name={def.ui!.label} hint={def.ui!.hint}>
+                                    <a
+                                        href={`#admin/settings/${tab}`}
+                                        onClick={() => onNavigateToTab(tab)}
+                                        data-testid={`feature-search-link-${def.ui!.testId}`}
+                                    >
+                                        in {getSettingsSubTabMeta(tab).label}
+                                    </a>
+                                </AdminRow>
+                            );
+                        })}
                     </div>
                 ))
             )}

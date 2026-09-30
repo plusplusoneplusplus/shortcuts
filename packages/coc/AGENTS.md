@@ -117,13 +117,13 @@ all have their own `references/*.md`.
   A missing `teams-messaging.json` defaults the channel to a sanitized
   `CoC-<machine-name>`; saved channels and routing IDs stay untouched on startup.
   Machines sharing a name must choose distinct channels to avoid duplicate work.
-  Admin → Configure → Features exposes the default-off live
+  Admin → Configure → Integrations exposes the default-off live
   `features.teamsAiAnswerRelay` toggle beside Teams bridge observability. When
   enabled, the bridge persists each inbound request's team/channel/thread and
   task or turn correlation in its physical workspace's `teams-answer-relay/`
   directory.
   The independent default-off live `features.teamsMessageReaction` setting is
-  also exposed in the Features card. Newly admitted human channel posts attempt
+  also exposed in the Integrations Features section. Newly admitted human channel posts attempt
   a Like before routing; ordinary replies and relay receipts remain authoritative.
   All channel sends begin with visible `AI:` at the shared manager boundary.
   The boundary renders command, status, acknowledgement, and error Markdown as
@@ -510,11 +510,11 @@ all have their own `references/*.md`.
   takes no client-resolver prop; do not add one.
 - **Adding an admin-exposed config setting** is ONE definition entry in
   `src/config/admin-setting-definitions.ts` (value spec, default, runtime,
-  optional `runtimeFlag` + Features-card `ui` metadata) plus the
+  optional `runtimeFlag` + settings-tab `ui` metadata) plus the
   `CLIConfig`/`ResolvedCLIConfig`/`DEFAULT_CONFIG` declarations in
   `src/config.ts`. Admin validation, file schema, namespace merge/source
-  tracking, runtime feature flags, the embedded SPA bootstrap, the Features
-  card UI, and the generic contract tests
+  tracking, runtime feature flags, the embedded SPA bootstrap, the settings-tab
+  Features sections (defaulting to the Features tab), and the generic contract tests
   (`test/config/admin-setting-definitions.test.ts`) all derive from the
   registry — do not hand-edit `admin-config-fields.ts`, `schema.ts` leaves,
   or `namespace-registry.ts` for admin settings. Reserve `admin-handler.ts`

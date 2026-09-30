@@ -9,7 +9,7 @@ Admin-editable settings have ONE source of truth: `ADMIN_SETTING_DEFINITIONS` in
 - the flat key (e.g. `'cron.enabled'`) and a value spec (`boolean` | `string` | `number` | `enum` | `custom`) that validation derives from
 - the resolved `default` and the `runtime` behavior (`live` / `restartRequired`)
 - optional `absentFallback` — the value assumed when a partial config lacks the key, used for bootstrap-conservative flags whose resolved default is on
-- optional `runtimeFlag` (a property name in `RuntimeDashboardConfig.features`), optional `customMerge` escape hatch, and optional `ui` metadata (group/order/label/hint/badge/dependsOn/control/testId) for the admin Features card
+- optional `runtimeFlag` (a property name in `RuntimeDashboardConfig.features`), optional `customMerge` escape hatch, and optional `ui` metadata (tab/group/order/label/hint/badge/dependsOn/control/testId) for a settings-tab Features section; omitted `ui.tab` places the row on Features
 
 The file is dependency-free (no Node/zod imports) because the SPA bundle imports it directly.
 
@@ -22,8 +22,8 @@ The file is dependency-free (no Node/zod imports) because the SPA bundle imports
 | `config/namespace-registry.ts` | Merges every dotted key generically (`override ?? base ?? default`, admin leaves skip-undefined) and derives per-field `file`/`default` source by exact-key lookup (`getConfigValueAtPath`) |
 | `config.ts` | Derives `TOP_LEVEL_CONFIG_SOURCE_KEYS` from `TOP_LEVEL_ADMIN_SETTING_KEYS` + `FILE_ONLY_TOP_LEVEL_LEAVES`; `mergeTopLevelScalars` resolves every top-level scalar generically (`override ?? base`, always written so optional scalars keep their present-as-undefined shape) |
 | `server/config/runtime-config-handler.ts` | `buildRuntimeFeatures()` builds `RuntimeDashboardConfig.features` from all `runtimeFlag` definitions plus the hand-mapped non-admin `gitCommitLookupEnabled` |
-| `AdminPanel.tsx` | Renders Features-card groups/rows/badges/selects from `ui` metadata; row state, dirty tracking, flat-key save payload, and cancel run off a generic `featureValues` record |
-| `admin/FeatureSettingsCard.tsx` | Presentation for the Features card; `resolveFeatureBadge(def)` maps `ui.badge` to a pill and suppresses `'experimental'` once `def.default === true` (a feature that ships on is no longer experimental). `'restart'`/`'preview'` always render |
+| `AdminPanel.tsx` | Renders registry sections on AI & Execution, Chat, Appearance, Integrations, and Features; one shared value map tracks edits, while section saves/cancels act only on that tab's keys |
+| `admin/FeatureSettingsCard.tsx` | Presents the Features tab's own rows and cross-tab search links, plus per-tab Features sections; `resolveFeatureBadge(def)` suppresses `'experimental'` when `def.default === true`, while `'restart'`/`'preview'` always render |
 | `test/config/admin-setting-definitions.test.ts` | Generic contract tests over every definition (DEFAULT_CONFIG consistency, schema accept/reject, validate/apply round-trip, merge override, source tracking, runtime-flag exposure, UI metadata) |
 
 `RuntimeConfigService.setRuntimeAddress(host, port)` overlays the bound listening address onto in-memory `serve.host`/`serve.port` after the socket opens (called in `server/index.ts` post-`server.address()`), tagging those two source keys `'runtime'` — the third `ConfigFieldSource` value beside `'default'`/`'file'`. It touches neither disk nor the revision, so `GET /api/admin/config` reports the real port.
@@ -33,7 +33,7 @@ Both `GET /api/config/runtime` and the `spaHtml` bootstrap use `buildRuntimeFeat
 ### Adding an Admin Setting
 
 1. Add the field to `CLIConfig` / `ResolvedCLIConfig` / `DEFAULT_CONFIG` in `packages/coc/src/config.ts` (a contract test fails if the registry default and `DEFAULT_CONFIG` disagree).
-2. Add ONE entry to `ADMIN_SETTING_DEFINITIONS`, with `ui` to surface it on the Features card and `runtimeFlag` to expose it to the dashboard.
+2. Add ONE entry to `ADMIN_SETTING_DEFINITIONS`, with `ui` to surface it in a settings-tab Features section (`ui.tab` defaults to `features`) and `runtimeFlag` to expose it to the dashboard.
 3. Only if `runtimeFlag` is set: add the flag name to `RuntimeDashboardConfig.features` in `packages/coc-client/src/contracts/admin.ts` (`AdminResolvedConfig`/`AdminConfigUpdate` absorb new keys via their index signatures).
 
 Behavior-specific tests (what the flag gates) belong with the feature; the standard setting contract needs no new tests. Cross-field constraints belong in `CLIConfigSchema`/`validateConfigWithSchema()`; the admin write path re-validates the merged config before persisting, so admin updates and config-file loading reject the same invalid combinations.
@@ -108,7 +108,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 
 `features.canvasHostApis` (live) is the single gate for extension-canvas host APIs: capabilities declared `async: true` run in a terminable `worker_threads` worker with a 30s budget instead of the 1s `node:vm` path, and receive `host.complete` (max 3 one-shot model calls per run, logged with workspace/canvas/process). One flag covers both because `host.complete` exists only inside an async capability; sync capabilities are unaffected.
 
-`features.chatStyleSelector` (Admin -> Configure -> AI Execution Modes, live, `absentFallback` false, runtime flag `chatStyleSelectorEnabled`) adds a Style chip — Default / Human / Direct / Terse / Structured — beside Effort in new-chat and follow-up composers, for Ask, Autopilot, note-chat, commit-chat, and follow-ups. It controls presentation only, never provider, model, effort, tools, or permission mode. The instruction is prepended to the user message (not the system message) and stays visible in the stored turn; `Default` injects nothing, and a block is emitted only when the picked style differs from `process.metadata.chatStyle`. Enforcement is two-sided: the SPA hides the chip and omits `chatStyle`, and the server checks the live flag per turn (`getChatStyleSelectorEnabled` for new chats, `chatStyleSelectorEnabled` on the route's live flags for follow-ups).
+`features.chatStyleSelector` (Admin -> Configure -> Chat -> Features, live, `absentFallback` false, runtime flag `chatStyleSelectorEnabled`) adds a Style chip — Default / Human / Direct / Terse / Structured — beside Effort in new-chat and follow-up composers, for Ask, Autopilot, note-chat, commit-chat, and follow-ups. It controls presentation only, never provider, model, effort, tools, or permission mode. The instruction is prepended to the user message (not the system message) and stays visible in the stored turn; `Default` injects nothing, and a block is emitted only when the picked style differs from `process.metadata.chatStyle`. Enforcement is two-sided: the SPA hides the chip and omits `chatStyle`, and the server checks the live flag per turn (`getChatStyleSelectorEnabled` for new chats, `chatStyleSelectorEnabled` on the route's live flags for follow-ups).
 
 `features.defaultChatStyle` (same card, shown under the Chat style selector toggle via `dependsOn`, live, runtime flag `defaultChatStyle`) picks which style new conversations start on. It is server-wide — there is no per-workspace or per-user override. `default` keeps the historical behavior of adding no style instruction.
 
@@ -121,7 +121,7 @@ The setting is both a SPA seed and a server-side fallback, so an API caller or a
 
 The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a new conversation has recorded nothing, so comparing against the configured default would make it equal to itself and never inject on turn 1.
 
-`features.chatProviderSwitching` (Admin -> Configure -> AI Execution Modes, live, default off, runtime flag `chatProviderSwitchingEnabled`) gates concrete provider changes between idle Ask/Autopilot follow-up turns. The follow-up REST route reads the flag live and rejects cross-provider requests while it is off. The dashboard resolves the capability from the server that owns the conversation; an absent flag on an older remote server means unsupported.
+`features.chatProviderSwitching` (Admin -> Configure -> Chat -> Features, live, default off, runtime flag `chatProviderSwitchingEnabled`) gates concrete provider changes between idle Ask/Autopilot follow-up turns. The follow-up REST route reads the flag live and rejects cross-provider requests while it is off. The dashboard resolves the capability from the server that owns the conversation; an absent flag on an older remote server means unsupported.
 
 ## AI Provider Routing
 
