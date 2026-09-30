@@ -101,6 +101,24 @@ export class WhatsAppBot implements MessagingConnector {
         return msgId;
     }
 
+    /** React to a message; reject if Baileys does not complete within five seconds. */
+    async react(chatJid: string, messageId: string, emoji: string): Promise<void> {
+        if (!this.sock) throw new Error('WhatsAppBot is not started');
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await Promise.race([
+                this.sock.sendMessage(chatJid, {
+                    react: { text: emoji, key: { remoteJid: chatJid, id: messageId, fromMe: true } },
+                }),
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('WhatsApp reaction timed out')), 5_000);
+                }),
+            ]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
+    }
+
     /** List all WhatsApp groups the account participates in. */
     async listGroups(): Promise<Array<{ jid: string; name: string }>> {
         if (!this.sock) throw new Error('WhatsAppBot is not started');
@@ -185,6 +203,9 @@ export class WhatsAppBot implements MessagingConnector {
             if (!text) continue;
 
             const inbound: InboundWAMessage = {
+                chatJid: msg.key.remoteJid ?? '',
+                participantJid: msg.key.participant,
+                fromMe: msg.key.fromMe === true,
                 senderJid: msg.key.remoteJid ?? '',
                 messageId: msg.key.id ?? '',
                 text,

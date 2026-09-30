@@ -3,6 +3,13 @@
  */
 
 export interface InboundWAMessage {
+    /** Chat or group that contains the message. */
+    chatJid: string;
+    /** Author within a group, when supplied by WhatsApp. */
+    participantJid?: string;
+    /** Whether the paired account sent the message. */
+    fromMe: boolean;
+    /** Kept for existing consumers; identical to chatJid. */
     senderJid: string;
     messageId: string;
     quotedMessageId?: string;
@@ -33,7 +40,11 @@ export interface WASocket {
         on(event: string, handler: (...args: unknown[]) => void): void;
         off?(event: string, handler: (...args: unknown[]) => void): void;
     };
-    sendMessage(jid: string, content: { text: string }, options?: { quoted?: { key: { remoteJid?: string; id?: string; fromMe?: boolean } } }): Promise<{ key: { id?: string } }>;
+    sendMessage(
+        jid: string,
+        content: { text: string } | { react: { text: string; key: { remoteJid: string; id: string; fromMe: boolean } } },
+        options?: { quoted?: { key: { remoteJid?: string; id?: string; fromMe?: boolean } } },
+    ): Promise<{ key: { id?: string } }>;
     groupCreate(subject: string, participants: string[]): Promise<{ id: string; [k: string]: unknown }>;
     groupFetchAllParticipating(): Promise<Record<string, { subject?: string; [k: string]: unknown }>>;
     end(error?: Error): void;

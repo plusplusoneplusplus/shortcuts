@@ -21,6 +21,7 @@ Consolidated messaging connectors behind one `MessagingConnector` contract. No C
 - **Native Like transport:** Graph uses channel `setReaction` (Unicode thumbs-up, HTTP 204); MCP invokes only an advertised schema-compatible channel reaction tool. Reaction calls abort after five seconds and rejected/unavailable operations throw without affecting message dispatch.
 - **MCP sends escape content backslashes.** Channel posts, thread replies, and self-DMs double backslashes in tool content so Windows paths survive the Teams MCP parser. Channel tool results with `isError` or `Error:` text reject with `TeamsMcpSendRejectedError` so a caller can distinguish definite rejection from an unknown network outcome; send failures do not imply a lost connection.
 - Baileys + qrcode-terminal are `optionalDependencies` — installed but only loaded by WhatsApp use.
+- WhatsApp inbound messages expose the chat JID, optional group participant JID, and paired-account `fromMe` flag; `senderJid` remains the chat JID for container consumers. `WhatsAppBot.react()` sends a Baileys reaction with a five-second rejection timeout.
 
 ## Build / test
 
