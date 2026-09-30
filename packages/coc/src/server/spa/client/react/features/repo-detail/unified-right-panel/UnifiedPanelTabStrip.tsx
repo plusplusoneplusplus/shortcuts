@@ -25,9 +25,11 @@
  *    nothing, and the trailing "+" sits outside that row so it stays reachable
  *    no matter how many tabs are open.
  *  - **Canvas bursts collapse.** Four or more canvas tabs render as the active
- *    canvas plus a fixed count chip. The chip opens the complete searchable
- *    list; storage, ordering, ownership, dirty state, and close guards remain
- *    with the normal tab session.
+ *    canvas only. While a canvas is active its header carries the count chip
+ *    (wired by `UnifiedRightPanel`); otherwise the chip sits here so hidden
+ *    canvases stay reachable. The chip opens the complete searchable list;
+ *    storage, ordering, ownership, dirty state, and close guards remain with
+ *    the normal tab session.
  *  - **The scrollbar is an overlay.** The native bar is hidden (it is thick on
  *    macOS and draws over the labels); a 3px thumb along the bottom edge shows
  *    on hover and can be dragged, and a plain vertical wheel scrolls the row
@@ -456,8 +458,9 @@ export function UnifiedPanelTabStrip({
             )}
             </div>
 
-            {/* Outside the scrolling row, so they stay reachable at any tab count. */}
-            {stackedCanvasTabs.length > 0 && (
+            {/* Outside the scrolling row, so they stay reachable at any tab count.
+              * An active canvas shows the chip in its own header instead. */}
+            {stackedCanvasTabs.length > 0 && !stackedCanvasTabs.some(tab => tab.id === activeId) && (
                 <UnifiedPanelCanvasStack
                     tabs={stackedCanvasTabs}
                     activeId={activeId}

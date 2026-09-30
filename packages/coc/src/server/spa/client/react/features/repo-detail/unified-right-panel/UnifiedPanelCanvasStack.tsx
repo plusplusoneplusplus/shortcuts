@@ -25,6 +25,8 @@ interface UnifiedPanelCanvasStackProps {
     onActivate: (id: string) => void;
     onClose: (id: string) => void;
     onCloseMany: (ids: readonly string[]) => void;
+    /** Placement classes for the chip; defaults to the tab strip's spacing. */
+    className?: string;
 }
 
 export function UnifiedPanelCanvasStack({
@@ -35,6 +37,7 @@ export function UnifiedPanelCanvasStack({
     onActivate,
     onClose,
     onCloseMany,
+    className = 'mx-1 my-1 h-[27px]',
 }: UnifiedPanelCanvasStackProps) {
     const buttonRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -127,7 +130,8 @@ export function UnifiedPanelCanvasStack({
                     setOpen(value => !value);
                 }}
                 className={cn(
-                    'mx-1 my-1 flex h-[27px] flex-shrink-0 cursor-pointer items-center gap-1 rounded-full border px-2 text-[11px]',
+                    className,
+                    'flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-full border px-2 text-[11px]',
                     'border-[#b6b6b6] bg-transparent text-[#4b5563] hover:border-[#0078d4] hover:text-[#0078d4]',
                     'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#0078d4]',
                     'dark:border-[#555] dark:text-[#b8b8b8] dark:hover:border-[#3794ff] dark:hover:text-[#3794ff]',

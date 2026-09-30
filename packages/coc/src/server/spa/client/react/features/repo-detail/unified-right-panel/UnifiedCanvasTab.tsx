@@ -22,7 +22,7 @@
  * shape `UnifiedDiffTab` and `UnifiedNoteTab` already use.
  */
 
-import { useCallback } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { CanvasPanel } from '../../canvas/CanvasPanel';
 import { openCanvasPopOut } from '../../canvas/canvasPopOut';
 import { useUnifiedCanvasEvent } from './unifiedCanvasEvents';
@@ -41,13 +41,15 @@ export interface UnifiedCanvasTabProps {
     chatId: string | null;
     /** Owner name shown on the strip when the owner is not the panel's scope. */
     repoLabel?: string;
+    /** Shown right after the canvas title — the panel's canvas switcher. */
+    titleAccessory?: ReactNode;
     onClose: () => void;
     onDirtyChange?: (isDirty: boolean) => void;
     onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
 }
 
 export function UnifiedCanvasTab({
-    workspaceId, scopeWorkspaceId, canvasId, chatId, repoLabel,
+    workspaceId, scopeWorkspaceId, canvasId, chatId, repoLabel, titleAccessory,
     onClose, onDirtyChange, onRegisterSave,
 }: UnifiedCanvasTabProps) {
     const liveEvent = useUnifiedCanvasEvent(workspaceId, canvasId);
@@ -84,6 +86,7 @@ export function UnifiedCanvasTab({
             onRegisterSave={onRegisterSave}
             onPopOut={handlePopOut}
             onCanvasCreated={handleCanvasCreated}
+            titleAccessory={titleAccessory}
             {...(chatActions ? {
                 onAskAi: chatActions.askAi,
                 onSendToAi: chatActions.sendToAi,

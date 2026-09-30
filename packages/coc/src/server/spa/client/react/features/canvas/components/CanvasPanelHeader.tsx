@@ -8,7 +8,7 @@
  * open/closed state of the two menus it owns.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Canvas, CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import type { CanvasKind, SaveState, ViewMode } from '../canvas-panel-model';
 import type { CanvasExport } from '../hooks/useCanvasExport';
@@ -22,6 +22,8 @@ export interface CanvasPanelHeaderProps {
     kind: CanvasKind;
     availableCanvases: CanvasSummary[];
     onSelectCanvas?: (canvasId: string) => void;
+    /** Host-provided control rendered right after the title. */
+    titleAccessory?: ReactNode;
     versions: CanvasVersions;
     exporter: CanvasExport;
     saveState: SaveState;
@@ -38,7 +40,7 @@ export interface CanvasPanelHeaderProps {
 }
 
 export function CanvasPanelHeader({
-    canvas, canvasId, title, kind, availableCanvases, onSelectCanvas, versions, exporter,
+    canvas, canvasId, title, kind, availableCanvases, onSelectCanvas, titleAccessory, versions, exporter,
     saveState, statusLabel, mode, onModeChange, kustoEnabled, creatingKusto, onCreateKusto,
     onPopOut, isFullscreen, onToggleFullscreen, onClose,
 }: CanvasPanelHeaderProps) {
@@ -81,7 +83,7 @@ export function CanvasPanelHeader({
 
     return (
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#474749] shrink-0">
-            <div className="relative flex-1 min-w-0">
+            <div className={titleAccessory ? 'relative min-w-0' : 'relative flex-1 min-w-0'}>
                 {canSwitchCanvas ? (
                     <>
                         <button
@@ -133,6 +135,7 @@ export function CanvasPanelHeader({
                     </span>
                 )}
             </div>
+            {titleAccessory && <div className="flex flex-1 min-w-0 items-center">{titleAccessory}</div>}
             {kind.isCode && (
                 <span className="text-[9px] uppercase px-1 py-0.5 rounded border border-[#e0e0e0] dark:border-[#474749] text-[#848484] shrink-0" data-testid="canvas-panel-language">
                     {canvas?.language ?? 'code'}

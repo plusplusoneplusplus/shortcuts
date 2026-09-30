@@ -27,7 +27,7 @@
  * clone workspaces keep hitting the workspace-owning server (AC-07).
  */
 
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Canvas, CanvasSummary } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
@@ -65,6 +65,8 @@ export interface CanvasPanelProps {
     availableCanvases?: CanvasSummary[];
     /** Switches the host panel to another linked agent canvas. */
     onSelectCanvas?: (canvasId: string) => void;
+    /** Host-provided control shown right after the title (e.g. the unified panel's canvas switcher). */
+    titleAccessory?: ReactNode;
     /** Notifies the host that a new canvas was created here (AC-07) so it can refresh its list. */
     onCanvasCreated?: (canvasId: string) => void;
     /** Bumping this value forces a reload from the server (used by the pop-out window on focus). */
@@ -85,7 +87,7 @@ export interface CanvasPanelProps {
 
 export function CanvasPanel({
     workspaceId, canvasId, liveEvent, onClose, onAskAi, onSendToAi, onFullscreenChange,
-    onPopOut, availableCanvases = [], onSelectCanvas, onCanvasCreated, reloadNonce,
+    onPopOut, availableCanvases = [], onSelectCanvas, titleAccessory, onCanvasCreated, reloadNonce,
     onDirtyChange, onRegisterSave,
 }: CanvasPanelProps) {
     // AC-07: canvas get/save/versions/comments + save-to-notes target the clone.
@@ -189,6 +191,7 @@ export function CanvasPanel({
                 kind={kind}
                 availableCanvases={availableCanvases}
                 onSelectCanvas={onSelectCanvas}
+                titleAccessory={titleAccessory}
                 versions={versions}
                 exporter={exporter}
                 saveState={record.saveState}
