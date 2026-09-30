@@ -1165,7 +1165,15 @@ all have their own `references/*.md`.
   `~/.copilot/session-store.db` with short-lived `readonly` NativeDatabase connections,
   keep every user-provided filter parameterized (FTS terms literal-quoted), and
   return typed `db-missing`/`db-invalid` states instead of throwing. Never route
-  native session IDs into CoC process/chat action handlers. Rich detail
+  native session IDs into CoC process/chat action handlers; the only bridge is
+  the explicit `POST .../native-copilot-sessions/:sessionId/import` route
+  (`native-copilot-session-import.ts`), which snapshots the transcript into a
+  new completed `chat` process in the target workspace with
+  `metadata.importedFrom = { provider: 'copilot', nativeSessionId, importedAt }`
+  and a `copilot` `activeProviderSession`/`sdkSessionId` bound to the native id,
+  dedupes per `(workspaceId, nativeSessionId)` via
+  `getImportedNativeSessionProcessIds`, and reads the session with the
+  `{ matchAll: true }` scope so any native session can be imported. Rich detail
   reconstruction reads the per-session log
   `~/.copilot/session-state/<id>/events.jsonl` via `session-state-parser.ts`
   (`parseNativeSessionState`), which maps the newline-delimited

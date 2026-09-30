@@ -1,10 +1,12 @@
 /**
  * Native GitHub Copilot CLI session contracts.
  *
- * Read-only, workspace-scoped views over the CoC server user's native
- * Copilot CLI session store (`~/.copilot/session-store.db`). These sessions
- * are external data: CoC never modifies them and never imports them into
- * CoC process history.
+ * Workspace-scoped views over the CoC server user's native Copilot CLI
+ * session store (`~/.copilot/session-store.db`). These sessions are external
+ * data: CoC never modifies them. They enter CoC process history only through
+ * the explicit import action ({@link ImportNativeCopilotSessionResponse}),
+ * which snapshots the transcript into a new chat bound to the native session
+ * id so follow-ups resume it.
  */
 
 /** Reason a native-session response carries no data. */
@@ -147,6 +149,16 @@ export interface NativeCopilotSessionDetailResponse {
   available?: boolean;
   reason?: NativeCopilotSessionsUnavailableReason;
   session?: NativeCopilotSessionDetail;
+}
+
+/**
+ * Response of `POST /api/workspaces/:id/native-copilot-sessions/:sessionId/import`:
+ * 201 with `created: true` for a new chat, 200 with `created: false` and the
+ * existing chat when the session is already imported into this workspace.
+ */
+export interface ImportNativeCopilotSessionResponse {
+  processId: string;
+  created: boolean;
 }
 
 /**

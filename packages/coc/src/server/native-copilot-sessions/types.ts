@@ -155,6 +155,8 @@ export interface NativeSessionWorkspaceScope {
     rootPath?: string;
     /** Workspace `owner/repo` identity; matches native `sessions.repository` case-insensitively. */
     repository?: string;
+    /** Match every native session regardless of cwd/repository (the import picker lists all sessions). */
+    matchAll?: boolean;
 }
 
 export type NativeCopilotSessionListResult =
