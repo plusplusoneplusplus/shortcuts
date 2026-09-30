@@ -66,6 +66,23 @@ describe('WhatsAppBot', () => {
         expect(mockSocket.end).toHaveBeenCalled();
     });
 
+    it('should cancel the connection and ignore late connection callbacks after stop', async () => {
+        let connected: ((sock: WASocket) => void) | undefined;
+        let signal: AbortSignal | undefined;
+        mockCreateConnection.mockImplementation(async (opts) => {
+            signal = opts.signal;
+            connected = opts.onConnected;
+            return mockSocket;
+        });
+        const bot = new WhatsAppBot({ sessionDir: 'session', onMessage: async () => {}, printQR: false });
+        await bot.start();
+        await bot.stop();
+        expect(signal?.aborted).toBe(true);
+        connected?.(mockSocket);
+        expect(bot.getNativeStatus()).toBe('disconnected');
+        expect(mockSocket.handlers.has('messages.upsert')).toBe(false);
+    });
+
     it('should send messages and return message ID', async () => {
         const bot = new WhatsAppBot({
             sessionDir: '/tmp/test-session',

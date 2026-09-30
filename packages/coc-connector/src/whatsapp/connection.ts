@@ -6,6 +6,7 @@ import type { WASocket } from './types';
 
 export interface ConnectionOptions {
     sessionDir: string;
+    signal?: AbortSignal;
     /** Device name shown in WhatsApp's "Linked Devices" list (default: "CoC") */
     deviceName?: string;
     onQR: (qr: string) => void;
@@ -22,10 +23,12 @@ const BASE_DELAY_MS = 3000;
  * with exponential backoff (up to MAX_RETRIES attempts).
  */
 export async function createBaileysConnection(opts: ConnectionOptions, attempt = 0): Promise<WASocket> {
+    opts.signal?.throwIfAborted();
     const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers, fetchLatestBaileysVersion } = await import('@whiskeysockets/baileys');
 
     const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(opts.sessionDir);
+    opts.signal?.throwIfAborted();
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
@@ -37,7 +40,24 @@ export async function createBaileysConnection(opts: ConnectionOptions, attempt =
 
     sock.ev.on('creds.update', saveCreds);
 
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const abort = () => {
+        if (retryTimer) clearTimeout(retryTimer);
+        sock.end(new Error('WhatsApp connection stopped'));
+    };
+    opts.signal?.addEventListener('abort', abort, { once: true });
+    if (opts.signal?.aborted) abort();
+    const retry = (nextAttempt: number, delay: number) => {
+        retryTimer = setTimeout(() => {
+            retryTimer = undefined;
+            if (opts.signal?.aborted) return;
+            void createBaileysConnection(opts, nextAttempt).catch(error => {
+                if (!opts.signal?.aborted) opts.onError?.(error instanceof Error ? error.message : String(error));
+            });
+        }, delay);
+    };
     sock.ev.on('connection.update', (update: { connection?: string; lastDisconnect?: { error?: Error }; qr?: string }) => {
+        if (opts.signal?.aborted) return;
         if (update.qr) {
             attempt = 0; // Reset retries once we get a QR
             opts.onQR(update.qr);
@@ -47,6 +67,7 @@ export async function createBaileysConnection(opts: ConnectionOptions, attempt =
             opts.onConnected(sock as unknown as WASocket);
         }
         if (update.connection === 'close') {
+            opts.signal?.removeEventListener('abort', abort);
             const statusCode = (update.lastDisconnect?.error as any)?.output?.statusCode;
             const loggedOut = statusCode === DisconnectReason.loggedOut;
             opts.onDisconnected(loggedOut);
@@ -55,11 +76,11 @@ export async function createBaileysConnection(opts: ConnectionOptions, attempt =
                 const fs = require('fs');
                 try { fs.rmSync(opts.sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
                 console.log('[whatsapp-bot] Session cleared after logout, reconnecting for fresh QR...');
-                setTimeout(() => createBaileysConnection(opts, 0), BASE_DELAY_MS);
+                retry(0, BASE_DELAY_MS);
             } else if (attempt < MAX_RETRIES) {
                 const delay = BASE_DELAY_MS * Math.pow(2, attempt);
                 console.log(`[whatsapp-bot] Reconnecting in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
-                setTimeout(() => createBaileysConnection(opts, attempt + 1), delay);
+                retry(attempt + 1, delay);
             } else {
                 const msg = `Connection failed after ${MAX_RETRIES} attempts`;
                 console.error(`[whatsapp-bot] ${msg}`);
