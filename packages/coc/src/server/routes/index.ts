@@ -169,6 +169,7 @@ import { registerWhatsAppMessagingRoutes } from '../messaging/whatsapp-messaging
 import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-manager';
 import { WhatsAppBindings } from '../messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
+import { WhatsAppAnswerRelay } from '../messaging/whatsapp-answer-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
@@ -943,6 +944,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
     const whatsappBindings = new WhatsAppBindings(dataDir);
+    const whatsappRelay = new WhatsAppAnswerRelay({
+        bindings: whatsappBindings,
+        store,
+        queue: queueFacade,
+        connected: () => {
+            const status = whatsappMessagingManager.getStatus();
+            return status.enabled && status.status === 'connected' && !!status.groupJid;
+        },
+        groupJid: () => whatsappMessagingManager.getStatus().groupJid,
+        send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
+    });
     const whatsappRouter = new WhatsAppCommandRouter({
         store,
         bindings: whatsappBindings,
@@ -959,11 +971,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     relayRequestId: taskId,
                 },
             }),
+        queued: binding => { void whatsappRelay.reconcileTask(binding.taskId).catch(error =>
+            console.error('[whatsapp-answer-relay] Could not reconcile queued request:', error)); },
     });
     whatsappMessagingManager.setMessageHandler(async message => {
         await whatsappBindings.restore(store);
         await whatsappRouter.handle(message);
     });
+    whatsappMessagingManager.setConnectedHandler(async () => {
+        await whatsappBindings.restore(store);
+        await whatsappRelay.reconnected();
+    });
+    whatsappMessagingManager.setDisposeHandler(() => whatsappRelay.dispose());
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime
     // config service is available, else from the resolved config snapshot).
