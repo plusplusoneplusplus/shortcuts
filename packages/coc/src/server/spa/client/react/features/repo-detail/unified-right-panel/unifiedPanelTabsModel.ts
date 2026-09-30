@@ -67,14 +67,14 @@ export interface PersistedNotesView {
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Every kind, in the order the "+" menu and default strip present them. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git',
+    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page',
 ];
 
 /** The fixed resource id of a workspace's one Git tab. */
@@ -85,10 +85,10 @@ export const GIT_TAB_RESOURCE_ID = 'git';
  * capability that expires with its connection, so a restored tab could only
  * show "unavailable"; running Go to Definition again is the real recovery.
  */
-const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external']);
+const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'html-page']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'git']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'git', 'html-page']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
@@ -210,6 +210,8 @@ export interface UnifiedPanelTab {
     gitMemberId?: string;
     /** A `notes` tab's panel-local selected note. */
     notesView?: PersistedNotesView;
+    /** Desktop view id; page tabs are session-only and excluded from storage. */
+    htmlPageId?: string;
 }
 
 export interface UnifiedPanelState {
@@ -357,7 +359,8 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.preview === b.preview
         && gitViewKey(a.gitView) === gitViewKey(b.gitView)
         && a.gitMemberId === b.gitMemberId
-        && notesViewKey(a.notesView) === notesViewKey(b.notesView);
+        && notesViewKey(a.notesView) === notesViewKey(b.notesView)
+        && a.htmlPageId === b.htmlPageId;
 }
 
 function gitViewKey(view: PersistedGitView | undefined): string {
@@ -487,6 +490,7 @@ export interface OpenUnifiedTabInput {
     /** A `git` tab's new view. Omitted, re-focusing keeps the one it holds. */
     gitView?: PersistedGitView;
     gitMemberId?: string;
+    htmlPageId?: string;
 }
 
 /** Source of `revealNonce`. Monotonic for the life of the page. */
@@ -562,6 +566,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...(input.symbolCandidate ? { symbolCandidate: true } : {}),
         ...(input.kind === 'git' && input.gitView ? { gitView: input.gitView } : {}),
         ...(input.kind === 'git' && input.gitMemberId ? { gitMemberId: input.gitMemberId } : {}),
+        ...(input.kind === 'html-page' && input.htmlPageId ? { htmlPageId: input.htmlPageId } : {}),
     };
 
     let nextList: readonly UnifiedPanelTab[];
@@ -915,7 +920,7 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
     if (raw === null || typeof raw !== 'object') return null;
     const value = raw as Record<string, unknown>;
     const { kind, ownerWorkspaceId, resourceId, label, id } = value;
-    if (!isKind(kind)) return null;
+    if (!isKind(kind) || EPHEMERAL_KINDS.has(kind)) return null;
     if (typeof ownerWorkspaceId !== 'string' || ownerWorkspaceId === '') return null;
     if (typeof resourceId !== 'string' || resourceId === '') return null;
     if (typeof label !== 'string' || label === '') return null;

@@ -228,6 +228,8 @@ describe('ChatListPane — timed freeze presets (AC-03)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         localStorage.clear();
+        // Frozen rows live in the Frozen Tasks section, which is collapsed by default.
+        localStorage.setItem('coc.chatList.frozenSectionExpanded', 'true');
         mockProcesses = [];
         mockGroupFolders = {};
         listChatFolders.mockResolvedValue({ folders: FOLDERS });

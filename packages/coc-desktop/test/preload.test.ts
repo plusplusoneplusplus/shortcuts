@@ -48,17 +48,28 @@ import {
     POPOUT_STATE_CHANNEL,
 } from '../src/popout-chrome';
 import { MENU_COPY_CHANNEL, MENU_COPY_HANDLED_CHANNEL } from '../src/terminal-copy';
+import {
+    HTML_PAGE_OPEN_CHANNEL,
+    HTML_PAGE_SET_BOUNDS_CHANNEL,
+    HTML_PAGE_HIDE_CHANNEL,
+    HTML_PAGE_CLOSE_CHANNEL,
+    HTML_PAGE_RELOAD_CHANNEL,
+    HTML_PAGE_OPEN_EXTERNAL_CHANNEL,
+    HTML_PAGE_STATE_CHANNEL,
+} from '../src/html-page-policy';
 
 const exposeInMainWorld = vi.fn();
 const send = vi.fn();
 const on = vi.fn();
 const removeListener = vi.fn();
 const getPathForFile = vi.fn();
+const invoke = vi.fn();
 
 vi.mock('electron', () => ({
     contextBridge: { exposeInMainWorld: (...args: unknown[]) => exposeInMainWorld(...args) },
     ipcRenderer: {
         send: (...args: unknown[]) => send(...args),
+        invoke: (...args: unknown[]) => invoke(...args),
         on: (...args: unknown[]) => on(...args),
         removeListener: (...args: unknown[]) => removeListener(...args),
     },
@@ -259,5 +270,33 @@ describe('preload bridge', () => {
         expect(cb).toHaveBeenCalledWith(state);
         unsubscribe();
         expect(removeListener).toHaveBeenCalledWith(POPOUT_STATE_CHANNEL, expect.any(Function));
+    });
+    it('htmlPage methods use the real html-page channels', async () => {
+        const api = exposedApi();
+        invoke.mockResolvedValue({ ok: true });
+        await expect(api.htmlPage.open('p1', '/w/index.html')).resolves.toEqual({ ok: true });
+        expect(invoke).toHaveBeenCalledWith(HTML_PAGE_OPEN_CHANNEL, 'p1', '/w/index.html');
+        const rect = { x: 1, y: 2, width: 3, height: 4 };
+        api.htmlPage.setBounds('p1', rect);
+        expect(send).toHaveBeenCalledWith(HTML_PAGE_SET_BOUNDS_CHANNEL, 'p1', rect);
+        api.htmlPage.hide('p1');
+        expect(send).toHaveBeenCalledWith(HTML_PAGE_HIDE_CHANNEL, 'p1');
+        api.htmlPage.reload('p1');
+        expect(send).toHaveBeenCalledWith(HTML_PAGE_RELOAD_CHANNEL, 'p1');
+        api.htmlPage.openExternal('p1');
+        expect(send).toHaveBeenCalledWith(HTML_PAGE_OPEN_EXTERNAL_CHANNEL, 'p1');
+        api.htmlPage.close('p1');
+        expect(send).toHaveBeenCalledWith(HTML_PAGE_CLOSE_CHANNEL, 'p1');
+    });
+
+    it('htmlPage.onState relays state and unsubscribes', () => {
+        const cb = vi.fn();
+        const unsubscribe = exposedApi().htmlPage.onState(cb);
+        const listener = on.mock.calls.find((c) => c[0] === HTML_PAGE_STATE_CHANNEL)![1];
+        const state = { pageId: 'p1', status: 'failed', error: 'ERR_FILE_NOT_FOUND' };
+        listener({ sender: 'ignored' }, state);
+        expect(cb).toHaveBeenCalledWith(state);
+        unsubscribe();
+        expect(removeListener).toHaveBeenCalledWith(HTML_PAGE_STATE_CHANNEL, expect.any(Function));
     });
 });

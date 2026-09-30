@@ -1134,7 +1134,7 @@ describe('ChatListPane mobile long-press context menu', () => {
             // Each queued task is wrapped in a draggable <div> that delegates rendering to
             // the unified renderChatListRow with taskStatus='queued'. Drag/drop and
             // pause-marker insertion are preserved on the wrapper.
-            expect(source).toContain("renderChatListRow(item, visibleTabFilteredQueued, { taskStatus: 'queued' })");
+            expect(source).toContain("renderChatListRow(item, activeQueued, { taskStatus: 'queued' })");
         });
 
         it('preserves the activeDraggedTaskId opacity-40 affordance on the wrapper', () => {

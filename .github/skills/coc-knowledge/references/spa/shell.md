@@ -84,6 +84,20 @@ focuses an existing window in both hosts. Desktop pop-outs expose no handle to p
 handle-dependent focus (`features/canvas/canvasPopOut.ts` tracking live handles) degrades
 there to re-issuing the named open, which focuses the existing window.
 
+## Desktop HTML page views
+
+`window.cocDesktop.htmlPage` (`packages/coc-desktop/src/preload.ts`) lets the SPA host a
+local `.html`/`.htm` file as a `WebContentsView` stacked over its window
+(`html-page-host.ts`). The SPA picks a per-panel-path `pageId`, calls `open(pageId, absPath)` —
+the main process replies `{ ok: false, reason }` for non-html, relative or missing paths,
+so the caller must fall back to the source viewer — then keeps the view over a
+placeholder with `setBounds(pageId, getBoundingClientRect())` (CSS px; `null` or `hide()`
+hides it) and destroys it with `close()`. `reload`, `openExternal` and `onState`
+(`loading`/`loaded`/`failed`) back the toolbar and error state; opening an existing
+view replays its last load state to a newly mounted tab. Views have no preload, run
+sandboxed in their own partition, never outlive a full SPA reload, and follow the
+navigation policy in `html-page-policy.ts`.
+
 Pop-out buttons draw the SVG `PopOutIcon` (`features/canvas/components/icons.tsx`),
 **never a text glyph**: U+29C9 `⧉` is missing from the UI font stack on common Linux
 desktops, making a glyph-only button an invisible click target. `DevToolsDialog` imports
@@ -216,6 +230,7 @@ features default off.
 | `features.gitWorktreeExecution` | `isGitWorktreeExecutionEnabled()` | off |
 | `features.sessionContextAttachments` | `sessionContextAttachmentsEnabled` | off |
 | `features.markdownPanelPreview` | `markdownPanelPreviewEnabled` | off |
+| `features.htmlPageTab` | `htmlPageTabEnabled` | on |
 | `features.quickAskSidenotes` | live server flag | — |
 ### Unified right panel
 

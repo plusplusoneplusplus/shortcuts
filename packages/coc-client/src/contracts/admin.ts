@@ -304,6 +304,8 @@ export interface RuntimeDashboardConfig {
     explorerEditorTabsEnabled: boolean;
     /** Rendered Markdown preview in unified right-panel file tabs (`features.markdownPanelPreview`). */
     markdownPanelPreviewEnabled: boolean;
+    /** Desktop: open local .html/.htm chat links as a rendered page tab (`features.htmlPageTab`). */
+    htmlPageTabEnabled: boolean;
     /**
      * Style new conversations start on, server-wide (`features.defaultChatStyle`).
      * `'default'` means "add no style instruction".

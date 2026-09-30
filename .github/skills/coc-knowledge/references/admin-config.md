@@ -90,6 +90,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `pinnedScopes` | on | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
 | `splitWorkspacePanel` | on | Split Workspace view (chat list over git, one shared detail pane) replacing the Activity and Git tabs |
 | `markdownPanelPreview` | off | Rendered Markdown preview in unified right-panel file tabs; other file viewers stay unchanged |
+| `htmlPageTab` | on | Desktop only: local `.html`/`.htm` chat links open as a rendered page tab (Electron `WebContentsView`) in the right panel; off, web SPA, remote workspaces, or missing files use the source viewer |
 | `unifiedRightPanel` | off | Needs `splitWorkspacePanel` + desktop; one resource-tabbed right panel (Terminal / Explorer / Notes / files / notes / canvases / chat diffs) replacing the workspace right dock and the chat-opened source, canvas, and diff columns |
 | `chatFolders` | off | User-created chat folders in the chat list (tree section, drag/context-menu filing); gates UI only — the `/chat-folders` routes and the schema-29 migration ship regardless |
 | `singleRowShell` | off | Needs `remoteShell`; moves shell controls plus `+ New` into the global header |

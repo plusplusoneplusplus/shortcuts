@@ -796,6 +796,7 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
             const tabs = visibleTabs(readUnifiedPanelState(WS_ID), 'task-A');
             expect(tabs.map(t => t.kind)).toEqual(['file']);
         });
+
         // One right-side surface: the chat's own column must not also appear.
         expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
 
@@ -805,6 +806,17 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         expect(tab.resourceId).toBe('src/app.ts');
         expect(tab.line).toBe(12);
         expect(tab).not.toHaveProperty('readOnly');
+    });
+
+    it('opens View source in the read-only source canvas even with a panel host', async () => {
+        renderHostedChat('task-A');
+        dispatchSourceLink({
+            filePath: '/repos/main/pages/demo.html',
+            wsId: WS_ID,
+            forceSourceViewer: true,
+        });
+        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
     });
 
     it('files a note ref as an editable, workspace-owned note tab', async () => {

@@ -332,6 +332,8 @@ export interface CLIConfig {
         explorerEditorTabs?: boolean;
         /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
         markdownPanelPreview?: boolean;
+        /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
+        htmlPageTab?: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector?: boolean;
         /** Switch concrete providers between idle follow-up turns. Disabled by default. */
@@ -708,6 +710,8 @@ export interface ResolvedCLIConfig {
         explorerEditorTabs: boolean;
         /** Rendered Markdown preview in unified right-panel file tabs. Disabled by default. */
         markdownPanelPreview: boolean;
+        /** Desktop: open local .html/.htm chat links as a rendered page tab in the right panel. Enabled by default. */
+        htmlPageTab: boolean;
         /** Style selector in chat composers. Changes presentation only. Enabled by default. */
         chatStyleSelector: boolean;
         /** Switch concrete providers between idle follow-up turns. Disabled by default. */
@@ -997,6 +1001,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         canvasHostApis: false,
         explorerEditorTabs: false,
         markdownPanelPreview: false,
+        htmlPageTab: true,
         chatStyleSelector: true,
         chatProviderSwitching: false,
         defaultChatStyle: 'default',

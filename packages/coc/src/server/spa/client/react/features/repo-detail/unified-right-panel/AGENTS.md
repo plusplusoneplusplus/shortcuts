@@ -1,7 +1,7 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Cursor-style resource-tabbed column
-holding Terminal, Notes, files, notes, canvases, and chat diffs, with a
+holding Terminal, Notes, files, notes, canvases, chat diffs, and local HTML pages, with a
 Search/Explorer navigator at its right edge. There is no second right panel and
 no flag.
 
@@ -28,7 +28,7 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `terminal | notes | note | git` are workspace-owned,
+Tabs are scoped by kind: `terminal | notes | note | git | html-page` are workspace-owned,
 `file | canvas | diff | external` belong to the selected chat (`scopeForKind`).
 Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
@@ -42,7 +42,9 @@ divider at the tools→resources boundary, and `moveTab` / Alt+Arrow never cross
 it.
 `external` is a read-only definition source outside every workspace; its
 resource id is the opaque capability the owning member's host issued, it has no
-entry in the "+" menu, and it is never persisted. `unifiedTabId`
+entry in the "+" menu, and it is never persisted. `html-page` carries an absolute
+local path and an Electron view id, dedupes across chats in its panel scope, and is
+also excluded from storage. `unifiedTabId`
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the
 queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
@@ -208,6 +210,17 @@ empty destination closes it. This changes only the dock open bit: descriptors,
 active-tab memory, target, mode, width, ordering, and mounted resource state stay
 untouched. The reconciliation does not rerun when tabs change, so explicitly
 opening an empty panel remains possible until the next chat selection or reload.
+
+A user close that empties `visibleTabs` collapses the panel through the same
+open bit (`setWorkspaceDockOpen(workspaceId, false)`), unless the navigator is
+showing (`isUnifiedTreeVisible`). This covers the strip ✕, middle click,
+Ctrl/Cmd+W, the tab menu's single and bulk closes, and views' own close buttons,
+all of which funnel through `closeTabByUser`. The decision
+(`shouldCollapseAfterClose` in `closeTabRouting.ts`) runs once, after the tabs
+update, and only after a bulk queue has drained; a cancelled or failed guard
+never reaches it. Tabs of other chats are not in `visibleTabs`, so they never
+hold the panel open. Programmatic removals (navigation replay, chat switches)
+do not trigger it.
 
 It **follows the host's active file**: `ExplorerPanel`'s `activeFilePath` prop
 is a tri-state, and the panel derives it from the same `unifiedToolbarBreadcrumbs`
@@ -382,18 +395,15 @@ nothing remounts before the promotion lands. `ExplorerPanel` needs `onFilePin`
 wherever a permanent tab has somewhere to live — its own strip *or* a host that
 takes the opens — not only when its own `explorerEditorTabs` flag is on.
 
-## Persistence and migration (codec v3)
+## Persistence and migration (codec v4)
 
-The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION`). v3 persists the
-concrete owner route. v2 payloads remain valid with an omitted route and keep
-their stable bare-workspace tab ids. The codec also preserves the `preview` bit,
-so a restored preview comes back italic in the same replaceable slot, and it no
-longer accepts the old `explorer` kind. `restoreUnifiedPanelState` reads v1
-payloads rather than discarding them: Explorer descriptors fail the kind check
-like any other unknown entry, and the restore reports `openTree` so the caller
-opens the tree column instead. `migrateUnifiedPanelState` runs from a mount
-effect in `UnifiedRightPanel`, flips that tree-open bit, and rewrites the entry
-at the current version. An unknown version is discarded whole.
+The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION = 4`). It persists
+concrete owner routes, preview bits, and panel-local Notes selection. Native
+`html-page` tabs and external capability tabs stay in memory only; their active
+selection is omitted from storage too. Older supported payloads retain their
+stable bare-workspace ids when a concrete route is absent. An old `explorer`
+descriptor opens the tree column during `migrateUnifiedPanelState` rather than
+restoring a resource tab. Unknown versions are discarded.
 
 The parse repairs as well as validates. A section with two preview bits keeps
 the **last** one and returns the rest permanent — nothing is dropped, because a
@@ -465,6 +475,7 @@ surface untouched.
 |---|---|---|
 | Chat diff action | `ChatDetail` `WHISPER_DIFF_EVENT` handler | A whisper diff is rebuilt from an in-memory transcript, so `unifiedDiffSources` is the join between a persisted tab and its source. |
 | Chat source link | `ChatDetail` `coc-open-source-canvas` | Declines relative/group refs and paths outside a known root — `PreviewPane` reads repo-relative blobs, so a tab for those could only render an error. The chat's clone-qualified selection disambiguates same-id local and remote workspaces. |
+| Desktop HTML link | `file-path-preview.ts` `coc-open-html-page` | The main process verifies a local file before the panel claims the event; the tab uses `UnifiedHtmlPageTab` to align a native view with its placeholder. Without a matching panel host the native view closes and the link takes the source-viewer path. |
 | Note link | same handler, `kind: 'note'` branch | `resourceId` is `<fetchMode>\|<root>\|<path>`: the note root is part of the identity, resolved once at open time because the link is gone by restore time. |
 | Explorer selection | `ExplorerPanel` `onOpenFile` | The tree column (and navigator mode elsewhere): `options.preview` picks the preview slot vs a permanent tab. |
 | Language navigation | `UnifiedTabView` `onOpenFile` | A "go to definition" out of a file tab. The descriptor takes its workspace id, concrete route, and repo label from the SOURCE tab, never from the dock's current target, so the target read and language document stay on the initiating clone. Always a permanent tab. |
@@ -480,6 +491,18 @@ selected chat, falling back to the source canvas elsewhere. AI canvases use
 this panel as their only host; a chat with no panel (a pop-out or an embedded
 chat) keeps inline previews and the standalone canvas window and opens no
 sidebar for AI canvases.
+
+## Desktop HTML pages
+
+`UnifiedHtmlPageTab` keeps a native `WebContentsView` over a DOM placeholder
+through the preload's `htmlPage` bridge. It updates bounds on resize, scroll,
+and layout changes, hides while inactive/collapsed or behind panel menus and
+modal dialogs, and closes the view on tab close or unmount. Its toolbar reloads
+the page, opens the file in the system browser, or requests the read-only source
+canvas (`forceSourceViewer` bypasses editable unified file tabs). Load errors
+surface inline with the same source fallback. The view is ephemeral: the tab
+model omits it from serialized state, and the main process tears it down with
+the window.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 

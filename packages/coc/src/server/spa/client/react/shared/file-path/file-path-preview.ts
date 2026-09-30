@@ -10,12 +10,17 @@ import { getLinkHandlersConfig } from '../../hooks/useLinkHandlers';
 import { openLink } from '../../utils/link-handler';
 import { getSpaCocClient, getSpaCocClientErrorMessage } from '../../api/cocClient';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
+import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { withRemoteWorkspaces } from '../../repos/workspacesWithRemote';
 import {
+    getSourceCanvasWorkspaceRelativePath,
     isSourceCanvasResolveError,
     resolveSourceCanvasTarget,
 } from '../../features/chat/source-canvas/resolve';
 import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
+import { isAbsolutePath } from '../../utils/path-resolution';
+import { isHtmlPageTabEnabled } from '../../utils/config';
+import { desktopHtmlPageBridge, type DesktopHtmlPageBridge, type OpenHtmlPageDetail } from './html-page-bridge';
 import {
     isExternalFileReferenceHref,
     isSourceCanvasDirectoryPath,
@@ -26,6 +31,8 @@ import {
 interface WorkspaceInfo {
     id: string;
     rootPath?: string;
+    remote?: unknown;
+    baseUrl?: string;
 }
 
 interface FilePreviewResponse {
@@ -107,6 +114,7 @@ let workspacesCache: WorkspaceInfo[] | null = null;
 let workspacesFetchedAt = 0;
 let workspacesLoading: Promise<WorkspaceInfo[]> | null = null;
 let lastResolvedRootPath = '';
+const htmlPageIds = new Map<string, string>();
 
 function escapeHtml(text: string): string {
     return text
@@ -261,6 +269,67 @@ function dispatchOpenSourceCanvas(ref: FileReference, kind?: 'note' | 'dir'): vo
     }));
 }
 
+async function openHtmlPageOrSource(ref: FileReference, bridge: DesktopHtmlPageBridge): Promise<void> {
+    try {
+        const workspaces = await fetchWorkspaces();
+        const target = resolveSourceCanvasTarget({
+            fullPath: ref.filePath,
+            wsId: ref.wsId,
+            sourceFilePath: ref.sourceFilePath,
+        }, workspaces);
+        if (isSourceCanvasResolveError(target)) {
+            dispatchOpenSourceCanvas(ref);
+            return;
+        }
+
+        let filePath = target.path;
+        let ownerId = target.wsId;
+        if (!isAbsolutePath(filePath)) {
+            // A repo-group relative ref needs the server's ordered member probe.
+            const preview = await getCocClientForWorkspace(ownerId)
+                .tasks.previewWorkspaceFile(ownerId, filePath) as PreviewResponse;
+            filePath = preview.path;
+            ownerId = preview.resolvedWorkspaceId ?? ownerId;
+        }
+        const owner = workspaces.find(ws => ws.id === ownerId
+            && !isRemoteWorkspace(ws)
+            && !!ws.rootPath
+            && getSourceCanvasWorkspaceRelativePath(filePath, ws.rootPath) !== filePath);
+        const remoteOwner = workspaces.some(ws => ws.id === ownerId
+            && isRemoteWorkspace(ws)
+            && !!ws.rootPath
+            && getSourceCanvasWorkspaceRelativePath(filePath, ws.rootPath) !== filePath);
+        if (!owner || remoteOwner || !isAbsolutePath(filePath)) {
+            dispatchOpenSourceCanvas(ref);
+            return;
+        }
+
+        const pageKey = `${ref.wsId ?? owner.id}\0${filePath}`;
+        let pageId = htmlPageIds.get(pageKey);
+        if (!pageId) {
+            pageId = crypto.randomUUID();
+            htmlPageIds.set(pageKey, pageId);
+        }
+        const result = await bridge.open(pageId, filePath);
+        if (!result.ok) {
+            htmlPageIds.delete(pageKey);
+            dispatchOpenSourceCanvas(ref);
+            return;
+        }
+        const detail: OpenHtmlPageDetail = {
+            pageId, filePath, wsId: owner.id, scopeWsId: ref.wsId ?? owner.id,
+        };
+        window.dispatchEvent(new CustomEvent('coc-open-html-page', { detail }));
+        if (!detail.handled) {
+            bridge.close(pageId);
+            dispatchOpenSourceCanvas(ref);
+        }
+    } catch (error) {
+        console.error('Failed to open HTML page:', error);
+        dispatchOpenSourceCanvas(ref);
+    }
+}
+
 function dispatchOpenMarkdownReview(ref: FileReference): void {
     const detail: { filePath: string; wsId?: string; sourceFilePath?: string } = {
         filePath: ref.reviewFilePath ?? ref.filePath,
@@ -314,6 +383,11 @@ function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
             return;
         }
         if (!isSourceCanvasNotePath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
+            const bridge = desktopHtmlPageBridge();
+            if (bridge && isHtmlPageTabEnabled() && /\.html?$/i.test(ref.filePath)) {
+                void openHtmlPageOrSource(ref, bridge);
+                return;
+            }
             dispatchOpenSourceCanvas(ref);
             return;
         }

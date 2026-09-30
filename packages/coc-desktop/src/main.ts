@@ -88,6 +88,7 @@ import {
 } from './report-issue';
 import { isPopOutChildUrl } from './popout-chrome';
 import { createPopOutWindow, registerPopOutIpc } from './popout-window-host';
+import { registerHtmlPageIpc } from './html-page-host';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -1131,6 +1132,10 @@ async function bootstrap(): Promise<void> {
     // Same for the pop-out address bar: its chrome strip talks to the main
     // process the moment a pop-out window is built.
     registerPopOutIpc();
+
+    // HTML page tabs: the SPA asks the main process to host a local .html file
+    // in a WebContentsView over its right panel.
+    registerHtmlPageIpc();
 
     // AC-01: bind the global screenshot-capture accelerator on app ready, so the
     // hotkey works even before/without the main window being focused.

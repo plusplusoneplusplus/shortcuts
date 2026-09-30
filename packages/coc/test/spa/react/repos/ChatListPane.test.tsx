@@ -264,6 +264,8 @@ describe('ChatListPane', () => {
         // Reset persisted scope so each test sees the default ('all'). The
         // Activity-tab scope segmented control writes to this key.
         try { window.localStorage.removeItem('coc-activity-scope'); } catch { /* ignore */ }
+        // Frozen Tasks section is collapsed by default and persisted.
+        try { window.localStorage.removeItem('coc.chatList.frozenSectionExpanded'); } catch { /* ignore */ }
         // jsdom has no layout engine so offsetParent is always null.
         // Mock it to return document.body for connected elements so the
         // visibility guard in ChatListPane's Ctrl+F handler behaves correctly.
@@ -989,6 +991,129 @@ describe('ChatListPane', () => {
             const card = document.querySelector('[data-task-id="q-1"]');
             fireEvent.click(card!);
             expect(props.onSelectTask).toHaveBeenCalledWith('q-1', expect.anything());
+        });
+
+        it('moves frozen tasks into a Frozen Tasks section below Queued', () => {
+            mockPinnedChatIds = new Set(['h-1']);
+            renderPane({
+                running: [makeRunningTask()],
+                queued: [
+                    makeQueuedTask({ id: 'q-1' }),
+                    makeQueuedTask({ id: 'q-frozen', frozen: true }),
+                ],
+                history: [makeHistoryTask({ id: 'h-1' }), makeHistoryTask({ id: 'h-2' })],
+            });
+            fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
+            const queuedSection = document.querySelector('[data-section="queued"]')!;
+            const frozenSection = document.querySelector('[data-section="frozen"]')!;
+            expect(frozenSection).toBeTruthy();
+            expect(frozenSection.querySelector('[data-task-id="q-frozen"]')).toBeTruthy();
+            expect(queuedSection.querySelector('[data-task-id="q-frozen"]')).toBeNull();
+            expect(queuedSection.querySelector('[data-task-id="q-1"]')).toBeTruthy();
+
+            const order = Array.from(document.querySelectorAll('[data-section]'))
+                .map(el => el.getAttribute('data-section'))
+                .filter(id => ['running', 'queued', 'frozen', 'pinned', 'completed'].includes(id!));
+            expect(order).toEqual(['running', 'queued', 'frozen', 'pinned', 'completed']);
+        });
+
+        it('hides the Frozen Tasks section when no queued task is frozen', () => {
+            renderPane({ queued: [makeQueuedTask()] });
+            expect(document.querySelector('[data-section="frozen"]')).toBeNull();
+            expect(screen.queryByTestId('frozen-tasks-section-toggle')).toBeNull();
+        });
+
+        it('Queued count leaves out frozen tasks and pause markers; Frozen shows its own count', () => {
+            renderPane({
+                queued: [
+                    makeQueuedTask({ id: 'q-1' }),
+                    makeQueuedTask({ id: 'q-2' }),
+                    { id: 'pm-1', kind: 'pause-marker' } as any,
+                    makeQueuedTask({ id: 'q-f1', frozen: true }),
+                    makeQueuedTask({ id: 'q-f2', frozen: true }),
+                    makeQueuedTask({ id: 'q-f3', frozen: true }),
+                ],
+            });
+            const queuedToggle = screen.getByTestId('queued-tasks-section-toggle');
+            const frozenToggle = screen.getByTestId('frozen-tasks-section-toggle');
+            expect(queuedToggle.textContent).toContain('Queued Tasks');
+            expect(queuedToggle.lastElementChild!.textContent).toBe('2');
+            expect(frozenToggle.textContent).toContain('Frozen Tasks');
+            expect(frozenToggle.textContent).toContain('❄️');
+            expect(frozenToggle.lastElementChild!.textContent).toBe('3');
+        });
+
+        it('hides Queued and shows Frozen when every queued task is frozen', () => {
+            renderPane({
+                queued: [
+                    makeQueuedTask({ id: 'q-f1', frozen: true }),
+                    makeQueuedTask({ id: 'q-f2', frozen: true }),
+                ],
+            });
+            expect(document.querySelector('[data-section="queued"]')).toBeNull();
+            expect(screen.queryByTestId('queued-tasks-section-toggle')).toBeNull();
+            const frozenToggle = screen.getByTestId('frozen-tasks-section-toggle');
+            expect(frozenToggle.lastElementChild!.textContent).toBe('2');
+        });
+
+        it('Frozen section starts collapsed, expands on click, and stays expanded after remount', () => {
+            const queued = [makeQueuedTask({ id: 'q-f1', frozen: true })];
+            const first = renderPane({ queued });
+            const toggle = screen.getByTestId('frozen-tasks-section-toggle');
+            expect(toggle.getAttribute('aria-expanded')).toBe('false');
+            expect(document.querySelector('[data-section="frozen"] [data-task-id="q-f1"]')).toBeNull();
+
+            fireEvent.click(toggle);
+            expect(toggle.getAttribute('aria-expanded')).toBe('true');
+            expect(document.querySelector('[data-section="frozen"] [data-task-id="q-f1"]')).toBeTruthy();
+            expect(window.localStorage.getItem('coc.chatList.frozenSectionExpanded')).toBe('true');
+
+            first.unmount();
+            renderPane({ queued });
+            expect(screen.getByTestId('frozen-tasks-section-toggle').getAttribute('aria-expanded')).toBe('true');
+            expect(document.querySelector('[data-section="frozen"] [data-task-id="q-f1"]')).toBeTruthy();
+
+            fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
+            expect(window.localStorage.getItem('coc.chatList.frozenSectionExpanded')).toBe('false');
+            expect(document.querySelector('[data-section="frozen"] [data-task-id="q-f1"]')).toBeNull();
+        });
+
+        it('Frozen rows are static: no draggable wrapper and no pause insert zones', () => {
+            renderPane({
+                queued: [
+                    makeQueuedTask({ id: 'q-1' }),
+                    makeQueuedTask({ id: 'q-f1', frozen: true }),
+                    makeQueuedTask({ id: 'q-f2', frozen: true }),
+                ],
+            });
+            fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
+            const queuedSection = document.querySelector('[data-section="queued"]')!;
+            const frozenSection = document.querySelector('[data-section="frozen"]')!;
+            expect(frozenSection.querySelectorAll('[data-task-id]').length).toBe(2);
+            expect(frozenSection.querySelector('[draggable="true"]')).toBeNull();
+            expect(frozenSection.querySelector('[data-queue-index]')).toBeNull();
+            expect(frozenSection.querySelector('[data-testid^="pause-insert-zone"]')).toBeNull();
+            // Queued rows keep drag + insert zones.
+            expect(queuedSection.querySelector('[draggable="true"]')).toBeTruthy();
+            expect(queuedSection.querySelector('[data-testid^="pause-insert-zone"]')).toBeTruthy();
+        });
+
+        it('moves a task from Frozen to Queued at its queue position after unfreeze', () => {
+            const queued = [
+                makeQueuedTask({ id: 'q-1' }),
+                makeQueuedTask({ id: 'q-2', frozen: true }),
+                makeQueuedTask({ id: 'q-3' }),
+            ];
+            const { rerender, props } = renderPane({ queued });
+            fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
+            expect(document.querySelector('[data-section="frozen"] [data-task-id="q-2"]')).toBeTruthy();
+
+            const unfrozen = queued.map(t => (t.id === 'q-2' ? { ...t, frozen: false } : t));
+            rerender(<ChatListPane {...props} queued={unfrozen} />);
+            expect(document.querySelector('[data-section="frozen"]')).toBeNull();
+            const queuedIds = Array.from(document.querySelectorAll('[data-section="queued"] [data-task-id]'))
+                .map(el => el.getAttribute('data-task-id'));
+            expect(queuedIds).toEqual(['q-1', 'q-2', 'q-3']);
         });
 
         it('renders pause marker for pause-marker items', () => {
@@ -1720,6 +1845,7 @@ describe('ChatListPane', () => {
 
             it('"Unfreeze" shown for frozen task', () => {
                 renderPane({ queued: [makeQueuedTask({ frozen: true })] });
+                fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
                 fireEvent.contextMenu(document.querySelector('[data-task-id="q-1"]')!);
                 expect(screen.getByText(/Unfreeze/)).toBeTruthy();
             });
@@ -2267,12 +2393,15 @@ describe('ChatListPane', () => {
     // ── Frozen task visual ─────────────────────────────────────────────
     describe('Frozen task visual', () => {
         it('frozen queued task shows ❄️ icon', () => {
-            const { container } = renderPane({ queued: [makeQueuedTask({ frozen: true })] });
-            expect(container.textContent).toContain('❄️');
+            renderPane({ queued: [makeQueuedTask({ frozen: true })] });
+            fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
+            const card = document.querySelector('[data-task-id="q-1"]');
+            expect(card!.textContent).toContain('❄️');
         });
 
         it('frozen task card has task-frozen class', () => {
             renderPane({ queued: [makeQueuedTask({ frozen: true })] });
+            fireEvent.click(screen.getByTestId('frozen-tasks-section-toggle'));
             const card = document.querySelector('[data-task-id="q-1"]');
             expect(card!.className).toContain('task-frozen');
         });

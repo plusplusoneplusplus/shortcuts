@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
     closeTabOutcome,
     closeTabShortcut,
+    shouldCollapseAfterClose,
     type CloseTabOwnerContext,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/closeTabRouting';
 
@@ -76,5 +77,14 @@ describe('closeTabOutcome', () => {
         // Focus parked on the strip's tab button: nobody is typing at a prompt,
         // so falling through would hand Ctrl+W to the browser.
         expect(closeTabOutcome(ctx({ focusInActiveTerminal: false }))).toBe('close');
+    });
+});
+
+describe('shouldCollapseAfterClose', () => {
+    it('collapses only an empty strip with the navigator hidden', () => {
+        expect(shouldCollapseAfterClose({ visibleTabCount: 0, navigatorVisible: false })).toBe(true);
+        expect(shouldCollapseAfterClose({ visibleTabCount: 0, navigatorVisible: true })).toBe(false);
+        expect(shouldCollapseAfterClose({ visibleTabCount: 1, navigatorVisible: false })).toBe(false);
+        expect(shouldCollapseAfterClose({ visibleTabCount: 2, navigatorVisible: true })).toBe(false);
     });
 });

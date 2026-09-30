@@ -18,8 +18,9 @@
  *    did not ask for.
  *  - **Collapse ≠ close.** Collapsing hides the column (again `display:none`,
  *    not an unmount): tabs, drafts, and sessions all survive, and the external
- *    dock toggle reopens it. Closing the last tab leaves an empty panel with an
- *    "Open…" action rather than auto-creating anything.
+ *    dock toggle reopens it. A user close that empties the strip collapses the
+ *    panel unless the Search/Explorer navigator is showing; an empty panel
+ *    opened on purpose keeps its "Open…" action and is never auto-created into.
  *  - **Width.** One workspace-scoped width, clamped so the central chat keeps at
  *    least `DOCK_MIN_CHAT_WIDTH`. It comes from the existing
  *    `useWorkspaceDock` controller, which also owns the header toggle's open
@@ -74,7 +75,7 @@ import {
     quickOpenOwner,
     quickOpenShortcut,
 } from './quickOpenRouting';
-import { closeTabOutcome, closeTabShortcut } from './closeTabRouting';
+import { closeTabOutcome, closeTabShortcut, shouldCollapseAfterClose } from './closeTabRouting';
 import { findFilterOwner, findFilterShortcut } from './findRouting';
 import {
     keyboardNavigationDirection,
@@ -98,6 +99,8 @@ import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
+import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
+import { desktopHtmlPageBridge, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import type {
@@ -569,6 +572,26 @@ export function UnifiedRightPanel({
         [setFlag],
     );
 
+    useEffect(() => {
+        const onOpenPage = (event: Event) => {
+            const detail = (event as CustomEvent<OpenHtmlPageDetail>).detail;
+            if (!detail || detail.scopeWsId !== workspaceId || !desktopHtmlPageBridge()) return;
+            detail.handled = true;
+            open({
+                kind: 'html-page',
+                ownerWorkspaceId: detail.wsId,
+                ownerRoutingRef: null,
+                chatId,
+                resourceId: detail.filePath,
+                label: fileNameOf(detail.filePath.replace(/\\/g, '/')),
+                htmlPageId: detail.pageId,
+            });
+            setWorkspaceDockOpen(workspaceId, true);
+        };
+        window.addEventListener('coc-open-html-page', onOpenPage);
+        return () => window.removeEventListener('coc-open-html-page', onOpenPage);
+    }, [chatId, open, workspaceId]);
+
     // ------------------------------------------------------------------
     // Close guard (AC-05)
     // ------------------------------------------------------------------
@@ -606,6 +629,10 @@ export function UnifiedRightPanel({
     const pendingPreviewOpen = useRef<{ tabId: string; open: () => void } | null>(null);
 
     const closeTab = useCallback((id: string) => {
+        const tab = tabsRef.current.find(candidate => candidate.id === id);
+        if (tab?.kind === 'html-page' && tab.htmlPageId) {
+            desktopHtmlPageBridge()?.close(tab.htmlPageId);
+        }
         close(id);
         navigationControllers.current.delete(id);
         setMountedIds(prev => {
@@ -655,6 +682,16 @@ export function UnifiedRightPanel({
         queueMicrotask(() => drainBulkCloseRef.current());
     }, []);
 
+    // A user close that actually removed a tab, and finished any bulk queue,
+    // asks the next render to decide whether the panel collapses. It is decided
+    // after the tabs update rather than here because a bulk close only settles
+    // once the last queued target is gone, and a cancelled guard never gets here.
+    const collapseCheckPending = useRef(false);
+    const closeTabByUser = useCallback((id: string) => {
+        closeTab(id);
+        if (bulkCloseQueue.current.length === 0) collapseCheckPending.current = true;
+    }, [closeTab]);
+
     // The strip's ✕ and the views' own close buttons both come through here. A
     // terminal tab with nothing running still closes immediately: an exited
     // session is a tombstone, and prompting to kill a process that already ended
@@ -677,9 +714,9 @@ export function UnifiedRightPanel({
             setDirtySaving(false);
             return 'prompted';
         }
-        closeTab(id);
+        closeTabByUser(id);
         return 'closed';
-    }, [closeTab]);
+    }, [closeTabByUser]);
 
     const drainBulkClose = useCallback(() => {
         while (bulkCloseQueue.current.length > 0) {
@@ -697,6 +734,14 @@ export function UnifiedRightPanel({
         bulkCloseQueue.current = [...ids];
         drainBulkClose();
     }, [drainBulkClose]);
+
+    useEffect(() => {
+        if (!collapseCheckPending.current) return;
+        collapseCheckPending.current = false;
+        if (shouldCollapseAfterClose({ visibleTabCount: tabs.length, navigatorVisible: modeColumnVisible })) {
+            setWorkspaceDockOpen(workspaceId, false);
+        }
+    }, [tabs, modeColumnVisible, workspaceId]);
 
     // "Reveal in Explorer" asks the tree to reveal a specific tab's file even when
     // the passive tracking above already points at it (and so would not re-fire).
@@ -1254,7 +1299,7 @@ export function UnifiedRightPanel({
             .then(() => {
                 setPendingClose(null);
                 setCloseBusy(false);
-                closeTab(tabId);
+                closeTabByUser(tabId);
                 scheduleBulkCloseContinuation();
             })
             .catch(err => {
@@ -1262,7 +1307,7 @@ export function UnifiedRightPanel({
                 setCloseBusy(false);
                 setCloseError('Could not terminate the terminal session. The tab is still open.');
             });
-    }, [pendingClose, closeBusy, closeTab, scheduleBulkCloseContinuation]);
+    }, [pendingClose, closeBusy, closeTabByUser, scheduleBulkCloseContinuation]);
 
     // A pending prompt whose tab went away (a chat switch, a close from
     // elsewhere) has nothing left to confirm.
@@ -1290,9 +1335,9 @@ export function UnifiedRightPanel({
         if (pending === null) return;
         setPendingDirty(null);
         setDirtyError(null);
-        closeTab(pending.tabId);
+        closeTabByUser(pending.tabId);
         scheduleBulkCloseContinuation();
-    }, [pendingDirty, closeTab, scheduleBulkCloseContinuation]);
+    }, [pendingDirty, closeTabByUser, scheduleBulkCloseContinuation]);
 
     /**
      * Save: write the buffer, then close. A write that fails — or a tab that
@@ -1314,10 +1359,10 @@ export function UnifiedRightPanel({
                     return;
                 }
                 setPendingDirty(null);
-                closeTab(pending.tabId);
+                closeTabByUser(pending.tabId);
                 scheduleBulkCloseContinuation();
             });
-    }, [pendingDirty, dirtySaving, closeTab, scheduleBulkCloseContinuation]);
+    }, [pendingDirty, dirtySaving, closeTabByUser, scheduleBulkCloseContinuation]);
 
     // Same rule as the terminal prompt: a question about a tab that is no longer
     // there (a chat switch, a close from elsewhere) has nothing left to answer.
@@ -1501,7 +1546,18 @@ export function UnifiedRightPanel({
                                 data-testid={`unified-panel-view-${tab.id}`}
                                 data-active={tab.id === activeId ? 'true' : 'false'}
                             >
-                                <UnifiedTabView
+                                {tab.kind === 'html-page' && tab.htmlPageId ? (
+                                    <UnifiedHtmlPageTab
+                                        tabId={tab.id}
+                                        pageId={tab.htmlPageId}
+                                        filePath={tab.resourceId}
+                                        wsId={tab.ownerWorkspaceId}
+                                        active={tab.id === activeId}
+                                        visible={isOpen && !menuOpen && !quickOpenVisible && !exactOpenVisible
+                                            && pendingClose === null && pendingDirty === null}
+                                        onErrorChange={handleErrorChange}
+                                    />
+                                ) : <UnifiedTabView
                                     tab={tab}
                                     scopeWorkspaceId={workspaceId}
                                     definitionPreviewOwners={definitionPreviewOwners}
@@ -1515,7 +1571,7 @@ export function UnifiedRightPanel({
                                     onFileNavigationMount={handleFileNavigationMount}
                                     onFileNavigationLocation={handleFileNavigationLocation}
                                     onNotesSelectionChange={updateNotesSelection}
-                                />
+                                />}
                             </div>
                         ))
                     )}

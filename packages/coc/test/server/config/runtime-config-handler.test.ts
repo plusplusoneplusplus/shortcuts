@@ -111,6 +111,12 @@ describe('buildRuntimeDashboardConfig', () => {
         expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.markdownPanelPreviewEnabled).toBe(true);
     });
 
+    it('exposes the HTML page tab flag, on by default and live-toggleable off', () => {
+        expect(buildRuntimeDashboardConfig(createMockRuntimeConfigService({}), 'my-host', '127.0.0.1').features.htmlPageTabEnabled).toBe(true);
+        const svc = createMockRuntimeConfigService({ features: { htmlPageTab: false } });
+        expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features.htmlPageTabEnabled).toBe(false);
+    });
+
     it('reflects features.gitWorktreeExecution = true from config (AC-01 capability flag)', () => {
         const svc = createMockRuntimeConfigService({
             features: {

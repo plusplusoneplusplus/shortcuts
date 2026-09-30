@@ -223,11 +223,11 @@ Markdown toggle. Line highlighting applies only to text.
 
 ### Link delegation
 
-Global delegation normalizes bare `.file-path-link` spans, shared renderer `.md-link`
-spans, and local Markdown `<a href>` anchors into one file-reference path. Bare prose
-linkification keeps a terminal `.`, `,`, `;`, `!`, or `?` run outside the clickable span
-and its metadata; explicit Markdown hrefs and paths inside code or preformatted blocks stay
-literal.
+Global delegation in `shared/file-path/file-path-preview.ts` normalizes bare
+`.file-path-link` spans, shared renderer `.md-link` spans, and local Markdown
+`<a href>` anchors into one file-reference path. Bare prose linkification keeps
+terminal punctuation outside the clickable span and its metadata; explicit Markdown
+hrefs and paths inside code or preformatted blocks stay literal.
 
 With `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS` enabled, assistant-response clicks dispatch
 `coc-open-source-canvas` carrying the bare path, workspace hint, optional `sourceFilePath`,
@@ -241,6 +241,20 @@ mobile bottom sheet; flag-off, user-message, and non-chat references route to
 ref scoped to the chat's source workspace (remote clones included): an editable note tab in
 the unified right panel when one hosts the chat, otherwise the docked canvas; canvas-backed
 plan labels stay static because they name no on-disk file.
+
+With `features.htmlPageTab` on in the desktop host, assistant `.html`/`.htm`
+links resolve through `resolveSourceCanvasTarget` and open through
+`window.cocDesktop.htmlPage.open`; repo-group relative paths first use the
+preview endpoint to identify the owning member. Only absolute paths attributed
+unambiguously to a local workspace reach the desktop host, which checks that
+the file exists. A successful open emits `coc-open-html-page` with
+`{ pageId, filePath, wsId, scopeWsId }`; the owning right panel claims the
+event and opens a workspace-scoped, session-only tab. Without a matching panel
+the native view closes and the ordinary source-canvas event fires. Rejected,
+unresolved, remote, and browser-hosted links use that source-canvas path too.
+The page tab's View source action sets `forceSourceViewer` on the source-canvas
+event so `ChatDetail` opens the read-only viewer even when an editable file tab
+would otherwise be eligible.
 
 Separately, the shared `MarkdownView` intercepts assistant-prose deep-links with
 `#/process/<id>`, `#/session/<id>`, or `#/processes/<id>` hrefs; the router resolves the

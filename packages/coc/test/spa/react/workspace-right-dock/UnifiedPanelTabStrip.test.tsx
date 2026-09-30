@@ -383,6 +383,36 @@ describe('UnifiedPanelTabStrip', () => {
             expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
             expect(document.activeElement).toBe(origin);
         });
+
+        it('dismisses when canvas compression hides the menu origin', () => {
+            const initialTabs = manyCanvasTabs(CANVAS_TAB_COMPRESSION_THRESHOLD - 1);
+            const origin = initialTabs.find(tab => tab.kind === 'canvas')!;
+            const baseProps: React.ComponentProps<typeof UnifiedPanelTabStrip> = {
+                tabs: initialTabs,
+                activeId: initialTabs[0].id,
+                onActivate: vi.fn(),
+                onClose: vi.fn(),
+                onCloseMany: vi.fn(),
+                onMove: vi.fn(),
+                onMenuAction: vi.fn(),
+            };
+            const { rerender } = render(<UnifiedPanelTabStrip {...baseProps} />);
+
+            fireEvent.contextMenu(tabNode(origin), { clientX: 20, clientY: 30 });
+            expect(screen.getByTestId('unified-panel-tab-menu')).toBeTruthy();
+
+            const compressedTabs = manyCanvasTabs(CANVAS_TAB_COMPRESSION_THRESHOLD);
+            const activeCanvas = compressedTabs.filter(tab => tab.kind === 'canvas').at(-1)!;
+            rerender(
+                <UnifiedPanelTabStrip
+                    {...baseProps}
+                    tabs={compressedTabs}
+                    activeId={activeCanvas.id}
+                />,
+            );
+
+            expect(screen.queryByTestId('unified-panel-tab-menu')).toBeNull();
+        });
     });
 
     it('walks tabs with the arrow keys, wrapping at both ends', () => {
