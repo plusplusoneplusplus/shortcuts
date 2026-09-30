@@ -31,6 +31,8 @@ import { useDisplaySettings } from '../../hooks/preferences/useDisplaySettings';
 import { useScopedFindShortcut, isWithinDetailPane } from '../../hooks/useScopedFindShortcut';
 import { SwipeableHistoryItem } from './SwipeableHistoryItem';
 import { SummarizeChatDialog } from './SummarizeChatDialog';
+import { ImportCopilotChatDialog } from './ImportCopilotChatDialog';
+import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { groupHistoryByPlanFile, type HistoryGroup } from '../git/history-grouping';
 import { HistoryGroupHeader, computeAggregateMode } from '../git/commits/HistoryGroupHeader';
 import { groupByRalphSession, type RalphHistoryEntry, type RalphSession } from './ralph-session-grouping';
@@ -1482,6 +1484,18 @@ export function ChatListPane({
     // target this clone's server. workspaceId may be undefined (e.g. floating
     // panes) → default origin client, unchanged.
     const cloneClient = useCocClient(workspaceId);
+    const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
+    const [importCopilotOpen, setImportCopilotOpen] = useState(false);
+    const handleCopilotChatImported = useCallback((targetWorkspaceId: string, processId: string) => {
+        setImportCopilotOpen(false);
+        if (targetWorkspaceId === workspaceId) {
+            onRefresh();
+            onSelectTask(processId);
+        } else {
+            // Repo-group view: the chat lives in the chosen member repo's list.
+            location.hash = '#repos/' + encodeURIComponent(targetWorkspaceId) + '/chats/' + encodeURIComponent(processId);
+        }
+    }, [workspaceId, onRefresh, onSelectTask]);
 
     /** Check if a task is the currently selected one (processId-aware). */
     const isSelected = useCallback((taskId: string): boolean => {
@@ -4797,6 +4811,22 @@ export function ChatListPane({
                         )}
                     </button>
 
+                    {nativeCliSessionsEnabled && workspaceId && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setImportCopilotOpen(true)}
+                            title="Import Copilot chat…"
+                            aria-label="Import Copilot chat…"
+                            data-testid="toolbar-import-copilot-chat-btn"
+                            className="!h-7 !w-7 !p-0 !min-h-0 grid place-items-center bg-white dark:bg-[#1e1e1e] border border-[#e0e0e0] dark:border-[#474749] rounded-md !text-[#606060] dark:!text-[#9d9d9d] hover:!bg-[#f5f5f5] dark:hover:!bg-[#252526] hover:!text-[#1e1e1e] dark:hover:!text-[#cccccc]"
+                        >
+                            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M7 1.5v7.5M4 6l3 3 3-3M2 10.5v1.5h10v-1.5" />
+                            </svg>
+                        </Button>
+                    )}
+
                     <Button
                         variant="ghost"
                         size="sm"
@@ -5589,6 +5619,14 @@ export function ChatListPane({
                 )}
                 onUndo={chatFolderArchive.performUndoArchive}
                 onDismiss={chatFolderArchive.dismissUndoArchive}
+            />
+        )}
+        {nativeCliSessionsEnabled && workspaceId && importCopilotOpen && (
+            <ImportCopilotChatDialog
+                open={importCopilotOpen}
+                onClose={() => setImportCopilotOpen(false)}
+                workspaceId={workspaceId}
+                onImported={handleCopilotChatImported}
             />
         )}
         <SummarizeChatDialog

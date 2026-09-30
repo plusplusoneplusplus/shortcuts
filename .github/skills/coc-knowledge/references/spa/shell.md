@@ -30,7 +30,7 @@ spa/client/react/
 ├── layout/        # Router, TopBar, BottomNav, MobileScopeBar, navDestinations, ThemeProvider
 ├── features/
 │   ├── canvas/    # CanvasPanel, ExtensionCanvasView, KustoView/KustoChart
-│   ├── chat/      # ChatDetail, ChatListPane, ConversationArea
+│   ├── chat/      # ChatDetail, ChatListPane, ConversationArea, ImportCopilotChatDialog (flag `nativeCliSessions`: toolbar icon next to New chat)
 │   ├── dreams/    # Workspace Dreams review panel
 │   ├── memory/    # Memory V2 route
 │   ├── native-copilot-sessions/   # Read-only CLI Sessions tab
