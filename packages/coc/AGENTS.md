@@ -608,6 +608,13 @@ all have their own `references/*.md`.
   from the current iteration's `progress.md` section (via `recentProgressSections`,
   which must include `iteration`). The inline token stays authoritative when
   present; `NO_SIGNAL` is terminal only when neither source carries a signal.
+- **Creating pull requests** goes through `createPullRequest`
+  (`src/server/git/create-pull-request-service.ts`) only. It picks GitHub
+  (`gh`) or Azure DevOps (`az repos`) from the `origin` URL, uses the user's CLI
+  login, runs commits mode in a temporary linked worktree (conflicts abort and
+  clean up; the caller's HEAD never moves), and returns an existing open PR
+  instead of failing. Route every git/`gh`/`az` call through its injected
+  `PrCliRunner` so tests stay CLI-free.
 - **Git-tab Fetch/Pull** must stay current-branch scoped. `RepoGitTab` sends
   `currentBranchOnly: true`; the server delegates to the scoped `BranchService`
   methods, which resolve the checked-out branch's exact configured upstream
