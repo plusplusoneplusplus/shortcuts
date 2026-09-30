@@ -9,12 +9,15 @@ const stub = vi.hoisted(() => ({
     actions: [] as Array<{ id: string; run: () => void }>,
     dispose: vi.fn(),
     monaco: {
-        editor: { setModelMarkers: vi.fn() },
+        editor: { setModelMarkers: vi.fn(), EditorOption: { readOnly: 0 } },
         KeyMod: { CtrlCmd: 1 },
         KeyCode: { KeyS: 2 },
     },
     editor: {
-        getModel: vi.fn(() => ({ id: 'model-1' })),
+        getModel: vi.fn(() => ({ id: 'model-1', getValue: () => '', getFullModelRange: () => ({}) })),
+        getOption: vi.fn(() => false),
+        executeEdits: vi.fn(),
+        pushUndoStop: vi.fn(),
         onDidChangeModel: vi.fn(() => ({ dispose: vi.fn() })),
         createDecorationsCollection: vi.fn(() => ({ set: vi.fn(), clear: vi.fn() })),
         revealLineInCenter: vi.fn(),

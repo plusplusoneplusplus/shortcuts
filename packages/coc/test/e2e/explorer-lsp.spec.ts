@@ -569,13 +569,17 @@ test.describe('Explorer language support – status', () => {
             await expect(page.locator(`${APP_PANEL} [data-testid="language-status-label"]`))
                 .toHaveText('TypeScript');
 
-            const badgeBox = await statusBadge(page).boundingBox();
-            const firstLineBox = await page.locator(
+            // Polled: `boundingBox` does not wait, and Monaco renders and
+            // recycles its line nodes on its own schedule, so a single read can
+            // land on a line that is not there yet or no longer attached.
+            const firstLine = page.locator(
                 `${APP_PANEL} [data-testid="monaco-container"] .view-lines .view-line`,
-            ).first().boundingBox();
-            expect(badgeBox).not.toBeNull();
-            expect(firstLineBox).not.toBeNull();
-            expect(badgeBox!.y).toBeGreaterThanOrEqual(firstLineBox!.y + firstLineBox!.height);
+            ).first();
+            await expect.poll(async () => {
+                const badgeBox = await statusBadge(page).boundingBox();
+                const firstLineBox = await firstLine.boundingBox();
+                return badgeBox && firstLineBox ? badgeBox.y - (firstLineBox.y + firstLineBox.height) : null;
+            }, { timeout: 10_000 }).toBeGreaterThanOrEqual(0);
         } finally {
             safeRmSync(tmpDir);
         }

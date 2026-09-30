@@ -269,9 +269,17 @@ separate from the filename so long paths do not displace match counts.
 
 Clicking a match sets `previewFile` with a `line`, which threads through
 `PreviewPane` → `MonacoFileEditor.revealLine` → `revealEditorLine`. Monaco is
-revealed both on mount and from an effect keyed on `[revealLine, value]`, because
-the content arrives after the editor does and a second hit in an already-open
-file has no mount to piggyback on.
+revealed both on mount and from an effect keyed on `revealLine` and the content
+revision, because the content arrives after the editor does and a second hit in
+an already-open file has no mount to piggyback on.
+
+`MonacoFileEditor` does not hand `value` to `@monaco-editor/react`, which
+silently writes any differing `value` back into the model. It remembers the
+texts it reported through `onChange` and drops a `value` that echoes one of
+them; only other text (a load, a discard) rewrites the model and bumps the
+content revision. A host re-renders a keystroke later, so passing a late echo
+through would rewind the buffer and cursor mid-typing and leave the language
+server holding text the user no longer sees.
 
 The page-level Ctrl/Cmd+Shift+F overlay is a separate tracked-file surface under
 `content-search/`. `contentSearchStateStore` keys repo and group state by workspace

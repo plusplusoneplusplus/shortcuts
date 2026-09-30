@@ -223,6 +223,24 @@ export class LanguageServerWebSocketServer {
             return;
         }
 
+        // The browser attaches its documents the moment the socket opens, and
+        // `ws` drops a message nobody is listening for. Listen now and hold
+        // what arrives until the workspace is known, or the attach is lost and
+        // the document waits on "connecting…" for good.
+        let client: BridgeClient | undefined;
+        const early: LanguageServerClientMessage[] = [];
+        ws.on('message', (raw: Buffer | string) => {
+            const message = parseClientMessage(raw);
+            if (!message) {
+                return;
+            }
+            if (client) {
+                void this.handleClientMessage(client, message);
+            } else {
+                early.push(message);
+            }
+        });
+
         let workspaceRoot: string;
         try {
             const workspaces = await this.workspaces.getWorkspaces();
@@ -243,7 +261,7 @@ export class LanguageServerWebSocketServer {
 
         if (ws.readyState !== WebSocket.OPEN) { return; }
 
-        const client: BridgeClient = {
+        client = {
             id: crypto.randomUUID(),
             socket: ws,
             workspaceId,
@@ -257,24 +275,18 @@ export class LanguageServerWebSocketServer {
         this.clients.set(client.id, client);
         getServerLogger().info({ clientId: client.id, workspaceId }, 'Language-server WebSocket connected');
 
+        const connected = client;
         ws.on('pong', () => { (ws as unknown as { isAlive: boolean }).isAlive = true; });
-        ws.on('message', (raw: Buffer | string) => {
-            const text = typeof raw === 'string' ? raw : raw.toString('utf-8');
-            let message: LanguageServerClientMessage;
-            try {
-                message = JSON.parse(text);
-            } catch {
-                return;
-            }
-            void this.handleClientMessage(client, message);
-        });
-        ws.on('close', () => { this.dropClient(client); });
+        ws.on('close', () => { this.dropClient(connected); });
         ws.on('error', (err) => {
-            getServerLogger().warn({ clientId: client.id, err }, 'Language-server WebSocket error');
-            this.dropClient(client);
+            getServerLogger().warn({ clientId: connected.id, err }, 'Language-server WebSocket error');
+            this.dropClient(connected);
         });
 
         this.send(ws, { type: 'lsp-welcome', clientId: client.id, workspaceId, editingSessionId });
+        for (const message of early.splice(0)) {
+            void this.handleClientMessage(connected, message);
+        }
 
         if (!this.heartbeatTimer) {
             this.startHeartbeat();
@@ -851,6 +863,14 @@ export class LanguageServerWebSocketServer {
             }
         }, HEARTBEAT_INTERVAL_MS);
         this.heartbeatTimer.unref?.();
+    }
+}
+
+function parseClientMessage(raw: Buffer | string): LanguageServerClientMessage | undefined {
+    try {
+        return JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf-8'));
+    } catch {
+        return undefined;
     }
 }
 

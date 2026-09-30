@@ -503,6 +503,29 @@ describe('LanguageServerSession reference counting and disposal', () => {
         await expect(session.sendRequest('echo', { alive: true })).resolves.toEqual({ alive: true });
     });
 
+    it('a request arriving while restart() is stopping the old process waits for the new one', async () => {
+        // Regression: `stop()` clears the connection before it awaits the old
+        // process's shutdown, so a request landing in that window launched a
+        // second process of its own. `stop()` then finished by marking the
+        // session `disabled` on top of that live process, and the browser —
+        // which treats `disabled` as "not attached" — sat on "connecting…".
+        const { session } = createSession(fixtureDefinition());
+        const release = session.attach();
+        await session.start();
+        const seen: string[] = [];
+        session.onStateChange((state) => seen.push(state.status));
+
+        const restarting = session.restart();
+        const reply = session.sendRequest('echo', { during: 'restart' });
+        await restarting;
+
+        await expect(reply).resolves.toEqual({ during: 'restart' });
+        expect(session.status).toBe('ready');
+        expect(session.getState().generation).toBe(2);
+        expect(seen).toEqual(['disabled', 'starting', 'ready']);
+        release();
+    });
+
     it('stop leaves the session reusable', async () => {
         const { session } = createSession(fixtureDefinition());
         await session.start();
