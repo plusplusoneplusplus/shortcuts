@@ -96,6 +96,30 @@ describe('GET /api/workspaces/:workspaceId/ralph-sessions/:sessionId', () => {
         expect(r.status).toBe(404);
     });
 
+    it('counts only persisted awaiting-input sessions in the requested workspace across store instances', async () => {
+        const store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, { originalGoal: 'wait', maxIterations: 2 });
+        await store.initSession(WS, 'other', { originalGoal: 'running', maxIterations: 2 });
+        await store.initSession(WS, 'second', { originalGoal: 'wait', maxIterations: 2 });
+        await store.initSession('ws-2', 'remote', { originalGoal: 'wait', maxIterations: 2 });
+        await store.updateSessionRecord(WS, SID, record => ({ ...record, phase: 'awaiting-input' }));
+        await store.updateSessionRecord(WS, 'second', record => ({ ...record, phase: 'awaiting-input' }));
+        await store.updateSessionRecord('ws-2', 'remote', record => ({ ...record, phase: 'awaiting-input' }));
+
+        const url = `/api/workspaces/${WS}/ralph-sessions/attention`;
+        expect((await getJson(baseUrl, url)).body).toEqual({ count: 2 });
+        expect((await getJson(baseUrl, '/api/workspaces/ws-2/ralph-sessions/attention')).body).toEqual({ count: 1 });
+        expect((await getJson(baseUrl, '/api/workspaces/ws-empty/ralph-sessions/attention')).body).toEqual({ count: 0 });
+
+        await store.updateSessionRecord(WS, SID, record => ({ ...record, phase: 'executing' }));
+        expect((await getJson(baseUrl, url)).body).toEqual({ count: 1 });
+        await store.updateSessionRecord(WS, SID, record => ({ ...record, phase: 'awaiting-input' }));
+        await store.updateSessionRecord(WS, SID, record => ({ ...record, phase: 'complete' }));
+        expect((await getJson(baseUrl, url)).body).toEqual({ count: 1 });
+        await store.updateSessionRecord(WS, 'second', record => ({ ...record, phase: 'complete' }));
+        expect((await getJson(baseUrl, url)).body).toEqual({ count: 0 });
+    });
+
     it('returns the session record and parsed sections for an existing session', async () => {
         const store = new RalphSessionStore({ dataDir });
         await store.initSession(WS, SID, { originalGoal: 'build the thing', maxIterations: 10 });

@@ -9,6 +9,7 @@ import { AddFolderDialog } from '../../repos/AddFolderDialog';
 import { CloneRepoDialog } from '../../repos/CloneRepoDialog';
 import type { RepoData, RepoGroup } from '../../repos/repoGrouping';
 import { groupReposByRemote, groupReposByAgent, applyGroupOrder, getRepoHashColor } from '../../repos/repoGrouping';
+import { getRepoSelectionId } from '../../repos/cloneIdentity';
 import { resolveRepoTabOrder, sanitizeRepoTabOrder } from '../../repos/repoOrder';
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
@@ -418,7 +419,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
     const renderTab = (repo: RepoData) => {
         const ws = repo.workspace;
         const isSelected = ws.id === selectedRepoId && (!ws.agentId || !appState.currentAgentId || ws.agentId === appState.currentAgentId);
-        const unseenCount = unseenCounts[ws.id] ?? 0;
+        const unseenCount = unseenCounts[getRepoSelectionId(repo)] ?? 0;
         const color = getRepoHashColor(ws, getHostname() ?? 'local');
         const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';
         const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
@@ -512,7 +513,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         <span
                             className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-[3px] rounded-full bg-[#d16969] text-white text-[8px] font-semibold flex items-center justify-center leading-none"
                             data-testid="repo-tab-unseen-badge"
-                            aria-label={`${unseenCount} unread`}
+                            aria-label={`${unseenCount} needing attention`}
                         >
                             {unseenCount > 99 ? '99+' : unseenCount}
                         </span>
@@ -577,7 +578,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                     const isActiveAgent = appState.currentAgentId === agentId;
                     const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
                     const isEmptyActiveAgent = isActiveAgent && group.repos.length === 0;
-                    const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
+                    const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[getRepoSelectionId(r)] ?? 0), 0);
                     return (
                         <div
                             key={agentId}
@@ -620,7 +621,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                         const isSelected = ws.id === selectedRepoId;
                                         const color = getRepoHashColor(ws, getHostname() ?? 'local');
                                         const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
-                                        const unseenCount = unseenCounts[ws.id] ?? 0;
+                                        const unseenCount = unseenCounts[getRepoSelectionId(repo)] ?? 0;
                                         return (
                                             <button
                                                 key={ws.id}
@@ -703,7 +704,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             const agentId = group.normalizedUrl ?? 'unknown';
                             const isActiveAgent = appState.currentAgentId === agentId;
                             const selectedInGroup = isActiveAgent && group.repos.find(r => r.workspace.id === selectedRepoId);
-                            const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[r.workspace.id] ?? 0), 0);
+                            const totalUnseen = group.repos.reduce((sum, r) => sum + (unseenCounts[getRepoSelectionId(r)] ?? 0), 0);
                             return (
                                 <div key={agentId} className="relative px-1 py-0.5 group/overflow-agent">
                                     <button
@@ -850,7 +851,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                                         {groupRepos.map(repo => {
                                             const ws = repo.workspace;
                                             const isSelected = ws.id === selectedRepoId && (!ws.agentId || !appState.currentAgentId || ws.agentId === appState.currentAgentId);
-                                            const unseenCount = unseenCounts[ws.id] ?? 0;
+                                            const unseenCount = unseenCounts[getRepoSelectionId(repo)] ?? 0;
                                             const color = getRepoHashColor(ws, getHostname() ?? 'local');
                                             const queueStatus = repoQueueStatusMap[ws.id] ?? 'idle';
                                             const dotShape = (repo.gitInfoLoading || repo.gitInfo?.isGitRepo !== false) ? 'rounded-full' : 'rounded-sm';

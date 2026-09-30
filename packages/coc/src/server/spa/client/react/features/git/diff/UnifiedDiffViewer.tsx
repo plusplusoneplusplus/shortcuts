@@ -24,7 +24,6 @@ import { FileBannerRow } from './FileBannerRow';
 import { writeDiffSelectionDragStart, type DiffSelectionDragSource } from './diffSelectionContext';
 import { parseFileBanners, buildBannerIndex, buildPreambleIndex, type FileBanner } from './fileBannerModel';
 import { useDockedFileBanner } from './useDockedFileBanner';
-import { observeOffsetUntilCleanup } from './observeOffsetUntilCleanup';
 
 export interface UnifiedDiffViewerProps {
     diff: string;
@@ -1102,9 +1101,6 @@ export const UnifiedDiffViewer = forwardRef<UnifiedDiffViewerHandle, UnifiedDiff
             const h = node.getBoundingClientRect?.().height;
             return h && h > 0 ? h : DIFF_LINE_ESTIMATE_PX;
         },
-        // The stock observer leaves its scroll-stop timer running past unmount,
-        // which then re-renders a viewer that is already gone.
-        observeElementOffset: observeOffsetUntilCleanup,
     });
 
     // Collapsing/expanding a hunk flips which rows render nothing. Sizes already

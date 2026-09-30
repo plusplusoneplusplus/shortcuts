@@ -31,7 +31,7 @@ export interface RalphSession {
 }
 
 export type RalphHistoryEntry = RalphSession | (any & { kind?: undefined });
-export type RalphSessionPhase = 'grilling' | 'executing' | 'complete' | 'failed';
+export type RalphSessionPhase = 'grilling' | 'executing' | 'awaiting-input' | 'complete' | 'failed';
 
 /** Extract ralph.sessionId from a process/task.
  *
@@ -75,6 +75,7 @@ function resolveSessionTitle(grillingProcess: any | undefined, iterations: any[]
 
 /** Extract ralph.phase from a process/task. Same fallback rule as above. */
 export function getRalphPhase(task: any): RalphSessionPhase | undefined {
+    if (!task) {return undefined;}
     return (task.payload?.context?.ralph?.phase ?? task.ralph?.phase) as any;
 }
 
@@ -106,6 +107,13 @@ function computeSessionPhase(
     }
     if (grillingProcess && (getRalphPhase(grillingProcess) === 'failed' || grillingProcess.status === 'failed')) {
         return 'failed';
+    }
+    // The server marks the iteration that ended with RALPH_NEEDS_INPUT as
+    // `awaiting-input` and resets it once the user answers or stops. Only the
+    // latest iteration counts, so a newer iteration (the resumed one) wins
+    // even if the list still holds a stale copy of the asking process.
+    if (getRalphPhase(iterations[iterations.length - 1]) === 'awaiting-input') {
+        return 'awaiting-input';
     }
     // If any iteration signals complete
     if (iterations.some(t => getRalphPhase(t) === 'complete')) {

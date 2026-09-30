@@ -8,7 +8,7 @@ export interface FormatProgressSectionInput {
     body?: string;
 }
 
-const SECTION_HEADER = /^##\s+Iteration\s+(\d+)\s+[—\-]\s+(RALPH_NEXT|RALPH_COMPLETE|NONE)\s+[—\-]\s+(\S+?)\s*$/;
+const SECTION_HEADER = /^##\s+Iteration\s+(\d+)\s+[—\-]\s+(RALPH_NEXT|RALPH_COMPLETE|RALPH_NEEDS_INPUT|NONE)\s+[—\-]\s+(\S+?)\s*$/;
 
 /**
  * Format one Ralph progress.md iteration block using the canonical heading.

@@ -128,6 +128,25 @@ describe('recordRalphIteration', () => {
         expect(r.record!.terminalReason).toBe('CAP_REACHED');
     });
 
+    it('marks phase=awaiting-input with no terminal reason for RALPH_NEEDS_INPUT', async () => {
+        const r = await recordRalphIteration({
+            dataDir,
+            workspaceId: WS,
+            sessionId: SID,
+            iteration: 5,
+            maxIterations: 5,
+            signal: 'RALPH_NEEDS_INPUT',
+            progressBody: 'blocked',
+            taskId: 't5',
+            processId: 'p5',
+            shouldContinue: false,
+        });
+        expect(r.record!.phase).toBe('awaiting-input');
+        expect(r.record!.terminalReason).toBeUndefined();
+        expect(r.record!.completedAt).toBeUndefined();
+        expect(r.record!.iterations[0].exitSignal).toBe('RALPH_NEEDS_INPUT');
+    });
+
     it('honors explicit terminalReason=MANUAL_VERIFICATION_ONLY for manual-only RALPH_NEXT', async () => {
         const r = await recordRalphIteration({
             dataDir,

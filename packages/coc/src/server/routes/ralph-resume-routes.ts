@@ -118,6 +118,7 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
                 reasoningEffort,
                 effortTier,
                 autoProviderRouting: aiSelection.value.autoProviderRouting,
+                humanInput: record.humanInputs?.find(input => input.iteration === record.currentIteration),
             });
 
             let taskId: string;

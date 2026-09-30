@@ -5,7 +5,7 @@
  * route, WebSocket, or filesystem ownership types.
  */
 
-export type RalphExitSignal = 'RALPH_NEXT' | 'RALPH_COMPLETE' | 'NONE';
+export type RalphExitSignal = 'RALPH_NEXT' | 'RALPH_COMPLETE' | 'RALPH_NEEDS_INPUT' | 'NONE';
 
 export type RalphSignal = RalphExitSignal;
 
@@ -19,19 +19,21 @@ export interface RalphParseResult {
     progress: string;
 }
 
-export type RalphSessionPhase = 'grilling' | 'executing' | 'complete';
+export type RalphSessionPhase = 'grilling' | 'executing' | 'awaiting-input' | 'complete';
 
 export type RalphTerminalReason =
     | 'RALPH_COMPLETE'
     | 'MANUAL_VERIFICATION_ONLY'
     | 'CAP_REACHED'
     | 'CANCELLED'
-    | 'NO_SIGNAL';
+    | 'NO_SIGNAL'
+    | 'USER_STOPPED';
 
 export type RalphSessionCompleteReason =
     | 'signal'
     | 'manual-verification-only'
     | 'cap'
+    | 'user-stopped'
     | 'final-check-failed'
     | 'final-check-enqueue-failed'
     | 'final-check-session-missing'
@@ -134,6 +136,39 @@ export interface RalphSessionRecord {
      * Absent on non-worktree sessions.
      */
     worktree?: RalphWorktreeMetadata;
+    /**
+     * The question batch the session is waiting on while
+     * `phase === 'awaiting-input'`. Cleared when the user answers or stops
+     * the session. Absent on sessions that never asked.
+     */
+    pendingInput?: RalphPendingInput;
+    /** Answers the user gave to earlier RALPH_NEEDS_INPUT batches, oldest first. */
+    humanInputs?: RalphHumanInput[];
+}
+
+/** A RALPH_NEEDS_INPUT request persisted on the session until answered. */
+export interface RalphPendingInput {
+    /** The iteration that asked. */
+    iteration: number;
+    taskId: string;
+    processId: string;
+    requestedAt: string;
+    request: RalphInputRequest;
+}
+
+/** One answered question from a RALPH_NEEDS_INPUT batch. */
+export interface RalphHumanAnswer {
+    question: string;
+    answer: string | string[];
+}
+
+/** The user's reply to a RALPH_NEEDS_INPUT batch, carried into the next iteration. */
+export interface RalphHumanInput {
+    /** The iteration that asked. */
+    iteration: number;
+    answeredAt: string;
+    answers: RalphHumanAnswer[];
+    note?: string;
 }
 
 export interface ParsedProgressSection {
@@ -246,3 +281,34 @@ export interface FinalCheckResult {
     /** Raw error message when status is 'unparseable' or 'invalid'. */
     error?: string;
 }
+
+/** Answer types a RALPH_NEEDS_INPUT question may use (mirrors `ask_user`). */
+export type RalphInputQuestionType = 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+
+export interface RalphInputOption {
+    value: string;
+    label: string;
+    description?: string;
+}
+
+/** One question in a RALPH_NEEDS_INPUT batch; `ask_user` shape plus a recommendation. */
+export interface RalphInputQuestion {
+    question: string;
+    type: RalphInputQuestionType;
+    options?: RalphInputOption[];
+    defaultValue?: string | string[];
+    /** The agent's recommended answer, used by "Use recommendation". */
+    recommendation: string | string[];
+}
+
+/** The single question batch an iteration may raise with RALPH_NEEDS_INPUT. */
+export interface RalphInputRequest {
+    /** What the agent found and why it is blocked. */
+    context: string;
+    questions: RalphInputQuestion[];
+}
+
+export type RalphNeedsInputParseResult =
+    | { status: 'absent' }
+    | { status: 'ok'; request: RalphInputRequest }
+    | { status: 'invalid'; error: string };

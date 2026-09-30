@@ -69,6 +69,7 @@ function makeOptions(
 
 function makeRalphTask(ralphCtx?: {
     originalGoal?: string;
+    humanInput?: unknown;
     currentIteration?: number;
     maxIterations?: number;
     sessionId?: string;
@@ -178,6 +179,30 @@ describe('RalphExecutor system message — execution (AC-01)', () => {
         expect(call.prompt).toContain('context.md');
         expect(call.prompt).toContain('read this first');
         expect(call.prompt).toContain('rewrite it at the end');
+    });
+
+    it('user prompt carries the Human answers block when resuming from RALPH_NEEDS_INPUT', async () => {
+        const executor = new RalphExecutor(store, makeOptions(store));
+        const task = makeRalphTask({
+            originalGoal: 'Add auth',
+            sessionId: 'sess-xyz',
+            currentIteration: 4,
+            maxIterations: 10,
+            humanInput: {
+                iteration: 3,
+                answeredAt: '2026-09-29T10:00:00.000Z',
+                answers: [{ question: 'Which layout?', answer: 'repo' }],
+                note: 'Keep it small',
+            },
+        });
+
+        await executor.execute(task, 'Continue');
+
+        const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+        expect(call.prompt).toContain('<human_answers>');
+        expect(call.prompt).toContain('1. Q: Which layout?\n   A: repo');
+        expect(call.prompt).toContain('Note: Keep it small');
+        expect(call.prompt.indexOf('<human_answers>')).toBeLessThan(call.prompt.indexOf('<goal>'));
     });
 });
 
@@ -394,4 +419,48 @@ describe('RalphExecutor', () => {
         expect(call.prompt).toContain('ultra-ralph');
         expect(call.prompt).not.toContain('<goal>');
     });
+});
+
+// ============================================================================
+// ask_user lockdown (AC-09)
+// ============================================================================
+
+describe('RalphExecutor ask_user lockdown (AC-09)', () => {
+    let store: ReturnType<typeof createMockProcessStore>;
+
+    beforeEach(() => {
+        store = createMockProcessStore();
+        sdkMocks.resetAll();
+        sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
+        sdkMocks.mockSendMessage.mockResolvedValue({
+            success: true,
+            response: 'RALPH_NEXT',
+            sessionId: 'sess-ralph',
+            toolCalls: [],
+        });
+    });
+
+    const cases: Array<[string, Parameters<typeof makeRalphTask>[0]]> = [
+        ['iteration', { originalGoal: 'Goal', sessionId: 'sess-1' }],
+        ['gap-fix iteration', { originalGoal: 'Goal', sessionId: 'sess-1', currentIteration: 7, maxIterations: 10 }],
+        ['final-check', {
+            originalGoal: 'Goal',
+            sessionId: 'sess-1',
+            finalCheck: { kind: 'goal-gap-check', checkIndex: 1, sourceIteration: 3, loopIndex: 0 },
+        }],
+        ['submit', { originalGoal: 'Goal', sessionId: 'sess-1', submit: { kind: 'submit-pr', submitIndex: 1 } }],
+    ];
+
+    for (const [label, ctx] of cases) {
+        it(`never offers ask_user to a ${label} task even when workspace askUser is enabled`, async () => {
+            const executor = new RalphExecutor(store, makeOptions(store, { askUser: { enabled: true } }));
+
+            await executor.execute(makeRalphTask(ctx), 'Run');
+
+            const call = sdkMocks.mockSendMessage.mock.calls[0][0];
+            const toolNames = (call.tools ?? []).map((tool: { name: string }) => tool.name);
+            expect(toolNames).not.toContain('ask_user');
+            expect(call.onUserInputRequest).toBeUndefined();
+        });
+    }
 });

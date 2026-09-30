@@ -429,11 +429,28 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
             const detail = (e as CustomEvent).detail;
             if (!detail?.repoId || detail.repoId === workspaceId) {
                 fetchQueue();
+                // A stopped awaiting-input session resets its asking process's
+                // ralph.phase; refetch so the attention marker clears.
+                fetchHistory();
             }
         };
         window.addEventListener('ralph-session-complete', handler);
         return () => window.removeEventListener('ralph-session-complete', handler);
-    }, [workspaceId, fetchQueue]);
+    }, [workspaceId, fetchQueue, fetchHistory]);
+
+    // A Ralph session paused on RALPH_NEEDS_INPUT: the server marked the asking
+    // process `ralph.phase = 'awaiting-input'`, so refetch history to show the
+    // attention marker on the session row.
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (!detail?.repoId || detail.repoId === workspaceId) {
+                fetchHistory();
+            }
+        };
+        window.addEventListener('ralph-session-awaiting-input', handler);
+        return () => window.removeEventListener('ralph-session-awaiting-input', handler);
+    }, [workspaceId, fetchHistory]);
 
     // Track active (running + queued) process IDs to detect departures and arrivals
     const prevActiveIdsRef = useRef<string[]>([]);

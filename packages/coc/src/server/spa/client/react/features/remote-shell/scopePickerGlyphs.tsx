@@ -88,7 +88,7 @@ export function CloneCountBadge({ count, className = '' }: { count: number; clas
 /** The red unseen-chat count carried by both cluster and pinned rows. */
 export function UnseenBadge({ count, testId = 'remote-unseen-badge' }: { count: number; testId?: string }) {
     return (
-        <span className={unreadBadgeClass} data-testid={testId} aria-label={`${count} unread`}>
+        <span className={unreadBadgeClass} data-testid={testId} aria-label={`${count} needing attention`}>
             {formatUnreadCount(count)}
         </span>
     );

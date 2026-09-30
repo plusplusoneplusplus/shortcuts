@@ -200,6 +200,16 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     /**
+     * Publish an internal `ralphSessionComplete` event for a session that
+     * ended outside a task completion (e.g. the user stopped it while it was
+     * awaiting input), so schedule runs waiting on it can finalize.
+     */
+    publishRalphSessionComplete(event: RalphSessionCompleteEvent): void {
+        this.defaultOptions.onRalphSessionComplete?.(event);
+        this.emit('ralphSessionComplete', event);
+    }
+
+    /**
      * Look up a bridge by its 16-char SHA-256 repoId.
      * Returns undefined if the repoId has not been registered.
      */

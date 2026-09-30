@@ -29,6 +29,19 @@ export function registerRalphSessionRoutes(routes: Route[], ctx: RalphSessionRou
 
     routes.push({
         method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/ralph-sessions\/attention$/,
+        handler: async (_req, res, match) => {
+            const workspaceId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
+            if (!workspaceId) return sendError(res, 400, 'Missing workspaceId');
+            const sessionStore = new RalphSessionStore({ dataDir });
+            const ids = await sessionStore.listSessionIds(workspaceId);
+            const records = await Promise.all(ids.map(id => sessionStore.readSessionRecord(workspaceId, id)));
+            sendJSON(res, 200, { count: records.filter(record => record?.phase === 'awaiting-input').length });
+        },
+    });
+
+    routes.push({
+        method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/ralph-sessions\/([^/]+)$/,
         handler: async (_req, res, match) => {
             const workspaceId = match?.[1] ? decodeURIComponent(match[1]) : undefined;

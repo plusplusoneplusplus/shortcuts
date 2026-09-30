@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+    formatHumanInputSection,
     formatProgressSection,
     parseProgressSections as parsePortableProgressSections,
 } from '@plusplusoneplusplus/coc-workflow/ralph';
@@ -19,10 +20,13 @@ import type {
     ParsedProgressSection,
     RalphExitSignal,
     RalphFinalCheckRecord,
+    RalphHumanInput,
     RalphLoopRecord,
+    RalphPendingInput,
     RalphSessionRecord,
     RalphSubmitRecord,
 } from './types';
+import type { RalphInputRequest } from '@plusplusoneplusplus/coc-workflow/ralph';
 
 const SESSIONS_DIR = 'ralph-sessions';
 const PROGRESS_FILE = 'progress.md';
@@ -287,6 +291,116 @@ export class RalphSessionStore {
 
     static parseProgressSections(progressMd: string): ParsedProgressSection[] {
         return parseProgressSections(progressMd);
+    }
+
+    /**
+     * Park the session on a RALPH_NEEDS_INPUT question batch: phase becomes
+     * `awaiting-input` and the request is persisted in `session.json` so it
+     * survives a server restart. No terminal reason is set — the session is
+     * paused, not finished.
+     *
+     * Throws if the session does not exist.
+     */
+    async setPendingInput(
+        workspaceId: string,
+        sessionId: string,
+        pending: RalphPendingInput,
+    ): Promise<RalphSessionRecord> {
+        const existing = await this.readSessionRecord(workspaceId, sessionId);
+        if (!existing) {
+            throw new Error(`Ralph session ${sessionId} not found in workspace ${workspaceId}`);
+        }
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? existing;
+            const next: RalphSessionRecord = { ...base, phase: 'awaiting-input', pendingInput: pending };
+            delete next.completedAt;
+            delete next.terminalReason;
+            return next;
+        });
+    }
+
+    /**
+     * Resume an `awaiting-input` session with the user's answers: clears
+     * `pendingInput`, records the answers in `humanInputs`, sets phase back to
+     * `executing`, and raises `maxIterations` when the asking iteration was
+     * the last one so the answer can still be acted on.
+     *
+     * Returns null (and writes nothing) when the session is missing or not
+     * awaiting input — callers map that to 404/409.
+     */
+    async resolvePendingInput(
+        workspaceId: string,
+        sessionId: string,
+        input: RalphHumanInput,
+    ): Promise<RalphSessionRecord | null> {
+        const existing = await this.readSessionRecord(workspaceId, sessionId);
+        if (!existing || existing.phase !== 'awaiting-input') {
+            return null;
+        }
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? existing;
+            const next: RalphSessionRecord = {
+                ...base,
+                phase: 'executing',
+                maxIterations: Math.max(base.maxIterations, base.currentIteration + 1),
+                humanInputs: [...(base.humanInputs ?? []), input],
+            };
+            delete next.pendingInput;
+            return next;
+        });
+    }
+
+    /**
+     * End an `awaiting-input` session at the user's request: phase `complete`,
+     * terminal reason `USER_STOPPED`, `pendingInput` cleared. The active loop
+     * record is closed too, so Submit PR sees a normal completed session.
+     *
+     * Returns null (and writes nothing) when the session is missing or not
+     * awaiting input.
+     */
+    async stopAwaitingSession(
+        workspaceId: string,
+        sessionId: string,
+        nowIso?: string,
+    ): Promise<RalphSessionRecord | null> {
+        const existing = await this.readSessionRecord(workspaceId, sessionId);
+        if (!existing || existing.phase !== 'awaiting-input') {
+            return null;
+        }
+        const completedAt = nowIso ?? new Date().toISOString();
+        return this.updateSessionRecord(workspaceId, sessionId, (rec) => {
+            const base = rec ?? existing;
+            const loops = base.loops?.map((loop, index, all) => (
+                index === all.length - 1 && !loop.completedAt
+                    ? { ...loop, endIteration: base.currentIteration, terminalReason: 'USER_STOPPED' as const, completedAt }
+                    : loop
+            ));
+            const next: RalphSessionRecord = {
+                ...base,
+                phase: 'complete',
+                terminalReason: 'USER_STOPPED',
+                completedAt,
+                ...(loops ? { loops } : {}),
+            };
+            delete next.pendingInput;
+            return next;
+        });
+    }
+
+    /** Append a `## Human input — <ts>` section to `progress.md`. */
+    async appendHumanInputSection(
+        workspaceId: string,
+        sessionId: string,
+        input: RalphHumanInput,
+        request?: RalphInputRequest,
+    ): Promise<void> {
+        const dir = this.getSessionDir(workspaceId, sessionId);
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.appendFile(
+            this.getProgressPath(workspaceId, sessionId),
+            `\n${formatHumanInputSection(input, request)}`,
+            'utf-8',
+        );
     }
 
     /**

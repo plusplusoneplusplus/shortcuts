@@ -121,6 +121,7 @@ import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
+import { registerRalphInputRoutes } from './ralph-input-routes';
 import { registerRalphSubmitRoutes } from './ralph-submit-routes';
 import { registerWorktreeRoutes } from './worktree-routes';
 import { registerForEachRoutes } from './for-each-routes';
@@ -663,7 +664,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerGroupPinRoutes(routes, store, dataDir);
     const taskGroupService = TaskGroupService.fromProcessStore(store);
     registerTaskGroupRoutes({ routes, store, taskGroupService });
-    registerRalphSessionChangeListener(dataDir, record => syncRalphSessionToTaskGroup(taskGroupService, record));
+    registerRalphSessionChangeListener(dataDir, record => {
+        try {
+            syncRalphSessionToTaskGroup(taskGroupService, record);
+        } finally {
+            getWsServer().broadcastProcessEvent({
+                type: 'ralph-session-changed',
+                workspaceId: record.workspaceId,
+                sessionId: record.sessionId,
+            });
+        }
+    });
     registerPinArchiveRoutes(routes, store as any);
     registerPinOrderRoutes(routes, store, dataDir);
     const chatFolderStore = taskGroupService.getChatFolderStore();
@@ -942,6 +953,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerRalphPromoteRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
     registerRalphLaunchRoutes(routes, { bridge: bridgeWithResolvedDefaults, dataDir, store, getGitWorktreeExecutionEnabled });
     registerRalphResumeRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
+    registerRalphInputRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir, getWsServer });
     registerRalphSubmitRoutes(routes, { bridge: bridgeWithResolvedDefaults, store, dataDir });
 
     // Git worktree management routes (AC-06 cleanup): list + non-destructive

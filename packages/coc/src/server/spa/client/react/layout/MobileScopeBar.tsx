@@ -62,7 +62,8 @@ export function MobileScopeBar() {
 
 function MobileScopeBarBody() {
     const { state, dispatch } = useApp();
-    const { repos, unseenCounts, remoteGroupWorkspaces } = useRepos();
+    const { repos, badgeCounts, unseenCounts: processUnseenCounts, remoteGroupWorkspaces } = useRepos();
+    const unseenCounts = badgeCounts ?? processUnseenCounts;
     const repoQueueMap = useQueue().state.repoQueueMap;
     const [pickerOpen, setPickerOpen] = useState(false);
     const [moreOpen, setMoreOpen] = useState(false);

@@ -148,6 +148,55 @@ describe('WorkspacesClient', () => {
     });
   });
 
+  it('serializes Ralph input answers, note, and AI overrides', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.submitRalphInput('repo/a', 'sess/1', {
+      answers: ['keep', ['a', 'b']],
+      note: 'ship it',
+      provider: 'claude',
+      config: { model: 'claude-sonnet-4.6' },
+    });
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/input',
+      options: {
+        method: 'POST',
+        body: {
+          answers: ['keep', ['a', 'b']],
+          note: 'ship it',
+          provider: 'claude',
+          config: { model: 'claude-sonnet-4.6' },
+        },
+      },
+    });
+  });
+
+  it('omits empty note and AI overrides from Ralph input', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.submitRalphInput('repo/a', 'sess/1', { answers: ['yes'], note: '' });
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/input',
+      options: { method: 'POST', body: { answers: ['yes'] } },
+    });
+  });
+
+  it('posts Ralph stop without a body', async () => {
+    const adapter = createMockAdapter({});
+    const client = new WorkspacesClient(adapter);
+
+    await client.stopRalphSession('repo/a', 'sess/1');
+
+    expect(adapter.calls[0]).toEqual({
+      path: '/workspaces/repo%2Fa/ralph-sessions/sess%2F1/stop',
+      options: { method: 'POST' },
+    });
+  });
+
   it('serializes Ralph resume Auto routing without a concrete provider', async () => {
     const adapter = createMockAdapter({});
     const client = new WorkspacesClient(adapter);

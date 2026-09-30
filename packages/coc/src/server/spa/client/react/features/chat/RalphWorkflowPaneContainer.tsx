@@ -24,6 +24,7 @@ import {
 import { useRalphSessionView } from './useRalphSessionView';
 import { useCocClient } from '../../repos/cloneRouting';
 import type { ResolvedModalJobAiSelection } from '../../shared/ModalJobAiControls';
+import type { RalphInputAnswer } from './RalphAwaitingInputNode';
 
 export interface RalphWorkflowPaneContainerProps {
     workspaceId: string;
@@ -111,6 +112,25 @@ export function RalphWorkflowPaneContainer(
         [workspaceId, sessionId, refresh, cloneClient],
     );
 
+    const handleSubmitInput = useCallback(
+        async (answers: RalphInputAnswer[], note: string | undefined) => {
+            await cloneClient.workspaces.submitRalphInput(workspaceId, sessionId, {
+                answers,
+                ...(note ? { note } : {}),
+            });
+            refresh();
+        },
+        [workspaceId, sessionId, refresh, cloneClient],
+    );
+
+    const handleStopSession = useCallback(
+        async () => {
+            await cloneClient.workspaces.stopRalphSession(workspaceId, sessionId);
+            refresh();
+        },
+        [workspaceId, sessionId, refresh, cloneClient],
+    );
+
     return (
         <RalphWorkflowPane
             workspaceId={workspaceId}
@@ -124,6 +144,8 @@ export function RalphWorkflowPaneContainer(
             onContinue={handleContinue}
             onNewLoop={handleNewLoop}
             onResume={handleResume}
+            onSubmitInput={handleSubmitInput}
+            onStopSession={handleStopSession}
             selectedFileName={selectedFileName}
             onSelectFile={onSelectFile}
             now={now}

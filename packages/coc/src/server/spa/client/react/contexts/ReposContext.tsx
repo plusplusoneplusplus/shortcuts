@@ -74,6 +74,10 @@ export interface ReposContextValue {
     remoteGroupWorkspaces: RemoteWorkspaceInfo[];
     fetchRepos: () => Promise<void>;
     unseenCounts: Record<string, number>;
+    /** Persisted Ralph requests for human input, independent of process seen-state. */
+    ralphAttentionCounts: Record<string, number>;
+    /** Combined badge projection; neither source count is mutated. */
+    badgeCounts: Record<string, number>;
     refreshUnseenCounts: (wsIds: string[]) => Promise<void>;
 }
 
@@ -124,6 +128,38 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
     // Per-repo unseen counts, fetched from the server.
     const [unseenCounts, setUnseenCounts] = useState<Record<string, number>>({});
+    const [ralphAttentionCounts, setRalphAttentionCounts] = useState<Record<string, number>>({});
+    const attentionRequestsRef = useRef<Record<string, number>>({});
+    const reposRef = useRef(repos);
+    reposRef.current = repos;
+
+    const refreshRalphAttention = useCallback(async (targets: RepoData[]) => {
+        await Promise.all(targets.map(async repo => {
+            const key = getRepoSelectionId(repo);
+            const request = (attentionRequestsRef.current[key] ?? 0) + 1;
+            attentionRequestsRef.current[key] = request;
+            try {
+                const client = isRemoteWorkspace(repo.workspace)
+                    ? getCocClientFor(repo.workspace.baseUrl)
+                    : getCocClientFor();
+                const { count } = await client.workspaces.ralphAttention(repo.workspace.id);
+                if (attentionRequestsRef.current[key] === request) {
+                    setRalphAttentionCounts(prev => ({ ...prev, [key]: count }));
+                }
+            } catch (error) {
+                console.warn('Could not refresh Ralph input attention', error);
+            }
+        }));
+    }, []);
+
+    const refreshAttentionForEvent = useCallback((workspaceId: string, baseUrl?: string) => {
+        const targets = reposRef.current.filter(repo =>
+            repo.workspace.id === workspaceId &&
+            (baseUrl
+                ? isRemoteWorkspace(repo.workspace) && repo.workspace.baseUrl === baseUrl
+                : !isRemoteWorkspace(repo.workspace)));
+        void refreshRalphAttention(targets);
+    }, [refreshRalphAttention]);
 
     // Seed repoQueueMap from /api/queue/repos (single call for all repos)
     const seedRepoQueueStats = useCallback(async (enriched: RepoData[]) => {
@@ -233,6 +269,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             const combined = remoteRepos.length > 0 ? [...enriched, ...remoteRepos] : enriched;
 
             // Render cards immediately (local git-info still loading; remote resolved)
+            reposRef.current = combined;
             setRepos(combined);
             setLoading(false);
 
@@ -240,6 +277,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             seedRepoQueueStats(combined);
 
             refreshUnseenCounts(combined.map(r => r.workspace.id));
+            void refreshRalphAttention(combined);
 
             // Clear selection if repo was removed.
             // Check against the full workspaces list (not enriched) so virtual
@@ -371,7 +409,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             setRemoteWarnings([]);
             setLoading(false);
         }
-    }, [dispatch, refreshUnseenCounts, seedRepoQueueStats]);
+    }, [dispatch, refreshUnseenCounts, refreshRalphAttention, seedRepoQueueStats]);
 
     // Process lifecycle events update AppContext directly. Derive card counts from
     // that live index instead of re-running workspace discovery or Git-info batches.
@@ -431,13 +469,26 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             if (!message || !baseUrl) return;
             if (message.type === 'git-changed' && message.workspaceId) {
                 refreshGitInfoForWorkspace(message.workspaceId, baseUrl);
+            } else if (message.type === 'ralph-session-changed' && message.workspaceId) {
+                refreshAttentionForEvent(message.workspaceId, baseUrl);
             } else if (message.type === 'workspace-topology-changed') {
                 fetchRepos('topology-change');
             }
         };
+        const handleRemoteConnect = (event: Event) => {
+            const baseUrl = (event as CustomEvent<{ baseUrl?: string }>).detail?.baseUrl;
+            if (baseUrl) {
+                void refreshRalphAttention(reposRef.current.filter(repo =>
+                    isRemoteWorkspace(repo.workspace) && repo.workspace.baseUrl === baseUrl));
+            }
+        };
         window.addEventListener('coc-remote-ws-message', handleRemoteMessage);
-        return () => window.removeEventListener('coc-remote-ws-message', handleRemoteMessage);
-    }, [fetchRepos, refreshGitInfoForWorkspace]);
+        window.addEventListener('coc-remote-ws-connect', handleRemoteConnect);
+        return () => {
+            window.removeEventListener('coc-remote-ws-message', handleRemoteMessage);
+            window.removeEventListener('coc-remote-ws-connect', handleRemoteConnect);
+        };
+    }, [fetchRepos, refreshGitInfoForWorkspace, refreshAttentionForEvent, refreshRalphAttention]);
 
     // WebSocket: update process state in memory; reserve repository discovery for
     // topology changes and reconnect recovery. Git mutations refresh one workspace.
@@ -449,6 +500,9 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             if (msg.type === 'git-changed' && msg.workspaceId) {
                 refreshGitInfoForWorkspace(msg.workspaceId);
             }
+            if (msg.type === 'ralph-session-changed' && msg.workspaceId) {
+                refreshAttentionForEvent(msg.workspaceId);
+            }
             if (msg.type === 'workspace-topology-changed' || msg.type === 'server-topology-changed') {
                 fetchRepos('topology-change');
             } else if (msg.type === 'process-added' && msg.process) {
@@ -458,7 +512,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
             } else if (msg.type === 'process-removed' && msg.processId) {
                 dispatch({ type: 'PROCESS_REMOVED', processId: msg.processId });
             }
-        }, [dispatch, refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, fetchRepos]),
+        }, [dispatch, refreshPipelinesForWorkspace, refreshGitInfoForWorkspace, refreshAttentionForEvent, fetchRepos]),
         onConnect: useCallback(() => {
             if (hasConnectedOnceRef.current) {
                 fetchRepos('reconnect');
@@ -515,9 +569,20 @@ export function ReposProvider({ children }: { children: ReactNode }) {
         }
     }, [appState.selectedRepoId, repos]);
 
+    const badgeCounts = useMemo(() => {
+        const combined: Record<string, number> = {};
+        for (const repo of repos) {
+            const key = getRepoSelectionId(repo);
+            const unseen = unseenCounts[key] ?? unseenCounts[repo.workspace.id];
+            combined[key] = (unseen ?? 0)
+                + (ralphAttentionCounts[key] ?? 0);
+        }
+        return combined;
+    }, [repos, unseenCounts, ralphAttentionCounts]);
+
     const value = useMemo<ReposContextValue>(
-        () => ({ repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, refreshUnseenCounts }),
-        [repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, refreshUnseenCounts]
+        () => ({ repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, ralphAttentionCounts, badgeCounts, refreshUnseenCounts }),
+        [repos, loading, remoteWarnings, remoteGroupWorkspaces, fetchRepos, unseenCounts, ralphAttentionCounts, badgeCounts, refreshUnseenCounts]
     );
 
     return <ReposContext.Provider value={value}>{children}</ReposContext.Provider>;

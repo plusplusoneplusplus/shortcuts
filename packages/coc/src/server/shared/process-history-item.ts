@@ -59,7 +59,7 @@ export interface ProcessHistoryItem {
     // queue_task `payload.context.ralph` is no longer available.
     ralph?: {
         sessionId: string;
-        phase?: 'grilling' | 'executing' | 'complete';
+        phase?: 'grilling' | 'executing' | 'awaiting-input' | 'complete';
         currentIteration?: number;
         /** Confirmed goal spec, used to derive a concise chat-list title. */
         originalGoal?: string;

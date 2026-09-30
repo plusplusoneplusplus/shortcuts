@@ -34,7 +34,7 @@ export const DIFF_SELECTION_CONTEXT_DRAG_MIME = 'application/vnd.coc.diff-select
 export const DIFF_SELECTION_CONTEXT_DRAG_KIND = 'coc.diff-selection-context';
 
 export type SessionContextSourceStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
-export type RalphSessionContextPhase = 'grilling' | 'executing' | 'complete' | 'failed';
+export type RalphSessionContextPhase = 'grilling' | 'executing' | 'awaiting-input' | 'complete' | 'failed';
 
 export interface SessionContextDragPayload {
     kind: typeof SESSION_CONTEXT_DRAG_KIND;
@@ -177,6 +177,7 @@ const ATTACHABLE_STATUSES = new Set<SessionContextSourceStatus>([
 const RALPH_SESSION_PHASES = new Set<RalphSessionContextPhase>([
     'grilling',
     'executing',
+    'awaiting-input',
     'complete',
     'failed',
 ]);
@@ -328,7 +329,7 @@ function resolveRalphStatus(source: any, children: any[]): SessionContextSourceS
     if (childStatuses.includes('cancelled')) return 'cancelled';
     if (source?.phase === 'failed') return 'failed';
     if (source?.phase === 'complete') return 'completed';
-    if (source?.phase === 'executing' || source?.phase === 'grilling') return 'running';
+    if (source?.phase === 'executing' || source?.phase === 'grilling' || source?.phase === 'awaiting-input') return 'running';
     return childStatuses[0] ?? null;
 }
 

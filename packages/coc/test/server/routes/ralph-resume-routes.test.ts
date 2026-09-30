@@ -153,6 +153,23 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/resume', () => {
         expect(md).toMatch(/Session resumed at .* picking up from iteration 3/);
     });
 
+    it('replays saved human answers when the input route could not enqueue', async () => {
+        await seedSession(dataDir, 'ws-1', 'sess-answered', {
+            humanInputs: [{
+                iteration: 3,
+                answeredAt: '2026-05-11T01:32:00Z',
+                answers: [{ question: 'Which layout?', answer: 'repo' }],
+                note: 'Use the existing layout.',
+            }],
+        });
+        const res = await post(baseUrl, '/api/workspaces/ws-1/ralph-sessions/sess-answered/resume', {});
+        expect(res.status).toBe(200);
+        const task = bridgeStub.enqueue.mock.calls[0][0];
+        expect(task.payload.context.ralph.humanInput.answers[0].answer).toBe('repo');
+        expect(task.payload.prompt).toContain('<human_answers>');
+        expect(task.payload.prompt).toContain('Use the existing layout.');
+    });
+
     it('preserves the prior concrete provider when resuming a stuck session', async () => {
         await seedSession(dataDir, 'ws-provider', 'sess-provider');
         await store.addProcess({

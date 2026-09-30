@@ -72,6 +72,8 @@ import {
     buildRemoteCloneKey,
     legacyPathOnlyWorkspaceIdForRootPath,
 } from '../../../../src/server/spa/client/react/repos/cloneIdentity';
+import { getCocClientFor } from '../../../../src/server/spa/client/react/api/cocClient';
+import { fetchUnseenCount } from '../../../../src/server/spa/client/react/hooks/preferences/seenStateApi';
 
 afterEach(() => {
     vi.clearAllMocks();
@@ -141,6 +143,11 @@ function RepoStatsConsumer() {
     return <div data-testid="repo-stats">{repo.stats.running}/{repo.stats.success}/{repo.stats.failed}</div>;
 }
 
+function AttentionConsumer() {
+    const { badgeCounts, unseenCounts } = useRepos();
+    return <div data-testid="attention">{JSON.stringify({ badgeCounts, unseenCounts })}</div>;
+}
+
 function ProviderWithConsumer() {
     return (
         <Wrapper>
@@ -196,6 +203,8 @@ function SelectedRepoConsumer() {
 
 describe('ReposContext', () => {
     beforeEach(() => {
+        vi.spyOn(getCocClientFor().workspaces, 'ralphAttention').mockResolvedValue({ count: 0 });
+        vi.mocked(fetchUnseenCount).mockResolvedValue(0);
         webSocketMock.options = null;
         repositoryServiceMocks.listWorkspaces.mockResolvedValue([]);
         repositoryServiceMocks.listProcessSummaries.mockResolvedValue({ summaries: [], total: 0, limit: 5000, offset: 0 });
@@ -208,6 +217,77 @@ describe('ReposContext', () => {
         _resetRemoteSelectionForTests();
         _resetLocalWorkspaceForTests();
         window.history.replaceState(null, '', '/');
+    });
+
+    it('shows awaiting-input attention after reload and clears it on answer or stop independently of unread', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
+        vi.mocked(fetchUnseenCount).mockResolvedValueOnce(2);
+        const attention = vi.mocked(getCocClientFor().workspaces.ralphAttention);
+        attention.mockResolvedValueOnce({ count: 1 }).mockResolvedValue({ count: 0 });
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(3));
+        expect(JSON.parse(screen.getByTestId('attention').textContent!).unseenCounts['ws-1']).toBe(2);
+        await act(async () => webSocketMock.options?.onMessage({ type: 'ralph-session-changed', workspaceId: 'ws-1' }));
+        await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(2));
+        attention.mockResolvedValue({ count: 1 });
+        await act(async () => webSocketMock.options?.onMessage({ type: 'ralph-session-changed', workspaceId: 'ws-1' }));
+        await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(3));
+        attention.mockResolvedValue({ count: 0 });
+        await act(async () => webSocketMock.options?.onMessage({ type: 'ralph-session-changed', workspaceId: 'ws-1' }));
+        await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(2));
+    });
+
+    it('routes clone attention by owner when local and remote workspaces share an id', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
+        vi.mocked(fetchUnseenCount).mockResolvedValue(2);
+        const remoteUrl = 'http://127.0.0.1:4000';
+        aggregateRemoteWorkspacesMock.mockResolvedValue(remoteAggregate('srv-1', remoteUrl, 'ws-1'));
+        const remoteAttention = vi.spyOn(getCocClientFor(remoteUrl).workspaces, 'ralphAttention').mockResolvedValue({ count: 2 });
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        const remoteKey = buildRemoteCloneKey('srv-1', 'ws-1');
+        await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts[remoteKey]).toBe(4));
+        expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(2);
+        remoteAttention.mockResolvedValue({ count: 0 });
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-remote-ws-message', {
+            detail: { baseUrl: remoteUrl, message: { type: 'ralph-session-changed', workspaceId: 'ws-1' } },
+        })));
+        await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts[remoteKey]).toBe(2));
+        expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(2);
+        remoteAttention.mockResolvedValue({ count: 1 });
+        await act(async () => window.dispatchEvent(new CustomEvent('coc-remote-ws-connect', {
+            detail: { baseUrl: remoteUrl },
+        })));
+        await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts[remoteKey]).toBe(3));
+    });
+
+    it('ignores a stale pause response after a newer answer response', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
+        const attention = vi.mocked(getCocClientFor().workspaces.ralphAttention);
+        render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+        await waitFor(() => expect(attention).toHaveBeenCalled());
+        await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(0));
+        let resolvePause!: (value: { count: number }) => void;
+        attention.mockImplementationOnce(() => new Promise(resolve => { resolvePause = resolve; }));
+        await act(async () => webSocketMock.options?.onMessage({ type: 'ralph-session-changed', workspaceId: 'ws-1' }));
+        await act(async () => webSocketMock.options?.onMessage({ type: 'ralph-session-changed', workspaceId: 'ws-1' }));
+        await act(async () => resolvePause({ count: 1 }));
+        expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(0);
+    });
+
+    it('preserves known waiting attention if a refresh fails', async () => {
+        repositoryServiceMocks.listWorkspaces.mockResolvedValue([makeWorkspace('ws-1')]);
+        const attention = vi.mocked(getCocClientFor().workspaces.ralphAttention);
+        attention.mockResolvedValueOnce({ count: 1 }).mockRejectedValueOnce(new Error('offline'));
+        const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            render(<Wrapper><ReposProvider><AttentionConsumer /></ReposProvider></Wrapper>);
+            await waitFor(() => expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(1));
+            await act(async () => webSocketMock.options?.onMessage({ type: 'ralph-session-changed', workspaceId: 'ws-1' }));
+            expect(JSON.parse(screen.getByTestId('attention').textContent!).badgeCounts['ws-1']).toBe(1);
+            expect(warning).toHaveBeenCalledWith('Could not refresh Ralph input attention', expect.any(Error));
+        } finally {
+            warning.mockRestore();
+        }
     });
 
     afterEach(() => {

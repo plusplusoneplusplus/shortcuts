@@ -274,7 +274,7 @@ export interface ProcessHistoryItem {
   archived?: boolean;
   ralph?: {
     sessionId: string;
-    phase?: 'grilling' | 'executing' | 'complete';
+    phase?: RalphSessionPhase;
     currentIteration?: number;
     /** Confirmed goal spec, used to derive a concise chat-list title. */
     originalGoal?: string;
@@ -425,16 +425,66 @@ export interface MyLifeSummaryResponse {
 // Ralph session journal
 // ============================================================================
 
-export type RalphExitSignal = 'RALPH_NEXT' | 'RALPH_COMPLETE' | 'NONE';
+export type RalphExitSignal = 'RALPH_NEXT' | 'RALPH_COMPLETE' | 'RALPH_NEEDS_INPUT' | 'NONE';
 
-export type RalphSessionPhase = 'grilling' | 'executing' | 'complete';
+export type RalphSessionPhase = 'grilling' | 'executing' | 'awaiting-input' | 'complete';
 
 export type RalphTerminalReason =
   | 'RALPH_COMPLETE'
   | 'MANUAL_VERIFICATION_ONLY'
   | 'CAP_REACHED'
   | 'CANCELLED'
-  | 'NO_SIGNAL';
+  | 'NO_SIGNAL'
+  | 'USER_STOPPED';
+
+export type RalphInputQuestionType = 'select' | 'multi-select' | 'yes-no' | 'confirm' | 'text';
+
+export interface RalphInputOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+/** One question in a RALPH_NEEDS_INPUT batch; `ask_user` shape plus a recommendation. */
+export interface RalphInputQuestion {
+  question: string;
+  type: RalphInputQuestionType;
+  options?: RalphInputOption[];
+  defaultValue?: string | string[];
+  /** The agent's recommended answer, used by "Use recommendation". */
+  recommendation: string | string[];
+}
+
+/** The question batch an iteration raised with RALPH_NEEDS_INPUT. */
+export interface RalphInputRequest {
+  /** What the agent found and why it is blocked. */
+  context: string;
+  questions: RalphInputQuestion[];
+}
+
+/** Question batch waiting for an answer while the session is `awaiting-input`. */
+export interface RalphPendingInput {
+  /** The iteration that asked. */
+  iteration: number;
+  taskId: string;
+  processId: string;
+  requestedAt: string;
+  request: RalphInputRequest;
+}
+
+export interface RalphHumanAnswer {
+  question: string;
+  answer: string | string[];
+}
+
+/** A saved reply to a RALPH_NEEDS_INPUT batch. */
+export interface RalphHumanInput {
+  /** The iteration that asked. */
+  iteration: number;
+  answeredAt: string;
+  answers: RalphHumanAnswer[];
+  note?: string;
+}
 
 export interface RalphIterationRecord {
   iteration: number;
@@ -489,6 +539,10 @@ export interface RalphSessionRecord {
    * non-worktree sessions.
    */
   worktree?: WorktreeMetadata;
+  /** Open question batch; set only while `phase` is `awaiting-input`. */
+  pendingInput?: RalphPendingInput;
+  /** Answers the user gave to earlier question batches, oldest first. */
+  humanInputs?: RalphHumanInput[];
 }
 
 // ============================================================================
@@ -621,6 +675,25 @@ export interface RalphResumeResponse {
   taskId: string;
   nextIteration: number;
   maxIterations: number;
+}
+
+/**
+ * Body of `POST /workspaces/:id/ralph-sessions/:sessionId/input`. `answers`
+ * is index-aligned with `pendingInput.request.questions`. AI overrides follow
+ * the same rules as {@link RalphResumeRequest}.
+ */
+export interface RalphInputSubmitRequest extends RalphResumeRequest {
+  answers: Array<string | string[]>;
+  note?: string;
+}
+
+/** Response of `POST /workspaces/:id/ralph-sessions/:sessionId/stop`. */
+export interface RalphStopResponse {
+  stopped: true;
+  sessionId: string;
+  workspaceId: string;
+  phase: 'complete';
+  terminalReason: 'USER_STOPPED';
 }
 
 export interface RalphResumeRequest {

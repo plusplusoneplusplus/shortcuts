@@ -19,6 +19,8 @@ import {
     type RalphIterationCompletionReason,
 } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import { setRalphProcessPhase } from './process-phase';
 import { RalphSessionStore } from './ralph-session-store';
 import { recordRalphIteration } from './record-iteration';
 import { buildRalphIterationTask, inheritRalphTaskConfig } from './enqueue-iteration';
@@ -48,6 +50,21 @@ export interface OrchestrateRalphIterationDeps {
         totalIterations: number;
         reason: string;
     }) => void;
+    /**
+     * Broadcast that a session paused on a RALPH_NEEDS_INPUT question batch.
+     * Optional: hosts without a live channel still persist the request.
+     */
+    broadcastAwaitingInput?: (params: {
+        workspaceId: string;
+        sessionId: string;
+        processId: string;
+        iteration: number;
+    }) => void;
+    /**
+     * Process store used to mark the asking iteration's process
+     * `metadata.ralph.phase = 'awaiting-input'` (chat-list attention marker).
+     */
+    processStore?: ProcessStore;
     /** Working directory for next-iteration and final-check tasks. */
     workingDirectory?: string;
     /** folderPath for next-iteration and final-check tasks. */
@@ -199,7 +216,8 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                                 ...nextTask.payload.context,
                                 ...deps.existingPayloadContext,
                                 ralph: {
-                                    ...(ralphCtx ?? {}),
+                                    // Human answers belong only to the iteration that resumed from them.
+                                    ...withoutHumanInput(ralphCtx),
                                     ...nextTask.payload.context.ralph,
                                     originalGoal: action.originalGoal,
                                     currentIteration: action.iteration,
@@ -247,6 +265,45 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                     }
                 });
                 break;
+
+            case 'awaitInput': {
+                // Park the session. Nothing is enqueued and no session-complete
+                // event fires, so scheduled runs stay active while waiting.
+                if (!deps.dataDir || !action.workspaceId || !action.sessionId) {
+                    logger.warn(LogCategory.AI, `[Ralph] RALPH_NEEDS_INPUT from ${processId} cannot be persisted (no journal); session left idle.`);
+                    break;
+                }
+                const store = new RalphSessionStore({ dataDir: deps.dataDir });
+                try {
+                    await store.setPendingInput(action.workspaceId, action.sessionId, {
+                        iteration: action.iteration,
+                        taskId: action.taskId,
+                        processId: action.processId,
+                        requestedAt: new Date().toISOString(),
+                        request: action.request,
+                    });
+                } catch (err) {
+                    logger.warn(LogCategory.AI, `[Ralph] Failed to persist pending input for ${action.sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+                    break;
+                }
+                logger.info(LogCategory.AI, `[Ralph] Session ${action.sessionId} awaiting user input after iteration ${action.iteration}`);
+                try {
+                    await setRalphProcessPhase(deps.processStore, action.processId, 'awaiting-input');
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[Ralph] Failed to mark process ${action.processId} awaiting input: ${err instanceof Error ? err.message : String(err)}`);
+                }
+                try {
+                    deps.broadcastAwaitingInput?.({
+                        workspaceId: action.workspaceId,
+                        sessionId: action.sessionId,
+                        processId: action.processId,
+                        iteration: action.iteration,
+                    });
+                } catch (err) {
+                    logger.debug(LogCategory.AI, `[Ralph] Failed to broadcast awaiting-input for ${action.sessionId}: ${err instanceof Error ? err.message : String(err)}`);
+                }
+                break;
+            }
 
             case 'completeSession':
                 logger.debug(LogCategory.AI, `[Ralph] Session complete for ${processId} (reason: ${action.completionReason}, iterations: ${action.totalIterations})`);
@@ -458,4 +515,11 @@ async function readRecentProgressSections(input: {
         logger.debug(LogCategory.AI, `[Ralph] Could not read recent progress sections for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;
     }
+}
+
+function withoutHumanInput<T extends object>(ralphCtx: T | null | undefined): Partial<T> {
+    if (!ralphCtx) return {};
+    const rest: Partial<T> & { humanInput?: unknown } = { ...ralphCtx };
+    delete rest.humanInput;
+    return rest;
 }

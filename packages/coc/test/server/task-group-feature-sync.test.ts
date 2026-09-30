@@ -9,6 +9,7 @@ import {
     syncDreamRunToTaskGroup,
     syncForEachRunToTaskGroup,
     syncMapReduceRunToTaskGroup,
+    ralphSessionToTaskGroupStatus,
     syncRalphSessionToTaskGroup,
     toTaskGroupTitle,
 } from '../../src/server/task-groups/feature-sync';
@@ -300,5 +301,21 @@ describe('task-group feature sync', () => {
         ]);
 
         db.close();
+    });
+});
+
+describe('ralphSessionToTaskGroupStatus', () => {
+    const base = {
+        sessionId: 's', workspaceId: WS, originalGoal: 'g', maxIterations: 5,
+        currentIteration: 1, startedAt: '2026-09-29T00:00:00Z', iterations: [],
+    };
+
+    it('keeps a session awaiting input in the running state', () => {
+        expect(ralphSessionToTaskGroupStatus({ ...base, phase: 'awaiting-input' })).toBe('running');
+    });
+
+    it('maps a user-stopped session to completed', () => {
+        expect(ralphSessionToTaskGroupStatus({ ...base, phase: 'complete', terminalReason: 'USER_STOPPED' }))
+            .toBe('completed');
     });
 });

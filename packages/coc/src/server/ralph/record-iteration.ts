@@ -16,6 +16,7 @@ import { gitHeadSha } from './capture-baseline-sha';
 import type {
     RalphExitSignal,
     RalphIterationRecord,
+    RalphSessionPhase,
     RalphSessionRecord,
     RalphTerminalReason,
 } from './types';
@@ -97,9 +98,15 @@ export async function recordRalphIteration(
     // Any failure leaves the field absent; a broken native addon propagates.
     const headSha = await captureIterationHeadSha(store, input, workspaceId, sessionId);
 
-    const phase: 'executing' | 'complete' = input.shouldContinue ? 'executing' : 'complete';
+    // A RALPH_NEEDS_INPUT iteration pauses the session: not continuing, but
+    // not terminal either. The question itself is persisted by the
+    // orchestrator's `awaitInput` action.
+    const awaitingInput = input.signal === 'RALPH_NEEDS_INPUT';
+    const phase: RalphSessionPhase = input.shouldContinue
+        ? 'executing'
+        : awaitingInput ? 'awaiting-input' : 'complete';
     let terminalReason: RalphTerminalReason | undefined;
-    if (!input.shouldContinue) {
+    if (!input.shouldContinue && !awaitingInput) {
         if (input.terminalReason) terminalReason = input.terminalReason;
         else if (input.signal === 'RALPH_COMPLETE') terminalReason = 'RALPH_COMPLETE';
         else if (input.signal === 'NONE') terminalReason = 'NO_SIGNAL';

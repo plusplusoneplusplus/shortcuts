@@ -28,6 +28,7 @@ import type {
 import { RalphWorkflowNode } from './RalphWorkflowNode';
 import { RalphFinalCheckNode } from './RalphFinalCheckNode';
 import { RalphSubmitNode } from './RalphSubmitNode';
+import { RalphAwaitingInputNode, type RalphInputAnswer } from './RalphAwaitingInputNode';
 import { WorktreeChip } from '../../shared/WorktreeChip';
 import { useCocClient } from '../../repos/cloneRouting';
 import { getSpaCocClientErrorMessage } from '../../api/cocClient';
@@ -85,11 +86,19 @@ export interface RalphWorkflowPaneProps {
      * pane calls `git.cleanupWorktree` on the selected clone's server directly.
      */
     onCleanupWorktree?: (worktreeId: string) => Promise<CleanupWorktreeResponse>;
+    /**
+     * Override the awaiting-input answer handler (used by tests / the
+     * container). When omitted, calls `workspaces.submitRalphInput` directly.
+     */
+    onSubmitInput?: (answers: RalphInputAnswer[], note: string | undefined) => Promise<void>;
+    /** Override the "Stop session" handler. When omitted, calls `workspaces.stopRalphSession`. */
+    onStopSession?: () => Promise<void>;
 }
 
 const PHASE_BADGE: Record<RalphSessionRecord['phase'], { label: string; cls: string }> = {
     grilling: { label: 'Clarifying', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' },
     executing: { label: 'Executing', cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' },
+    'awaiting-input': { label: 'Awaiting input', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' },
     complete: { label: 'Complete', cls: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200' },
 };
 
@@ -99,6 +108,7 @@ const TERMINAL_LABEL: Record<RalphTerminalReason, string> = {
     CAP_REACHED: 'Iteration cap reached',
     CANCELLED: 'Cancelled',
     NO_SIGNAL: 'Stopped — no signal',
+    USER_STOPPED: 'Stopped by user',
 };
 
 /**
@@ -347,6 +357,8 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         selectedFileName,
         onSelectFile,
         onCleanupWorktree,
+        onSubmitInput,
+        onStopSession,
     } = props;
 
     // AC-07: Ralph continue/new-loop/resume target the selected clone's server.
@@ -596,6 +608,22 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         }
     };
 
+    const handleSubmitInput = async (answers: RalphInputAnswer[], note: string | undefined) => {
+        if (onSubmitInput) {
+            await onSubmitInput(answers, note);
+            return;
+        }
+        await cloneClient.workspaces.submitRalphInput(workspaceId, sessionId, { answers, ...(note ? { note } : {}) });
+    };
+
+    const handleStopSession = async () => {
+        if (onStopSession) {
+            await onStopSession();
+            return;
+        }
+        await cloneClient.workspaces.stopRalphSession(workspaceId, sessionId);
+    };
+
     const handleContinueConfirmed = async () => {
         setContinueState('submitting');
         setContinueError(null);
@@ -690,11 +718,20 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
     type TimelineItem =
         | { kind: 'iteration'; iter: number }
         | { kind: 'finalCheck'; check: RalphFinalCheckRecord }
-        | { kind: 'submit'; submit: RalphSubmitRecord };
+        | { kind: 'submit'; submit: RalphSubmitRecord }
+        | { kind: 'awaitingInput' };
     const timelineItems: TimelineItem[] = [];
     const placedCheckIndexes = new Set<number>();
+    // The open question batch sits right after the iteration that asked; the
+    // SPA hides it when the server doesn't report `awaiting-input`.
+    const pendingInput = record.phase === 'awaiting-input' ? record.pendingInput : undefined;
+    let awaitingInputPlaced = false;
     for (const iter of allIters) {
         timelineItems.push({ kind: 'iteration', iter });
+        if (pendingInput && iter === pendingInput.iteration) {
+            timelineItems.push({ kind: 'awaitingInput' });
+            awaitingInputPlaced = true;
+        }
         for (const check of finalChecksBySource.get(iter) ?? []) {
             timelineItems.push({ kind: 'finalCheck', check });
             placedCheckIndexes.add(check.checkIndex);
@@ -704,6 +741,9 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
         if (!placedCheckIndexes.has(check.checkIndex)) {
             timelineItems.push({ kind: 'finalCheck', check });
         }
+    }
+    if (pendingInput && !awaitingInputPlaced) {
+        timelineItems.push({ kind: 'awaitingInput' });
     }
     // PR submits always happen after the session completed, so their nodes go
     // at the end of the timeline in submit order.
@@ -1087,6 +1127,17 @@ export function RalphWorkflowPane(props: RalphWorkflowPaneProps): React.ReactEle
                     ) : (
                         <ol className="flex flex-col gap-2">
                             {timelineItems.map(item => {
+                                if (item.kind === 'awaitingInput') {
+                                    return pendingInput ? (
+                                        <li key="awaiting-input">
+                                            <RalphAwaitingInputNode
+                                                pendingInput={pendingInput}
+                                                onSubmit={handleSubmitInput}
+                                                onStop={handleStopSession}
+                                            />
+                                        </li>
+                                    ) : null;
+                                }
                                 if (item.kind === 'submit') {
                                     return (
                                         <li key={`submit-${item.submit.submitIndex}`}>

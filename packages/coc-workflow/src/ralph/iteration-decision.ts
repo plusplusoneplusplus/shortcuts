@@ -1,6 +1,7 @@
 import { parseRalphSignal } from './signal-parser';
+import { parseRalphNeedsInput } from './needs-input-parser';
 import { classifyRalphProgressStagnation } from './progress-classifier';
-import type { ParsedProgressSection, RalphExitSignal, RalphTerminalReason } from './types';
+import type { ParsedProgressSection, RalphExitSignal, RalphInputRequest, RalphTerminalReason } from './types';
 import type { RalphProgressStagnationClassification } from './progress-classifier';
 
 export type RalphIterationCompletionReason = 'signal' | 'manual-verification-only' | 'cap';
@@ -44,6 +45,8 @@ export interface RalphIterationDecision<TAdapterContext = Record<string, unknown
     terminalReason?: RalphTerminalReason;
     completionReason?: RalphIterationCompletionReason;
     progressClassification: RalphProgressStagnationClassification;
+    /** Parsed question batch when the iteration ended with a valid RALPH_NEEDS_INPUT block. */
+    inputRequest?: RalphInputRequest;
     actions: RalphIterationAction<TAdapterContext>[];
 }
 
@@ -111,12 +114,26 @@ export interface RalphSurfaceTerminalReasonAction<TAdapterContext = Record<strin
     signalSource?: 'response' | 'journal';
 }
 
+/**
+ * Pause the session until the user answers. The host persists the request,
+ * moves the session to `awaiting-input`, and enqueues nothing.
+ */
+export interface RalphAwaitInputAction<TAdapterContext = Record<string, unknown>>
+    extends RalphActionBase<TAdapterContext> {
+    type: 'awaitInput';
+    iteration: number;
+    taskId: string;
+    processId: string;
+    request: RalphInputRequest;
+}
+
 export type RalphIterationAction<TAdapterContext = Record<string, unknown>> =
     | RalphRecordIterationAction<TAdapterContext>
     | RalphEnqueueNextIterationAction<TAdapterContext>
     | RalphEnqueueFinalCheckAction<TAdapterContext>
     | RalphCompleteSessionAction<TAdapterContext>
-    | RalphSurfaceTerminalReasonAction<TAdapterContext>;
+    | RalphSurfaceTerminalReasonAction<TAdapterContext>
+    | RalphAwaitInputAction<TAdapterContext>;
 
 export function decideRalphIterationActions<TAdapterContext = Record<string, unknown>>(
     input: DecideRalphIterationActionsInput<TAdapterContext>,
@@ -124,6 +141,13 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
     const { signal: inlineSignal, progress } = parseRalphSignal(input.responseText);
     const currentIteration = input.currentIteration ?? 1;
     const maxIterations = input.maxIterations ?? 20;
+    // A valid RALPH_NEEDS_INPUT block wins over any other token: the agent is
+    // blocked and the session must wait for the user. A malformed block falls
+    // through to the ordinary NEXT/COMPLETE/NONE handling below.
+    const needsInput = parseRalphNeedsInput(input.responseText);
+    if (needsInput.status === 'ok') {
+        return decideAwaitInput(input, progress, currentIteration, maxIterations, needsInput.request);
+    }
     // When the response carries no inline token, recover the agent's intended
     // signal from the journal section it wrote for this iteration. The inline
     // token stays authoritative when present, even if it disagrees.
@@ -235,6 +259,58 @@ export function decideRalphIterationActions<TAdapterContext = Record<string, unk
     };
 }
 
+function decideAwaitInput<TAdapterContext>(
+    input: DecideRalphIterationActionsInput<TAdapterContext>,
+    progress: string,
+    currentIteration: number,
+    maxIterations: number,
+    request: RalphInputRequest,
+): RalphIterationDecision<TAdapterContext> {
+    const signal: RalphExitSignal = 'RALPH_NEEDS_INPUT';
+    const progressClassification = classifyRalphProgressStagnation({
+        progress,
+        recentSections: input.recentProgressSections,
+    });
+    const actions: RalphIterationAction<TAdapterContext>[] = [
+        {
+            type: 'recordIteration',
+            workspaceId: input.workspaceId,
+            sessionId: input.sessionId,
+            adapterContext: input.adapterContext,
+            iteration: currentIteration,
+            maxIterations,
+            signal,
+            progressBody: progress,
+            taskId: input.taskId,
+            processId: input.processId,
+            shouldContinue: false,
+            originalGoal: input.originalGoal,
+            iterationStartMs: input.iterationStartMs,
+            signalSource: 'response',
+        },
+        {
+            type: 'awaitInput',
+            workspaceId: input.workspaceId,
+            sessionId: input.sessionId,
+            adapterContext: input.adapterContext,
+            iteration: currentIteration,
+            taskId: input.taskId,
+            processId: input.processId,
+            request,
+        },
+    ];
+    return {
+        signal,
+        progress,
+        currentIteration,
+        maxIterations,
+        shouldContinue: false,
+        progressClassification,
+        inputRequest: request,
+        actions,
+    };
+}
+
 /**
  * Recover the agent's intended exit signal from the journal section it wrote for
  * the current iteration. Returns the decisive (non-`NONE`) signal of the matching
@@ -250,7 +326,12 @@ function recoverSignalFromJournal(
     }
     let recovered: RalphExitSignal = 'NONE';
     for (const section of sections) {
-        if (section.iteration === currentIteration && section.signal !== 'NONE') {
+        // RALPH_NEEDS_INPUT is never recovered from the journal: the question
+        // payload must come from the response block, so a journal-only
+        // NEEDS_INPUT section is treated as no signal.
+        if (section.iteration === currentIteration
+            && section.signal !== 'NONE'
+            && section.signal !== 'RALPH_NEEDS_INPUT') {
             recovered = section.signal;
         }
     }

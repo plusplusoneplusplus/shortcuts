@@ -111,7 +111,8 @@ export interface MobileScopeListProps {
 
 export function MobileScopeList({ repos }: MobileScopeListProps) {
     const { state } = useApp();
-    const { unseenCounts } = useRepos();
+    const { badgeCounts, unseenCounts: processUnseenCounts } = useRepos();
+    const unseenCounts = badgeCounts ?? processUnseenCounts;
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>(loadGroupExpandedState);
     const [groupOrder, setGroupOrder] = useState<string[]>([]);
     const [addSheetOpen, setAddSheetOpen] = useState(false);

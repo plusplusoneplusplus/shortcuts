@@ -2,7 +2,7 @@
 name: ultra-ralph
 description: Core instruction sets for Ralph autonomous coding loop phases — grill (clarification), synthesis (goal extraction), execution (iteration), iteration (user prompt), and final-check (validation).
 metadata:
-  version: "0.1.1"
+  version: "0.1.2"
 ---
 
 ## Section: grill
@@ -77,12 +77,13 @@ A. Append a new section to the progress journal with this exact header
        Decisions: <one-line rationale for the key choices made>
        Remaining: <what still has to happen, or "none">
 
-   <SIGNAL> is RALPH_NEXT or RALPH_COMPLETE — same value you end the
-   response with. Use the iteration counter from the system prompt.
+   <SIGNAL> is RALPH_NEXT, RALPH_COMPLETE, or RALPH_NEEDS_INPUT. Use the
+   iteration counter from the system prompt.
 
-B. End the response with exactly one of:
+B. End the response with exactly one terminal outcome:
         RALPH_COMPLETE
         RALPH_NEXT
+        RALPH_NEEDS_INPUT followed by the question block described below
 
 Signal rules:
 - Emit RALPH_NEXT only when a specific autonomous subtask remains, such as source changes, tests, docs tied directly to the change, build fixes, or automatable validation.
@@ -90,12 +91,58 @@ Signal rules:
 - Do not keep emitting RALPH_NEXT solely because manual demos, product review, unavailable credentials, or other human-only verification remain.
 - When only manual verification remains, write `Remaining: manual verification only - <what the user should verify>` in the journal and emit RALPH_COMPLETE.
 
+Human input is a last resort. Emit RALPH_NEEDS_INPUT only when work cannot
+continue safely because of one of these critical blockers:
+- a conflict with a `[decision]` item;
+- a destructive or irreversible action;
+- missing credentials or external access; or
+- a product choice that cannot be inferred and would be costly to redo.
+
+For every other uncertainty, choose a reasonable value, tag it `[assumption]`,
+and record it in the progress journal. Keep interruptions to a minimum. Do not
+continue work on other acceptance criteria while waiting for an answer.
+
+When human input is essential, append the normal iteration journal section with
+`RALPH_NEEDS_INPUT` as `<SIGNAL>`, then end the response with exactly one
+`RALPH_NEEDS_INPUT` marker followed by one JSON question block. The block uses
+the `ask_user` question format, adds a required recommendation to every
+question, and carries one required batch-level context explaining what was
+found and why work cannot continue safely. Ask at most five questions:
+
+````text
+RALPH_NEEDS_INPUT
+```json
+{
+  "context": "What you found and why work cannot continue safely",
+  "questions": [
+    {
+      "question": "The concrete question",
+      "type": "select",
+      "options": [
+        { "value": "value", "label": "Label", "description": "Optional description" }
+      ],
+      "defaultValue": "optional value or array of values",
+      "recommendation": "required recommended answer or array of answers"
+    }
+  ]
+}
+```
+````
+
+Question `type` must be one of `select`, `multi-select`, `yes-no`, `confirm`, or
+`text`. Include `options` for `select` and `multi-select`; omit it when it does
+not apply. `defaultValue` is optional. Do not emit RALPH_NEEDS_INPUT without a
+valid block, and never emit more than one question batch in an iteration.
+
 If you cannot append to the file, fall back to the legacy format and
 the server will write the section for you:
 
         RALPH_PROGRESS:
         <files / decisions / remaining>
         <SIGNAL>
+
+For RALPH_NEEDS_INPUT, emit its required JSON question block after this legacy
+fallback as well.
 
 ## Section: iteration
 

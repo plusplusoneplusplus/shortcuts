@@ -3,8 +3,8 @@
  * parsed `progress.md` sections, and raw session files) for a Ralph session,
  * and refresh it on:
  *
- *   - the `ralph-session-complete` window CustomEvent (re-broadcast from
- *     the WebSocket layer in `App.tsx`)
+ *   - the `ralph-session-complete` and `ralph-session-awaiting-input` window
+ *     CustomEvents (re-broadcast from the WebSocket layer in `App.tsx`)
  *   - a lightweight 5-second poll while the session phase is `executing`
  *     (so iterations stream in without WS coupling)
  *
@@ -91,7 +91,11 @@ export function useRalphSessionView(
             }
         };
         window.addEventListener('ralph-session-complete', handler);
-        return () => window.removeEventListener('ralph-session-complete', handler);
+        window.addEventListener('ralph-session-awaiting-input', handler);
+        return () => {
+            window.removeEventListener('ralph-session-complete', handler);
+            window.removeEventListener('ralph-session-awaiting-input', handler);
+        };
     }, [workspaceId, sessionId]);
 
     // Poll while executing, or while a PR submit is still queued/running (a
