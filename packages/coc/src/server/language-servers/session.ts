@@ -151,6 +151,8 @@ export class LanguageServerSession {
     private child?: ChildProcessWithoutNullStreams;
     private connection?: LanguageServerConnection;
     private starting?: Promise<void>;
+    /** In-flight {@link stop}; a start waits for it rather than racing its teardown. */
+    private stopping?: Promise<void>;
     private restartTimer?: NodeJS.Timeout;
     private idleTimer?: NodeJS.Timeout;
     private stderrTail = '';
@@ -254,11 +256,22 @@ export class LanguageServerSession {
             return Promise.resolve();
         }
         if (!this.starting) {
-            this.starting = this.launch().finally(() => {
+            // A request arriving while a restart is still stopping the old
+            // process would otherwise launch a second one, and the stop would
+            // then finish by marking that live process `disabled`.
+            const stopping = this.stopping;
+            this.starting = (stopping ? stopping.then(() => this.launchAfterStop()) : this.launch()).finally(() => {
                 this.starting = undefined;
             });
         }
         return this.starting;
+    }
+
+    private launchAfterStop(): Promise<void> {
+        if (this.disposed) {
+            return Promise.reject(new Error(`Language server ${this.definition.id} is disposed`));
+        }
+        return this.isReady ? Promise.resolve() : this.launch();
     }
 
     /**
@@ -362,7 +375,17 @@ export class LanguageServerSession {
     }
 
     /** Stops the process, keeping the session reusable. */
-    async stop(detail?: string): Promise<void> {
+    stop(detail?: string): Promise<void> {
+        const stopping = this.teardown(detail).finally(() => {
+            if (this.stopping === stopping) {
+                this.stopping = undefined;
+            }
+        });
+        this.stopping = stopping;
+        return stopping;
+    }
+
+    private async teardown(detail?: string): Promise<void> {
         this.clearRestartTimer();
         this.clearIdleTimer();
         const connection = this.connection;

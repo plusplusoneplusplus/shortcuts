@@ -18,6 +18,9 @@ import {
     getConfigValueAtPath,
     setConfigValueAtPath,
     getFeatureCardSettings,
+    getFeatureSettingTab,
+    FEATURE_SETTING_TABS,
+    type FeatureSettingTab,
     readAdminSettingValue,
     buildRuntimeFeatureFlags,
     validateAdminSettingValue,
@@ -607,5 +610,103 @@ describe('Features card UI metadata', () => {
         expect(def!.ui?.label).toBe('Triggers (CI auto-fix)');
         expect(def!.ui?.hint).toMatch(/enabled by default/i);
         expect(buildRuntimeFeatureFlags({}).triggersEnabled).toBe(true);
+    });
+});
+
+describe('feature toggle settings-tab placement', () => {
+    const EXPECTED_TABS: Record<string, FeatureSettingTab> = {
+        // AI & Execution
+        'ralph.enabled': 'ai',
+        'features.ralphMultiAgentGrill': 'ai',
+        'forEach.enabled': 'ai',
+        'mapReduce.enabled': 'ai',
+        'sentinel.enabled': 'ai',
+        'dangerousCommandGuard.enabled': 'ai',
+        'effortLevels.enabled': 'ai',
+        'features.gitWorktreeExecution': 'ai',
+        // Chat
+        'features.chatFolders': 'chat',
+        'features.chatProviderSwitching': 'chat',
+        'features.composerWordHint': 'chat',
+        'features.quickAskSidenotes': 'chat',
+        'features.sessionContextAttachments': 'chat',
+        'features.chatStyleSelector': 'chat',
+        // Appearance
+        'vimNavigation.enabled': 'appearance',
+        'features.scopeSwitcher': 'appearance',
+        'features.pinnedScopes': 'appearance',
+        'features.splitWorkspacePanel': 'appearance',
+        'features.remoteShell': 'appearance',
+        'features.explorerEditorTabs': 'appearance',
+        'features.markdownPanelPreview': 'appearance',
+        'features.htmlPageTab': 'appearance',
+        'scratchpad.layout': 'appearance',
+        // Integrations
+        'features.teamsBridgeObservability': 'integrations',
+        'features.teamsAiAnswerRelay': 'integrations',
+        'features.teamsMessageReaction': 'integrations',
+        'mcpOauth.enabled': 'integrations',
+        'mcpOauth.autoRefresh.enabled': 'integrations',
+        'kusto.enabled': 'integrations',
+        'features.arxivPaperIngest': 'integrations',
+        'workItems.sync.enabled': 'integrations',
+        // Features (module/tool-level toggles stay)
+        'notes.enabled': 'features',
+        'myWork.enabled': 'features',
+        'myWork.todayView': 'features',
+        'myLife.enabled': 'features',
+        'scratchpad.enabled': 'features',
+        'terminal.enabled': 'features',
+        'workflows.enabled': 'features',
+        'pullRequests.enabled': 'features',
+        'pullRequests.suggestions': 'features',
+        'pullRequests.autoClassifyTeam': 'features',
+        'servers.enabled': 'features',
+        'showPlanDepTab': 'features',
+        'workItems.hierarchy.enabled': 'features',
+        'workItems.aiAuthoring.enabled': 'features',
+        'workItems.workflow.enabled': 'features',
+        'cron.enabled': 'features',
+        'triggers.enabled': 'features',
+        'canvas.enabled': 'features',
+        'excalidraw.enabled': 'features',
+        'LLMToolSystemOne.enabled': 'features',
+        'features.canvasHostApis': 'features',
+        'features.focusedDiff': 'features',
+        'features.gitCrossCloneCherryPick': 'features',
+        'features.commitChatLens': 'features',
+        'features.commitChatLensDormantMode': 'features',
+        'features.nativeCliSessions': 'features',
+        // Not named in the placement spec — falls back to the Features default.
+        'features.schedulesInScheduledSlide': 'features',
+    };
+
+    const uiDefs = ADMIN_SETTING_DEFINITIONS.filter(d => d.ui);
+
+    it('places every ui setting on a valid settings tab', () => {
+        for (const def of uiDefs) {
+            expect(FEATURE_SETTING_TABS, def.key).toContain(getFeatureSettingTab(def));
+        }
+    });
+
+    it('matches the expected placement for every ui setting', () => {
+        const actual = Object.fromEntries(uiDefs.map(d => [d.key, getFeatureSettingTab(d)]));
+        expect(actual).toEqual(EXPECTED_TABS);
+    });
+
+    it('defaults a ui setting without a tab to features', () => {
+        const def: AdminSettingDefinition = {
+            key: 'x.enabled', value: { kind: 'boolean' }, default: false, runtime: 'live',
+            ui: { group: 'dashboard', order: 1, label: 'X', hint: '', testId: 'x' },
+        };
+        expect(getFeatureSettingTab(def)).toBe('features');
+    });
+
+    it('filters getFeatureCardSettings by tab', () => {
+        const aiModesOnAi = getFeatureCardSettings('aiModes', 'ai').map(d => d.key);
+        expect(aiModesOnAi).toContain('ralph.enabled');
+        expect(aiModesOnAi).not.toContain('features.chatStyleSelector');
+        expect(getFeatureCardSettings('aiModes', 'features')).toEqual([]);
+        expect(getFeatureCardSettings('aiModes').length).toBeGreaterThan(aiModesOnAi.length);
     });
 });

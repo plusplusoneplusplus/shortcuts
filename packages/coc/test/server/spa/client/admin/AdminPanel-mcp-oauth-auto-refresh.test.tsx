@@ -111,9 +111,9 @@ function mockStatsResponse() {
     };
 }
 
-async function gotoFeaturesSubTab(): Promise<void> {
-    await waitFor(() => expect(screen.getByTestId('settings-subtab-features')).toBeDefined());
-    fireEvent.click(screen.getByTestId('settings-subtab-features'));
+async function gotoIntegrationsSubTab(): Promise<void> {
+    await waitFor(() => expect(screen.getByTestId('settings-subtab-integrations')).toBeDefined());
+    fireEvent.click(screen.getByTestId('settings-subtab-integrations'));
 }
 
 describe('AdminPanel — MCP OAuth auto-refresh toggle', () => {
@@ -140,7 +140,7 @@ describe('AdminPanel — MCP OAuth auto-refresh toggle', () => {
         });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        await gotoIntegrationsSubTab();
         await waitFor(() => {
             expect(screen.getByTestId('toggle-mcp-oauth-enabled')).toBeTruthy();
         });
@@ -156,7 +156,7 @@ describe('AdminPanel — MCP OAuth auto-refresh toggle', () => {
         });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        await gotoIntegrationsSubTab();
         await waitFor(() => {
             expect(screen.getByTestId('toggle-mcp-oauth-auto-refresh-enabled')).toBeTruthy();
         });
@@ -178,7 +178,7 @@ describe('AdminPanel — MCP OAuth auto-refresh toggle', () => {
         });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        await gotoIntegrationsSubTab();
 
         await waitFor(() => {
             const checkbox = screen.getByTestId('toggle-mcp-oauth-auto-refresh-enabled') as HTMLInputElement;
@@ -188,7 +188,7 @@ describe('AdminPanel — MCP OAuth auto-refresh toggle', () => {
         fireEvent.click(screen.getByTestId('toggle-mcp-oauth-auto-refresh-enabled'));
 
         const saveButtons = screen.getAllByText('Save');
-        const featuresSave = saveButtons.find(btn => btn.closest('[data-testid="settings-features"]'));
+        const featuresSave = saveButtons.find(btn => btn.closest('[data-testid="settings-tab-features-integrations"]'));
         expect(featuresSave).toBeTruthy();
         fireEvent.click(featuresSave!);
 
@@ -216,7 +216,7 @@ describe('AdminPanel — MCP OAuth auto-refresh toggle', () => {
         });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        await gotoIntegrationsSubTab();
 
         await waitFor(() => {
             expect(screen.getByTestId('toggle-mcp-oauth-auto-refresh-enabled')).toBeTruthy();

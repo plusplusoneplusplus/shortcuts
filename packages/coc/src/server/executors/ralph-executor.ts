@@ -87,6 +87,10 @@ export class RalphExecutor extends ChatBaseExecutor {
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
+            // Iterations and submit write (submit opens the PR); final-check is read-only.
+            createPullRequest: kind === 'final-check'
+                ? undefined
+                : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
             // No `askUser` wiring, and `ask_user` excluded outright: Ralph
             // tasks run unattended, so a blocking question would stall the
             // loop. Iterations ask through RALPH_NEEDS_INPUT instead, whatever

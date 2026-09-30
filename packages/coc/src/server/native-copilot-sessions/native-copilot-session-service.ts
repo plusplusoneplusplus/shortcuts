@@ -84,6 +84,9 @@ export function sessionMatchesWorkspace(
     row: { repository: string | null; cwd: string | null },
     scope: NativeSessionWorkspaceScope,
 ): boolean {
+    if (scope.matchAll) {
+        return true;
+    }
     if (scope.repository && row.repository
         && row.repository.trim().toLowerCase() === scope.repository.trim().toLowerCase()) {
         return true;

@@ -11,8 +11,10 @@ import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 import {
     FEATURE_CARD_GROUPS,
     getFeatureCardSettings,
+    getFeatureSettingTab,
 } from '../../../../../config/admin-setting-definitions';
-import type { AdminSettingDefinition } from '../../../../../config/admin-setting-definitions';
+import type { AdminSettingDefinition, FeatureSettingTab } from '../../../../../config/admin-setting-definitions';
+import { getSettingsSubTabMeta } from './adminNavigation';
 import type { FeatureValues } from './useAdminFeatureSettings';
 
 const FEATURE_BADGES: Record<string, { className: string; label: string }> = {
@@ -36,6 +38,46 @@ export function resolveFeatureBadge(def: AdminSettingDefinition) {
     return FEATURE_BADGES[badge];
 }
 
+interface FeatureSettingRowProps {
+    def: AdminSettingDefinition;
+    featureValues: FeatureValues;
+    setFeatureValues: React.Dispatch<React.SetStateAction<FeatureValues>>;
+    sources: Record<string, string>;
+    isDefaultValue: (key: string) => boolean | undefined;
+}
+
+/** One registry-driven toggle/select row (label, badge, source badge, control). */
+function FeatureSettingRow({ def, featureValues, setFeatureValues, sources, isDefaultValue }: FeatureSettingRowProps) {
+    const ui = def.ui!;
+    const badge = resolveFeatureBadge(def);
+    const name = badge
+        ? <>{ui.label} <span className={badge.className}>{badge.label}</span></>
+        : ui.label;
+    return (
+        <AdminRow name={name} hint={ui.hint}>
+            <SourceBadge source={sources[def.key]} isDefault={isDefaultValue(def.key)} />
+            {ui.control?.type === 'select' ? (
+                <select
+                    className="ar-select ar-med"
+                    value={String(featureValues[def.key] ?? '')}
+                    onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
+                    data-testid={ui.testId}
+                >
+                    {ui.control.options.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                </select>
+            ) : (
+                <AdminToggle
+                    checked={featureValues[def.key] === true}
+                    onChange={checked => setFeatureValues(prev => ({ ...prev, [def.key]: checked }))}
+                    data-testid={ui.testId}
+                />
+            )}
+        </AdminRow>
+    );
+}
+
 export interface FeatureSettingsCardProps {
     featureValues: FeatureValues;
     setFeatureValues: React.Dispatch<React.SetStateAction<FeatureValues>>;
@@ -47,6 +89,7 @@ export interface FeatureSettingsCardProps {
     onCancel: () => void;
     sources: Record<string, string>;
     isDefaultValue: (key: string) => boolean | undefined;
+    onNavigateToTab: (tab: Exclude<FeatureSettingTab, 'features'>) => void;
 }
 
 export function FeatureSettingsCard({
@@ -60,6 +103,7 @@ export function FeatureSettingsCard({
     onCancel,
     sources,
     isDefaultValue,
+    onNavigateToTab,
 }: FeatureSettingsCardProps) {
     // Case-insensitive substring match against label + hint. Whitespace-only
     // query is treated as empty (full list).
@@ -71,7 +115,7 @@ export function FeatureSettingsCard({
                 const ui = def.ui!;
                 // dependsOn-hidden rows never appear, regardless of text match.
                 if (ui.dependsOn && featureValues[ui.dependsOn] !== true) return false;
-                if (!query) return true;
+                if (!query) return getFeatureSettingTab(def) === 'features';
                 return ui.label.toLowerCase().includes(query)
                     || ui.hint.toLowerCase().includes(query);
             }),
@@ -121,38 +165,101 @@ export function FeatureSettingsCard({
                     <div className="ar-feature-group" data-testid={group.testId} key={group.id}>
                         <div className="ar-feature-group-head">{group.heading}</div>
                         {defs.map(def => {
-                            const ui = def.ui!;
-                            const badge = resolveFeatureBadge(def);
-                            const name = badge
-                                ? <>{ui.label} <span className={badge.className}>{badge.label}</span></>
-                                : ui.label;
-                            return (
-                                <AdminRow key={def.key} name={name} hint={ui.hint}>
-                                    <SourceBadge source={sources[def.key]} isDefault={isDefaultValue(def.key)} />
-                                    {ui.control?.type === 'select' ? (
-                                        <select
-                                            className="ar-select ar-med"
-                                            value={String(featureValues[def.key] ?? '')}
-                                            onChange={e => setFeatureValues(prev => ({ ...prev, [def.key]: e.target.value }))}
-                                            data-testid={ui.testId}
-                                        >
-                                            {ui.control.options.map(option => (
-                                                <option key={option.value} value={option.value}>{option.label}</option>
-                                            ))}
-                                        </select>
-                                    ) : (
-                                        <AdminToggle
-                                            checked={featureValues[def.key] === true}
-                                            onChange={checked => setFeatureValues(prev => ({ ...prev, [def.key]: checked }))}
-                                            data-testid={ui.testId}
-                                        />
-                                    )}
+                            const tab = getFeatureSettingTab(def);
+                            return tab === 'features' ? (
+                                <FeatureSettingRow
+                                    key={def.key}
+                                    def={def}
+                                    featureValues={featureValues}
+                                    setFeatureValues={setFeatureValues}
+                                    sources={sources}
+                                    isDefaultValue={isDefaultValue}
+                                />
+                            ) : (
+                                <AdminRow key={def.key} name={def.ui!.label} hint={def.ui!.hint}>
+                                    <a
+                                        href={`#admin/settings/${tab}`}
+                                        onClick={() => onNavigateToTab(tab)}
+                                        data-testid={`feature-search-link-${def.ui!.testId}`}
+                                    >
+                                        in {getSettingsSubTabMeta(tab).label}
+                                    </a>
                                 </AdminRow>
                             );
                         })}
                     </div>
                 ))
             )}
+        </SettingsCard>
+    );
+}
+
+export interface TabFeatureSettingsCardProps {
+    tab: Exclude<FeatureSettingTab, 'features'>;
+    featureValues: FeatureValues;
+    setFeatureValues: React.Dispatch<React.SetStateAction<FeatureValues>>;
+    dirty: boolean;
+    saving: boolean;
+    onSave: () => void;
+    onCancel: () => void;
+    sources: Record<string, string>;
+    isDefaultValue: (key: string) => boolean | undefined;
+}
+
+/**
+ * Registry-driven "Features" section for a non-Features settings tab. Lists
+ * only toggles placed on `tab`, with group headings shown when the tab spans
+ * more than one `FEATURE_CARD_GROUPS` group. Renders nothing when no visible
+ * toggle is placed on the tab.
+ */
+export function TabFeatureSettingsCard({
+    tab,
+    featureValues,
+    setFeatureValues,
+    dirty,
+    saving,
+    onSave,
+    onCancel,
+    sources,
+    isDefaultValue,
+}: TabFeatureSettingsCardProps) {
+    const groups = FEATURE_CARD_GROUPS
+        .map(group => ({
+            group,
+            defs: getFeatureCardSettings(group.id, tab).filter(def => {
+                const dependsOn = def.ui!.dependsOn;
+                return !dependsOn || featureValues[dependsOn] === true;
+            }),
+        }))
+        .filter(entry => entry.defs.length > 0);
+    if (groups.length === 0) return null;
+    const showHeadings = groups.length > 1;
+
+    return (
+        <SettingsCard
+            title="Features"
+            description="Optional features for this area."
+            dirty={dirty}
+            saving={saving}
+            onSave={onSave}
+            onCancel={onCancel}
+            data-testid={`settings-tab-features-${tab}`}
+        >
+            {groups.map(({ group, defs }) => (
+                <div className="ar-feature-group" key={group.id}>
+                    {showHeadings && <div className="ar-feature-group-head">{group.heading}</div>}
+                    {defs.map(def => (
+                        <FeatureSettingRow
+                            key={def.key}
+                            def={def}
+                            featureValues={featureValues}
+                            setFeatureValues={setFeatureValues}
+                            sources={sources}
+                            isDefaultValue={isDefaultValue}
+                        />
+                    ))}
+                </div>
+            ))}
         </SettingsCard>
     );
 }

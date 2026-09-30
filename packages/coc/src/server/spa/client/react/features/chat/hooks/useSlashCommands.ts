@@ -8,7 +8,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { parseSlashCommands, getSlashCommandContext, getActiveMetaCommands, type ParsedSlashCommands, type SlashCommandFeatureState } from '../slash-command-parser';
 import { isCanvasEnabled, isCronEnabled } from '../../../utils/config';
-import { orderSkillItems, type SkillItem } from '../SlashCommandMenu';
+import { filterAndOrderSkillItems, type SkillItem } from '../SlashCommandMenu';
 import type { RichTextInputHandle } from '../../../shared/RichTextInput';
 
 export interface UseSlashCommandsResult {
@@ -68,10 +68,10 @@ export function useSlashCommands(skills: SkillItem[], configuredFeatures?: Slash
 
     const skillNames = skills.map(s => s.name);
 
-    // Order built-in commands before skills. Must match SlashCommandMenu's
-    // renderer ordering so the highlighted row lines up with the selected item.
+    // Must match SlashCommandMenu's ordering so the highlighted row lines up
+    // with the selected item.
     const filteredSkills = menuVisible
-        ? orderSkillItems(skills.filter(s => s.name.toLowerCase().startsWith(menuFilter.toLowerCase())))
+        ? filterAndOrderSkillItems(skills, menuFilter)
         : [];
 
     const activeCommandHint = useMemo((): string | null => {

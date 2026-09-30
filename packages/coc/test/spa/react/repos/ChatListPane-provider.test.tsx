@@ -20,6 +20,7 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
 vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',
     isChatFoldersEnabled: () => false,
+    isNativeCliSessionsEnabled: () => false,
     isContainerMode: () => false,
     getApiBase: () => '',
     isRalphEnabled: () => false,

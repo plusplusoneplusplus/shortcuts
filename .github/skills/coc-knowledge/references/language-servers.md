@@ -18,6 +18,11 @@ running detection again, including when the user disables a seeded preset.
 Windows document paths are case-folded and have trailing dots/spaces removed at
 the path boundary, matching Win32 file identity before definition selection,
 URI mapping, and shared-session ownership checks.
+The WebSocket bridge listens for client messages before its async workspace
+lookup and queues them until the socket is validated, so an attach sent on
+`open` is never dropped. A session `start()` issued while `stop()` is still
+tearing down (a request during a user restart) waits for the stop instead of
+launching a second process.
 The WebSocket bridge sends `didClose` for tracked open documents when a socket
 drops, allowing the warm shared process to be reused without stale text.
 One browser document handle groups all of its physical server attachments,

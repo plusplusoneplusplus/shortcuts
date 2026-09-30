@@ -204,7 +204,8 @@ describe('AdminPanel — Default chat style select', () => {
         await waitFor(() => expect(screen.getByTestId('settings-subtab-features')).toBeDefined());
         fireEvent.click(screen.getByTestId('settings-subtab-features'));
 
-        await waitFor(() => expect(screen.getByTestId('toggle-chat-style-selector-enabled')).toBeTruthy());
+        await waitFor(() => expect(screen.getByTestId('feature-search-input')).toBeTruthy());
+        expect(screen.queryByTestId('toggle-chat-style-selector-enabled')).toBeNull();
         expect(screen.queryByTestId('select-default-chat-style')).toBeNull();
     });
 

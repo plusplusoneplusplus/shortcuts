@@ -95,6 +95,7 @@ import { UnifiedPanelCloseConfirm } from './UnifiedPanelCloseConfirm';
 import { UnifiedPanelOpenMenu } from './UnifiedPanelOpenMenu';
 import { UnifiedPanelRepoPicker } from './UnifiedPanelRepoPicker';
 import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
+import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
@@ -235,6 +236,9 @@ export function UnifiedRightPanel({
         () => tabs.filter(tab => mountedIds.has(tab.id)),
         [tabs, mountedIds],
     );
+    // A collapsed canvas burst: the active canvas carries the switcher chip in
+    // its own header, next to the title (the strip shows it otherwise).
+    const stackedCanvasTabs = useMemo(() => compressedCanvasTabs(tabs, activeId).canvasTabs, [tabs, activeId]);
 
     const targetOptions = targets ?? dock.targets;
     const targetLabel = useMemo(
@@ -1571,6 +1575,18 @@ export function UnifiedRightPanel({
                                     onFileNavigationMount={handleFileNavigationMount}
                                     onFileNavigationLocation={handleFileNavigationLocation}
                                     onNotesSelectionChange={updateNotesSelection}
+                                    canvasSwitcher={tab.id === activeId && stackedCanvasTabs.some(t => t.id === tab.id) ? (
+                                        <UnifiedPanelCanvasStack
+                                            tabs={stackedCanvasTabs}
+                                            activeId={activeId}
+                                            dirtyIds={dirtyIds}
+                                            errorIds={errorIds}
+                                            onActivate={activateWithNavigation}
+                                            onClose={requestClose}
+                                            onCloseMany={requestBulkClose}
+                                            className="h-[22px]"
+                                        />
+                                    ) : undefined}
                                 />}
                             </div>
                         ))

@@ -37,7 +37,7 @@
  * tab in turn.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { TerminalView, type TerminalSessionSummary } from '../../terminal/TerminalView';
 import { NotesView } from '../../notes/NotesView';
 import { PreviewPane, type PreviewStatus } from '../explorer/PreviewPane';
@@ -107,6 +107,8 @@ export interface UnifiedTabViewProps {
     ) => void;
     /** Persist the panel-local Notes selection without activating its tab. */
     onNotesSelectionChange?: (tabId: string, notePath: string | null) => void;
+    /** Canvas tabs only: the collapsed-canvas switcher shown beside the title. */
+    canvasSwitcher?: ReactNode;
 }
 
 /** The last path segment — what the editor uses to pick a language. */
@@ -119,7 +121,7 @@ export function UnifiedTabView({
     tab, scopeWorkspaceId, onClose, onDirtyChange, onErrorChange,
     onRegisterSave, onTerminalSessionsChange, onOpenFile, onOpenExternal, definitionPreviewOwners,
     onFileNavigationMount, onFileNavigationLocation,
-    onNotesSelectionChange,
+    onNotesSelectionChange, canvasSwitcher,
 }: UnifiedTabViewProps) {
     const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(
         () => isFeatureEnabled('markdownPanelPreviewEnabled'),
@@ -238,6 +240,7 @@ export function UnifiedTabView({
                     canvasId={tab.resourceId}
                     chatId={tab.chatId}
                     {...(tab.repoLabel ? { repoLabel: tab.repoLabel } : {})}
+                    titleAccessory={canvasSwitcher}
                     onClose={close}
                     onDirtyChange={handleDirty}
                     onRegisterSave={handleRegisterSave}

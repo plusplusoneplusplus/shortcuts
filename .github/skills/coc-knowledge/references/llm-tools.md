@@ -49,6 +49,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to a token budget via 5 progressive levels. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after an AI response. |
+| `create-pull-request-tool.ts` | `create_pull_request` | Opens a GitHub/ADO PR for the chat's own repo via the shared `git/create-pull-request-service.ts` (commits mode in a temp worktree, or current branch) and writes the chat ↔ PR binding. Autopilot/Ralph write turns only — ask mode and Ralph final-check never receive it (the one intentional ask/autopilot tool-block difference). |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
 
 ### send_to_conversation

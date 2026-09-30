@@ -96,6 +96,29 @@ export function orderSkillItems(items: SkillItem[]): SkillItem[] {
     );
 }
 
+/**
+ * Match slash commands anywhere in their name while ranking exact and prefix
+ * matches ahead of substring matches. Built-in commands stay ahead of skills
+ * within the same match tier, and source order is otherwise preserved.
+ */
+export function filterAndOrderSkillItems(items: SkillItem[], filter: string): SkillItem[] {
+    const query = filter.toLowerCase();
+    const matchRank = (item: SkillItem): number => {
+        const name = item.name.toLowerCase();
+        if (name === query) return 0;
+        if (name.startsWith(query)) return 1;
+        return name.includes(query) ? 2 : -1;
+    };
+
+    return items
+        .map((item, index) => ({ item, index, rank: matchRank(item) }))
+        .filter(match => match.rank >= 0)
+        .sort((a, b) => a.rank - b.rank
+            || (effectiveKind(a.item) === 'builtin' ? 0 : 1) - (effectiveKind(b.item) === 'builtin' ? 0 : 1)
+            || a.index - b.index)
+        .map(match => match.item);
+}
+
 /** Accessible label + hover tooltip per kind (no visible group headers exist). */
 const KIND_LABEL: Record<'builtin' | 'skill', string> = {
     builtin: 'Command',
@@ -167,12 +190,9 @@ export function SlashCommandMenu({
 }: SlashCommandMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
 
-    // Filter skills by prefix, then order built-in commands before skills.
-    // orderSkillItems must match useSlashCommands' ordering so the highlighted
-    // row lines up with the item Enter/Tab inserts.
-    const filtered = orderSkillItems(
-        skills.filter(s => s.name.toLowerCase().startsWith(filter.toLowerCase())),
-    );
+    // Must match useSlashCommands' ordering so the highlighted row lines up
+    // with the item Enter/Tab inserts.
+    const filtered = filterAndOrderSkillItems(skills, filter);
 
     // Dismiss on outside click
     useEffect(() => {

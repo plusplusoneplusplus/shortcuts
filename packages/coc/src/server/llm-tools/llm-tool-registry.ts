@@ -129,6 +129,12 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'create_pull_request',
+        label: 'Create Pull Request',
+        description: 'Opens a GitHub or Azure DevOps pull request for this chat\'s repo and links it to the chat. Autopilot only; used only when you ask for a PR.',
+        enabledByDefault: true,
+    },
+    {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',

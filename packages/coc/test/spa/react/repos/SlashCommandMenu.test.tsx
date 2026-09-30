@@ -6,7 +6,7 @@
 /* @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { SlashCommandMenu, META_SKILL_ITEMS, getMetaSkillItems, mergeSkillsWithMeta, orderSkillItems, effectiveKind, type SkillItem } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
+import { SlashCommandMenu, META_SKILL_ITEMS, getMetaSkillItems, mergeSkillsWithMeta, orderSkillItems, filterAndOrderSkillItems, effectiveKind, type SkillItem } from '../../../../src/server/spa/client/react/features/chat/SlashCommandMenu';
 
 const ALL_FEATURES = { cronEnabled: true, canvasEnabled: true };
 const NO_FEATURES = { cronEnabled: false, canvasEnabled: false };
@@ -131,11 +131,11 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(rows[2].contains(indicators[0])).toBe(true);
     });
 
-    it('filters rows by case-insensitive prefix', () => {
+    it('filters rows by case-insensitive substring', () => {
         render(
             <SlashCommandMenu
                 skills={SKILLS}
-                filter="SC"
+                filter="OP"
                 onSelect={() => {}}
                 onDismiss={() => {}}
                 visible={true}
@@ -145,6 +145,27 @@ describe('SlashCommandMenu (redesigned card)', () => {
         const items = document.querySelectorAll('[data-menu-item]');
         expect(items.length).toBe(1);
         expect(items[0].textContent).toContain('/scope');
+    });
+
+    it('ranks exact and prefix matches ahead of substring matches', () => {
+        render(
+            <SlashCommandMenu
+                skills={[
+                    { name: 'skill-hardening', kind: 'builtin' },
+                    { name: 'hard', kind: 'skill' },
+                    { name: 'hard-reset', kind: 'skill' },
+                ]}
+                filter="hard"
+                onSelect={() => {}}
+                onDismiss={() => {}}
+                visible={true}
+                highlightIndex={0}
+            />,
+        );
+        const names = [...document.querySelectorAll('[data-menu-item]')].map(item => item.textContent);
+        expect(names[0]).toContain('/hard');
+        expect(names[1]).toContain('/hard-reset');
+        expect(names[2]).toContain('/skill-hardening');
     });
 
     it('returns null when no skills match the filter', () => {
@@ -290,7 +311,7 @@ describe('SlashCommandMenu (redesigned card)', () => {
         expect(rows[0].kind).toBe('builtin');
     });
 
-    it('filters to /delegate when the user types "del"', () => {
+    it('ranks /delegate first when the user types "del"', () => {
         render(
             <SlashCommandMenu
                 skills={META_SKILL_ITEMS}
@@ -302,9 +323,10 @@ describe('SlashCommandMenu (redesigned card)', () => {
             />,
         );
         const rows = document.querySelectorAll('[data-menu-item]');
-        expect(rows).toHaveLength(1);
+        expect(rows).toHaveLength(2);
         expect(rows[0].textContent).toContain('/delegate');
         expect(rows[0].textContent).toContain('[provider] <task>');
+        expect(rows[1].textContent).toContain('/model');
     });
 });
 
@@ -512,6 +534,48 @@ describe('orderSkillItems', () => {
         ];
         orderSkillItems(items);
         expect(items.map(s => s.name)).toEqual(['apple', 'model']);
+    });
+});
+
+describe('filterAndOrderSkillItems', () => {
+    const items: SkillItem[] = [
+        { name: 'skill-hardening', kind: 'builtin' },
+        { name: 'hard-reset', kind: 'skill' },
+        { name: 'try-hard', kind: 'skill' },
+        { name: 'hard', kind: 'skill' },
+        { name: 'unrelated', kind: 'builtin' },
+    ];
+
+    it('matches case-insensitive substrings and ranks exact then prefix then contains', () => {
+        expect(filterAndOrderSkillItems(items, 'HARD').map(item => item.name)).toEqual([
+            'hard',
+            'hard-reset',
+            'skill-hardening',
+            'try-hard',
+        ]);
+    });
+
+    it('preserves built-in-first stable ordering within a match tier', () => {
+        const sameTier: SkillItem[] = [
+            { name: 'my-skill', kind: 'skill' },
+            { name: 'a-skill', kind: 'builtin' },
+            { name: 'b-skill', kind: 'builtin' },
+        ];
+        expect(filterAndOrderSkillItems(sameTier, 'skill').map(item => item.name)).toEqual([
+            'a-skill',
+            'b-skill',
+            'my-skill',
+        ]);
+    });
+
+    it('keeps the existing menu order when the filter is empty', () => {
+        expect(filterAndOrderSkillItems(items, '').map(item => item.name)).toEqual([
+            'skill-hardening',
+            'unrelated',
+            'hard-reset',
+            'try-hard',
+            'hard',
+        ]);
     });
 });
 

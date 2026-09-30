@@ -48,6 +48,7 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => false,
+    isNativeCliSessionsEnabled: () => false,
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/utils/format', () => ({

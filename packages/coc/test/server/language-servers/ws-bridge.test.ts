@@ -148,6 +148,8 @@ async function createHarness(
         maxSessions?: number;
         requestTimeoutMs?: number;
         workspaces?: { id: string; rootPath: string }[];
+        /** Holds every workspace lookup until it resolves, like a slow store read. */
+        lookupGate?: Promise<void>;
     } = {},
 ): Promise<Harness> {
     const dataDir = tempDir('coc-lsp-bridge-data-');
@@ -165,7 +167,12 @@ async function createHarness(
         requestTimeoutMs: options.requestTimeoutMs ?? 5_000,
     });
     const workspaces = options.workspaces ?? [{ id: WORKSPACE_ID, rootPath: workspaceRoot }];
-    const bridge = new LanguageServerWebSocketServer({ getWorkspaces: async () => workspaces }, manager);
+    const bridge = new LanguageServerWebSocketServer({
+        getWorkspaces: async () => {
+            await options.lookupGate;
+            return workspaces;
+        },
+    }, manager);
 
     const server = http.createServer();
     attachWebSocketUpgradeHandler(server, new ProcessWebSocketServer(), undefined, bridge);
@@ -203,6 +210,27 @@ describe('language-server WebSocket bridge', () => {
         const welcome = await client.next('lsp-welcome');
         expect(welcome.workspaceId).toBe(WORKSPACE_ID);
         expect(welcome.editingSessionId).toBe('session-1');
+    });
+
+    it('keeps messages that arrive while the workspace is still being looked up', async () => {
+        // Regression: listeners were registered after the lookup, and `ws`
+        // drops a message nobody listens for, so the attach the browser sends
+        // on `open` vanished whenever the store read was slow and the document
+        // sat on "connecting…" for good.
+        let release!: () => void;
+        const lookupGate = new Promise<void>((resolve) => { release = resolve; });
+        const harness = await createHarness({ lookupGate });
+        const client = await harness.connect();
+        client.send({ type: 'ping' });
+        client.send({ type: 'lsp-attach', requestId: 'early', path: 'src/notes.txt' });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(client.received).toEqual([]);
+
+        release();
+
+        const attached = await client.next('lsp-attached', (msg) => msg.requestId === 'early');
+        expect(attached.complete).toBe(true);
+        expect(client.received.map((msg) => msg.type).slice(0, 3)).toEqual(['lsp-welcome', 'pong', 'lsp-attached']);
     });
 
     it('closes a socket that names no workspace or editing session', async () => {

@@ -132,7 +132,9 @@ and transport code stays generic.
   references remain restarts with doubling backoff up to `maxRestarts`, then
   settles on `failed` until `restart()` clears the budget. Process `exit` and
   `error` handlers are bound per child, so a previous process's late exit never
-  disposes its successor's connection.
+  disposes its successor's connection. A `start()` (including one a request
+  triggers) while `stop()` is still tearing down waits for the stop, so a
+  restart never launches a second process that the stop then marks `disabled`.
 - `stop()` resolves only once the child is really gone: the `exit` notification
   first, then a signal, then SIGKILL `killGraceMs` after that (2 seconds by
   default), and it waits for the exit event throughout. A language server that
@@ -315,7 +317,9 @@ and transport code stays generic.
 - `ws-bridge.ts` — `LanguageServerWebSocketServer(workspaces, manager)` serves
   `/ws/language-server`. `workspaceId` and `editingSessionId` come from the
   upgrade URL and are validated against the workspace list before any process is
-  touched; the origin check is the shared one in
+  touched. The message listener is registered before that async lookup and
+  queues what arrives until it finishes, because the browser attaches on `open`
+  and `ws` drops messages nobody listens for; the origin check is the shared one in
   `src/server/streaming/websocket.ts`, which routes the path to this server.
 - Client messages: `lsp-attach`, `lsp-attach-workspace`, `lsp-detach`,
   `lsp-request`, `lsp-cancel`,

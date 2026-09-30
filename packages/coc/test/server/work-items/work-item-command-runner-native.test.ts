@@ -1,23 +1,18 @@
 /**
  * The Work Item command runner's git half, against real repositories.
  *
- * `defaultWorkItemCommandRunner` used to be one `execFile`, so the nine git
- * commands behind `POST .../submit-pr` were nine children spawned from the
- * event-loop thread. `git` now goes through `execGitAsync` and only `gh` still
- * spawns. Three differences have to be shown to be invisible, and only a real
+ * `defaultWorkItemCommandRunner` runs `git` through the native `execGitAsync`
+ * and only spawns a child for anything else (`gh`, `az`). The differences from
+ * Node's `execFile` have to be shown to be invisible, and only a real
  * repository can show them:
  *
- *  - stdout loses one trailing line ending. Every git reader here calls
- *    `.trim()`, so the value they compare is unchanged — asserted against what
- *    the same command prints through Node.
+ *  - stdout loses one trailing line ending. Every git reader calls `.trim()`.
  *  - a git command's `stderr` comes back empty. Nothing reads it on success.
  *  - a failure is `git <args> failed: <stderr>` rather than Node's
- *    `Command failed:`. Nobody classifies on that text; `resolveDefaultBaseBranch`
- *    catches it whole and falls back to `main`, which the last case drives.
+ *    `Command failed:`.
  *
- * The runner is injectable and every existing case injects one, so nothing
- * exercised the shipped path — that is what this file is for. The mutating and
- * network commands are still canned: what is under test is who runs the reads.
+ * The last block drives a whole Work Item PR submission (through the shared
+ * create-PR service) over the shipped runner, with only `gh` canned.
  */
 
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
@@ -29,15 +24,11 @@ import { promisify } from 'util';
 import { execGitAsync } from '@plusplusoneplusplus/forge';
 import {
     defaultWorkItemCommandRunner,
-    type WorkItemCommandRunner,
 } from '../../../src/server/work-items/work-item-execution-shared';
 import { submitWorkItemPullRequest } from '../../../src/server/work-items/work-item-pr-submission-command';
 import type { WorkItem, WorkItemChange } from '../../../src/server/work-items/types';
 
 const execFileAsync = promisify(execFile);
-
-/** The commands the hybrid runner is allowed to run for real. */
-const REAL_READS = new Set(['status', 'rev-parse', 'symbolic-ref']);
 
 let tmpDir: string;
 
@@ -84,24 +75,6 @@ function submissionInput(): { item: WorkItem; change: WorkItemChange } {
         changes: [change],
     } as unknown as WorkItem;
     return { item, change };
-}
-
-/**
- * Run the reads for real and can the rest, recording every command line.
- *
- * `fetch`, `switch`, `cherry-pick` and `push` are the mutating and network half
- * of the sequence; this file is about who runs the reads that feed them.
- */
-function hybridRunner(canned: Record<string, { stdout: string; stderr: string }> = {}) {
-    const seen: string[] = [];
-    const run: WorkItemCommandRunner = async (command, args, options) => {
-        seen.push(`${command} ${args.join(' ')}`);
-        if (command === 'git' && REAL_READS.has(args[0])) {
-            return defaultWorkItemCommandRunner(command, args, options);
-        }
-        return canned[`${command} ${args.join(' ')}`] ?? { stdout: '', stderr: '' };
-    };
-    return { run, seen };
 }
 
 const PR_URL = 'https://github.com/example/repo/pull/7';
@@ -183,62 +156,63 @@ describe('defaultWorkItemCommandRunner, git path', () => {
 });
 
 describe('submitWorkItemPullRequest over the shipped runner', () => {
-    it('reads the branch and the clean tree from native git, falling back to main', async () => {
-        const dir = await makeRepo('submit-no-origin');
+    const GH_URL = 'https://github.com/example/runner-repo.git';
+
+    /**
+     * A repo whose `origin` reads as GitHub but pushes to a local bare repo
+     * (`url.<bare>.insteadOf`), with one extra commit to submit on top of main.
+     */
+    async function makeSubmittableRepo(name: string): Promise<{ dir: string; bare: string; sha: string }> {
+        const dir = await makeRepo(name, 'main');
+        const bare = path.join(tmpDir, `${name}-origin.git`);
+        await execGitAsync(['init', '-q', '--bare', bare], tmpDir);
+        await execGitAsync(['remote', 'add', 'origin', GH_URL], dir);
+        await execGitAsync(['config', `url.${bare}.insteadOf`, GH_URL], dir);
+        await execGitAsync(['push', '-q', '-u', 'origin', 'main'], dir);
+        await execGitAsync(['remote', 'set-head', 'origin', 'main'], dir);
+        fs.writeFileSync(path.join(dir, 'feature.txt'), 'feature\n');
+        await execGitAsync(['add', 'feature.txt'], dir);
+        await execGitAsync(['commit', '-q', '-m', 'Add feature'], dir);
+        const sha = (await execGitAsync(['rev-parse', 'HEAD'], dir)).trim();
+        // Leave the workspace dirty: the submission must not care.
+        fs.writeFileSync(path.join(dir, 'tracked.txt'), 'dirty\n');
+        return { dir, bare, sha };
+    }
+
+    it('pushes a fresh branch through native git and leaves the workspace branch, HEAD and edits alone', async () => {
+        const { dir, bare, sha } = await makeSubmittableRepo('submit-real');
         const { item, change } = submissionInput();
-        const { run, seen } = hybridRunner();
+        change.commits = [{ sha, message: 'Add feature' }] as WorkItemChange['commits'];
+        const headBefore = (await execGitAsync(['rev-parse', 'HEAD'], dir)).trim();
+        const seen: string[] = [];
 
         const result = await submitWorkItemPullRequest({
             item,
             change,
             repoRoot: dir,
             branchName: 'coc/work-items/runner-item',
+            tempDir: tmpDir,
             runCommand: async (command, args, options) => {
-                if (command === 'gh') return { stdout: `${PR_URL}\n`, stderr: '' };
-                return run(command, args, options);
+                seen.push(`${command} ${args.join(' ')}`);
+                if (command === 'gh') {
+                    if (args[1] === 'list') return { stdout: '[]', stderr: '' };
+                    if (args[1] === 'create') return { stdout: `${PR_URL}\n`, stderr: '' };
+                    return { stdout: '', stderr: '' };
+                }
+                return defaultWorkItemCommandRunner(command, args, options);
             },
         });
 
         expect(result).toEqual({ branchName: 'coc/work-items/runner-item', prUrl: PR_URL, prNumber: 7 });
-        // `symbolic-ref --quiet` fails in a repo with no origin/HEAD; the real
-        // rejection reaches the catch and the fallback base branch is used.
-        expect(seen).toContain('git symbolic-ref --quiet --short refs/remotes/origin/HEAD');
         expect(seen).toContain('git fetch origin main');
-        expect(seen).toContain('git switch -c coc/work-items/runner-item origin/main');
-        // The branch restored at the end is the one native git reported.
-        expect(seen[seen.length - 1]).toBe('git switch feature/current');
-    });
-
-    it('takes the base branch from a real origin/HEAD', async () => {
-        const dir = await makeRepo('submit-origin-head');
-        await execGitAsync(['update-ref', 'refs/remotes/origin/trunk', 'HEAD'], dir);
-        await execGitAsync(['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk'], dir);
-        const { item, change } = submissionInput();
-        const { run, seen } = hybridRunner();
-
-        await submitWorkItemPullRequest({
-            item,
-            change,
-            repoRoot: dir,
-            branchName: 'coc/work-items/from-origin-head',
-            runCommand: async (command, args, options) => {
-                if (command === 'gh') return { stdout: `${PR_URL}\n`, stderr: '' };
-                return run(command, args, options);
-            },
-        });
-
-        expect(seen).toContain('git fetch origin trunk');
-        expect(seen).toContain('git switch -c coc/work-items/from-origin-head origin/trunk');
-    });
-
-    it('refuses a dirty workspace on the strength of native porcelain output', async () => {
-        const dir = await makeRepo('submit-dirty', 'feature/current', true);
-        const { item, change } = submissionInput();
-        const { run, seen } = hybridRunner();
-
-        await expect(
-            submitWorkItemPullRequest({ item, change, repoRoot: dir, runCommand: run }),
-        ).rejects.toThrow('Cannot submit PR because the workspace has uncommitted changes');
-        expect(seen).toEqual(['git status --porcelain']);
+        // The branch really reached the remote with the submitted commit's change.
+        const pushed = (await execGitAsync(['--git-dir', bare, 'show', 'coc/work-items/runner-item:feature.txt'], tmpDir)).trim();
+        expect(pushed).toBe('feature');
+        // The workspace kept its branch, HEAD and uncommitted edit; the temp worktree is gone.
+        expect((await execGitAsync(['rev-parse', '--abbrev-ref', 'HEAD'], dir)).trim()).toBe('main');
+        expect((await execGitAsync(['rev-parse', 'HEAD'], dir)).trim()).toBe(headBefore);
+        expect(fs.readFileSync(path.join(dir, 'tracked.txt'), 'utf8')).toBe('dirty\n');
+        const worktrees = (await execGitAsync(['worktree', 'list', '--porcelain'], dir)).split('\n').filter(l => l.startsWith('worktree '));
+        expect(worktrees).toHaveLength(1);
     });
 });

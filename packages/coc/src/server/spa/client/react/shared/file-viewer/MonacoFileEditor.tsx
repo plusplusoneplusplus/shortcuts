@@ -139,6 +139,13 @@ export function createEditorNavigationController(
     };
 }
 
+/**
+ * How many reported edits may be outstanding before the oldest is forgotten. A
+ * host echoes each within a render or two; this only caps memory for a host
+ * that never does.
+ */
+const MAX_UNECHOED_EDITS = 64;
+
 /** One-based inclusive line range to highlight (`end === start` for one line). */
 export interface EditorHighlightRange {
     start: number;
@@ -296,6 +303,13 @@ export function MonacoFileEditor({
     const modelListenerRef = useRef<{ dispose(): void } | null>(null);
     const onSaveRef = useRef(onSave);
     onSaveRef.current = onSave;
+    // Texts reported through `onChange` that have not come back as `value` yet.
+    const unechoedRef = useRef<string[]>([]);
+    const applyingValueRef = useRef(false);
+    // Bumped when `value` rewrites the model, which is what the reveal,
+    // highlight and marker effects wait on; the host's echo of a keystroke is
+    // not new content and must not move the cursor or the viewport.
+    const [contentRevision, setContentRevision] = useState(0);
 
     // Measure the wrapper element and track resizes so Monaco gets explicit
     // pixel dimensions instead of relying on CSS 100% (which causes runaway
@@ -360,6 +374,47 @@ export function MonacoFileEditor({
         monaco.editor.setModelMarkers(model, LANGUAGE_MARKER_OWNER, [...markers]);
     }, [markers]);
 
+    /**
+     * Rewrites the model to `next`, silently, as `@monaco-editor/react` does
+     * for its own `value` prop: host-driven content is not an edit to report.
+     */
+    const applyValue = useCallback((editor: monacoEditor.IStandaloneCodeEditor, next: string): boolean => {
+        const model = editor.getModel();
+        const monaco = monacoRef.current;
+        if (!model || !monaco || model.getValue() === next) return false;
+        applyingValueRef.current = true;
+        try {
+            if (editor.getOption(monaco.editor.EditorOption.readOnly)) {
+                editor.setValue(next);
+            } else {
+                editor.executeEdits('', [{ range: model.getFullModelRange(), text: next, forceMoveMarkers: true }]);
+                editor.pushUndoStop();
+            }
+        } finally {
+            applyingValueRef.current = false;
+        }
+        return true;
+    }, []);
+
+    // `value` is not handed to `@monaco-editor/react`, because the wrapper
+    // writes any `value` that differs from the model back into it. A host that
+    // mirrors `onChange` into `value` re-renders a keystroke later, so under
+    // load a render can carry an older echo while a newer keystroke is already
+    // in the model; writing it back rewinds the buffer and the cursor, and the
+    // next keystroke lands in the wrong place. An echo of text this editor
+    // reported is therefore dropped, and only other text reaches the model.
+    useEffect(() => {
+        const unechoed = unechoedRef.current;
+        const echo = unechoed.indexOf(value);
+        if (echo >= 0) {
+            unechoed.splice(0, echo + 1);
+            return;
+        }
+        unechoed.length = 0;
+        const editor = editorRef.current;
+        if (editor && applyValue(editor, value)) setContentRevision(revision => revision + 1);
+    }, [value, applyValue]);
+
     // `@monaco-editor/react` invokes `onMount` only once, so live callbacks
     // such as save must be registered by effects outside this handler.
     const handleMount: OnMount = useCallback((editor, monaco) => {
@@ -397,9 +452,9 @@ export function MonacoFileEditor({
     }, [mounted]);
 
     // A later reveal (a second search hit in the same already-open file) has no
-    // mount to piggyback on, so apply it here too. `value` is a dependency
-    // because the content arrives after the editor does: revealing a line before
-    // the model is populated would clamp to the end of an empty buffer.
+    // mount to piggyback on, so apply it here too. `contentRevision` is a
+    // dependency because the content arrives after the editor does: revealing a
+    // line before the model is populated would clamp to the end of an empty buffer.
     // `revealNonce` is one because a repeat jump to the *same* symbol changes
     // nothing else, and must still re-centre the line the user scrolled away
     // from.
@@ -407,24 +462,23 @@ export function MonacoFileEditor({
         const editor = editorRef.current;
         if (!editor || revealLine === undefined) return;
         revealEditorLine(editor, revealLine, revealColumn);
-    }, [revealLine, revealColumn, revealNonce, value]);
+    }, [revealLine, revealColumn, revealNonce, contentRevision]);
 
     // A later range (a second `file:line` reference into the already-open file)
-    // has no mount to piggyback on. `value` is a dependency for the same reason
-    // as the reveal effect: the content arrives after the editor does.
+    // has no mount to piggyback on. `contentRevision` is a dependency for the
+    // same reason as the reveal effect: the content arrives after the editor does.
     useEffect(() => {
         const editor = editorRef.current;
         if (!editor) return;
         applyHighlight(editor);
-    }, [applyHighlight, value]);
+    }, [applyHighlight, contentRevision]);
 
     // A later marker set (diagnostics arriving after the editor mounted) has no
-    // mount to piggyback on. `value` is a dependency because the model is
-    // replaced when the content arrives, and markers set on the old model would
-    // be lost with it.
+    // mount to piggyback on. `contentRevision` is a dependency because the
+    // content arriving rewrites the whole model, markers included.
     useEffect(() => {
         applyMarkers();
-    }, [applyMarkers, value]);
+    }, [applyMarkers, contentRevision]);
 
     // Hand the model up to the host, and take the registration back down with
     // it. `modelGeneration` is a dependency so a model swap re-registers against
@@ -456,7 +510,13 @@ export function MonacoFileEditor({
         newValue: string | undefined,
         event?: monacoEditor.IModelContentChangedEvent,
     ) => {
-        onChange?.(newValue ?? '', event?.changes ?? []);
+        if (applyingValueRef.current || !onChange) return;
+        const text = newValue ?? '';
+        const unechoed = unechoedRef.current;
+        unechoed.push(text);
+        // Bounded, for a host that takes edits but never echoes them.
+        if (unechoed.length > MAX_UNECHOED_EDITS) unechoed.shift();
+        onChange(text, event?.changes ?? []);
     }, [onChange]);
 
     const monacoTheme = resolveIsDark(theme) ? 'vs-dark' : 'vs';
@@ -467,7 +527,7 @@ export function MonacoFileEditor({
                 <Editor
                     width={dimensions.width}
                     height={dimensions.height}
-                    value={value}
+                    defaultValue={value}
                     language={language ?? 'plaintext'}
                     theme={monacoTheme}
                     onChange={handleChange}

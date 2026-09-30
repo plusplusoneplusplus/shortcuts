@@ -95,6 +95,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext
 // ── Display settings ──
 let mockDisplaySettings = { taskCardDensity: 'normal' as string, showReportIntent: false };
 let mockSessionContextAttachmentsEnabled = false;
+let mockNativeCliSessionsEnabled = false;
 vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
     useDisplaySettings: () => mockDisplaySettings,
     invalidateDisplaySettings: vi.fn(),
@@ -151,6 +152,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isForEachEnabled: () => false,
     isMapReduceEnabled: () => false,
     isSessionContextAttachmentsEnabled: () => mockSessionContextAttachmentsEnabled,
+    isNativeCliSessionsEnabled: () => mockNativeCliSessionsEnabled,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
@@ -174,6 +176,16 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/SwipeableHistoryI
 // ── Summarize dialog — stub ──
 vi.mock('../../../../src/server/spa/client/react/features/chat/SummarizeChatDialog', () => ({
     SummarizeChatDialog: () => null,
+}));
+
+// ── Import Copilot chat dialog — stub exposing onImported ──
+vi.mock('../../../../src/server/spa/client/react/features/chat/ImportCopilotChatDialog', () => ({
+    ImportCopilotChatDialog: ({ workspaceId, onImported }: any) => (
+        <div data-testid="import-copilot-chat-dialog-stub" data-workspace-id={workspaceId}>
+            <button data-testid="stub-import-same" onClick={() => onImported(workspaceId, 'queue_imported')} />
+            <button data-testid="stub-import-member" onClick={() => onImported('ws-member', 'queue_member')} />
+        </div>
+    ),
 }));
 
 // ── useBreakpoint (used by Dialog inside RenameDialog) ──
@@ -258,6 +270,7 @@ describe('ChatListPane', () => {
         mockArchivedChatIds = new Set();
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false };
         mockSessionContextAttachmentsEnabled = false;
+        mockNativeCliSessionsEnabled = false;
         mockGetDraft.mockReturnValue(null);
         globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -436,6 +449,58 @@ describe('ChatListPane', () => {
         it('renders refresh button', () => {
             renderPane({ history: [makeHistoryTask()] });
             expect(screen.getByTestId('queue-refresh-btn')).toBeTruthy();
+        });
+
+        describe('Import Copilot chat button', () => {
+            it('is hidden when features.nativeCliSessions is off', () => {
+                renderPane({ history: [makeHistoryTask()], workspaceId: 'ws-1' });
+                expect(screen.queryByTestId('toolbar-import-copilot-chat-btn')).toBeNull();
+                expect(screen.getByTestId('toolbar-new-chat-btn')).toBeTruthy();
+            });
+
+            it('is hidden without a workspace even when the flag is on', () => {
+                mockNativeCliSessionsEnabled = true;
+                renderPane({ history: [makeHistoryTask()] });
+                expect(screen.queryByTestId('toolbar-import-copilot-chat-btn')).toBeNull();
+            });
+
+            it('sits between New chat and refresh without changing the New chat button', () => {
+                mockNativeCliSessionsEnabled = true;
+                const onNewChat = vi.fn();
+                renderPane({ history: [makeHistoryTask()], workspaceId: 'ws-1', onNewChat });
+                const importBtn = screen.getByTestId('toolbar-import-copilot-chat-btn');
+                expect(importBtn.getAttribute('title')).toBe('Import Copilot chat…');
+                const newChatBtn = screen.getByTestId('toolbar-new-chat-btn');
+                expect(newChatBtn.nextElementSibling).toBe(importBtn);
+                expect(importBtn.nextElementSibling).toBe(screen.getByTestId('queue-refresh-btn'));
+                expect(newChatBtn.textContent).toContain('New chat');
+                fireEvent.click(newChatBtn);
+                expect(onNewChat).toHaveBeenCalledTimes(1);
+                expect(screen.queryByTestId('import-copilot-chat-dialog-stub')).toBeNull();
+            });
+
+            it('opens the dialog and selects the imported chat in the same repo', () => {
+                mockNativeCliSessionsEnabled = true;
+                const { props } = renderPane({ history: [makeHistoryTask()], workspaceId: 'ws-1' });
+                fireEvent.click(screen.getByTestId('toolbar-import-copilot-chat-btn'));
+                const dialog = screen.getByTestId('import-copilot-chat-dialog-stub');
+                expect(dialog.getAttribute('data-workspace-id')).toBe('ws-1');
+
+                fireEvent.click(screen.getByTestId('stub-import-same'));
+                expect(props.onRefresh).toHaveBeenCalled();
+                expect(props.onSelectTask).toHaveBeenCalledWith('queue_imported');
+                expect(screen.queryByTestId('import-copilot-chat-dialog-stub')).toBeNull();
+            });
+
+            it('navigates to the member repo chat when imported from a repo group', () => {
+                mockNativeCliSessionsEnabled = true;
+                const { props } = renderPane({ history: [makeHistoryTask()], workspaceId: 'group-demo' });
+                fireEvent.click(screen.getByTestId('toolbar-import-copilot-chat-btn'));
+                fireEvent.click(screen.getByTestId('stub-import-member'));
+                expect(window.location.hash).toBe('#repos/ws-member/chats/queue_member');
+                expect(props.onSelectTask).not.toHaveBeenCalled();
+                window.location.hash = '';
+            });
         });
 
         it('pause button shows only the ALL scope tag when not paused (color signals state)', () => {

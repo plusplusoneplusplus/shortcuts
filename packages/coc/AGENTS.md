@@ -117,13 +117,13 @@ all have their own `references/*.md`.
   A missing `teams-messaging.json` defaults the channel to a sanitized
   `CoC-<machine-name>`; saved channels and routing IDs stay untouched on startup.
   Machines sharing a name must choose distinct channels to avoid duplicate work.
-  Admin → Configure → Features exposes the default-off live
+  Admin → Configure → Integrations exposes the default-off live
   `features.teamsAiAnswerRelay` toggle beside Teams bridge observability. When
   enabled, the bridge persists each inbound request's team/channel/thread and
   task or turn correlation in its physical workspace's `teams-answer-relay/`
   directory.
   The independent default-off live `features.teamsMessageReaction` setting is
-  also exposed in the Features card. Newly admitted human channel posts attempt
+  also exposed in the Integrations Features section. Newly admitted human channel posts attempt
   a Like before routing; ordinary replies and relay receipts remain authoritative.
   All channel sends begin with visible `AI:` at the shared manager boundary.
   The boundary renders command, status, acknowledgement, and error Markdown as
@@ -510,11 +510,11 @@ all have their own `references/*.md`.
   takes no client-resolver prop; do not add one.
 - **Adding an admin-exposed config setting** is ONE definition entry in
   `src/config/admin-setting-definitions.ts` (value spec, default, runtime,
-  optional `runtimeFlag` + Features-card `ui` metadata) plus the
+  optional `runtimeFlag` + settings-tab `ui` metadata) plus the
   `CLIConfig`/`ResolvedCLIConfig`/`DEFAULT_CONFIG` declarations in
   `src/config.ts`. Admin validation, file schema, namespace merge/source
-  tracking, runtime feature flags, the embedded SPA bootstrap, the Features
-  card UI, and the generic contract tests
+  tracking, runtime feature flags, the embedded SPA bootstrap, the settings-tab
+  Features sections (defaulting to the Features tab), and the generic contract tests
   (`test/config/admin-setting-definitions.test.ts`) all derive from the
   registry — do not hand-edit `admin-config-fields.ts`, `schema.ts` leaves,
   or `namespace-registry.ts` for admin settings. Reserve `admin-handler.ts`
@@ -541,8 +541,9 @@ all have their own `references/*.md`.
   original task's closed commit range and admits only its chain. A successful
   commit-producing implementation enqueues a same-chain autopilot PR-submit task
   with the original provider/model/reasoning selection; its purpose-built prompt
-  requires an isolated temporary worktree, explicit oldest-first cherry-picks,
-  and `gh pr merge --auto --squash`. A failed `PR_SUBMIT_RESULT` keeps the gate
+  has the agent call the `create_pull_request` tool with the explicit
+  oldest-first SHAs, `autoMerge: true`, and `mergeMethod: "squash"` (the tool
+  writes the chat↔PR binding). A failed `PR_SUBMIT_RESULT` keeps the gate
   and pauses the repo with the reported reason. A target-server watcher polls
   submitted PRs every 60 seconds through the provider PR service, releases only
   the matching gate on merge, and restores submitted watches after restart.
@@ -598,7 +599,9 @@ all have their own `references/*.md`.
   `orchestrateSubmitCompletion` (`src/server/ralph/orchestrate-submit.ts`),
   which parses the `RALPH_SUBMIT_RESULT` block and updates the persisted
   `submits[]` record only — a submit completion never enqueues further work
-  and server code never switches git branches.
+  and server code never switches git branches. The submit prompt
+  (`coc-workflow` `buildRalphSubmitPrompt`) has the agent call the
+  `create_pull_request` tool with the explicit SHA list and `autoMerge: true`.
 - **Ralph manual-only completion** treats explicit manual-verification-only
   `Remaining:` progress as complete autonomous work: do not queue another
   implementation iteration; enqueue final-check and preserve the manual
@@ -608,6 +611,22 @@ all have their own `references/*.md`.
   from the current iteration's `progress.md` section (via `recentProgressSections`,
   which must include `iteration`). The inline token stays authoritative when
   present; `NO_SIGNAL` is terminal only when neither source carries a signal.
+- **Creating pull requests** goes through `createPullRequest`
+  (`src/server/git/create-pull-request-service.ts`) only. It picks GitHub
+  (`gh`) or Azure DevOps (`az repos`) from the `origin` URL, uses the user's CLI
+  login, runs commits mode in a temporary linked worktree (conflicts abort and
+  clean up; the caller's HEAD never moves), and returns an existing open PR
+  instead of failing. Route every git/`gh`/`az` call through its injected
+  `PrCliRunner` so tests stay CLI-free. The Work Item `submit-pr` command uses
+  it in commits mode (its own `branch` name, `autoMerge: false`) and binds the
+  change's execution chat to the PR.
+- **`create_pull_request` LLM tool** (`src/server/llm-tools/create-pull-request-tool.ts`)
+  is autopilot/Ralph-only: executors pass `createPullRequest` deps to
+  `buildChatTurnContext` only for write turns (ask mode and Ralph final-check
+  omit it — a documented exception to the mode-invariant tool block). On
+  success it writes the chat ↔ PR binding via `recordPullRequestBinding`
+  (`src/server/processes/record-pull-request-binding.ts`, bare task id under the
+  workspace's canonical origin).
 - **Git-tab Fetch/Pull** must stay current-branch scoped. `RepoGitTab` sends
   `currentBranchOnly: true`; the server delegates to the scoped `BranchService`
   methods, which resolve the checked-out branch's exact configured upstream
@@ -1146,7 +1165,15 @@ all have their own `references/*.md`.
   `~/.copilot/session-store.db` with short-lived `readonly` NativeDatabase connections,
   keep every user-provided filter parameterized (FTS terms literal-quoted), and
   return typed `db-missing`/`db-invalid` states instead of throwing. Never route
-  native session IDs into CoC process/chat action handlers. Rich detail
+  native session IDs into CoC process/chat action handlers; the only bridge is
+  the explicit `POST .../native-copilot-sessions/:sessionId/import` route
+  (`native-copilot-session-import.ts`), which snapshots the transcript into a
+  new completed `chat` process in the target workspace with
+  `metadata.importedFrom = { provider: 'copilot', nativeSessionId, importedAt }`
+  and a `copilot` `activeProviderSession`/`sdkSessionId` bound to the native id,
+  dedupes per `(workspaceId, nativeSessionId)` via
+  `getImportedNativeSessionProcessIds`, and reads the session with the
+  `{ matchAll: true }` scope so any native session can be imported. Rich detail
   reconstruction reads the per-session log
   `~/.copilot/session-state/<id>/events.jsonl` via `session-state-parser.ts`
   (`parseNativeSessionState`), which maps the newline-delimited

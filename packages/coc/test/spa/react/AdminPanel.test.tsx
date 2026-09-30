@@ -1328,7 +1328,7 @@ describe('AdminPanel', () => {
             });
 
             await act(async () => { renderWithProviders(); });
-            await gotoSettingsSubTab('features');
+            await gotoSettingsSubTab('ai');
             await waitFor(() => expect(screen.getByTestId('toggle-ralph-multi-agent-grill-enabled')).toBeDefined());
 
             const toggle = screen.getByTestId('toggle-ralph-multi-agent-grill-enabled') as HTMLInputElement;
@@ -1337,10 +1337,10 @@ describe('AdminPanel', () => {
             await act(async () => {
                 fireEvent.click(toggle);
             });
-            expect((screen.getByTestId('settings-features-save') as HTMLButtonElement).disabled).toBe(false);
+            expect((screen.getByTestId('settings-tab-features-ai-save') as HTMLButtonElement).disabled).toBe(false);
 
             await act(async () => {
-                fireEvent.click(screen.getByTestId('settings-features-save'));
+                fireEvent.click(screen.getByTestId('settings-tab-features-ai-save'));
             });
             await waitFor(() => expect(capturedBody).not.toBeNull());
             expect(capturedBody!['features.ralphMultiAgentGrill']).toBe(true);

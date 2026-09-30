@@ -21,26 +21,28 @@ export function buildImplementPlanPrSubmitPrompt(
     input: BuildImplementPlanPrSubmitPromptInput,
 ): string {
     return [
-        'Submit the commits produced by this implement-plan run as a GitHub pull request.',
+        'Submit the commits produced by this implement-plan run as a pull request.',
         '',
         '## Plan',
         input.planReference,
         '',
         '## Exact commits',
         `The closed implementation range is ${input.baselineSha}..${input.endSha}.`,
-        'Cherry-pick exactly these commits, oldest first:',
+        'Submit exactly these commits, oldest first:',
         ...input.commitShas.map(sha => `- ${sha}`),
         'Do not derive the commit list from HEAD or include any other commit.',
         '',
         '## Required procedure',
-        '1. Before making any change, verify the active worktree is clean, `gh` is installed and authenticated, and `origin` is a GitHub remote. On any failed check, stop without committing, stashing, cleaning, or changing the active worktree.',
-        '2. Fetch the latest `origin/main`, create a fresh branch from it, and attach that branch only in a temporary linked git worktree. Never change the branch or HEAD of the active worktree.',
-        '3. In the temporary worktree, cherry-pick exactly the commit SHAs listed above in their listed order. If any cherry-pick conflicts, abort it, do not resolve the conflict, and report failure.',
-        '4. Push the fresh branch and use `gh` to open a non-draft pull request. Derive its title and body from the plan and the implemented changes.',
-        '5. Enable squash auto-merge with `gh pr merge --auto --squash`.',
-        '6. Clean up the temporary linked worktree. Never commit, stash, or clean the active worktree.',
-        '',
-        'Do not invoke or use the `submit-commits-as-pr` skill. Perform the procedure directly.',
+        '1. Derive a PR title and body from the plan and the implemented changes.',
+        '2. Call the `create_pull_request` tool once with `commits` set to exactly the SHAs listed above in their listed order, '
+            + '`autoMerge: true`, `mergeMethod: "squash"`, and `draft: false`. The tool fetches the base branch, '
+            + 'cherry-picks the commits in a temporary linked worktree, pushes, opens the PR (GitHub or Azure DevOps), '
+            + 'and links it to this chat. The active worktree is never touched.',
+        '3. Do not run `git`, `gh`, or `az` commands to create the branch or PR yourself, and do not invoke the '
+            + '`submit-commits-as-pr` skill.',
+        '4. If the tool reports an error (including a cherry-pick/rebase conflict), do not resolve the conflict or '
+            + 'retry another way — report a failed result with the tool\'s error message.',
+        '5. If the tool result includes an auto-merge warning, still report the PR as submitted and mention the warning.',
         '',
         '## Result contract',
         `End your response with exactly one ${RESULT_MARKER} JSON block and no trailing text:`,

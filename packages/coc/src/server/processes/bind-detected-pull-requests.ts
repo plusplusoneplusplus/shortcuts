@@ -15,10 +15,8 @@
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import {
     getLogger,
-    isQueueProcessId,
     LogCategory,
     resolveCanonicalOriginId,
-    toTaskId,
     type ConversationTurn,
     type WorkspaceInfo,
 } from '@plusplusoneplusplus/forge';
@@ -29,6 +27,7 @@ import {
 } from '@plusplusoneplusplus/forge/git/pull-request-detection';
 import { resolveWorkspaceRemoteUrl, resolveWorkspaceOriginId } from '../repos/origin-scope';
 import { PullRequestChatBindingStore } from './pull-request-chat-binding-store';
+import { bareTaskIdForProcess } from './record-pull-request-binding';
 
 const logger = getLogger();
 
@@ -44,15 +43,7 @@ export interface PrBindingProcessStore {
     updateWorkspace?(id: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>): Promise<WorkspaceInfo | undefined>;
 }
 
-/**
- * The binding table is keyed by the *bare* task id — that is what the dashboard
- * writes and reads (`isQueueProcessId(taskId) ? toTaskId(taskId) : taskId`) and
- * what every existing row holds. Writing the `queue_`-prefixed process id would
- * produce rows the client never finds.
- */
-export function bareTaskIdForProcess(processId: string): string {
-    return isQueueProcessId(processId) ? toTaskId(processId) : processId;
-}
+export { bareTaskIdForProcess };
 
 /**
  * Detects the pull requests created in `processId`'s conversation and upserts a

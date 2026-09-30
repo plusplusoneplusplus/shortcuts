@@ -245,7 +245,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        fireEvent.click(await screen.findByTestId('settings-subtab-appearance'));
         await waitFor(() => {
             expect(screen.getByTestId('select-scratchpad-layout')).toBeTruthy();
         });
@@ -279,7 +279,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         });
 
         render(<AdminPanel />);
-        await gotoFeaturesSubTab();
+        fireEvent.click(await screen.findByTestId('settings-subtab-appearance'));
         await waitFor(() => {
             expect(screen.getByTestId('select-scratchpad-layout')).toBeTruthy();
         });
@@ -288,7 +288,7 @@ describe('AdminPanel — Scratchpad toggle', () => {
         fireEvent.change(select, { target: { value: 'vertical' } });
 
         const saveButtons = screen.getAllByText('Save');
-        const featuresSave = saveButtons.find(btn => btn.closest('[data-testid="settings-features"]'));
+        const featuresSave = saveButtons.find(btn => btn.closest('[data-testid="settings-tab-features-appearance"]'));
         expect(featuresSave).toBeTruthy();
         fireEvent.click(featuresSave!);
 

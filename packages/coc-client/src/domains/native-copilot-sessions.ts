@@ -1,4 +1,5 @@
 import type {
+  ImportNativeCopilotSessionResponse,
   ListNativeCopilotSessionsOptions,
   ListNativeCopilotSessionsResponse,
   NativeCopilotSessionDetailResponse,
@@ -20,12 +21,14 @@ function listQuery(options: ListNativeCopilotSessionsOptions | undefined): Recor
     to: options.to,
     limit: options.limit,
     offset: options.offset,
+    scope: options.scope,
   };
 }
 
 /**
- * Read-only client for native GitHub Copilot CLI sessions. The server exposes
- * list and detail reads only; there are no mutation endpoints for this domain.
+ * Client for native GitHub Copilot CLI sessions: list/detail reads plus the
+ * explicit import action that snapshots a session into a workspace chat.
+ * Native data itself is never modified.
  */
 export class NativeCopilotSessionsClient {
   constructor(private readonly transport: RequestAdapter) {}
@@ -41,6 +44,14 @@ export class NativeCopilotSessionsClient {
   get(workspaceId: string, sessionId: string): Promise<NativeCopilotSessionDetailResponse> {
     return this.transport.request<NativeCopilotSessionDetailResponse>(
       sessionsPath(workspaceId, `/${encodePathSegment(sessionId)}`),
+    );
+  }
+
+  /** Import a native session into `workspaceId`'s chat list (idempotent per workspace). */
+  import(workspaceId: string, sessionId: string): Promise<ImportNativeCopilotSessionResponse> {
+    return this.transport.request<ImportNativeCopilotSessionResponse>(
+      sessionsPath(workspaceId, `/${encodePathSegment(sessionId)}/import`),
+      { method: 'POST' },
     );
   }
 }

@@ -16,13 +16,20 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
 import { MonacoFileEditor } from '../../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor';
 
+const { textModel } = vi.hoisted(() => ({
+    textModel: (id: string) => ({ id, getValue: () => '', getFullModelRange: () => ({}) }),
+}));
+
 const stub = vi.hoisted(() => ({
-    model: { id: 'model-1' } as { id: string },
+    model: textModel('model-1'),
     modelListeners: [] as (() => void)[],
     modelListenerDisposals: 0,
-    monaco: { editor: { setModelMarkers: vi.fn() }, KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 2 } },
+    monaco: { editor: { setModelMarkers: vi.fn(), EditorOption: { readOnly: 0 } }, KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 2 } },
     editor: {
         getModel: () => stub.model,
+        getOption: () => false,
+        executeEdits: vi.fn(),
+        pushUndoStop: vi.fn(),
         onDidChangeModel: (listener: () => void) => {
             stub.modelListeners.push(listener);
             return { dispose: () => { stub.modelListenerDisposals += 1; } };
@@ -53,7 +60,7 @@ vi.mock('../../../../../src/server/spa/client/react/layout/ThemeProvider', () =>
 
 /** Replace the editor's model and fire Monaco's change event. */
 function swapModel(id: string) {
-    stub.model = { id };
+    stub.model = textModel(id);
     for (const listener of [...stub.modelListeners]) {
         listener();
     }
@@ -66,7 +73,7 @@ async function flushMount() {
 beforeEach(() => {
     vi.clearAllMocks();
     (globalThis as any).__modelMountMounted = false;
-    stub.model = { id: 'model-1' };
+    stub.model = textModel('model-1');
     stub.modelListeners = [];
     stub.modelListenerDisposals = 0;
 });
@@ -83,7 +90,7 @@ describe('MonacoFileEditor — onModelMount', () => {
         expect(onModelMount.mock.calls[0][0]).toEqual({
             editor: stub.editor,
             monaco: stub.monaco,
-            model: { id: 'model-1' },
+            model: expect.objectContaining({ id: 'model-1' }),
         });
 
         rerender(<MonacoFileEditor value="edited" language="python" onModelMount={onModelMount} />);
@@ -101,7 +108,7 @@ describe('MonacoFileEditor — onModelMount', () => {
 
         expect(cleanup).toHaveBeenCalledTimes(1);
         expect(onModelMount).toHaveBeenCalledTimes(2);
-        expect(onModelMount.mock.calls[1][0].model).toEqual({ id: 'model-2' });
+        expect(onModelMount.mock.calls[1][0].model).toMatchObject({ id: 'model-2' });
     });
 
     it('runs the cleanup on unmount and stops listening for model changes', async () => {

@@ -164,6 +164,24 @@ describe('CanvasPanel', () => {
         resetCloneRegistryForTests();
     });
 
+    it('renders the host title accessory right after the title', async () => {
+        mocks.get.mockResolvedValue(makeCanvas());
+
+        render(
+            <CanvasPanel
+                workspaceId="ws-1"
+                canvasId="doc-abc123"
+                liveEvent={null}
+                titleAccessory={<button data-testid="title-accessory">Canvases 5</button>}
+            />,
+        );
+
+        await waitFor(() => expect(screen.getByTestId('canvas-panel-title').textContent).toBe('My Plan'));
+        const accessory = screen.getByTestId('title-accessory');
+        const titleBox = screen.getByTestId('canvas-panel-title').parentElement!;
+        expect(titleBox.nextElementSibling?.contains(accessory)).toBe(true);
+    });
+
     it('loads and renders the canvas title, revision, and preview', async () => {
         mocks.get.mockResolvedValue(makeCanvas());
 

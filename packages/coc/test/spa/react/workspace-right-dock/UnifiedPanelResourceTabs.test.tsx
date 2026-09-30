@@ -14,7 +14,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
@@ -40,10 +40,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
 // The canvas panel owns a large kernel stack of its own; here only the routing
 // it is handed matters.
 vi.mock('../../../../src/server/spa/client/react/features/canvas/CanvasPanel', () => ({
-    CanvasPanel: ({ workspaceId, canvasId, liveEvent, onClose }: any) => (
+    CanvasPanel: ({ workspaceId, canvasId, liveEvent, onClose, titleAccessory }: any) => (
         <div data-testid="mock-canvas" data-revision={liveEvent ? String(liveEvent.revision) : 'none'}>
             canvas:{workspaceId}:{canvasId}
             <button data-testid="mock-canvas-close" onClick={onClose}>close</button>
+            <div data-testid="mock-canvas-title-accessory">{titleAccessory}</div>
         </div>
     ),
 }));
@@ -330,6 +331,10 @@ describe('UnifiedRightPanel — canvas and diff tabs (AC-04)', () => {
         renderPanel();
 
         expect(screen.getByTestId(`unified-panel-tab-${activeId}`)).toBeTruthy();
+        // The switcher lives in the active canvas's header, not in the tab strip.
+        const header = screen.getByTestId(`unified-panel-view-${activeId}`);
+        expect(within(header).getByTestId('unified-panel-canvas-stack').textContent).toContain('Canvases 5');
+        expect(within(screen.getByTestId('unified-panel-tab-strip')).queryByTestId('unified-panel-canvas-stack')).toBeNull();
         fireEvent.click(screen.getByTestId('unified-panel-canvas-stack'));
         fireEvent.click(screen.getByTestId('unified-panel-canvas-stack-close-others'));
 

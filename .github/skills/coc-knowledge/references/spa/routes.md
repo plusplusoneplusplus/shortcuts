@@ -228,7 +228,12 @@ and Claude Code CLI sessions for the active workspace. It is gated by
 sub-tab while accepting the hidden `copilot-sessions` key.
 
 **Everything here is read-only**: no input box, streaming, resume, follow-up, archive,
-pin, delete, retry, or turn actions, and stored HTML or scripts never execute.
+pin, delete, retry, or turn actions, and stored HTML or scripts never execute. The one
+exception is **Import to chats** (`native-session-import-to-chats-btn`) in the detail
+header, shown only for Copilot sessions: it calls
+`client.nativeCopilotSessions.import(workspaceId, id)` and navigates to
+`#repos/<ws>/chats/<processId>` (new or already-imported chat); failures render
+`native-session-import-error`. The native store itself is never modified.
 
 ### Layout and provider switching
 

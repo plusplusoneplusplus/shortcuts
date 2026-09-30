@@ -14,9 +14,12 @@
  * The same reasoning applies to the system message, which is serialized right
  * after the tool block — so it is asserted here too.
  *
- * Known exception, deliberately not asserted here: the Ralph grill terminal
- * branch strips `ask_user` mid-turn to end the questioning phase
- * (chat-base-executor). Covered separately below.
+ * Known exceptions:
+ * - the Ralph grill terminal branch strips `ask_user` mid-turn to end the
+ *   questioning phase (chat-base-executor). Covered separately below.
+ * - `create_pull_request` is autopilot-only by product decision (ask mode is
+ *   read-only and must never open PRs), so it is left out of the equality
+ *   checks and asserted on its own below.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -94,14 +97,14 @@ function makeOptions(overrides?: FlatExecutorOptions) {
     }) as any;
 }
 
-function makeChatTask(mode: 'ask' | 'autopilot', id: string): QueuedTask {
+function makeChatTask(mode: 'ask' | 'autopilot', id: string, workspaceId?: string): QueuedTask {
     return {
         id,
         type: 'chat',
         priority: 'normal',
         status: 'running',
         createdAt: Date.now(),
-        payload: { kind: 'chat', mode, prompt: 'Hello' },
+        payload: { kind: 'chat', mode, prompt: 'Hello', ...(workspaceId ? { workspaceId } : {}) },
         config: {},
         displayName: 'Hello',
     } as QueuedTask;
@@ -122,9 +125,16 @@ function makeProcess(id: string, mode: 'ask' | 'autopilot'): AIProcess {
     } as AIProcess;
 }
 
-function sortedToolNames(callIndex: number): string[] {
+/** Tools deliberately registered in autopilot only (see header). */
+const AUTOPILOT_ONLY_TOOLS = new Set(['create_pull_request']);
+
+function allToolNames(callIndex: number): string[] {
     const call = sdkMocks.mockSendMessage.mock.calls[callIndex][0] as any;
     return (call.tools ?? []).map((tool: any) => tool.name).sort();
+}
+
+function sortedToolNames(callIndex: number): string[] {
+    return allToolNames(callIndex).filter(name => !AUTOPILOT_ONLY_TOOLS.has(name));
 }
 
 // ============================================================================
@@ -226,6 +236,30 @@ describe('mode-invariant tool block', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls.at(-1)![0] as any;
         expect((call.tools ?? []).map((tool: any) => tool.name)).not.toContain('ask_user');
+    });
+
+    it('offers create_pull_request on autopilot initial turns only', async () => {
+        const askStore = createMockProcessStore();
+        await new ChatExecutor(askStore, makeOptions()).execute(makeChatTask('ask', 'task-pr-ask', 'ws-1'), 'Hello');
+
+        const autoStore = createMockProcessStore();
+        await new AutopilotExecutor(autoStore, makeOptions()).execute(makeChatTask('autopilot', 'task-pr-auto', 'ws-1'), 'Hello');
+
+        expect(allToolNames(0)).not.toContain('create_pull_request');
+        expect(allToolNames(1)).toContain('create_pull_request');
+    });
+
+    it('offers create_pull_request on autopilot follow-ups only', async () => {
+        const askStore = createMockProcessStore();
+        await askStore.addProcess(makeProcess('proc-pr-ask', 'ask'));
+        await new FollowUpExecutor(askStore, makeOptions()).executeFollowUp('proc-pr-ask', 'next', undefined, 'ask');
+
+        const autoStore = createMockProcessStore();
+        await autoStore.addProcess(makeProcess('proc-pr-auto', 'ask'));
+        await new FollowUpExecutor(autoStore, makeOptions()).executeFollowUp('proc-pr-auto', 'next', undefined, 'autopilot');
+
+        expect(allToolNames(0)).not.toContain('create_pull_request');
+        expect(allToolNames(1)).toContain('create_pull_request');
     });
 
     it('drops ask_user from both modes when the global config disables it', async () => {

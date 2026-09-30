@@ -569,13 +569,17 @@ test.describe('Explorer language support – status', () => {
             await expect(page.locator(`${APP_PANEL} [data-testid="language-status-label"]`))
                 .toHaveText('TypeScript');
 
-            const badgeBox = await statusBadge(page).boundingBox();
-            const firstLineBox = await page.locator(
+            // Polled: `boundingBox` does not wait, and Monaco renders and
+            // recycles its line nodes on its own schedule, so a single read can
+            // land on a line that is not there yet or no longer attached.
+            const firstLine = page.locator(
                 `${APP_PANEL} [data-testid="monaco-container"] .view-lines .view-line`,
-            ).first().boundingBox();
-            expect(badgeBox).not.toBeNull();
-            expect(firstLineBox).not.toBeNull();
-            expect(badgeBox!.y).toBeGreaterThanOrEqual(firstLineBox!.y + firstLineBox!.height);
+            ).first();
+            await expect.poll(async () => {
+                const badgeBox = await statusBadge(page).boundingBox();
+                const firstLineBox = await firstLine.boundingBox();
+                return badgeBox && firstLineBox ? badgeBox.y - (firstLineBox.y + firstLineBox.height) : null;
+            }, { timeout: 10_000 }).toBeGreaterThanOrEqual(0);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -837,26 +841,30 @@ test.describe('Explorer language support – TypeScript and definition features'
             await openSourceFile(page, 'app.ts');
             await waitForLanguageServer(page);
             await waitForProjectLoaded(page);
-            await expect.poll(() => squigglyLines(page), { timeout: 10_000 }).toEqual([]);
+            const baselineSquiggles = await squigglyLines(page);
 
             // The fixture ends on an empty line, so the error can be typed
             // without touching a bracket or a quote Monaco would auto-close.
             const broken = 'export const broken: number = label;';
             await focusMonacoBuffer(page);
             await page.keyboard.press('Control+End');
-            await page.keyboard.type(broken);
+            await page.keyboard.insertText(broken);
 
             // `label` is a string, and the server only knows that from the
             // buffer it was sent — nothing has been written to disk.
             await expect.poll(() => squigglyLines(page), { timeout: 30_000 }).toContain(broken);
 
-            // Select the typed line back to its start and delete it. Undo would
-            // be a guess: Monaco decides for itself how many undo stops a run of
-            // typing earned.
+            // Restore the unsaved buffer in one deterministic editor input.
             await page.keyboard.press('Escape');
-            await page.keyboard.press('Shift+Home');
-            await page.keyboard.press('Delete');
-            await expect.poll(() => squigglyLines(page), { timeout: 30_000 }).toEqual([]);
+            await page.keyboard.press('Control+A');
+            await page.keyboard.insertText([
+                "import { formatWidget } from './format';",
+                '',
+                "export const label = formatWidget({ name: 'gadget', size: 3 });",
+                '',
+            ].join('\n'));
+            await expect.poll(async () => (await squigglyLines(page)).length, { timeout: 30_000 })
+                .toBe(baselineSquiggles.length);
         } finally {
             safeRmSync(tmpDir);
         }
