@@ -132,6 +132,12 @@ follow-up chat filter both the built-in item and a server-returned skill with th
 same gated name; queue and shared-dialog skill selection keep their ordinary
 skill behavior.
 
+Slash-command autocomplete matches the typed text anywhere in a command or skill
+name, case-insensitively. Exact matches rank first, then prefix matches, then
+substring matches. Within a match tier, built-in commands rank before skills and
+the source order remains stable. The hook and menu renderer share the same matcher
+so keyboard selection and visible row order stay aligned.
+
 `/canvas <request>` selects the bundled `canvas` skill and leaves `<request>` as
 the prompt. Its inline hint is shown only while the request is empty. With
 `canvas.enabled` off, the command is absent and manually typed `/canvas` remains

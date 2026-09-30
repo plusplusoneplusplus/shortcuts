@@ -137,14 +137,32 @@ describe('useSlashCommands', () => {
         });
         expect(result.current.menuVisible).toBe(true);
         expect(result.current.menuFilter).toBe('d');
-        expect(result.current.filteredSkills).toHaveLength(1);
-        expect(result.current.filteredSkills[0].name).toBe('draft');
+        expect(result.current.filteredSkills.map(skill => skill.name)).toEqual(['draft', 'go-deep']);
 
         // Typing non-slash text closes the menu
         act(() => {
             result.current.handleInputChange('hello', 5);
         });
         expect(result.current.menuVisible).toBe(false);
+    });
+
+    it('finds substring matches while ranking prefix matches first', () => {
+        const rankedSkills: SkillItem[] = [
+            { name: 'skill-hardening', kind: 'builtin' },
+            { name: 'hard-reset', kind: 'skill' },
+            { name: 'try-hard', kind: 'skill' },
+        ];
+        const { result } = renderHook(() => useSlashCommands(rankedSkills));
+
+        act(() => {
+            result.current.handleInputChange('/hard', 5);
+        });
+
+        expect(result.current.filteredSkills.map(skill => skill.name)).toEqual([
+            'hard-reset',
+            'skill-hardening',
+            'try-hard',
+        ]);
     });
 
     // T7: cursor is placed after the inserted skill name + space (regression: was jumping to start)
