@@ -22,6 +22,7 @@ Consolidated messaging connectors behind one `MessagingConnector` contract. No C
 - **MCP sends escape content backslashes.** Channel posts, thread replies, and self-DMs double backslashes in tool content so Windows paths survive the Teams MCP parser. Channel tool results with `isError` or `Error:` text reject with `TeamsMcpSendRejectedError` so a caller can distinguish definite rejection from an unknown network outcome; send failures do not imply a lost connection.
 - Baileys + qrcode-terminal are `optionalDependencies` — installed but only loaded by WhatsApp use.
 - WhatsApp inbound messages expose the chat JID, optional group participant JID, and paired-account `fromMe` flag; `senderJid` remains the chat JID for container consumers. `WhatsAppBot.react()` sends a Baileys reaction with a five-second rejection timeout.
+- `whatsapp/message-utils.ts` contains CoC-independent outbound formatting, lossless WhatsApp text chunking, command parsing (`list/select/create`, chat, `/autopilot`), and the container bridge's `[global]` prefix parser. The container bridge uses the helpers without changing its short-message formatting or routing.
 
 ## Build / test
 

@@ -5,7 +5,7 @@
  */
 
 import type { InboundWAMessage, BotStatus } from '@plusplusoneplusplus/coc-connector/whatsapp';
-import { WhatsAppBot } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import { WhatsAppBot, formatWhatsAppOutbound, chunkWhatsAppText, stripWhatsAppGlobalPrefix } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import type { WebSocketRelay, WSRelayMessage } from '../proxy/ws-relay';
 import type { AgentStore } from '../store/agent-store';
 import type { TunnelBridge } from '../proxy/tunnel-bridge';
@@ -280,9 +280,11 @@ export class WhatsAppBridge {
 
                 try {
                     console.log(`[whatsapp-bridge] Sending to WA group ${target}, bot status=${this.bot!.getStatus()}`);
-                    const waMessageId = await this.bot!.send(target, waText);
-                    this.store!.bindMessage(waMessageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
-                    console.log(`[whatsapp-bridge] Sent to WA: ${waMessageId}`);
+                    for (const part of chunkWhatsAppText(waText)) {
+                        const waMessageId = await this.bot!.send(target, part);
+                        this.store!.bindMessage(waMessageId, processId, agentId, `${msg.agentName}:${repoName}`, workspaceId);
+                        console.log(`[whatsapp-bridge] Sent to WA: ${waMessageId}`);
+                    }
                 } catch (err) {
                     console.error('[whatsapp-bridge] Failed to send outbound message:', err);
                 }
@@ -305,21 +307,7 @@ export class WhatsAppBridge {
 
     /** Format a structured WhatsApp message with two sections. */
     formatOutboundMessage(opts: { role: string; agent: string; repo: string; title: string; content: string; userName?: string }): string {
-        const sender = opts.role === 'user'
-            ? (opts.userName || 'You')
-            : 'CoC Agent';
-
-        const lines = [
-            `*${sender}*`,
-            `Agent: ${opts.agent}`,
-            `Repo: ${opts.repo}`,
-        ];
-        if (opts.title) {
-            lines.push(`Title: ${opts.title}`);
-        }
-        lines.push('', '*Message:*', opts.content.trimStart());
-
-        return lines.join('\n');
+        return formatWhatsAppOutbound(opts);
     }
 
     /** Resolve a workspace ID to a human-readable name, using cache and agent API. */
@@ -378,9 +366,9 @@ export class WhatsAppBridge {
         }
 
         // [global] prefix → switch to global session
-        const globalPrefix = /^\[global\]\s*/i;
-        if (!isFollowUp && globalPrefix.test(text)) {
-            const stripped = text.replace(globalPrefix, '');
+        const globalMessage = stripWhatsAppGlobalPrefix(text);
+        if (!isFollowUp && globalMessage !== null) {
+            const stripped = globalMessage;
             const existing = this.store.getGlobalSession(msg.senderJid);
             if (existing) {
                 processId = existing.processId;
