@@ -75,7 +75,8 @@ export class WhatsAppAnswerRelay {
                 : answer?.content?.trim() || 'This request completed without a text answer.';
         if (status === 'completed' && !answer) return;
         const workspace = (await this.deps.store.getWorkspaces()).find(ws => ws.id === binding.workspaceId);
-        const header = `${workspace?.name ?? binding.workspaceId} · ${process?.title ?? process?.customTitle ?? binding.processId.slice(0, 8)}`;
+        const header = binding.header
+            ?? `${workspace?.name ?? binding.workspaceId} · ${process?.title ?? process?.customTitle ?? binding.processId.slice(0, 8)}`.slice(0, 140);
         const parts = chunkWhatsAppText(`${header}\n\n${text}`);
         const hash = createHash('sha256').update(parts.join('')).digest('hex');
         if (binding.answerHash && binding.answerHash !== hash) {
@@ -83,6 +84,7 @@ export class WhatsAppAnswerRelay {
             return;
         }
         binding.answerHash = hash;
+        binding.header = header;
         this.deps.bindings.update(binding);
         for (let i = binding.nextPart; i < parts.length; i++) {
             if (!this.deps.connected() || this.deps.groupJid() !== binding.groupJid) return;

@@ -14,6 +14,7 @@ export interface WhatsAppBinding {
     nextPart: number;
     status: 'queued' | 'sending' | 'delivered';
     answerHash?: string;
+    header?: string;
 }
 
 function writeJSON(file: string, value: unknown): void {

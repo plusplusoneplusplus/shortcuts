@@ -114,6 +114,31 @@ describe('WhatsApp final-answer relay', () => {
         expect(bindings.findMessage('part-two')?.status).toBe('delivered');
     });
 
+    it('keeps the original header and resumes at the confirmed part after restart', async () => {
+        turns[2].content = 'answer '.repeat(1400);
+        bindings.add(receipt());
+        send.mockReset().mockImplementationOnce(async () => {
+            connected = false;
+            return 'first-part';
+        }).mockResolvedValue('next-part');
+        await relay.reconcileTask('task-a');
+        expect(bindings.findMessage('first-part')?.nextPart).toBe(1);
+        const restored = new WhatsAppBindings(dir);
+        await restored.restore({ getWorkspaces: async () => [{ id: 'ws-a' }, { id: 'ws-b' }] } as WhatsAppRelayDeps['store']);
+        const workspaces = await deps.store.getWorkspaces();
+        const process = await deps.store.getProcess('proc-a', 'ws-a');
+        vi.mocked(deps.store.getWorkspaces).mockResolvedValue(
+            workspaces.map(ws => ws.id === 'ws-a' ? { ...ws, name: 'Renamed' } : ws));
+        vi.mocked(deps.store.getProcess).mockResolvedValue({ ...process!, title: 'Renamed topic' });
+        relay.dispose();
+        relay = new WhatsAppAnswerRelay({ ...deps, bindings: restored });
+        connected = true;
+        await relay.reconnected();
+        expect(send.mock.calls[0][0]).toContain('Alpha · Topic');
+        expect(send.mock.calls).toHaveLength(3);
+        expect(restored.findMessage('first-part')?.status).toBe('delivered');
+    });
+
     it('sends a short quoted error on failed turns', async () => {
         bindings.add(receipt());
         task = { id: 'task-a', repoId: 'ws-a', status: 'failed' };
