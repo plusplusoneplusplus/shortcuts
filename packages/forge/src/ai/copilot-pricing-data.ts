@@ -192,6 +192,18 @@ export const COPILOT_MODEL_PRICING: readonly CopilotModelPricing[] = [
         source: COPILOT_PRICING_SOURCE,
     },
     {
+        modelId: 'gpt-6.1-sol',
+        displayName: 'GPT-6.1 Sol',
+        provider: 'openai',
+        releaseStatus: 'GA',
+        category: 'Powerful',
+        usdPerMillionInputTokens: 2,
+        usdPerMillionCachedInputTokens: 0.1,
+        usdPerMillionCacheWriteTokens: 2.5,
+        usdPerMillionOutputTokens: 10,
+        source: COPILOT_PRICING_SOURCE,
+    },
+    {
         modelId: 'claude-haiku-4.5',
         displayName: 'Claude Haiku 4.5',
         provider: 'anthropic',
