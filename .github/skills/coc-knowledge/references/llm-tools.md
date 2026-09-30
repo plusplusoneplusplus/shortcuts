@@ -13,9 +13,10 @@ has `name`, `label`, `description`, and `enabledByDefault`. Exports:
 
 ### Gating
 
-`getEffectiveLlmToolRegistry({ loopsEnabled, canvasEnabled, kustoEnabled })` filters
-`scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), and `kusto_query`
-(`KUSTO_LLM_TOOL_NAMES`) out of the settings list when their flags are off.
+`getEffectiveLlmToolRegistry({ cronEnabled, canvasEnabled, kustoEnabled, llmToolSystemOneEnabled })`
+filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_query`
+(`KUSTO_LLM_TOOL_NAMES`), and `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`) out of the settings
+list when their flags are off.
 
 `getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry
 level. `CLASSIC_MODE_EXTRA_DISABLED_TOOLS` is empty, so classic and dev-workflow modes share
@@ -45,6 +46,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `send-to-conversation-tool.ts` | `send_to_conversation` | Dual-mode dispatch — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
 | `kusto-tools.ts` | `kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
+| `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
 | `get-conversation-tool.ts` | `get_conversation` | Full transcript by processId, compacted to a token budget via 5 progressive levels. Supports `fromTurn`/`toTurn` paging. |
 | `suggest-follow-ups-tool.ts` | `suggest_follow_ups` | Emits follow-up action suggestions after an AI response. |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
@@ -136,6 +138,28 @@ re-run/update; an existing target must be `type: 'kusto'`. Returns column schema
 sample (`KUSTO_QUERY_ROW_SAMPLE`), total row count, truncation state, and a `canvas://<id>`
 embed link. Shares the `runKustoCanvas` execute/truncate/persist path with
 `POST /canvases/:id/run`. Gated by the `kusto.enabled` config flag.
+
+### system_one
+
+Exposes the Decision API to the chat model. Args are `sources` (1–8 refs) plus
+`questions` (same shape as `DecisionRequest.questions`). Refs: `{ tool, nth?, turn? }`
+(`nth` -1 = latest settled call, 1 = first; `turn: 'current' | 'any'`, default `any`),
+`{ last: 1..5 }` (last N completed results), `{ file, lines? }` (workspace-root confined via
+realpath), `{ text }` (≤ 4 KB). Tool names match case-insensitively with any `mcp__<server>__`
+prefix dropped. `system-one/source-resolver.ts` resolves refs against a per-process
+`ToolCallLedger` (`executors/tool-call-ledger.ts`: live `timelineBuffer` for the current turn +
+stored turns, folded by `toolCall.id`, live wins, nested calls skipped, own call excluded via
+`invocation.toolCallId`), trims each source head+tail to 64 KB, and joins labeled
+`### [n] …` sections into `state` (200 KB cap). It then calls the shared `DecisionService` with
+`backend: 'copilot'` whatever the chat provider. Returns compact JSON `{ answers, sources, model,
+durationMs }`; errors return `{ error, message, source? }` (`SOURCE_NOT_FOUND`, `SOURCE_PENDING`,
+`SOURCE_FAILED`, `SOURCE_OUTSIDE_WORKSPACE`, `SOURCE_UNSUPPORTED`, `STATE_TOO_LARGE`, or a
+passed-through `DECISION_*` code) instead of throwing. The server builds one `DecisionService`
+in `server/index.ts` and shares it with the decision route and executors via
+`runtime.getDecisionService`; `ChatBaseExecutor.buildSystemOneDeps` binds the ledger to the
+process. Offered to all chat providers (ask, autopilot, Ralph, follow-ups) by
+`buildSystemOneToolsAddon`, gated live by the `LLMToolSystemOne.enabled` admin flag
+(default off); on by default per repo once the flag is on.
 
 ## Supporting Modules
 

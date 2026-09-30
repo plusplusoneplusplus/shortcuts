@@ -11,6 +11,8 @@ import {
     buildAskUserAddon,
     buildCanvasToolsAddon,
     buildKustoToolsAddon,
+    buildSystemOneToolsAddon,
+    type SystemOneAddonDeps,
     buildSendToConversationAddon,
     buildFollowUpSuggestionsAddon,
     buildCronToolsAddon,
@@ -59,6 +61,11 @@ export interface ChatToolBundleOptions {
     includeKustoTools?: boolean;
     /** Overrides the `kusto.enabled` config flag (used by tests). */
     kustoToolsEnabled?: boolean;
+    /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
+    systemOne?: SystemOneAddonDeps;
+    includeSystemOneTool?: boolean;
+    /** Overrides the `LLMToolSystemOne.enabled` config flag (used by tests). */
+    systemOneToolEnabled?: boolean;
     excludeTools?: string[];
 }
 
@@ -149,6 +156,16 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.workspaceId,
             options.processId,
             options.kustoToolsEnabled !== undefined ? { enabled: options.kustoToolsEnabled } : undefined,
+        ));
+    }
+
+    if (options.includeSystemOneTool !== false) {
+        addons.push(buildSystemOneToolsAddon(
+            options.dataDir,
+            options.workspaceId,
+            options.processId,
+            options.systemOne,
+            options.systemOneToolEnabled !== undefined ? { enabled: options.systemOneToolEnabled } : undefined,
         ));
     }
 

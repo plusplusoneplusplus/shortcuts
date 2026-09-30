@@ -501,6 +501,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
                 scheduleWakeup: cronDeps.scheduleWakeup,
                 cronTools: cronDeps.cronTools,
+                systemOne: this.buildSystemOneDeps(processId, wsId, workingDirectory),
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
                 // resumed session keeps its prefix cache. A machine-triggered

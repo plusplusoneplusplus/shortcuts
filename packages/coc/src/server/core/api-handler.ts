@@ -233,7 +233,7 @@ export function registerApiRoutes(
     routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge,
     dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined,
     db?: NativeDatabase, cronEnabled?: boolean,
-    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; chatStyleSelectorEnabled: boolean; chatProviderSwitchingEnabled: boolean; defaultChatStyle: ChatStyle },
+    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; llmToolSystemOneEnabled?: boolean; chatStyleSelectorEnabled: boolean; chatProviderSwitchingEnabled: boolean; defaultChatStyle: ChatStyle },
     activeWorkspaceTracker?: ActiveWorkspaceTracker,
 ): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).

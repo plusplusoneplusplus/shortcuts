@@ -35,6 +35,7 @@ import type { ChatProvider } from '../tasks/task-types';
 import type { CronEventEmit, CronExecutor } from '../cron/cron-executor';
 import type { CronStore } from '../cron/cron-store';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
+import type { DecisionService } from '../decisions/decision-service';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { McpOauthManager } from '../mcp-oauth';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -117,6 +118,8 @@ export interface ExecutorRuntimeCapabilities {
     readonly getSendMessage?: () => SendMessageFn | undefined;
     /** Provider/tier helpers for `send_to_conversation`. */
     readonly getSendToConversationRuntime?: () => SendToConversationRuntimeOptions | undefined;
+    /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
+    readonly getDecisionService?: () => DecisionService | undefined;
     /** MCP OAuth manager used to surface an interactive authorization prompt. */
     readonly getMcpOauthManager?: () => McpOauthManager | undefined;
     /**
@@ -178,6 +181,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getEnqueueChat'
     | 'getSendMessage'
     | 'getSendToConversationRuntime'
+    | 'getDecisionService'
     | 'getMcpOauthManager'
     | 'getTurnPerformanceStore'
     | 'getGlobalSystemPrompt'

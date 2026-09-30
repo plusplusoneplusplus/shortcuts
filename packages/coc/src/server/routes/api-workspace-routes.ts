@@ -871,8 +871,8 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             if (!ws) return;
             // Static config — short-lived private cache (both branches below are 200s).
             setStaticConfigCacheHeaders(res);
-            const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false, kustoEnabled: false, chatStyleSelectorEnabled: false, chatProviderSwitchingEnabled: false };
-            const effectiveRegistry = withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: liveFlags.canvasEnabled, kustoEnabled: liveFlags.kustoEnabled }));
+            const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false, chatStyleSelectorEnabled: false, chatProviderSwitchingEnabled: false };
+            const effectiveRegistry = withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: liveFlags.canvasEnabled, kustoEnabled: liveFlags.kustoEnabled, llmToolSystemOneEnabled: liveFlags.llmToolSystemOneEnabled }));
             const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';
             if (!ctx.dataDir) {
                 sendJSON(res, 200, {
@@ -919,7 +919,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             const globalPrefs = readGlobalPreferences(ctx.dataDir);
             sendJSON(res, 200, {
-                tools: withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false })),
+                tools: withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false, llmToolSystemOneEnabled: ctx.getLiveFeatureFlags?.()?.llmToolSystemOneEnabled ?? false })),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
                 conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',
             });

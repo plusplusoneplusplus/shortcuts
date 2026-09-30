@@ -4,9 +4,12 @@
  */
 
 import type { DecisionBackendName, DecisionResponse } from '@plusplusoneplusplus/coc-client';
+import type { ISDKService } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from '../logging/server-logger';
 import { DecisionBackendError, type DecisionBackend, type DecisionContext } from './decision-backend';
 import { validateDecisionRequest } from './decision-validation';
+import { CopilotDecisionBackend } from './copilot-decision-backend';
+import { TypeSafeDecisionBackend } from './typesafe-decision-backend';
 
 export class DecisionService {
     private readonly backends: Map<DecisionBackendName, DecisionBackend>;
@@ -52,4 +55,16 @@ export class DecisionService {
             throw normalized;
         }
     }
+}
+
+/**
+ * The server's decision service — explicitly Copilot-backed, never the
+ * workspace's default chat provider. One instance is shared by the decision
+ * route and the `system_one` chat tool.
+ */
+export function createDecisionService(copilotService: ISDKService | undefined): DecisionService {
+    return new DecisionService([
+        new CopilotDecisionBackend(copilotService),
+        new TypeSafeDecisionBackend(),
+    ]);
 }

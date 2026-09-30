@@ -41,6 +41,7 @@ export type ResolvedConfigNamespaceValues = Pick<
     | 'excalidraw'
     | 'canvas'
     | 'kusto'
+    | 'LLMToolSystemOne'
     | 'containerDefaultAgent'
     | 'agentProviderRouting'
     | 'codex'

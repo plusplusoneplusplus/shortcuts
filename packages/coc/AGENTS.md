@@ -891,6 +891,13 @@ all have their own `references/*.md`.
   `tsconfig.client.json` is a no-emit gate scoped to the Canvas/Kusto SPA surface
   and imported helpers. Keep the tool name exactly `kusto_query` and the
   serialized state keys stable.
+- **`system_one` tool** (`LLMToolSystemOne.enabled`, default off; live) gives
+  chat turns Copilot-backed quick decisions over refs to earlier tool results
+  (`ToolCallLedger`, current process only), workspace files, or short text.
+  It always runs on Copilot, even in Claude/Codex/OpenCode chats. Reuse the
+  single `DecisionService` from `createDecisionService()` (via
+  `runtime.getDecisionService`); never build a second one or accept a
+  `processId`/`workspaceId` in tool args.
 - **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
   `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
   to `'ask'` if missing. A terminal conversation mode (`isTerminalChatMode` —
