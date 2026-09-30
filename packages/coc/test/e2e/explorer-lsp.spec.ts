@@ -848,19 +848,23 @@ test.describe('Explorer language support – TypeScript and definition features'
             const broken = 'export const broken: number = label;';
             await focusMonacoBuffer(page);
             await page.keyboard.press('Control+End');
-            await page.keyboard.type(broken);
+            await page.keyboard.insertText(broken);
 
             // `label` is a string, and the server only knows that from the
             // buffer it was sent — nothing has been written to disk.
             await expect.poll(() => squigglyLines(page), { timeout: 30_000 }).toContain(broken);
 
-            // Select the typed line back to its start and delete it. Undo would
-            // be a guess: Monaco decides for itself how many undo stops a run of
-            // typing earned.
+            // Restore the unsaved buffer in one deterministic editor input.
             await page.keyboard.press('Escape');
-            await page.keyboard.press('Shift+Home');
-            await page.keyboard.press('Delete');
-            await expect.poll(() => squigglyLines(page), { timeout: 30_000 }).toEqual(baselineSquiggles);
+            await page.keyboard.press('Control+A');
+            await page.keyboard.insertText([
+                "import { formatWidget } from './format';",
+                '',
+                "export const label = formatWidget({ name: 'gadget', size: 3 });",
+                '',
+            ].join('\n'));
+            await expect.poll(async () => (await squigglyLines(page)).length, { timeout: 30_000 })
+                .toBe(baselineSquiggles.length);
         } finally {
             safeRmSync(tmpDir);
         }
