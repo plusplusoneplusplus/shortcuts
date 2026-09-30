@@ -12,7 +12,10 @@ budget, feature flags, and coc-client integration.
   holds separately-loaded assets: Monaco workers, `pdf.worker.js`, and `canvas-vendor/`
   (`react.js`, `recharts.js`, `papaparse.js`, `tailwind.css`) — the library globals an
   extension canvas loads into its sandboxed iframe. Built by `scripts/build-client.mjs`;
-  `dist/` is gitignored.
+  `dist/` is gitignored. Monaco worker URLs come from
+  `explorer/monacoWorkerUrls.ts`; `test/server/monaco-worker-urls.test.ts` checks them
+  against the build's worker list and the router, because an unresolved asset URL
+  silently returns the SPA page.
 
 ## Module layout
 
