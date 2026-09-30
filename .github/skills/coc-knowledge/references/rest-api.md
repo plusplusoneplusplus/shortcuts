@@ -467,12 +467,22 @@ See [mcp-settings.md](mcp-settings.md).
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/mcp-config` | Effective + source-separated MCP servers. `?forceReload=true` bypasses cache |
 | PUT | `/api/workspaces/:id/mcp-config` | Partial patch of the MCP policy: `enabledMcpServers` and/or `enabledMcpTools`, applied by property presence. Returns the canonical resulting policy |
+
+## Messaging
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/messaging/teams/status` | Normal-CoC Teams channel bridge status and configured `channelName` (per-machine default only when settings are new), global MCP URL, OAuth cache status and availability, plus `teamsBridgeObservabilityEnabled` for the owning server |
 | GET | `/api/messaging/teams/attempts` | Flag-gated (`features.teamsBridgeObservability`) newest-first safe connection summaries; `?offset=0&limit=20` (limit 1–100) returns `{attempts,total,nextOffset}`. Disabled → 404; invalid pagination → 400 |
 | GET | `/api/messaging/teams/attempts/:id` | Flag-gated safe attempt detail: phases, bounded non-routine events, aggregate totals and poll/send health. Unknown UUID → 404; invalid ID → 400 |
 | POST | `/api/messaging/teams/server` | Register or update the global `Microsoft Teams` HTTP MCP endpoint; body `{url}` (HTTPS) |
 | POST | `/api/messaging/teams/config` | Save Teams channel bridge settings (`teamName`, `channelName`, `botName`, `enabled`); disabling stops polling |
 | POST | `/api/messaging/teams/reconnect` | Connect the enabled channel bridge using the cached MCP OAuth token; reports connection failures |
+| GET | `/api/messaging/whatsapp/status` | Default-off WhatsApp manager status `{enabled,status,qr,error,groupJid,groupName,deviceName}` |
+| POST | `/api/messaging/whatsapp/config` | Save `{enabled?,deviceName?,groupJid?,groupName?}`; enabling connects, disabling disconnects; returns `{ok:true}` |
+| POST | `/api/messaging/whatsapp/reconnect` | Reconnect the enabled bot with optional `{repair:true}` to clear auth and return to QR; disabled → 409 |
+| GET | `/api/messaging/whatsapp/groups` | Participating groups `{groups:[{jid,name}]}`; disabled → 409, disconnected → 503 |
+| POST | `/api/messaging/whatsapp/groups` | Create/bind a group by `{name}`; disabled → 409, disconnected → 503 |
 
 ## Work Items
 
