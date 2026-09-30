@@ -5,7 +5,9 @@
  * Native sessions are external data read from the server user's
  * external CLI stores. This surface intentionally renders no CoC
  * chat actions (no follow-up, archive, pin, delete, resume, retry, or turn
- * actions) and labels every session as an external read-only record. All
+ * actions) and labels every session as an external read-only record. The
+ * only write action is "Import to chats" on Copilot sessions, which snapshots
+ * the transcript into a new CoC chat (the native store is untouched). All
  * stored text renders as plain pre-wrapped text so stored HTML/scripts never
  * execute.
  */
@@ -556,6 +558,26 @@ function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCliS
     const [isScrolledUp, setIsScrolledUp] = useState(false);
     const [copied, setCopied] = useState(false);
 
+    // "Import to chats" (Copilot only): snapshot this session into a CoC chat in
+    // the current workspace, then open that chat (new or already imported).
+    const client = useCocClient(workspaceId);
+    const canImport = detail.provider === 'copilot';
+    const [importing, setImporting] = useState(false);
+    const [importError, setImportError] = useState<string | null>(null);
+    useEffect(() => { setImportError(null); }, [detail.id]);
+    const handleImport = useCallback(async () => {
+        setImporting(true);
+        setImportError(null);
+        try {
+            const res = await client.nativeCopilotSessions.import(workspaceId, detail.id);
+            window.location.hash = '#repos/' + encodeURIComponent(workspaceId) + '/chats/' + encodeURIComponent(res.processId);
+        } catch (err) {
+            setImportError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setImporting(false);
+        }
+    }, [client, workspaceId, detail.id]);
+
     // Disabled composer state (AC-05). FollowUpInputArea is rendered for visual
     // parity but blocked: `inputDisabled` greys it out and every send/stream/
     // resume handler is an inert stub.
@@ -657,9 +679,26 @@ function SessionDetailView({ detail, workspaceId, onBack }: { detail: NativeCliS
                     <div className="mr-1 flex items-center gap-1.5">
                         <ExternalLabel provider={detail.provider} storePath={detail.storePath} />
                         <ReadOnlyBadge provider={detail.provider} storePath={detail.storePath} />
+                        {canImport && (
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => { void handleImport(); }}
+                                disabled={importing}
+                                title="Import this Copilot session into this repo's chat list"
+                                data-testid="native-session-import-to-chats-btn"
+                            >
+                                {importing ? 'Importing…' : 'Import to chats'}
+                            </Button>
+                        )}
                     </div>
                 )}
             />
+            {importError && (
+                <div className="border-b border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-800" role="alert" data-testid="native-session-import-error">
+                    Import failed: {importError}
+                </div>
+            )}
             <div className="relative flex min-h-0 flex-1 overflow-x-hidden" data-testid="native-session-conversation">
                 <ConversationArea
                     loading={false}
