@@ -5,19 +5,41 @@
  * - Chat mode (default): sends as a direct message to the user's 1:1 chat
  */
 
-import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from './types';
+import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from '../types';
 import { GraphClient } from './graph-client';
+import { randomUUID } from 'node:crypto';
+import { GraphOperations } from './operations-graph';
+import { RoutedTeamsOperations, type TeamsDestination, type TeamsOperationRoutes } from '../operations';
 
 export class GraphTransport implements TeamsTransport {
     private client: GraphClient | null = null;
     private teamId: string | null = null;
     private chatId: string | null = null;
     private _useChat = false;
+    private outbound: RoutedTeamsOperations | null = null;
+    readonly connectionId: string;
     debug = false;
 
+    constructor(private readonly operationOptions: {
+        connectionId?: string;
+        routes?: Partial<TeamsOperationRoutes>;
+        onTokenRefresh?: () => Promise<string | null>;
+    } = {}) {
+        this.connectionId = operationOptions.connectionId ?? randomUUID();
+        this.operationOptions = { ...operationOptions, routes: { ...operationOptions.routes } };
+    }
+
+    get operations(): RoutedTeamsOperations {
+        if (!this.outbound) throw new Error('GraphTransport not initialized');
+        return this.outbound;
+    }
+
     async initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void> {
+        void this.outbound?.dispose();
+        this.outbound = null;
         this.teamId = opts.teamId ?? null;
         this.chatId = opts.chatId ?? null;
+        this._useChat = !opts.teamId;
         this.client = new GraphClient({
             bearerToken: token,
             teamId: opts.teamId,
@@ -36,28 +58,37 @@ export class GraphTransport implements TeamsTransport {
             await this.client.getMe();
             console.log(`[graph-transport] Token verified via /me. Send-only mode (no chat discovery).`);
         }
+        this.outbound = new RoutedTeamsOperations({
+            selfSend: 'graph', chatSend: 'graph', channelSend: 'graph', channelReply: 'graph', channelLike: 'graph',
+            ...this.operationOptions.routes,
+        }, [new GraphOperations({ client: this.client, connectionId: this.connectionId,
+            onTokenRefresh: this.operationOptions.onTokenRefresh })]);
     }
 
     async send(target: string, text: string, opts?: TransportSendOptions): Promise<string> {
         if (!this.client) throw new Error('GraphTransport not initialized');
 
-        if (this._useChat) {
-            return this.client.postChatMessage(text, this.chatId ?? target);
-        }
-
-        this.client.setChannelId(target);
-        if (opts?.replyToId) {
-            return this.client.replyToChannelMessage(opts.replyToId, text, opts.mentions);
-        }
-        return this.client.postChannelMessage(text, opts?.mentions);
+        const destination: TeamsDestination = this.teamId
+            ? { kind: 'channel', teamId: this.teamId, channelId: target }
+            : { kind: 'chat', chatId: this.chatId ?? target };
+        const body = { content: text, contentType: 'html' as const,
+            mentions: opts?.mentions?.map(m => ({ id: m.aadId, displayName: m.displayName })) };
+        const receipt = opts?.replyToId !== undefined
+            ? await this.operations.reply({ destination, messageId: opts.replyToId,
+                backend: 'graph', connectionId: this.connectionId }, body)
+            : await this.operations.send(destination, body);
+        return receipt.message.messageId;
     }
 
     async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
         if (!this.client || this._useChat || !this.teamId) {
             throw new Error('Teams channel Like reaction unavailable in direct messages or while disconnected');
         }
-        this.client.setChannelId(msg.channelId);
-        await this.client.reactToChannelMessage(msg.messageId, msg.replyToMessageId);
+        await this.operations.react({
+            destination: { kind: 'channel', teamId: this.teamId, channelId: msg.channelId },
+            messageId: msg.messageId, rootMessageId: msg.replyToMessageId,
+            backend: 'graph', connectionId: this.connectionId,
+        }, 'like');
     }
 
     async poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
@@ -155,5 +186,7 @@ export class GraphTransport implements TeamsTransport {
 
     stop(): void {
         this.client = null;
+        void this.outbound?.dispose();
+        this.outbound = null;
     }
 }

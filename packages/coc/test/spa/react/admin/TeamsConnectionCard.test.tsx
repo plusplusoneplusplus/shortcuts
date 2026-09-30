@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TeamsConnectionCard } from '../../../../src/server/spa/client/react/admin/TeamsConnectionCard';
+import { IMSettingsSection } from '../../../../src/server/spa/client/react/admin/IMSettingsSection';
 
 const status = {
     enabled: false,
@@ -18,6 +19,30 @@ const status = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('TeamsConnectionCard', () => {
+    it.each(['amer', 'emea', 'apac', ''] as const)('saves container region %s with the existing form and reconnect guidance', async region => {
+        let current = { ...status, enabled: true, mode: 'mcp', ic3Region: region === '' ? 'emea' : null as string | null };
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            if (url.endsWith('/teams/config')) current = { ...current, ...JSON.parse(String(options?.body)) };
+            return { ok: true, json: async () => url.includes('/teams/') ? current : {
+                enabled: false, status: 'disconnected', qr: null, error: null, userName: 'CoC',
+            } };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<IMSettingsSection />);
+        const select = await screen.findByLabelText('IC3 region') as HTMLSelectElement;
+        expect(select.value).toBe(region === '' ? 'emea' : '');
+        expect(Array.from(select.options).map(option => option.value)).toEqual(['', 'amer', 'emea', 'apac']);
+        fireEvent.change(select, { target: { value: region } });
+        fireEvent.click(screen.getByText('Save & Resolve'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/container\/messaging\/teams\/config$/),
+            expect.objectContaining({ body: JSON.stringify({
+                teamName: 'Engineering', channelName: 'General', ic3Region: region || null,
+            }) }),
+        ));
+        expect(screen.getByText(/Save, then reconnect/)).toBeDefined();
+    });
+
     const active = {
         id: 'attempt-1', startedAt: '2026-01-01T00:00:00Z', stage: 'connected',
         degraded: true,
@@ -161,8 +186,34 @@ describe('TeamsConnectionCard', () => {
         fireEvent.click(screen.getByText('Save channel'));
         await waitFor(() => expect(fetch).toHaveBeenCalledWith(
             expect.stringMatching(/\/messaging\/teams\/config$/),
-            expect.objectContaining({ body: '{"teamName":"Engineering","channelName":"Private-Channel","botName":"CoC"}' }),
+            expect.objectContaining({ body: '{"teamName":"Engineering","channelName":"Private-Channel","botName":"CoC","ic3Region":null}' }),
         ));
+    });
+
+    it.each(['amer', 'emea', 'apac', ''] as const)('saves region %s explicitly and gates reconnect on unsaved changes', async region => {
+        let current = { ...status, enabled: true, ic3Region: 'emea' as string | null };
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            if (url.endsWith('/config')) current = { ...current, ...JSON.parse(String(options?.body)) };
+            return { ok: true, json: async () => url.endsWith('/status') ? current : { ok: true } };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByText(/Connection: disconnected/);
+        const select = screen.getByLabelText('IC3 region') as HTMLSelectElement;
+        expect(select.value).toBe('emea');
+        expect(Array.from(select.options).map(option => option.text))
+            .toEqual(['Unconfigured', 'Americas', 'Europe-Middle East-Africa', 'Asia-Pacific']);
+        fireEvent.change(select, { target: { value: region } });
+        expect((screen.getByText('Reconnect') as HTMLButtonElement).disabled).toBe(region !== 'emea');
+        fireEvent.click(screen.getByText('Save channel'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/messaging\/teams\/config$/),
+            expect.objectContaining({ body: JSON.stringify({
+                teamName: 'Engineering', channelName: 'General', botName: 'CoC', ic3Region: region || null,
+            }) }),
+        ));
+        await waitFor(() => expect((screen.getByText('Reconnect') as HTMLButtonElement).disabled).toBe(false));
+        expect(screen.getByText(/Save changes, then reconnect/)).toBeDefined();
     });
 
     it('does not offer OAuth when the server lacks support and displays connection errors', async () => {

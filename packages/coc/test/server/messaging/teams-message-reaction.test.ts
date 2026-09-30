@@ -153,13 +153,13 @@ describe('Teams channel Like admission', () => {
             );
             expect(errors.mock.calls.flat().join(' ')).not.toContain('private provider details');
             react.mockRejectedValueOnce(new Error(
-                'Teams channel Like reaction unavailable: MCP advertises no compatible channel reaction tool',
+                'Teams channel Like reaction unavailable: IC3 credential could not be acquired',
             ));
             await handle(message('unavailable', '/list repos'));
             expect(events.some(event => event.startsWith('reply:unavailable:'))).toBe(true);
             expect(errors).toHaveBeenCalledWith(
                 '[teams-messaging] Teams Like reaction unavailable or failed:',
-                'Teams channel Like reaction unavailable: MCP advertises no compatible channel reaction tool',
+                'Teams channel Like reaction unavailable: IC3 credential could not be acquired',
             );
             react.mockRejectedValueOnce(Object.assign(new Error('private authorization response'), { status: 401 }));
             await handle(message('unauthorized', '/list repos'));

@@ -17,6 +17,7 @@ import { AgentHealthMonitor } from './health-monitor';
 import { AgentManager } from '../inbound';
 import { AgentProxyClient } from './agent-proxy-client';
 import { WorkspaceAggregationService } from './workspace-aggregation';
+import type { TeamsConfigPatch } from './messaging-config';
 
 /** Structural type of the WhatsApp messaging bridge used by routes. */
 export interface WhatsAppBridgeLike {
@@ -30,8 +31,8 @@ export interface WhatsAppBridgeLike {
 /** Structural type of the Teams messaging bridge used by routes. */
 export interface TeamsBridgeLike {
     stop(): Promise<void>;
-    getTeamsStatus(): { enabled: boolean; status: string; mode: string; error: string | null; teamName?: string; channelName?: string; teamId?: string; channelId?: string; botName: string };
-    updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string; mode?: 'graph' | 'mcp' }): Promise<void>;
+    getTeamsStatus(): { enabled: boolean; status: string; mode: string; error: string | null; teamName?: string; channelName?: string; teamId?: string; channelId?: string; botName: string; ic3Region?: ResolvedTeamsConfig['ic3Region'] };
+    updateConfig(patch: TeamsConfigPatch): Promise<void>;
     reconnect(): Promise<void>;
     listChannels(): Promise<Array<{ id: string; displayName: string }>>;
 }

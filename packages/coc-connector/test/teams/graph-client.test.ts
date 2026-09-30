@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-import { GraphClient } from '../../src/teams/graph-client';
+import { GraphClient } from '../../src/teams/graph/graph-client';
 
 describe('GraphClient', () => {
     beforeEach(() => {

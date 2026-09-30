@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { McpClient, McpHttpError } from '../../src/teams/mcp-client';
+import { McpClient, McpHttpError } from '../../src/teams/mcp/mcp-client';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -138,5 +138,35 @@ describe('McpClient streamable HTTP', () => {
         await expect(new McpClient({ serverUrl: 'https://example.test/mcp' }).initialize())
             .rejects.toMatchObject({ status: 404 });
         expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not reinitialize or replay a write when session recovery is disabled', async () => {
+        const fetch = vi.fn()
+            .mockResolvedValueOnce(Response.json({ result: { protocolVersion: '2025-03-26' } }, {
+                headers: { 'Mcp-Session-Id': 'session' },
+            }))
+            .mockResolvedValueOnce(new Response(null, { status: 202 }))
+            .mockResolvedValueOnce(new Response(null, { status: 404 }));
+        vi.stubGlobal('fetch', fetch);
+        const client = new McpClient({ serverUrl: 'https://example.test/mcp' });
+        await client.initialize();
+        await expect(client.callTool('SendMessageToSelf', { content: 'message' }, undefined,
+            { retryExpiredSession: false })).rejects.toMatchObject({ status: 404 });
+        expect(fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('releases an unread HTTP error body before surfacing status and retry metadata', async () => {
+        const cancel = vi.fn();
+        const body = new ReadableStream<Uint8Array>({
+            start(controller) { controller.enqueue(new Uint8Array(1024)); },
+            cancel,
+        });
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, {
+            status: 429, headers: { 'Retry-After': '3' },
+        })));
+        const client = new McpClient({ serverUrl: 'https://example.test/mcp' });
+        await expect(client.callTool('SendMessageToSelf', { content: 'message' }))
+            .rejects.toMatchObject({ status: 429, retryAfterMs: 3000 });
+        expect(cancel).toHaveBeenCalledOnce();
     });
 });

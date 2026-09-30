@@ -43,6 +43,10 @@ shared MCP OAuth pending state and enables or reconnects the bridge after creden
 are cached. The channel input stays editable and reflects the owning server's configured
 name, including its per-machine default for new settings. The card advises a unique
 channel per machine to prevent multiple bridges from processing the same messages.
+Both Teams forms expose explicit optional IC3 region configuration, saved with connection
+settings and applied on reconnect. Unconfigured leaves MCP polling/sends available;
+IC3 writes require a region. The container stores it under `messaging.teams.ic3Region`
+in `config.yaml`; an absent bridge requires restart.
 
 With `features.teamsBridgeObservability` enabled, the normal Teams card loads
 server-global, newest-first connection attempts from the guarded messaging API.

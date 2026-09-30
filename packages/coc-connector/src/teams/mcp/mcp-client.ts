@@ -4,7 +4,7 @@
  * Implements the MCP protocol over HTTP (streamable transport).
  */
 
-import type { McpToolCall, McpToolResult, McpToolsListResult } from './types';
+import type { McpToolCall, McpToolResult, McpToolsListResult } from '../types';
 
 export interface McpClientOptions {
     /** Base URL of the MCP server. */
@@ -91,14 +91,15 @@ export class McpClient {
     }
 
     /** Call a tool on the MCP server. */
-    async callTool(name: string, args?: Record<string, unknown>, signal?: AbortSignal): Promise<McpToolResult> {
+    async callTool(name: string, args?: Record<string, unknown>, signal?: AbortSignal,
+        options?: { retryExpiredSession?: boolean }): Promise<McpToolResult> {
         const request: { jsonrpc: string; id: number; method: string; params: McpToolCall['params'] } = {
             jsonrpc: '2.0',
             id: Date.now(),
             method: 'tools/call',
             params: { name, arguments: args },
         };
-        const response = await this.sendRequest(request, false, true, signal);
+        const response = await this.sendRequest(request, false, options?.retryExpiredSession ?? true, signal);
         if (response.error) {
             throw new Error(`MCP tool call "${name}" failed: ${response.error.message}`);
         }
@@ -129,6 +130,7 @@ export class McpClient {
         });
 
         if (!res.ok) {
+            await res.body?.cancel();
             if (res.status === 404 && this.sessionId && retryExpiredSession
                 && body.method !== 'initialize' && body.method !== 'notifications/initialized') {
                 this.sessionId = null;

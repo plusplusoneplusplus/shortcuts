@@ -11,22 +11,32 @@
 
 import type { TeamsBotOptions, BotStatus, InboundTeamsMessage, TeamsChannel, TeamsTransportMode, TeamsTransport } from './types';
 import type { MessagingConnector, MessagingTarget, SendOptions } from '../core';
-import { GraphTransport } from './transport-graph';
-import { McpTransport } from './transport-mcp';
-import { McpHttpError } from './mcp-client';
+import { GraphTransport } from './graph/transport-graph';
+import { McpTransport } from './mcp/transport-mcp';
+import { McpHttpError } from './mcp/mcp-client';
 import { acquireTokenViaAzCli } from './auth';
+import type { Ic3DirectMessageOptions } from './ic3/ic3-direct-message-config';
+import type { TeamsDestination, TeamsMessageBody, TeamsMessageRef, TeamsOperationRoutes,
+    OperationContext, SendReceipt } from './operations';
 
 export function createTransport(mode: TeamsTransportMode, opts: {
     mcpServerUrl?: string; pollChannelReplies?: () => boolean;
     channelThreadRoots?: (channelId: string) => readonly string[];
     onChannelRootDiscovered?: (root: InboundTeamsMessage) => Promise<void>;
+    enableIc3DirectMessages?: boolean;
+    ic3DirectMessageOptions?: Ic3DirectMessageOptions;
+    connectionId?: string;
+    operationRoutes?: Partial<TeamsOperationRoutes>;
+    onTokenRefresh?: () => Promise<string | null>;
 }): TeamsTransport {
     if (mode === 'mcp') {
         if (!opts.mcpServerUrl) throw new Error('mcpServerUrl is required for MCP mode');
         return new McpTransport(opts.mcpServerUrl, opts.pollChannelReplies, opts.channelThreadRoots,
-            opts.onChannelRootDiscovered);
+            opts.onChannelRootDiscovered, opts.enableIc3DirectMessages, opts.ic3DirectMessageOptions,
+            { connectionId: opts.connectionId, routes: opts.operationRoutes, onTokenRefresh: opts.onTokenRefresh });
     }
-    return new GraphTransport();
+    if (opts.enableIc3DirectMessages) throw new Error('IC3 direct messages require MCP mode');
+    return new GraphTransport({ connectionId: opts.connectionId, routes: opts.operationRoutes, onTokenRefresh: opts.onTokenRefresh });
 }
 
 function isHistoricalSelectionCommand(text: string): boolean {
@@ -42,6 +52,8 @@ export class TeamsBot implements MessagingConnector {
     readonly provider = 'teams';
     private readonly opts: Required<Pick<TeamsBotOptions, 'onMessage' | 'pollIntervalMs' | 'botName'>> & TeamsBotOptions;
     private readonly mode: TeamsTransportMode;
+    /** Returns inbound activity, or undefined when polling is disabled. */
+    private readonly pollBackend: (target: string) => Promise<boolean | undefined>;
     private transport: TeamsTransport;
     private _status: BotStatus = 'disconnected';
     private _lastError: string | null = null;
@@ -70,10 +82,12 @@ export class TeamsBot implements MessagingConnector {
             pollIntervalMs: opts.pollIntervalMs ?? 12_000,
         };
         this.mode = opts.mode ?? 'graph';
+        this.pollBackend = this.mode === 'graph'
+            ? this.pollGraphMessages.bind(this)
+            : this.pollMcpMessages.bind(this);
         this.transport = createTransport(this.mode, {
-            mcpServerUrl: opts.mcpServerUrl, pollChannelReplies: opts.pollChannelReplies,
-            channelThreadRoots: opts.channelThreadRoots,
-            onChannelRootDiscovered: opts.onChannelRootDiscovered,
+            ...opts,
+            onTokenRefresh: opts.auth?.onTokenRefresh,
         });
         this.transport.debug = opts.debug ?? false;
     }
@@ -147,7 +161,7 @@ export class TeamsBot implements MessagingConnector {
 
         // Adapt the normalized SendOptions (mentions keyed by `id`) to the
         // transport-native shape (mentions keyed by `aadId`).
-        const transportOpts = opts && (opts.replyToId || opts.mentions)
+        const transportOpts = opts && (opts.replyToId !== undefined || opts.mentions !== undefined)
             ? {
                 replyToId: opts.replyToId,
                 mentions: opts.mentions?.map((m) => ({ aadId: m.id, displayName: m.displayName })),
@@ -162,17 +176,30 @@ export class TeamsBot implements MessagingConnector {
             return messageId;
         } catch (err: any) {
             console.error(`[teams-bot] send() failed: ${err.message}`);
-            // On 401, refresh token and retry once
-            if (err.message?.includes('401')) {
-                const refreshed = await this.refreshToken();
-                if (refreshed) {
-                    const messageId = await this.transport.send(channelId, text, transportOpts);
-                    if (messageId) this._sentMessageIds.add(messageId);
-                    return messageId;
-                }
-            }
             throw err;
         }
+    }
+
+    /** Explicit destinations avoid interpreting a chat ID as the authenticated user's self-chat. */
+    async sendMessage(destination: TeamsDestination, body: TeamsMessageBody, context?: OperationContext): Promise<SendReceipt> {
+        if (this._status !== 'connected') throw new Error('TeamsBot is not connected');
+        const receipt = await this.transport.operations.send(destination, body, context);
+        this._sentMessageIds.add(receipt.message.messageId);
+        this.resetPollInterval();
+        return receipt;
+    }
+
+    async replyToMessage(parent: TeamsMessageRef, body: TeamsMessageBody, context?: OperationContext): Promise<SendReceipt> {
+        if (this._status !== 'connected') throw new Error('TeamsBot is not connected');
+        const receipt = await this.transport.operations.reply(parent, body, context);
+        this._sentMessageIds.add(receipt.message.messageId);
+        this.resetPollInterval();
+        return receipt;
+    }
+
+    async reactToMessage(message: TeamsMessageRef, reaction: 'like', context?: OperationContext): Promise<void> {
+        if (this._status !== 'connected') throw new Error('TeamsBot is not connected');
+        await this.transport.operations.react(message, reaction, context);
     }
 
     /** React only in channel mode; the caller handles best-effort failures. */
@@ -299,29 +326,10 @@ export class TeamsBot implements MessagingConnector {
         }
 
         try {
-            if (this.mode === 'graph' && !this.opts.pollGraphChannel?.()) {
-                this._lastSeenTimestamp = null;
+            const activity = await this.pollBackend(this._channelId);
+            if (activity === undefined) {
                 this.schedulePoll();
                 return;
-            }
-            if (this.mode === 'mcp' && this.opts.teamId
-                && this._channelBatchPolling && !this.opts.pollChannelReplies?.()) {
-                this._channelBatchPolling = false;
-                this._channelBaselineTime = null;
-                this._lastPolledId = null;
-                this._seenChannelMessageIds.clear();
-            }
-            if (this.mode === 'mcp' && this.opts.teamId && this.opts.pollChannelReplies?.()) {
-                this._channelBaselineTime ??= Date.now();
-            }
-            const since = this.mode === 'graph' ? this._lastSeenTimestamp ?? undefined : this._lastPolledId ?? undefined;
-            const { messages, nextSince } = await this.transport.poll(this._channelId, since);
-
-            let activity = false;
-            if (this.mode === 'mcp') {
-                activity = await this.handleMcpPoll(messages, nextSince);
-            } else {
-                await this.handleGraphPoll(messages, nextSince);
             }
 
             this.observePoll('success');
@@ -359,6 +367,44 @@ export class TeamsBot implements MessagingConnector {
 
         // Schedule next poll (adaptive interval based on activity)
         if (this._status === 'connected') this.schedulePoll();
+    }
+
+    private async pollGraphMessages(target: string): Promise<boolean | undefined> {
+        if (!this.opts.pollGraphChannel?.()) {
+            this._lastSeenTimestamp = null;
+            return undefined;
+        }
+        const { messages, nextSince } = await this.pollWithReferences(target, this._lastSeenTimestamp);
+        await this.handleGraphPoll(messages, nextSince);
+        return false;
+    }
+
+    private async pollMcpMessages(target: string): Promise<boolean> {
+        if (this.opts.teamId && this._channelBatchPolling && !this.opts.pollChannelReplies?.()) {
+            this._channelBatchPolling = false;
+            this._channelBaselineTime = null;
+            this._lastPolledId = null;
+            this._seenChannelMessageIds.clear();
+        }
+        if (this.opts.teamId && this.opts.pollChannelReplies?.()) {
+            this._channelBaselineTime ??= Date.now();
+        }
+        const { messages, nextSince } = await this.pollWithReferences(target, this._lastPolledId);
+        return this.handleMcpPoll(messages, nextSince);
+    }
+
+    private async pollWithReferences(target: string, since: string | null) {
+        const result = await this.transport.poll(target, since ?? undefined);
+        for (const message of result.messages) {
+            message.reference = {
+                destination: this.opts.teamId
+                    ? { kind: 'channel', teamId: this.opts.teamId, channelId: message.channelId }
+                    : { kind: 'chat', chatId: message.channelId },
+                messageId: message.messageId, rootMessageId: message.replyToMessageId,
+                backend: this.mode, connectionId: this.transport.connectionId,
+            };
+        }
+        return result;
     }
 
     private reportPollError(message: string): void {

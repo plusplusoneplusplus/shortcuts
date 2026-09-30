@@ -2,7 +2,12 @@
  * MS Teams Bot types — standalone, no CoC/forge deps.
  */
 
+import type { Ic3DirectMessageOptions } from './ic3/ic3-direct-message-config';
+import type { RoutedTeamsOperations, TeamsOperationRoutes, TeamsMessageRef } from './operations';
+
 export interface InboundTeamsMessage {
+    /** Exact reader/backend identity for subsequent typed operations. */
+    reference?: TeamsMessageRef;
     channelId: string;
     messageId: string;
     replyToMessageId?: string;
@@ -26,6 +31,10 @@ export interface InboundTeamsMessage {
 export type TeamsTransportMode = 'graph' | 'mcp';
 
 export interface TeamsBotOptions {
+    /** Account-scoped connection identity; generated per instance when omitted. */
+    connectionId?: string;
+    /** Per-instance outbound routing. An IC3 self-send route still requires its opt-in. */
+    operationRoutes?: Partial<TeamsOperationRoutes>;
     /**
      * Transport mode (default: 'graph').
      * - 'graph': Uses Graph API directly. Requires teamId + bearerToken (from az login).
@@ -36,6 +45,10 @@ export interface TeamsBotOptions {
     teamId?: string;
     /** MCP server URL for the Teams server — required for 'mcp' mode. */
     mcpServerUrl?: string;
+    /** Experimental MCP-mode IC3 self-DM sends to explicit 48:notes only (default: false). */
+    enableIc3DirectMessages?: boolean;
+    /** Region and separate IC3 credential provider; supplying options does not enable sends. */
+    ic3DirectMessageOptions?: Ic3DirectMessageOptions;
     /** Called when an inbound text message arrives. */
     onMessage: (msg: InboundTeamsMessage) => Promise<void>;
     /** Called when connection state changes. */
@@ -128,6 +141,8 @@ export interface TransportSendOptions {
  * Two implementations: GraphTransport (Graph API) and McpTransport (MCP server).
  */
 export interface TeamsTransport {
+    readonly connectionId: string;
+    readonly operations: RoutedTeamsOperations;
     /** Connect/initialize the transport with a bearer token. */
     initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void>;
     /** Send a message to a target (channelId or chatId). Returns the message ID. */

@@ -1,1328 +1,183 @@
 # packages/coc
 
-CoC CLI and integrated server. Consumes `@plusplusoneplusplus/coc-workflow`
-directly for pure workflow compilation/execution, `@plusplusoneplusplus/forge`
-for runtime/process/queue utilities, and `@plusplusoneplusplus/coc-agent-sdk`
-for the provider-neutral LLM-tool contract (`Tool`, `defineTool`, etc.).
-
-See the root `AGENTS.md` for cross-package conventions and **always load
-`.github/skills/coc-knowledge/SKILL.md`** before working on this package —
-detailed architecture lives in its `references/*.md` files.
+Follow [root instructions](../../AGENTS.md). Load
+[coc-knowledge](../../.github/skills/coc-knowledge/SKILL.md) and the relevant
+references before editing. Paths are package-relative.
 
 ## Where to Read Before Editing
 
-| If you are touching… | Read first |
-|----------------------|------------|
-| CLI commands, source layout, executors, server startup, storage layout | [server-architecture.md](../../.github/skills/coc-knowledge/references/server-architecture.md) |
-| Admin REST handler, editable config fields, admin UI | [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md) |
-| `~/.copilot/mcp-config.json` + `.vscode/mcp.json` merge, allow-list | [mcp-settings.md](../../.github/skills/coc-knowledge/references/mcp-settings.md) |
-| `src/server/endev/`, `EnDev-xDpu` skill visibility | [endev.md](../../.github/skills/coc-knowledge/references/endev.md) |
-| Ralph sessions, iteration prompt, promote-to-ralph endpoint | [ralph.md](../../.github/skills/coc-knowledge/references/ralph.md) |
-| `src/server/cron/`, cron tools, tick lifecycle | [cron.md](../../.github/skills/coc-knowledge/references/cron.md) |
-| Process store / SQLite schema / FTS5 / pin / archive | [process-store.md](../../.github/skills/coc-knowledge/references/process-store.md) |
-| Dashboard SPA (`src/server/spa/`) | [spa/shell.md](../../.github/skills/coc-knowledge/references/spa/shell.md) (entry point) |
-| REST endpoints | [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md) |
-| Notes sync engine (`src/server/sync/`) | [sync.md](../../.github/skills/coc-knowledge/references/sync.md) |
-| SDK wrapper, Copilot/Codex providers, `ISDKService`, `SDKServiceRegistry` | [sdk-wrapper.md](../../.github/skills/coc-knowledge/references/sdk-wrapper.md) |
+| Domain | Read first |
+|--------|------------|
+| CLI, runtime, storage | [Server](../../.github/skills/coc-knowledge/references/server-architecture.md) |
+| Settings | [Admin](../../.github/skills/coc-knowledge/references/admin-config.md) |
+| Provider/session policy | [SDK wrapper](../../.github/skills/coc-knowledge/references/sdk-wrapper.md) |
+| Processes | [Process store](../../.github/skills/coc-knowledge/references/process-store.md) |
+| REST contracts | [REST API](../../.github/skills/coc-knowledge/references/rest-api.md) |
+| SSE/WebSockets | [Streaming](../../.github/skills/coc-knowledge/references/streaming-architecture.md) |
+| Dashboard routing | [Shell](../../.github/skills/coc-knowledge/references/spa/shell.md), [clones](../../.github/skills/coc-knowledge/references/spa/clone-routing.md) |
+| Chat | [Conversation](../../.github/skills/coc-knowledge/references/spa/chat-conversation.md) |
+| Git, PRs, work items | [Git/PRs](../../.github/skills/coc-knowledge/references/spa/git-and-prs.md), [work items](../../.github/skills/coc-knowledge/references/spa/work-items.md) |
+| Notes and Sentinel | [Notes](../../.github/skills/coc-knowledge/references/spa/notes.md), `src/server/sentinel/` |
+| Canvas/Kusto | [Canvas](../../.github/skills/coc-knowledge/references/spa/canvas.md) |
+| Ralph and worktrees | [Ralph](../../.github/skills/coc-knowledge/references/ralph.md) (launch/lifecycle links) |
+| MCP, tools, cron, memory, workflows, LSP, remote hosts, sync | [Knowledge index](../../.github/skills/coc-knowledge/SKILL.md#architecture-index) |
+| Messaging | [Connector](../coc-connector/AGENTS.md), `src/server/messaging/` |
+| Native search/Notes I/O | [Native](../coc-native/AGENTS.md) |
 
-Other domains (memory, workflow engine, prompt autocomplete, wiki serving,
-remote servers, task comments, llm-tools, sdk-wrapper, chat-prompt-history)
-all have their own `references/*.md`.
+## Scope and API Boundaries
 
-## Local Invariants
+- Support multiple workspaces/servers. Build paths with
+  `getRepoDataPath(dataDir, workspaceId, filename)`; do not add top-level per-repo storage.
+- Separate **storage origin** from **execution workspace**. Work items, plans/versions,
+  changes, bindings, PR provider state, classification, and review progress use
+  `/api/origins/:originId/...` and `*ForOrigin` methods. Concrete `workspaceId` selects
+  queue/filesystem/Git/provider execution and validation, not storage identity.
+  Do not add repo-scoped PR-provider/origin-state aliases.
+- Mutate work items through REST and `src/server/work-items/work-item-commands.ts`,
+  not files/duplicated route logic. Invalidate/broadcast both scopes.
+- Workspace/process REST, SSE, and WebSockets target their owner:
+  use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
+  Unresolved remote selections never fall through locally; admin stays page-origin.
+  Reject late responses after scope changes.
+- Remote group selection uses a server-qualified clone key; decode the raw
+  group id at the owning API. Groups are page/queue scope; Git uses a member.
+  Names are not keys; refresh live membership and preserve search failure states.
+- Previews carry resolved workspace/member and clone route through
+  operations/caches. Probe group members in order; preview roots never authorize writes.
+  Preserve WSL UNC prefixes/root containment.
+- Implement on same-origin clones. Local file plans use paths; remote
+  source/target plans and canvas plans embed content read from the source client.
+  Persist state on the source; execute/own PR gates on the target.
 
-- **Production process persistence is native SQLite.** `createProcessStore`
-  always opens `processes.db` through forge's `SqliteProcessStore`; a configured
-  `store.backend: file` warns and is ignored. Forge's `FileProcessStore` is
-  available for injected test fixtures only.
-- **Repo-group split routing** keeps the group as the page workspace and a
-  member as the Git data workspace. With `splitWorkspacePanel` on, desktop and
-  mobile expose Git only inside the group's Chats tab; member/commit Git links
-  open that tab. Desktop Git detail lives in the unified far-right Git tab,
-  preserving the conversation in the middle; mobile uses its full-screen detail
-  push. The Git tab stores its data member with the view and drops that view
-  when the member changes. With the flag off, the standalone group Git tab
-  remains. New Chat and queue counts use the group workspace, while the remote
-  desktop shell docks status actions under the split left column. A loaded
-  group without healthy members hides the desktop Git half.
-- **Repo-group dashboard selection is server-qualified.** A local group uses
-  its raw `group-<slug>` id; a remote group uses the existing
-  `remote:<serverId>:<groupId>` clone key for selection, routes, and pins.
-  Decode the raw group id only at the owning server's API boundary. Display
-  machine/server names identify rows but are not persistent keys; identical
-  group ids across servers must remain distinct.
-- **File search has exactly one backend.** `RepoTreeService` answers whole-repo
-  listings and `/search` from the Rust index in `@plusplusoneplusplus/coc-native`,
-  and there is no JavaScript path behind it: a missing or unloadable binary
-  throws out of the constructor. The `nativeFileIndex` constructor option exists
-  so tests can inject a stub, not so callers can ask for a different
-  implementation. `/api/health` and a startup log line report the file index and
-  the Notes index separately, so a stale binary is visible. `walkFiles` still
-  serves per-directory listings. `src/server/shared/fuzzy-file-score.ts` no
-  longer ranks anything — it is the readable reference the Rust port must match,
-  pinned by `packages/coc-native/test/parity.test.ts`; see
-  [packages/coc-native/AGENTS.md](../coc-native/AGENTS.md) before changing
-  either. `searchFiles` is uncapped (the path list never leaves the process);
-  `fileListMaxEntries` bounds only the `/files` response payload.
-- **Tracked content search reads fresh working-tree contents.** For single-line
-  literal searches without untracked files, `RepoTreeService` narrows candidates
-  with `git grep -l -z -F` and adds tracked symlinks from the Git index before
-  the native matcher calculates context, highlights, globs and caps. Regex,
-  multiline, untracked and WSL searches use the full native candidate walk.
-  There is no result cache; verify both paths against real Git fixtures.
-- **QuickOpen searches on the server.** The `Ctrl+P` dialog fetches nothing on
-  open, debounces keystrokes, and highlights using the `indices` the server's
-  scorer returned — never by re-deriving the match in the browser, which used to
-  let highlight and ranking disagree.
-- **Repo-group file search is group-owner scoped.** `GET
-  /api/repo-groups/:id/search` resolves `group.json` against the owning server's
-  live workspace registry on every request, skips stale members and the virtual
-  group root, and searches member native indexes with concurrency four. It
-  merges `searchRanked()` matches by native tier, score, target length, path
-  length, group membership order, and snapshot index, then strips ranking
-  metadata from the response. Its explicit status is `complete`, `partial`,
-  `failed`, or `no-searchable-members`; never turn `failed` into an empty
-  successful result.
-- **Late-bound executor capabilities live in exactly one contract.** Cron, the
-  WebSocket server, MCP OAuth, `send_to_conversation`, the Dreams runner, the
-  global system prompt, provider routing, and the turn-performance store are
-  created after the executor graph, so they are declared as getters in
-  `src/server/executors/executor-runtime-contracts.ts` and travel as ONE
-  `ExecutorRuntimeCapabilities` object, by identity, from
-  `createQueueInfrastructure` → `CLITaskExecutorOptions.runtime` →
-  `ExecutorRegistryOptions.runtime` → `ChatModeExecutorOptions.runtime`. Never
-  re-declare a capability on a layer's own option interface, never forward it
-  field by field, and never import a capability type from a concrete executor —
-  each of those reintroduces the silent-omission bug where a feature looks
-  configured at startup but is unavailable at execution time. Static config
-  (timeouts, `dataDir`, provider default, feature toggles) stays on each layer's
-  own option bag; consumers get narrow `Pick` views
-  (`ChatExecutorRuntime`/`LifecycleRuntime`/`DreamRuntime`) so tools do not leak
-  into background executors. `test/server/executors/executor-runtime-wiring.test.ts`
-  is table-driven over every capability and fails if a hop is dropped.
-- **Restored queues stay stopped until server activation.** Queue persistence may
-  create per-repo executors while the composition root is still wiring routes and
-  late-bound capabilities. `createExecutionServer` activates queue processing only
-  after the HTTP server is listening; activation starts every existing executor and
-  makes later lazy repo executors auto-start. Never replace this readiness boundary
-  with a timing delay.
-- **Server Vitest tests** live under `packages/coc/test/server/`. Any
-  server change should add or update tests there.
-- **Git full-text diff snapshots** use workspace-scoped `files/*/diff-content`
-  routes for commits and branch ranges, plus the origin-scoped PR
-  `files/*/content` route with an explicit workspace selecting the clone.
-  `git/ref-file-content.ts` handles immutable local objects and renames;
-  `git/pull-request-file-content.ts` falls back to the user's `gh` or Azure CLI
-  login when PR objects are absent. All paths share working-tree byte/size
-  rules. Shared commit, branch-range, and PR `DiffSource` factories expose these
-  pairs through `fetchFileContent` and resolve the workspace client on every
-  call. `FileDiffPanel` renders those pairs through `MonacoFileDiffViewer` for
-  commit, branch-range, and PR sources, using the source cache key to isolate
-  synthetic ref models. Shared engine resolution falls back to Classic for
-  binary/oversized content, content-load failures, or editor-start failures,
-  retaining comments and the patch path. Retry refetches content and remounts
-  the editor for recoverable failures. Monaco comment threads reuse
-  `MonacoDiffCommentLayer`, `CommentCard`, and each source's existing comment
-  refs; sidebar navigation uses the viewer's `revealComment` handle.
-  Anchor relocation excludes patch metadata and no-newline annotations.
-  Selected Monaco files ignore classification; shared engine reports let host
-  toolbars restore classification for Classic, including automatic fallback.
-  Branch-range content reports live `modifiedMatchesWorkingCopy` eligibility;
-  only a byte-identical, index-clean checked-out head shares the explorer's
-  real URI and language document. Commit, PR, and base models stay synthetic.
-  `FileDiffPanel` and `WorkingTreeFileDiff` consume the same global
-  `useDiffEngine` preference and
-  Classic/Editor control. Cache identity includes
-  workspace or origin, ref identity, base mode where applicable, and path; PR
-  source identity includes the head SHA. The commit `files/*/content` preview
-  remains a separate line-array API.
-- **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
-  team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
-  with a prompt in the selected workspace (or the first registered workspace).
-  Both ordinary and relay-created Teams chats resolve the provider's Medium
-  effort tier through queue preparation; container-forwarded chats retain
-  their own default selection.
-  A missing `teams-messaging.json` defaults the channel to a sanitized
-  `CoC-<machine-name>`; saved channels and routing IDs stay untouched on startup.
-  Machines sharing a name must choose distinct channels to avoid duplicate work.
-  Admin → Configure → Integrations exposes the default-off live
-  `features.teamsAiAnswerRelay` toggle beside Teams bridge observability. When
-  enabled, the bridge persists each inbound request's team/channel/thread and
-  task or turn correlation in its physical workspace's `teams-answer-relay/`
-  directory.
-  The independent default-off live `features.teamsMessageReaction` setting is
-  also exposed in the Integrations Features section. Newly admitted human channel posts attempt
-  a Like before routing; ordinary replies and relay receipts remain authoritative.
-  All channel sends begin with visible `AI:` at the shared manager boundary.
-  The boundary renders command, status, acknowledgement, and error Markdown as
-  safe Teams HTML; relay replies pass preformatted HTML through unchanged.
-  Acknowledgements remain immediate receipts; saved terminal assistant turns
-  (or safe failure/cancellation notices) are separate bounded HTML replies under
-  the original thread root. Follow-ups use an opaque per-request turn
-  ID, never the process's mutable result; confirmed sends are not replayed and
-  unknown outcomes remain ambiguous. Disable, disconnect, or target changes
-  must not redirect pending answers, and shutdown disposes queue listeners.
-  The relay flag opts the MCP connector into channel-thread polling when the
-  reply-list tool is available. Persisted root receipts keep older threads
-  eligible across reconnects; their reply cursor prevents old requests from
-  replaying after receipt compaction, and outbound IDs identify the connector's
-  own replies. Bound thread command selections are shared by participants and
-  persisted in repo-scoped `teams-thread-roots/`. The original chat's answer correlation stays
-  in its physical workspace. Root discovery metadata contains only team/channel
-  and root identity and lives in `teams-thread-discovery/`. Historic repository
-  commands in recent or backfilled roots restore selection without replaying
-  old questions or sending status.
-  Bound replies route by the thread selection independently of the sender's
-  topic. An unselected reply asks for `/list repos` and `/select repo <name>`;
-  a selected root starts a fresh chat on its next question. A late answer after
-  a switch identifies its source repo and chat. Multipart receipts reserve
-  space for a source label before the first send, so confirmed parts keep their
-  numbering if a switch occurs before later parts. Receipts with confirmed
-  parts but no reserved space send one request-linked continuation label before
-  resuming; definite rejections retry, while uncertain sends require manual
-  reconciliation.
-  Its `/api/messaging/teams/*` authorization flow uses the official MCP SDK
-  for discovery, PKCE, exchange, and read-only
-  handshake verification; verified tokens enter the shared Copilot OAuth cache
-  for polling. It is separate from container `/container/messaging/*` and the
-  container self-chat relay. Keep enable/disable, startup, and shutdown
-  synchronized with the polling manager. `messaging/teams-attempt-store.ts`
-  keeps server-global connection history in the CoC data directory; its
-  persisted format allowlists safe stages, outcomes, and failure categories.
-  `features.teamsBridgeObservability` gates collection and read-only history
-  routes and defaults off; history responses must project allowlisted fields.
-- **Normal CoC WhatsApp** is independently enabled from Admin → Messaging and
-  persists account config/auth/selection under `messaging/whatsapp/`. Inbound
-  processing admits only paired-account messages from the one bound group;
-  workspace selection requires `select repo` and quote-replies to answer IDs
-  retain the originating workspace. Teams and WhatsApp `list topics`/`select
-  topic <n>` both go through `messaging/chat-target.ts` (`listRecentTopics`/
-  `resolveTopic`), which reads a bounded (10), conversation-free process page —
-  never an unbounded `getAllProcesses`, which stalls on large stores. Shared
-  connector plumbing (workspace/topic lookup, terminal-task subscription) belongs
-  there, both relays find a request's answer and its fixed failed/cancelled/empty
-  texts through `messaging/relay-answer.ts`, and receipt files write through
-  `atomicWriteJsonUnique`; platform
-  transport, reply wording and delivery formatting stay per connector. Chat receipts live under each workspace's
-  `whatsapp-bindings.json`, never in an account-wide per-repo bindings file.
-  Account state also retains recent command-reply IDs so reconnects cannot
-  dispatch the connector's own command responses as new requests.
-  Enqueue uses the shared resolved-defaults path; Ask is the default mode,
-  `/autopilot` applies only to that message. The terminal relay sends one
-  quoted final answer per turn, storing each accepted part before advancing
-  its receipt; uncertain sends remain unsent on restart for reconciliation.
-  Disconnect and shutdown stop the Baileys reconnect loop and dispose the
-  relay's queue listeners. Container WhatsApp routes and bridge remain separate.
-- **Process mutation admission** uses the shared keyed coordinator in
-  `src/server/processes/process-operation-admission.ts`. Follow-up delivery and
-  rewind share that section. Follow-up delivery re-reads process/task state
-  before mutation; a contending cross-provider request fails with
-  `PROVIDER_SWITCH_REQUIRES_IDLE`. Rewind publishes a temporary running status
-  plus `metadata.rewind`, holds both through native and store mutation, and
-  restores the prior terminal status in `finally`.
-- **Docker image contract tests** live under `packages/coc/test/docker/`
-  (root `Dockerfile`, `docker-compose.example.yml`, `deploy/tenant/*`,
-  `docker/entrypoint.sh` run under `sh` with fake `coc`/`git`/`curl`). Any
-  change to those files must keep them green; the loopback-only bind
-  (`--host 127.0.0.1`, no `EXPOSE`, no published port for `coc`) is policy.
-  `scripts/prebuild.mjs` honours `COC_BUILD_COMMIT` (the image build has no
-  `.git`).
-- **Admin export/import/wipe storage behavior** lives under
-  `src/server/storage/snapshot/`: `types.ts` (the domain contract),
-  `registry.ts` (`createSnapshotDomains()` plus the collect/restore/wipe
-  orchestration), `snapshot-fs.ts` (shared filesystem helpers), and one module
-  per storage family (`core-store-domain`, `queue-domain`, `image-blob-domain`,
-  `preferences-domain`, `schedule-domain`, `git-ops-domain`).
-  `storage/storage-snapshot-domains.ts` is a compatibility barrel for the
-  public orchestration API. Schedule YAML + `schedule_runs` snapshot logic lives
-  next to schedule persistence in
-  `src/server/schedule/schedule-snapshot-repository.ts`. When adding a persisted
-  storage family, add a domain module, register it in `registry.ts`, and make it
-  pass the domain contract harness
-  (`test/server/snapshot-domain-contract.test.ts`) so export counts, import
-  merge/replace behavior, and wipe dry-run counts cannot drift.
-- **Server preferences** live under `src/server/preferences/`: `schema.ts`
-  owns Zod schemas and inferred types, `repository.ts` owns global and
-  repo-scoped disk persistence, `merge-policy.ts` owns PATCH/import merge
-  semantics, `live-effects.ts` owns sync and work-item runtime side effects,
-  and `routes.ts` owns HTTP route registration. `preferences-handler.ts` is a
-  compatibility barrel; new server code should import the specific preference
-  module it needs.
-- **Notes task collections** are discovered per request from existing canonical
-  directories: the repo-scoped task root, `.vscode/tasks`, and task
-  `folderPaths`. Their `task:<sha256>` root ids are opaque, protected, and
-  workspace-scoped. Never persist them in `additionalNotesRoots`, count them
-  toward the user-configured Notes-root limit, or accept a client path as root
-  authority. Every non-default Notes file, folder, comment-sidecar, order, and
-  image path must pass `notes/notes-path-safety.ts`; it treats both slash styles
-  as separators, rejects absolute/drive/UNC/parent paths, and resolves existing
-  symlinks before checking containment in the selected root. The SPA must keep
-  task-derived rows out of Notes root removal selection, refresh discovery with
-  the tree, clear the selected file when a root disappears or the workspace
-  changes, and discard late root/tree responses from stale workspace scopes.
-- **Notes system folders** are `Plans` and `Sentinel`. The managed default root
-  auto-creates them, reports them through the tree response's `systemFolders`,
-  and blocks renaming or deleting their roots. Repo-folder and task-derived
-  roots do not create or report system folders.
-- **Sentinel chat mode** is a disabled-by-default workflow mode exposed only on
-  the New Chat surface through `sentinel.enabled`. Its registry identity uses a
-  shield icon with teal accents, and server mode normalization maps its base
-  instruction profile to read-only Ask.
-- **Sentinel ownership** lives only at
-  `repos/<workspaceId>/notes/Sentinel/.watchlist.json`. Initial claims use
-  exclusive file creation; live owners block a second claim, while missing,
-  archived, failed, cancelled, or corrupt owners are reclaimed. A short claim
-  grace covers admission before the new process row exists. Queue preparation
-  reserves the generated `queue_<taskId>` for every new Sentinel chat; a live
-  owner returns `409 SENTINEL_ALREADY_EXISTS` with open/replace actions.
-  Confirmed replacement supplies the exact owner process ID, atomically transfers
-  the marker, and cancels the old process-bound Sentinel cron without changing
-  the old transcript. New Chat handles an ownership conflict with a confirmation
-  dialog that can open the named owner or resubmit the preserved draft with that
-  exact ID as the replacement guard.
-- **Sentinel watchlist state** stores the owner, resolved exclusion IDs, and
-  judgment-only entries with disposition, bucket, reason, nudge counters, and
-  judgment timestamps, plus the last rendered board used to detect edits across
-  restarts. Reads tolerate missing, empty, truncated, and older records. Tick
-  updates use temp-file rename, preserve prior dispositions, and evict missing,
-  archived, or resolved-for-more-than-30-days entries. The deterministic board
-  groups active judgments by bucket; unchecking a renderer-owned item resolves it
-  and deleting one mutes it. Each tick folds edits before reconciliation and
-  publishes `Board.md` through the Notes optimistic-write contract, retrying
-  conflicts rather than clobbering an editor. `Sentinel.md` is created once with
-  editable tick interval, recency, mute-list, and nudge-budget defaults and is
-  never overwritten. Board drafts stay unchecked until the user approves one;
-  a newly checked approval is revalidated against the per-chat budget, snooze,
-  and tick-window backoff before it queues a follow-up. Old chats start a linked
-  Ask chat instead. Approved nudges against active turns use pending messages.
-- **Sentinel cron TTL is rolling.** Each Sentinel tick extends `expires_at` to
-  at least the default cron TTL from the current time, without shortening a
-  longer configured TTL. Other chat-mode crons retain fixed expiry behavior. A
-  newly admitted Sentinel provisions one hourly process-bound cron from the
-  aggregate queue's `taskAdded` event; general cron tools and routes remain
-  gated by `cron.enabled`. `POST /api/workspaces/:id/sentinel/check-now`
-  validates the watchlist owner and immediately runs that cron's normal tick
-  guards without creating another schedule. The active Sentinel chat header
-  exposes this route as a disabled-while-starting **Check now** action.
-- **Sentinel classification** reads only the owning workspace's process records.
-  It excludes every Sentinel and all descendants transitively, then classifies
-  recent, unarchived chats into blocked, failed/stale, long-queued, loose-end,
-  and completed-unread buckets. Each scheduled or manual Sentinel tick runs the
-  classifier once before its follow-up is enqueued. Loose-end judgment uses one
-  tool-free `transform` call over final turns and accepts only a complete set of
-  known process IDs, the fixed `loose-end | ignore` enum, and finite confidence
-  values. Invalid model output fails the tick; low-confidence judgments are
-  ignored.
-- **Native Notes search lifecycle** lives in
-  `src/server/notes/notes-search-service.ts`. The server validates the required
-  `coc-native` Notes capability during composition, then the shared service
-  lazily creates one index and recursive watcher per `(workspaceId, rootId)`.
-  `GET /api/workspaces/:id/notes/search` resolves and authorizes its root before
-  calling this service and returns the native bounded response directly.
-  Physical paths never identify or share an index. Watcher changes are
-  debounced into bounded incremental refreshes; ambiguous paths, directory or
-  rename events, watcher errors, and oversized batches request a full native
-  refresh. Refresh failures keep the last complete snapshot and retry on a
-  later change. Preference writes evict removed configured roots, workspace
-  removal evicts that workspace, and server close disposes every watcher and
-  rejects new service work. Keep `resolveNotesRoot` authorization ahead of
-  every service search.
-- **Notes chat scope** is `per-note | per-section | per-workspace`. Bindings live
-  in `note_chat_bindings`, keyed on a path: a note path for `per-note`, the
-  note's **nearest parent folder** for `per-section` (a root note has no section
-  and falls back to a per-note row), and nothing for `per-workspace`.
-  `resolveNoteChatBinding` (`routes/queue-enqueue.ts`) picks the key at enqueue
-  and `useNotesChat` resolves it back as
-  `perNoteMap[folder] ?? perNoteMap[notePath]`; `noteSectionPath` (server) and
-  `noteSectionOf` (client) must stay in agreement. Because a section row is keyed
-  on the folder itself, `NoteChatBindingStore.renamePrefix`/`deletePrefix` carry
-  that row along with the note rows beneath it.
-- **A Notes chat's active note moves via `POST /api/processes/:id/note`**, which
-  rewrites `metadata.notePath`/`noteTitle`. That field — not the enqueue
-  payload — is what `FollowUpExecutor` snapshots for the inline diff on every
-  turn after the first, so this write is what keeps a moved chat from
-  attributing its edits to the note it was created against. It is a dedicated
-  route rather than a field on `.../message`, and it validates hard (normalized
-  path, inside the notes root, and inside the bound folder when
-  `metadata.noteChatScope` is `per-section`) because it retargets where an agent
-  writes. Note switches are never sent on their own: they ride the next message
-  as one `[📝 Now viewing: <path>](…)` line.
-- **Notes sidecars** (comments, paper annotations) get their path and their
-  access check from `notes/notes-sidecar-resolver.ts` — never from an ad-hoc
-  check in a handler. It allows a note under the workspace data dir,
-  `~/.copilot`, or the workspace git root, and co-locates the sidecar only for
-  the first two; everything else (repo-folder roots, and chat-scratchpad files
-  opened by absolute path inside the repo) lands under
-  `~/.coc/repos/<workspaceId>/notes-comments/<encoded-bucket>/` so the user's
-  repo stays clean. The `.` bucket is reserved for workspace-root files;
-  `validateNotesRootPath` rejects `.` as a user root, so it cannot collide.
-- **Notes attachments** upload and serve through the shared endpoint in
-  `notes/notes-image-handler.ts` (`POST`/`GET /api/workspaces/:id/notes/image`).
-  It accepts images plus `application/pdf` (images capped at 10 MB, PDFs at
-  50 MB) and stores files under `.attachments/` (default root) or `.images/`
-  (repo-folder roots). PDFs round-trip as
-  `![label](.attachments/x.pdf)` markdown through the Tiptap `pdfBlock` node;
-  a presentation attribute (`data-indent`, `data-pdf-height`, or
-  `data-pdf-collapsed`) forces the raw `<div class="md-pdf-embed" …>` form so
-  the flag survives the save. A collapsed embed unmounts its iframe and shows
-  only the toolbar.
-  `pdfBlockUrl.ts` permits an unsandboxed inline iframe only for same-origin,
-  exact Notes `image`/`local-image` routes whose decoded `path` is a PDF;
-  other HTTP(S) PDF URLs are link-only and unsafe values expose no active URL.
-  `router.ts` maps `.pdf` to `application/pdf` for the browser-native viewer.
-- **Tiptap** is pinned to one exact version across every `@tiptap/*` dep
-  (currently `3.30.0`). Several of them declare exact peer deps on
-  `@tiptap/core`/`@tiptap/pm`, so bumping a subset — or loosening one to a
-  caret range — produces two resolved copies of `@tiptap/core`. ProseMirror
-  plugins from different core instances do not share a schema, which fails at
-  runtime, not at typecheck. Bump the whole set together and confirm with
-  `npm ls @tiptap/core`.
-- **Notes find & replace** is `@tiptap/extension-find-and-replace`, registered
-  last in `RichEditorCore` so its match decorations paint above the comment and
-  AI-edit ones, and driven from the panel behind the toolbar's 🔍 button. It
-  binds no keyboard shortcut, so `Ctrl+F` stays native browser find over the
-  whole page (sidebar, TOC, chat panel). It is rich-mode only — source mode is a
-  separate raw-markdown editor — and the button and panel are part of the
-  formatting group hidden by `hidden`. The bundled highlight styles are off
-  (`injectCSS: false`) because their yellow fill collides with the Highlight
-  mark colors; `noteEditor.css` outlines matches instead.
-- **Notes links** show the destination URL plus the platform-specific
-  modifier-click instruction in the native hover hint. The hint is attached to
-  the live editor DOM and must not be serialized into note Markdown. The write
-  must stay idempotent (skip when the title already matches): ProseMirror's
-  DOMObserver redraws the link's children on every attribute mutation, and an
-  unconditional write loops when the hovered child is an inline atom chip. The
-  `filePathRef` marked extension skips inside link labels
-  (`lexer.state.inLink`) so `[URL](URL)` never gains a `file-ref-link` chip.
-- **In-memory caching** uses the one shared primitive at
-  `src/server/cache/` (`createCache<T>({ namespace, ttlMs?, maxSize=500,
-  immutable? })` → a handle with `get`/`set`/`getOrCompute`/`delete`/
-  `invalidateWorkspace`/`clear`). It is a passive store — no background
-  timers; stale-while-revalidate domains keep their own timer and call into a
-  handle. `getOrCompute` is single-flight; entries can carry a `workspaceId`
-  tag, and `invalidateWorkspaceForAll` clears one workspace across every
-  namespace. Do NOT hand-roll a new `Map`-based TTL cache and do NOT add an
-  npm cache dependency.
-- **Dashboard Git-info refreshes** are independent of process lifecycle events.
-  `ReposContext` derives card counts from the live `AppContext` process index;
-  only topology events/reconnect/manual refresh run full discovery, while
-  `git-changed` refreshes one clone-routed workspace. A live Git-info read uses
-  Forge's single porcelain-v2 status command and the persisted workspace remote
-  URL. Keep cache single-flight behavior, bounded error backoff, active-only
-  safety refresh, and privacy-safe batch metrics intact.
-- **Codex skill mirroring** runs once at server startup (when
-  `resolvedConfig.codex?.enabled === true`), not per-install. The
-  `syncInstalledSkillsToCodex` function copies all globally installed bundled
-  skills from `~/.coc/skills` to `~/.codex/skills` (`$CODEX_HOME/skills`).
-- **Claude skill mirroring** runs once at server startup (when
-  `resolvedConfig.claude?.enabled === true`). The `syncInstalledSkillsToClaude`
-  function copies each skill's `SKILL.md` from `~/.coc/skills/<name>/SKILL.md`
-  to `~/.claude/commands/<name>.md` (`$CLAUDE_HOME/commands/<name>.md`) so
-  Claude Code discovers them as slash commands. A sidecar marker
-  `.coc-<name>.json` tracks CoC-managed commands to distinguish them from
-  user-authored ones.
-- **Skill-folder resolution order** is: repo-local `.github/skills` →
-  managed global `~/.coc/skills` → configured global extra folders
-  (`skills.globalExtraFolders`) → per-repo extra folders → auto-detected
-  OneDrive/CloudStorage → bundled. Three consumers must keep this order identical:
-  `resolveSkillConfig` (execution-time, existence-filtered — what the agent
-  uses) and `resolveEffectiveSkillPaths` (read-only diagnostic behind
-  `GET /api/skills/effective-paths`, keeps declared-but-missing sources) in
-  `src/server/executors/skill-config-resolver.ts`, and `loadSkillsForWorkspace`
-  (UI listing behind `GET /api/workspaces/:id/skills`, tags configured-folder
-  skills `source: 'global-extra-folder'`) in `src/server/skills/skill-handler.ts`.
-  Every configured global or per-repo extra folder is a possible container:
-  probe the folder itself, then `<folder>/.github/skills`, then
-  `<folder>/skills`. Keep this base-first candidate order for name precedence,
-  filter missing candidates at runtime, and store the actual candidate root in
-  each listed skill's `folderPath` so display and file reads match execution.
-  Each detected OneDrive root is probed at `.github/skills` and then `skills`;
-  Windows-style roots stay ahead of sorted macOS CloudStorage roots.
-  Managed `~/.coc/skills` is the only install/delete target; extra/detected
-  folders are read-only. `skills.globalExtraFolders` +
-  `skills.autoDetectDefaultFolders` live in the config `skills` namespace, while
-  `globalDisabledSkills` lives in `preferences.json`; `GET`/`PUT
-  /api/skills/config` spans both (see
-  [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
-- **Workspace Agent Skills UI state** lives in
-  `react/features/skills/useWorkspaceSkillsController.ts`. Both
-  `RepoSettingsTab` and `RepoCopilotTab` inject their workspace client resolver;
-  visual skills components must not choose a default or clone-routed transport.
-  Keep source grouping/filtering/resolution rows pure in `skills-ui-model.ts`,
-  keep install requests typed through `useSkillInstallController`, and guard
-  list/config/detail/file-preview/repo-probe/install responses so late work from
-  an old workspace, source, card, or repo list cannot update the active view.
-- **Diff-comment REST** all lives in `react/utils/diffCommentApi.ts` and is
-  clone-routed through `getCocClientForWorkspace(wsId)` — reads
-  (`listDiffCommentsForRange`) as well as writes. The list route only validates
-  the id, so a local-origin read for a remote clone returns 200 with an EMPTY
-  list rather than 404: a missed route here shows "no comments" instead of
-  failing. Call the helper; do not call `getSpaCocClient().git.listDiffComments`
-  or `fetchApi('/diff-comments/...')` from components.
-- **Workflow (pipelines) REST** lives in `react/features/workflow/workflow-api.ts`
-  and is clone-routed through `getCocClientForWorkspace(workspaceId)` for all
-  eight calls; `WorkflowRunHistory` routes its `/queue/history` read the same way
-  (that route returns 200 with an EMPTY list for an unknown `repoId`, so a missed
-  route reads as "no runs"). `runWorkflow` enqueues on the SERVING host, so the
-  returned process only exists there — `WorkflowDetailView` takes a `workspaceId`
-  and uses it for both the process fetch and the SSE stream URL. Remote rows get
-  their workflow list from the per-server `/summary` fetch in
-  `remoteWorkspaceAggregation`; the local queue WebSocket stays local.
-- **Chat list and chat-folder REST** is clone-routed: `queue/hooks/pinArchiveApi`
-  (pin/archive, their batch forms, and `setPinOrder`) and all three chat-folder hooks
-  (`useChatFolders`, `useChatFolderMutations`, `useChatFolderAssignment`) resolve
-  their client with `getCocClientForWorkspace(workspaceId)`.
-  `useChatFolderAssignment` takes `workspaceId` only to route — its own work is
-  process-scoped — and `ChatListPane` passes the same id its sibling folder hooks
-  get. The folder routes start with `resolveWorkspaceOrFail`, so a local-origin
-  call for a remote clone 404s: the create shows "Could not create folder" and
-  the list fetch's catch leaves the Folders section silently empty.
-- **Workspace-facing provider quota** routes through
-  `react/shared/useAgentProvidersQuota.ts` with the active clone-qualified
-  selection. The hook distinguishes local, resolved remote, and unresolved remote
-  routes through `cloneRegistry.resolveCloneRoute`; an unresolved remote must never
-  use the page-origin client. Quota state is server-owned: clear it when the owner
-  endpoint changes, ignore late responses from the prior owner, and restart polling
-  and forced refreshes on the resolved client. The Admin AI Providers page remains
-  page-origin administration.
-- **Shared dialogs that take a workspace id** (`ResolveContextDialog`,
-  `ModalJobAiControls`, `MarkdownReviewDialog`) route through
-  `getCocClientForWorkspace(wsId)` — or, for reveal-in-explorer, through
-  `explorerApi`. Repo preferences (`/workspaces/:id/preferences`) only validate
-  the id, so a missed route silently reads and writes the WRONG server's
-  preference file instead of 404ing.
-- **File-path hover previews** (`react/shared/file-path/file-path-preview.ts`)
-  and `react/shared/FilePreview.tsx` use `resolveSourceCanvasTarget` over local
-  plus remote workspaces and route through `getCocClientForWorkspace`. A hinted
-  workspace loses to the longest root owner when it does not contain an absolute
-  path; relative group refs keep the group id for ordered server probing. Preview
-  cache keys include a workspace identity and path.
-- **Source-canvas workspace routing** keeps an explicit workspace hint only when
-  its root contains the resolved absolute path. If another known workspace owns
-  the path by longest-prefix match, `source-canvas/resolve.ts` routes the preview
-  and folder tree to that workspace; an unmatched path keeps the original hint.
-  Relative group refs stay unanchored until the preview endpoint returns the
-  absolute `path` and owning `resolvedWorkspaceId`. Content, header/copy/reveal,
-  tree roots, lazy children, hover previews, and app-level Markdown link handling
-  carry that member ownership forward. Group Markdown links stay read-only.
-  Preserve the preview's encoding and MIME type through the shared `FileBlob`
-  contract so image payloads reach `FileViewer` as images. Oversized image
-  responses must surface an error rather than an empty text editor.
-- **Repo-group file preview reads** may reach the virtual group root, existing
-  trusted read-only roots, the group task root, and any live registered member
-  root. A relative group request probes live member roots in `group.json` order
-  and uses the first existing candidate; candidates must stay inside their
-  member root, and a miss reports every attempted path. Successful previews
-  return the resolved absolute `path` and `resolvedWorkspaceId`, using the
-  owning member id for member files. `resolveRepoGroupReadRoots` in
-  `server/tasks/tasks-handler-utils.ts` preserves membership order and omits
-  members removed from the registry or missing on disk; non-group workspaces get
-  no extra roots. This allowance is for
-  `GET /workspaces/:id/files/preview` only and must not be reused by write routes.
-- **Repo-group member access policy** persists optional `readOnlyMembers` in
-  `group.json`; omitted means read-write. `repo-group-access-policy.ts`
-  canonicalizes live roots and rejects read-only/read-write overlap. Every turn
-  passes writable roots as `additionalDirectories` and protected roots as
-  `readOnlyDirectories`. Copilot and Claude enforce that contract through
-  provider sandboxes; Codex and OpenCode fail before session creation because
-  their adapters cannot express mixed access safely. Copilot also searches all
-  member roots for custom instruction files (`instructionDirectories`).
-- **WSL file links.** On a Windows host a WSL workspace has a
-  `\\wsl$\<distro>\...` `rootPath`. `react/utils/path-resolution.ts` keeps that
-  UNC prefix intact (`isAbsolutePath`, `resolveRelativePath`, `deriveHomeDir`),
-  and `source-canvas/resolve.ts` re-roots the plain Linux paths WSL agents emit
-  (`/home/u/repo/...`) onto the workspace's share, but only when the result
-  lands inside that root. Server-side, `resolveRequestedFilePath` in
-  `server/tasks/tasks-handler-utils.ts` does the same for
-  `GET /workspaces/:id/files/preview`. Collapsing `//wsl$/...` to `/wsl$/...`
-  is what makes previews fail with "path is outside workspace".
-- **Workspace MCP inspector state** lives in
-  `react/features/skills/useMcpServerInspectorController.ts`. Unlike the skills
-  controller it resolves its own transport from the `workspaceId` it already
-  receives — `getCocClientForWorkspace(workspaceId)` for the `mcp-config` REST
-  calls and `cloneApiBase(startedWs)` for the raw `mcp-oauth/start` fetch plus
-  its status poller — because those routes read the host machine's disk via
-  `ws.rootPath` and store credentials on the owning server. `McpServersPanel`
-  takes no client-resolver prop; do not add one.
-- **Adding an admin-exposed config setting** is ONE definition entry in
-  `src/config/admin-setting-definitions.ts` (value spec, default, runtime,
-  optional `runtimeFlag` + settings-tab `ui` metadata) plus the
-  `CLIConfig`/`ResolvedCLIConfig`/`DEFAULT_CONFIG` declarations in
-  `src/config.ts`. Admin validation, file schema, namespace merge/source
-  tracking, runtime feature flags, the embedded SPA bootstrap, the settings-tab
-  Features sections (defaulting to the Features tab), and the generic contract tests
-  (`test/config/admin-setting-definitions.test.ts`) all derive from the
-  registry — do not hand-edit `admin-config-fields.ts`, `schema.ts` leaves,
-  or `namespace-registry.ts` for admin settings. Reserve `admin-handler.ts`
-  changes for cross-field validation shared with config-file loading (see
-  [admin-config.md](../../.github/skills/coc-knowledge/references/admin-config.md)).
-- **Admin Settings save shortcut** is one handler, `useAdminSaveShortcut`,
-  wired in `AdminPanel` with a per-section save target. Ctrl+S and Command+S
-  prevent the browser save action on every Settings section except Advanced;
-  AI & Execution, Chat, Chat Style, Appearance, and Features also save their
-  own card when dirty. Integrations and Providers persist on change, so they
-  only suppress the dialog. Do not add per-section keydown listeners.
-- **Queue config reads go through `QueueRuntimeConfig`**
-  (`src/server/queue/queue-runtime-config.ts`), the one boundary between
-  `RuntimeConfigService` and the executor graph. Never call `loadConfigFile()`
-  from the queue or an executor — a no-argument call resolves
-  `~/.coc/config.yaml` and ignores the server's `--config` path. The port
-  exposes typed getters for timeout, follow-up suggestions, Ask User, global
-  skill folders, and the Ralph final-check cap; all are `live`, so read them at
-  the point each setting takes effect rather than caching at composition. CLI
-  and test roots inject `createFixedQueueRuntimeConfig(...)`.
-- **Queue control state is repo-scoped.** `SqliteQueuePersistence` stores manual
-  pause state, the configured All/Autopilot task delays, and the active
-  implement-plan PR gate in Forge's `queue_repo_state` row. The gate records the
-  original task's closed commit range and admits only its chain. A successful
-  commit-producing implementation enqueues a same-chain autopilot PR-submit task
-  with the original provider/model/reasoning selection; its purpose-built prompt
-  has the agent call the `create_pull_request` tool with the explicit
-  oldest-first SHAs, `autoMerge: true`, and `mergeMethod: "squash"` (the tool
-  writes the chat↔PR binding). A failed `PR_SUBMIT_RESULT` keeps the gate
-  and pauses the repo with the reported reason. A target-server watcher polls
-  submitted PRs every 60 seconds through the provider PR service, releases only
-  the matching gate on merge, and restores submitted watches after restart.
-  Closed or blocked PRs keep the gate and pause reason until merge or manual
-  release. Submission and merge also annotate the target implementation process;
-  the source chat mirrors that chain-matched annotation into its persisted
-  implementation record, so remote targets never need to call back into the
-  source server. This flow must not call Ralph's submit builder or the
-  `submit-commits-as-pr` skill. A `task-delay-changed`
-  event writes the delay setting; `task-delay-skipped` never does, because skip
-  releases one active wait without turning off the repeating delay. Restore
-  applies only configured minutes, not the last-task-end clock, so the first task
-  after restart can start immediately.
-  `RepoChatTab` forwards active deadlines to `ChatListPane`, whose existing
-  one-second tick drives the All and Autopilot pill countdowns. The menu's skip
-  action calls the workspace-routed `QueueClient.skipTaskDelay`, releasing only
-  the current wait.
-- **Non-admin namespaced config fields** (queue, models, logging, monitoring,
-  skills, memoryPromotion, …) keep hand-written descriptors in
-  `src/config/namespace-registry.ts`; do not expand branch lists in `config.ts`.
-- **MCP REST surface** must never expose secrets (`env`, headers, full `args`).
-- **Ralph iteration prompts** must not hard-code implementation skill names
-  or set `context.skills`; surface `progress.md`/`context.md` by path only,
-  without injecting their contents.
-- **Ralph final-check tasks** still run with autopilot capability, but
-  `RalphExecutor` must use validation-only system instructions whenever
-  `context.ralph.finalCheck` is present. Do not route final checks through the
-  normal implementation-loop system prompt.
-- **Ralph final-check result repair** handles an unparseable/contradictory
-  `RALPH_FINAL_CHECK_RESULT` by queueing exactly one follow-up turn instead of
-  ending the session. The repair task reuses the check's `processId` (so the
-  checker's findings stay in context) and carries
-  `context.ralph.finalCheck.repairTurn: true`, which is the **only** thing that
-  makes the follow-up path in `process-lifecycle-runner` call `onRalphNext` —
-  never widen that gate to all ralph-mode follow-ups. `repairAttempted` is
-  persisted before the requeue, so a crash cannot loop it; a second failure
-  falls through to `final-check-failed`. Failed check records must omit
-  `hasGaps`/`gapCount` rather than write zeros.
-- **Ralph follow-on task config** comes from the completed task for iterations,
-  final checks, and gap-fix loops. Explicit-provider tasks preserve model,
-  reasoning effort, and `afterEffortTier`; Auto-routed tasks preserve
-  `afterEffortTier` but clear the completed task's concrete model/reasoning so
-  the tier is expanded after the next provider is selected.
-- **Ralph task kind** is derived only through `getRalphTaskKind(ctx)`
-  (`src/server/ralph/task-kind.ts`), which returns
-  `'iteration' | 'final-check' | 'submit'`. `RalphExecutor` rebuilds the user
-  prompt from `buildRalphIterationPrompt` for `'iteration'` **only**; every
-  other kind arrives with a purpose-built prompt that must reach the model
-  verbatim. Adding a new kind means extending the helper, not adding another
-  `ralphCtx.<marker>` check at a call site.
-- **Ralph PR-submit tasks** (`context.ralph.submit` present) must never be
-  routed through iteration orchestration: the bridge hands them to
-  `orchestrateSubmitCompletion` (`src/server/ralph/orchestrate-submit.ts`),
-  which parses the `RALPH_SUBMIT_RESULT` block and updates the persisted
-  `submits[]` record only — a submit completion never enqueues further work
-  and server code never switches git branches. The submit prompt
-  (`coc-workflow` `buildRalphSubmitPrompt`) has the agent call the
-  `create_pull_request` tool with the explicit SHA list and `autoMerge: true`.
-- **Ralph manual-only completion** treats explicit manual-verification-only
-  `Remaining:` progress as complete autonomous work: do not queue another
-  implementation iteration; enqueue final-check and preserve the manual
-  verification-needed terminal status.
-- **Ralph signal recovery** falls back to the journal when the response carries
-  no inline `RALPH_*` token: `decideRalphIterationActions` recovers the signal
-  from the current iteration's `progress.md` section (via `recentProgressSections`,
-  which must include `iteration`). The inline token stays authoritative when
-  present; `NO_SIGNAL` is terminal only when neither source carries a signal.
-- **Creating pull requests** goes through `createPullRequest`
-  (`src/server/git/create-pull-request-service.ts`) only. It picks GitHub
-  (`gh`) or Azure DevOps (`az repos`) from the `origin` URL, uses the user's CLI
-  login, runs commits mode in a temporary linked worktree (conflicts abort and
-  clean up; the caller's HEAD never moves), and returns an existing open PR
-  instead of failing. Route every git/`gh`/`az` call through its injected
-  `PrCliRunner` so tests stay CLI-free. The Work Item `submit-pr` command uses
-  it in commits mode (its own `branch` name, `autoMerge: false`) and binds the
-  change's execution chat to the PR.
-- **`create_pull_request` LLM tool** (`src/server/llm-tools/create-pull-request-tool.ts`)
-  is autopilot/Ralph-only: executors pass `createPullRequest` deps to
-  `buildChatTurnContext` only for write turns (ask mode and Ralph final-check
-  omit it — a documented exception to the mode-invariant tool block). On
-  success it writes the chat ↔ PR binding via `recordPullRequestBinding`
-  (`src/server/processes/record-pull-request-binding.ts`, bare task id under the
-  workspace's canonical origin).
-- **Git-tab Fetch/Pull** must stay current-branch scoped. `RepoGitTab` sends
-  `currentBranchOnly: true`; the server delegates to the scoped `BranchService`
-  methods, which resolve the checked-out branch's exact configured upstream
-  remote + merge ref, require one valid `refs/heads/...` source ref, and use
-  argv-based Git commands with no automatic tags. Never assume `origin` or a
-  same-named remote branch, and never fetch sibling refs from these UI actions.
-  The generic Forge `fetch`/`pull` methods retain their broad public behavior
-  for non-Git-tab callers.
-- **Git branch REST routes** (`src/server/routes/api-git-branch-routes.ts`) are a
-  thin HTTP adapter over the operation kernel in `src/server/git/`. Add new git
-  operations through the kernel, not inline in the route file:
-  `GitOperationRunner.start()` for anything returning `202 { jobId }` (it owns
-  job IDs, the already-running 409 guard, terminal status, cache invalidation,
-  and the `broadcastGitChanged` reason), `git-request-validators.ts` for input
-  validation and the 409 dirty/conflict payloads, `GitPatchTransferService` for
-  patch export/apply, and `GitRebaseReorderService` for the queue-backed reorder.
-  Validators and services throw `APIError`s; `createRoute` renders them, so
-  handlers should not hand-roll early returns. Route declaration order is
-  load-bearing — the `DELETE /branches/:name` catch-all must stay after the
-  specific branch endpoints.
-- **Patch-transfer metadata is untrusted** (it can originate on another CoC
-  server) and is persisted plus rendered, so every field goes through
-  `git-patch-transfer-metadata.ts`, which caps length, strips newlines, and
-  rejects POSIX, Windows-drive, and UNC absolute paths. An explicit
-  `normalizedSourceRemoteUrl: null` means "source has no remote" and is
-  preserved; an absent value means "not reported" and is omitted.
-- **Branch-range comparison base** is selectable: `?base=default-branch`
-  (default, vs the detected default remote branch) or `?base=upstream` (vs
-  `@{upstream}`, unpushed commits only) on all four
-  `/git/branch-range*` routes; unknown values fall back to `default-branch`
-  rather than erroring. `default-branch` must stay the default. Any cache
-  holding branch-range data must include the mode in its key — server
-  `{wsId}:branch-range:{baseMode}`, SPA `useBranchRangeCache`
-  `{wsId}:{baseMode}`, and `createBranchRangeDiffSource`'s `cacheKey` — or one
-  mode serves the other's diff. In `upstream` mode a zero-commit range is
-  returned as an empty range rather than `null`, so the base toggle stays
-  reachable when nothing is unpushed.
-  Every SPA branch-range call (range, file list, per-file diff) routes through
-  `getCocClientForWorkspace(workspaceId)`; the local client 404s
-  "Workspace not found" for a remote clone.
-- **Git worktree execution** (opt-in, `features.gitWorktreeExecution`, default
-  off) lives in `src/server/worktree/` (`GitWorktreeService` +
-  `WorktreeMetadataStore`) with Ralph wiring in
-  `src/server/ralph/ralph-worktree-launch.ts` and cleanup routes in
-  `src/server/routes/worktree-routes.ts` (see
-  [ralph.md](../../.github/skills/coc-knowledge/references/ralph.md) and
-  [rest-api.md](../../.github/skills/coc-knowledge/references/rest-api.md#git-worktrees)).
-  Invariants: all per-run data stays under
-  `~/.coc/repos/<workspaceId>/git-worktrees/` (never a new top-level `~/.coc`
-  dir); the target server only ever creates a worktree for its **own**
-  workspace checkout; worktrees are created from committed objects only
-  (`git worktree add -b <branch> <path> <baseSha>`) with **no** fetch/pull/push/
-  rebase/merge and **no** source-branch switch (`git checkout`/`switch`/
-  `reset --hard`); creation is fail-before-queue so an invalid ref/non-Git
-  folder aborts before any task is enqueued or status transitions; cleanup uses
-  `git worktree remove` **without** `--force`, never deletes the generated
-  branch, and surfaces the raw Git error (leaving the record intact) rather than
-  discarding a dirty worktree.
-- **Cron ticks** must route completion through
-  `ProcessLifecycleRunner → onCronTickComplete → CronExecutor.onTickComplete`;
-  bookkeeping errors must never mask the follow-up's actual result.
-- **Wakeups are durable and one-shot.** `scheduleWakeup` persists a `pending`
-  `WakeupEntry` (absolute `firesAt`) in the `wakeups` table via
-  `createEnqueueWakeup` **before** `WakeupExecutor.arm()` fires the one-shot
-  timer, so restarts re-arm them (`wakeupExecutor.armAll()`, overdue ones fire
-  immediately). Firing runs `executeFollowUp` directly (not via the queue) and
-  marks the record terminally `fired`/`failed` — persisting `failure_reason` on
-  error — never recurring. Wakeups keep their own store/executor and only share
-  the `ScheduleTimerRegistry`/`processes.db` with crons.
-- **Schedule persistence and reloads** are async. User schedules live as
-  per-entry YAML files under `getRepoDataPath(dataDir, repoId, 'schedules')`;
-  `ScheduleManager.restore`, `addSchedule`, `setSchedule`, `removeSchedule`,
-  `registerWorkspacePath`, and `reloadRepoSchedules` must be awaited by
-  startup, route handlers, and tests. User schedule writes/deletes serialize per
-  repo, and repo schedule scan failures preserve the previous loaded repo
-  schedules rather than replacing them with an empty set.
-- **Schedule runtime state is keyed by `(repoId, scheduleId)`**, never by a bare
-  schedule ID. Repo schedules derive deterministic IDs from their filename
-  (`repo:<stem>`), so two clones shipping the same `.github/schedules/*.yaml`
-  share an ID. Timers, in-flight runs, and run history all key through
-  `scheduleRuntimeKey()` in `src/server/schedule/schedule-runtime-key.ts`, and
-  `ScheduleManager.getRunHistory`/`isRunning` and the REST `serializeSchedule`
-  all require `repoId`. `isAnyRepoRunning(scheduleId)` is the only cross-repo
-  lookup and must not be used from workspace-scoped paths.
-- **Schedule REST bodies and queue payloads have one home each.** POST/PATCH
-  body validation and coercion live in
-  `src/server/schedule/schedule-request-parser.ts` (error strings are the API
-  contract); prompt/Ralph/script queue payload construction lives in
-  `schedule-task-builder.ts` as pure functions. `ScheduleExecutor` only performs
-  the side effects around them.
-- **Dreams analyzer/critic AI work** must run through
-  `DreamInternalProcessExecutor`/`ProcessLifecycleRunner` so analyzer and critic
-  prompts/responses are persisted as read-only internal processes. Do not add
-  direct `aiService.sendMessage(...)` calls under `src/server/dreams/`.
-- **Hierarchical parent/child task features** (For Each, Map Reduce, Ralph,
-  Dreams, and anything future that schedules sub-tasks) must use the task-group
-  framework instead of inventing new linkage: register/update the group through
-  `src/server/task-groups/` (feature stores fire change hooks projected by
-  `feature-sync.ts`), tag every child task with
-  `payload.context.taskGroup = { groupId, groupType, role, itemKey?, workspaceId }`
-  (mirrored to `metadata.taskGroup` by `ProcessLifecycleRunner`), and add a
-  chat-list descriptor in
-  `src/server/spa/client/react/features/chat/task-group-descriptors.ts`.
-  Group statuses are normalized (`draft|running|completed|failed|cancelled`)
-  with feature detail in `extra.detailStatus`; registry writes are best-effort
-  and must never break orchestration. On the SPA side, reuse the shared
-  task-group UI family instead of forking components: `TaskGroupRunRow`
-  (chat-list parent row; For Each/Map Reduce/Ralph rows are thin config
-  wrappers), `TaskGroupRunPane` (run-detail pane), `TaskGroupPlanReviewCard`
-  (plan review/approve card), `useTaskGroupExpansion`
-  (workspace-scoped expand/collapse for all group kinds), and
-  `task-group-copy-info.ts` (context-menu copy text) under
-  `src/server/spa/client/react/features/chat/`.
-- **Chat canvas** (`canvas.enabled`, default on) persists markdown, code,
-  extension, excalidraw, or kusto artifacts (descriptor `type` + normalized
-  `language`) under
-  `~/.coc/repos/<wsId>/canvases/<canvasId>/` through
-  `src/server/canvas/canvas-store.ts` with revision-checked updates. That file
-  is a facade over one service per contract: `canvas-write-queue.ts` (one writer
-  per canvas — a `.locks/<canvasId>.lock` directory with bounded waiting and
-  stale-lock takeover, so a read-check-write is a real critical section across
-  processes), `canvas-record-repository.ts` (descriptor + artifact + snapshot
-  staged as `.tmp-*` files and published snapshot → artifact → descriptor, so a
-  torn commit never leaves a revision ahead of its content),
-  `canvas-extension-repository.ts`, `canvas-comment-repository.ts`,
-  `canvas-file-sandbox.ts`, and `canvas-diagnostics.ts`. Route new canvas
-  persistence through the matching service rather than back into the facade, and
-  keep every mutation inside `queue.runExclusive`. AI edits
-  go through the `write_canvas`/`read_canvas`/`extension_canvas` LLM tools
-  (which emit `canvas-updated` SSE events on the linked process); user saves
-  go through the workspace canvases REST routes (409 + current record on a
-  stale revision, `canvas-updated` WebSocket broadcast). The initial and
-  follow-up chat composers expose `/canvas` as a skill-backed built-in only
-  while `canvas.enabled` is true: parsing strips the command and selects the
-  bundled `canvas` skill, while disabled-state filtering removes both the
-  built-in row and any installed skill with the same name. Startup also omits
-  `canvas` from default skill installation while the feature is disabled.
-  Keep this gate paired with the existing `cron.enabled` default-skill gate in
-  `skills/default-skill-selection.ts`. Every persisted
-  revision also writes a version snapshot (capped at 50) used by the panel's
-  history stepper and restore-as-new-revision flow, and anchored comments
-  (`comments.json`, open|sent|resolved) are delivered to the AI through the
-  normal follow-up enqueue path — not a custom channel. SVG code canvases
-  (`language: svg`, or SVG-rooted `xml`/unset source) render sanitized output in
-  an isolated ShadowRoot with Source/Rendered views, wheel zoom, drag pan, raw
-  `.svg` export, and escaped-source fallback for malformed input; never mount
-  raw SVG source in the DOM. Extension canvases
-  store `extension/{manifest.json,ui.html,capabilities.js}`; both the AI
-  (`extension_canvas` RUN mode) and the panel's sandboxed iframe (capability
-  REST route) mutate shared state only through capabilities run as pure
-  `(state, params) => nextState` transforms in `canvas-capability-runner.ts`
-  (`node:vm`, no require/process, 1s timeout, 1 MB cap) — never execute
-  extension scripts outside that runner. Do not write canvas files directly
-  from other features. An extension canvas may also be given READ-ONLY data
-  files under `canvases/<canvasId>/files/`, written only by the AI
-  (`extension_canvas` `files: [{ path, content, encoding? }]`) and served by
-  `GET /canvases/:id/files` + `GET /canvases/:id/files/<path>` for
-  `CanvasHost.listFiles()` / `CanvasHost.readFile(path, opts)` in the iframe.
-  Path safety is layered in `canvas-file-sandbox.ts` and must stay that way — shape
-  (`isSafeCanvasFilePath`, plus `hasEncodedPathEscape` on the still-encoded URL
-  form) → `path.resolve` → forge `isWithinDirectory` → `fs.realpathSync` on
-  both target and root, re-verified, which is the only layer that catches a
-  symlink inside `files/` pointing elsewhere. Caps: 1 MB text / 10 MB binary,
-  2000 listed entries. There is deliberately NO write endpoint and no
-  workspace-repo scope — canvas state is the write channel because it is
-  revision-checked and snapshotted; do not add either. A corrupt descriptor,
-  artifact, snapshot, extension document, or comments file is skipped AND
-  reported through `reportCanvasCorruption` (workspace/canvas id, file role,
-  bare name, error class/errno only — never canvas content or absolute paths);
-  do not go back to a bare `catch {}`.
-- **Chat style selector** (live admin flag `features.chatStyleSelector`, default
-  on — `absentFallback: false`, so a legacy partial config that lacks the key
-  still reads off — runtime flag `chatStyleSelectorEnabled`) adds a
-  `Style: Default|Human|Direct|Terse|Structured` chip beside Effort in the
-  new-chat and follow-up composers. The style instruction is prepended to the **user message**, never
-  injected into the system message. Style changes only how a response is
-  written — never the provider, model, effort, tools, permission mode, or any
-  structured output contract.
-  - `ChatStyle`, `CHAT_STYLES`, `DEFAULT_CHAT_STYLE`, `CHAT_STYLE_LABELS`, and
-    `isChatStyle()` are the single contract, exported from
-    `@plusplusoneplusplus/coc-client`; reuse them instead of re-listing the five
-    values. `'default'` is a real, first-class wire value — `isChatStyle
-    ('default')` is true — so switching *to* Default is distinguishable from
-    never having chosen. `validateAndParseTask()` and `normalizeFollowUpInput()`
-    re-validate: unknown → 400, omitted → `'default'`.
-  - Prompt text lives in `src/config/chat-style-prompts.ts`, is resolved by
-    `src/server/executors/chat-style-prompt.ts`, and is asserted verbatim in
-    `chat-style-prompt.test.ts` — treat wording edits as product changes. The
-    block is exactly four lines — open tag,
-    `Selected style: X.`, one focus line, close tag — followed by a blank line
-    and then the user's text. There is no shared preamble. `Default` has no
-    focus line and no block at all: the builder returns `undefined` and the
-    prepend function returns the prompt byte-for-byte unchanged.
-  - Injection rule, one rule for every turn: inject when the selected style
-    differs from the style last recorded on `process.metadata.chatStyle` AND is
-    not `'default'`. A brand-new conversation starts recorded as `'default'`, so
-    turn 1 injects only when a real style was selected. That baseline stays
-    `DEFAULT_CHAT_STYLE` even when `features.defaultChatStyle` is set to a real
-    style — comparing against the configured default would make it equal to
-    itself and never inject on turn 1. The recorded style is
-    updated on **every** turn including no-block ones, so Default is a real
-    state, not a gap. Switching to Default injects nothing and deliberately does
-    not undo an earlier style; that tradeoff is a product decision, not
-    something to work around.
-  - Injection happens before persistence — new chats in
-    `ProcessLifecycleRunner` (the only point upstream of the turn-0 write; NOT
-    `chat-base-executor.effectivePrompt`, which is never persisted) and
-    follow-ups in the `POST /api/processes/:id/message` route (the last point
-    before `ProcessMessageDeliveryService` writes `displayContent`). The block is
-    stored verbatim. On the user-bubble display path,
-    `conversation/injectedBlocks.ts` extracts complete leading `<chat-style>`,
-    `<coc-chat-mode>` and `<selected_skills>` blocks (any order, each once) and
-    `InjectedBlockChips` renders them under the message as one colour-coded chip
-    row — mode (green), style (amber), and one blue chip per skill name parsed
-    out by `parseSelectedSkillNames`, folding past the fourth behind a `+N`
-    chip. Clicking a chip opens a single minimal scrollable `<pre>` with the
-    verbatim block and a copy button; clicking it again closes it. Raw view,
-    copy, rewind/edit, search, export, and model input continue to use the
-    original turn content.
-  - Scope is `chat-base` (Ask), `autopilot`, `note-chat`, `commit-chat`, and
-    follow-ups only, enforced by `isChatStyleEligiblePayload`. Ralph,
-    classification, task generation, note creation, resolve-comments, Dreams,
-    and workflows never inject. The flag is enforced on both sides so an older
-    client cannot force injection: the SPA hides the chip and omits `chatStyle`,
-    and the server checks the live flag per turn.
-  - **Default style** (live admin flag `features.defaultChatStyle`, enum over
-    `CHAT_STYLES`, default `'default'`, runtime flag `defaultChatStyle`, shown
-    under the selector toggle via `dependsOn`) picks the style new conversations
-    start on. Server-wide, so it applies to API callers and older clients too:
-    - Composers seed from `getDefaultChatStyle()` (`utils/config.ts`) at mount
-      only, so a live admin change never yanks the chip out from under a
-      composer the user has already touched.
-    - `validateAndParseTask` leaves an omitted `chatStyle` **off** the payload
-      instead of writing `'default'` into it — absent must stay distinguishable
-      from an explicit Default pick, or the configured default gets swallowed
-      before it can be applied. `resolveNewChatStyle` then falls back to the
-      runtime capability `getDefaultChatStyle`; follow-ups take the value as the
-      third argument of `normalizeFollowUpInput`.
-    - An explicit `chatStyle: 'default'` always wins and injects nothing.
-  - Deliberately absent: no `PerRepoPreferences.lastChatStyle` seed and no
-    per-workspace or per-user style (`features.defaultChatStyle` is one
-    server-wide value), and no style-change buffering special case in
-    `ProcessMessageDeliveryService` — the style rides the user message, so no
-    freshly built system message is needed.
-  - The follow-up composer's style is *derived*, not synced: `ChatDetail` keeps
-    only a `chatStyleOverride` (null until the user picks) and falls back to
-    `processDetails.metadata.chatStyle` and then `getDefaultChatStyle()`, so a
-    late, partial, or re-fetched record converges on the right value while a
-    user pick always wins.
-    `queuedTaskToProcess` mirrors `payload.chatStyle` into the synthetic queued
-    process for the same reason it mirrors `mode` — an invalid value is dropped.
-- **Quick Ask side-notes** (live admin flag `features.quickAskSidenotes`
-  default on, gating both the server endpoints and the SPA UI via
-  `isQuickAskSidenotesEnabled()` / `useQuickAskSidenotesEnabled`) let a user
-  select text in an assistant chat
-  turn to run a cheap one-shot AI lookup, attached as a clickable 💡 bubble that
-  never enters the conversation thread. Backend lives in
-  `src/server/processes/chat-sidenotes/` (manager + prompt + one-shot invoker +
-  `POST`/`GET`/`DELETE /api/processes/:processId/sidenotes` routes). The invoker
-  is a thin adapter over `src/server/core/one-shot-ai.ts` — the shared helper for
-  any stateless, tool-free, permissions-denied lookup. It routes text-only asks
-  through the SDK `transform` primitive and falls back to `createCLIAIInvoker`
-  with `loadMcpConfig: false` only when the ask carries attachments (the vision
-  region-crop path), so neither branch starts ambient MCP servers. Use it for new
-  one-shot call sites instead of wrapping `createCLIAIInvoker` directly, whose
-  MCP default is tuned for agentic callers. Persistence
-  is repo-scoped at `~/.coc/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`
-  via `getRepoDataPath` (never a new top-level `~/.coc` dir). Model resolves
-  `defaultModels.quickAsk` > `defaultModel` > CLI default. SPA components live in
-  `.../react/features/chat/quick-ask/`; `useQuickAskSidenotes` issues all three
-  calls via `requestForWorkspace(workspaceId, …)` so a remote clone's side-notes
-  are stored on its own server — the routes only check the id shape, so a
-  local-origin call would write the file under the LOCAL data dir. The selection
-  pill (`QuickAskPill`) is a split pill: ✨ Ask AI plus, when `QuickAskTurnLayer`
-  gets an `onAttachContext` prop, 📎 Attach, which files the selected text as
-  chat context. Both actions ride this flag since the whole layer does; the
-  right-click "Attach as context" item stays available when the flag is off.
-- **Kusto query canvas** (`kusto.enabled`, default off) is a
-  `type: 'kusto'` canvas branch on the generic canvas infrastructure. Its full
-  state (KQL query, cluster/database, typed columns+rows capped at
-  `MAX_KUSTO_ROWS`, chart config, last-run) serializes as JSON into the canvas
-  `content` via `src/server/canvas/kusto-state.ts`. Queries execute server-side
-  through `src/server/kusto/` (`kusto-exec.ts` = `azure-kusto-data` SDK +
-  `AzureCliCredential`; `kusto-service.ts` = `runKustoCanvas` execute/truncate/
-  persist), shared by the `POST /canvases/:id/run` route and the `kusto_query`
-  LLM tool (`src/server/llm-tools/kusto-tools.ts`, gated by `buildKustoToolsAddon`
-  reading `kusto.enabled`). Manual create is a `kusto`-only branch of the canvas
-  create route, also gated on the flag. `executeKustoQuery` intercepts magic
-  `mock:`-prefixed queries (case-insensitive) and serves inline data without a
-  cluster or `az login`: `mock:<JSON {columns,rows}>` synthesizes that table,
-  `mock:error[: msg]` throws (error state), `mock:big[: N]` emits N rows to
-  exercise truncation — the synthetic response flows through the same coercion +
-  cap as a real run, and any non-`mock:` query is byte-for-byte the SDK path.
-  The SPA renders it with `KustoView`.
-  `tsconfig.client.json` is a no-emit gate scoped to the Canvas/Kusto SPA surface
-  and imported helpers. Keep the tool name exactly `kusto_query` and the
-  serialized state keys stable.
-- **`system_one` tool** (`LLMToolSystemOne.enabled`, default off; live) gives
-  chat turns Copilot-backed quick decisions over refs to earlier tool results
-  (`ToolCallLedger`, current process only), workspace files, or short text.
-  It always runs on Copilot, even in Claude/Codex/OpenCode chats. Reuse the
-  single `DecisionService` from `createDecisionService()` (via
-  `runtime.getDecisionService`); never build a second one or accept a
-  `processId`/`workspaceId` in tool args.
-- **Follow-up enqueue sites** must call `resolveFollowUpMode(...)` and set
-  `payload.mode`. `FollowUpExecutor.executeFollowUp` fail-loud warns + defaults
-  to `'ask'` if missing. A terminal conversation mode (`isTerminalChatMode` —
-  today only `sentinel`) overrides any caller-supplied mode, so a follow-up
-  cannot demote a sentinel chat; the SPA correspondingly pins the composer's
-  allowed mode set to `['sentinel']` for such a chat.
-- **Stopped-chat follow-ups** (`cancelled` process with saved `sdkSessionId`)
-  must carry `payload.resumeSessionId`; the follow-up executor sends
-  `strictSessionResume: true` and must not persist or accept a replacement SDK
-  session. If strict resume fails, persist
-  `metadata.stoppedChatResume = { resumable: false, reason:
-  'strict-resume-failed', ... }`; the REST API and SPA must treat that process
-  as non-resumable and must not offer follow-up resume or a fresh-session
-  fallback that continues the stopped chat. A terminal **failed** chat may still
-  expose a "Retry task" button (`FollowUpInputArea` `onRetryTask` →
-  `retry-task-button`, gated by `ChatDetail.canRetryFailedTask`) that re-runs the
-  original task payload as a brand-new conversation via `client.queue.retry` —
-  distinct from resuming the dead session.
-- **Restart with another provider**: failed chats show a "Restart with… ▾"
-  split button (`features/chat/RestartWithProviderButton.tsx`) on the red
-  "Task failed" card, the "Partial response preserved" banner, and the
-  no-session notice. It calls `client.queue.retry(taskId, { provider })`
-  (`POST /api/queue/:id/retry`), which starts a new chat from the first
-  message only; model/effort are dropped so the new provider's defaults apply.
-  Menu options come from `useAgentProviders` + the quota cache (0% quota is
-  disabled); `isQuotaFailure` (`utils/quotaFailure.ts`) is advisory and only
-  pre-selects the other provider with the most quota. Chats are linked via
-  `metadata.restartedAs` (old) and `metadata.restartedFrom` (new).
-- **Follow-up delivery decisions** (steer vs buffer vs enqueue) live in
-  `src/server/processes/process-message-delivery-service.ts`, not the
-  `POST /api/processes/:id/message` route. The route resolves the process,
-  parses the body, processes attachments, normalizes scalar fields via
-  `normalizeFollowUpInput(...)`, then calls `ProcessMessageDeliveryService.deliver`
-  and emits the returned event intents exactly once. Buffered messages append
-  through the store's atomic `ProcessStore.appendPendingMessage(...)` (read-append
-  -persist under the store write lock) — never read-modify-write `pendingMessages`
-  via `updateProcess`, which loses concurrent updates. Buffered delivery must not
-  append a conversation turn (it is deferred to `drainPendingMessages`).
-- **A commit chat's commit association** lives in two places on purpose:
-  `commit_chat_bindings` routes the active chat for a hash, and
-  `process.metadata.commitChat = { commitHash, commitMessage? }` is the durable
-  per-conversation record (written by `ProcessLifecycleRunner` via
-  `serializeCommitChatMetadata`, mirrored into the synthesized queued process and
-  `buildMetadataProcess`, rebuilt into `payload.context` by
-  `processToTaskDetail`, and rendered as the popover's Commit rows). Read it only
-  through `readCommitChatContext`. Never derive the commit from `git rev-parse
-  HEAD` or by parsing `fullPrompt`. A rebind must update both stores or roll back.
-- **Process metadata field updates** from dashboard/server callers should use
-  `client.processes.patchMetadata(...)` or API `metadataPatch` unless a full
-  metadata replacement is intentional; full `metadata` on
-  `PATCH /api/processes/:id` replaces the stored object.
-- **Warm-client prewarming/status** is conversation-process scoped. Chat and
-  follow-up send paths pass `warmKey: processId` whenever `keepWarm: true`;
-  `/api/processes/:id/prewarm` and warm-only SSE status use that same process id.
-  `workingDirectory` remains provider execution context only, not the warm key.
-- **Per-conversation request budget** keeps opening a chat lean. A **warm**
-  second open of a conversation (same SPA session, same workspace, provider
-  already seen) must stay at **≤3** fetch round-trips — process detail,
-  `canvases?processId=`, and `pull-request-chat-bindings?taskId=` — excluding the
-  `stream?warm=1` SSE. Static provider/workspace config is cached client-side in
-  the module-level singleton
-  `src/server/spa/client/react/api/staticConfigCache.ts` (mirrors the AppContext
-  `ConversationCacheEntry` 60-min-TTL pattern, **not** React-Query/SWR): `models`
-  / `reasoning-efforts` / `effort-tiers` keyed by **provider**, `llm-tools-config`
-  keyed by **workspace**; the provider/workspace config hooks read through
-  `getOrFetchConfig` and seed from `peekConfig` (no loading flash), and every
-  mutation site `invalidateConfig`s its own key (invalidate-on-mutate, no reload).
-  Workspace-scoped data must not refetch per conversation: `useCrons` fetches
-  keyed by `[workspaceId, cloneClient]` only (processId drives a `useMemo` view,
-  never a round-trip) and the unseen `count` refresh fires only when a `markSeen`
-  family call actually changes seen-state. The two remaining non-critical
-  per-conversation fetches (`canvases.list`, `listChatBindingsForOrigin`) are
-  deferred past first paint through `utils/runWhenIdle.ts` (requestIdleCallback
-  with a timeout bound, setTimeout fallback for Safari/jsdom) so messages render
-  first; synchronous panel/reset state stays immediate, and a generation/cancel
-  guard drops a stale deferred fetch on an A→B switch. The four static-config GET
-  routes also carry `Cache-Control: private, max-age=60` via
-  `setStaticConfigCacheHeaders` in `src/server/shared/router.ts` (200-path only).
-  Do not reintroduce a per-conversation refetch of cached config or
-  workspace-scoped data, and do not add a new server aggregation/bootstrap
-  endpoint — keep these as separate cached/deferred client calls.
-- **Implement-plan target routing** (`ImplementPlanCard` + `implementTargets.ts`)
-  keeps local runs path-based and remote runs content-embedded: a **local**
-  target enqueues `Read and implement the plan file at <path>` + `context.files`
-  on the current client, while a **remote** target reads the plan on the source
-  client (`explorer.readTrustedBlob`), inlines it in the prompt, drops
-  `context.files`, and enqueues on the target repo's routed `useCocClient`
-  `CloneRef`. Targets come from `buildImplementTargets` (current repo + local +
-  **online** remote clones only), scoped to the current repo's **canonical git
-  origin** so only same-origin clones appear; the current origin is taken from
-  the caller's `remoteUrl`, falling back to the current repo's own list entry
-  (`gitInfo.remoteUrl ?? workspace.remoteUrl`, the same source candidates use) so
-  the filter still engages for a remote-clone current workspace whose appState
-  entry lacks a remote URL. The selector is gated on `isRemoteShellEnabled()`
-  with no new flag. Implementation records (target identity + status) always
-  persist on the **source** task via the source client. The card also surfaces
-  for **canvas-backed plans**: `scanTurnsForPlanCanvas` (in `conversationScan.ts`)
-  detects a `write_canvas` call with `purpose: 'plan'`, and `ChatDetail` passes
-  the canvas id as `planCanvasId`. A canvas-backed plan has no on-disk path, so
-  the card always reads the canvas content (`sourceClient.canvases.get`) and
-  inlines it in the prompt for both local and remote targets. When the **source**
-  workspace is itself a remote clone (`sourceIsRemote`/`sourceBaseUrl` props,
-  derived in `ChatDetail` from the aggregated repo entry → `lookupCloneBaseUrl` →
-  local workspace-list membership), the plan is always content-embedded and the
-  source read / fallback enqueue route to the source server's baseUrl explicitly —
-  never enqueue a remote machine's plan path as a path-reference (`context.files`)
-  task, which the executor rewrites to `Follow the instruction <path>.` on the
-  wrong server. The optional PR gate is created and executed by that selected
-  target server, never the source server; repo-group targets do not support it.
-  `buildImplementTargets` carries the caller's
-  `isRemote`/`baseUrl`/`serverLabel` when synthesizing the missing current repo
-  instead of hardcoding a local target. Auto-detected conversations with multiple
-  `.plan.md` files keep the full detected set in a shared banner/launch-panel
-  selector even after the first path is persisted to metadata; explicit
-  task-provided paths and canvas-backed plans remain single-plan. File-backed
-  plan paths in the card are native controls that use the same `kind: 'note'`
-  routing as in-chat links (`openFileRef`, source workspace id, remote
-  workspaces included): an editable note tab in the unified right panel when one
-  hosts the chat, otherwise the docked source canvas; canvas-backed plan labels
-  remain non-interactive because they have no file path.
-- **Mode-invariant tool block:** the `tools` array sent to a provider must not
-  vary with chat mode. `ask_user` is registered for `ask` and `autopilot` alike,
-  gated only on `chat.askUser.enabled`, and constructed in one place —
-  `ChatBaseExecutor.buildAskUserWiring()` — for initial and follow-up turns.
-  Tools are serialized before `system` and `messages`, so a per-mode difference
-  invalidates the whole conversation's prefix cache when the mode pill is
-  toggled on a follow-up (follow-ups resume the stored SDK session). Gate
-  runtime behavior instead: `AskUserToolDeps.isInteractive` is evaluated at call
-  time, and `FollowUpExecutor` sets it from `turnSource === undefined` so a
-  cron/wakeup/trigger tick resolves questions as `reason: 'unavailable'` rather
-  than blocking. `test/server/executors/mode-invariant-tool-block.test.ts` is
-  the fence; the Ralph grill terminal round is the one documented exception.
-- **Mode-invariant system prompt:** `buildChatTurnSystemMessage` takes no
-  `mode` and must never grow one. The system prompt is re-sent on every turn
-  (including resumed ones) and sits at the front of the prefix, so a byte that
-  varies with the mode pill invalidates the whole conversation's cache. The
-  read-only directive, the mode-specific `.github/coc/instructions-<mode>.md`,
-  and the ask→autopilot transition note ride the outgoing user turn instead
-  (`src/server/executors/chat-mode-directive.ts`, prepended on every turn); the
-  shared `instructions.md` stays in the system prompt via
-  `withBaseRepoInstructions`. `ChatBaseExecutor.buildFirstTurnSystemMessage` is
-  the single first-turn builder for both the ask and autopilot executors so
-  whichever one opens a chat produces the same prefix the follow-up path
-  reproduces. `test/server/executors/chat-turn-system-message.test.ts` is the
-  fence. Known remaining divergence: autopilot first turns still opt out of
-  Memory V2, which costs nothing while the Memory V2 recall block is rebuilt
-  per turn anyway.
-- **Plan save destination:** the `notes/Plans` root and its folder listing ride
-  the ask-mode user directive, nested inside `<coc-read-only-mode>` behind "If
-  the user asks you to save a plan:" — it explains the plan-file exception those
-  rules already carve out, and it is workspace state that would churn the cached
-  prefix if it sat in the system message. `buildChatModeDirective` takes an
-  optional `planSaveContext`; folders are sorted before rendering so directory
-  enumeration order alone never counts as drift. `suppressesPlanSaveGuidance`
-  (auto-folder-utils) is the single eligibility predicate for both the first-turn
-  and follow-up paths: artifact-bound chats (note, commit, PR) and Ralph grilling
-  get no destination, because each owns its own output contract. Follow-ups pass
-  `checkPlanContextDrift: true` to `shouldInjectChatModeDirective`, which
-  re-injects once when the root, the folder list, or eligibility changes; the
-  display side omits the flag and compares against the guidance-stripped rules so
-  an unresolved destination is never read as a removed one. The transcript's Chat
-  mode disclosure prefers the turn's recorded `chatModeContext`, projected by
-  `projectChatModeContextForDisplay` down to the read-only section, and falls back
-  to the block extracted from stored content.
-- **Codex `ask_user` discovery:** Codex models in `code_mode_only` (e.g.
-  `gpt-5.6-sol`) are shown no bare top-level `ask_user` — CoC's MCP tools are
-  deferred behind `functions.exec` under `mcp__coc_llm_tools__`, so a skill that
-  names plain `ask_user` (Ralph grilling, `grill-me`) made the model report the
-  tool missing and demand Codex Plan mode. `buildCodexAskUserDiscoveryBlock`
-  (`chat-turn-system-message.ts`) appends a `<codex-ask-user-discovery>` block
-  after the tool guidance mapping the bare name to
-  `tools.mcp__coc_llm_tools__ask_user(...)` and separating it from the Codex
-  built-in `request_user_input`. Codex-only, and gated on `askUserAvailable`,
-  which every call site derives from the *filtered* tool array via
-  `ChatBaseExecutor.askUserSurvivedFiltering()` — never from
-  `chat.askUser.enabled`, which would advertise a tool workspace preferences
-  removed. Discovery only: batching, question types, deferred answers, and
-  unattended-run safety stay in the tool's own description.
-  `test/server/executors/codex-ask-user-discovery.test.ts` is the fence.
-- **The mode directive is disclosed in the transcript.** Because it rides the
-  user message, the *stored* turn carries it too — the same rule the
-  `<chat-style>` block follows (AC-05). The user-bubble display path extracts a
-  complete leading `<coc-chat-mode>` block into a collapsed **Chat mode**
-  disclosure, ahead of Chat style and repo-group context; assistant content and
-  supported tags outside the leading prefix render as message text. Injected by
-  `ProcessLifecycleRunner` (turn 1), `POST /message` and the
-  `send_to_conversation` binding (later turns), and `FollowUpExecutor` (the
-  cron/wakeup turns it creates itself), always *inside* the style block and
-  always via `buildChatModeDisplayBlock`, which omits the repo's mode
-  instructions. Turn 1 predicts executor routing with
-  `resolveFirstTurnDirectiveMode` (mirrors `resolveChatExecutor`, and requires
-  `task.type === 'chat' | 'pr-classification'` so Dreams' internal chat-shaped
-  steps disclose nothing) — never disclose a directive an executor does not
-  send. `promptPreview` / `fullPrompt` stay directive-free, and
-  `stripInjectedUserBlocks` removes the injected blocks before title
-  generation, whose prompt only reads the first 400 characters.
-- **Copilot long-context tier** is automatic at the provider boundary: chat
-  and follow-up executors derive `contextTier` only via
-  `getCopilotContextTierForModel` (tiered billing metadata —
-  `billing.tokenPrices.longContext.contextMax`). Never hardcode model
-  allow-lists, never infer support from `max_context_window_tokens`, and never
-  send `contextTier` for Codex/Claude or when the metadata is absent.
-- **Pull Requests Team auto-classification** must stay gated by
-  `pullRequests.enabled`, `pullRequests.autoClassifyTeam`, and
-  `features.focusedDiff`; use the generic classify-diff enqueue helper with the
-  per-trigger cap and low priority instead of adding client-side POST loops.
-  Classification result/pending files are origin-scoped and queued
-  `pr-classification` payloads must carry the resolved classification storage
-  origin so the `saveClassification` tool writes the same state route polling
-  reads. The Team toolbar status UI reads origin batch status and routes manual
-  "Classify now" actions through origin APIs backed by the same bounded server
-  helper, passing workspace/repo metadata only to select the concrete clone.
-- **Pull Request on-demand diff classification** must use
-  `/api/origins/:originId/classify-diff` or
-  `client.pullRequests.*Classification*ForOrigin(...)`, passing explicit
-  workspace/repo metadata for queue routing and legacy migration. Repo-scoped
-  `classify-diff` remains only for commit and branch-range classification.
-- **Pull Request provider list/detail/subresource callers** must use
-  `/api/origins/:originId/pull-requests...` or
-  `client.pullRequests.*ForOrigin(...)`, passing `workspaceId` and optional
-  `repoId` only to select the concrete clone for provider access. Do not add
-  repo-scoped PR provider route aliases.
-- **Pull Request review progress** for PR pop-out reviewed/visited file state is
-  durable origin state. Callers must use
-  `/api/origins/:originId/pull-requests/:prId/review-progress` or
-  `client.pullRequests.*ReviewProgressForOrigin(...)`; workspace/repo metadata is
-  for legacy migration only, not storage identity. Do not add repo-scoped route
-  aliases for PR provider actions, recent-opened, Team roster, or
-  review-progress state.
-- **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
-  must stay strictly read-only against the native store: open
-  `~/.copilot/session-store.db` with short-lived `readonly` NativeDatabase connections,
-  keep every user-provided filter parameterized (FTS terms literal-quoted), and
-  return typed `db-missing`/`db-invalid` states instead of throwing. Never route
-  native session IDs into CoC process/chat action handlers; the only bridge is
-  the explicit `POST .../native-copilot-sessions/:sessionId/import` route
-  (`native-copilot-session-import.ts`), which snapshots the transcript into a
-  new completed `chat` process in the target workspace with
-  `metadata.importedFrom = { provider: 'copilot', nativeSessionId, importedAt }`
-  and a `copilot` `activeProviderSession`/`sdkSessionId` bound to the native id,
-  dedupes per `(workspaceId, nativeSessionId)` via
-  `getImportedNativeSessionProcessIds`, and reads the session with the
-  `{ matchAll: true }` scope so any native session can be imported. Rich detail
-  reconstruction reads the per-session log
-  `~/.copilot/session-state/<id>/events.jsonl` via `session-state-parser.ts`
-  (`parseNativeSessionState`), which maps the newline-delimited
-  `{type,id,parentId,timestamp,data}` events (`user.message`,
-  `assistant.message` with `content`/`reasoningText`/`model`,
-  `tool.execution_start`/`_complete` correlated by `toolCallId`,
-  `skill.invoked`) into `ReconstructedConversationTurn[]` and returns `null`
-  (never throws) on a missing/malformed/empty log so callers fall back to the
-  flat `session-store.db` turns. `getSession` populates
-  `NativeCopilotSessionDetail.conversation` (always present) from the parser
-  when it yields turns, else maps the flat DB turns into text-only
-  user/assistant turns; the service accepts `sessionStateDir`/`parseSessionState`
-  overrides for hermetic tests. The parser never writes to `~/.copilot` and
-  rejects unsafe session ids (path traversal). The list route dedups
-  against CoC processes by excluding native `sessions.id` values that match a
-  workspace's `ProcessStore.getSdkSessionIds(workspaceId)` (the Copilot SDK/CLI
-  session id equals the native store id) and hides automated background-job
-  sessions whose first flat turn or stored summary matches
-  `BACKGROUND_JOB_PROMPT_PREFIXES` (e.g. title summarization); the hidden counts
-  are returned as `deduplicatedCount` and `backgroundJobCount`. The panel
-  deep-links the selected session via
-  `#repos/{wsId}/copilot-sessions/{sessionId}`. The read-only detail pane
-  renders `NativeCopilotSessionDetail.conversation` as a rich transcript by
-  reusing the existing chat `ConversationTurnBubble` (no fork): the SPA-local
-  `nativeConversationTurns.ts` maps `ReconstructedConversationTurn[]` →
-  `ClientConversationTurn[]`, folding assistant `thinking` into the content
-  timeline as a markdown blockquote (the chat turn shape has no reasoning
-  field). The metadata header is preserved and no follow-up/streaming/resume or
-  per-turn (pin/archive/delete) actions are wired.
-- **Native CLI session provider kernel** (`src/server/native-copilot-sessions/`)
-  keeps provider identity in exactly one place. `NATIVE_CLI_PROVIDER_DESCRIPTORS`
-  in `@plusplusoneplusplus/coc-client` declares each provider's id, label,
-  external label, store hint, `searchStrategy`, and `available`/`planned`
-  status. `native-cli-provider-registry.ts` (`createNativeCliSessionProviders`)
-  builds the served provider map from the `available` descriptors and throws at
-  server construction when one has no factory or reports a search strategy that
-  disagrees with its descriptor. The route parser, the dashboard tab list, and
-  `parseNativeCliSessionDeepLink` all gate on the same registry, so a provider
-  can never be selectable in the UI without a server provider behind it. Add a
-  provider by adding its descriptor plus a factory — never by widening a union
-  or a hard-coded list. `opencode` is intentionally `planned`: it has no store
-  reader, gets no tab, and its route requests return 400 with the descriptor's
-  `plannedNote`.
-- **File-backed transcript listing** goes through
-  `native-transcript-index.ts`. The index caches parsed list metadata keyed by
-  file path + `mtimeMs` + `size` (LRU-bounded, default 2000 files) so warm list
-  requests only `stat`, and `beginPass()`/`readRaw()` ensure one request reads a
-  transcript at most once even when metadata parsing and substring search both
-  need it. Never read transcript bytes directly in a provider — go through the
-  index so the caching and single-read guarantees hold.
-- **Transcript parsers** live per provider under
-  `native-copilot-sessions/parsers/` (`claude-transcript-parser.ts`,
-  `codex-rollout-parser.ts`) over shared `transcript-parser-core.ts` helpers;
-  `cli-session-parsers.ts` is a re-export barrel. Keep provider envelope
-  handling inside its own module so a change to one CLI's format cannot regress
-  another's reconstruction.
-- **Native session route plumbing** (query parsing, workspace scope building,
-  feature-disabled and store-unavailable envelopes) is shared by the unified
-  `native-cli-session-routes.ts` and the legacy Copilot-only
-  `native-copilot-session-routes.ts` aliases via
-  `routes/native-session-route-utils.ts`. Fix behaviour there once rather than
-  mirroring it across both controllers.
-- **Work-item create/update side effects** (hierarchy `parentId` validation,
-  GitHub/Azure Boards provider sync, response-cache invalidation, dashboard
-  broadcasts, auto-execute) live in the shared command service
-  `src/server/work-items/work-item-commands.ts`. Cache invalidation and
-  broadcasts cover both the caller workspace id and the resolved origin/storage
-  id when they differ, so workspace-compatible and origin-scoped views refresh
-  together. The REST routes (`src/server/routes/work-item-routes.ts`) call the
-  command service — do not re-implement hierarchy, provider logic, or mutation
-  side effects in the route handlers. (There are no work-item LLM tools; work
-  items are managed via REST and the dashboard only.)
-- **Work-item hierarchy tree reads** are persistent origin state. New callers must
-  use `/api/origins/:originId/work-items/tree` or
-  `client.workItems.treeForOrigin(...)`; pass `workspaceId` only as clone
-  metadata/validation.
-- **Work-item chat bindings** are persistent origin state. New callers must use
-  `/api/origins/:originId/work-item-chat-bindings...` or
-  `client.workItems.*ChatBindingForOrigin(...)`; pass `workspaceId` only for
-  fresh-chat archive/reset actions that need a concrete clone/process scope.
-- **Work-item plan and plan-version reads/writes** are persistent origin state.
-  New callers must use `/api/origins/:originId/work-items/:itemId/plan...` or
-  `client.workItems.*Plan*ForOrigin(...)`; pass `workspaceId` only as clone
-  metadata for origin validation.
-- **Work-item change records** (plan-version/commit bundles) are persistent
-  origin state. New callers must use
-  `/api/origins/:originId/work-items/:itemId/changes...`; pass `workspaceId`
-  only as clone metadata for origin validation.
-- **Work-item sync/import/convert actions** are origin-scoped persistent state
-  but require a concrete clone for provider configuration and transport. New
-  callers must use `/api/origins/:originId/work-items/sync/status`,
-  `/api/origins/:originId/work-items/import-from-*`, or
-  `/api/origins/:originId/work-items/:itemId/convert-to-*` and always pass
-  `workspaceId` so GitHub/Azure Boards access uses the selected workspace while
-  imported/converted items write to the origin.
-- **Work-item execution actions** are origin-scoped persistent state but require
-  a concrete clone. New callers must use
-  `/api/origins/:originId/work-items/:itemId/{execute,submit-pr,ai-review,resolve-comments}`
-  or `client.workItems.*ForOrigin(...)`, always passing `workspaceId` so queue
-  routing, git/PR operations, task files, and comment resolution use the
-  selected workspace while execution history and broadcasts write to the origin.
-- **Work-item AI authoring routes** are origin-scoped and require a concrete
-  clone for generation context. New callers must use
-  `/api/origins/:originId/work-items/ai-draft`,
-  `/api/origins/:originId/work-items/:itemId/ai-draft`, or
-  `/api/origins/:originId/work-items/:itemId/ai-draft/apply` through
-  `client.workItems.*ForOrigin(...)`, always passing `workspaceId`; workspace
-  AI-draft route aliases are not registered.
-- **Direct package builds** use `scripts/prebuild.mjs` to build
-  `@plusplusoneplusplus/coc-agent-sdk`, `@plusplusoneplusplus/coc-workflow`,
-  `@plusplusoneplusplus/coc-memory`, `@plusplusoneplusplus/forge`,
-  `@plusplusoneplusplus/coc-client`, and `@plusplusoneplusplus/coc-connector`
-  before `tsc`, clean `dist` before emitting, and generate
-  `src/server/core/build-info.ts` (commit hash plus the workspace **root**
-  `package.json` version, which is what `GET /api/admin/version` and the admin
-  page show); keep this script cross-platform.
+## Runtime, Persistence, and Configuration
+
+- Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
+  `store.backend: file` is ignored; file stores are test fixtures only.
+  Native failures fail startup, without JavaScript persistence/index fallbacks.
+- Whole-repo search/listing requires Rust; directory listing may walk. Notes
+  search validates capability at composition and authorizes roots before search.
+  Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
+  complete snapshots and shutdown disposes watchers.
+- Search fresh working-tree bytes; test Git narrowing/native walks.
+  QuickOpen uses server indices; payload caps never cap search candidates.
+- Restore queues stopped. Activate only after
+  wiring and HTTP listening, respecting auto-start policy; never substitute a delay.
+- Late-bound capabilities belong only in
+  `src/server/executors/executor-runtime-contracts.ts`. The queue bridge extends the
+  runtime once, then forwards by identity through registry/chat layers.
+  Narrow views exclude static config.
+  `test/server/executors/executor-runtime-wiring.test.ts` guards every hop.
+- Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
+  CLI/tests inject fixed ports. Add admin settings once in
+  `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
+  consumers stay derived. Non-admin leaves use `src/config/namespace-registry.ts`.
+- New experimental flags default off; gate server/tools and UI
+  boundaries; preserve existing defaults and live/restart semantics.
+- Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
+  and invalidate on mutation; avoid per-conversation workspace/config refetches.
+- Register persisted families in `src/server/storage/snapshot/`; pass
+  `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
+
+## Chat and Provider Safety
+
+- First/follow-up turns share context/system/policy/runner/settlement helpers
+  under `src/server/executors/`; lifecycle owns persistence.
+  Mode directives/style belong in user turns, not the system prefix.
+- Keep tools mode-invariant; gate call-time behavior and unattended `ask_user`.
+  Preserve explicit PR-write/final-check/grill exceptions.
+  Codex discovery uses filtered tools; Copilot context tier uses billing metadata.
+- Fresh session objects per turn; never cache sessions or add `sendFollowUp`.
+  Only supported provider client processes may stay warm.
+  CoC send/prewarm/status paths share `warmKey: processId`; cwd is execution context.
+- Resume the active provider only. Switches/unbound continuations
+  use fresh sessions/bounded handoff via `src/server/executors/continuation-mode.ts`.
+  Never pass session IDs across providers.
+  Model: task/turn > repo mode default > repo default > provider/CLI.
+- Stopped chats require `resumeSessionId`/`strictSessionResume: true`; failed resume
+  marks `metadata.stoppedChatResume` non-resumable, without replacement/fresh fallback.
+- Follow-up delivery/rewind share `src/server/processes/process-operation-admission.ts`.
+  Re-read state under admission; contending switches fail `PROVIDER_SWITCH_REQUIRES_IDLE`.
+  Rewind holds running/rewind state through mutation; restore terminal status and release
+  admission on failure in `finally`.
+- Delivery decisions belong in `process-message-delivery-service.ts`. Buffer via atomic
+  `appendPendingMessage`, not metadata read-modify-write; draining owns deferred turns.
+  Emit intents once; enqueue sites resolve/set mode, preserving terminal Sentinel mode.
+  Use `metadataPatch` for field updates.
+- Tool-free lookups use `src/server/core/one-shot-ai.ts`: deny permissions/ambient MCP.
+  Dreams analyzer/critic work uses persisted lifecycle processes, not direct SDK calls.
+
+## Filesystem, Orchestration, and Tool Contracts
+
+- Canonicalize live group roots; reject writable/read-only overlap.
+  Pass both sets every turn; unsupported providers fail before session creation.
+  See `src/server/workspaces/repo-group-access-policy.ts`.
+- Notes root authority is `src/server/notes/notes-root-resolver.ts`, not client paths.
+  Task roots are opaque/protected, never user-root config or counted against its limit.
+  Native Notes I/O owns containment/symlinks, atomic writes, sidecars, and order.
+  See `src/server/notes/notes-write-handler.ts` and native instructions.
+- Protect managed `Plans`/`Sentinel` roots. Retarget Notes chats through the validated
+  `/api/processes/:id/note` route and enforce bound-section containment.
+  Keep Tiptap dependencies at one exact version and bump the entire set together.
+- Canvas mutations use revision-checked `queue.runExclusive`, never direct writes.
+  Preserve snapshot/artifact/descriptor order; use the capability runner and sanitize SVG.
+  `src/server/canvas/canvas-file-sandbox.ts` checks encoded/decoded shape, resolved
+  containment, and realpaths. Data stays canvas-scoped/read-only to consumers; no
+  file-write endpoint/repo escape. Diagnostics omit content/absolute paths.
+- Native CLI stores are read-only with parameterized filters/path-safe IDs.
+  Only explicit import bridges to chats; unavailable stores return typed states.
+  Descriptors/factories share one registry; file-backed providers
+  read through `src/server/native-copilot-sessions/native-transcript-index.ts`.
+- Child tasks use `src/server/task-groups/`/`context.taskGroup` and shared UI;
+  best-effort projection must not break execution.
+- Ralph uses path journals, `getRalphTaskKind`, and purpose-built check/submit prompts.
+  Checks are validation-only; submit completion never queues iterations.
+  Persist one repair attempt before requeue. Manual-only work proceeds
+  to final-check without another iteration.
+- Queue pause/delays/PR gates are repo-scoped; skip releases only the active delay.
+  A PR gate admits only its chain and releases only for its matching merge/manual release.
+  Schedule writes serialize per repo; runtime keys are `(repoId, scheduleId)`. Await
+  writes/reloads; retain
+  state on scan failure. Wakeups persist before arming.
+- Sentinel ownership is exclusive/workspace-scoped: admission grace/exact-owner
+  replacement; cancel the prior cron. Preserve optimistic Board writes, approval/budget/
+  backoff, workspace-only classification, and descendant exclusion.
+  See `src/server/sentinel/sentinel-ownership.ts` and adjacent `sentinel-nudge.ts`.
+- Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
+  Commit-mode conflicts abort; the active checkout/HEAD never moves. Worktree execution
+  uses owning-server committed objects, fails before queueing, performs no implicit
+  network/branch switch, and removes without force/branch deletion.
+  Git-tab Fetch/Pull uses the exact current-branch upstream; patch metadata is untrusted.
+
+## Messaging and Secrets
+
+- Separate normal messaging from container relays. Config is global; chat receipts
+  are workspace-scoped. Admit eligible human/paired-account posts via explicit bindings;
+  suppress own/history replay. Dispose polling/reconnect loops/listeners.
+  Teams and WhatsApp topic list/select uses `src/server/messaging/chat-target.ts`
+  for bounded (10), conversation-free process pages, not unbounded `getAllProcesses`.
+  Shared workspace/topic lookup and terminal-task subscriptions belong there;
+  both relays resolve request-correlated answers and failed/cancelled/empty texts
+  through `src/server/messaging/relay-answer.ts`. Receipt files use
+  `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
+- Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
+  credentials. Missing region fails before credentials/network; automatic discovery
+  is not implemented. Never guess, fail over, or replay IC3 writes.
+  Region/account changes require reconnect.
+- Teams sends start with `AI:`/safe HTML. Receipts differ from final answers:
+  relay captured terminal turns by request ID to the original thread/workspace.
+  Selection changes never redirect answers. Persist accepted multipart progress;
+  never replay confirmed sends; reconcile unknown outcomes.
+  Preserve thread cursors/own IDs on reconnect; WhatsApp shares the receipt rule.
+- MCP APIs and connection history expose only allowlisted safe fields, never tokens,
+  `env`, headers, full arguments, or provider error bodies. Credentials stay on their host.
+
+## Build and Validation
+
+- Root `npm run build` builds workspaces; `npm run build -w packages/coc` runs package
+  prebuild/clean emission. Keep scripts cross-platform; Node.js >=24.
+- Target server changes with `npm run test:run -w packages/coc -- test/server/<test>.test.ts`;
+  `test:run` is non-watch; `test` is Vitest watch mode.
+  Use `test:e2e`/`lint` when relevant; docs need no build/tests.
+- Docker/tenant changes keep `test/docker/` contracts green: loopback-only bind,
+  no exposed/published CoC port, and `COC_BUILD_COMMIT` support without `.git`.
+- Keep current safety rules here; details belong in existing domain references/source.

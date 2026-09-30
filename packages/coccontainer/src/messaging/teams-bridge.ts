@@ -22,6 +22,8 @@ import type { AgentManager } from '../inbound/agent-manager';
 import type { ResolvedTeamsConfig } from '../config';
 import { MessagingStore } from './messaging-store';
 import { TeamsCommandExecutor, type ProcessInfo } from './teams-command-executor';
+import type { TeamsConfigPatch } from '../server/messaging-config';
+import { isIc3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
 
 export interface TeamsBridgeOptions {
     config: ResolvedTeamsConfig;
@@ -34,6 +36,7 @@ export interface TeamsBridgeOptions {
 }
 
 export interface TeamsStatus {
+    ic3Region?: ResolvedTeamsConfig['ic3Region'];
     enabled: boolean;
     status: BotStatus;
     mode: 'graph' | 'mcp';
@@ -61,7 +64,10 @@ export class TeamsBridge {
     constructor(private opts: TeamsBridgeOptions) {
         // Force MCP mode — Graph API is disabled (az CLI tokens lack Chat permissions)
         this.opts.config.mode = 'mcp';
-        this.transport = createTransport(opts.config.mode, { mcpServerUrl: opts.config.mcpServerUrl });
+        this.transport = createTransport(opts.config.mode, {
+            mcpServerUrl: opts.config.mcpServerUrl,
+            ic3DirectMessageOptions: { region: opts.config.ic3Region ?? undefined },
+        });
     }
 
     async start(): Promise<void> {
@@ -134,6 +140,7 @@ export class TeamsBridge {
             mode: this.opts.config.mode,
             teamId: useChat ? undefined : this.opts.config.teamId,
             mcpServerUrl: this.opts.config.mcpServerUrl,
+            ic3DirectMessageOptions: { region: this.opts.config.ic3Region ?? undefined },
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
             debug: this.opts.config.debug ?? false,
@@ -225,6 +232,7 @@ export class TeamsBridge {
             teamId: this.opts.config.teamId,
             channelId: this.bot?.getChannelId() ?? this.opts.config.channelId,
             botName: this.opts.config.botName,
+            ic3Region: this.opts.config.ic3Region ?? null,
         };
     }
 
@@ -235,7 +243,14 @@ export class TeamsBridge {
     }
 
     /** Update mutable config fields and persist to config.yaml. */
-    async updateConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string; mode?: 'graph' | 'mcp' }): Promise<void> {
+    async updateConfig(patch: TeamsConfigPatch): Promise<void> {
+        if (patch.ic3Region !== undefined && patch.ic3Region !== null && !isIc3DirectMessageRegion(patch.ic3Region)) {
+            throw new RangeError('IC3 region must be amer, emea, apac, or null (unconfigured)');
+        }
+        if (patch.ic3Region !== undefined && patch.ic3Region !== (this.opts.config.ic3Region ?? null)) {
+            await this.bot?.stop();
+        }
+        if (patch.ic3Region !== undefined) this.opts.config.ic3Region = patch.ic3Region;
         if (patch.botName !== undefined) this.opts.config.botName = patch.botName;
         if (patch.channelId !== undefined) {
             this.opts.config.channelId = patch.channelId;
@@ -245,7 +260,7 @@ export class TeamsBridge {
         if (patch.channelName !== undefined) this.opts.config.channelName = patch.channelName;
         if (patch.enabled !== undefined) this.opts.config.enabled = patch.enabled;
         if (patch.mode !== undefined) this.opts.config.mode = patch.mode;
-        await this.persistTeamsConfig(patch as Record<string, string | boolean | undefined>);
+        await this.persistTeamsConfig(patch as Record<string, string | boolean | null | undefined>);
     }
 
     async reconnect(): Promise<void> {
@@ -263,6 +278,7 @@ export class TeamsBridge {
             mode: this.opts.config.mode,
             teamId: useChat ? undefined : this.opts.config.teamId,
             mcpServerUrl: this.opts.config.mcpServerUrl,
+            ic3DirectMessageOptions: { region: this.opts.config.ic3Region ?? undefined },
             botName: this.opts.config.botName,
             pollIntervalMs: this.opts.config.pollIntervalMs,
             debug: this.opts.config.debug ?? false,
@@ -362,7 +378,7 @@ export class TeamsBridge {
         }
     }
 
-    private async persistTeamsConfig(fields: Record<string, string | boolean | undefined>): Promise<void> {
+    private async persistTeamsConfig(fields: Record<string, string | boolean | null | undefined>): Promise<void> {
         try {
             const fs = await import('fs');
             const path = await import('path');

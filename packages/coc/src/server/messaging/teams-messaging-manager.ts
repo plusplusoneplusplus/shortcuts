@@ -10,8 +10,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { BotStatus, InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
-import { TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
+import type { BotStatus, InboundTeamsMessage, Ic3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsBot, isIc3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
 import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
@@ -22,6 +22,7 @@ import { formatTeamsOutbound, type TeamsOutboundSource } from './teams-outbound-
 // ── Persisted Config ─────────────────────────────────────────
 
 export interface TeamsMessagingConfig {
+    ic3Region?: Ic3DirectMessageRegion | null;
     enabled: boolean;
     botName: string;
     teamName: string;
@@ -55,6 +56,7 @@ export class TeamsMessageNotSentError extends Error {
 // ── Manager ──────────────────────────────────────────────────
 
 export interface TeamsMessagingStatus {
+    ic3Region?: Ic3DirectMessageRegion | null;
     enabled: boolean;
     status: BotStatus;
     error: string | null;
@@ -135,6 +137,7 @@ export class TeamsMessagingManager {
     getStatus(): TeamsMessagingStatus {
         const serverUrl = this.getServerUrl();
         return {
+            ic3Region: this.config.ic3Region ?? null,
             enabled: this.config.enabled,
             status: this._status,
             error: this._lastError,
@@ -150,9 +153,13 @@ export class TeamsMessagingManager {
         };
     }
 
-    /** Update configuration fields. Disconnect on disable or target changes. */
+    /** Update configuration fields. Disconnect on disable, target, or IC3 region changes. */
     async updateConfig(patch: Partial<TeamsMessagingConfig>): Promise<void> {
-        if (patch.enabled === false || patch.teamName !== undefined || patch.channelName !== undefined || patch.botName !== undefined) {
+        if (patch.ic3Region !== undefined && patch.ic3Region !== null && !isIc3DirectMessageRegion(patch.ic3Region)) {
+            throw new RangeError('IC3 region must be amer, emea, apac, or null (unconfigured)');
+        }
+        if (patch.enabled === false || patch.teamName !== undefined || patch.channelName !== undefined || patch.botName !== undefined
+            || (patch.ic3Region !== undefined && patch.ic3Region !== (this.config.ic3Region ?? null))) {
             await this.disconnect();
             this._lastError = null;
         }
@@ -279,6 +286,7 @@ export class TeamsMessagingManager {
                     onTokenRefresh: () => acquireMcpOAuthToken(serverUrl, this._homeDir),
                 },
                 botName: this.config.botName,
+                ic3DirectMessageOptions: { region: this.config.ic3Region ?? undefined },
                 pollChannelReplies: () => this.getAnswerRelayEnabled(),
                 onChannelRootDiscovered: async root => {
                     if (generation !== this.generation || !this.getAnswerRelayEnabled()) return;
@@ -460,7 +468,12 @@ export class TeamsMessagingManager {
         try {
             if (fs.existsSync(this.configPath)) {
                 const raw = fs.readFileSync(this.configPath, 'utf-8');
-                return { ...PERSISTED_CONFIG_DEFAULTS, ...JSON.parse(raw) };
+                const config = { ...PERSISTED_CONFIG_DEFAULTS, ...JSON.parse(raw) };
+                if (config.ic3Region != null && !isIc3DirectMessageRegion(config.ic3Region)) {
+                    config.ic3Region = null;
+                    this._lastError = 'Invalid saved IC3 region; configure Teams connection settings and reconnect';
+                }
+                return config;
             }
         } catch (err) {
             this._status = 'error';

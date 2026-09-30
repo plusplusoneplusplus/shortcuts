@@ -22,7 +22,8 @@ let botInstances: Array<{
     listChannels: ReturnType<typeof vi.fn>;
 }> = [];
 
-vi.mock('@plusplusoneplusplus/coc-connector/teams', () => {
+vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-connector/teams')>();
     const mockTransport = {
         initialize: vi.fn().mockResolvedValue(undefined),
         send: vi.fn().mockResolvedValue('transport-msg-001'),
@@ -34,6 +35,7 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', () => {
         stop: vi.fn(),
     };
     return {
+        ...actual,
         TeamsBot: class MockTeamsBot {
             opts: any;
             start = vi.fn().mockResolvedValue(undefined);
@@ -163,6 +165,18 @@ describe('TeamsBridge', () => {
     }
 
     describe('start / stop', () => {
+        it.each(['amer', 'emea', 'apac', null, undefined] as const)('propagates region %s through start and reconnect', async ic3Region => {
+            const bridge = createBridge({ ic3Region });
+            await bridge.start();
+            expect(lastBot().opts.ic3DirectMessageOptions).toEqual({ region: ic3Region ?? undefined });
+            expect(bridge.getTeamsStatus().ic3Region).toBe(ic3Region ?? null);
+            await bridge.updateConfig({ ic3Region: ic3Region === 'apac' ? null : 'apac' });
+            expect(lastBot().stop).toHaveBeenCalled();
+            await bridge.reconnect();
+            expect(lastBot().opts.ic3DirectMessageOptions).toEqual({ region: ic3Region === 'apac' ? undefined : 'apac' });
+            await bridge.stop();
+        });
+
         it('should create TeamsBot and start it', async () => {
             const bridge = createBridge();
             await bridge.start();

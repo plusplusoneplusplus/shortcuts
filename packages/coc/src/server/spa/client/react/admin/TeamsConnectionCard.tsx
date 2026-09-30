@@ -5,6 +5,7 @@ import { McpOAuthFlowController } from '../features/skills/mcpOAuthFlowControlle
 import { SettingsCard } from './SettingsCard';
 
 interface TeamsStatus {
+    ic3Region?: 'amer' | 'emea' | 'apac' | null;
     enabled: boolean;
     status: 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
     error: string | null;
@@ -115,6 +116,7 @@ export function TeamsConnectionCard() {
     const [teamName, setTeamName] = useState('');
     const [channelName, setChannelName] = useState('');
     const [botName, setBotName] = useState('');
+    const [ic3Region, setIc3Region] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [authorizing, setAuthorizing] = useState(false);
@@ -136,6 +138,7 @@ export function TeamsConnectionCard() {
         || teamName !== status.teamName
         || channelName !== status.channelName
         || botName !== status.botName
+        || ic3Region !== (status.ic3Region ?? '')
     );
     const load = useCallback(async (syncForm = false, offset = historyOffset) => {
         try {
@@ -169,6 +172,7 @@ export function TeamsConnectionCard() {
                 setTeamName(next.teamName);
                 setChannelName(next.channelName);
                 setBotName(next.botName);
+                setIc3Region(next.ic3Region ?? '');
             }
         } catch (err) {
             if (mounted.current) setError(err instanceof Error ? err.message : String(err));
@@ -276,11 +280,24 @@ export function TeamsConnectionCard() {
                         </label>
                     ))}
                 </div>
+                <label className="ar-teams-field">IC3 region
+                    <select className="ar-input ar-full" value={ic3Region} onChange={e => setIc3Region(e.target.value)}>
+                        <option value="">Unconfigured</option>
+                        <option value="amer">Americas</option>
+                        <option value="emea">Europe-Middle East-Africa</option>
+                        <option value="apac">Asia-Pacific</option>
+                    </select>
+                </label>
+                <p className="ar-teams-hint">
+                    Required for optional IC3 Likes and self sends only; MCP polling and ordinary sends work unconfigured.
+                    Choose your account's region; automatic discovery is not available. Save changes, then reconnect.
+                </p>
                 <div className="ar-teams-actions">
                     <Button size="sm" disabled={busy || !teamName.trim() || !channelName.trim() || !botName.trim()}
                         onClick={() => void run(async () => {
                             await request('/messaging/teams/config', {
                                 teamName: teamName.trim(), channelName: channelName.trim(), botName: botName.trim(),
+                                ic3Region: ic3Region || null,
                             });
                         })}>Save channel</Button>
                     <Button size="sm" disabled={busy || authorizing || dirty || !status?.serverUrl || !status?.teamsOAuthAvailable}
