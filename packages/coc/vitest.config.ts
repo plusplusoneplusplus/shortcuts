@@ -28,6 +28,7 @@ const resolveAlias = [
     // Subpath alias must precede the core alias: Vite matches aliases in
     // order and treats a bare package name as a prefix of its subpaths.
     { find: '@plusplusoneplusplus/coc-connector/teams', replacement: path.resolve(__dirname, '../coc-connector/src/teams/index.ts') },
+    { find: '@plusplusoneplusplus/coc-connector/whatsapp', replacement: path.resolve(__dirname, '../coc-connector/src/whatsapp/index.ts') },
     { find: '@plusplusoneplusplus/coc-connector', replacement: path.resolve(__dirname, '../coc-connector/src/index.ts') },
 ];
 

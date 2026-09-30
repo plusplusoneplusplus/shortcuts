@@ -167,6 +167,8 @@ import { registerTeamsMessagingRoutes } from '../messaging/teams-messaging-handl
 import { TeamsMessagingManager } from '../messaging/teams-messaging-manager';
 import { registerWhatsAppMessagingRoutes } from '../messaging/whatsapp-messaging-handler';
 import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-manager';
+import { WhatsAppBindings } from '../messaging/whatsapp-bindings';
+import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
@@ -940,6 +942,28 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
+    const whatsappBindings = new WhatsAppBindings(dataDir);
+    const whatsappRouter = new WhatsAppCommandRouter({
+        store,
+        bindings: whatsappBindings,
+        groupJid: () => whatsappMessagingManager.getStatus().groupJid ?? undefined,
+        send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
+        react: messageId => whatsappMessagingManager.react(messageId),
+        enqueue: (workspaceId, message, mode, processId, taskId) =>
+            enqueueWithResolvedDefaults({
+                ...messagingChatInput(workspaceId, message, taskId, true),
+                processId,
+                payload: {
+                    kind: 'chat', mode, prompt: message, workspaceId,
+                    ...(processId !== toQueueProcessId(taskId) ? { processId } : {}),
+                    relayRequestId: taskId,
+                },
+            }),
+    });
+    whatsappMessagingManager.setMessageHandler(async message => {
+        await whatsappBindings.restore(store);
+        await whatsappRouter.handle(message);
+    });
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime
     // config service is available, else from the resolved config snapshot).
