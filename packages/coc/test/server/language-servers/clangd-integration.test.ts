@@ -25,6 +25,9 @@ int main() {
 }
 `;
 const BROKEN_SOURCE = SOURCE.replace('return answer();', 'return ; broken');
+// Initial diagnostics can arrive before semantic requests are ready on loaded
+// Windows runners, so exercise clangd with the same timeout as production.
+const CLANGD_REQUEST_TIMEOUT_MS = CLANGD_PRESET.requestTimeoutMs ?? 120_000;
 const discoveredRuntime = resolveClangdRuntime(CLANGD_PRESET);
 const describeWithClangd = discoveredRuntime.origin === 'unavailable' ? describe.skip : describe;
 let root: string;
@@ -84,7 +87,7 @@ describeWithClangd('real clangd runtime', () => {
             runtimeLabel: prepared.runtimeLabel,
             commandLabel: prepared.commandLabel,
             startTimeoutMs: 45_000,
-            requestTimeoutMs: 30_000,
+            requestTimeoutMs: CLANGD_REQUEST_TIMEOUT_MS,
             idleTimeoutMs: 10 * 60_000,
         });
         session.onNotification('textDocument/publishDiagnostics', params => {
@@ -125,7 +128,7 @@ describeWithClangd('real clangd runtime', () => {
         expect(JSON.stringify(hover)).toContain('answer');
         expect(JSON.stringify(definition)).toContain('main.cpp');
         expect(session.getState().status).toBe('ready');
-    });
+    }, CLANGD_REQUEST_TIMEOUT_MS * 2 + 30_000);
 
     it('publishes diagnostics for an invalid open buffer', async () => {
         diagnostics = [];
@@ -169,7 +172,7 @@ int main() { return 0; }
             runtimeLabel: prepared.runtimeLabel,
             commandLabel: prepared.commandLabel,
             startTimeoutMs: 45_000,
-            requestTimeoutMs: 30_000,
+            requestTimeoutMs: CLANGD_REQUEST_TIMEOUT_MS,
         });
         let receivedDiagnostics = false;
         let databaseDiagnostics: Diagnostic[] = [];
