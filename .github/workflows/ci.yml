@@ -734,6 +734,7 @@ jobs:
 
   coccontainer-serve-smoke:
     runs-on: ${{ matrix.os }}
+    needs: [coc-native]
     timeout-minutes: 10
 
     strategy:
@@ -770,6 +771,13 @@ jobs:
       - name: Build coccontainer package
         run: npm run build
         working-directory: packages/coccontainer
+
+      # The agent and messaging stores open SQLite through coc-native.
+      - name: Download the addon
+        uses: actions/download-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native
 
       - name: Start coccontainer serve and verify health
         shell: bash
