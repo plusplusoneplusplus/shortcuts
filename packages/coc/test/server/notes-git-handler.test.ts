@@ -24,7 +24,11 @@ function request(
     options: http.RequestOptions = {},
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
     return new Promise((resolve, reject) => {
-        const req = http.request(reqUrl, options, (res) => {
+        // `agent: false` opens a fresh connection per request. Node 24's global
+        // agent keeps sockets alive, and each test's port-0 server can land on
+        // the port a previous test's server just closed — reusing that stale
+        // pooled socket fails with "socket hang up".
+        const req = http.request(reqUrl, { agent: false, ...options }, (res) => {
             let body = '';
             res.on('data', (chunk) => (body += chunk));
             res.on('end', () =>
