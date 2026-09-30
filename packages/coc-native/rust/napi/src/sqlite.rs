@@ -114,15 +114,15 @@ fn process_read_filter(filter: Option<NativeProcessReadFilter>) -> ProcessFilter
 #[napi(object)]
 pub struct NativeProcessWithTurns {
     #[napi(ts_type = "Record<string, number | string | Buffer | null>")]
-    pub process: HashMap<String, Either4<f64, String, Buffer, Null>>,
+    pub process: JsSqliteRow,
     #[napi(ts_type = "Array<Record<string, number | string | Buffer | null>>")]
-    pub turns: Option<Vec<HashMap<String, Either4<f64, String, Buffer, Null>>>>,
+    pub turns: Option<Vec<JsSqliteRow>>,
 }
 
 #[napi(object)]
 pub struct NativeProcessSummaryPage {
     #[napi(ts_type = "Array<Record<string, number | string | Buffer | null>>")]
-    pub rows: Vec<HashMap<String, Either4<f64, String, Buffer, Null>>>,
+    pub rows: Vec<JsSqliteRow>,
     pub total: f64,
 }
 
