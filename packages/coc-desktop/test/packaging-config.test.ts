@@ -50,6 +50,10 @@ function containerBuildConfig(): Build {
 }
 
 describe('electron-builder packaging config', () => {
+    it('pins Electron to an exact version for release packaging', () => {
+        expect(desktopPackage().devDependencies.electron).toMatch(/^\d+\.\d+\.\d+$/);
+    });
+
     it('launches without an ABI preflight or rebuild dependency', () => {
         const pkg = desktopPackage();
         for (const script of ['prestart', 'rebuild:native', 'ensure:native', 'ensure:native:node', 'prebuild:sqlite:win']) {
