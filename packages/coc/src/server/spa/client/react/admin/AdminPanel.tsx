@@ -41,7 +41,8 @@ import {
 } from './adminNavigation';
 import { useAdminFeatureSettings } from './useAdminFeatureSettings';
 import { useAdminChatStyleSettings } from './useAdminChatStyleSettings';
-import { FeatureSettingsCard } from './FeatureSettingsCard';
+import { FeatureSettingsCard, TabFeatureSettingsCard } from './FeatureSettingsCard';
+import type { FeatureSettingTab } from '../../../../../config/admin-setting-definitions';
 import { ChatStyleSettingsCard } from './ChatStyleSettingsCard';
 import { useAdminConfigForm } from './useAdminConfigForm';
 import { useAdminPreferencesForm } from './useAdminPreferencesForm';
@@ -333,6 +334,22 @@ export function AdminPanel() {
         return current === def;
     }, [config?.defaults, resolved, defaults]);
 
+    // Registry toggles placed on a non-Features tab render in their own
+    // section card below that tab's existing card(s).
+    const renderTabFeatures = (tab: Exclude<FeatureSettingTab, 'features'>) => (
+        <TabFeatureSettingsCard
+            tab={tab}
+            featureValues={features.featureValues}
+            setFeatureValues={features.setFeatureValues}
+            dirty={features.isTabDirty(tab)}
+            saving={features.savingTab === tab}
+            onSave={() => { void features.handleSaveTab(tab); }}
+            onCancel={() => features.handleCancelTab(tab)}
+            sources={sources}
+            isDefaultValue={isDefaultValue}
+        />
+    );
+
     const handleToolNavClick = useCallback((tab: DashboardTab) => {
         dispatch({ type: 'SET_ACTIVE_TAB', tab });
         window.location.hash = '#' + tab;
@@ -551,38 +568,44 @@ export function AdminPanel() {
                                         <>
                                             {/* ── AI & Execution ── */}
                                             {settingsSubTab === 'ai' && (
-                                                <AiExecutionCard
-                                                    configForm={configFormCtl.configForm}
-                                                    setConfigForm={configFormCtl.setConfigForm}
-                                                    dirty={configFormCtl.aiExecDirty}
-                                                    saving={configFormCtl.aiExecSaving}
-                                                    onSave={configFormCtl.handleSaveAiExec}
-                                                    onCancel={configFormCtl.handleCancelAiExec}
-                                                    sources={sources}
-                                                    isDefaultValue={isDefaultValue}
-                                                />
+                                                <>
+                                                    <AiExecutionCard
+                                                        configForm={configFormCtl.configForm}
+                                                        setConfigForm={configFormCtl.setConfigForm}
+                                                        dirty={configFormCtl.aiExecDirty}
+                                                        saving={configFormCtl.aiExecSaving}
+                                                        onSave={configFormCtl.handleSaveAiExec}
+                                                        onCancel={configFormCtl.handleCancelAiExec}
+                                                        sources={sources}
+                                                        isDefaultValue={isDefaultValue}
+                                                    />
+                                                    {renderTabFeatures('ai')}
+                                                </>
                                             )}
 
                                             {/* ── Chat Experience ── */}
                                             {settingsSubTab === 'chat' && (
-                                                <ChatExperienceCard
-                                                    chatFollowUpEnabled={configFormCtl.chatFollowUpEnabled}
-                                                    setChatFollowUpEnabled={configFormCtl.setChatFollowUpEnabled}
-                                                    chatFollowUpCount={configFormCtl.chatFollowUpCount}
-                                                    setChatFollowUpCount={configFormCtl.setChatFollowUpCount}
-                                                    chatAskUserEnabled={configFormCtl.chatAskUserEnabled}
-                                                    setChatAskUserEnabled={configFormCtl.setChatAskUserEnabled}
-                                                    showReportIntent={configFormCtl.showReportIntent}
-                                                    setShowReportIntent={configFormCtl.setShowReportIntent}
-                                                    toolCompactness={configFormCtl.toolCompactness}
-                                                    setToolCompactness={configFormCtl.setToolCompactness}
-                                                    dirty={configFormCtl.chatDirty}
-                                                    saving={configFormCtl.chatSaving}
-                                                    onSave={configFormCtl.handleSaveChat}
-                                                    onCancel={configFormCtl.handleCancelChat}
-                                                    sources={sources}
-                                                    isDefaultValue={isDefaultValue}
-                                                />
+                                                <>
+                                                    <ChatExperienceCard
+                                                        chatFollowUpEnabled={configFormCtl.chatFollowUpEnabled}
+                                                        setChatFollowUpEnabled={configFormCtl.setChatFollowUpEnabled}
+                                                        chatFollowUpCount={configFormCtl.chatFollowUpCount}
+                                                        setChatFollowUpCount={configFormCtl.setChatFollowUpCount}
+                                                        chatAskUserEnabled={configFormCtl.chatAskUserEnabled}
+                                                        setChatAskUserEnabled={configFormCtl.setChatAskUserEnabled}
+                                                        showReportIntent={configFormCtl.showReportIntent}
+                                                        setShowReportIntent={configFormCtl.setShowReportIntent}
+                                                        toolCompactness={configFormCtl.toolCompactness}
+                                                        setToolCompactness={configFormCtl.setToolCompactness}
+                                                        dirty={configFormCtl.chatDirty}
+                                                        saving={configFormCtl.chatSaving}
+                                                        onSave={configFormCtl.handleSaveChat}
+                                                        onCancel={configFormCtl.handleCancelChat}
+                                                        sources={sources}
+                                                        isDefaultValue={isDefaultValue}
+                                                    />
+                                                    {renderTabFeatures('chat')}
+                                                </>
                                             )}
 
                                             {/* ── Chat Style ── */}
@@ -606,30 +629,33 @@ export function AdminPanel() {
 
                                             {/* ── Appearance & Navigation ── */}
                                             {settingsSubTab === 'appearance' && (
-                                                <AppearanceCard
-                                                    theme={prefsCtl.theme}
-                                                    setTheme={prefsCtl.setTheme}
-                                                    uiLayoutMode={prefsCtl.uiLayoutMode}
-                                                    setUiLayoutMode={prefsCtl.setUiLayoutMode}
-                                                    reposSidebarCollapsed={prefsCtl.reposSidebarCollapsed}
-                                                    setReposSidebarCollapsed={prefsCtl.setReposSidebarCollapsed}
-                                                    htmlEmbedEnabled={prefsCtl.htmlEmbedEnabled}
-                                                    setHtmlEmbedEnabled={prefsCtl.setHtmlEmbedEnabled}
-                                                    promptAutocompleteEnabled={prefsCtl.promptAutocompleteEnabled}
-                                                    setPromptAutocompleteEnabled={prefsCtl.setPromptAutocompleteEnabled}
-                                                    promptAutocompleteAiEnabled={prefsCtl.promptAutocompleteAiEnabled}
-                                                    setPromptAutocompleteAiEnabled={prefsCtl.setPromptAutocompleteAiEnabled}
-                                                    taskCardDensity={prefsCtl.taskCardDensity}
-                                                    setTaskCardDensity={prefsCtl.setTaskCardDensity}
-                                                    historyGrouping={prefsCtl.historyGrouping}
-                                                    setHistoryGrouping={prefsCtl.setHistoryGrouping}
-                                                    dirty={prefsCtl.appearanceDirty}
-                                                    saving={prefsCtl.appearanceSaving}
-                                                    onSave={prefsCtl.handleSaveAppearance}
-                                                    onCancel={prefsCtl.handleCancelAppearance}
-                                                    sources={sources}
-                                                    isDefaultValue={isDefaultValue}
-                                                />
+                                                <>
+                                                    <AppearanceCard
+                                                        theme={prefsCtl.theme}
+                                                        setTheme={prefsCtl.setTheme}
+                                                        uiLayoutMode={prefsCtl.uiLayoutMode}
+                                                        setUiLayoutMode={prefsCtl.setUiLayoutMode}
+                                                        reposSidebarCollapsed={prefsCtl.reposSidebarCollapsed}
+                                                        setReposSidebarCollapsed={prefsCtl.setReposSidebarCollapsed}
+                                                        htmlEmbedEnabled={prefsCtl.htmlEmbedEnabled}
+                                                        setHtmlEmbedEnabled={prefsCtl.setHtmlEmbedEnabled}
+                                                        promptAutocompleteEnabled={prefsCtl.promptAutocompleteEnabled}
+                                                        setPromptAutocompleteEnabled={prefsCtl.setPromptAutocompleteEnabled}
+                                                        promptAutocompleteAiEnabled={prefsCtl.promptAutocompleteAiEnabled}
+                                                        setPromptAutocompleteAiEnabled={prefsCtl.setPromptAutocompleteAiEnabled}
+                                                        taskCardDensity={prefsCtl.taskCardDensity}
+                                                        setTaskCardDensity={prefsCtl.setTaskCardDensity}
+                                                        historyGrouping={prefsCtl.historyGrouping}
+                                                        setHistoryGrouping={prefsCtl.setHistoryGrouping}
+                                                        dirty={prefsCtl.appearanceDirty}
+                                                        saving={prefsCtl.appearanceSaving}
+                                                        onSave={prefsCtl.handleSaveAppearance}
+                                                        onCancel={prefsCtl.handleCancelAppearance}
+                                                        sources={sources}
+                                                        isDefaultValue={isDefaultValue}
+                                                    />
+                                                    {renderTabFeatures('appearance')}
+                                                </>
                                             )}
 
                                             {/* ── Workspace Features ── */}
@@ -650,22 +676,25 @@ export function AdminPanel() {
 
                                             {/* ── Link Handlers (Integrations) ── */}
                                             {settingsSubTab === 'integrations' && (
-                                                <SettingsCard
-                                                    title="Link handlers"
-                                                    badge="Global"
-                                                    description="Open specific URLs in desktop apps instead of a browser tab. Requires the desktop app to be installed."
-                                                    data-testid="settings-link-handlers"
-                                                >
-                                                    {getLinkHandlersMeta().map(meta => (
-                                                        <AdminRow key={meta.name} name={meta.label} hint={meta.description}>
-                                                            <AdminToggle
-                                                                checked={linkHandlersConfig[meta.name] === true}
-                                                                onChange={checked => setHandlerEnabled(meta.name, checked)}
-                                                                data-testid={`toggle-link-handler-${meta.name}`}
-                                                            />
-                                                        </AdminRow>
-                                                    ))}
-                                                </SettingsCard>
+                                                <>
+                                                    <SettingsCard
+                                                        title="Link handlers"
+                                                        badge="Global"
+                                                        description="Open specific URLs in desktop apps instead of a browser tab. Requires the desktop app to be installed."
+                                                        data-testid="settings-link-handlers"
+                                                    >
+                                                        {getLinkHandlersMeta().map(meta => (
+                                                            <AdminRow key={meta.name} name={meta.label} hint={meta.description}>
+                                                                <AdminToggle
+                                                                    checked={linkHandlersConfig[meta.name] === true}
+                                                                    onChange={checked => setHandlerEnabled(meta.name, checked)}
+                                                                    data-testid={`toggle-link-handler-${meta.name}`}
+                                                                />
+                                                            </AdminRow>
+                                                        ))}
+                                                    </SettingsCard>
+                                                    {renderTabFeatures('integrations')}
+                                                </>
                                             )}
 
                                             {/* ── Providers (credentials) ── */}
