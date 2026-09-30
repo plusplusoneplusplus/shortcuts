@@ -295,7 +295,13 @@ test.describe('Dashboard — Processes tab', () => {
 
             await page.goto(tasksTabUrl(serverUrl, wsId));
 
-            const card = page.locator(`[data-task-id="${taskId}"]`);
+            // Frozen tasks live in their own Frozen Tasks section, collapsed by default.
+            const frozenToggle = page.locator('[data-testid="frozen-tasks-section-toggle"]');
+            await expect(frozenToggle).toBeVisible({ timeout: 8000 });
+            await expect(frozenToggle).toHaveAttribute('aria-expanded', 'false');
+            await frozenToggle.click();
+
+            const card = page.locator(`[data-section="frozen"] [data-task-id="${taskId}"]`);
             await expect(card).toBeVisible({ timeout: 8000 });
 
             // Card should have the task-frozen CSS class
