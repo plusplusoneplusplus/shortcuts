@@ -4,12 +4,12 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import type { Trigger } from '../../../src/server/triggers/trigger-types';
 import { MAX_ACTIVE_TRIGGERS } from '../../../src/server/triggers/trigger-types';
 
-function createDb(): Database.Database {
+function createDb(): Database {
     return new Database(':memory:');
 }
 
@@ -42,7 +42,7 @@ function makeTrigger(overrides: Partial<Trigger> = {}): Trigger {
 }
 
 describe('TriggerStore', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: TriggerStore;
 
     beforeEach(() => {

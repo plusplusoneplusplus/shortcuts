@@ -117,6 +117,7 @@
     "build": "tsc",
     "test": "vitest",
     "test:run": "vitest run",
+    "bench:process-search": "node scripts/bench-process-search.mjs",
     "coverage": "vitest run --coverage",
     "coverage:diff": "bash ../../scripts/coverage-diff.sh",
     "lint": "eslint src"
@@ -129,7 +130,6 @@
     "@github/copilot-sdk": "1.0.9",
     "@octokit/rest": "^22.0.1",
     "azure-devops-node-api": "^17.0.0",
-    "better-sqlite3": "^12.11.1",
     "des.js": "^1.1.0",
     "diff": "^9.0.0",
     "js-md4": "^0.3.2",
@@ -140,7 +140,6 @@
   },
   "devDependencies": {
     "@ampproject/remapping": "^2.3.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/diff": "^5.2.0",
     "@types/js-yaml": "^4.0.0",
     "@types/node": "^20.0.0",

@@ -7,8 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import DatabaseConstructor from 'better-sqlite3';
-import type Database from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { SqliteProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { TurnPerformanceStore } from '../storage/turn-performance-store';
@@ -36,13 +35,13 @@ export function createTurnPerformanceInfrastructure(
     dataDir: string,
     store: ProcessStore,
 ): TurnPerformanceInfrastructure {
-    let db: Database.Database;
+    let db: NativeDatabase;
     let ownsDb = false;
     if (store instanceof SqliteProcessStore) {
         db = store.getDatabase();
     } else {
         fs.mkdirSync(dataDir, { recursive: true });
-        db = new DatabaseConstructor(path.join(dataDir, 'processes.db'));
+        db = new NativeDatabase(path.join(dataDir, 'processes.db'));
         initializeDatabase(db);
         ownsDb = true;
     }

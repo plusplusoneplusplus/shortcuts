@@ -195,7 +195,6 @@ jobs:
 
       # electron-builder packs packages/coc-native/prebuilt/** with the app.
       # N-API binaries are ABI-stable, so the same file works under Node and
-      # Electron — no electron-rebuild step, unlike better-sqlite3.
       - name: Download native addon binaries
         uses: actions/download-artifact@v4
         with:
@@ -271,7 +270,6 @@ jobs:
           test -f packages/coc-native/prebuilt/win32-x64-msvc/coc-native.win32-x64-msvc.node
           test -f packages/coc-native/prebuilt/win32-x64-msvc/coc-symbols-lsp.win32-x64-msvc.exe
 
-      # Both scripts run prebuild:sqlite:win before electron-builder.
       - name: Build CoC Windows distributable
         run: npm run dist:win
         working-directory: packages/coc-desktop

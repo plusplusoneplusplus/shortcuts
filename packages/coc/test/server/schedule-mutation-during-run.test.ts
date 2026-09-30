@@ -19,7 +19,7 @@ import { FileProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge
 import { ScheduleManager } from '../../src/server/schedule/schedule-manager';
 import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml-persistence';
 import { SqliteScheduleRunPersistence } from '../../src/server/schedule/sqlite-schedule-run-persistence';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -92,7 +92,7 @@ describe('Schedule Modified While Running (Section 2)', () => {
     let persistence: ScheduleYamlPersistence;
     let runPersistence: SqliteScheduleRunPersistence;
     let manager: ScheduleManager;
-    let db: Database.Database;
+    let db: Database;
 
     const REPO_ID = 'test-repo';
 

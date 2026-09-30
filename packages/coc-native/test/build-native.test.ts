@@ -9,6 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 // @ts-expect-error — a .mjs build script with no type declarations.
@@ -81,6 +82,17 @@ describe('renderBindings', () => {
 
 describe('the committed bindings', () => {
     const source = fs.readFileSync(path.join(PACKAGE_ROOT, BINDINGS_FILE), 'utf-8');
+
+    it('resolves every generated TypeScript type, including SQLite row fields', () => {
+        const program = ts.createProgram([path.join(PACKAGE_ROOT, BINDINGS_FILE)], {
+            noEmit: true,
+            skipLibCheck: true,
+            types: ['node'],
+        });
+        const diagnostics = ts.getPreEmitDiagnostics(program);
+        expect(diagnostics.map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')))
+            .toEqual([]);
+    });
 
     it('lives where the build script writes it', () => {
         expect(BINDINGS_FILE).toBe(path.join('src', 'native-bindings.ts'));

@@ -28,6 +28,32 @@ export declare class FileIndex {
   refresh(): Promise<void>
 }
 
+export declare class NativeDatabaseHandle {
+  constructor(path: string, options?: NativeDatabaseOptions | undefined | null)
+  exec(sql: string): void
+  pragma(sql: string): Array<Record<string, number | string | Buffer | null>>
+  prepare(sql: string): NativeStatementHandle
+  close(): void
+  transaction(callback: () => unknown): unknown
+  searchConversations(query: string, filter?: NativeConversationSearchFilter | undefined | null): Promise<NativeConversationSearchPage>
+  getConversationTurns(processId: string): Promise<Array<Record<string, number | string | Buffer | null>>>
+  getConversationTurnsJson(processId: string): Promise<string>
+  getAllProcesses(filter?: NativeProcessReadFilter | undefined | null): Promise<Array<NativeProcessWithTurns>>
+  getAllProcessesJson(filter?: NativeProcessReadFilter | undefined | null): Promise<string>
+  getProcessSummariesJson(filter?: NativeProcessReadFilter | undefined | null): Promise<string>
+  getProcessSummaries(filter?: NativeProcessReadFilter | undefined | null): Promise<NativeProcessSummaryPage>
+  listRecentProcesses(filter?: NativeRecentProcessFilter | undefined | null): Promise<Array<Record<string, number | string | Buffer | null>>>
+  listRecentProcessesJson(filter?: NativeRecentProcessFilter | undefined | null): Promise<string>
+  upsertStreamingTurn(processId: string, content: string, streaming: boolean, timeline: string, timestamp: string): Promise<void>
+}
+
+export declare class NativeStatementHandle {
+  run(values?: Array<number | string | Buffer | null>, names?: string[]): NativeRunResult
+  get(values?: Array<number | string | Buffer | null>, names?: string[]): Record<string, number | string | Buffer | null> | null
+  all(values?: Array<number | string | Buffer | null>, names?: string[]): Array<Record<string, number | string | Buffer | null>>
+  iterate(values?: Array<number | string | Buffer | null>, names?: string[]): Array<Record<string, number | string | Buffer | null>>
+}
+
 /** An in-memory content index for one already-authorized Notes root. */
 export declare class NotesIndex {
   /**
@@ -730,6 +756,75 @@ export declare function gitValidateRef(repoRoot: string, rev: string): Promise<s
  * core module for what that costs and why it is the trade taken.
  */
 export declare function matchDangerousCommand(command: string): DangerousCommandVerdict
+
+export interface NativeConversationSearchFilter {
+  workspaceId?: string
+  statuses?: Array<string>
+  processType?: string
+  since?: string
+  until?: string
+  limit?: number
+  offset?: number
+}
+
+export interface NativeConversationSearchHit {
+  processId: string
+  turnIndex: number
+  role: string
+  snippet: string
+  rank: number
+  processTitle?: string
+  promptPreview?: string
+  processStatus: string
+  processType: string
+  workspaceId: string
+  startTime: string
+}
+
+export interface NativeConversationSearchPage {
+  results: Array<NativeConversationSearchHit>
+  total: number
+}
+
+export interface NativeDatabaseOptions {
+  readonly?: boolean
+}
+
+export interface NativeProcessReadFilter {
+  workspaceId?: string
+  parentProcessId?: string
+  statuses?: Array<string>
+  processType?: string
+  since?: string
+  until?: string
+  limit?: number
+  offset?: number
+  excludeConversation?: boolean
+}
+
+export interface NativeProcessSummaryPage {
+  rows: Array<Record<string, number | string | Buffer | null>>
+  total: number
+}
+
+export interface NativeProcessWithTurns {
+  process: Record<string, number | string | Buffer | null>
+  turns?: Array<Record<string, number | string | Buffer | null>>
+}
+
+export interface NativeRecentProcessFilter {
+  workspaceId?: string
+  since?: string
+  until?: string
+  excludeProcessId?: string
+  limit?: number
+  offset?: number
+}
+
+export interface NativeRunResult {
+  changes: number
+  lastInsertRowid: number
+}
 
 /** Which regime a content read or write runs under. */
 export interface NotesContentOptions {

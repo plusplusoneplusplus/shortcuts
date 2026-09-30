@@ -13,7 +13,7 @@
  * - A no-op for file-backed stores, which have no durable table to join
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 
@@ -46,7 +46,7 @@ function toBareId(taskId: string): string {
  * Add `metadata.commitChat.commitHash` to bound commit-chat processes that lack
  * it. Safe to call on every startup; returns counts for logging and tests.
  */
-export function backfillCommitChatMetadata(db: Database.Database): CommitChatBackfillResult {
+export function backfillCommitChatMetadata(db: NativeDatabase): CommitChatBackfillResult {
     const result: CommitChatBackfillResult = { updated: 0, skipped: 0 };
 
     let bindings: BindingRow[];

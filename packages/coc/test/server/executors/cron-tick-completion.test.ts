@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
 import type { LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
@@ -342,4 +342,3 @@ describe('CronExecutor + ProcessLifecycleRunner — successful tick re-arms the 
         expect(harness.timers.has('cron_e2e_pause')).toBe(false);
     });
 });
-

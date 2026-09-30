@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { CronStore } from '../../src/server/cron/cron-store';
 import { CronExecutor } from '../../src/server/cron/cron-executor';
 import type { CronExecutorDeps } from '../../src/server/cron/cron-executor';

@@ -13,8 +13,7 @@
  * builder stays free of provider/HTTP details and is unit-testable.
  */
 
-import DatabaseConstructor from 'better-sqlite3';
-import type Database from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { TaskQueueManager, ProcessStore } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, initializeDatabase, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { TriggerStore } from '../triggers/trigger-store';
@@ -82,7 +81,7 @@ export async function createTriggerInfrastructure(
     const { dataDir, queueFacade, store, emit, resolveWorkspaceId, ciChecksFetcher, ciLogFetcher, now } = options;
 
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or open processes.db in dataDir.
-    let db: Database.Database;
+    let db: NativeDatabase;
     let ownsDb = false;
     if (store instanceof SqliteProcessStore) {
         db = store.getDatabase();
@@ -90,7 +89,7 @@ export async function createTriggerInfrastructure(
         const path = require('path');
         const fs = require('fs');
         fs.mkdirSync(dataDir, { recursive: true });
-        db = new DatabaseConstructor(path.join(dataDir, 'processes.db'));
+        db = new NativeDatabase(path.join(dataDir, 'processes.db'));
         initializeDatabase(db);
         ownsDb = true;
     }

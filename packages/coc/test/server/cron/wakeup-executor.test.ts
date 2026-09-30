@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { ScheduleTimerRegistry } from '../../../src/server/schedule/schedule-timer-registry';
 import { WakeupStore } from '../../../src/server/cron/wakeup-store';
 import { WakeupExecutor, wakeupTimerKey } from '../../../src/server/cron/wakeup-executor';
@@ -32,7 +32,7 @@ function makeWakeup(overrides: Partial<WakeupEntry> = {}): WakeupEntry {
 }
 
 describe('WakeupExecutor', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: WakeupStore;
     let processStore: MockProcessStore;
     let timerRegistry: ScheduleTimerRegistry;

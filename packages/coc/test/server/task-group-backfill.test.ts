@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Database, initializeDatabase, SqliteProcessStore, SqliteTaskGroupStore } from '@plusplusoneplusplus/forge';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { TaskGroupService } from '../../src/server/task-groups/task-group-service';
 import { backfillTaskGroups } from '../../src/server/task-groups/backfill';
 import { FileForEachRunStore } from '../../src/server/for-each/for-each-run-store';
@@ -14,7 +15,7 @@ const WS = 'ws-backfill';
 
 describe('backfillTaskGroups', () => {
     let tmpDir: string;
-    let db: Database.Database;
+    let db: NativeDatabase;
     let processStore: SqliteProcessStore;
     let service: TaskGroupService;
 

@@ -23,7 +23,9 @@ function jobBlock(workflow, name) {
 // Notes capability, and repo listing and file search have no JavaScript lane.
 // Every workflow job that boots the server must wait for and download the
 // platform addon, and nothing may reintroduce a COC_NATIVE=0 opt-out.
-const BOOTS_THE_SERVER = ["coc-test", "e2e", "coc-serve-smoke", "docker-build-smoke"];
+// coccontainer counts too: its agent and messaging stores open SQLite through
+// the addon, so its server dies at startup without the binary.
+const BOOTS_THE_SERVER = ["coc-test", "e2e", "coc-serve-smoke", "coccontainer-serve-smoke", "docker-build-smoke"];
 
 test("every job that boots the coc server supplies the addon", () => {
     for (const name of BOOTS_THE_SERVER) {

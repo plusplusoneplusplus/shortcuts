@@ -3,10 +3,10 @@
  * here (BLOB `embedding`) but the ranking blending logic is added in AC-03
  * when the EmbeddingProvider is wired in.
  *
- * The store is synchronous under the hood (better-sqlite3) but exposes the
+ * The store is synchronous under the hood (NativeDatabase) but exposes the
  * async IMemoryFactStore interface required by the rest of the system.
  */
-import Database, { type Database as BetterDatabase } from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { randomUUID } from 'crypto';
 import type { IMemoryFactStore } from '../store-interface';
 import type {
@@ -103,10 +103,10 @@ function rowToFact(row: DbRow): MemoryFact {
 // ---------------------------------------------------------------------------
 
 export class SqliteFactStore implements IMemoryFactStore {
-    private readonly db: BetterDatabase;
+    private readonly db: NativeDatabase;
 
     constructor(dbPath: string) {
-        this.db = new Database(dbPath);
+        this.db = new NativeDatabase(dbPath);
         this.db.exec(SCHEMA_SQL);
     }
 

@@ -16,8 +16,7 @@ import * as fs from 'fs';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
 import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
-import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
-import Database from 'better-sqlite3';
+import { loadNativeGit, NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { Attachment, CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import { registerSkillRoutes } from '../skills/skill-handler';
@@ -233,7 +232,7 @@ export function stripExcludedFields(process: any, exclude?: string[]): any {
 export function registerApiRoutes(
     routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge,
     dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined,
-    db?: Database.Database, cronEnabled?: boolean,
+    db?: NativeDatabase, cronEnabled?: boolean,
     getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; chatStyleSelectorEnabled: boolean; chatProviderSwitchingEnabled: boolean; defaultChatStyle: ChatStyle },
     activeWorkspaceTracker?: ActiveWorkspaceTracker,
 ): void {
@@ -270,13 +269,13 @@ export function registerApiRoutes(
         const gitOpsStore = new GitOpsStore({ dataDir: dataDir ?? undefined });
         gitOpsStore.markStaleRunningJobs().catch(() => {});
 
-        let resolvedDb: Database.Database;
+        let resolvedDb: NativeDatabase;
         if (db) {
             resolvedDb = db;
         } else if (store instanceof SqliteProcessStore) {
             resolvedDb = store.getDatabase();
         } else {
-            resolvedDb = new Database(':memory:');
+            resolvedDb = new NativeDatabase(':memory:');
             initializeDatabase(resolvedDb);
         }
 

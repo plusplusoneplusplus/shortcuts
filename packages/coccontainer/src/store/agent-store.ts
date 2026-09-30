@@ -3,7 +3,7 @@
  * Stored at ~/.coccontainer/agents.db
  */
 
-import Database from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import * as path from 'path';
 import * as fs from 'fs';
 import { randomUUID } from 'crypto';
@@ -32,7 +32,7 @@ export interface AgentStore {
 export function createAgentStore(dataDir: string): AgentStore {
     fs.mkdirSync(dataDir, { recursive: true });
     const dbPath = path.join(dataDir, 'agents.db');
-    const db = new Database(dbPath);
+    const db = new NativeDatabase(dbPath);
 
     db.pragma('journal_mode = WAL');
     db.exec(`

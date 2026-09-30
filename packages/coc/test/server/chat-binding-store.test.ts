@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { ChatBindingStore } from '../../src/server/shared/chat-binding-store';
 
@@ -9,7 +9,7 @@ import { ChatBindingStore } from '../../src/server/shared/chat-binding-store';
  * per-store literal column reads, plus the shared migrateLegacyScopes core.
  */
 describe('ChatBindingStore', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: ChatBindingStore;
 
     beforeEach(() => {

@@ -12,7 +12,7 @@
  * task must never fail because its PR could not be recorded.
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import {
     getLogger,
     isQueueProcessId,
@@ -38,7 +38,7 @@ const logger = getLogger();
  * (`FileProcessStore` has neither); an absent method is a clean no-op.
  */
 export interface PrBindingProcessStore {
-    getDatabase?(): Database.Database;
+    getDatabase?(): NativeDatabase;
     getConversationTurns?(processId: string): Promise<ConversationTurn[]>;
     getWorkspaces(): Promise<WorkspaceInfo[]>;
     updateWorkspace?(id: string, updates: Partial<Omit<WorkspaceInfo, 'id'>>): Promise<WorkspaceInfo | undefined>;

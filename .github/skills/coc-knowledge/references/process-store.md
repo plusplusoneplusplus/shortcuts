@@ -1,17 +1,72 @@
 # Process Store
 
-Abstract `ProcessStore` interface with two implementations: `SqliteProcessStore` (default)
-and `FileProcessStore`. Location: `packages/forge/src/` (`process-store.ts`,
+Abstract `ProcessStore` interface with a production `SqliteProcessStore` and a
+test-only `FileProcessStore`. Location: `packages/forge/src/` (`process-store.ts`,
 `sqlite-process-store.ts`, `file-process-store.ts`).
 
 ```typescript
 import { createProcessStore } from 'packages/coc/src/config';
-const store = createProcessStore(dataDir, backend?); // 'sqlite' | 'file'
+const store = createProcessStore(dataDir, backend?); // always SqliteProcessStore
 ```
 
 ## SqliteProcessStore
 
 Single `processes.db` at `~/.coc/processes.db`. Schema version 38.
+
+`SqliteProcessStore` opens the file through `NativeDatabase` from `coc-native`.
+The schema definition and v1→v38 migration ladder stay in TypeScript and run
+through that synchronous handle. Startup treats a missing or stale native addon
+as a hard failure; the process store has no JavaScript SQLite fallback.
+The process writer runs in WAL mode with `synchronous=NORMAL`, including when
+opening existing process databases. Synchronous `run`, `get`, and `all`/`iterate`
+reuse SQLite's bounded per-writer statement cache, with bindings cleared
+between calls.
+
+`getDatabase()` returns the shared `NativeDatabase` handle used by queue, cron,
+wakeup, schedule, trigger, turn-performance, chat-binding, task-group, startup
+repair, and route stores. The admin database browser opens `processes.db` by path
+through its own short-lived native handle so each request closes what it owns.
+
+### Conversation search
+
+`searchConversations` runs through a typed Rust `AsyncTask` on the SQLite read
+pool, whose connections each cap SQLite's memory map at 64 MiB. Rust validates
+`user_version` against the process schema, sanitizes FTS5
+terms, and returns `<mark>` snippets (48 tokens) in BM25 rank order. Archived
+processes and interrupted turns are excluded; other filters and pagination
+retain the ProcessStore interface. The TypeScript wrapper maps native rows to
+`ConversationSearchResult` and reports malformed FTS syntax as an empty result.
+
+`getConversationTurns`, `getAllProcesses`, `getProcessSummaries`, and
+`listRecentProcesses` use typed Rust read-pool tasks with the same schema check.
+Forge maps returned SQLite rows into the existing date- and JSON-rich
+ProcessStore shapes, including optional conversation/tool-call exclusions and
+chat-folder membership on summary entries. `getConversationTurns` serializes
+ordered turn rows into JSON; `getAllProcesses` serializes process and turn rows
+in bounded process-ID batches, appending each process's turns into one grouped
+JSON buffer while preserving turn order. `getProcessSummaries`
+serializes its count and page with chat-folder membership in one read snapshot; `listRecentProcesses`
+serializes its filtered page. The native TypeScript wrapper restores BLOB
+buffers and non-finite REAL values in these JSON paths before exposing the
+standard row shapes.
+
+`upsertStreamingTurn` runs in an async Rust task under the writer mutex; Forge
+emits its process-change event after the write completes. `appendConversationTurn`
+uses a synchronous `NativeDatabase.transaction` because its turn factory and
+optional process-update callback can re-enter the same database. The transaction
+holds the writer through turn-index allocation, callback execution, updates,
+and rollback.
+
+### Process-store benchmark
+
+`npm run bench:process-search -w packages/forge -- --turns 50000` compares hydrated
+AC-07 reads and writes against an optional local better-sqlite3 baseline. The
+`--assert-p50` gate requires output-equivalent results, a 50k-turn fixture,
+every workload at least as fast at p50, and an event-loop timer firing during
+dense async search. The fixture includes a chat-folder membership, so both
+summary readers resolve folder IDs. `--profile` measures direct `NativeDatabase`
+read calls against Forge's hydrated reads with the same filters and result
+counts to separate native/transport cost from Forge hydration.
 
 ### Tables
 
@@ -185,8 +240,8 @@ like `reducing`, `approved`, or `grilling` ride in `extra.detailStatus`. Child t
 `payload.context.taskGroup = { groupId, groupType, role, itemKey?, workspaceId }`, mirrored into
 `AIProcess.metadata.taskGroup` and forwarded on history items. Dream groups are `hidden`
 (linkage-only). `backfillTaskGroups` idempotently projects existing runs on server start.
-Registry writes are best-effort: failures log and never break orchestration. With the file
-backend the registry is in-memory only.
+Registry writes are best-effort: failures log and never break orchestration.
+Tests injecting a file store get an in-memory registry.
 
 `parent_group_id` (schema v29) lets a group name a containing group; it is `NULL` for every
 run-style group and for flat chat folders. Membership helpers: `unlinkChild(workspaceId,
@@ -203,17 +258,20 @@ locates a group without knowing its workspace, so a caller can tell "no such gro
 User-created chat folders reuse the registry as `task_groups` rows of type `chat-folder`
 (`CHAT_FOLDER_GROUP_TYPE`), one `task_group_members` row per filed process, with `color` and
 `sortIndex` in the `extra` blob. They deliberately register no client task-group descriptor —
-a folder has no run lifecycle and must never render as a run header. `getProcessSummaries`
-stamps `folderId` onto each `ProcessIndexEntry` from a single membership query, so list views
-never join themselves. REST lives in `packages/coc/src/server/processes/chat-folder-handler.ts`
+a folder has no run lifecycle and must never render as a run header. The native
+`getProcessSummaries` page resolves each folder within its read snapshot, using the
+latest valid membership by `linked_at` and row ID; Forge maps it to `folderId`.
+List views do not query folder membership. REST lives in `packages/coc/src/server/processes/chat-folder-handler.ts`
 under a dedicated `/chat-folders` namespace — generic task-group mutation is never exposed over
 HTTP, so a client cannot touch a live for-each run's group record. UI is gated by the
 `features.chatFolders` flag; the routes and schema are not.
 
 ## FileProcessStore
 
-Per-repo directory layout under `~/.coc/repos/<workspaceId>/processes/`, selected by
-`store.backend: file` in config. 500-process cap.
+Tests may inject this forge implementation directly. It uses per-repo directories
+under `~/.coc/repos/<workspaceId>/processes/` and has a 500-process cap.
+Production accepts a configured `store.backend: file` value for existing config
+files, warns at store creation, and uses native SQLite.
 
 ## Process Lifecycle
 

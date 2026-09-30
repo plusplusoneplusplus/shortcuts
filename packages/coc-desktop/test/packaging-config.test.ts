@@ -35,6 +35,14 @@ function buildConfig(): Build {
     return (JSON.parse(fs.readFileSync(file, 'utf8')).build ?? {}) as Build;
 }
 
+function desktopPackage(): {
+    scripts: Record<string, string>;
+    devDependencies: Record<string, string>;
+} {
+    const file = path.resolve(__dirname, '../package.json');
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
 function containerBuildConfig(): Build {
     const file = path.resolve(__dirname, '../electron-builder.container.cjs');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -42,6 +50,35 @@ function containerBuildConfig(): Build {
 }
 
 describe('electron-builder packaging config', () => {
+    it('launches without an ABI preflight or rebuild dependency', () => {
+        const pkg = desktopPackage();
+        for (const script of ['prestart', 'rebuild:native', 'ensure:native', 'ensure:native:node', 'prebuild:sqlite:win']) {
+            expect(pkg.scripts).not.toHaveProperty(script);
+        }
+        expect(pkg.devDependencies).not.toHaveProperty('@electron/rebuild');
+        expect(pkg.scripts.start).toBe('electron .');
+    });
+
+    it('builds both Windows installers without fetching a SQLite binary', () => {
+        const { scripts } = desktopPackage();
+        expect(scripts['dist:win']).toBe('electron-builder --win nsis --x64 -c.npmRebuild=false');
+        expect(scripts['dist:win:container']).toBe(
+            'electron-builder --config electron-builder.container.cjs --win nsis --x64 -c.npmRebuild=false',
+        );
+    });
+
+    it('retains general native and executable unpacking without SQLite-specific rules', () => {
+        for (const config of [buildConfig(), containerBuildConfig()]) {
+            const unpack = config.asarUnpack ?? [];
+            expect(unpack).toContain('**/*.node');
+            expect(unpack).toContain('**/coc-symbols-lsp*');
+            expect(unpack).toContain('**/@github/copilot/**');
+            expect(unpack).toContain('**/@github/copilot-sdk-*/**');
+            expect(unpack).toContain('**/@github/copilot-*-*/**');
+            expect(unpack.some((glob) => /sqlite/i.test(glob))).toBe(false);
+        }
+    });
+
     it('ships a single macOS dmg (no duplicate zip artifact)', () => {
         expect(buildConfig().mac?.target).toEqual(['dmg']);
     });

@@ -58,7 +58,10 @@ build_coccontainer() {
     cd "$REPO_ROOT"
     npm install || { echo -e "\033[31mnpm install failed\033[0m"; return 1; }
 
-    echo -e "\n\033[36m=== Building all packages (coc-memory → coc-agent-sdk → forge → coc-client → coc-workflow → coc-connector → coc → coccontainer) ===\033[0m"
+    echo -e "\n\033[36m=== Building all packages (coc-native → coc-memory → coc-agent-sdk → forge → coc-client → coc-workflow → coc-connector → coc → coccontainer) ===\033[0m"
+
+    cd "$REPO_ROOT"
+    npm run ensure:native -w packages/coc-native || { echo -e "\033[31mcoc-native build failed\033[0m"; return 1; }
 
     cd "$REPO_ROOT/packages/coc-memory"
     npm run build || { echo -e "\033[31mcoc-memory build failed\033[0m"; return 1; }
@@ -96,12 +99,6 @@ build_coccontainer() {
     # from root node_modules. A second install restores them from the local cache.
     cd "$REPO_ROOT"
     npm install || { echo -e "\033[31mPost-link npm install failed\033[0m"; return 1; }
-
-    echo -e "\n\033[36m=== Verifying native dependencies ===\033[0m"
-    node "$REPO_ROOT/scripts/ensure-native-dependency.mjs" better-sqlite3 || {
-        echo -e "\033[31mNative dependency verification failed\033[0m"
-        return 1
-    }
 
     cd "$REPO_ROOT"
     echo -e "\033[32mBuild succeeded.\033[0m"

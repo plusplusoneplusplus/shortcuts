@@ -3,8 +3,7 @@
  *
  * Runs in a child process spawned by the Electron main process. Because the
  * child is forked with `ELECTRON_RUN_AS_NODE=1`, Electron's own binary executes
- * this file as plain Node — which is what lets the native modules
- * (`better-sqlite3`, `node-pty`) load against Electron's ABI (AC-04).
+ * this file as a Node process and loads the server's native modules (AC-04).
  *
  * It boots the prebuilt CoC server verbatim:
  *   - `createExecutionServer({ port, host, dataDir, store, fileConfig })`

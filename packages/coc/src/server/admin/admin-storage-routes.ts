@@ -22,7 +22,7 @@ import { resolveConfigPath } from './admin-route-types';
 import { TokenManager } from './token-manager';
 
 export function registerStorageRoutes(routes: Route[], options: AdminRouteOptions): void {
-    const { store, dataDir, getWsServer, configFunctions } = options;
+    const { store, dataDir, getWsServer } = options;
     const resolvedConfigPath = resolveConfigPath(options);
 
     // Route-scoped token managers — isolated per server instance; TTL configurable for tests.
@@ -40,9 +40,6 @@ export function registerStorageRoutes(routes: Route[], options: AdminRouteOption
         pattern: '/api/admin/storage/status',
         handler: async (_req, res) => {
             try {
-                const config = configFunctions?.loadConfigFile?.(resolvedConfigPath);
-                const backend = config?.store?.backend ?? 'sqlite';
-
                 const [workspaces, processCount] = await Promise.all([
                     store.getWorkspaces(),
                     store.getProcessCount(),
@@ -52,14 +49,14 @@ export function registerStorageRoutes(routes: Route[], options: AdminRouteOption
                 const dbExists = fs.existsSync(dbPath);
 
                 const result: Record<string, unknown> = {
-                    backend,
+                    backend: 'sqlite',
                     stats: {
                         processes: processCount,
                         workspaces: workspaces.length,
                     },
                 };
 
-                if (backend === 'sqlite' && dbExists) {
+                if (dbExists) {
                     result.dbPath = dbPath;
                 }
 

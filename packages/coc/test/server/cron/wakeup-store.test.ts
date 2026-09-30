@@ -4,11 +4,11 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { WakeupStore } from '../../../src/server/cron/wakeup-store';
 import type { WakeupEntry } from '../../../src/server/cron/wakeup-types';
 
-function createDb(): Database.Database {
+function createDb(): Database {
     return new Database(':memory:');
 }
 
@@ -28,7 +28,7 @@ function makeWakeup(overrides: Partial<WakeupEntry> = {}): WakeupEntry {
 }
 
 describe('WakeupStore', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: WakeupStore;
 
     beforeEach(() => {

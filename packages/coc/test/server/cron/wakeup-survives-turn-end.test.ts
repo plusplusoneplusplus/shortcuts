@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { ScheduleTimerRegistry } from '../../../src/server/schedule/schedule-timer-registry';
 import { createEnqueueWakeup, wakeupTimerKey } from '../../../src/server/cron/enqueue-wakeup';
 import { WakeupStore } from '../../../src/server/cron/wakeup-store';
@@ -47,7 +47,7 @@ function makeWakeupDeps(
 
 describe('AC-04: scheduled wakeup survives turn-end teardown', () => {
     let store: MockProcessStore;
-    let db: Database.Database;
+    let db: Database;
     let wakeupStore: WakeupStore;
     let wakeupExecutor: WakeupExecutor;
     let timerRegistry: ScheduleTimerRegistry;

@@ -101,6 +101,17 @@ export {
     NotesFsError,
     toNotesFsError,
 } from './notes-fs';
+
+export { loadNativeSqlite, NativeDatabase, nativeSqliteStatus, NativeStatement } from './sqlite';
+export type {
+    NativeDatabaseOptions,
+    NativePragmaOptions,
+    NativeRunResult,
+    NativeSqliteAddon,
+    NativeSqliteParameters,
+    NativeSqliteRow,
+    NativeSqliteValue,
+} from './sqlite';
 export type {
     NativeNotesContentOptions,
     NativeNotesCreatedEntry,

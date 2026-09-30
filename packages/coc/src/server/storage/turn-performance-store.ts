@@ -11,7 +11,7 @@
  * process store setups), every method is a safe no-op.
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase, NativeStatement } from '@plusplusoneplusplus/coc-native';
 import type { TurnPerformanceEvent, TurnPerformanceStatus } from '@plusplusoneplusplus/forge';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 
@@ -37,12 +37,12 @@ export interface TurnPerformanceQuery {
 // ============================================================================
 
 export class TurnPerformanceStore {
-    private readonly db: Database.Database | null;
+    private readonly db: NativeDatabase | null;
 
-    private stmtUpsert: Database.Statement | undefined;
-    private stmtPrune: Database.Statement | undefined;
+    private stmtUpsert: NativeStatement | undefined;
+    private stmtPrune: NativeStatement | undefined;
 
-    constructor(db?: Database.Database | null) {
+    constructor(db?: NativeDatabase | null) {
         this.db = db ?? null;
         if (!this.db) return;
 
@@ -166,7 +166,7 @@ export class TurnPerformanceStore {
     // Table setup (idempotent)
     // ========================================================================
 
-    private ensureTable(db: Database.Database): void {
+    private ensureTable(db: NativeDatabase): void {
         db.exec(`
             CREATE TABLE IF NOT EXISTS turn_performance (
                 id                TEXT PRIMARY KEY,

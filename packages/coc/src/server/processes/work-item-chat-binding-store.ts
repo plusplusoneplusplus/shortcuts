@@ -3,14 +3,14 @@
  * chat feature. Uses the shared `processes.db` database.
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { ChatBindingStore, type ChatBinding, type ChatBindings } from '../shared/chat-binding-store';
 
 export type WorkItemChatBinding = ChatBinding;
 export type WorkItemChatBindings = ChatBindings;
 
 export class WorkItemChatBindingStore extends ChatBindingStore {
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         super(db, 'work_item_chat_bindings', 'work_item_id');
     }
 

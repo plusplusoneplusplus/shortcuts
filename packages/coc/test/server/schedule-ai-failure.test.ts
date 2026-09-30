@@ -17,7 +17,7 @@ import { SqliteScheduleRunPersistence } from '../../src/server/schedule/sqlite-s
 import type { ScheduleRunRecord } from '../../src/server/schedule/schedule-manager';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -97,7 +97,7 @@ describe('Schedule AI Failure (unit — direct ScheduleManager)', () => {
     let persistence: ScheduleYamlPersistence;
     let runPersistence: SqliteScheduleRunPersistence;
     let manager: ScheduleManager;
-    let db: Database.Database;
+    let db: Database;
 
     const REPO_ID = 'test-repo';
 

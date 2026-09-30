@@ -265,6 +265,54 @@ describe('SqliteProcessStore — appendConversationTurn', () => {
         expect(result).toBeUndefined();
     });
 
+    it('rolls back streaming deletion when the turn factory throws', async () => {
+        await store.addProcess(makeProcess('at-factory-error', {
+            conversationTurns: [makeTurn(0, { role: 'assistant', content: 'still streaming', streaming: true })],
+        }));
+        const before = await store.getProcess('at-factory-error');
+        let events = 0;
+        store.onProcessChange = () => { events++; };
+
+        await expect(store.appendConversationTurn('at-factory-error', () => {
+            throw new Error('factory failed');
+        }, { filterStreaming: true })).rejects.toThrow('factory failed');
+
+        expect(await store.getProcess('at-factory-error')).toEqual(before);
+        expect(events).toBe(0);
+    });
+
+    it('runs re-entrant callbacks inside the transaction and rolls back failed updates', async () => {
+        const processId = 'at-update-error';
+        await store.addProcess(makeProcess(processId, {
+            conversationTurns: [makeTurn(0, { role: 'assistant', content: 'still streaming', streaming: true })],
+        }));
+        const before = await store.getProcess(processId);
+        const db = store.getDatabase();
+        let events = 0;
+        store.onProcessChange = () => { events++; };
+
+        await expect(store.appendConversationTurn(processId, index => {
+            expect(index).toBe(0);
+            expect(db.prepare('SELECT COUNT(*) AS count FROM conversation_turns WHERE process_id = ?')
+                .get<{ count: number }>(processId)?.count).toBe(0);
+            return makeTurn(index, { role: 'user', content: 'replacement' });
+        }, {
+            filterStreaming: true,
+            additionalUpdates: current => {
+                expect(current.id).toBe(processId);
+                expect(events).toBe(0);
+                expect(db.prepare('SELECT content FROM conversation_turns WHERE process_id = ?')
+                    .get<{ content: string }>(processId)?.content).toBe('replacement');
+                throw new Error('updates failed');
+            },
+        })).rejects.toThrow('updates failed');
+
+        expect(await store.getProcess(processId)).toEqual(before);
+        expect(db.prepare('SELECT content FROM conversation_search WHERE conversation_search MATCH ?')
+            .all('replacement')).toEqual([]);
+        expect(events).toBe(0);
+    });
+
     it('onProcessChange includes process object after appendConversationTurn', async () => {
         await store.addProcess(makeProcess('at-evt'));
         const changes: Array<{ type: string; process?: any }> = [];

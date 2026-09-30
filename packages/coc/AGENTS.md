@@ -31,6 +31,10 @@ all have their own `references/*.md`.
 
 ## Local Invariants
 
+- **Production process persistence is native SQLite.** `createProcessStore`
+  always opens `processes.db` through forge's `SqliteProcessStore`; a configured
+  `store.backend: file` warns and is ignored. Forge's `FileProcessStore` is
+  available for injected test fixtures only.
 - **Repo-group split routing** keeps the group as the page workspace and a
   member as the Git data workspace. With `splitWorkspacePanel` on, desktop and
   mobile expose Git only inside the group's Chats tab; member/commit Git links
@@ -1118,7 +1122,7 @@ all have their own `references/*.md`.
   review-progress state.
 - **Native Copilot session reads** (`src/server/native-copilot-sessions/`)
   must stay strictly read-only against the native store: open
-  `~/.copilot/session-store.db` with short-lived `readonly` SQLite connections,
+  `~/.copilot/session-store.db` with short-lived `readonly` NativeDatabase connections,
   keep every user-provided filter parameterized (FTS terms literal-quoted), and
   return typed `db-missing`/`db-invalid` states instead of throwing. Never route
   native session IDs into CoC process/chat action handlers. Rich detail

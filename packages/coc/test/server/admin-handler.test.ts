@@ -61,6 +61,7 @@ function request(
 
 describe('Admin Handler', () => {
     let server: ExecutionServer | undefined;
+    let sqliteStore: SqliteProcessStore | undefined;
     let dataDir: string;
 
     beforeEach(() => {
@@ -74,6 +75,9 @@ describe('Admin Handler', () => {
             await server.close();
             server = undefined;
         }
+        // Windows cannot remove a directory holding an open SQLite file.
+        sqliteStore?.close();
+        sqliteStore = undefined;
         fs.rmSync(dataDir, { recursive: true, force: true });
         resetWipeToken();
         resetImportToken();
@@ -269,7 +273,7 @@ describe('Admin Handler', () => {
 
         it('should delete queue rows when wiping', async () => {
             // Use SqliteProcessStore so queue rows are counted/deleted from SQLite
-            const sqliteStore = new SqliteProcessStore({ dataDir });
+            sqliteStore = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
             server = await createExecutionServer({ port: 0, host: 'localhost', store: sqliteStore, dataDir });
             const srv = server;
 

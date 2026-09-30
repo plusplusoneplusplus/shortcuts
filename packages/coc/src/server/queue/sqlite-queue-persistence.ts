@@ -11,7 +11,7 @@
  *   and cleaned up on restart (served from the process store instead).
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { SqliteQueueStore, type TaskQueueManager, type QueueChangeEvent, type QueuedTask, type QueueItem, type PauseMarker } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
 
@@ -54,7 +54,7 @@ interface BridgeQueueChangeEvent extends QueueChangeEvent {
 export class SqliteQueuePersistence {
     private readonly bridge: MultiRepoQueueRouter;
     private readonly store: SqliteQueueStore;
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
     private readonly restartPolicy: RestartPolicy;
 
     /** Maps repoId → rootPath (persisted in queue_repo_paths table). */
@@ -64,7 +64,7 @@ export class SqliteQueuePersistence {
 
     constructor(
         bridge: MultiRepoQueueRouter,
-        db: Database.Database,
+        db: NativeDatabase,
         options?: SqliteQueuePersistenceOptions,
     ) {
         this.bridge = bridge;

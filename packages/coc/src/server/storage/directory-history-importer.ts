@@ -8,10 +8,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-    Database,
-    getLogger,
-} from '@plusplusoneplusplus/forge';
+import { getLogger } from '@plusplusoneplusplus/forge';
+import { NativeDatabase, type NativeRunResult } from '@plusplusoneplusplus/coc-native';
 import type {
     ProcessIndexEntry,
     StoredProcessEntry,
@@ -205,7 +203,7 @@ export class DirectoryHistoryImporter {
         dbPath: string,
         onProgress?: (event: ImportProgress) => void,
     ): ImportSummary {
-        const db = new Database(dbPath);
+        const db = new NativeDatabase(dbPath);
         const emit = (event: ImportProgress) => {
             try { onProgress?.(event); } catch { /* never let callback errors break import */ }
         };
@@ -307,8 +305,8 @@ export class DirectoryHistoryImporter {
     private importWorkspaceProcesses(
         dir: string,
         workspaceId: string,
-        insertProcess: { run: (params: Record<string, unknown>) => Database.RunResult },
-        insertTurn: { run: (params: Record<string, unknown>) => Database.RunResult },
+        insertProcess: { run: (params: Record<string, unknown>) => NativeRunResult },
+        insertTurn: { run: (params: Record<string, unknown>) => NativeRunResult },
         archived: boolean
     ): { imported: number; skipped: number; failed: number } {
         const indexPath = path.join(dir, 'index.json');

@@ -16,7 +16,7 @@ import { ScheduleYamlPersistence } from '../../src/server/schedule/schedule-yaml
 import { SqliteScheduleRunPersistence } from '../../src/server/schedule/sqlite-schedule-run-persistence';
 import { createExecutionServer } from '../../src/server/index';
 import { FileProcessStore, initializeDatabase } from '@plusplusoneplusplus/forge';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import type { ExecutionServer } from '@plusplusoneplusplus/coc-server';
 
 // ============================================================================
@@ -70,7 +70,7 @@ describe('Two Schedules With Same Cron (Section 4)', () => {
     let persistence: ScheduleYamlPersistence;
     let runPersistence: SqliteScheduleRunPersistence;
     let manager: ScheduleManager;
-    let db: Database.Database;
+    let db: Database;
 
     const REPO_ID = 'test-repo';
 

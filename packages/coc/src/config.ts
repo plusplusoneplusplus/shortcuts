@@ -7,11 +7,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import yaml from 'js-yaml';
-import { FileProcessStore, SqliteProcessStore } from '@plusplusoneplusplus/forge';
+import { SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { validateConfigWithSchema } from './config/schema';
 import type { ChatStylePromptOverrides } from './config/chat-style-prompts';
 import { TOP_LEVEL_ADMIN_SETTING_KEYS } from './config/admin-setting-definitions';
+import { printWarning } from './logger';
 import {
     CONFIG_NAMESPACE_SOURCE_KEYS,
     FILE_ONLY_TOP_LEVEL_LEAVES,
@@ -729,7 +730,7 @@ export interface ResolvedCLIConfig {
     };
     /** Process store configuration */
     store: {
-        backend: 'file' | 'sqlite';
+        backend: 'sqlite';
     };
     /** Monitoring configuration */
     monitoring: {
@@ -1284,15 +1285,14 @@ export function resolveLoggingConfig(
 // ============================================================================
 
 /**
- * Create a process store based on the configured backend.
- * Defaults to SQLite when no backend is specified.
+ * Create the native SQLite process store. A configured file backend is ignored.
  */
 export function createProcessStore(
     dataDir: string,
     backend?: 'file' | 'sqlite',
-): FileProcessStore | SqliteProcessStore {
-    const resolved = backend ?? 'sqlite';
-    return resolved === 'sqlite'
-        ? new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') })
-        : new FileProcessStore({ dataDir });
+): SqliteProcessStore {
+    if (backend === 'file') {
+        printWarning('store.backend: file is unsupported; using the SQLite process store.');
+    }
+    return new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
 }

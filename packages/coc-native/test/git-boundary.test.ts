@@ -269,9 +269,15 @@ describe('gitStatusEntries marshalling', () => {
                 '-c', 'commit.gpgsign=false',
                 'commit', '-m', 'tracked',
             ]);
-            execFileSync('git', ['-C', stalled, 'config', 'core.fsmonitor', hook]);
             fs.writeFileSync(path.join(stalled, 'file.txt'), 'x\n');
-            await expect(gitAddon.gitStatusEntries(stalled, { timeout: 250 })).rejects.toThrow(
+            await expect(gitAddon.gitStatusEntries(stalled, {
+                timeout: 250,
+                env: {
+                    GIT_CONFIG_COUNT: '1',
+                    GIT_CONFIG_KEY_0: 'core.fsmonitor',
+                    GIT_CONFIG_VALUE_0: hook,
+                },
+            })).rejects.toThrow(
                 /^git status --porcelain --untracked-files=all failed: /,
             );
         } finally {

@@ -3,7 +3,7 @@
  * Uses the shared `processes.db` database (same pattern as CommitChatBindingStore).
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase, NativeStatement } from '@plusplusoneplusplus/coc-native';
 import { ChatBindingStore, toBindings, type BindingRow, type ChatBinding, type ChatBindings } from '../shared/chat-binding-store';
 
 // ============================================================================
@@ -24,9 +24,9 @@ export type PullRequestChatBindings = ChatBindings;
 // ============================================================================
 
 export class PullRequestChatBindingStore extends ChatBindingStore {
-    private readonly stmtListByTask: Database.Statement;
+    private readonly stmtListByTask: NativeStatement;
 
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         super(db, 'pull_request_chat_bindings', 'pr_id');
         this.stmtListByTask = db.prepare(
             'SELECT pr_id AS key, task_id, created_at FROM pull_request_chat_bindings WHERE workspace_id = ? AND task_id = ?',

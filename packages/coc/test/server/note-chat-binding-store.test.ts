@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { NoteChatBindingStore } from '../../src/server/notes/note-chat-binding-store';
 
 describe('NoteChatBindingStore', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: NoteChatBindingStore;
 
     beforeEach(() => {

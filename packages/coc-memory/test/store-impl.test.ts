@@ -452,6 +452,46 @@ describe('SqliteEpisodeStore', () => {
     });
 });
 
+describe('SQLite memory store durability', () => {
+    it('reopens facts, FTS index, embeddings, and episodes without changing their data', async () => {
+        const tmpDir = makeTmpDir();
+        let stores: ReturnType<typeof createMemoryStores> | undefined;
+        try {
+            stores = createMemoryStores(tmpDir);
+            const fact = await stores.facts.addFact(WS_FACT('ws-durable'));
+            const episode = await stores.episodes.addEpisode({
+                ...EPISODE_INPUT,
+                scope: 'workspace',
+                workspaceId: 'ws-durable',
+                turnIndex: 0,
+            });
+            const embedding = Buffer.from([0, 1, 128, 255]);
+            stores.facts.storeEmbedding(fact.id, embedding);
+            await stores.facts.recordRecall([fact.id]);
+            stores.close();
+            stores = undefined;
+
+            stores = createMemoryStores(tmpDir);
+            expect(await stores.facts.getFact(fact.id)).toMatchObject({
+                id: fact.id,
+                scope: 'workspace',
+                workspaceId: 'ws-durable',
+                recalledCount: 1,
+            });
+            expect(stores.facts.getEmbedding(fact.id)).toEqual(embedding);
+            expect((await stores.facts.searchFacts({
+                text: 'Kubernetes',
+                scope: 'workspace',
+                workspaceId: 'ws-durable',
+            })).map(result => result.fact.id)).toEqual([fact.id]);
+            expect(await stores.episodes.getEpisode(episode.id)).toEqual(episode);
+        } finally {
+            stores?.close();
+            rmSync(tmpDir, { recursive: true, force: true });
+        }
+    });
+});
+
 // ---------------------------------------------------------------------------
 // MemoryScopeResolver — AC-02 Definition of Done scenarios
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { ScheduleTimerRegistry } from '../../../src/server/schedule/schedule-timer-registry';
 import { WakeupStore } from '../../../src/server/cron/wakeup-store';
 import { WakeupExecutor } from '../../../src/server/cron/wakeup-executor';
@@ -17,7 +17,7 @@ import { createMockProcessStore } from '../helpers/mock-process-store';
 const BASE = Date.UTC(2026, 0, 1, 0, 0, 0);
 
 describe('createEnqueueWakeup', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: WakeupStore;
     let executor: WakeupExecutor;
     let armSpy: ReturnType<typeof vi.spyOn>;

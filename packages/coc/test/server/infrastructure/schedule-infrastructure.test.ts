@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 
 vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
@@ -43,7 +43,7 @@ function makeStubStore(): any {
 
 describe('createScheduleInfrastructure', () => {
     let dataDir: string;
-    let db: Database.Database;
+    let db: Database;
 
     beforeEach(() => {
         dataDir = makeTempDir();

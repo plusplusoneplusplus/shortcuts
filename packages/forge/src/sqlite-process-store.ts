@@ -1,5 +1,5 @@
 /**
- * Single-file process store using better-sqlite3.
+ * Single-file process store using coc-native's SQLite driver.
  * All methods are synchronous at the SQLite level, wrapped in async
  * to satisfy the ProcessStore interface's Promise return types.
  *
@@ -8,8 +8,7 @@
 
 import * as fs from 'fs';
 import { createProcessEventBus } from './process-event-bus';
-import Database from 'better-sqlite3';
-import type { Statement } from 'better-sqlite3';
+import { NativeDatabase, type NativeStatement } from '@plusplusoneplusplus/coc-native';
 
 import {
     ProcessStore,
@@ -40,7 +39,6 @@ import type { PendingMessage, ActiveProviderSession } from './ai/process-interfa
 import type { AIBackendType } from './ai/types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { initializeDatabase } from './sqlite-schema';
-import { CHAT_FOLDER_GROUP_TYPE } from './task-group-store';
 import { getLogger } from './logger';
 import { computeMessagePreview } from './utils/message-preview';
 
@@ -636,24 +634,23 @@ function rowToWiki(row: WikiRow): WikiInfo {
 // ============================================================================
 
 export class SqliteProcessStore implements ProcessStore {
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
     private readonly dbPath: string;
     private readonly bus = createProcessEventBus();
     private readonly flushHandlers = new Map<string, () => Promise<void>>();
 
     // Cached prepared statements
-    private readonly insertProcessStmt: Statement;
-    private readonly insertTurnStmt: Statement;
-    private readonly getProcessStmt: Statement;
-    private readonly getTurnsStmt: Statement;
-    private readonly upsertStreamingStmt: Statement;
-    private readonly maxTurnIndexStmt: Statement;
+    private readonly insertProcessStmt: NativeStatement;
+    private readonly insertTurnStmt: NativeStatement;
+    private readonly getProcessStmt: NativeStatement;
+    private readonly getTurnsStmt: NativeStatement;
+    private readonly maxTurnIndexStmt: NativeStatement;
 
     onProcessChange?: ProcessChangeCallback;
 
     constructor(options: SqliteProcessStoreOptions) {
         this.dbPath = options.dbPath;
-        this.db = new Database(options.dbPath);
+        this.db = new NativeDatabase(options.dbPath);
         initializeDatabase(this.db);
 
         // Prepare cached statements
@@ -699,23 +696,17 @@ export class SqliteProcessStore implements ProcessStore {
             'SELECT * FROM conversation_turns WHERE process_id = ? ORDER BY turn_index'
         );
 
-        this.upsertStreamingStmt = this.db.prepare(`
-            UPDATE conversation_turns
-            SET content = @content, timeline = @timeline, streaming = @streaming
-            WHERE process_id = @process_id AND streaming = 1
-        `);
-
         this.maxTurnIndexStmt = this.db.prepare(
             'SELECT COALESCE(MAX(turn_index), -1) + 1 AS next_idx FROM conversation_turns WHERE process_id = ?'
         );
     }
 
     /**
-     * Returns the underlying `better-sqlite3` Database instance.
+     * Returns the underlying coc-native database handle.
      * Used by trusted callers (e.g. SqliteQueuePersistence) that need direct
      * access to the shared database connection.
      */
-    getDatabase(): Database.Database {
+    getDatabase(): NativeDatabase {
         return this.db;
     }
 
@@ -878,40 +869,25 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     async getAllProcesses(filter?: ProcessFilter): Promise<AIProcess[]> {
-        const { sql, params } = this.buildProcessWhereClause(filter);
-
         const excludeConversation = filter?.exclude?.includes('conversation');
         const excludeToolCalls = filter?.exclude?.includes('toolCalls');
-
-        // When the caller is only interested in the list-view fields (i.e. is
-        // already discarding fullPrompt/result/conversation), skip reading the
-        // heavy text columns from disk. For a workspace with 100 history items
-        // whose prompts/results/structured_results can each be several KB,
-        // this trims tens of KB to ~1 MB of I/O off every history fetch.
-        const selectCols = excludeConversation
-            ? `id, workspace_id, type, prompt_preview, NULL AS full_prompt, status, ` +
-              `start_time, end_time, error, NULL AS result, result_file_path, ` +
-              `raw_stdout_file_path, metadata, group_metadata, NULL AS structured_result, ` +
-              `parent_process_id, sdk_session_id, active_provider_session, backend, working_directory, ` +
-              `title, custom_title, last_message_preview, token_limit, current_tokens, ` +
-              `cumulative_token_usage, stale, data_file_path, archived, pinned_at, ` +
-              `seen_at, last_event_at`
-            : '*';
-        const query = `SELECT ${selectCols} FROM processes ${sql} ORDER BY last_event_at DESC` +
-            (filter?.limit !== undefined ? ` LIMIT ?` : '') +
-            (filter?.offset !== undefined ? ` OFFSET ?` : '');
-
-        const queryParams = [...params];
-        if (filter?.limit !== undefined) queryParams.push(filter.limit);
-        if (filter?.offset !== undefined) queryParams.push(filter.offset);
-
-        // Use .iterate() to avoid materializing all rows at once
+        const rows = await this.db.getAllProcesses({
+            workspaceId: filter?.workspaceId,
+            parentProcessId: filter?.parentProcessId,
+            statuses: filter?.status === undefined ? undefined :
+                Array.isArray(filter.status) ? filter.status : [filter.status],
+            processType: filter?.type,
+            since: filter?.since?.toISOString(),
+            until: filter?.until?.toISOString(),
+            limit: filter?.limit,
+            offset: filter?.offset,
+            excludeConversation,
+        });
         const results: AIProcess[] = [];
-        for (const row of this.db.prepare(query).iterate(...queryParams) as IterableIterator<ProcessRow>) {
+        for (const entry of rows) {
             let turns: ConversationTurn[] | undefined;
             if (!excludeConversation) {
-                const turnRows = this.getTurnsStmt.all(row.id) as TurnRow[];
-                turns = turnRows.map(rowToTurn);
+                turns = entry.turns?.map(row => rowToTurn(row as unknown as TurnRow));
                 if (excludeToolCalls && turns) {
                     turns = turns.map(t => {
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -921,7 +897,7 @@ export class SqliteProcessStore implements ProcessStore {
                 }
             }
 
-            const process = rowToProcess(row, turns);
+            const process = rowToProcess(entry.process as unknown as ProcessRow, turns);
             if (excludeConversation) {
                 const { conversationTurns: _ct, fullPrompt: _fp, result: _r, ...rest } = process;
                 results.push(rest as AIProcess);
@@ -939,35 +915,31 @@ export class SqliteProcessStore implements ProcessStore {
     }
 
     async getProcessSummaries(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }> {
-        const { sql, params } = this.buildProcessWhereClause(filter, true);
+        const { rows, total } = await this.db.getProcessSummaries({
+            workspaceId: filter?.workspaceId,
+            parentProcessId: filter?.parentProcessId,
+            statuses: filter?.status === undefined ? undefined :
+                Array.isArray(filter.status) ? filter.status : [filter.status],
+            processType: filter?.type,
+            since: filter?.since?.toISOString(),
+            until: filter?.until?.toISOString(),
+            limit: filter?.limit,
+            offset: filter?.offset,
+        });
 
-        // Total count (pre-pagination)
-        const countQuery = `SELECT COUNT(*) AS cnt FROM processes ${sql}`;
-        const countRow = this.db.prepare(countQuery).get(...params) as CountRow;
-        const total = countRow.cnt;
-
-        // Fetch summary columns with pagination. Derive `pending_ask_user_count` from
-        // the metadata JSON envelope so list/sidebar views can show an "awaiting input"
-        // indicator without loading the full process row.
-        const selectQuery = `SELECT id, workspace_id, status, type, start_time, end_time, prompt_preview, error, parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived, ` +
-            `COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count, ` +
-            `json_extract(metadata, '$.compaction') AS compaction_json ` +
-            `FROM processes ${sql} ORDER BY last_event_at DESC` +
-            (filter?.limit !== undefined ? ` LIMIT ?` : '') +
-            (filter?.offset !== undefined ? ` OFFSET ?` : '');
-
-        const queryParams = [...params];
-        if (filter?.limit !== undefined) queryParams.push(filter.limit);
-        if (filter?.offset !== undefined) queryParams.push(filter.offset);
-
-        type SummaryRow = ProcessRow & { pending_ask_user_count?: number | null; compaction_json?: string | null };
+        type SummaryRow = ProcessRow & {
+            pending_ask_user_count?: number | null;
+            compaction_json?: string | null;
+            folder_id?: string | null;
+        };
 
         const entries: ProcessIndexEntry[] = [];
-        for (const row of this.db.prepare(selectQuery).iterate(...queryParams) as IterableIterator<SummaryRow>) {
+        for (const raw of rows) {
+            const row = raw as unknown as SummaryRow;
             const startMs = new Date(row.start_time).getTime();
             const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
             const askUserCount = typeof row.pending_ask_user_count === 'number' ? row.pending_ask_user_count : 0;
-            entries.push({
+            const entry: ProcessIndexEntry = {
                 id: row.id,
                 workspaceId: row.workspace_id,
                 status: row.status,
@@ -987,49 +959,12 @@ export class SqliteProcessStore implements ProcessStore {
                 archived: intToBool(row.archived) || undefined,
                 pendingAskUserCount: askUserCount > 0 ? askUserCount : undefined,
                 compaction: jsonParse<ProcessCompactionState>(row.compaction_json ?? null),
-            });
+            };
+            if (row.folder_id != null) entry.folderId = row.folder_id;
+            entries.push(entry);
         }
-
-        this.stampChatFolderIds(entries);
 
         return { entries, total };
-    }
-
-    /**
-     * Denormalize chat-folder membership onto index entries so list views need
-     * no join. Runs as one extra query over the page's ids (chunked to stay
-     * under SQLite's bound-parameter limit) rather than a join on the main
-     * query, whose WHERE clause uses unqualified column names.
-     *
-     * The join against `task_groups` means a member row whose folder was
-     * deleted resolves to nothing, so a dangling row never yields a phantom
-     * folder id.
-     */
-    private stampChatFolderIds(entries: ProcessIndexEntry[]): void {
-        if (entries.length === 0) return;
-
-        const CHUNK = 400;
-        const byProcess = new Map<string, string>();
-        for (let i = 0; i < entries.length; i += CHUNK) {
-            const chunk = entries.slice(i, i + CHUNK);
-            const placeholders = chunk.map(() => '?').join(', ');
-            const rows = this.db.prepare(`
-                SELECT m.process_id, m.group_id FROM task_group_members m
-                JOIN task_groups g
-                  ON g.workspace_id = m.workspace_id AND g.group_id = m.group_id
-                WHERE g.type = ? AND m.process_id IN (${placeholders})
-                ORDER BY m.linked_at ASC, m.id ASC
-            `).all(CHAT_FOLDER_GROUP_TYPE, ...chunk.map(entry => entry.id)) as Array<{ process_id: string; group_id: string }>;
-            for (const row of rows) {
-                // Ascending order plus overwrite means the most recent link wins.
-                byProcess.set(row.process_id, row.group_id);
-            }
-        }
-
-        for (const entry of entries) {
-            const folderId = byProcess.get(entry.id);
-            if (folderId !== undefined) entry.folderId = folderId;
-        }
     }
 
     async getProcessIds(filter?: ProcessFilter): Promise<string[]> {
@@ -1361,47 +1296,13 @@ export class SqliteProcessStore implements ProcessStore {
         streaming: boolean,
         timeline?: TimelineItem[],
     ): Promise<void> {
-        const upsertTxn = this.db.transaction(() => {
-            const result = this.upsertStreamingStmt.run({
-                content,
-                timeline: JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
-                streaming: boolToInt(streaming),
-                process_id: processId,
-            });
-
-            if (result.changes === 0) {
-                // No existing streaming turn — insert new one
-                const { next_idx } = this.maxTurnIndexStmt.get(processId) as MaxTurnIndexRow;
-                this.insertTurnStmt.run({
-                    process_id: processId,
-                    turn_index: next_idx,
-                    role: 'assistant',
-                    content,
-                    timestamp: new Date().toISOString(),
-                    streaming: boolToInt(streaming),
-                    interrupted: 0,
-                    interruption_reason: null,
-                    tool_calls: null,
-                    timeline: JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
-                    images: null,
-                    historical: 0,
-                    suggestions: null,
-                    token_usage: null,
-                    paste_externalized: 0,
-                    model: null,
-                    mode: null,
-                    sdk_event_id: null,
-                    display_only: 0,
-                    compaction_summary: null,
-                    repo_group_context: null,
-                    chat_mode_context: null,
-                    provider: null,
-                    segment_id: null,
-                    relay_request_id: null,
-                });
-            }
-        });
-        upsertTxn();
+        await this.db.upsertStreamingTurn(
+            processId,
+            content,
+            streaming,
+            JSON.stringify((timeline ?? []).map(serializeTimelineItem)),
+            new Date().toISOString(),
+        );
         this.onProcessChange?.({ type: 'process-updated' });
     }
 
@@ -1417,6 +1318,9 @@ export class SqliteProcessStore implements ProcessStore {
     ): Promise<{ turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined> {
         let appendResult: { turn: ConversationTurn; allTurns: ConversationTurn[] } | undefined;
 
+        // Keep JS callbacks on the writer's thread: they can synchronously re-enter
+        // the database, and releasing the lock across an async handoff would let
+        // another append claim the same index or commit a turn before a callback throws.
         const appendTxn = this.db.transaction(() => {
             // Check process exists
             const processRow = this.getProcessStmt.get(processId) as ProcessRow | undefined;
@@ -1949,133 +1853,44 @@ export class SqliteProcessStore implements ProcessStore {
     // Full-text search
     // ========================================================================
 
-    /**
-     * Sanitize a raw user query into safe FTS5 syntax.
-     * Strips FTS5 operator characters that could cause parse errors,
-     * and wraps each term as a simple token.
-     */
-    private sanitizeFtsQuery(raw: string): string {
-        // Remove FTS5 special characters: * ^ : { } ( )
-        let cleaned = raw.replace(/[*^:{}()]/g, '');
-        // Escape double-quotes by removing them (prevents malformed phrase queries)
-        cleaned = cleaned.replace(/"/g, '');
-        // Replace hyphens with spaces to prevent FTS5 NOT operator interpretation
-        cleaned = cleaned.replace(/-/g, ' ');
-        // Collapse whitespace and trim
-        cleaned = cleaned.replace(/\s+/g, ' ').trim();
-        return cleaned;
-    }
-
     async searchConversations(
         query: string,
         filter?: SearchFilter
     ): Promise<{ results: ConversationSearchResult[]; total: number }> {
-        const empty = { results: [], total: 0 };
-
-        const sanitized = this.sanitizeFtsQuery(query);
-        if (!sanitized) return empty;
-
-        const params: unknown[] = [sanitized];
-        const whereClauses = ['conversation_search MATCH ?', 'p.archived = 0'];
-
-        if (filter?.workspaceId) {
-            whereClauses.push('p.workspace_id = ?');
-            params.push(filter.workspaceId);
-        }
-
-        if (filter?.status) {
-            const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
-            whereClauses.push(`p.status IN (${statuses.map(() => '?').join(', ')})`);
-            params.push(...statuses);
-        }
-
-        if (filter?.type) {
-            whereClauses.push('p.type = ?');
-            params.push(filter.type);
-        }
-
-        if (filter?.since) {
-            whereClauses.push('p.last_event_at >= ?');
-            params.push(filter.since.toISOString());
-        }
-
-        if (filter?.until) {
-            whereClauses.push('p.last_event_at < ?');
-            params.push(filter.until.toISOString());
-        }
-
-        const whereSQL = whereClauses.join(' AND ');
-        const limit = filter?.limit ?? 50;
-        const offset = filter?.offset ?? 0;
-
+        const empty = { results: [] as ConversationSearchResult[], total: 0 };
         try {
-            // Count total results (pre-pagination)
-            const countSQL = `
-                SELECT COUNT(*) as cnt
-                FROM conversation_search cs
-                JOIN conversation_turns ct ON ct.id = cs.rowid
-                JOIN processes p ON ct.process_id = p.id
-                WHERE ${whereSQL}
-            `;
-            const countRow = this.db.prepare(countSQL).get(...params) as { cnt: number };
-            const total = countRow.cnt;
-
-            if (total === 0) return empty;
-
-            // Fetch paginated results with snippets
-            const resultsSQL = `
-                SELECT
-                    ct.process_id,
-                    ct.turn_index,
-                    ct.role,
-                    snippet(conversation_search, 0, '<mark>', '</mark>', '…', 48) AS snippet,
-                    cs.rank,
-                    p.title AS process_title,
-                    p.prompt_preview,
-                    p.status AS process_status,
-                    p.type AS process_type,
-                    p.workspace_id,
-                    p.start_time
-                FROM conversation_search cs
-                JOIN conversation_turns ct ON ct.id = cs.rowid
-                JOIN processes p ON ct.process_id = p.id
-                WHERE ${whereSQL}
-                ORDER BY cs.rank
-                LIMIT ? OFFSET ?
-            `;
-            const rows = this.db.prepare(resultsSQL).all(...params, limit, offset) as Array<{
-                process_id: string;
-                turn_index: number;
-                role: string;
-                snippet: string;
-                rank: number;
-                process_title: string | null;
-                prompt_preview: string | null;
-                process_status: string;
-                process_type: string;
-                workspace_id: string;
-                start_time: string;
-            }>;
-
-            const results: ConversationSearchResult[] = rows.map(row => ({
-                processId: row.process_id,
-                turnIndex: row.turn_index,
-                role: row.role,
-                snippet: row.snippet,
-                rank: row.rank,
-                processTitle: row.process_title ?? undefined,
-                promptPreview: row.prompt_preview ?? '',
-                processStatus: row.process_status,
-                processType: row.process_type,
-                workspaceId: row.workspace_id,
-                startTime: row.start_time,
-            }));
-
-            return { results, total };
+            const page = await this.db.searchConversations(query, {
+                workspaceId: filter?.workspaceId,
+                statuses: filter?.status ? (Array.isArray(filter.status) ? filter.status : [filter.status]) : undefined,
+                processType: filter?.type,
+                since: filter?.since?.toISOString(),
+                until: filter?.until?.toISOString(),
+                limit: filter?.limit,
+                offset: filter?.offset,
+            });
+            if (page.total === 0) return empty;
+            return {
+                results: page.results.map(row => ({
+                    processId: row.processId,
+                    turnIndex: row.turnIndex,
+                    role: row.role,
+                    snippet: row.snippet,
+                    rank: row.rank,
+                    processTitle: row.processTitle ?? undefined,
+                    promptPreview: row.promptPreview ?? '',
+                    processStatus: row.processStatus,
+                    processType: row.processType,
+                    workspaceId: row.workspaceId,
+                    startTime: row.startTime,
+                })),
+                total: page.total,
+            };
         } catch (err) {
-            // Graceful degradation: malformed FTS5 queries return empty results
-            logger.warn('searchConversations', `FTS5 query failed for "${sanitized}": ${String(err)}`);
-            return empty;
+            if (err instanceof Error && /^\[sqlite:1\] fts5: syntax error near "/.test(err.message)) {
+                logger.warn('searchConversations', `FTS5 query failed: ${err.message}`);
+                return empty;
+            }
+            throw err;
         }
     }
 
@@ -2363,8 +2178,8 @@ export class SqliteProcessStore implements ProcessStore {
     // ========================================================================
 
     async getConversationTurns(processId: string): Promise<ConversationTurn[]> {
-        const turnRows = this.getTurnsStmt.all(processId) as TurnRow[];
-        return turnRows.map(rowToTurn);
+        const turnRows = await this.db.getConversationTurns(processId);
+        return turnRows.map(row => rowToTurn(row as unknown as TurnRow));
     }
 
     // ========================================================================
@@ -2379,45 +2194,18 @@ export class SqliteProcessStore implements ProcessStore {
         offset?: number;
         excludeProcessId?: string;
     }): Promise<ProcessIndexEntry[]> {
-        const conditions: string[] = ['archived = 0'];
-        const params: unknown[] = [];
-
-        if (options.workspaceId) {
-            conditions.push('workspace_id = ?');
-            params.push(options.workspaceId);
-        }
-
-        if (options.excludeProcessId) {
-            conditions.push('id != ?');
-            params.push(options.excludeProcessId);
-        }
-
-        if (options.since) {
-            conditions.push('last_event_at >= ?');
-            params.push(options.since.toISOString());
-        }
-
-        if (options.until) {
-            conditions.push('last_event_at < ?');
-            params.push(options.until.toISOString());
-        }
-
-        const whereSQL = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const limit = Math.min(Math.max(1, options.limit ?? 10), 100);
-        const offset = Math.max(0, options.offset ?? 0);
-
-        const query = `
-            SELECT id, workspace_id, status, type, start_time, end_time,
-                   prompt_preview, error, parent_process_id, title, custom_title, last_message_preview,
-                   last_event_at, pinned_at, archived,
-                   json_extract(metadata, '$.compaction') AS compaction_json
-            FROM processes ${whereSQL}
-            ORDER BY last_event_at DESC
-            LIMIT ? OFFSET ?
-        `;
+        const rows = await this.db.listRecentProcesses({
+            workspaceId: options.workspaceId || undefined,
+            excludeProcessId: options.excludeProcessId || undefined,
+            since: options.since?.toISOString(),
+            until: options.until?.toISOString(),
+            limit: options.limit,
+            offset: options.offset,
+        });
 
         const entries: ProcessIndexEntry[] = [];
-        for (const row of this.db.prepare(query).iterate(...params, limit, offset) as IterableIterator<ProcessRow & { compaction_json?: string | null }>) {
+        for (const raw of rows) {
+            const row = raw as unknown as ProcessRow & { compaction_json?: string | null };
             const startMs = new Date(row.start_time).getTime();
             const endMs = row.end_time ? new Date(row.end_time).getTime() : undefined;
             entries.push({

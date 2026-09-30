@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as http from 'http';
-import DatabaseConstructor from 'better-sqlite3';
+import { NativeDatabase as DatabaseConstructor } from '@plusplusoneplusplus/coc-native';
 import type { TurnPerformanceEvent, TurnPerformanceStatsResponse } from '@plusplusoneplusplus/forge';
 import { registerStatsRoutes } from '../../src/server/admin/stats-handler';
 import { TurnPerformanceStore } from '../../src/server/storage/turn-performance-store';
@@ -48,7 +48,7 @@ function makeEvent(overrides: Partial<TurnPerformanceEvent> = {}): TurnPerforman
 describe('GET /api/stats/turn-performance — live HTTP round-trip', () => {
     let server: http.Server;
     let baseUrl: string;
-    let db: DatabaseConstructor.Database;
+    let db: DatabaseConstructor;
 
     beforeAll(async () => {
         db = new DatabaseConstructor(':memory:');

@@ -3,7 +3,7 @@
  * Uses the shared `processes.db` database (same pattern as SqliteQueuePersistence).
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { ChatBindingStore, type ChatBinding, type ChatBindings } from '../shared/chat-binding-store';
 
 // ============================================================================
@@ -21,9 +21,9 @@ export type CommitChatBindings = ChatBindings;
 // ============================================================================
 
 export class CommitChatBindingStore extends ChatBindingStore {
-    private readonly stmtRebind: Database.Transaction<(newHash: string, workspaceId: string, oldHash: string) => number>;
+    private readonly stmtRebind: (newHash: string, workspaceId: string, oldHash: string) => number;
 
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         super(db, 'commit_chat_bindings', 'commit_hash');
 
         const updateStmt = db.prepare(

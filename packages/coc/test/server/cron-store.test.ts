@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { CronStore } from '../../src/server/cron/cron-store';
 import type { CronEntry } from '../../src/server/cron/cron-types';
 import { MAX_ACTIVE_CRONS } from '../../src/server/cron/cron-types';
@@ -13,7 +13,7 @@ import { MAX_ACTIVE_CRONS } from '../../src/server/cron/cron-types';
 // Helpers
 // ============================================================================
 
-function createDb(): Database.Database {
+function createDb(): Database {
     return new Database(':memory:');
 }
 
@@ -42,7 +42,7 @@ function makeCron(overrides: Partial<CronEntry> = {}): CronEntry {
 // ============================================================================
 
 describe('CronStore', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: CronStore;
 
     beforeEach(() => {

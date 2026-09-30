@@ -167,6 +167,15 @@ describe('Admin Storage Routes', () => {
             expect(body.backend).toBe('sqlite');
             expect(body.dbPath).toBe(dbPath);
         });
+
+        it('reports the active SQLite backend when config requests file', async () => {
+            const configPath = path.join(dataDir, 'config.yaml');
+            fs.writeFileSync(configPath, 'store:\n  backend: file\n');
+            const srv = await startServer({ tokenTtlMs: 300_000 });
+            const res = await request(`${srv.url}/api/admin/storage/status`);
+            expect(res.status).toBe(200);
+            expect(JSON.parse(res.body).backend).toBe('sqlite');
+        });
     });
 
     // ========================================================================

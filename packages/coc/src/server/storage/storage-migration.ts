@@ -18,11 +18,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-    Database,
     initializeDatabase,
     SqliteProcessStore,
     getLogger,
 } from '@plusplusoneplusplus/forge';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type {
     ProcessIndexEntry,
     WorkspaceInfo,
@@ -167,7 +167,7 @@ export function serializeTurnToRow(
 // ============================================================================
 
 export class StorageMigrationEngine {
-    private db: Database.Database | null = null;
+    private db: NativeDatabase | null = null;
     private backupDir: string | null = null;
 
     constructor(private options: StorageMigrationOptions) {}
@@ -341,9 +341,9 @@ export class StorageMigrationEngine {
     // Phase 2: Schema creation
     // ========================================================================
 
-    private createDatabase(): Database.Database {
+    private createDatabase(): NativeDatabase {
         this.deleteDbFile();
-        const db = new Database(this.options.dbPath);
+        const db = new NativeDatabase(this.options.dbPath);
         initializeDatabase(db);
         return db;
     }

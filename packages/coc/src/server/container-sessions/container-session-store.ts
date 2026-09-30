@@ -4,7 +4,7 @@
  * database (same pattern as CronStore).
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type {
     ContainerSession,
     ContainerSessionTurn,
@@ -47,9 +47,9 @@ CREATE TABLE IF NOT EXISTS container_session_turns (
 // ============================================================================
 
 export class ContainerSessionStore {
-    private readonly db: Database.Database;
+    private readonly db: NativeDatabase;
 
-    constructor(db: Database.Database) {
+    constructor(db: NativeDatabase) {
         this.db = db;
         this.db.exec(CREATE_SESSIONS_TABLE);
         this.db.exec(CREATE_TURNS_TABLE);

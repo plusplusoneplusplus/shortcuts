@@ -117,4 +117,15 @@ describe('AgentStore', () => {
         const agent = store.add('ssh://ubuntu-arm:4001', 'ssh-agent');
         expect(agent.address).toBe('ssh://ubuntu-arm:4001');
     });
+
+    it('reopens existing agent records with status, tunnel ID, and timestamps intact', () => {
+        const agent = store.add('https://agent.example', 'remote', 'tunnel-1');
+        store.updateStatus(agent.id, 'online');
+        const saved = store.get(agent.id);
+        store.close();
+        store = createAgentStore(tmpDir);
+
+        expect(store.get(agent.id)).toEqual(saved);
+        expect(store.list()).toEqual([saved]);
+    });
 });

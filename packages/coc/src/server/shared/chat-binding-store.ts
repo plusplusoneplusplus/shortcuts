@@ -8,7 +8,7 @@
  * column and keep only their domain-specific methods.
  */
 
-import type Database from 'better-sqlite3';
+import type { NativeDatabase, NativeStatement } from '@plusplusoneplusplus/coc-native';
 
 // ============================================================================
 // Types
@@ -36,12 +36,12 @@ export interface BindingRow {
 // ============================================================================
 
 export class ChatBindingStore {
-    protected readonly stmtList: Database.Statement;
-    protected readonly stmtGet: Database.Statement;
-    protected readonly stmtBind: Database.Statement;
-    protected readonly stmtBindWithCreatedAt: Database.Statement;
-    protected readonly stmtUnbind: Database.Statement;
-    protected readonly stmtDeleteScope: Database.Statement;
+    protected readonly stmtList: NativeStatement;
+    protected readonly stmtGet: NativeStatement;
+    protected readonly stmtBind: NativeStatement;
+    protected readonly stmtBindWithCreatedAt: NativeStatement;
+    protected readonly stmtUnbind: NativeStatement;
+    protected readonly stmtDeleteScope: NativeStatement;
 
     /**
      * @param table      Table name. MUST be a compile-time literal supplied by a
@@ -50,7 +50,7 @@ export class ChatBindingStore {
      * @param keyColumn  Key column name. Same constraint as `table`.
      */
     constructor(
-        protected readonly db: Database.Database,
+        protected readonly db: NativeDatabase,
         table: string,
         protected readonly keyColumn: string,
     ) {

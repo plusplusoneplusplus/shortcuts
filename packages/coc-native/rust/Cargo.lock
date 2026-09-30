@@ -140,6 +140,7 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "parking_lot",
  "rayon",
  "regex",
  "rusqlite",

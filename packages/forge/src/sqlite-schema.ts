@@ -1,16 +1,15 @@
-import Database from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 
-export { Database };
-export type { Database as DatabaseType } from 'better-sqlite3';
+export { NativeDatabase as Database };
+export type DatabaseType = NativeDatabase;
 
 export const SCHEMA_VERSION = 38;
 
 /**
  * Read the current schema version from the database.
  */
-export function getSchemaVersion(db: Database.Database): number {
-    const row = db.pragma('user_version', { simple: true });
-    return row as number;
+export function getSchemaVersion(db: NativeDatabase): number {
+    return db.pragma<number>('user_version', { simple: true });
 }
 
 /**
@@ -21,9 +20,10 @@ export function getSchemaVersion(db: Database.Database): number {
  * For existing databases, incremental migrations are applied after the
  * idempotent schema creation, then the version is stamped.
  */
-export function initializeDatabase(db: Database.Database): void {
+export function initializeDatabase(db: NativeDatabase): void {
     // PRAGMAs must run outside the transaction
     db.pragma('journal_mode = WAL');
+    db.pragma('synchronous = NORMAL');
     db.pragma('foreign_keys = ON');
 
     const versionBefore = getSchemaVersion(db);
@@ -573,7 +573,7 @@ export function initializeDatabase(db: Database.Database): void {
     migrate();
 }
 
-function ensureColumn(db: Database.Database, table: string, column: string, definition: string): void {
+function ensureColumn(db: NativeDatabase, table: string, column: string, definition: string): void {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (columns.some(existing => existing.name === column)) {
         return;
@@ -584,7 +584,7 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
 /**
  * V1 → V2: add `seen_at TEXT` column to `processes`.
  */
-function migrateV1toV2(db: Database.Database): void {
+function migrateV1toV2(db: NativeDatabase): void {
     const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'seen_at')) {
         db.exec('ALTER TABLE processes ADD COLUMN seen_at TEXT');
@@ -596,14 +596,14 @@ function migrateV1toV2(db: Database.Database): void {
  * The CREATE TABLE IF NOT EXISTS above handles fresh databases;
  * this migration is a no-op but keeps the version chain explicit.
  */
-function migrateV2toV3(_db: Database.Database): void {
+function migrateV2toV3(_db: NativeDatabase): void {
     // Table already created by the idempotent DDL above.
 }
 
 /**
  * V3 → V4: add `last_event_at TEXT` column to `processes`.
  */
-function migrateV3toV4(db: Database.Database): void {
+function migrateV3toV4(db: NativeDatabase): void {
     const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'last_event_at')) {
         db.exec('ALTER TABLE processes ADD COLUMN last_event_at TEXT');
@@ -615,7 +615,7 @@ function migrateV3toV4(db: Database.Database): void {
  * The CREATE VIRTUAL TABLE + triggers use IF NOT EXISTS above,
  * so this migration only needs to backfill existing data.
  */
-function migrateV4toV5(db: Database.Database): void {
+function migrateV4toV5(db: NativeDatabase): void {
     const turnsCount = (db.prepare('SELECT COUNT(*) as cnt FROM conversation_turns').get() as any).cnt;
     if (turnsCount === 0) return;
 
@@ -628,7 +628,7 @@ function migrateV4toV5(db: Database.Database): void {
 /**
  * V5 → V6: add `pinned_at TEXT` column to `processes`.
  */
-function migrateV5toV6(db: Database.Database): void {
+function migrateV5toV6(db: NativeDatabase): void {
     const cols = db.prepare("PRAGMA table_info(processes)").all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'pinned_at')) {
         db.exec('ALTER TABLE processes ADD COLUMN pinned_at TEXT');
@@ -638,7 +638,7 @@ function migrateV5toV6(db: Database.Database): void {
 /**
  * V6 → V7: drop `note_chat_bindings` table (replaced by localStorage-based single-chat model).
  */
-function migrateV6toV7(db: Database.Database): void {
+function migrateV6toV7(db: NativeDatabase): void {
     db.exec('DROP TABLE IF EXISTS note_chat_bindings');
 }
 
@@ -646,7 +646,7 @@ function migrateV6toV7(db: Database.Database): void {
  * V7 → V8: add `deleted_at TEXT`, `pinned_at TEXT`, `archived INTEGER DEFAULT 0`
  * columns to `conversation_turns` for per-message delete, pin, archive.
  */
-function migrateV7toV8(db: Database.Database): void {
+function migrateV7toV8(db: NativeDatabase): void {
     const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'deleted_at')) {
         db.exec('ALTER TABLE conversation_turns ADD COLUMN deleted_at TEXT');
@@ -662,7 +662,7 @@ function migrateV7toV8(db: Database.Database): void {
 /**
  * V8 → V9: add `model TEXT` column to `conversation_turns` for model-change tracking.
  */
-function migrateV8toV9(db: Database.Database): void {
+function migrateV8toV9(db: NativeDatabase): void {
     const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'model')) {
         db.exec('ALTER TABLE conversation_turns ADD COLUMN model TEXT');
@@ -676,7 +676,7 @@ function migrateV8toV9(db: Database.Database): void {
  * that each added a subset of columns.  This migration idempotently adds
  * any that are still missing.
  */
-function migrateV9toV10(db: Database.Database): void {
+function migrateV9toV10(db: NativeDatabase): void {
     const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
     const colNames = new Set(cols.map(c => c.name));
     if (!colNames.has('deleted_at')) {
@@ -696,7 +696,7 @@ function migrateV9toV10(db: Database.Database): void {
 /**
  * V11 → V12: add `mode TEXT` column to `conversation_turns` for mode-change tracking.
  */
-function migrateV11toV12(db: Database.Database): void {
+function migrateV11toV12(db: NativeDatabase): void {
     const cols = db.prepare("PRAGMA table_info(conversation_turns)").all() as Array<{ name: string }>;
     if (!cols.some(c => c.name === 'mode')) {
         db.exec('ALTER TABLE conversation_turns ADD COLUMN mode TEXT');
@@ -709,7 +709,7 @@ function migrateV11toV12(db: Database.Database): void {
  * handles fresh databases; this migration is a no-op but keeps the version
  * chain explicit.
  */
-function migrateV12toV13(_db: Database.Database): void {
+function migrateV12toV13(_db: NativeDatabase): void {
     // Table already created by the idempotent DDL above.
 }
 
@@ -718,7 +718,7 @@ function migrateV12toV13(_db: Database.Database): void {
  * Must run AFTER migrateV6toV7 (which drops a legacy table of the same name)
  * so it cannot be relied on solely from the upfront DDL.
  */
-function migrateV13toV14(db: Database.Database): void {
+function migrateV13toV14(db: NativeDatabase): void {
     db.exec(`
         CREATE TABLE IF NOT EXISTS note_chat_bindings (
             workspace_id  TEXT NOT NULL,
@@ -739,7 +739,7 @@ function migrateV13toV14(db: Database.Database): void {
  * The CREATE TABLE IF NOT EXISTS above handles fresh databases;
  * this migration keeps the version chain explicit for existing DBs.
  */
-function migrateV14toV15(db: Database.Database): void {
+function migrateV14toV15(db: NativeDatabase): void {
     db.exec(`
         CREATE TABLE IF NOT EXISTS pull_request_chat_bindings (
             workspace_id  TEXT NOT NULL,
@@ -762,7 +762,7 @@ function migrateV14toV15(db: Database.Database): void {
  * the most recent conversation turn's cleaned content, used as a sidebar
  * fallback label when no `custom_title` is set.
  */
-function migrateV15toV16(db: Database.Database): void {
+function migrateV15toV16(db: NativeDatabase): void {
     ensureColumn(db, 'processes', 'custom_title', 'TEXT');
     ensureColumn(db, 'processes', 'last_message_preview', 'TEXT');
 }
@@ -773,7 +773,7 @@ function migrateV15toV16(db: Database.Database): void {
  * turns; from V17 onwards only user turns refresh the preview so the sidebar
  * always shows the latest user prompt as a fallback label.
  */
-function migrateV16toV17(db: Database.Database): void {
+function migrateV16toV17(db: NativeDatabase): void {
     // Pull processes that have no preview yet but at least one user turn.
     const rows = db.prepare(`
         SELECT p.id AS pid,
@@ -802,7 +802,7 @@ function migrateV16toV17(db: Database.Database): void {
  * sort can drop `COALESCE(last_event_at, start_time)` and rely on the column
  * directly, so this index satisfies both the WHERE and the ORDER BY.
  */
-function migrateV17toV18(db: Database.Database): void {
+function migrateV17toV18(db: NativeDatabase): void {
     db.exec(`UPDATE processes SET last_event_at = start_time WHERE last_event_at IS NULL`);
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_processes_ws_status_activity
@@ -813,7 +813,7 @@ function migrateV17toV18(db: Database.Database): void {
 /**
  * V18 -> V19: add persisted context-window breakdown columns to `processes`.
  */
-function migrateV18toV19(db: Database.Database): void {
+function migrateV18toV19(db: NativeDatabase): void {
     ensureColumn(db, 'processes', 'system_tokens', 'INTEGER');
     ensureColumn(db, 'processes', 'tool_definitions_tokens', 'INTEGER');
     ensureColumn(db, 'processes', 'conversation_tokens', 'INTEGER');
@@ -823,7 +823,7 @@ function migrateV18toV19(db: Database.Database): void {
  * V19 -> V20: add `work_item_chat_bindings` table for one remembered chat per
  * workspace + work item.
  */
-function migrateV19toV20(db: Database.Database): void {
+function migrateV19toV20(db: NativeDatabase): void {
     db.exec(`
         CREATE TABLE IF NOT EXISTS work_item_chat_bindings (
             workspace_id  TEXT NOT NULL,
@@ -843,7 +843,7 @@ function migrateV19toV20(db: Database.Database): void {
  * V20 -> V21: add turn-level interruption metadata for preserved partial
  * assistant output after mid-stream failures/timeouts.
  */
-function migrateV20toV21(db: Database.Database): void {
+function migrateV20toV21(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'interrupted', 'INTEGER DEFAULT 0');
     ensureColumn(db, 'conversation_turns', 'interruption_reason', 'TEXT');
 }
@@ -854,7 +854,7 @@ function migrateV20toV21(db: Database.Database): void {
  * The CREATE TABLE IF NOT EXISTS above handles fresh and existing databases;
  * this migration keeps the version chain explicit.
  */
-function migrateV21toV22(_db: Database.Database): void {
+function migrateV21toV22(_db: NativeDatabase): void {
     // Tables already created by the idempotent DDL above.
 }
 
@@ -862,7 +862,7 @@ function migrateV21toV22(_db: Database.Database): void {
  * V22 -> V23: add queue item metadata so pause markers and queue ordering can
  * be persisted in the existing queue_tasks store.
  */
-function migrateV22toV23(db: Database.Database): void {
+function migrateV22toV23(db: NativeDatabase): void {
     ensureColumn(db, 'queue_tasks', 'kind', "TEXT NOT NULL DEFAULT 'task'");
     ensureColumn(db, 'queue_tasks', 'queue_position', 'INTEGER');
     ensureColumn(db, 'queue_tasks', 'duration_hours', 'INTEGER');
@@ -877,7 +877,7 @@ function migrateV22toV23(db: Database.Database): void {
  * `user.message` event id captured on user turns, used as the durable anchor
  * for in-place history rewind/truncation.
  */
-function migrateV23toV24(db: Database.Database): void {
+function migrateV23toV24(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'sdk_event_id', 'TEXT');
 }
 
@@ -886,7 +886,7 @@ function migrateV23toV24(db: Database.Database): void {
  * synthesized for display only (e.g. the `/compact` result notice) that are
  * shown in the transcript but excluded from the model's prompt history.
  */
-function migrateV24toV25(db: Database.Database): void {
+function migrateV24toV25(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'display_only', 'INTEGER DEFAULT 0');
 }
 
@@ -899,7 +899,7 @@ function migrateV24toV25(db: Database.Database): void {
  * plus any columns added at runtime (e.g. `workspace_id`, added by the store's
  * `ensureTable`). Fresh installs have no `loops` table, so this is a no-op.
  */
-function migrateV25toV26(db: Database.Database): void {
+function migrateV25toV26(db: NativeDatabase): void {
     const hasLoops = db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'loops'")
         .get();
@@ -922,7 +922,7 @@ function migrateV25toV26(db: Database.Database): void {
  * provider-generated summary text recorded on a `/compact` result turn so the
  * chat can reveal it behind a disclosure. Existing rows stay NULL.
  */
-function migrateV26toV27(db: Database.Database): void {
+function migrateV26toV27(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'compaction_summary', 'TEXT');
 }
 
@@ -931,7 +931,7 @@ function migrateV26toV27(db: Database.Database): void {
  * repo-group member listing injected into that user turn's prompt, so the chat
  * can reveal it behind a disclosure. Existing rows stay NULL.
  */
-function migrateV27toV28(db: Database.Database): void {
+function migrateV27toV28(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'repo_group_context', 'TEXT');
 }
 
@@ -942,7 +942,7 @@ function migrateV27toV28(db: Database.Database): void {
  * rather than a migration. No backfill — NULL is correct for every existing
  * group type.
  */
-function migrateV28toV29(db: Database.Database): void {
+function migrateV28toV29(db: NativeDatabase): void {
     ensureColumn(db, 'task_groups', 'parent_group_id', 'TEXT');
 }
 
@@ -951,7 +951,7 @@ function migrateV28toV29(db: Database.Database): void {
  * holds back — the whole queue (`'all'`, and what NULL means for every existing
  * marker) or autopilot only (`'autopilot'`). No backfill needed.
  */
-function migrateV29toV30(db: Database.Database): void {
+function migrateV29toV30(db: NativeDatabase): void {
     ensureColumn(db, 'queue_tasks', 'scope', 'TEXT');
 }
 
@@ -962,7 +962,7 @@ function migrateV29toV30(db: Database.Database): void {
  * so existing rows staying NULL is correct: they predate the field and the
  * first follow-up after the upgrade re-injects once.
  */
-function migrateV30toV31(db: Database.Database): void {
+function migrateV30toV31(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'chat_mode_context', 'TEXT');
 }
 
@@ -971,7 +971,7 @@ function migrateV30toV31(db: Database.Database): void {
  * expiry instead of only being indefinite. NULL is right for every existing
  * row — those freezes were indefinite and stay that way.
  */
-function migrateV31toV32(db: Database.Database): void {
+function migrateV31toV32(db: NativeDatabase): void {
     ensureColumn(db, 'queue_tasks', 'frozen_until', 'INTEGER');
 }
 
@@ -980,13 +980,13 @@ function migrateV31toV32(db: Database.Database): void {
  * state. NULL means the delay is off. The last-task-end timestamp stays
  * in-memory, so a restored setting does not delay the first task after restart.
  */
-function migrateV32toV33(db: Database.Database): void {
+function migrateV32toV33(db: NativeDatabase): void {
     ensureColumn(db, 'queue_repo_state', 'task_delay_minutes', 'INTEGER');
     ensureColumn(db, 'queue_repo_state', 'autopilot_task_delay_minutes', 'INTEGER');
 }
 
 /** V33 -> V34: persist the active implement-plan chain gate per repository. */
-function migrateV33toV34(db: Database.Database): void {
+function migrateV33toV34(db: NativeDatabase): void {
     ensureColumn(db, 'queue_repo_state', 'pr_gate', 'TEXT');
 }
 
@@ -997,7 +997,7 @@ function migrateV33toV34(db: Database.Database): void {
  * not evidence of what ran an old turn. NULL turns fall back to the process
  * provider for display only.
  */
-function migrateV34toV35(db: Database.Database): void {
+function migrateV34toV35(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'provider', 'TEXT');
 }
 
@@ -1008,7 +1008,7 @@ function migrateV34toV35(db: Database.Database): void {
  * Existing rows stay NULL and keep reading through the legacy
  * `metadata.provider` + `sdk_session_id` projection.
  */
-function migrateV35toV36(db: Database.Database): void {
+function migrateV35toV36(db: NativeDatabase): void {
     ensureColumn(db, 'processes', 'active_provider_session', 'TEXT');
 }
 
@@ -1018,11 +1018,11 @@ function migrateV35toV36(db: Database.Database): void {
  * `provider` is not backfilled: the current binding is not evidence about
  * which session ran an old turn.
  */
-function migrateV36toV37(db: Database.Database): void {
+function migrateV36toV37(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'segment_id', 'TEXT');
 }
 
-function migrateV37toV38(db: Database.Database): void {
+function migrateV37toV38(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'relay_request_id', 'TEXT');
 }
 

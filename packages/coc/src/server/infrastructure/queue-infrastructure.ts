@@ -9,7 +9,7 @@
 
 import { RepoQueueRegistry, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
-import Database from 'better-sqlite3';
+import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -41,7 +41,7 @@ export interface QueueInfrastructure {
  * server. Persisted queue state is restored before returning.
  *
  * Uses the shared DB handle from SqliteProcessStore when available.
- * Falls back to an in-memory SQLite database for non-SQLite stores (tests).
+ * Uses an in-memory native SQLite database for non-SQLite test stores.
  *
  * @param dataDir           - Root data directory (e.g. `~/.coc/`).
  * @param options           - Subset of ExecutionServerOptions relevant to the queue.
@@ -74,11 +74,11 @@ export function createQueueInfrastructure(
     getTurnPerformanceStore?: () => import('../executors/turn-performance-tracker').TurnPerformanceRecorder | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
-    let db: Database.Database;
+    let db: NativeDatabase;
     if (store instanceof SqliteProcessStore) {
         db = store.getDatabase();
     } else {
-        db = new Database(':memory:');
+        db = new NativeDatabase(':memory:');
         initializeDatabase(db);
     }
 

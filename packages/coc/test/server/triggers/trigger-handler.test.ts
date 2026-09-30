@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import Database from 'better-sqlite3';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { TriggerStore } from '../../../src/server/triggers/trigger-store';
 import { registerTriggerRoutes, validateCreateTriggerBody } from '../../../src/server/triggers/trigger-handler';
 import type { TriggerRouteContext } from '../../../src/server/triggers/trigger-handler';
@@ -117,7 +117,7 @@ const VALID_CREATE_BODY = {
 // ============================================================================
 
 describe('Trigger REST API Handler', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: TriggerStore;
     let routes: Route[];
     let mockManager: any;
@@ -310,7 +310,7 @@ describe('Trigger REST API Handler', () => {
 // ============================================================================
 
 describe('Trigger REST API Handler — workspace boundary', () => {
-    let db: Database.Database;
+    let db: Database;
     let store: TriggerStore;
     let routes: Route[];
     let mockManager: any;
