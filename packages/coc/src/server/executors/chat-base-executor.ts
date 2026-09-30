@@ -72,6 +72,8 @@ import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupCo
 import type { RepoGroupChatContext } from '../workspaces/repo-group-chat-context';
 import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompletedProgress, buildRalphGrillPlanningStartedProgress, buildRalphGrillProcessStateFromPlan, buildRalphMultiAgentGrillDirective, formatRalphGrillQuestionPlanForPrompt, planRalphGrillCandidateQuestions } from '../ralph/grill-planning';
 import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
+import { createToolCallLedger } from './tool-call-ledger';
+import type { SystemOneAddonDeps } from './prompt-builder';
 /** Log prefix for every line this executor writes. */
 const CHAT_EXECUTOR_LOG_LABEL = '[ChatModeExecutor]';
 
@@ -390,6 +392,28 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 resolveWorkspaceId: infra.resolveWorkspaceId,
                 emit: infra.emit,
             },
+        };
+    }
+
+    /**
+     * Build `system_one` deps: the shared decision service plus a tool-call
+     * ledger bound to this process only. Undefined (tool not offered) when the
+     * decision service or working directory is missing.
+     */
+    protected buildSystemOneDeps(
+        processId: string,
+        workspaceId: string | undefined,
+        workingDirectory: string | undefined,
+    ): SystemOneAddonDeps | undefined {
+        const service = this.runtime.getDecisionService?.();
+        if (!service || !workingDirectory) return undefined;
+        return {
+            service,
+            workingDirectory,
+            getLedger: () => createToolCallLedger({
+                getLiveTimeline: () => this.getTimelineBuffer(processId),
+                getStoredTurns: async () => (await this.store.getProcess(processId, workspaceId))?.conversationTurns,
+            }),
         };
     }
 
@@ -832,6 +856,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
+            systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
             // Registered in autopilot too, so the tool block is identical to
             // ask mode and a mid-chat mode switch does not invalidate the
             // conversation's prefix cache. An autopilot chat open in the

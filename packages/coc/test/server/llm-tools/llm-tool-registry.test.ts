@@ -226,10 +226,10 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('includes scheduleWakeup when cronEnabled is true', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true }).map(t => t.name);
+        const names = getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true }).map(t => t.name);
         expect(names).toContain('scheduleWakeup');
         // Should equal the full registry length when all flags on
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: true, canvasEnabled: true, kustoEnabled: true, llmToolSystemOneEnabled: true })).toHaveLength(LLM_TOOL_REGISTRY.length);
     });
 
     it('no longer advertises the removed excalidraw tools regardless of flags', async () => {
@@ -241,8 +241,8 @@ describe('getEffectiveLlmToolRegistry', () => {
 
     it('returns registry minus feature-gated entries when all off', async () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
-        // scheduleWakeup + 3 canvas tools + 1 kusto tool = 5 filtered
-        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 5);
+        // scheduleWakeup + 3 canvas tools + 1 kusto tool + system_one = 6 filtered
+        expect(getEffectiveLlmToolRegistry({ cronEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false })).toHaveLength(LLM_TOOL_REGISTRY.length - 6);
     });
 
     it('filters out canvas tools when canvasEnabled is false', async () => {
@@ -277,5 +277,18 @@ describe('getEffectiveLlmToolRegistry', () => {
         const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
         const names = getEffectiveLlmToolRegistry({ kustoEnabled: true }).map(t => t.name);
         expect(names).toContain('kusto_query');
+    });
+
+    it('hides system_one unless llmToolSystemOneEnabled is true', async () => {
+        const { getEffectiveLlmToolRegistry } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        expect(getEffectiveLlmToolRegistry().map(t => t.name)).not.toContain('system_one');
+        expect(getEffectiveLlmToolRegistry({ llmToolSystemOneEnabled: false }).map(t => t.name)).not.toContain('system_one');
+        expect(getEffectiveLlmToolRegistry({ llmToolSystemOneEnabled: true }).map(t => t.name)).toContain('system_one');
+    });
+
+    it('enables system_one by default per repo', async () => {
+        const { DEFAULT_DISABLED_LLM_TOOLS } = await import('../../../src/server/llm-tools/llm-tool-registry');
+        expect(LLM_TOOL_REGISTRY.find(t => t.name === 'system_one')?.enabledByDefault).toBe(true);
+        expect(DEFAULT_DISABLED_LLM_TOOLS).not.toContain('system_one');
     });
 });

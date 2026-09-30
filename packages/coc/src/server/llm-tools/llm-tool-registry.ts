@@ -123,6 +123,12 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'system_one',
+        label: 'System One (Quick Decisions)',
+        description: 'Fast yes/no, choice, or score judgments over earlier tool output, files, or short text. Always runs on Copilot, even in Claude/Codex chats.',
+        enabledByDefault: true,
+    },
+    {
         name: 'tavily_web_search',
         label: 'Tavily Web Search',
         description: 'Searches the live web via Tavily API for current information.',
@@ -136,6 +142,9 @@ export const CANVAS_LLM_TOOL_NAMES = ['write_canvas', 'read_canvas', 'extension_
 /** Tool names belonging to the Kusto feature (gated by `kusto.enabled`). */
 export const KUSTO_LLM_TOOL_NAMES = ['kusto_query'] as const;
 
+/** Tool names belonging to the System One feature (gated by `LLMToolSystemOne.enabled`). */
+export const SYSTEM_ONE_LLM_TOOL_NAMES = ['system_one'] as const;
+
 /**
  * Returns the effective LLM tool registry given runtime feature flags.
  *
@@ -143,7 +152,7 @@ export const KUSTO_LLM_TOOL_NAMES = ['kusto_query'] as const;
  * the dashboard tool list and per-workspace settings do not advertise a tool
  * the executor will not register.
  */
-export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean } = {}): readonly LlmToolMeta[] {
+export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canvasEnabled?: boolean; kustoEnabled?: boolean; llmToolSystemOneEnabled?: boolean } = {}): readonly LlmToolMeta[] {
     let registry = [...LLM_TOOL_REGISTRY];
     if (!opts.cronEnabled) {
         registry = registry.filter(t => t.name !== 'scheduleWakeup');
@@ -153,6 +162,9 @@ export function getEffectiveLlmToolRegistry(opts: { cronEnabled?: boolean; canva
     }
     if (!opts.kustoEnabled) {
         registry = registry.filter(t => !(KUSTO_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
+    }
+    if (!opts.llmToolSystemOneEnabled) {
+        registry = registry.filter(t => !(SYSTEM_ONE_LLM_TOOL_NAMES as readonly string[]).includes(t.name));
     }
     return registry;
 }

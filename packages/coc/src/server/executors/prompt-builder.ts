@@ -29,6 +29,7 @@ import type { AskUserAnswerInput, AskUserAnswerValue, AskUserApprovalDecision, A
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
+import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
@@ -693,6 +694,35 @@ export function buildKustoToolsAddon(
 
     // No prose suffix — the tool description carries its own guidance.
     return { tools: [kustoQuery], suffix: '' };
+}
+
+// ============================================================================
+// System One Tool (gated by the `LLMToolSystemOne.enabled` config flag)
+// ============================================================================
+
+/** Per-turn wiring for `system_one`; the workspace id comes from the chat, never from tool args. */
+export type SystemOneAddonDeps = Omit<SystemOneToolDeps, 'workspaceId'>;
+
+export function buildSystemOneToolsAddon(
+    dataDir: string | undefined,
+    workspaceId: string | undefined,
+    processId: string | undefined,
+    deps: SystemOneAddonDeps | undefined,
+    opts?: { enabled?: boolean },
+): { tools: Tool<any>[]; suffix: string } {
+    if (!dataDir || !workspaceId || !processId || !deps) {
+        return { tools: [], suffix: '' };
+    }
+
+    const enabled = opts?.enabled
+        ?? resolveConfig(path.join(dataDir, CONFIG_FILE_NAME)).LLMToolSystemOne.enabled;
+    if (!enabled) {
+        return { tools: [], suffix: '' };
+    }
+
+    const { tool } = createSystemOneTool({ ...deps, workspaceId });
+    // No prose suffix — the tool description carries its own guidance.
+    return { tools: [tool], suffix: '' };
 }
 
 // ============================================================================

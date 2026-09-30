@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { buildChatToolBundle } from '../../../src/server/executors/chat-tool-builder';
 import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { CONFIG_FILE_NAME } from '../../../src/config';
 
 const WS_ID = 'ws-tools';
 
@@ -160,6 +161,57 @@ describe('buildChatToolBundle', () => {
         });
 
         expect(result.tools.map(t => t.name)).not.toContain('kusto_query');
+    });
+
+    describe('system_one', () => {
+        const systemOne = () => ({
+            service: { evaluate: vi.fn() } as any,
+            workingDirectory: tmpDir,
+            getLedger: () => ({ list: async () => [] }),
+        });
+        const build = (overrides: Record<string, unknown> = {}) => buildChatToolBundle({
+            dataDir: tmpDir,
+            store: makeStore(false),
+            workspaceId: WS_ID,
+            processId: 'proc-1',
+            followUpSuggestions: { enabled: false, count: 0 },
+            systemOne: systemOne(),
+            ...overrides,
+        }).tools.map(t => t.name);
+
+        it('is offered by default per repo once the admin flag is on', () => {
+            expect(build({ systemOneToolEnabled: true })).toContain('system_one');
+        });
+
+        it('is hidden when the admin flag is off', () => {
+            expect(build({ systemOneToolEnabled: false })).not.toContain('system_one');
+        });
+
+        it('is hidden when disabled by repo preferences', () => {
+            writeRepoPreferences(tmpDir, WS_ID, { disabledLlmTools: ['system_one'] });
+            expect(build({ systemOneToolEnabled: true })).not.toContain('system_one');
+        });
+
+        it('is hidden when includeSystemOneTool is false', () => {
+            expect(build({ systemOneToolEnabled: true, includeSystemOneTool: false })).not.toContain('system_one');
+        });
+
+        it.each([
+            ['systemOne deps', { systemOne: undefined }],
+            ['processId', { processId: undefined }],
+            ['workspaceId', { workspaceId: undefined }],
+        ])('is not offered without %s', (_label, missing) => {
+            expect(build({ systemOneToolEnabled: true, ...missing })).not.toContain('system_one');
+        });
+
+        it('reads the admin flag from config on every build (no restart needed)', () => {
+            const configPath = path.join(tmpDir, CONFIG_FILE_NAME);
+            expect(build()).not.toContain('system_one');
+            fs.writeFileSync(configPath, 'LLMToolSystemOne:\n  enabled: true\n');
+            expect(build()).toContain('system_one');
+            fs.writeFileSync(configPath, 'LLMToolSystemOne:\n  enabled: false\n');
+            expect(build()).not.toContain('system_one');
+        });
     });
 
     it('includes cron tools when cronTools deps are provided', () => {

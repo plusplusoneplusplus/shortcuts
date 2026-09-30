@@ -725,6 +725,16 @@ timeout: 300
             expect(result.kusto.enabled).toBe(true);
         });
 
+        it('should default LLMToolSystemOne.enabled to false', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, {});
+            expect(result.LLMToolSystemOne.enabled).toBe(false);
+        });
+
+        it('should override LLMToolSystemOne.enabled from file', () => {
+            const result = mergeConfig(DEFAULT_CONFIG, { LLMToolSystemOne: { enabled: true } });
+            expect(result.LLMToolSystemOne.enabled).toBe(true);
+        });
+
         it('should preserve auto provider routing defaults when not overridden', () => {
             const result = mergeConfig(DEFAULT_CONFIG, {});
             expect(result.features.autoAgentProviderRouting).toBe(false);
@@ -1116,6 +1126,8 @@ timeout: 300
                 '  enabled: true',
                 'kusto:',
                 '  enabled: true',
+                'LLMToolSystemOne:',
+                '  enabled: true',
                 'containerDefaultAgent:',
                 '  enabled: true',
                 'agentProviderRouting:',
@@ -1358,6 +1370,9 @@ timeout: 300
             }).toMatchInlineSnapshot(`
               {
                 "resolved": {
+                  "LLMToolSystemOne": {
+                    "enabled": false,
+                  },
                   "agentProviderRouting": {
                     "auto": {
                       "fallbackProvider": "copilot",
@@ -1621,6 +1636,7 @@ timeout: 300
                   },
                 },
                 "sources": {
+                  "LLMToolSystemOne.enabled": "default",
                   "agentProviderRouting.auto": "default",
                   "approvePermissions": "file",
                   "canvas.enabled": "default",

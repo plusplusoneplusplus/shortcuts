@@ -138,9 +138,7 @@ import { createNativeCliSessionProviders } from '../native-copilot-sessions/nati
 import { registerNativeCliSessionRoutes } from './native-cli-session-routes';
 import { registerDreamRoutes } from '../dreams/dream-routes';
 import { registerDecisionRoutes } from '../decisions/decision-routes';
-import { DecisionService } from '../decisions/decision-service';
-import { CopilotDecisionBackend } from '../decisions/copilot-decision-backend';
-import { TypeSafeDecisionBackend } from '../decisions/typesafe-decision-backend';
+import { createDecisionService, type DecisionService } from '../decisions/decision-service';
 import { FileDreamStore } from '../dreams/dream-store';
 import { DreamRunExecutor, type DreamRunRequestOptions } from '../dreams/dream-runner';
 import { DreamIdleScheduler } from '../dreams/dream-idle-scheduler';
@@ -226,8 +224,8 @@ export interface RegisterRoutesOptions {
     tokenTtlMs: number | undefined;
     globalWorkspaceRootPath: string;
     resolvedAiService: ISDKService;
-    /** Copilot SDK service for Copilot-only features (decision API), independent of the default chat provider. Undefined when Copilot is not registered. */
-    copilotAiService?: ISDKService;
+    /** Shared decision service (decision API + `system_one` tool). Defaults to one with no Copilot service, which answers 503. */
+    decisionService?: DecisionService;
     getWsServer: () => ProcessWebSocketServer;
     queuePersistence: SqliteQueuePersistence;
     wikiOptions?: WikiServerOptions;
@@ -518,6 +516,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             excalidrawEnabled: opts.runtimeConfigService!.config.excalidraw?.enabled ?? false,
             canvasEnabled: opts.runtimeConfigService!.config.canvas?.enabled ?? false,
             kustoEnabled: opts.runtimeConfigService!.config.kusto?.enabled ?? false,
+            llmToolSystemOneEnabled: opts.runtimeConfigService!.config.LLMToolSystemOne?.enabled ?? false,
             chatStyleSelectorEnabled: opts.runtimeConfigService!.config.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
             defaultChatStyle: coerceChatStyle(opts.runtimeConfigService!.config.features?.defaultChatStyle),
@@ -526,6 +525,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             excalidrawEnabled: opts.resolvedConfig?.excalidraw?.enabled ?? false,
             canvasEnabled: opts.resolvedConfig?.canvas?.enabled ?? false,
             kustoEnabled: opts.resolvedConfig?.kusto?.enabled ?? false,
+            llmToolSystemOneEnabled: opts.resolvedConfig?.LLMToolSystemOne?.enabled ?? false,
             chatStyleSelectorEnabled: opts.resolvedConfig?.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
             defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
@@ -1238,10 +1238,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     registerDecisionRoutes({
         routes,
         store,
-        service: new DecisionService([
-            new CopilotDecisionBackend(opts.copilotAiService),
-            new TypeSafeDecisionBackend(),
-        ]),
+        service: opts.decisionService ?? createDecisionService(undefined),
     });
 
     // Work item routes

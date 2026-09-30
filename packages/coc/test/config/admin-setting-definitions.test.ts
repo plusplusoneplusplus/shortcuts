@@ -281,6 +281,17 @@ describe('runtime feature flags', () => {
         expect(buildRuntimeFeatureFlags({}).kustoEnabled).toBe(false);
     });
 
+    it('registers LLMToolSystemOne.enabled as a live, default-off feature flag', () => {
+        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'LLMToolSystemOne.enabled');
+        expect(def, 'LLMToolSystemOne.enabled must be an admin setting').toBeDefined();
+        expect(def!.default).toBe(false);
+        expect(def!.runtime).toBe('live');
+        expect(def!.runtimeFlag).toBe('llmToolSystemOneEnabled');
+        expect(def!.ui?.hint).toContain('Copilot');
+        expect(buildRuntimeFeatureFlags({}).llmToolSystemOneEnabled).toBe(false);
+        expect(buildRuntimeFeatureFlags({ LLMToolSystemOne: { enabled: true } } as any).llmToolSystemOneEnabled).toBe(true);
+    });
+
     it('falls back to absentFallback ?? default for partial configs', () => {
         const flags = buildRuntimeFeatureFlags({});
         for (const def of ADMIN_SETTING_DEFINITIONS) {

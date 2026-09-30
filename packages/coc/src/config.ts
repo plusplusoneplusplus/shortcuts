@@ -260,6 +260,10 @@ export interface CLIConfig {
     kusto?: {
         enabled?: boolean;
     };
+    /** `system_one` LLM tool (quick Copilot-backed decisions over chat context). Disabled by default. */
+    LLMToolSystemOne?: {
+        enabled?: boolean;
+    };
     /** Container default agent — smart routing session. Disabled by default. */
     containerDefaultAgent?: {
         enabled?: boolean;
@@ -625,6 +629,10 @@ export interface ResolvedCLIConfig {
     kusto: {
         enabled: boolean;
     };
+    /** `system_one` LLM tool (quick Copilot-backed decisions over chat context). */
+    LLMToolSystemOne: {
+        enabled: boolean;
+    };
     /** Container default agent — smart routing session. */
     containerDefaultAgent: {
         enabled: boolean;
@@ -925,6 +933,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: true,
     },
     kusto: {
+        enabled: false,
+    },
+    LLMToolSystemOne: {
         enabled: false,
     },
     containerDefaultAgent: {

@@ -75,6 +75,7 @@ import { ContainerLinkClient } from './container-link/container-client';
 import { registerContainerLinkRoutes } from './container-link/container-link-routes';
 import { NotesSearchService } from './notes/notes-search-service';
 import { onRepoPreferencesChanged } from './preferences/repository';
+import { createDecisionService } from './decisions/decision-service';
 import { getDefaultSkillsToInstall } from './skills/default-skill-selection';
 import {
     cancelSentinelCron,
@@ -407,6 +408,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }
     };
 
+    // Shared by the decision route and the `system_one` chat tool.
+    const decisionService = createDecisionService(resolveCopilotServiceOrUndefined());
+
     const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,
         () => wsServer,
@@ -459,6 +463,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => coerceChatStyle(runtimeConfigService.config.features.defaultChatStyle),
         // Late-bound turn-performance metric store; created after queue infra.
         () => turnPerformanceInfra?.turnPerformanceStore,
+        () => decisionService,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -796,7 +801,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         tokenTtlMs: options.tokenTtlMs,
         globalWorkspaceRootPath: globalWorkspace.rootPath,
         resolvedAiService, getWsServer: () => wsServer,
-        copilotAiService: resolveCopilotServiceOrUndefined(),
+        decisionService,
         queuePersistence, wikiOptions: options.wiki,
         aiInvoker,
         getTerminalSessionManager: () => terminalInfra?.terminalSessionManager,

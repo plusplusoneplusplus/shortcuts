@@ -17,6 +17,7 @@ import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } f
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { MemoryV2Addon } from './memory-v2-addon';
+import type { SystemOneAddonDeps } from './prompt-builder';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import { buildChatToolBundle } from './chat-tool-builder';
 import type { ChatToolBundle } from './chat-tool-builder';
@@ -56,6 +57,8 @@ export interface ChatTurnContextInput {
         enabled: boolean;
         deps: AskUserToolDeps;
     };
+    /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
+    systemOne?: SystemOneAddonDeps;
     /** Additional tool names to exclude beyond workspace preferences. */
     excludeTools?: string[];
     /**
@@ -165,6 +168,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         scheduleWakeup: input.scheduleWakeup,
         cronTools: input.cronTools,
         askUser: input.askUser,
+        systemOne: input.systemOne,
         excludeTools: input.excludeTools,
     });
 

@@ -86,6 +86,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
+            systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
             // No `askUser` wiring, and `ask_user` excluded outright: Ralph
             // tasks run unattended, so a blocking question would stall the
             // loop. Iterations ask through RALPH_NEEDS_INPUT instead, whatever

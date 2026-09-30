@@ -190,6 +190,14 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['query', 'clusterUrl', 'database'],
     },
+    system_one: {
+        type: 'object',
+        properties: {
+            sources: { type: 'array', items: { type: 'object' } },
+            questions: { type: 'object' },
+        },
+        required: ['sources', 'questions'],
+    },
     tavily_web_search: {
         type: 'object',
         properties: {
