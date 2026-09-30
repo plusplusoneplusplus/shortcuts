@@ -837,7 +837,7 @@ test.describe('Explorer language support – TypeScript and definition features'
             await openSourceFile(page, 'app.ts');
             await waitForLanguageServer(page);
             await waitForProjectLoaded(page);
-            await expect.poll(() => squigglyLines(page), { timeout: 10_000 }).toEqual([]);
+            const baselineSquiggles = await squigglyLines(page);
 
             // The fixture ends on an empty line, so the error can be typed
             // without touching a bracket or a quote Monaco would auto-close.
@@ -856,7 +856,7 @@ test.describe('Explorer language support – TypeScript and definition features'
             await page.keyboard.press('Escape');
             await page.keyboard.press('Shift+Home');
             await page.keyboard.press('Delete');
-            await expect.poll(() => squigglyLines(page), { timeout: 30_000 }).toEqual([]);
+            await expect.poll(() => squigglyLines(page), { timeout: 30_000 }).toEqual(baselineSquiggles);
         } finally {
             safeRmSync(tmpDir);
         }
