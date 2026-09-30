@@ -72,6 +72,7 @@ describe('Copilot token cost pricing', () => {
         ['GPT 6 Astra', 'gpt-6-astra', 'GPT-6 Astra', 'Powerful', 10, 1, 12.5, 50],
         ['GPT 6 Luna', 'gpt-6-luna', 'GPT-6 Luna', 'Lightweight', 0.1, 0.01, 0.125, 0.5],
         ['GPT 6 Sol', 'gpt-6-sol', 'GPT-6 Sol', 'Powerful', 2, 0.2, 2.5, 10],
+        ['GPT 6.1 Sol', 'gpt-6.1-sol', 'GPT-6.1 Sol', 'Powerful', 2, 0.1, 2.5, 10],
     ] as const)('prices %s with its supported default-tier rates', (
         modelName,
         modelId,

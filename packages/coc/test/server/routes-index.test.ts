@@ -200,7 +200,7 @@ describe('registerAllRoutes', () => {
         ]);
         const sdk = createMockSDKService({
             listModelsResult: [{
-                id: 'gpt-6-sol', name: 'gpt-6-sol',
+                id: 'gpt-6.1-sol', name: 'gpt-6.1-sol',
                 capabilities: {
                     supports: { reasoningEffort: true, vision: false },
                     limits: { max_context_window_tokens: 200_000 },
@@ -244,7 +244,7 @@ describe('registerAllRoutes', () => {
             expect(input).toMatchObject({
                 type: 'chat', repoId: workspaceId, priority: 'normal',
                 payload: { kind: 'chat', mode: 'ask', prompt, workspaceId },
-                config: { afterEffortTier: 'medium', model: 'gpt-6-sol', reasoningEffort: 'medium' },
+                config: { afterEffortTier: 'medium', model: 'gpt-6.1-sol', reasoningEffort: 'medium' },
             });
             expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
             expect(isChatPayload(input.payload)).toBe(true);
@@ -260,8 +260,8 @@ describe('registerAllRoutes', () => {
         expect(sdk.mockSendMessage.mock.calls.map(([options]) => ({
             model: options.model, reasoningEffort: options.reasoningEffort,
         }))).toEqual([
-            { model: 'gpt-6-sol', reasoningEffort: 'medium' },
-            { model: 'gpt-6-sol', reasoningEffort: 'medium' },
+            { model: 'gpt-6.1-sol', reasoningEffort: 'medium' },
+            { model: 'gpt-6.1-sol', reasoningEffort: 'medium' },
         ]);
         expect(send).toHaveBeenCalledTimes(3);
     });
