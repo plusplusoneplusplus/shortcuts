@@ -541,8 +541,9 @@ all have their own `references/*.md`.
   original task's closed commit range and admits only its chain. A successful
   commit-producing implementation enqueues a same-chain autopilot PR-submit task
   with the original provider/model/reasoning selection; its purpose-built prompt
-  requires an isolated temporary worktree, explicit oldest-first cherry-picks,
-  and `gh pr merge --auto --squash`. A failed `PR_SUBMIT_RESULT` keeps the gate
+  has the agent call the `create_pull_request` tool with the explicit
+  oldest-first SHAs, `autoMerge: true`, and `mergeMethod: "squash"` (the tool
+  writes the chat↔PR binding). A failed `PR_SUBMIT_RESULT` keeps the gate
   and pauses the repo with the reported reason. A target-server watcher polls
   submitted PRs every 60 seconds through the provider PR service, releases only
   the matching gate on merge, and restores submitted watches after restart.
@@ -598,7 +599,9 @@ all have their own `references/*.md`.
   `orchestrateSubmitCompletion` (`src/server/ralph/orchestrate-submit.ts`),
   which parses the `RALPH_SUBMIT_RESULT` block and updates the persisted
   `submits[]` record only — a submit completion never enqueues further work
-  and server code never switches git branches.
+  and server code never switches git branches. The submit prompt
+  (`coc-workflow` `buildRalphSubmitPrompt`) has the agent call the
+  `create_pull_request` tool with the explicit SHA list and `autoMerge: true`.
 - **Ralph manual-only completion** treats explicit manual-verification-only
   `Remaining:` progress as complete autonomous work: do not queue another
   implementation iteration; enqueue final-check and preserve the manual

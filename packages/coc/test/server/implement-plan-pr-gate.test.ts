@@ -217,7 +217,7 @@ describe('executeImplementPlanWithPrGate', () => {
     });
 
     describe('implement-plan PR submit contract', () => {
-        it('names the exact commits and mandates safe worktree auto-merge without the submit skill', () => {
+        it('names the exact commits and routes submission through create_pull_request with squash auto-merge', () => {
             const shas = ['1'.repeat(40), '2'.repeat(40), '3'.repeat(40)];
             const prompt = buildImplementPlanPrSubmitPrompt({
                 baselineSha: BASELINE_SHA,
@@ -227,10 +227,12 @@ describe('executeImplementPlanWithPrGate', () => {
             });
 
             for (const sha of shas) expect(prompt).toContain(`- ${sha}`);
-            expect(prompt).toContain('temporary linked git worktree');
-            expect(prompt).toContain('Never change the branch or HEAD of the active worktree');
-            expect(prompt).toContain('gh pr merge --auto --squash');
-            expect(prompt).toContain('Do not invoke or use the `submit-commits-as-pr` skill');
+            expect(prompt).toContain('`create_pull_request` tool');
+            expect(prompt).toContain('`autoMerge: true`, `mergeMethod: "squash"`');
+            expect(prompt).toContain('The active worktree is never touched');
+            expect(prompt).toContain('do not invoke the `submit-commits-as-pr` skill');
+            expect(prompt).not.toContain('gh pr create');
+            expect(prompt).not.toContain('gh pr merge');
             expect(prompt).not.toContain('buildRalphSubmitPrompt');
             expect(prompt).not.toContain('..HEAD');
         });

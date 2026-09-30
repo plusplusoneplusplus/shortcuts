@@ -41,7 +41,7 @@ RALPH_SUBMIT_RESULT
 Rules:
 - "status" must be "submitted" when the pull request was created, "failed" otherwise.
 - When submitted, include "prUrl" (and "prNumber" when known) and list the submitted commit SHAs oldest first in "commitShas".
-- When failed, include a clear "error" explaining what went wrong (dirty worktree refusal, cherry-pick abort reason, push/gh failure, no commits found).`;
+- When failed, include a clear "error" explaining what went wrong (the create_pull_request tool error, cherry-pick conflict with the conflicting SHA, no commits found).`;
 
 /**
  * Build the user-message prompt for one Ralph PR-submit task.
@@ -97,7 +97,7 @@ export function buildRalphSubmitPrompt(input: BuildRalphSubmitPromptInput): stri
     }
 
     return [
-        `Submit the commits produced by Ralph session ${sessionId} as a GitHub pull request. This is PR submit ${submitIndex} for the session.`,
+        `Submit the commits produced by Ralph session ${sessionId} as a pull request. This is PR submit ${submitIndex} for the session.`,
         '',
         '## Goal Reference',
         goalSection,
@@ -111,11 +111,12 @@ export function buildRalphSubmitPrompt(input: BuildRalphSubmitPromptInput): stri
         'Scope: include the commits from ALL loops of this session — including gap-fix loops — not just the latest loop.',
         '',
         '## Submit the Pull Request',
-        'Invoke the `submit-commits-as-pr` skill, passing the explicit comma-separated list of commit SHAs you determined above.',
+        'Call the `create_pull_request` tool once with `commits` set to the explicit list of commit SHAs you determined above, oldest first.',
         'Derive the PR title and body from the Ralph goal plus a short summary of what was accomplished per the progress journal.',
-        'Leave auto-merge ON (the skill default — do not pass --no-auto-merge). Do not open the PR as a draft.',
-        'If the worktree is dirty, the skill script refuses to run — do not commit, stash, or clean anything; report a failed result with a clear error message.',
-        'If a cherry-pick or rebase conflict occurs, the skill aborts the entire submit and restores the original branch. Do NOT attempt to resolve conflicts — report a failed result with the abort reason.',
+        'Pass `autoMerge: true` and `draft: false`. The tool cherry-picks the commits in a temporary linked worktree, pushes, opens the PR (GitHub or Azure DevOps), and links it to this chat — the active worktree is never touched, and a dirty worktree is fine.',
+        'Do not run `git`, `gh`, or `az` commands to create the branch or PR yourself.',
+        'If the tool reports a cherry-pick or rebase conflict, it has already aborted and cleaned up. Do NOT attempt to resolve conflicts — report a failed result with the conflicting SHA from the tool error.',
+        'If the tool result includes an auto-merge warning, still report the PR as submitted and mention the warning.',
         '',
         RESULT_CONTRACT,
     ].join('\n');

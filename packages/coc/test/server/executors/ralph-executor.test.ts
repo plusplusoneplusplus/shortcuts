@@ -327,7 +327,7 @@ describe('RalphExecutor system message — submit', () => {
 
         const call = sdkMocks.mockSendMessage.mock.calls[0][0];
         expect(call.prompt).toContain('RALPH_SUBMIT_RESULT');
-        expect(call.prompt).toContain('submit-commits-as-pr');
+        expect(call.prompt).toContain('create_pull_request');
         expect(call.prompt).not.toContain('RALPH_NEXT');
         expect(call.prompt).not.toContain('RALPH_COMPLETE');
         expect(call.prompt).not.toContain('ultra-ralph');

@@ -168,7 +168,7 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/submit-pr', () =>
         expect(enqueueArg.config).toEqual({});
         // Baseline strategy lands in the prompt.
         expect(enqueueArg.payload.prompt).toContain(`${'f'.repeat(40)}..HEAD`);
-        expect(enqueueArg.payload.prompt).toContain('submit-commits-as-pr');
+        expect(enqueueArg.payload.prompt).toContain('create_pull_request');
 
         const rec = readRecord(dataDir, 'ws-1', 'sess-ok');
         expect(rec.submits).toHaveLength(1);

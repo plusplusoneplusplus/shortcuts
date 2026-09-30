@@ -10,11 +10,13 @@ const BASE_INPUT: BuildRalphSubmitPromptInput = {
 };
 
 describe('buildRalphSubmitPrompt', () => {
-    it('instructs the agent to invoke the submit-commits-as-pr skill with an explicit SHA list', () => {
+    it('instructs the agent to call create_pull_request with an explicit SHA list', () => {
         const prompt = buildRalphSubmitPrompt(BASE_INPUT);
 
-        expect(prompt).toContain('`submit-commits-as-pr` skill');
-        expect(prompt).toContain('comma-separated list of commit SHAs');
+        expect(prompt).toContain('`create_pull_request` tool');
+        expect(prompt).toContain('explicit list of commit SHAs');
+        expect(prompt).not.toContain('submit-commits-as-pr');
+        expect(prompt).not.toContain('gh pr create');
     });
 
     it('uses the baselineSha..HEAD strategy when a baseline SHA is recorded', () => {
@@ -111,16 +113,16 @@ describe('buildRalphSubmitPrompt', () => {
 
         expect(prompt).toContain('PR title and body from the Ralph goal');
         expect(prompt).toContain('progress journal');
-        expect(prompt).toContain('auto-merge ON');
-        expect(prompt).toContain('Do not open the PR as a draft');
+        expect(prompt).toContain('`autoMerge: true`');
+        expect(prompt).toContain('`draft: false`');
     });
 
-    it('forbids resolving conflicts and covers the dirty-worktree refusal', () => {
+    it('forbids resolving conflicts and allows a dirty worktree', () => {
         const prompt = buildRalphSubmitPrompt(BASE_INPUT);
 
         expect(prompt).toContain('Do NOT attempt to resolve conflicts');
-        expect(prompt).toContain('aborts the entire submit');
-        expect(prompt).toContain('worktree is dirty');
+        expect(prompt).toContain('conflicting SHA');
+        expect(prompt).toContain('a dirty worktree is fine');
     });
 
     it('includes the RALPH_SUBMIT_RESULT contract with both statuses', () => {
