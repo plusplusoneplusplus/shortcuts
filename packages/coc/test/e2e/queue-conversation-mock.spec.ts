@@ -526,6 +526,8 @@ test.describe('Mock AI: Complete Multi-Turn Conversation', () => {
             await expect(page.locator('[data-testid="activity-chat-send-btn"]')).toBeEnabled();
 
             let abortedMainStreams = 0;
+            let markMainStreamAborted!: () => void;
+            const mainStreamAborted = new Promise<void>(resolve => { markMainStreamAborted = resolve; });
             await page.route('**/api/processes/**/stream**', async (route) => {
                 const url = new URL(route.request().url());
                 if (url.searchParams.get('warm') === '1') {
@@ -534,9 +536,17 @@ test.describe('Mock AI: Complete Multi-Turn Conversation', () => {
                 }
                 abortedMainStreams++;
                 await route.abort('failed');
+                markMainStreamAborted();
             });
 
+            // Keep the follow-up running until the SPA has opened (and lost) its
+            // main stream. An instant mock can finish before the SPA commits the
+            // running state, and then it never opens the stream at all.
             mockAI.mockSendMessage.mockImplementationOnce(async (opts: any) => {
+                await Promise.race([
+                    mainStreamAborted,
+                    new Promise(resolve => setTimeout(resolve, 10_000)),
+                ]);
                 opts?.onStreamingChunk?.('Follow-up answer');
                 return {
                     success: true,
