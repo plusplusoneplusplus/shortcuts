@@ -82,7 +82,20 @@ function fixtureSession(overrides: Partial<NativeCopilotSessionDetail> = {}): Na
 class StubService {
     getCalls: Array<{ scope: NativeSessionWorkspaceScope; id: string }> = [];
     constructor(public detail: NativeCopilotSessionDetailResult) {}
-    listSessions(): never { throw new Error('not used'); }
+    listCalls: Array<{ scope: NativeSessionWorkspaceScope; options: { excludeSessionIds?: ReadonlySet<string> | string[] } }> = [];
+    listSessions(scope: NativeSessionWorkspaceScope, options: { excludeSessionIds?: ReadonlySet<string> | string[] }) {
+        this.listCalls.push({ scope, options });
+        const items = this.detail.available && this.detail.session
+            ? [{ id: this.detail.session.id, repository: null, cwd: null, hostType: null, branch: null,
+                summaryPreview: '', createdAt: null, updatedAt: null, turnCount: 2, matchSnippets: [] },
+            { id: 'native-other', repository: null, cwd: null, hostType: null, branch: null,
+                summaryPreview: '', createdAt: null, updatedAt: null, turnCount: 1, matchSnippets: [] }]
+            : [];
+        return {
+            available: true, items, total: items.length, searchIndexAvailable: true,
+            deduplicatedCount: 0, backgroundJobCount: 0, limit: 20, offset: 0,
+        };
+    }
     getSession(scope: NativeSessionWorkspaceScope, id: string): NativeCopilotSessionDetailResult {
         this.getCalls.push({ scope, id });
         if (this.detail.available && this.detail.session && this.detail.session.id !== id) {
@@ -202,6 +215,32 @@ describe('native Copilot session import', () => {
         const results = await Promise.all([postImport(baseUrl, 'ws-1'), postImport(baseUrl, 'ws-1')]);
         expect(new Set(results.map(r => r.body.processId)).size).toBe(1);
         expect(await store.getAllProcesses({ workspaceId: 'ws-1' })).toHaveLength(1);
+    });
+
+    it('scope=all lists every session unscoped and tags imported ones per workspace', async () => {
+        const service = new StubService({ available: true, session: fixtureSession() });
+        const baseUrl = await start(service);
+        const imported = await postImport(baseUrl, 'ws-1');
+
+        const list = async (workspaceId: string) => {
+            const res = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/native-copilot-sessions?scope=all`);
+            return await res.json() as any;
+        };
+        const ws1 = await list('ws-1');
+        expect(service.listCalls[0].scope).toEqual({ matchAll: true });
+        expect(service.listCalls[0].options.excludeSessionIds).toBeUndefined();
+        expect(ws1.items.map((i: any) => [i.id, i.importedProcessId])).toEqual([
+            [SESSION_ID, imported.body.processId],
+            ['native-other', undefined],
+        ]);
+        // No cross-workspace leakage of the imported tag.
+        const ws2 = await list('ws-2');
+        expect(ws2.items.every((i: any) => i.importedProcessId === undefined)).toBe(true);
+
+        // Default listing stays workspace-scoped and untagged.
+        await fetch(`${baseUrl}/api/workspaces/ws-1/native-copilot-sessions`);
+        expect(service.listCalls[2].scope).toMatchObject({ rootPath: wsRoot });
+        expect(service.listCalls[2].scope.matchAll).toBeUndefined();
     });
 
     it('returns 404 when the feature flag is off', async () => {

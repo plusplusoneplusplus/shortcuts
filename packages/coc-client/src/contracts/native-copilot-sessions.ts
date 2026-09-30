@@ -23,6 +23,11 @@ export interface NativeCopilotSessionListItem {
   updatedAt: string | null;
   turnCount: number;
   matchSnippets: string[];
+  /**
+   * CoC chat this session was already imported into for the requesting
+   * workspace. Only populated by `scope: 'all'` listings.
+   */
+  importedProcessId?: string;
 }
 
 export interface NativeCopilotSessionTurn {
@@ -125,6 +130,12 @@ export interface ListNativeCopilotSessionsOptions {
   to?: string;
   limit?: number;
   offset?: number;
+  /**
+   * `all` lists sessions from every cwd/repository (the import picker) and
+   * tags each item with `importedProcessId`; default is workspace-scoped with
+   * CoC-tracked sessions hidden.
+   */
+  scope?: 'workspace' | 'all';
 }
 
 export interface ListNativeCopilotSessionsResponse {

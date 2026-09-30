@@ -60,12 +60,16 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
             const workspace = await resolveWorkspaceOrFail(store, match!, res);
             if (!workspace) { return; }
 
+            // `scope=all` serves the import picker: every native session from
+            // any cwd, each tagged with the chat it was already imported into.
+            const listAll = query.scope === 'all';
+
             // Dedup: hide native sessions already tracked as CoC processes for
             // this workspace. The Copilot SDK/CLI session id equals the native
             // store id, so a single indexed query yields the exclusion set.
-            const excludeSessionIds = store.getSdkSessionIds?.(workspace.id);
+            const excludeSessionIds = listAll ? undefined : store.getSdkSessionIds?.(workspace.id);
 
-            const result = service.listSessions(await buildScope(workspace), {
+            const result = service.listSessions(listAll ? { matchAll: true } : await buildScope(workspace), {
                 ...parseListFilters(query),
                 excludeSessionIds,
             });
@@ -74,10 +78,18 @@ export function registerNativeCopilotSessionRoutes(ctx: NativeCopilotSessionRout
                 sendJSON(res, 200, unavailableListPayload(result.reason, result.limit, result.offset));
                 return;
             }
+            let items = result.items;
+            if (listAll) {
+                const imported = await getImportedNativeSessionProcessIds(store, workspace.id);
+                items = items.map(item => {
+                    const importedProcessId = imported.get(item.id);
+                    return importedProcessId ? { ...item, importedProcessId } : item;
+                });
+            }
             sendJSON(res, 200, {
                 enabled: true,
                 available: true,
-                items: result.items,
+                items,
                 total: result.total,
                 searchIndexAvailable: result.searchIndexAvailable,
                 deduplicatedCount: result.deduplicatedCount,
