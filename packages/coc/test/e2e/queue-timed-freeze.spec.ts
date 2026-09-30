@@ -11,7 +11,10 @@
  *
  * DOM contract (kept in sync with ChatListPane.tsx):
  *   Queued section: [data-section="queued"]
+ *   Frozen section: [data-section="frozen"], collapsed by default; expand via
+ *                   [data-testid="frozen-tasks-section-toggle"]
  *   Queued row:     [data-testid="queued-task-row"][data-task-id="<queue task id>"]
+ *                   (frozen tasks keep this row shape but live in the frozen section)
  *   Menu:           [data-testid="context-menu"], items are [role="menuitem"]
  *   Frozen badge:   a span titled "Frozen" or "Frozen <remaining>"
  */
@@ -83,9 +86,16 @@ function queuedRow(page: Page, taskId: string) {
     );
 }
 
-/** Right-click a queued row and wait for the real portal menu. */
-async function openQueuedRowMenu(page: Page, taskId: string) {
-    await queuedRow(page, taskId).click({ button: 'right' });
+/** The row for a frozen task, inside the Frozen Tasks section. */
+function frozenRow(page: Page, taskId: string) {
+    return page.locator(
+        `[data-section="frozen"] [data-testid="queued-task-row"][data-task-id="${taskId}"]`,
+    );
+}
+
+/** Right-click a row and wait for the real portal menu. */
+async function openRowMenu(page: Page, row: ReturnType<Page['locator']>) {
+    await row.click({ button: 'right' });
     const menu = page.locator('[data-testid="context-menu"]');
     await expect(menu).toBeVisible({ timeout: 5_000 });
     return menu;
@@ -141,7 +151,7 @@ test.describe('Queue — freeze a task for a preset number of hours', () => {
             await expect(queuedRow(page, idB)).toBeVisible();
 
             // (b) + (c) context menu on the first queued task → Freeze for… → 1h
-            const menu = await openQueuedRowMenu(page, idA);
+            const menu = await openRowMenu(page, queuedRow(page, idA));
             const freezeFor = menu.getByRole('menuitem', { name: /Freeze for/ });
             await expect(freezeFor).toBeVisible();
             await freezeFor.hover();
@@ -151,8 +161,15 @@ test.describe('Queue — freeze a task for a preset number of hours', () => {
             await expect(preset).toBeVisible({ timeout: 5_000 });
             await preset.click();
 
-            // (d) the row shows a frozen badge with remaining time…
-            const badge = queuedRow(page, idA).locator('[title="Frozen 1h"]');
+            // (d) the task leaves Queued for the (collapsed) Frozen Tasks section…
+            await expect(queuedRow(page, idA)).toHaveCount(0, { timeout: 10_000 });
+            const frozenToggle = page.locator('[data-testid="frozen-tasks-section-toggle"]');
+            await expect(frozenToggle).toHaveAttribute('aria-expanded', 'false');
+            await frozenToggle.click();
+            await expect(frozenToggle).toHaveAttribute('aria-expanded', 'true');
+
+            // …and its row there shows a frozen badge with remaining time…
+            const badge = frozenRow(page, idA).locator('[title="Frozen 1h"]');
             await expect(badge).toBeVisible({ timeout: 10_000 });
             await expect(badge).toHaveText(/1h/);
 
@@ -171,14 +188,14 @@ test.describe('Queue — freeze a task for a preset number of hours', () => {
             await waitForTaskStatus(serverUrl, idB, ['running']);
             expect((await getTask(serverUrl, idA)).status).toBe('queued');
 
-            // (e) Unfreeze → badge clears and the task is runnable again.
-            const menu2 = await openQueuedRowMenu(page, idA);
+            // (e) Unfreeze → the task moves back to Queued without a badge and is runnable again.
+            const menu2 = await openRowMenu(page, frozenRow(page, idA));
             await expect(menu2.getByRole('menuitem', { name: /Freeze/ })).toHaveCount(0);
             await menu2.getByRole('menuitem', { name: /Unfreeze/ }).click();
 
-            await expect(queuedRow(page, idA).locator('[title^="Frozen"]')).toHaveCount(0, {
-                timeout: 10_000,
-            });
+            await expect(queuedRow(page, idA)).toBeVisible({ timeout: 10_000 });
+            await expect(queuedRow(page, idA).locator('[title^="Frozen"]')).toHaveCount(0);
+            await expect(page.locator('[data-section="frozen"]')).toHaveCount(0);
             const thawedA = await getTask(serverUrl, idA);
             expect(thawedA.frozen).toBeFalsy();
             expect(thawedA.frozenUntil).toBeUndefined();
