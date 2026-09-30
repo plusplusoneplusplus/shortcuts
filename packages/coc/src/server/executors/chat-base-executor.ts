@@ -74,6 +74,7 @@ import { attachRalphGrillMetadataToAskUserPayloads, buildRalphGrillPlanningCompl
 import type { RalphGrillPlanningProgress, RalphGrillQuestionPlanningResult, RalphGrillSetup } from '../ralph/grill-planning';
 import { createToolCallLedger } from './tool-call-ledger';
 import type { SystemOneAddonDeps } from './prompt-builder';
+import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 /** Log prefix for every line this executor writes. */
 const CHAT_EXECUTOR_LOG_LABEL = '[ChatModeExecutor]';
 
@@ -415,6 +416,20 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                 getStoredTurns: async () => (await this.store.getProcess(processId, workspaceId))?.conversationTurns,
             }),
         };
+    }
+
+    /**
+     * Build `create_pull_request` deps for a write-capable turn. Callers pass
+     * the result only in autopilot/Ralph turns; ask mode never gets the tool.
+     * Undefined when the chat has no workspace.
+     */
+    protected buildCreatePullRequestDeps(
+        processId: string,
+        workspaceId: string | undefined,
+        workingDirectory: string | undefined,
+    ): CreatePullRequestToolDeps | undefined {
+        if (!workspaceId) return undefined;
+        return { workspaceId, processId, workingDirectory, store: this.store };
     }
 
     protected async getModelMetadataForReasoning(
@@ -857,6 +872,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
+            // Autopilot-only: ask mode is read-only and never opens PRs.
+            createPullRequest: isAsk ? undefined : this.buildCreatePullRequestDeps(processId, payload.workspaceId, workingDirectory),
             // Registered in autopilot too, so the tool block is identical to
             // ask mode and a mid-chat mode switch does not invalidate the
             // conversation's prefix cache. An autopilot chat open in the

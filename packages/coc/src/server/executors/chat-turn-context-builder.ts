@@ -16,6 +16,7 @@ import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
+import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import type { SystemOneAddonDeps } from './prompt-builder';
 import { buildMemoryV2Addon } from './memory-v2-addon';
@@ -59,6 +60,11 @@ export interface ChatTurnContextInput {
     };
     /** Decision service + ledger wiring for `system_one`; absent → the tool is not offered. */
     systemOne?: SystemOneAddonDeps;
+    /**
+     * `create_pull_request` wiring. Autopilot-only: pass it for write-capable
+     * turns and omit it in ask mode so read-only chats never see the tool.
+     */
+    createPullRequest?: CreatePullRequestToolDeps;
     /** Additional tool names to exclude beyond workspace preferences. */
     excludeTools?: string[];
     /**
@@ -169,6 +175,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         cronTools: input.cronTools,
         askUser: input.askUser,
         systemOne: input.systemOne,
+        createPullRequest: input.createPullRequest,
         excludeTools: input.excludeTools,
     });
 

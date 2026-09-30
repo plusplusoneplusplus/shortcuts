@@ -502,6 +502,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 scheduleWakeup: cronDeps.scheduleWakeup,
                 cronTools: cronDeps.cronTools,
                 systemOne: this.buildSystemOneDeps(processId, wsId, workingDirectory),
+                // Write-capable modes only: an ask-mode follow-up never opens PRs.
+                createPullRequest: currentMode === 'autopilot' || currentMode === 'ralph'
+                    ? this.buildCreatePullRequestDeps(processId, wsId, workingDirectory)
+                    : undefined,
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
                 // resumed session keeps its prefix cache. A machine-triggered

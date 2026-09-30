@@ -63,6 +63,19 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['processId'],
     },
+    create_pull_request: {
+        type: 'object',
+        properties: {
+            title: { type: 'string' },
+            body: { type: 'string' },
+            base: { type: 'string' },
+            draft: { type: 'boolean' },
+            autoMerge: { type: 'boolean' },
+            mergeMethod: { type: 'string' },
+            commits: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['title'],
+    },
     send_to_conversation: {
         type: 'object',
         properties: {

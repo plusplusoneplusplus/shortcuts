@@ -615,6 +615,13 @@ all have their own `references/*.md`.
   clean up; the caller's HEAD never moves), and returns an existing open PR
   instead of failing. Route every git/`gh`/`az` call through its injected
   `PrCliRunner` so tests stay CLI-free.
+- **`create_pull_request` LLM tool** (`src/server/llm-tools/create-pull-request-tool.ts`)
+  is autopilot/Ralph-only: executors pass `createPullRequest` deps to
+  `buildChatTurnContext` only for write turns (ask mode and Ralph final-check
+  omit it — a documented exception to the mode-invariant tool block). On
+  success it writes the chat ↔ PR binding via `recordPullRequestBinding`
+  (`src/server/processes/record-pull-request-binding.ts`, bare task id under the
+  workspace's canonical origin).
 - **Git-tab Fetch/Pull** must stay current-branch scoped. `RepoGitTab` sends
   `currentBranchOnly: true`; the server delegates to the scoped `BranchService`
   methods, which resolve the checked-out branch's exact configured upstream

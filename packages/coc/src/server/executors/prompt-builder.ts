@@ -38,6 +38,7 @@ import { createCronTool, createScheduleWakeupTool } from '../llm-tools/cron-tool
 import { createSearchConversationsTool } from '../llm-tools/search-conversations-tool';
 import { createSuggestFollowUpsTool } from '../llm-tools/suggest-follow-ups-tool';
 import { createTavilyWebSearchTool } from '../llm-tools/tavily-web-search-tool';
+import { createCreatePullRequestTool, type CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import { tagBlock, tagGuidanceSuffix } from './prompt-tags';
 import type { ChatMode, ChatPayload, ChatProvider, DreamRunPayload, ForEachGenerationContext, MapReduceGenerationContext, PrClassificationPayload, RunScriptPayload } from '../tasks/task-types';
 import {
@@ -721,6 +722,21 @@ export function buildSystemOneToolsAddon(
     }
 
     const { tool } = createSystemOneTool({ ...deps, workspaceId });
+    // No prose suffix — the tool description carries its own guidance.
+    return { tools: [tool], suffix: '' };
+}
+
+// ============================================================================
+// Create Pull Request (autopilot-only — deps are passed only for write turns)
+// ============================================================================
+
+export function buildCreatePullRequestAddon(
+    deps: CreatePullRequestToolDeps | undefined,
+): { tools: Tool<any>[]; suffix: string } {
+    if (!deps) {
+        return { tools: [], suffix: '' };
+    }
+    const { tool } = createCreatePullRequestTool(deps);
     // No prose suffix — the tool description carries its own guidance.
     return { tools: [tool], suffix: '' };
 }

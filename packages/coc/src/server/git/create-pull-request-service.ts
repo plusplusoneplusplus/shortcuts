@@ -19,14 +19,13 @@
  * tests drive the whole flow with a fake runner.
  */
 
-import { execFile } from 'child_process';
+import * as childProcess from 'child_process';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { promisify } from 'util';
 import { execGitAsync } from '@plusplusoneplusplus/forge';
 
-const execFileAsync = promisify(execFile);
 const COMMAND_MAX_BUFFER = 1024 * 1024 * 10;
 const REMOTE = 'origin';
 
@@ -250,6 +249,9 @@ export async function defaultPrCliRunner(command: string, args: string[], option
     const [file, fileArgs] = command === 'az' && process.platform === 'win32'
         ? [process.env.ComSpec?.trim() || 'cmd.exe', ['/d', '/s', '/c', 'az', ...args]]
         : [command, args];
+    // Bound per call, not at module load: this module sits on the executor
+    // import chain, and binding eagerly breaks partial `child_process` mocks.
+    const execFileAsync = promisify(childProcess.execFile);
     const { stdout, stderr } = await execFileAsync(file, fileArgs, {
         cwd: options.cwd,
         encoding: 'utf8',
