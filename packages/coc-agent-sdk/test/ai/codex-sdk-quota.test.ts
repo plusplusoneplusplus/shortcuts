@@ -206,4 +206,17 @@ describe('CodexSDKService runtime CLI resolution', () => {
         expect(path.basename(path.dirname(binPath))).toBe('bin');
         expect(fs.existsSync(binPath)).toBe(true);
     });
+
+    it('discovers GPT-6 Sol from the bundled Codex CLI catalog', async () => {
+        const svc = new CodexSDKService();
+        try {
+            const catalogLoader = svc as unknown as {
+                loadModelCatalog: () => Promise<Array<{ id: string }>>;
+            };
+            const models = await catalogLoader.loadModelCatalog();
+            expect(models.map(model => model.id)).toContain('gpt-6-sol');
+        } finally {
+            svc.dispose();
+        }
+    });
 });

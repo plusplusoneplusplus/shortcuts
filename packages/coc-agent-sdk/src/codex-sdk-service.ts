@@ -513,8 +513,8 @@ interface CodexStartThreadOptions {
     sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
     approvalPolicy?: 'never' | 'on-request' | 'on-failure' | 'untrusted';
     networkAccessEnabled?: boolean;
-    /** Reasoning level passed to the Codex backend (e.g. 'low', 'medium', 'high', 'xhigh'). */
-    reasoningLevel?: string;
+    /** Reasoning effort passed to the Codex backend (e.g. 'low', 'medium', 'high', 'xhigh'). */
+    modelReasoningEffort?: string;
 }
 
 interface CodexCatalogModel {
@@ -2019,7 +2019,7 @@ export class CodexSDKService implements ISDKService {
             ...(model ? { model } : {}),
             ...(options.workingDirectory ? { workingDirectory: options.workingDirectory } : {}),
             ...(additionalDirectories.length ? { additionalDirectories } : {}),
-            ...(options.reasoningEffort ? { reasoningLevel: options.reasoningEffort } : {}),
+            ...(options.reasoningEffort ? { modelReasoningEffort: options.reasoningEffort } : {}),
             skipGitRepoCheck: true,
             ...this.resolveCodexModeOptions(),
         };
