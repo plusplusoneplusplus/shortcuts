@@ -8,11 +8,11 @@ import { Card, Button, Spinner } from '../ui';
 import { Dialog } from '../ui/Dialog';
 import { SettingsCard } from './SettingsCard';
 import { getRawApiBase } from '../utils/config';
-import QRCode from 'qrcode';
+import { WhatsAppPairingContent, WhatsAppStatusIndicator, type WhatsAppConnectionState } from './WhatsAppConnectionUI';
 
 interface WhatsAppStatus {
     enabled: boolean;
-    status: 'disconnected' | 'connecting' | 'qr-pending' | 'connected' | 'creating-group';
+    status: WhatsAppConnectionState;
     qr: string | null;
     error: string | null;
     groupJid?: string;
@@ -141,58 +141,6 @@ async function postTeamsReconnect(): Promise<void> {
     }
 }
 
-// ── QR Code Display ─────────────────────────────────────────
-
-function QRCodeDisplay({ value }: { value: string }) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    useEffect(() => {
-        if (!canvasRef.current) return;
-        QRCode.toCanvas(canvasRef.current, value, {
-            width: 280,
-            margin: 2,
-            color: { dark: '#000000', light: '#ffffff' },
-        }).catch(() => {});
-    }, [value]);
-
-    return (
-        <div className="flex flex-col items-center gap-3">
-            <canvas
-                ref={canvasRef}
-                className="rounded-lg border-4 border-white dark:border-[#3c3c3c] shadow-lg"
-                style={{ imageRendering: 'pixelated' }}
-            />
-            <p className="text-xs text-[#616161] dark:text-[#999] text-center max-w-[280px]">
-                Open WhatsApp on your phone → Settings → Linked Devices → Link a Device → Scan this QR code
-            </p>
-        </div>
-    );
-}
-
-// ── Status indicator components ─────────────────────────────
-
-function StatusDot({ status }: { status: WhatsAppStatus['status'] }) {
-    const colors: Record<string, string> = {
-        connected: 'bg-green-500',
-        'qr-pending': 'bg-amber-500 animate-pulse',
-        'creating-group': 'bg-blue-500 animate-pulse',
-        connecting: 'bg-blue-500 animate-pulse',
-        disconnected: 'bg-gray-400',
-    };
-    return <span className={`inline-block w-2 h-2 rounded-full ${colors[status] ?? colors.disconnected}`} />;
-}
-
-function StatusLabel({ status }: { status: WhatsAppStatus['status'] }) {
-    const labels: Record<string, string> = {
-        connected: 'Connected',
-        'qr-pending': 'Waiting for QR scan',
-        'creating-group': 'Creating group…',
-        connecting: 'Connecting…',
-        disconnected: 'Not connected',
-    };
-    return <span className="text-sm">{labels[status] ?? status}</span>;
-}
-
 // ── Main Section ────────────────────────────────────────────
 
 export function IMSettingsSection() {
@@ -283,8 +231,7 @@ export function IMSettingsSection() {
                     <div className="space-y-3">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <StatusDot status={status.status} />
-                                <StatusLabel status={status.status} />
+                                <WhatsAppStatusIndicator status={status.status} />
                             </div>
                             <div className="flex items-center gap-2">
                                 {status.status === 'connected' && (
@@ -382,47 +329,8 @@ export function IMSettingsSection() {
                 onClose={() => setQrDialogOpen(false)}
                 title="Pair WhatsApp"
             >
-                <div className="flex flex-col items-center gap-4 py-4">
-                    {status?.qr ? (
-                        <QRCodeDisplay value={status.qr} />
-                    ) : status?.error ? (
-                        <div className="flex flex-col items-center gap-2 py-8">
-                            <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                                <span className="text-3xl">✕</span>
-                            </div>
-                            <p className="text-sm font-medium text-red-700 dark:text-red-400">Connection failed</p>
-                            <p className="text-xs text-[#999] text-center max-w-[300px]">{status.error}</p>
-                            <p className="text-xs text-[#999]">Check network connectivity and try restarting the container.</p>
-                        </div>
-                    ) : status?.status === 'creating-group' ? (
-                        <div className="flex flex-col items-center gap-2 py-8">
-                            <Spinner size="md" />
-                            <p className="text-sm text-[#616161] dark:text-[#999]">Creating WhatsApp group…</p>
-                            <p className="text-xs text-[#999]">Phone paired! Setting up the bridge group now.</p>
-                        </div>
-                    ) : status?.status === 'connecting' ? (
-                        <div className="flex flex-col items-center gap-2 py-8">
-                            <Spinner size="md" />
-                            <p className="text-sm text-[#616161] dark:text-[#999]">Connecting to WhatsApp…</p>
-                        </div>
-                    ) : status?.status === 'connected' ? (
-                        <div className="flex flex-col items-center gap-2 py-8">
-                            <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                                <span className="text-3xl">✓</span>
-                            </div>
-                            <p className="text-sm font-medium text-green-700 dark:text-green-400">WhatsApp is connected!</p>
-                            {status.groupJid && (
-                                <p className="text-xs text-[#999]">Group ready — messages will be bridged.</p>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center gap-2 py-8">
-                            <Spinner size="md" />
-                            <p className="text-sm text-[#616161] dark:text-[#999]">Waiting for QR code…</p>
-                            <p className="text-xs text-[#999]">Make sure WhatsApp is enabled in config and the container was restarted.</p>
-                        </div>
-                    )}
-                </div>
+                <WhatsAppPairingContent status={status?.status} qr={status?.qr} error={status?.error}
+                    groupJid={status?.groupJid} waitingHint="Make sure WhatsApp is enabled in config and the container was restarted." />
             </Dialog>
 
             <TeamsSettingsCard />
