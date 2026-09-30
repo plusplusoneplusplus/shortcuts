@@ -1,17 +1,19 @@
 /**
- * Owns the git choreography behind `POST .../work-items/:wid/submit-pr`:
- * eligibility checks, base-branch discovery, branch creation, cherry-picking,
- * push, `gh pr create`, cleanup/branch restoration on failure, and the Work
- * Item / change / execution settlement that follows a successful submission.
+ * Owns `POST .../work-items/:wid/submit-pr`: eligibility checks, the PR itself
+ * (through the shared create-PR service), and the Work Item / change /
+ * execution settlement that follows a successful submission.
  *
- * All git and `gh` invocations go through the injected
- * {@link WorkItemCommandRunner} so the command sequence and its failure
- * behavior are testable without a real checkout. The default runner runs the
- * nine git commands in the native addon and only `gh pr create` as a child
- * process, so nothing here reads a git command's stderr on success.
+ * The change's commits go to the service in commits mode, so the PR is built
+ * in a temporary linked worktree: the workspace may be dirty and its branch
+ * and HEAD never change. GitHub and Azure DevOps are both supported; the
+ * provider comes from the `origin` remote. Every git/`gh`/`az` call goes
+ * through the injected {@link WorkItemCommandRunner}.
  */
 
+import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { badRequest, notFound } from '../errors';
+import { createPullRequest } from '../git/create-pull-request-service';
+import { recordPullRequestBinding } from '../processes/record-pull-request-binding';
 import type { WorkItem, WorkItemChange } from './types';
 import {
     defaultWorkItemCommandRunner,
@@ -77,33 +79,6 @@ function isSafeBranchName(value: unknown): value is string {
         && /^[A-Za-z0-9._/-]+$/.test(branch);
 }
 
-/** Extract the pull request URL (and number) from `gh pr create` output. */
-export function parsePrUrl(stdout: string): { prUrl: string; prNumber?: number } | undefined {
-    const prUrl = stdout
-        .trim()
-        .split(/\s+/)
-        .find(token => /^https?:\/\/\S+\/pull\/\d+\/?$/.test(token));
-    if (!prUrl) return undefined;
-    const numberMatch = prUrl.match(/\/pull\/(\d+)\/?$/);
-    return {
-        prUrl,
-        ...(numberMatch ? { prNumber: Number(numberMatch[1]) } : {}),
-    };
-}
-
-async function resolveDefaultBaseBranch(repoRoot: string, runCommand: WorkItemCommandRunner): Promise<string> {
-    try {
-        const { stdout } = await runCommand('git', ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD'], { cwd: repoRoot });
-        const trimmed = stdout.trim();
-        if (trimmed.startsWith('origin/')) {
-            return trimmed.slice('origin/'.length);
-        }
-    } catch {
-        // Fall back to the common default branch when origin/HEAD is unavailable.
-    }
-    return 'main';
-}
-
 function buildPrBody(item: WorkItem, change: WorkItemChange): string {
     const lines = [
         `Work Item: ${item.workItemNumber != null ? `#${item.workItemNumber}` : item.id}`,
@@ -121,11 +96,8 @@ function buildPrBody(item: WorkItem, change: WorkItemChange): string {
 }
 
 /**
- * Run the git/gh sequence that turns a change's commits into an open PR.
- *
- * On any failure after the working branch is switched, an in-flight
- * cherry-pick is aborted and the original branch is restored before the error
- * propagates.
+ * Turn a change's commits into an open PR through the shared create-PR
+ * service. Auto-merge stays off, as it always was for Work Item PRs.
  */
 export async function submitWorkItemPullRequest(options: {
     item: WorkItem;
@@ -136,31 +108,20 @@ export async function submitWorkItemPullRequest(options: {
     baseBranch?: unknown;
     branchName?: unknown;
     runCommand: WorkItemCommandRunner;
-}): Promise<{ branchName: string; prUrl: string; prNumber?: number }> {
-    const { item, change, repoRoot, runCommand } = options;
-    // Every step of this sequence — `git`, `gh`, the cherry-pick, the branch
-    // restore on failure — runs through the one injected `runCommand`, so the
-    // two read-only probes below stay argv rather than splitting the flow
-    // across two runners.
-    const clean = await runCommand('git', ['status', '--porcelain'], { cwd: repoRoot });
-    if (clean.stdout.trim()) {
-        throw new Error('Cannot submit PR because the workspace has uncommitted changes');
-    }
-
-    const currentBranch = (await runCommand('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoRoot })).stdout.trim();
-    if (!currentBranch || currentBranch === 'HEAD') {
-        throw new Error('Cannot submit PR from a detached HEAD workspace');
-    }
+    /** Parent directory for the temporary worktree. Defaults to `os.tmpdir()`. */
+    tempDir?: string;
+}): Promise<{ branchName: string; prUrl: string; prNumber: number }> {
+    const { item, change, repoRoot } = options;
 
     const baseBranch = typeof options.baseBranch === 'string' && options.baseBranch.trim()
         ? options.baseBranch.trim()
-        : await resolveDefaultBaseBranch(repoRoot, runCommand);
-    if (!isSafeBranchName(baseBranch)) {
+        : undefined;
+    if (baseBranch !== undefined && !isSafeBranchName(baseBranch)) {
         throw new Error('Invalid baseBranch');
     }
 
     const branchName = (typeof options.branchName === 'string' ? options.branchName.trim() : undefined)
-        ?? `coc/work-items/${sanitizeBranchSegment(item.title)}-${Date.now().toString(36)}`;
+        || `coc/work-items/${sanitizeBranchSegment(item.title)}-${Date.now().toString(36)}`;
     if (!isSafeBranchName(branchName)) {
         throw new Error('Invalid branchName');
     }
@@ -172,31 +133,17 @@ export async function submitWorkItemPullRequest(options: {
         ? options.body.trim()
         : buildPrBody(item, change);
 
-    let switched = false;
-    try {
-        await runCommand('git', ['fetch', 'origin', baseBranch], { cwd: repoRoot });
-        await runCommand('git', ['switch', '-c', branchName, `origin/${baseBranch}`], { cwd: repoRoot });
-        switched = true;
-        for (const commit of [...change.commits].reverse()) {
-            await runCommand('git', ['cherry-pick', commit.sha], { cwd: repoRoot });
-        }
-        await runCommand('git', ['push', '-u', 'origin', branchName], { cwd: repoRoot });
-        const created = await runCommand('gh', ['pr', 'create', '--title', title, '--body', body, '--base', baseBranch, '--head', branchName], { cwd: repoRoot });
-        const parsed = parsePrUrl(`${created.stdout}\n${created.stderr}`);
-        if (!parsed) {
-            throw new Error('gh pr create did not return a pull request URL');
-        }
-        return { branchName, ...parsed };
-    } catch (err) {
-        if (switched) {
-            await runCommand('git', ['cherry-pick', '--abort'], { cwd: repoRoot }).catch(() => {});
-        }
-        throw err;
-    } finally {
-        if (switched) {
-            await runCommand('git', ['switch', currentBranch], { cwd: repoRoot }).catch(() => {});
-        }
-    }
+    // `change.commits` is newest-first; the service cherry-picks oldest-first.
+    const created = await createPullRequest({
+        repoRoot,
+        title,
+        body,
+        base: baseBranch,
+        commits: [...change.commits].reverse().map(commit => commit.sha),
+        branch: branchName,
+        autoMerge: false,
+    }, { runCommand: options.runCommand, tempDir: options.tempDir });
+    return { branchName: created.branch, prUrl: created.url, prNumber: created.id };
 }
 
 export async function submitWorkItemPrCommand(
@@ -239,6 +186,15 @@ export async function submitWorkItemPrCommand(
         branchName: input.branchName,
         runCommand,
     });
+
+    if (change.taskId) {
+        // Link the execution chat to its PR. A failed link never fails the submission.
+        await recordPullRequestBinding(ctx.processStore, input.commandRepoId, change.taskId, submitted.prNumber)
+            .catch(err => getLogger().warn(
+                LogCategory.AI,
+                `[WorkItems] Could not link PR ${submitted.prUrl} to ${change.taskId}: ${err instanceof Error ? err.message : String(err)}`,
+            ));
+    }
 
     const completedAt = new Date().toISOString();
     await ctx.workItemStore.updateChange(input.workItemId, change.id, {

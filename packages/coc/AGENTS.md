@@ -614,7 +614,9 @@ all have their own `references/*.md`.
   login, runs commits mode in a temporary linked worktree (conflicts abort and
   clean up; the caller's HEAD never moves), and returns an existing open PR
   instead of failing. Route every git/`gh`/`az` call through its injected
-  `PrCliRunner` so tests stay CLI-free.
+  `PrCliRunner` so tests stay CLI-free. The Work Item `submit-pr` command uses
+  it in commits mode (its own `branch` name, `autoMerge: false`) and binds the
+  change's execution chat to the PR.
 - **`create_pull_request` LLM tool** (`src/server/llm-tools/create-pull-request-tool.ts`)
   is autopilot/Ralph-only: executors pass `createPullRequest` deps to
   `buildChatTurnContext` only for write turns (ask mode and Ralph final-check

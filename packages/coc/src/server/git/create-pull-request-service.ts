@@ -57,6 +57,11 @@ export interface CreatePullRequestInput {
     mergeMethod?: PullRequestMergeMethod;
     /** A SHA, a list of SHAs, a comma-separated list, or an `A..B` range. Omit for current-branch mode. */
     commits?: string | string[];
+    /**
+     * commits mode only: the branch to create instead of `pr/<short-sha>-<slug>`.
+     * A numeric suffix is still added when it already exists.
+     */
+    branch?: string;
 }
 
 export interface CreatePullRequestResult {
@@ -437,9 +442,10 @@ class PullRequestRun {
         const commits = await this.resolveCommits(repoRoot);
         await this.git(repoRoot, 'fetch', REMOTE, base);
 
-        const shortSha = await this.git(repoRoot, 'rev-parse', '--short', commits[0]);
-        const subject = await this.git(repoRoot, 'log', '-1', '--pretty=%s', commits[0]);
-        const baseName = branchBaseName(shortSha, subject);
+        const baseName = this.input.branch?.trim() || branchBaseName(
+            await this.git(repoRoot, 'rev-parse', '--short', commits[0]),
+            await this.git(repoRoot, 'log', '-1', '--pretty=%s', commits[0]),
+        );
         let branch = baseName;
         for (let i = 2; await this.branchExists(repoRoot, branch); i++) {
             branch = `${baseName}-${i}`;

@@ -22,6 +22,27 @@ const mockProcessStore = {
 } as any;
 let workspaces: any[] = [];
 
+/** Fake git/gh runner for the shared create-PR service's commits-mode happy path. */
+function fakePrServiceRunner(prUrl: string, onGhCreate?: (options: any) => void) {
+    return vi.fn(async (command: string, args: string[], options: any) => {
+        const line = `${command} ${args.join(' ')}`;
+        if (line === 'git config --get remote.origin.url') return { stdout: 'https://github.com/example/repo.git\n', stderr: '' };
+        if (line === 'git symbolic-ref --quiet --short refs/remotes/origin/HEAD') return { stdout: 'origin/main\n', stderr: '' };
+        const verify = /^git rev-parse --verify (\w+)\^\{commit\}$/.exec(line);
+        if (verify) return { stdout: `${verify[1]}\n`, stderr: '' };
+        if (line.startsWith('git rev-list --reverse --topo-order')) {
+            return { stdout: args.filter(a => /^[0-9a-f]{40}$/.test(a)).reverse().join('\n'), stderr: '' };
+        }
+        if (line.startsWith('git rev-parse --verify --quiet refs/')) throw new Error('missing ref');
+        if (line.startsWith('gh pr list')) return { stdout: '[]', stderr: '' };
+        if (line.startsWith('gh pr create')) {
+            onGhCreate?.(options);
+            return { stdout: `${prUrl}\n`, stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+    });
+}
+
 function makeServer(enqueue?: any, opts: { dataDir?: string; workflowEnabled?: boolean; gitWorktreeEnabled?: boolean; runCommand?: any } = {}): http.Server {
     const routes: Route[] = [];
     registerWorkItemRoutes({ routes, workItemStore: store, processStore: mockProcessStore, enqueue });
@@ -593,16 +614,7 @@ describe('Work Item Execution Routes', () => {
                 scopeResolver: createWorkItemStorageScopeResolver(mockProcessStore),
             });
             enqueueMock = vi.fn().mockResolvedValue('task-origin');
-            runCommand = vi.fn(async (command: string, args: string[], options: any) => {
-                if (command === 'git' && args.join(' ') === 'status --porcelain') return { stdout: '', stderr: '' };
-                if (command === 'git' && args.join(' ') === 'rev-parse --abbrev-ref HEAD') return { stdout: 'feature/current\n', stderr: '' };
-                if (command === 'git' && args.join(' ') === 'symbolic-ref --quiet --short refs/remotes/origin/HEAD') return { stdout: 'origin/main\n', stderr: '' };
-                if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') {
-                    expect(options.cwd).toBe(path.join(tmpDir, 'clone-b'));
-                    return { stdout: 'https://github.com/plusplusoneplusplus/shortcuts/pull/77\n', stderr: '' };
-                }
-                return { stdout: '', stderr: '' };
-            });
+            runCommand = fakePrServiceRunner('https://github.com/plusplusoneplusplus/shortcuts/pull/77');
             server = makeServer(enqueueMock, { dataDir: tmpDir, workflowEnabled: true, runCommand });
             await startServer();
         });
@@ -717,6 +729,9 @@ describe('Work Item Execution Routes', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.prNumber).toBe(77);
+            // The temporary worktree is created from the selected clone.
+            const worktreeAdd = runCommand.mock.calls.find(call => call[0] === 'git' && call[1][0] === 'worktree' && call[1][1] === 'add');
+            expect(worktreeAdd?.[2].cwd).toBe(path.join(tmpDir, 'clone-b'));
             const updated = await store.getWorkItem('origin-wi', ORIGIN_ID);
             expect(updated?.status).toBe('done');
             expect(updated?.changes?.[0].prUrl).toContain('/pull/77');
@@ -921,13 +936,7 @@ describe('Work Item Execution Routes', () => {
                 dataDir: tmpDir,
                 scopeResolver: createWorkItemStorageScopeResolver(mockProcessStore),
             });
-            runCommand = vi.fn(async (command: string, args: string[]) => {
-                if (command === 'git' && args.join(' ') === 'status --porcelain') return { stdout: '', stderr: '' };
-                if (command === 'git' && args.join(' ') === 'rev-parse --abbrev-ref HEAD') return { stdout: 'feature/current\n', stderr: '' };
-                if (command === 'git' && args.join(' ') === 'symbolic-ref --quiet --short refs/remotes/origin/HEAD') return { stdout: 'origin/main\n', stderr: '' };
-                if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') return { stdout: 'https://github.com/example/repo/pull/123\n', stderr: '' };
-                return { stdout: '', stderr: '' };
-            });
+            runCommand = fakePrServiceRunner('https://github.com/example/repo/pull/123');
             server = makeServer(undefined, { workflowEnabled: true, runCommand });
             await startServer();
         });
@@ -988,10 +997,10 @@ describe('Work Item Execution Routes', () => {
             expect(res.body.prNumber).toBe(123);
             expect(res.body.branchName).toBe('coc/work-items/submit-pr-item');
             const commands = runCommand.mock.calls.map(call => `${call[0]} ${call[1].join(' ')}`);
-            expect(commands).toContain('git switch -c coc/work-items/submit-pr-item origin/main');
-            expect(commands).toContain('git cherry-pick 2222222222222222222222222222222222222222');
-            expect(commands).toContain('git cherry-pick 1111111111111111111111111111111111111111');
-            expect(commands).toContain('git switch feature/current');
+            expect(commands.some(c => c.startsWith('git worktree add -b coc/work-items/submit-pr-item '))).toBe(true);
+            expect(commands.indexOf('git cherry-pick 1111111111111111111111111111111111111111'))
+                .toBeLessThan(commands.indexOf('git cherry-pick 2222222222222222222222222222222222222222'));
+            expect(commands.some(c => /^git (switch|checkout)/.test(c))).toBe(false);
 
             const updated = await store.getWorkItem('wi-submit-pr', REPO_ID);
             expect(updated?.status).toBe('done');
@@ -1072,18 +1081,19 @@ describe('Work Item Execution Routes', () => {
             expect(runCommand).not.toHaveBeenCalled();
         });
 
-        it('rejects dirty workspaces before creating a PR branch', async () => {
+        it('returns 400 with the login hint when gh is not logged in', async () => {
             await addReviewItem();
             runCommand.mockImplementation(async (command: string, args: string[]) => {
-                if (command === 'git' && args.join(' ') === 'status --porcelain') return { stdout: ' M file.ts\n', stderr: '' };
+                if (command === 'git' && args.join(' ') === 'config --get remote.origin.url') return { stdout: 'https://github.com/example/repo.git\n', stderr: '' };
+                if (command === 'gh') throw new Error('not logged in');
                 return { stdout: '', stderr: '' };
             });
 
             const res = await request('POST', `/api/workspaces/${REPO_ID}/work-items/wi-submit-pr/submit-pr`, {});
 
             expect(res.status).toBe(400);
-            expect(res.body.error).toContain('uncommitted changes');
-            expect(runCommand).toHaveBeenCalledTimes(1);
+            expect(res.body.error).toContain('gh auth login');
+            expect((await store.getWorkItem('wi-submit-pr', REPO_ID))?.status).toBe('aiDone');
         });
     });
 

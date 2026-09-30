@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
+import { initializeDatabase, resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
 import { APIError } from '../../../src/server/errors';
 import { FileWorkItemStore } from '../../../src/server/work-items/work-item-store';
 import type { WorkItem } from '../../../src/server/work-items/types';
@@ -11,7 +13,6 @@ import type {
 } from '../../../src/server/work-items/work-item-execution-shared';
 import {
     findSubmitPrChange,
-    parsePrUrl,
     submitWorkItemPrCommand,
 } from '../../../src/server/work-items/work-item-pr-submission-command';
 
@@ -24,18 +25,25 @@ let runCommand: ReturnType<typeof vi.fn>;
 let broadcast: ReturnType<typeof vi.fn>;
 let ctx: WorkItemExecutionCommandContext;
 
-/** Default happy-path git/gh responses; individual tests override by command. */
+const GH_URL = 'https://github.com/example/repo.git';
+const SHA_1 = '1111111111111111111111111111111111111111';
+const SHA_2 = '2222222222222222222222222222222222222222';
+
+/** Default happy-path git/gh responses for the create-PR service; tests override by command. */
 function makeRunner(overrides: (command: string, args: string[]) => { stdout: string; stderr: string } | undefined = () => undefined) {
     return vi.fn(async (command: string, args: string[]) => {
         const override = overrides(command, args);
         if (override) return override;
         const line = `${command} ${args.join(' ')}`;
-        if (line === 'git status --porcelain') return { stdout: '', stderr: '' };
-        if (line === 'git rev-parse --abbrev-ref HEAD') return { stdout: 'feature/current\n', stderr: '' };
+        if (line === 'git config --get remote.origin.url') return { stdout: `${GH_URL}\n`, stderr: '' };
         if (line === 'git symbolic-ref --quiet --short refs/remotes/origin/HEAD') return { stdout: 'origin/main\n', stderr: '' };
-        if (command === 'gh' && args[0] === 'pr' && args[1] === 'create') {
-            return { stdout: 'https://github.com/example/repo/pull/321\n', stderr: '' };
-        }
+        const verify = /^git rev-parse --verify (\w+)\^\{commit\}$/.exec(line);
+        if (verify) return { stdout: `${verify[1]}\n`, stderr: '' };
+        if (line.startsWith('git rev-list --reverse --topo-order')) return { stdout: `${SHA_1}\n${SHA_2}\n`, stderr: '' };
+        // No branch exists yet, locally or on origin.
+        if (line.startsWith('git rev-parse --verify --quiet refs/')) throw new Error('missing ref');
+        if (line.startsWith('gh pr list')) return { stdout: '[]', stderr: '' };
+        if (line.startsWith('gh pr create')) return { stdout: 'https://github.com/example/repo/pull/321\n', stderr: '' };
         return { stdout: '', stderr: '' };
     });
 }
@@ -128,7 +136,7 @@ describe('submitWorkItemPrCommand', () => {
         await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
-    it('creates the branch, cherry-picks newest-first, pushes and opens the PR', async () => {
+    it('opens the PR from a temporary worktree without touching the workspace branch', async () => {
         await addReviewItem();
 
         const result = await submit({ branchName: 'coc/work-items/pr-command' });
@@ -138,30 +146,33 @@ describe('submitWorkItemPrCommand', () => {
         expect(result.branchName).toBe('coc/work-items/pr-command');
         expect(result.changeId).toBe('change-pr-command');
         expect(result.prStatus).toBe('open');
-        expect(commandLines()).toEqual([
-            'git status --porcelain',
-            'git rev-parse --abbrev-ref HEAD',
-            'git symbolic-ref --quiet --short refs/remotes/origin/HEAD',
-            'git fetch origin main',
-            'git switch -c coc/work-items/pr-command origin/main',
-            'git cherry-pick 2222222222222222222222222222222222222222',
-            'git cherry-pick 1111111111111111111111111111111111111111',
-            'git push -u origin coc/work-items/pr-command',
-            'gh pr create --title Submit PR item --body ' + [
-                'Work Item: #1',
-                '',
-                'Create a PR from this work item.',
-                '',
-                '## Execution',
-                '- Version: v2',
-                '- Run: task-pr-command',
-                '',
-                '## Commits',
-                '- 111111111111 First commit',
-                '- 222222222222 Second commit',
-            ].join('\n') + ' --base main --head coc/work-items/pr-command',
-            'git switch feature/current',
-        ]);
+        const lines = commandLines();
+        // Commits go oldest-first; the workspace branch/HEAD is never switched.
+        expect(lines.indexOf(`git cherry-pick ${SHA_1}`)).toBeLessThan(lines.indexOf(`git cherry-pick ${SHA_2}`));
+        expect(lines.some(l => /^git (switch|checkout|reset|status)/.test(l))).toBe(false);
+        expect(lines.some(l => l.startsWith('git worktree add -b coc/work-items/pr-command '))).toBe(true);
+        expect(lines).toContain('git push -u origin coc/work-items/pr-command');
+        expect(lines.some(l => l.startsWith('git worktree remove --force'))).toBe(true);
+        // Work Item PRs never turned auto-merge on.
+        expect(lines.some(l => l.startsWith('gh pr merge'))).toBe(false);
+        const create = runCommand.mock.calls.find(call => call[0] === 'gh' && (call[1] as string[])[1] === 'create')!;
+        const args = create[1] as string[];
+        expect(args[args.indexOf('--base') + 1]).toBe('main');
+        expect(args[args.indexOf('--head') + 1]).toBe('coc/work-items/pr-command');
+        expect(args[args.indexOf('--title') + 1]).toBe('Submit PR item');
+        expect(args[args.indexOf('--body') + 1]).toBe([
+            'Work Item: #1',
+            '',
+            'Create a PR from this work item.',
+            '',
+            '## Execution',
+            '- Version: v2',
+            '- Run: task-pr-command',
+            '',
+            '## Commits',
+            '- 111111111111 First commit',
+            '- 222222222222 Second commit',
+        ].join('\n'));
     });
 
     it('settles the work item, change and execution after a successful submission', async () => {
@@ -185,17 +196,35 @@ describe('submitWorkItemPrCommand', () => {
         }));
     });
 
+    it('binds the execution chat to the new PR', async () => {
+        const db = new Database(':memory:');
+        initializeDatabase(db);
+        ctx.processStore = {
+            getDatabase: () => db,
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: REPO_ID, rootPath: path.join(tmpDir, 'repo'), remoteUrl: GH_URL }]),
+        } as any;
+        await addReviewItem();
+
+        await submit({ branchName: 'coc/work-items/pr-command' });
+
+        expect(db.prepare('SELECT workspace_id, pr_id, task_id FROM pull_request_chat_bindings').all()).toEqual([{
+            workspace_id: resolveCanonicalOriginId({ workspaceId: REPO_ID, remoteUrl: GH_URL }),
+            pr_id: '321',
+            task_id: 'task-pr-command',
+        }]);
+    });
+
     it('falls back to main when origin/HEAD is unavailable', async () => {
         await addReviewItem();
         runCommand = makeRunner((command, args) => {
-            if (command === 'git' && args[0] === 'symbolic-ref') throw new Error('no origin/HEAD');
+            if (command === 'git' && (args[0] === 'symbolic-ref' || args[0] === 'ls-remote')) throw new Error('no origin/HEAD');
             return undefined;
         });
         ctx.runCommand = runCommand as unknown as WorkItemCommandRunner;
 
         await submit({ branchName: 'coc/work-items/pr-command' });
 
-        expect(commandLines()).toContain('git switch -c coc/work-items/pr-command origin/main');
+        expect(commandLines()).toContain('git fetch origin main');
     });
 
     it('generates a branch name from the title when none is supplied', async () => {
@@ -206,7 +235,7 @@ describe('submitWorkItemPrCommand', () => {
         expect(result.branchName).toMatch(/^coc\/work-items\/fix-the-broken-thing-[a-z0-9]+$/);
     });
 
-    it('refuses to submit from a dirty workspace before touching any branch', async () => {
+    it('submits from a dirty workspace, since the PR is built in a temporary worktree', async () => {
         await addReviewItem();
         runCommand = makeRunner((command, args) => {
             if (command === 'git' && args.join(' ') === 'status --porcelain') return { stdout: ' M src/a.ts\n', stderr: '' };
@@ -214,21 +243,8 @@ describe('submitWorkItemPrCommand', () => {
         });
         ctx.runCommand = runCommand as unknown as WorkItemCommandRunner;
 
-        await expectFailure(submit(), 'uncommitted changes');
-        expect(commandLines()).toEqual(['git status --porcelain']);
-        expect((await store.getWorkItem(WORK_ITEM_ID, REPO_ID))?.status).toBe('aiDone');
-    });
-
-    it('refuses to submit from a detached HEAD', async () => {
-        await addReviewItem();
-        runCommand = makeRunner((command, args) => {
-            if (command === 'git' && args.join(' ') === 'rev-parse --abbrev-ref HEAD') return { stdout: 'HEAD\n', stderr: '' };
-            return undefined;
-        });
-        ctx.runCommand = runCommand as unknown as WorkItemCommandRunner;
-
-        await expectFailure(submit(), 'detached HEAD');
-        expect(commandLines()).not.toContain('git fetch origin main');
+        const result = await submit();
+        expect(result.prNumber).toBe(321);
     });
 
     it('rejects an unsafe base branch and an unsafe head branch', async () => {
@@ -236,69 +252,76 @@ describe('submitWorkItemPrCommand', () => {
 
         await expectFailure(submit({ baseBranch: 'main;rm -rf /' }), 'Invalid baseBranch');
         await expectFailure(submit({ branchName: 'feature/../escape' }), 'Invalid branchName');
-        expect(commandLines()).not.toContain('git fetch origin main');
+        expect(runCommand).not.toHaveBeenCalled();
     });
 
-    it('aborts the cherry-pick and restores the original branch on failure', async () => {
+    it('aborts on a cherry-pick conflict, cleans up, and leaves the work item untouched', async () => {
         await addReviewItem();
         runCommand = makeRunner((command, args) => {
-            if (command === 'git' && args[0] === 'cherry-pick' && args[1] === '1111111111111111111111111111111111111111') {
-                throw new Error('cherry-pick conflict');
-            }
+            const line = `${command} ${args.join(' ')}`;
+            if (line === `git cherry-pick ${SHA_2}`) throw new Error('cherry-pick conflict');
+            if (line === 'git rev-parse --verify --quiet CHERRY_PICK_HEAD') return { stdout: `${SHA_2}\n`, stderr: '' };
+            if (line === 'git status --porcelain') return { stdout: 'UU a.ts\n', stderr: '' };
             return undefined;
         });
         ctx.runCommand = runCommand as unknown as WorkItemCommandRunner;
 
-        await expectFailure(submit({ branchName: 'coc/work-items/pr-command' }), 'cherry-pick conflict');
+        await expectFailure(submit({ branchName: 'coc/work-items/pr-command' }), `Cherry-picking ${SHA_2}`);
 
         const lines = commandLines();
         expect(lines).toContain('git cherry-pick --abort');
-        expect(lines).toContain('git switch feature/current');
-        expect(lines.indexOf('git cherry-pick --abort')).toBeLessThan(lines.indexOf('git switch feature/current'));
-        expect(lines).not.toContain('git push -u origin coc/work-items/pr-command');
+        expect(lines.some(l => l.startsWith('git worktree remove --force'))).toBe(true);
+        expect(lines).toContain('git branch -D coc/work-items/pr-command');
+        expect(lines.some(l => l.startsWith('git push'))).toBe(false);
 
         const untouched = await store.getWorkItem(WORK_ITEM_ID, REPO_ID);
         expect(untouched?.status).toBe('aiDone');
         expect(untouched?.changes?.[0].prUrl).toBeUndefined();
     });
 
-    it('restores the original branch when the push fails', async () => {
+    it('surfaces a push failure and deletes the temporary branch', async () => {
         await addReviewItem();
         runCommand = makeRunner((command, args) => {
-            if (command === 'git' && args[0] === 'push') throw new Error('remote rejected');
+            if (command === 'git' && args[0] === 'push') throw Object.assign(new Error('push failed'), { stderr: 'remote rejected' });
             return undefined;
         });
         ctx.runCommand = runCommand as unknown as WorkItemCommandRunner;
 
         await expectFailure(submit({ branchName: 'coc/work-items/pr-command' }), 'remote rejected');
-        expect(commandLines()).toContain('git switch feature/current');
+        expect(commandLines()).toContain('git branch -D coc/work-items/pr-command');
     });
 
     it('fails when gh pr create returns no pull request URL', async () => {
         await addReviewItem();
         runCommand = makeRunner((command, args) => {
-            if (command === 'gh' && args[0] === 'pr') return { stdout: 'created something\n', stderr: '' };
+            if (command === 'gh' && args[1] === 'create') return { stdout: 'created something\n', stderr: '' };
             return undefined;
         });
         ctx.runCommand = runCommand as unknown as WorkItemCommandRunner;
 
-        await expectFailure(submit({ branchName: 'coc/work-items/pr-command' }), 'did not return a pull request URL');
+        await expectFailure(submit({ branchName: 'coc/work-items/pr-command' }), 'did not return the created pull request');
         expect((await store.getWorkItem(WORK_ITEM_ID, REPO_ID))?.status).toBe('aiDone');
     });
 
-    it('reads the PR URL from stderr when gh writes it there', async () => {
+    it('opens an Azure DevOps PR when origin is an ADO remote', async () => {
         await addReviewItem();
+        const adoUrl = 'https://dev.azure.com/org/proj/_git/repo';
         runCommand = makeRunner((command, args) => {
-            if (command === 'gh' && args[0] === 'pr') {
-                return { stdout: '', stderr: 'Creating pull request...\nhttps://github.example.com/org/repo/pull/9\n' };
+            const line = `${command} ${args.join(' ')}`;
+            if (line === 'git config --get remote.origin.url') return { stdout: `${adoUrl}\n`, stderr: '' };
+            if (line.startsWith('az repos pr list')) return { stdout: '[]', stderr: '' };
+            if (line.startsWith('az repos pr create')) {
+                return { stdout: JSON.stringify({ pullRequestId: 55, repository: { webUrl: adoUrl } }), stderr: '' };
             }
             return undefined;
         });
         ctx.runCommand = runCommand as unknown as WorkItemCommandRunner;
 
         const result = await submit({ branchName: 'coc/work-items/pr-command' });
-        expect(result.prUrl).toBe('https://github.example.com/org/repo/pull/9');
-        expect(result.prNumber).toBe(9);
+
+        expect(result.prNumber).toBe(55);
+        expect(result.prUrl).toBe(`${adoUrl}/pullrequest/55`);
+        expect(commandLines().some(l => l.startsWith('gh '))).toBe(false);
     });
 
     it('rejects items that are not local-only workflow leaves', async () => {
@@ -345,7 +368,12 @@ describe('submitWorkItemPrCommand', () => {
         });
 
         expect(result.prUrl).toBe('https://github.com/example/repo/pull/321');
-        expect(runCommand.mock.calls.every(call => (call[2] as { cwd: string }).cwd === path.join(tmpDir, 'clone-a'))).toBe(true);
+        const repoCalls = runCommand.mock.calls.filter(call => {
+            const args = call[1] as string[];
+            return args[0] === 'config' || args[0] === 'worktree';
+        });
+        expect(repoCalls.length).toBeGreaterThan(0);
+        expect(repoCalls.every(call => (call[2] as { cwd: string }).cwd === path.join(tmpDir, 'clone-a'))).toBe(true);
         expect((await store.getWorkItem(WORK_ITEM_ID, originId))?.status).toBe('done');
         expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: originId }));
     });
@@ -386,26 +414,5 @@ describe('findSubmitPrChange', () => {
 
     it('returns undefined when there are no changes', () => {
         expect(findSubmitPrChange({} as WorkItem, undefined)).toBeUndefined();
-    });
-});
-
-describe('parsePrUrl', () => {
-    it('extracts the URL and number from gh output', () => {
-        expect(parsePrUrl('https://github.com/org/repo/pull/42\n')).toEqual({
-            prUrl: 'https://github.com/org/repo/pull/42',
-            prNumber: 42,
-        });
-    });
-
-    it('tolerates a trailing slash and surrounding noise', () => {
-        expect(parsePrUrl('Creating pull request\nhttps://github.com/org/repo/pull/7/ done')).toEqual({
-            prUrl: 'https://github.com/org/repo/pull/7/',
-            prNumber: 7,
-        });
-    });
-
-    it('returns undefined when no pull request URL is present', () => {
-        expect(parsePrUrl('https://github.com/org/repo/issues/42')).toBeUndefined();
-        expect(parsePrUrl('')).toBeUndefined();
     });
 });

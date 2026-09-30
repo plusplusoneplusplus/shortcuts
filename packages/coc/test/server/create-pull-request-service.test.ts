@@ -285,6 +285,24 @@ describe('createPullRequest (fake runner)', () => {
         expect(lines.some(l => l.startsWith('git branch -D'))).toBe(false);
         expect(lines.some(l => l.startsWith('git worktree remove --force'))).toBe(true);
     });
+
+    it('commits mode uses a caller-chosen branch name, still suffixed on collision', async () => {
+        const run = fakeRunner(currentBranchHandler(GH_URL, c => {
+            const l = line(c);
+            if (l === 'git rev-parse --verify abc^{commit}') return { stdout: 'abcdef0\n' };
+            if (l === 'git rev-parse --verify --quiet refs/remotes/origin/coc/work-items/x') return { stdout: 'x' };
+            if (l.startsWith('git rev-parse --verify --quiet refs/')) return fail('missing');
+            return undefined;
+        }));
+        const result = await createPullRequest(
+            { repoRoot: '/repo', title: 'T', commits: 'abc', branch: 'coc/work-items/x' },
+            { runCommand: run, tempDir },
+        );
+        expect(result.branch).toBe('coc/work-items/x-2');
+        const lines = run.calls.map(line);
+        expect(lines).toContain('git push -u origin coc/work-items/x-2');
+        expect(lines.some(l => l.startsWith('git rev-parse --short') || l.startsWith('git log -1'))).toBe(false);
+    });
 });
 
 describe('createPullRequest commits mode (real git)', () => {
