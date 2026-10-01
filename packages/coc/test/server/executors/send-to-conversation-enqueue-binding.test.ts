@@ -112,7 +112,7 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
         const result = await tool.handler({
             content: 'do the thing',
             mode: 'autopilot',
-            title: 'Helper task',
+            title: ' \tHelper task\n ',
         }) as any;
 
         expect(result.error).toBeUndefined();
@@ -120,6 +120,14 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
         const task = bridge.getTask(result.processId.slice('queue_'.length));
         expect((task!.payload as any).mode).toBe('autopilot');
         expect(task!.displayName).toBe('Helper task');
+        expect(task!.payload.customTitle).toBe('Helper task');
+    });
+
+    it.each([' \t\n ', 'x'.repeat(81)])('does not enqueue an invalid title %j', async title => {
+        const { bridge, tool } = setup();
+        const result = await tool.handler({ content: 'do the thing', title }) as any;
+        expect(result.error).toMatch(/title/i);
+        expect(bridge.createAggregateQueueFacade().getQueued()).toHaveLength(0);
     });
 
     it('does not enqueue when validation fails (unknown workspace)', async () => {

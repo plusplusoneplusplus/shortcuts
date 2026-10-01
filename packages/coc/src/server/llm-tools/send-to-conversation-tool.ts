@@ -427,6 +427,14 @@ async function createNewConversation(params: {
         getEffortTiersForProvider,
     } = params;
 
+    if (args.title !== undefined && (typeof args.title !== 'string' || !args.title.trim())) {
+        return { error: 'Invalid title: must be a non-empty string when provided.' };
+    }
+    const title = args.title?.trim();
+    if (title !== undefined && title.length > 80) {
+        return { error: 'Invalid title: exceeds 80 characters.' };
+    }
+
     // --- workspace (default to caller's; must be registered) --------------
     const requestedWorkspaceId =
         typeof args.workspaceId === 'string' && args.workspaceId.trim()
@@ -508,7 +516,6 @@ async function createNewConversation(params: {
     // auto-routing. Resolved model goes onto `config.model` (with the existing
     // `payload.model` mirror), inherited effort onto `config.reasoningEffort`,
     // and an explicit tier onto `config.effortTier` for queue preparation.
-    const title = typeof args.title === 'string' && args.title.trim() ? args.title.trim() : undefined;
     const config: Record<string, unknown> = {
         ...(resolvedModel ? { model: resolvedModel } : {}),
         ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
@@ -525,6 +532,7 @@ async function createNewConversation(params: {
             prompt: content,
             workspaceId: requestedWorkspaceId,
             provider: resolvedProvider,
+            ...(title ? { customTitle: title } : {}),
             ...(resolvedModel ? { model: resolvedModel } : {}),
             // Spawn link: persist the calling chat's processId onto the spawned
             // process's top-level `parentProcessId` so the chat list can nest

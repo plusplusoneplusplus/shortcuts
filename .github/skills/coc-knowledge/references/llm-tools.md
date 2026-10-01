@@ -60,11 +60,13 @@ can target another registered workspace, links spawned chats via
 `payload.context.spawnedFromProcessId`, and accepts a concrete `provider` (`copilot`, `codex`,
 `claude`, `opencode`) plus optional `effortTier` (`very-low`…`high`). An explicit create-mode
 provider uses that provider's defaults instead of inheriting parent model/effort; incompatible
-provider/model/tier combinations fail without fallback.
+provider/model/tier combinations fail without fallback. Optional create-mode `title` is
+trimmed, must be non-empty and at most 80 characters, and travels through canonical task
+validation as `displayName` and `payload.customTitle`. Omitting it keeps automatic naming.
 
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and
-lets an explicit `model` override the tier.
+lets an explicit `model` override the tier. Create-only titles are ignored in post mode.
 
 ### Canvas tools
 

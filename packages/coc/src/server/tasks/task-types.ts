@@ -622,6 +622,8 @@ export interface ChatPayload {
     readonly kind: 'chat';
     mode: ChatMode;
     prompt: string;
+    /** Validated custom title to seed on a newly created conversation. */
+    customTitle?: string;
     /** Opaque inbound request correlation carried through queued follow-up execution. */
     relayRequestId?: string;
     context?: ChatContext;

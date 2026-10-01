@@ -146,6 +146,8 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(payload.mode).toBe('ask');
         expect(payload.prompt).toBe('hello');
         expect(payload.workspaceId).toBe('ws-1');
+        expect(input.displayName).toBe('hello');
+        expect(payload).not.toHaveProperty('customTitle');
 
         // Uniform return shape: { processId, openLink }; no turnIndex in create mode.
         expect(result.processId).toBe('queue_task-123');
@@ -160,10 +162,40 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(payload.mode).toBe('autopilot');
     });
 
-    it('uses an explicit title as the display name', async () => {
+    it('trims an explicit title and carries it alongside the display name', async () => {
         const { tool, captured } = makeTool();
-        await tool.handler({ content: 'hello', title: 'My Spawned Chat' }, invocationStub);
+        asSuccess(await tool.handler({ content: 'hello', title: ' \tMy Spawned Chat\n ' }, invocationStub));
         expect(captured.input!.displayName).toBe('My Spawned Chat');
+        expect(payloadOf(captured.input!).customTitle).toBe('My Spawned Chat');
+    });
+
+    it('accepts exactly 80 title characters after trimming', async () => {
+        const { tool, captured } = makeTool();
+        const title = 'x'.repeat(80);
+        asSuccess(await tool.handler({ content: 'hello', title: ` ${title} ` }, invocationStub));
+        expect(captured.input!.displayName).toBe(title);
+        expect(payloadOf(captured.input!).customTitle).toBe(title);
+    });
+
+    it.each(['', ' \t\n '])('rejects a blank create-mode title %j without enqueueing', async title => {
+        const { tool, enqueueChat } = makeTool();
+        const result = await tool.handler({ content: 'hello', title }, invocationStub);
+        expect('error' in result && result.error).toMatch(/title.*non-empty string/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('rejects a title longer than 80 characters without enqueueing', async () => {
+        const { tool, enqueueChat } = makeTool();
+        const result = await tool.handler({ content: 'hello', title: ` ${'x'.repeat(81)} ` }, invocationStub);
+        expect('error' in result && result.error).toMatch(/title.*80 characters/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it.each([null, 42])('rejects a non-string create-mode title %j without enqueueing', async title => {
+        const { tool, enqueueChat } = makeTool();
+        const result = await tool.handler({ content: 'hello', title: title as never }, invocationStub);
+        expect('error' in result && result.error).toMatch(/title.*non-empty string/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
     });
 
     it('passes an explicit model through to the task config', async () => {
@@ -614,6 +646,22 @@ describe('createSendToConversationTool — post mode (processId provided)', () =
         expect(arg).not.toHaveProperty('workspaceId');
         expect(arg).not.toHaveProperty('title');
         expect(arg).not.toHaveProperty('priority');
+    });
+
+    it.each([' \t\n ', 'x'.repeat(81)])('ignores invalid create-mode title %j in post mode', async title => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 2 }));
+        const { tool, enqueueChat } = makeTool({ sendMessage });
+        const result = asSuccess(await tool.handler(
+            { processId: 'queue_existing', content: 'hi', title },
+            invocationStub,
+        ));
+        expect(result.turnIndex).toBe(2);
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(sendMessage).toHaveBeenCalledWith({
+            processId: 'queue_existing',
+            content: 'hi',
+            mode: 'ask',
+        });
     });
 
     it('errors on a blank content even in post mode', async () => {
