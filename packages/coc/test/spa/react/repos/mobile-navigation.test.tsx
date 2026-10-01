@@ -2,7 +2,6 @@
  * Tests for mobile-first chat/workspace navigation:
  * - Hamburger/menu icon in ChatHeader on mobile (replaces "← Back")
  * - Floating action button (FAB) in ChatListPane on mobile
- * - ProcessesView passes onNewChat for FAB support
  */
 
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
@@ -14,7 +13,6 @@ import { mockViewport } from '../../helpers/viewport-mock';
 const REACT_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'react');
 const CHAT_HEADER_SRC = path.join(REACT_SRC, 'features', 'chat', 'ChatHeader.tsx');
 const ACTIVITY_LIST_PANE_SRC = path.join(REACT_SRC, 'features', 'chat', 'ChatListPane.tsx');
-const PROCESSES_VIEW_SRC = path.join(REACT_SRC, 'processes', 'ProcessesView.tsx');
 const TAILWIND_CSS_SRC = path.join(__dirname, '..', '..', '..', '..', 'src', 'server', 'spa', 'client', 'tailwind.css');
 
 // ---------------------------------------------------------------------------
@@ -80,18 +78,6 @@ describe('ChatListPane — mobile FAB (source)', () => {
     it('renders a "+" icon SVG inside the FAB', () => {
         // Plus icon: vertical + horizontal lines
         expect(src).toContain('M12 5v14M5 12h14');
-    });
-});
-
-describe('ProcessesView — queue task selection (source)', () => {
-    let src: string;
-
-    beforeAll(() => {
-        src = fs.readFileSync(PROCESSES_VIEW_SRC, 'utf-8');
-    });
-
-    it('supports SELECT_QUEUE_TASK dispatch with null id', () => {
-        expect(src).toContain("type: 'SELECT_QUEUE_TASK', id: null");
     });
 });
 

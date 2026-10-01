@@ -53,10 +53,6 @@ vi.mock('../../../../src/server/spa/client/react/repos/MiniReposSidebar', () => 
     MiniReposSidebar: () => <div data-testid="mini-repos-sidebar" />,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/processes/ProcessesView', () => ({
-    ProcessesView: () => <div id="view-processes" />,
-}));
-
 vi.mock('../../../../src/server/spa/client/react/repos', () => ({
     ReposView: () => <div id="view-repos" />,
 }));

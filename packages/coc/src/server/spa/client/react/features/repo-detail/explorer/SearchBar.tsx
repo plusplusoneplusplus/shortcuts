@@ -1,6 +1,6 @@
 /**
  * SearchBar — controlled search input with a trailing clear button.
- * Styling matches ProcessFilters / TasksPanel search input patterns.
+ * Styling matches TasksPanel search input patterns.
  *
  * Optionally renders a row of sticky mode toggles (used by the content-search
  * view for case-sensitive / whole-word / regex), so the two search surfaces

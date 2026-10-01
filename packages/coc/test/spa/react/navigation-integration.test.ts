@@ -75,21 +75,12 @@ describe('ChatListPane: mini progress indicator', () => {
 
 // ─── WorkflowRunHistory: workflow navigation ────────────────────
 describe('WorkflowRunHistory: workflow navigation', () => {
-    it('does not import WorkflowResultCard', () => {
-        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain("import { WorkflowResultCard }");
-        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain("from '../processes/WorkflowResultCard'");
-    });
-
     it('does not have selectedTaskId state', () => {
         expect(PIPELINE_RUN_HISTORY_SRC).not.toContain('useState<string | null>(null)');
     });
 
     it('does not have selectedProcess state', () => {
         expect(PIPELINE_RUN_HISTORY_SRC).not.toContain('setSelectedProcess');
-    });
-
-    it('does not render WorkflowResultCard', () => {
-        expect(PIPELINE_RUN_HISTORY_SRC).not.toContain('<WorkflowResultCard');
     });
 
     it('handleSelectTask navigates to run view', () => {

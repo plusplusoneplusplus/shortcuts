@@ -76,17 +76,6 @@ describe('SkeletonLoader exports', () => {
 });
 
 // ---------------------------------------------------------------------------
-// ProcessesView — loading state
-// ---------------------------------------------------------------------------
-describe('ProcessesView loading skeleton', () => {
-    const src = read('processes/ProcessesView.tsx');
-
-    it('does not use "Loading queue..." plain text', () => {
-        expect(src).not.toContain('Loading queue...');
-    });
-});
-
-// ---------------------------------------------------------------------------
 // BottomNav — safe area inset support
 // ---------------------------------------------------------------------------
 describe('BottomNav safe area insets', () => {

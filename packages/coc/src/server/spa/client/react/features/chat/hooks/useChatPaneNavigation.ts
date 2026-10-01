@@ -3,7 +3,7 @@
  * list pane (left) and the chat detail pane (right), plus `j` / `k` /
  * `Enter` / `o` / `i` while the list pane has focus.
  *
- * Mounted once by `RepoChatTab` (and `ProcessesView`). Uses a window-level
+ * Mounted once by `RepoChatTab`. Uses a window-level
  * keydown listener gated on:
  *   - `enabled === true`
  *   - active element is NOT editable (input/textarea/contenteditable)

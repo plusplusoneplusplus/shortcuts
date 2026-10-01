@@ -118,29 +118,6 @@ describe('WorkflowRunHistory', () => {
         expect(location.hash).toBe('#repos/ws-1/pipelines/my-pipeline/run/queue_t2');
     });
 
-    it('does not render WorkflowResultCard after click', async () => {
-        mockRunHistory.mockResolvedValueOnce({
-            history: [
-                { id: 't1', status: 'completed', processId: 'proc-1' },
-            ],
-        });
-
-        render(
-            <Wrap>
-                <WorkflowRunHistory workspaceId="ws-1" pipelineName="my-pipeline" />
-            </Wrap>
-        );
-        await waitFor(() => {
-            expect(screen.getByTestId('run-history-item')).toBeDefined();
-        });
-
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('run-history-item'));
-        });
-
-        expect(screen.queryByTestId('workflow-result-card')).toBeNull();
-    });
-
     it('re-fetches on refreshKey change', async () => {
         mockRunHistory.mockResolvedValue({ history: [] });
 

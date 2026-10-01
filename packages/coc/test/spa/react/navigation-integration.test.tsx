@@ -9,7 +9,7 @@
  *
  * ── Dropped tests (not convertible to render tests) ──────────────────
  * - Import/export existence checks (covered by TypeScript compiler)
- * - Negative import checks (e.g. "does not import WorkflowResultCard")
+ * - Negative import checks (e.g. "does not import X")
  * - Source-level string pattern checks on handler bodies
  * - Interface shape checks (e.g. RunHistoryItemProps)
  * - Source-level conditional expression checks
