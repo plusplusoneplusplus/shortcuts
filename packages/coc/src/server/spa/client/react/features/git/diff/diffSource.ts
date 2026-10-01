@@ -1,6 +1,6 @@
 import type { DiffCommentContext } from '../../../../comments/diff-comment-types';
 import { getCocClientForWorkspace, requestForWorkspace } from '../../../repos/cloneRegistry';
-import type { GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
+import type { GitFileDiffContentResponse, GitRangeBaseMode } from '@plusplusoneplusplus/coc-client';
 import type { DiffSelectionRef } from '../../chat/sessionContextDrag';
 
 /**
@@ -68,6 +68,12 @@ export interface DiffSource {
      * @param full — when true, appends ?full=true to bypass server truncation.
      */
     fileDiffUrl(filePath: string, full?: boolean): string;
+
+    /**
+     * Load both full-text sides of one file for editor-backed rendering.
+     * Optional so patch-only sources continue to use the classic viewer.
+     */
+    fetchFileContent?(filePath: string): Promise<GitFileDiffContentResponse>;
 
     /**
      * Build the API URL for a full-file-context diff.
@@ -149,6 +155,10 @@ export function createCommitDiffSource(
             return full ? `${base}?full=true` : base;
         },
 
+        fetchFileContent(filePath: string): Promise<GitFileDiffContentResponse> {
+            return getCocClientForWorkspace(workspaceId).git.getCommitFileDiffContent(workspaceId, hash, filePath);
+        },
+
         fullDiffUrl(): string {
             return getCocClientForWorkspace(workspaceId).git.commitDiffPath(workspaceId, hash);
         },
@@ -209,6 +219,14 @@ export function createBranchRangeDiffSource(
             if (baseMode === 'upstream') params.set('base', 'upstream');
             const qs = params.toString();
             return qs ? `${path}?${qs}` : path;
+        },
+
+        fetchFileContent(filePath: string): Promise<GitFileDiffContentResponse> {
+            return getCocClientForWorkspace(workspaceId).git.getBranchRangeFileDiffContent(
+                workspaceId,
+                filePath,
+                { base: baseMode },
+            );
         },
 
         fullDiffUrl(): null {
@@ -330,6 +348,15 @@ export function createPrDiffSource(
             return client().pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, originOptions);
         },
 
+        fetchFileContent(filePath: string): Promise<GitFileDiffContentResponse> {
+            return client().pullRequests.getFileDiffContentForOrigin(
+                options.originId,
+                prId,
+                filePath,
+                originOptions,
+            );
+        },
+
         fullContextFileDiffUrl(filePath: string): string {
             return client().pullRequests.prFileDiffPathForOrigin(options.originId, prId, filePath, {
                 ...originOptions,
@@ -356,7 +383,7 @@ export function createPrDiffSource(
 
         supportsTruncation: false,
 
-        cacheKey: `pr:${options.originId}:${prId}`,
+        cacheKey: `pr:${options.originId}:${prId}${options.headSha ? `:${options.headSha}` : ''}`,
 
         async fetchFileList(): Promise<string[]> {
             const diff = await client().pullRequests.getDiffForOrigin(options.originId, prId, originOptions);

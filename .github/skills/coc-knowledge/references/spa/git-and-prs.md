@@ -85,6 +85,15 @@ file-diff URLs and its cache key. With no upstream the server falls back to the 
 branch and sets `baseModeFallback`. Pop-out URLs serialize `&base=upstream`; the
 default mode is omitted.
 
+### Shared file diff sources
+
+`features/git/diff/diffSource.ts` supplies commit, branch-range, and PR views with
+patch URLs plus an optional paired-content loader. Each loader resolves
+`getCocClientForWorkspace(workspaceId)` when called, so a remote clone route that
+becomes available after source construction is honored. Branch-range loaders carry
+the selected base mode. PR loaders use the origin-scoped content API with workspace
+and repo clone-selection metadata, and the source cache identity includes the head SHA.
+
 ### Cherry-pick
 
 Same-clone: the commit context menu opens `BranchPickerModal` as a local-branch
