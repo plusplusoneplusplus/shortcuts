@@ -121,8 +121,12 @@ all have their own `references/*.md`.
   synthetic ref models. Shared engine resolution falls back to Classic for
   binary/oversized content, content-load failures, or editor-start failures,
   retaining comments and the patch path. Retry refetches content and remounts
-  the editor for recoverable failures. It and
-  `WorkingTreeFileDiff` consume the same global `useDiffEngine` preference and
+  the editor for recoverable failures. Monaco comment threads reuse
+  `MonacoDiffCommentLayer`, `CommentCard`, and each source's existing comment
+  refs; sidebar navigation uses the viewer's `revealComment` handle.
+  Anchor relocation excludes patch metadata and no-newline annotations.
+  `FileDiffPanel` and `WorkingTreeFileDiff` consume the same global
+  `useDiffEngine` preference and
   Classic/Editor control. Cache identity includes
   workspace or origin, ref identity, base mode where applicable, and path; PR
   source identity includes the head SHA. The commit `files/*/content` preview

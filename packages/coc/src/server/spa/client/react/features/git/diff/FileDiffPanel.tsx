@@ -21,6 +21,7 @@ import { useDiffFind } from './useDiffFind';
 import { useDiffFindShortcut } from './useDiffFindShortcut';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
+import { CommentCard } from '../../../tasks/comments/CommentCard';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
@@ -373,6 +374,10 @@ export function FileDiffPanel({
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        if (showEditor) {
+            monacoViewerRef.current?.revealComment(comment.id);
+            return;
+        }
         const dc = comment as DiffComment;
         const lineIdx = dc.selection?.diffLineStart;
         if (lineIdx == null) return;
@@ -383,7 +388,25 @@ export function FileDiffPanel({
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('ring-2', 'ring-yellow-400');
         setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
-    }, []);
+    }, [showEditor]);
+
+    const renderCommentThread = useCallback((comment: DiffComment) => (
+        <CommentCard
+            comment={comment}
+            onResolve={() => { void resolveComment(comment.id); }}
+            onUnresolve={() => { void unresolveComment(comment.id); }}
+            onEdit={(text) => { void updateComment(comment.id, { comment: text }); }}
+            onDelete={() => { void deleteComment(comment.id); }}
+            onAskAI={(commandId, question) => handleAskAI(comment.id, commandId, question)}
+            onFixWithAI={() => handleFixWithAI(comment.id)}
+            onClick={() => undefined}
+            aiLoading={aiLoadingIds.has(comment.id)}
+            aiError={aiErrors.get(comment.id) ?? null}
+            onClearAiError={() => clearAiError(comment.id)}
+            isResolving={resolvingIds.has(comment.id)}
+            isDeleting={deletingIds.has(comment.id)}
+        />
+    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, handleFixWithAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
 
     // ── Render ──
 
@@ -517,6 +540,8 @@ export function FileDiffPanel({
                             viewMode={viewMode}
                             initialHunkTarget={initialHunkTarget}
                             onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                            comments={comments}
+                            renderCommentThread={renderCommentThread}
                             onAddComment={handleAddComment}
                             onAskAI={handleAskAIDiff}
                             onCopyAsContext={handleCopyAsContext}

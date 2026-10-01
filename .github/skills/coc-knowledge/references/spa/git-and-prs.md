@@ -110,6 +110,13 @@ User-selected Classic and patch-only sources render without a fallback reason.
 Monaco supplies find, syntax, overview markers, unified/split layout, and hunk navigation while full-context
 and truncation controls stay specific to Classic.
 
+Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
+and selection conversion owned by `monacoCommentThreads` and `diffCoords`.
+`FileDiffPanel` uses each source's existing comment refs for CRUD, replies, and AI
+actions; sidebar navigation reveals and expands the editor thread. Anchor relocation
+matches source rows, excluding patch headers and no-newline annotations during engine
+switches. Both engines share the persisted comment shape.
+
 ### Cherry-pick
 
 Same-clone: the commit context menu opens `BranchPickerModal` as a local-branch

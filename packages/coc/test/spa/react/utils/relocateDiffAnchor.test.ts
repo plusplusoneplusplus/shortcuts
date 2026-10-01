@@ -44,6 +44,51 @@ function makeComment(overrides: Partial<DiffComment> = {}): DiffComment {
 // ============================================================================
 
 describe('relocateDiffAnchor', () => {
+    it.each(['meta', 'hunk-header'] as const)('ignores %s text when switching from Monaco rows to Classic patches', type => {
+        const metadata = 'diff --git a/src/a.ts b/src/a.ts';
+        const comment = makeComment({
+            selectedText: 'b',
+            anchor: { selectedText: 'b', contextBefore: '', contextAfter: '', originalLine: 2, textHash: hashText(metadata) },
+        });
+        const lines: DiffLine[] = [
+            { index: 0, type, content: metadata },
+            { index: 1, type: 'removed', content: '-b', oldLine: 2 },
+        ];
+        expect(relocateDiffAnchor(comment, lines)).toBe(1);
+    });
+
+    it('does not recover deleted code from a no-newline annotation or patch header', () => {
+        const comment = makeComment({
+            anchor: { selectedText: 'newline', contextBefore: '', contextAfter: '', originalLine: 2, textHash: 'no-match' },
+        });
+        const lines: DiffLine[] = [
+            { index: 0, type: 'meta', content: 'diff --git a/newline.ts b/newline.ts' },
+            { index: 1, type: 'removed', content: '-other', oldLine: 2 },
+            { index: 2, type: 'context', content: '\\ No newline at end of file' },
+        ];
+        expect(relocateDiffAnchor(comment, lines)).toBeNull();
+    });
+
+    it('still recovers real model text that happens to equal a no-newline annotation', () => {
+        const content = '\\ No newline at end of file';
+        const comment = makeComment({
+            anchor: { selectedText: content, contextBefore: '', contextAfter: '', originalLine: 1, textHash: hashText(content) },
+        });
+        expect(relocateDiffAnchor(comment, [{ index: 0, type: 'context', content, newLine: 1 }])).toBe(0);
+    });
+
+    it('does not place a context-recovered comment on a hunk header', () => {
+        const comment = makeComment({
+            anchor: { selectedText: 'gone', contextBefore: 'before', contextAfter: 'after', originalLine: 2, textHash: 'no-match' },
+        });
+        const lines: DiffLine[] = [
+            { index: 0, type: 'context', content: ' before' },
+            { index: 1, type: 'hunk-header', content: '@@ -20 +20 @@' },
+            { index: 2, type: 'context', content: ' after' },
+        ];
+        expect(relocateDiffAnchor(comment, lines)).toBeNull();
+    });
+
     // ── 1. No anchor → unchanged diffLineStart ────────────────────────
 
     it('returns unchanged diffLineStart when comment has no anchor', () => {
