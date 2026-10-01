@@ -832,7 +832,7 @@ export function AdminPanel() {
                                 />
                             )}
 
-                            {activeTab === 'messaging' && isContainerMode() && (
+                            {(activeTab === 'messaging' || activeTab === 'whatsapp') && isContainerMode() && (
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
                                     <IMSettingsSection />
                                 </Suspense>
@@ -840,6 +840,10 @@ export function AdminPanel() {
                             {activeTab === 'messaging' && !isContainerMode() && (
                                 <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
                                     <TeamsConnectionCard />
+                                </Suspense>
+                            )}
+                            {activeTab === 'whatsapp' && !isContainerMode() && (
+                                <Suspense fallback={<div className="ar-section ar-hstack ar-muted"><Spinner size="sm" /> Loading…</div>}>
                                     <WhatsAppConnectionCard />
                                 </Suspense>
                             )}

@@ -85,7 +85,11 @@ The registry exposes:
 The routing hooks `useResolveCloneBaseUrl()`, `useCocClient(ref?)`, and
 `useCloneWsUrl(ref?)` resolve a bare workspace id through this registry with no
 `ReposContext` dependency, so they are safe in deep per-tab components and unit tests; a
-workspace **object** resolves from its own marker.
+workspace **object** resolves from its own marker. `useCocClient` and `useCloneWsUrl`
+read the endpoint through `useCloneBaseUrl(ref)`, a `useSyncExternalStore` subscription
+over `subscribeCloneBaseUrl`, so a caller re-renders when its route resolves after first
+paint (remote aggregation finishing late), when the active clone key disambiguates a
+shared id, or when a route is dropped.
 
 Long-lived language transports subscribe to the registry rather than resolving
 only once. Their cache identity is `(workspaceId, concrete clone route,
@@ -249,6 +253,10 @@ registry and passes it into `cloneWsUrl`. The `/ws` comment subscriptions
 (`useTaskComments`, `git/hooks/use*Comments`) already route through `cloneWsUrl`.
 
 ### Git diff layer
+
+`RepoGitTab` keys its body on `useCloneBaseUrl(workspaceId)`, so a route change
+remounts the tab and every Git hook reloads against the new server; its hooks build
+requests from the client they see on mount.
 
 REST git calls go through `useCocClient(workspaceId)` in `WorkingTree`,
 `WorkingTreeFileDiff`, `WorkingTreeAllComments`, the comment hooks (`useDiffComments`,

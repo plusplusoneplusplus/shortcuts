@@ -26,6 +26,10 @@ refresh, and the two layouts. Everything else lives here.
   its client through `useCocClient(workspaceId)`. Git, queue and preferences
   traffic must target the selected clone's server — never the page-origin
   singleton, and never a client captured from a different workspace.
+  `RepoGitTab` remounts its body when `useCloneBaseUrl(workspaceId)` changes, so
+  a route that resolves after first paint reloads every hook against the right
+  server; do not rely on hook dependency lists to pick up a new client.
+  `repoGitTab-lateRoute.test.tsx` is the fence.
 - **Auto-pull runs on the server.** The timer, the dirty and in-progress
   (rebase/merge/cherry-pick) pre-checks, the pull and the persisted run state all
   live in `src/server/git/auto-pull-*.ts`, so a repo pulls whether or not a tab is

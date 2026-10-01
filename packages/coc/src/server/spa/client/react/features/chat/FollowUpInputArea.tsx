@@ -334,19 +334,21 @@ export function FollowUpInputArea({
     // no ResizeObserver), in which case we keep the full/wide layout.
     // The full-label layout (provider · mode · model/effort · tools · cwd/ctx
     // · send) needs ~820px, so anything below the raised wide threshold
-    // compacts — not just the 500px `narrow` tier — keeping the toolbar on a
+    // compacts — not just the 640px `narrow` tier — keeping the toolbar on a
     // single line instead of wrapping. Three tiers of shedding:
     //  - narrow (<820): drop text labels (model chip icon-only, cwd basename,
     //    no "Effort:" prefix); the meta strip's container queries handle its
     //    own fit independently.
-    //  - tight (<500): swap in the mobile controls — the segmented mode pills
+    //  - tight (<640): swap in the mobile controls — the segmented mode pills
     //    become the tap-to-cycle button and slash/attach fold into
     //    the "⋯" overflow menu — so a narrow PANE gets the same treatment a
-    //    narrow VIEWPORT already does.
+    //    narrow VIEWPORT already does. The narrow-tier row (provider · mode
+    //    pills · effort · style · tools · Send) needs ~600px, so the fold
+    //    happens before it stops fitting.
     //  - minimal (<380): provider chip and Send go icon-only.
-    // Only below ~300px does the lg:flex-wrap fallback wrap to a second row.
+    // The toolbar never wraps: it is `flex-nowrap` at every viewport.
     const toolbarRef = useRef<HTMLDivElement>(null);
-    const toolbarWidth = useContainerWidth(toolbarRef, { wideThreshold: 820 });
+    const toolbarWidth = useContainerWidth(toolbarRef, { wideThreshold: 820, mediumThreshold: 640 });
     const isToolbarNarrow = toolbarWidth.width > 0 && !toolbarWidth.isWide;
     const isToolbarTight = toolbarWidth.width > 0 && toolbarWidth.isNarrow;
     const isToolbarMinimal = toolbarWidth.width > 0 && toolbarWidth.width < 380;
@@ -1084,7 +1086,7 @@ export function FollowUpInputArea({
                         />
                         <div
                             ref={toolbarRef}
-                            className="flex flex-nowrap lg:flex-wrap items-center gap-x-px gap-y-0.5 pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
+                            className="flex flex-nowrap items-center gap-x-px pl-2 pr-1.5 py-1 border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                             data-testid="chat-input-toolbar"
                         >
                             {/* The active session stays unchanged until Send. A different

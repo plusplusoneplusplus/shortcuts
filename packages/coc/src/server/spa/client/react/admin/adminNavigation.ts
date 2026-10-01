@@ -64,6 +64,7 @@ const BASE_TAB_LABELS: Record<AdminSubTab, string> = {
     database: 'Database Browser',
     agents: 'AI Provider',
     messaging: 'Messaging',
+    whatsapp: 'WhatsApp',
 };
 const BASE_TAB_ICONS: Record<AdminSubTab, string> = {
     settings: '⚙',
@@ -74,6 +75,7 @@ const BASE_TAB_ICONS: Record<AdminSubTab, string> = {
     database: '◫',
     agents: '◉',
     messaging: '✉',
+    whatsapp: '☏',
 };
 const BASE_TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     settings: 'Default model, execution limits, timeout, and output format for AI tasks.',
@@ -84,6 +86,7 @@ const BASE_TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     database: 'Browse the underlying SQLite tables that back CoC.',
     agents: '',
     messaging: 'Configure messaging connections.',
+    whatsapp: 'Receive commands and chat messages in a selected WhatsApp group.',
 };
 
 export function getAdminTabLabel(tab: AdminSubTab, isContainer: boolean): string {
@@ -152,6 +155,7 @@ export interface AdminNavGroup {
 
 export const ADMIN_TAB_GROUP_LABELS: Partial<Record<AdminSubTab, string>> = {
     messaging: 'Connections',
+    whatsapp: 'Connections',
     server: 'Operations',
     data: 'Operations',
     prompts: 'Developer / Internals',
@@ -207,7 +211,11 @@ export interface AdminNavContext {
  */
 export function buildAdminNavGroups({ isContainer, serversEnabled }: AdminNavContext): AdminNavGroup[] {
     const serversNavItems = serversEnabled ? [toolNavItem('servers')] : [];
-    const messagingNavItems = [adminNavItem('messaging', isContainer)];
+    // Container mode keeps WhatsApp + Teams in one Messaging section; normal
+    // CoC gives each connector its own row.
+    const messagingNavItems = isContainer
+        ? [adminNavItem('messaging', isContainer)]
+        : [adminNavItem('messaging', isContainer), adminNavItem('whatsapp', isContainer)];
     const containerAgentsNavItem = isContainer ? [adminNavItem('agents', isContainer)] : [];
     const nonContainerAgentsNavItem = !isContainer ? [adminNavItem('agents', isContainer)] : [];
 

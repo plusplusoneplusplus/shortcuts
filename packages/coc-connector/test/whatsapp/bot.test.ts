@@ -379,6 +379,49 @@ describe('WhatsAppBot', () => {
         expect(statuses).toContain('disconnected');
     });
 
+    it('should notify the restored status after creating a group', async () => {
+        const statuses: string[] = [];
+        (mockSocket as any).groupCreate = vi.fn().mockResolvedValue({ id: '456@g.us' });
+        const bot = new WhatsAppBot({
+            sessionDir: '/tmp/test-session',
+            onMessage: async () => {},
+            printQR: false,
+            onStatusChange: (s) => { statuses.push(s); },
+        });
+        await bot.start();
+        await new Promise(r => setTimeout(r, 10));
+        statuses.length = 0;
+
+        expect(await bot.createGroup('CoC')).toBe('456@g.us');
+        expect(statuses).toEqual(['creating-group', 'connected']);
+        expect(bot.getNativeStatus()).toBe('connected');
+
+        // A failed creation must also notify the restore.
+        statuses.length = 0;
+        (mockSocket as any).groupCreate.mockRejectedValueOnce(new Error('rate limited'));
+        await expect(bot.createGroup('CoC')).rejects.toThrow('rate limited');
+        expect(statuses).toEqual(['creating-group', 'connected']);
+    });
+
+    it('should not revive a connection that dropped while creating a group', async () => {
+        let disconnect!: (loggedOut: boolean) => void;
+        mockCreateConnection.mockImplementation(async (opts) => {
+            disconnect = opts.onDisconnected;
+            setTimeout(() => opts.onConnected(mockSocket as any), 0);
+            return mockSocket;
+        });
+        (mockSocket as any).groupCreate = vi.fn(async () => {
+            disconnect(false);
+            return { id: '456@g.us' };
+        });
+        const bot = new WhatsAppBot({ sessionDir: '/tmp/test-session', onMessage: async () => {}, printQR: false });
+        await bot.start();
+        await new Promise(r => setTimeout(r, 10));
+
+        await bot.createGroup('CoC');
+        expect(bot.getNativeStatus()).toBe('disconnected');
+    });
+
     it('should track QR code and clear on connect', async () => {
         mockCreateConnection.mockImplementation(async (opts) => {
             // Simulate QR then connect

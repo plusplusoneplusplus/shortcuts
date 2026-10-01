@@ -46,7 +46,7 @@ describe('RepoGitTab', () => {
         it('imports typed CoC client', () => {
             // AC-07: routes Git tab data through the clone-aware client (useCocClient).
             expect(source).toContain("import { getSpaCocClientErrorMessage } from '../../../api/cocClient'");
-            expect(source).toContain("import { useCocClient } from '../../repos/cloneRouting'");
+            expect(source).toContain("import { useCloneBaseUrl, useCocClient } from '../../repos/cloneRouting'");
         });
 
         it('fetches branch-range data', () => {
@@ -639,7 +639,7 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain('export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps)');
+            expect(source).toContain('function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps)');
         });
 
         it('derives isSplitWorkspace from the layout prop', () => {
@@ -1135,7 +1135,7 @@ describe('RepoGitTab', () => {
         it('imports typed CoC client utility', () => {
             // AC-07: routes Git tab data through the clone-aware client (useCocClient).
             expect(source).toContain("import { getSpaCocClientErrorMessage } from '../../../api/cocClient'");
-            expect(source).toContain("import { useCocClient } from '../../repos/cloneRouting'");
+            expect(source).toContain("import { useCloneBaseUrl, useCocClient } from '../../repos/cloneRouting'");
         });
 
         it('imports useMemo from react', () => {

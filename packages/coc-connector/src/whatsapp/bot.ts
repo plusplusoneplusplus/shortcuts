@@ -161,8 +161,9 @@ export class WhatsAppBot implements MessagingConnector {
             console.log(`[whatsapp-bot] Created group "${name}" → ${result.id}`);
             return result.id;
         } finally {
-            // Restore previous status — don't fire 'connected' again
-            this._status = prevStatus;
+            // Notify observers of the restore so they don't stay on 'creating-group';
+            // skip it if the connection changed state mid-call.
+            if (this._status === 'creating-group') this.setStatus(prevStatus);
         }
     }
 

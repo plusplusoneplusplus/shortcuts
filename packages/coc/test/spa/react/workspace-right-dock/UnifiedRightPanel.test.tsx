@@ -66,6 +66,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEd
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => ({ canvases: { list: async () => [], create: async () => ({ id: 'c1', title: 'c' }) } }),
     lookupCloneBaseUrl: () => null,
+    subscribeCloneBaseUrl: () => () => {},
 }));
 // `PreviewPane` opens a language document for every live repo file; this suite
 // is about panel behaviour, not language support.

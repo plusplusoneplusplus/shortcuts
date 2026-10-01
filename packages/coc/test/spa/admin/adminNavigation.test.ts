@@ -72,11 +72,13 @@ describe('buildAdminNavGroups', () => {
     const keys = (groups: ReturnType<typeof buildAdminNavGroups>, label: string) =>
         groups.find(g => g.label === label)?.items.map(i => i.key) ?? [];
 
-    it('web + servers disabled: Teams connection without container agents, no servers row', () => {
+    it('web + servers disabled: Teams and WhatsApp get their own rows, no container agents, no servers row', () => {
         const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: false });
         expect(labels(groups)).toEqual(['Configure', 'Knowledge', 'Connections', 'Operations', 'Developer / Internals']);
-        expect(keys(groups, 'Connections')).toEqual(['admin:messaging']);
-        expect(groups.find(g => g.label === 'Connections')?.items[0].label).toBe('Teams');
+        expect(keys(groups, 'Connections')).toEqual(['admin:messaging', 'admin:whatsapp']);
+        const connections = groups.find(g => g.label === 'Connections')?.items ?? [];
+        expect(connections.map(i => i.label)).toEqual(['Teams', 'WhatsApp']);
+        expect(connections[1].testId).toBe('admin-tab-whatsapp');
         expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:agents']);
         expect(keys(groups, 'Configure')).not.toContain('tool:servers');
     });
@@ -90,6 +92,7 @@ describe('buildAdminNavGroups', () => {
         const groups = buildAdminNavGroups({ isContainer: true, serversEnabled: false });
         expect(labels(groups)).toContain('Connections');
         expect(keys(groups, 'Connections')).toEqual(['admin:messaging', 'admin:agents']);
+        expect(keys(groups, 'Connections')).not.toContain('admin:whatsapp');
         expect(keys(groups, 'Configure')).toEqual(['settings:configure']);
         const agents = groups.flatMap(g => g.items).find(i => i.key === 'admin:agents');
         expect(agents?.label).toBe('Agents');
@@ -102,6 +105,16 @@ describe('buildAdminNavGroups', () => {
 });
 
 describe('deriveActiveNav', () => {
+    it('whatsapp tab highlights its own row under Connections', () => {
+        const d = deriveActiveNav({
+            isContainer: false, isToolEmbedded: false,
+            activeDashboardTab: 'admin', activeTab: 'whatsapp', settingsSubTab: 'ai',
+        });
+        expect(d.activeNavKey).toBe('admin:whatsapp');
+        expect(d.activeTabLabel).toBe('WhatsApp');
+        expect(d.activeBreadcrumbGroup).toBe('Connections');
+    });
+
     it('settings sub-tab (non-advanced) highlights settings:configure', () => {
         const d = deriveActiveNav({
             isContainer: false, isToolEmbedded: false,

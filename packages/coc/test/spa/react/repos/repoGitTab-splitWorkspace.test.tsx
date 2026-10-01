@@ -34,6 +34,7 @@ const client = {
 
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
     useCocClient: () => client,
+    useCloneBaseUrl: () => undefined,
     useCloneWsUrl: () => (p: string) => p,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({

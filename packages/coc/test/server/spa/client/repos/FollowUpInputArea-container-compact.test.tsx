@@ -11,7 +11,8 @@
  * `wideThreshold` (820px) and compacts whenever it is NOT `wide` — full labels
  * need ~820px, so waiting for the 500px `narrow` tier used to leave a
  * 500–820px dead zone where the toolbar wrapped onto a second line instead of
- * compacting.
+ * compacting. The tight tier (mode pills → cycle button, slash/attach → "⋯")
+ * starts below 640px, and the toolbar never wraps at any viewport.
  *
  * Covers:
  *  - AC-01: the container-width signal drives compaction; full layout when wide.
@@ -28,25 +29,30 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
-// Container-width mock — controlled per-test via setContainerWidthTier().
+// Container-width mock — the measured width is controlled per-test via
+// setContainerWidth(); the tier is derived from the thresholds the component
+// passes, so threshold regressions are caught here.
 // ---------------------------------------------------------------------------
 
-let currentTier: 'wide' | 'medium' | 'narrow' = 'wide';
 let currentWidth = 900;
 
-function setContainerWidth(tier: 'wide' | 'medium' | 'narrow', width: number) {
-    currentTier = tier;
+function setContainerWidth(width: number) {
     currentWidth = width;
 }
 
 vi.mock('../../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
-    useContainerWidth: () => ({
-        width: currentWidth,
-        tier: currentTier,
-        isWide: currentTier === 'wide',
-        isMedium: currentTier === 'medium',
-        isNarrow: currentTier === 'narrow',
-    }),
+    useContainerWidth: (_ref: unknown, opts: { wideThreshold?: number; mediumThreshold?: number } = {}) => {
+        const wide = opts.wideThreshold ?? 700;
+        const medium = opts.mediumThreshold ?? 500;
+        const tier = currentWidth >= wide ? 'wide' : currentWidth >= medium ? 'medium' : 'narrow';
+        return {
+            width: currentWidth,
+            tier,
+            isWide: tier === 'wide',
+            isMedium: tier === 'medium',
+            isNarrow: tier === 'narrow',
+        };
+    },
 }));
 
 // ---------------------------------------------------------------------------
@@ -185,33 +191,33 @@ function defaultProps(overrides: Partial<Parameters<typeof FollowUpInputArea>[0]
 describe('FollowUpInputArea – container-driven compact footer', () => {
     beforeEach(() => {
         Element.prototype.scrollIntoView = vi.fn();
-        setContainerWidth('wide', 900);
+        setContainerWidth(900);
     });
 
     describe('AC-01 – container-width signal', () => {
         it('renders the full model label when the toolbar is wide (≥700px)', () => {
-            setContainerWidth('wide', 900);
+            setContainerWidth(900);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.getByTestId('model-picker-chip-label')).toBeTruthy();
             expect(screen.getByTestId('model-picker-chip-label').textContent).toBe('claude-opus-4-8');
         });
 
         it('collapses to compact rendering when the measured width is below the narrow threshold', () => {
-            setContainerWidth('narrow', 420);
+            setContainerWidth(420);
             render(<FollowUpInputArea {...defaultProps()} />);
             // AC-04 compaction is visible: the model text label is dropped.
             expect(screen.queryByTestId('model-picker-chip-label')).toBeNull();
         });
 
         it('keeps the full layout when width is unmeasured (0) to avoid a compact flash', () => {
-            setContainerWidth('narrow', 0);
+            setContainerWidth(0);
             render(<FollowUpInputArea {...defaultProps()} />);
             // width 0 is "not yet measured" → full layout despite the narrow tier.
             expect(screen.getByTestId('model-picker-chip-label')).toBeTruthy();
         });
 
         it('compacts already in the medium tier (regression: 500–820px used to wrap instead)', () => {
-            setContainerWidth('medium', 600);
+            setContainerWidth(700);
             render(<FollowUpInputArea {...defaultProps({
                 workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
             })} />);
@@ -223,7 +229,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
 
     describe('Single-line toolbar – meta strip cannot force a wrap', () => {
         it('hosts the meta strip inside the flex-basis-0 flexible middle', () => {
-            setContainerWidth('wide', 900);
+            setContainerWidth(900);
             render(<FollowUpInputArea {...defaultProps({
                 workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
             })} />);
@@ -239,7 +245,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
 
         it('hides the strip via container query instead of overlapping when free space runs out', () => {
-            setContainerWidth('wide', 900);
+            setContainerWidth(900);
             render(<FollowUpInputArea {...defaultProps({
                 workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
                 sessionTokenLimit: 200_000,
@@ -262,7 +268,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
 
         it('keeps the flexible middle as a spacer when no meta content is present', () => {
-            setContainerWidth('wide', 900);
+            setContainerWidth(900);
             render(<FollowUpInputArea {...defaultProps()} />);
             // No cwd/ctx → the strip renders nothing, but the middle div still
             // exists to push the tools/send zone to the right edge.
@@ -273,7 +279,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
 
     describe('AC-04 – model chip → icon only when narrow', () => {
         it('hides the model text label when narrow but keeps the accessible name', () => {
-            setContainerWidth('narrow', 420);
+            setContainerWidth(420);
             render(<FollowUpInputArea {...defaultProps()} />);
             const chip = screen.getByTestId('model-picker-chip');
             expect(screen.queryByTestId('model-picker-chip-label')).toBeNull();
@@ -281,7 +287,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
 
         it('shows icon + model name when wide, with the accessible name preserved', () => {
-            setContainerWidth('wide', 900);
+            setContainerWidth(900);
             render(<FollowUpInputArea {...defaultProps()} />);
             const chip = screen.getByTestId('model-picker-chip');
             expect(screen.getByTestId('model-picker-chip-label').textContent).toBe('claude-opus-4-8');
@@ -289,7 +295,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
 
         it('uses the model override in the accessible name when one is active', () => {
-            setContainerWidth('narrow', 420);
+            setContainerWidth(420);
             render(<FollowUpInputArea {...defaultProps({
                 modelCommand: { ...MODEL_COMMAND, modelOverride: 'claude-sonnet-4-6' },
             })} />);
@@ -302,7 +308,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         const CWD = '/Users/yihengtao/Documents/Projects/nanochat';
 
         it('shows only the last folder name and drops the cwd label when narrow', () => {
-            setContainerWidth('narrow', 420);
+            setContainerWidth(420);
             render(<FollowUpInputArea {...defaultProps({ workingDirectory: CWD })} />);
             const chip = screen.getByTestId('composer-cwd-chip');
             expect(screen.getByTestId('composer-cwd-path').textContent).toBe('nanochat');
@@ -312,7 +318,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
 
         it('shows the head-truncated path and cwd label when wide', () => {
-            setContainerWidth('wide', 900);
+            setContainerWidth(900);
             render(<FollowUpInputArea {...defaultProps({ workingDirectory: CWD })} />);
             const chip = screen.getByTestId('composer-cwd-chip');
             // Wide keeps the ellipsis-prefixed head-truncated form + the `cwd` label.
@@ -321,9 +327,9 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
     });
 
-    describe('Tight tier (<500px) – mobile controls driven by the container signal', () => {
-        it('keeps the desktop controls at medium width (500–819px)', () => {
-            setContainerWidth('medium', 600);
+    describe('Tight tier (<640px) – mobile controls driven by the container signal', () => {
+        it('keeps the desktop controls at medium width (640–819px)', () => {
+            setContainerWidth(700);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.getByTestId('mode-selector')).toBeTruthy();
             expect(screen.getByTestId('chat-toolbar-slash-btn')).toBeTruthy();
@@ -334,8 +340,23 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             expect(screen.getByTestId('mode-cycle-btn-compact').className).toContain('lg:hidden');
         });
 
+        it('folds the mode pills and tools at ~560px so Send stays on the first row (regression)', () => {
+            // A ~560px follow-up pane used to keep the mode pills, slash and
+            // attach inline (tight only fired below 500px), overflowing the row
+            // and wrapping Send onto a second line on desktop.
+            setContainerWidth(560);
+            render(<FollowUpInputArea {...defaultProps()} />);
+            expect(screen.queryByTestId('mode-selector')).toBeNull();
+            expect(screen.queryByTestId('chat-toolbar-slash-btn')).toBeNull();
+            expect(screen.queryByTestId('follow-up-attach-btn')).toBeNull();
+            expect(screen.getByTestId('chat-toolbar-overflow-btn')).toBeTruthy();
+            const tokens = screen.getByTestId('chat-input-toolbar').className.split(/\s+/);
+            expect(tokens).toContain('flex-nowrap');
+            expect(tokens.some(t => t.endsWith('flex-wrap'))).toBe(false);
+        });
+
         it('swaps the mode pills for the cycle button when the pane is tight', () => {
-            setContainerWidth('narrow', 420);
+            setContainerWidth(420);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.queryByTestId('mode-selector')).toBeNull();
             // The cycle button loses its lg:hidden gate so it shows on desktop too.
@@ -343,7 +364,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
 
         it('folds slash/attach into the overflow menu when the pane is tight', () => {
-            setContainerWidth('narrow', 420);
+            setContainerWidth(420);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.queryByTestId('chat-toolbar-slash-btn')).toBeNull();
             expect(screen.queryByTestId('chat-toolbar-mention-btn')).toBeNull();
@@ -353,7 +374,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
 
         it('keeps provider and Send labels down to 380px', () => {
-            setContainerWidth('narrow', 420);
+            setContainerWidth(420);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.getByTestId('agent-selector-chip-label')).toBeTruthy();
             expect(screen.getByTestId('activity-chat-send-btn').getAttribute('data-icon-only')).toBe('false');
@@ -362,20 +383,20 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
 
     describe('Minimal tier (<380px) – icon-only provider chip and Send', () => {
         it('drops the provider label but keeps the accessible name', () => {
-            setContainerWidth('narrow', 320);
+            setContainerWidth(320);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.queryByTestId('agent-selector-chip-label')).toBeNull();
             expect(screen.getByTestId('agent-selector-chip-btn').getAttribute('aria-label')).toContain('Copilot');
         });
 
         it('sends the icon-only signal to the Send button', () => {
-            setContainerWidth('narrow', 320);
+            setContainerWidth(320);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.getByTestId('activity-chat-send-btn').getAttribute('data-icon-only')).toBe('true');
         });
 
         it('keeps full labels when width is unmeasured (0)', () => {
-            setContainerWidth('narrow', 0);
+            setContainerWidth(0);
             render(<FollowUpInputArea {...defaultProps()} />);
             expect(screen.getByTestId('agent-selector-chip-label')).toBeTruthy();
             expect(screen.getByTestId('mode-selector')).toBeTruthy();
@@ -397,7 +418,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         };
 
         it('shows only the tier value (no "Effort:" word) when narrow', () => {
-            setContainerWidth('narrow', 420);
+            setContainerWidth(420);
             render(<FollowUpInputArea {...defaultProps(tierProps)} />);
             const label = screen.getByTestId('effort-tier-label');
             expect(label.textContent).toBe('Medium');
@@ -405,7 +426,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
         });
 
         it('shows "Effort: <tier>" when wide', () => {
-            setContainerWidth('wide', 900);
+            setContainerWidth(900);
             render(<FollowUpInputArea {...defaultProps(tierProps)} />);
             expect(screen.getByTestId('effort-tier-label').textContent).toBe('Effort: Medium');
         });

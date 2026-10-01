@@ -485,10 +485,11 @@ describe('FollowUpInputArea — stacked input card layout', () => {
         expect(pos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
-    it('toolbar wraps on narrow viewports (flex-wrap)', () => {
+    it('toolbar never wraps (single row at every viewport)', () => {
         render(<FollowUpInputArea {...makeFollowUpProps()} />);
-        const toolbar = screen.getByTestId('chat-input-toolbar');
-        expect(toolbar.className).toContain('flex-wrap');
+        const tokens = screen.getByTestId('chat-input-toolbar').className.split(/\s+/);
+        expect(tokens).toContain('flex-nowrap');
+        expect(tokens.some(t => t.endsWith('flex-wrap'))).toBe(false);
     });
 
     it('separate model-override-badge is removed (chip is the single source)', () => {
