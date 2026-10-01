@@ -12,10 +12,10 @@
  */
 
 import type { CocClient } from '@plusplusoneplusplus/coc-client';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { getCocClientFor, getSpaCocClient } from '../api/cocClient';
 import { cloneWsUrl } from '../api/wsUrl';
-import { lookupCloneBaseUrl } from './cloneRegistry';
+import { lookupCloneBaseUrl, subscribeCloneBaseUrl } from './cloneRegistry';
 import { isRemoteWorkspace } from './remoteWorkspaceAggregation';
 import type { RepoData } from './repoGrouping';
 
@@ -73,6 +73,25 @@ function resolveCloneBaseUrlForHook(ref: CloneRef | undefined): string | undefin
 }
 
 /**
+ * Subscribe a component to its clone's resolved `baseUrl` (`undefined` = local).
+ *
+ * The registry can resolve a bare workspace id only after remote aggregation
+ * runs, and the active clone key changes with selection — both may happen after
+ * a tab first renders. Subscribing re-renders the caller whenever the resolved
+ * endpoint changes, so a routed client never stays pinned to the page origin
+ * that happened to answer on the first render.
+ */
+export function useCloneBaseUrl(ref?: CloneRef): string | undefined {
+    const id = typeof ref === 'string' ? ref : refId(ref);
+    const subscribe = useCallback(
+        (onChange: () => void) => subscribeCloneBaseUrl(id, onChange),
+        [id],
+    );
+    const getSnapshot = () => resolveCloneBaseUrlForHook(ref);
+    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
  * Hook returning a resolver that maps a workspace id (or object) → its remote
  * baseUrl (or undefined when local). Registry-backed; no ReposProvider required.
  */
@@ -86,7 +105,7 @@ export function useResolveCloneBaseUrl(): (ref: CloneRef | undefined) => string 
  * always get the default client.
  */
 export function useCocClient(ref?: CloneRef): CocClient {
-    const baseUrl = resolveCloneBaseUrlForHook(ref);
+    const baseUrl = useCloneBaseUrl(ref);
     // Local clone resolves to the default singleton via getSpaCocClient() directly
     // (not getCocClientFor(undefined)), so local-clone behavior is unchanged.
     return useMemo(() => (baseUrl ? getCocClientFor(baseUrl) : getSpaCocClient()), [baseUrl]);
@@ -98,6 +117,6 @@ export function useCocClient(ref?: CloneRef): CocClient {
  * legacy page-origin URL for a local clone. AC-07 wires this into the WS hooks.
  */
 export function useCloneWsUrl(ref?: CloneRef): (path: string) => string {
-    const baseUrl = resolveCloneBaseUrlForHook(ref);
+    const baseUrl = useCloneBaseUrl(ref);
     return useMemo(() => (path: string) => cloneWsUrl(path, baseUrl), [baseUrl]);
 }

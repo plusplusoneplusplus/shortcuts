@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import type { WorkspaceInfo } from '@plusplusoneplusplus/coc-client';
 import { tagRemoteWorkspaces } from '../../../../src/server/spa/client/react/repos/remoteWorkspaceAggregation';
 import type { RepoData } from '../../../../src/server/spa/client/react/repos/repoGrouping';
@@ -20,11 +20,13 @@ import {
     resolveCloneBaseUrl,
     useResolveCloneBaseUrl,
     useCocClient,
+    useCloneBaseUrl,
     useCloneWsUrl,
 } from '../../../../src/server/spa/client/react/repos/cloneRouting';
 import {
     registerCloneBaseUrls,
     resetCloneRegistryForTests,
+    setActiveCloneForRouting,
 } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { getCocClientFor, getSpaCocClient, resetSpaCocClientForTests } from '../../../../src/server/spa/client/react/api/cocClient';
 
@@ -149,5 +151,52 @@ describe('useCloneWsUrl', () => {
         const { result } = renderHook(() => useCloneWsUrl('w1'));
         expect(result.current('/ws')).toBe('ws://127.0.0.1:4004/ws');
         expect(result.current('/ws/terminal?workspaceId=w1')).toBe('ws://127.0.0.1:4004/ws/terminal?workspaceId=w1');
+    });
+});
+
+// Regression: a remote clone whose route resolves AFTER the first render (remote
+// aggregation finishing after first paint) must not stay on the page-origin
+// client. Before the hooks subscribed to the registry, the Git panel kept the
+// local client and 404'd "Workspace not found" on every load and Retry.
+describe('late route resolution (subscribed hooks)', () => {
+    const URL = 'http://127.0.0.1:4005';
+
+    it('useCloneBaseUrl follows the registry as routes appear and disappear', () => {
+        const { result } = renderHook(() => useCloneBaseUrl('w1'));
+        expect(result.current).toBeUndefined();
+
+        act(() => registerCloneBaseUrls([{ workspaceId: 'w1', baseUrl: URL }]));
+        expect(result.current).toBe(URL);
+
+        act(() => registerCloneBaseUrls([]));
+        expect(result.current).toBeUndefined();
+    });
+
+    it('useCocClient switches from the origin client to the remote client once the route resolves', () => {
+        const { result } = renderHook(() => useCocClient('w1'));
+        expect(result.current).toBe(getSpaCocClient());
+
+        act(() => registerCloneBaseUrls([{ workspaceId: 'w1', baseUrl: URL }]));
+        expect(result.current).toBe(getCocClientFor(URL));
+    });
+
+    it('useCocClient follows the active clone key when a workspace id is served by two servers', () => {
+        const other = 'http://127.0.0.1:4006';
+        registerCloneBaseUrls([
+            { workspaceId: 'w1', baseUrl: URL, serverId: 'a' },
+            { workspaceId: 'w1', baseUrl: other, serverId: 'b' },
+        ]);
+        const { result } = renderHook(() => useCocClient('w1'));
+        // Ambiguous until a clone is selected.
+        expect(result.current).toBe(getSpaCocClient());
+
+        act(() => setActiveCloneForRouting('remote:b:w1'));
+        expect(result.current).toBe(getCocClientFor(other));
+    });
+
+    it('useCloneWsUrl re-binds to the remote origin once the route resolves', () => {
+        const { result } = renderHook(() => useCloneWsUrl('w1'));
+        act(() => registerCloneBaseUrls([{ workspaceId: 'w1', baseUrl: URL }]));
+        expect(result.current('/ws')).toBe('ws://127.0.0.1:4005/ws');
     });
 });

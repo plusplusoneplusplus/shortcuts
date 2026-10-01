@@ -29,7 +29,7 @@ import type { GitPatchApplyResponse } from '@plusplusoneplusplus/coc-client';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
 import { useMobileWorkspacePane } from '../repo-detail/mobileWorkspacePane';
-import { useCocClient } from '../../repos/cloneRouting';
+import { useCloneBaseUrl, useCocClient } from '../../repos/cloneRouting';
 import { lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { Spinner } from '../../ui';
 import { isTouchOnly } from './commits/CommitList';
@@ -129,7 +129,19 @@ interface RepoGitTabProps {
     active?: boolean;
 }
 
-export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps) {
+/**
+ * Remounts the tab whenever the clone's resolved server changes. Every Git hook
+ * below builds its requests from the client it sees on mount; keying on the
+ * route makes a late-resolving remote (aggregation finishing after first paint)
+ * or a reassigned tunnel port start a fresh load against the right server
+ * instead of retrying against the page origin.
+ */
+export function RepoGitTab(props: RepoGitTabProps) {
+    const baseUrl = useCloneBaseUrl(props.workspaceId);
+    return <RepoGitTabView key={baseUrl ?? 'local'} {...props} />;
+}
+
+function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
