@@ -63,10 +63,12 @@ provider uses that provider's defaults instead of inheriting parent model/effort
 provider/model/tier combinations fail without fallback. Optional create-mode `title` is
 trimmed, must be non-empty and at most 80 characters, and travels through canonical task
 validation as `displayName` and `payload.customTitle`. Queue SQLite serialization preserves
-the payload; `ProcessLifecycleRunner` seeds `AIProcess.customTitle`, persisted in the existing
-process-store column. AI title generation writes `title` while queue display-name sync prefers
-the current `customTitle`, so supplied titles remain visible across turns and restarts.
-Omitting the title keeps automatic naming.
+the payload, and queue API serializers project its custom title into the canonical top-level
+list field while preferring a process-level custom title when present. `ProcessLifecycleRunner`
+seeds `AIProcess.customTitle`, persisted in the existing process-store column. AI title
+generation writes `title` while queue display-name sync prefers the current `customTitle`, so
+supplied titles remain visible across turns and restarts. Omitting the title keeps automatic
+naming.
 
 The tool description asks agents for short, task-specific create-mode titles. The bundled
 `delegate` skill requires agents to include a title in its handoff calls; the JSON schema

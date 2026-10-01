@@ -110,6 +110,11 @@ text builders.
 Grouped expansion state is local to the mounted view; Ralph sessions, For Each runs, Map
 Reduce runs, and plan-file/history groups start collapsed on mount and on workspace switch.
 
+Chat row titles resolve `customTitle`, AI `title`, `lastMessagePreview`, then prompt fallback.
+Queue list serializers project a queued chat's `payload.customTitle` into the top-level
+`customTitle` field consumed by the list, while process summaries supply that field directly.
+This keeps one precedence order across queued, restored, running, and completed rows.
+
 Workspace-scoped group pins come from `client.processes.listGroupPins(workspaceId)` and
 render non-running group parents in the Pinned section, interleaved with individually
 pinned chats by pin time. A pinned parent leaves its recency bucket without mutating child

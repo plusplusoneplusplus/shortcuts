@@ -36,7 +36,11 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { createSendToConversationTool } from '../../../src/server/llm-tools/send-to-conversation-tool';
-import { enqueueViaBridge, type QueueGlobalState } from '../../../src/server/routes/queue-shared';
+import {
+    enqueueViaBridge,
+    serializeTaskSummary,
+    type QueueGlobalState,
+} from '../../../src/server/routes/queue-shared';
 import { prepareTaskForEnqueue } from '../../../src/server/routes/queue-enqueue';
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
@@ -231,6 +235,7 @@ describe('send_to_conversation custom title lifecycle and SQLite restarts', () =
         const targetRoot = workspaces.find(ws => ws.id === targetWorkspaceId)!.rootPath;
         expect(task.payload.customTitle).toBe('Delegated investigation');
         expect(task.displayName).toBe('Delegated investigation');
+        expect(serializeTaskSummary(task).customTitle).toBe('Delegated investigation');
         expect(task.repoId).toBe(targetWorkspaceId);
         expect(task.payload.workingDirectory).toBe(targetRoot);
 
@@ -253,6 +258,7 @@ describe('send_to_conversation custom title lifecycle and SQLite restarts', () =
         await vi.waitFor(async () => {
             expect((await store.getProcess(result.processId))?.title).toBe('AI generated title');
             expect(bridge.getTask(taskId)?.displayName).toBe('Delegated investigation');
+            expect(serializeTaskSummary(bridge.getTask(taskId)!).customTitle).toBe('Delegated investigation');
         });
         persistence.dispose();
         bridge.dispose();
