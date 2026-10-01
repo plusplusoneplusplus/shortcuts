@@ -93,6 +93,9 @@ patch URLs plus an optional paired-content loader. Each loader resolves
 becomes available after source construction is honored. Branch-range loaders carry
 the selected base mode. PR loaders use the origin-scoped content API with workspace
 and repo clone-selection metadata, and the source cache identity includes the head SHA.
+`FileDiffPanel` and `WorkingTreeFileDiff` share the global `useDiffEngine` preference
+and the same Classic/Editor toggle; the preference defaults to Monaco and updates all
+mounted file-diff surfaces immediately.
 
 ### Cherry-pick
 

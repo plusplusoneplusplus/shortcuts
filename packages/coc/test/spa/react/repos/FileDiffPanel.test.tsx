@@ -11,6 +11,7 @@ const mockAddComment = vi.fn();
 const mockUseDiffComments = vi.fn();
 const mockUseFileDiff = vi.fn();
 const mockQueueDispatch = vi.fn();
+const mockSetDiffEngine = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
@@ -18,6 +19,10 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComme
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileDiff', () => ({
     useFileDiff: (...args: any[]) => mockUseFileDiff(...args),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
+    useDiffEngine: () => ['monaco', mockSetDiffEngine],
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -88,6 +93,11 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffViewToggl
     DiffViewToggle: ({ mode, onChange }: any) => (
         <button data-testid="diff-view-toggle" onClick={() => onChange(mode === 'unified' ? 'split' : 'unified')}>
             {mode}
+        </button>
+    ),
+    DiffEngineToggle: ({ engine, onChange }: any) => (
+        <button data-testid="diff-engine-toggle" onClick={() => onChange(engine === 'monaco' ? 'legacy' : 'monaco')}>
+            {engine}
         </button>
     ),
 }));
@@ -289,6 +299,14 @@ describe('FileDiffPanel', () => {
         render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource()} />);
 
         expect(screen.getByText('SideBySide')).toBeTruthy();
+    });
+
+    it('renders the shared engine preference control', () => {
+        render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource()} />);
+
+        expect(screen.getByTestId('diff-engine-toggle').textContent).toBe('monaco');
+        fireEvent.click(screen.getByTestId('diff-engine-toggle'));
+        expect(mockSetDiffEngine).toHaveBeenCalledWith('legacy');
     });
 
     // ── Empty diff ──
@@ -550,6 +568,7 @@ describe('FileDiffPanel', () => {
         expect(screen.getByTestId('truncated-path')).toBeTruthy();
         expect(screen.getByTestId('file-position-indicator').textContent).toBe('1/2');
         expect(screen.getByTestId('hunk-nav-buttons')).toBeTruthy();
+        expect(screen.getByTestId('diff-engine-toggle')).toBeTruthy();
         expect(screen.getByTestId('diff-view-toggle')).toBeTruthy();
         expect(screen.getByTestId('toggle-comments-btn')).toBeTruthy();
         expect(screen.getByTestId('toggle-chat-btn')).toBeTruthy();

@@ -12,7 +12,8 @@ import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
-import { DiffViewToggle } from './DiffViewToggle';
+import { useDiffEngine } from '../hooks/useDiffEngine';
+import { DiffEngineToggle, DiffViewToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
 import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
@@ -116,6 +117,7 @@ export function FileDiffPanel({
 
     // ── View mode ──
     const [viewMode, setViewMode] = useDiffViewMode();
+    const [diffEngine, setDiffEngine] = useDiffEngine();
 
     // ── UI state ──
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -363,6 +365,7 @@ export function FileDiffPanel({
                 </div>
                 <div className="flex items-center gap-2">
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
+                    <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                     {source.fullContextFileDiffUrl && (
                         <button

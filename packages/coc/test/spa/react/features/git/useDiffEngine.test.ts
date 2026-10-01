@@ -6,7 +6,8 @@
  * cross-tab storage events.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, waitFor, within } from '@testing-library/react';
+import { createElement } from 'react';
 
 const getGlobal = vi.fn();
 const patchGlobal = vi.fn();
@@ -23,6 +24,7 @@ import {
     __resetDiffEngineForTesting,
     type DiffEngineStorage,
 } from '../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine';
+import { DiffEngineToggle } from '../../../../../src/server/spa/client/react/features/git/diff/DiffViewToggle';
 
 function deferred<T>() {
     let resolve!: (v: T) => void;
@@ -197,6 +199,7 @@ describe('useDiffEngine', () => {
     });
 
     it('shares one engine across hook instances and persists changes', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
         getGlobal.mockResolvedValue({});
         const a = renderHook(() => useDiffEngine());
         const b = renderHook(() => useDiffEngine());
@@ -205,6 +208,39 @@ describe('useDiffEngine', () => {
         expect(localStorage.getItem(DIFF_ENGINE_STORAGE_KEY)).toBe('monaco');
         expect(patchGlobal).toHaveBeenCalledWith({ diffEngine: 'monaco' });
         expect(getGlobal).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates working-tree and FileDiffPanel controls together without a reload', async () => {
+        localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
+        getGlobal.mockResolvedValue({});
+
+        function Surface({ testId }: { testId: string }) {
+            const [engine, setEngine] = useDiffEngine();
+            return createElement(
+                'div',
+                { 'data-testid': testId },
+                createElement(DiffEngineToggle, { engine, onChange: setEngine }),
+            );
+        }
+
+        const view = render(createElement(
+            'div',
+            null,
+            createElement(Surface, { testId: 'working-tree-engine' }),
+            createElement(Surface, { testId: 'file-diff-panel-engine' }),
+        ),
+        );
+        const workingTree = within(view.getByTestId('working-tree-engine'));
+        const filePanel = within(view.getByTestId('file-diff-panel-engine'));
+
+        expect(workingTree.getByTestId('diff-engine-toggle-legacy').getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(filePanel.getByTestId('diff-engine-toggle-monaco'));
+        expect(workingTree.getByTestId('diff-engine-toggle-monaco').getAttribute('aria-pressed')).toBe('true');
+
+        fireEvent.click(workingTree.getByTestId('diff-engine-toggle-legacy'));
+        expect(filePanel.getByTestId('diff-engine-toggle-legacy').getAttribute('aria-pressed')).toBe('true');
+        expect(patchGlobal).toHaveBeenNthCalledWith(1, { diffEngine: 'monaco' });
+        expect(patchGlobal).toHaveBeenNthCalledWith(2, { diffEngine: 'legacy' });
     });
 
     it('follows a storage event from another tab', async () => {

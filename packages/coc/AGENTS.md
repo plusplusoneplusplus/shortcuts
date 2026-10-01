@@ -116,9 +116,11 @@ all have their own `references/*.md`.
   login when PR objects are absent. All paths share working-tree byte/size
   rules. Shared commit, branch-range, and PR `DiffSource` factories expose these
   pairs through `fetchFileContent` and resolve the workspace client on every
-  call. Cache identity includes workspace or origin, ref identity, base mode
-  where applicable, and path; PR source identity includes the head SHA. The
-  commit `files/*/content` preview remains a separate line-array API.
+  call. `FileDiffPanel` and `WorkingTreeFileDiff` consume the same global
+  `useDiffEngine` preference and Classic/Editor control. Cache identity includes
+  workspace or origin, ref identity, base mode where applicable, and path; PR
+  source identity includes the head SHA. The commit `files/*/content` preview
+  remains a separate line-array API.
 - **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
   team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
   with a prompt in the selected workspace (or the first registered workspace).
