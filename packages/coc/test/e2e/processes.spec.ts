@@ -1,7 +1,7 @@
 /**
  * Tests the queue/activity UI: split-panel layout, task list rendering,
  * filter dropdown, detail-pane rendering, conversation turns, tool-call
- * view, ConversationMiniMap, and WorkflowResultCard.
+ * view, and ConversationMiniMap.
  *
  * The legacy global `#processes` route was removed; activity is now
  * surfaced under each repo via `#repos/<wsId>/activity`. Each test
@@ -10,12 +10,11 @@
  * an individual task use `#repos/<wsId>/activity/queue_<taskId>`.
  *
  * Uses existing data-testid attributes:
- *   ProcessesView:       data-testid="activity-split-panel"
+ *   RepoChatTab:         data-testid="activity-split-panel"
  *   ChatListPane:        data-testid="queue-empty-state"
  *   ChatDetailPane:      data-testid="activity-detail-panel"
  *   ChatDetail:          data-testid="activity-chat-detail"
  *   ConversationMiniMap: data-testid="minimap-panel"
- *   WorkflowResultCard:  data-testid="workflow-result-card"
  */
 
 import * as fs from 'fs';
@@ -74,7 +73,6 @@ function wsTask(wsId: string, overrides: QueueTaskOverrides = {}): QueueTaskOver
 async function gotoActivity(page: Page, serverUrl: string, wsId: string): Promise<void> {
     await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`);
     // RepoChatTab renders the queue list with `data-testid="activity-split-panel"`.
-    // The legacy `#view-processes` id only exists on the standalone ProcessesView.
     await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10_000 });
 }
 
@@ -96,7 +94,7 @@ async function gotoTaskDetail(
 // 1. Desktop layout
 // ---------------------------------------------------------------------------
 
-test.describe('ProcessesView – Desktop layout', () => {
+test.describe('Repo activity – Desktop layout', () => {
     test('P.1 renders split panel with list and detail panes', async ({ page, serverUrl }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'p1');
         try {
@@ -129,7 +127,7 @@ test.describe('ProcessesView – Desktop layout', () => {
 // 2. Task list rendering
 // ---------------------------------------------------------------------------
 
-test.describe('ProcessesView – Task list', () => {
+test.describe('Repo activity – Task list', () => {
     test('P.4 seeded tasks appear in the list', async ({ page, serverUrl }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'p4');
         try {
@@ -201,23 +199,22 @@ test.describe('ProcessesView – Task list', () => {
 // 3. Status filtering
 // ---------------------------------------------------------------------------
 
-test.describe('ProcessesView – Filtering', () => {
+test.describe('Repo activity – Filtering', () => {
     // P.7 (type filter dropdown changes the visible task list) was removed
     // when the type filter dropdown was retired. The activity tab now uses
     // the scope segmented control (chats / automations / all) instead.
 });
 
 // ---------------------------------------------------------------------------
-// 4. WorkflowResultCard
+// 4. Completed task detail
 // ---------------------------------------------------------------------------
 
-test.describe('ProcessesView – WorkflowResultCard', () => {
-    test('P.8 workflow result card renders for completed workflow tasks', async ({ page, serverUrl }) => {
+test.describe('Repo activity – Completed task detail', () => {
+    test('P.8 detail pane renders for a completed task', async ({ page, serverUrl }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'p8');
         try {
-            // We use a basic completed chat task and verify the detail pane
-            // renders without error. WorkflowResultCard only appears for tasks
-            // that produce workflow-style results.
+            // Seed a basic completed chat task and verify the detail pane
+            // renders without error.
             const task = await seedQueueTask(serverUrl, wsTask(wsId, {
                 type: 'chat',
                 payload: { prompt: 'Workflow test' },
@@ -237,7 +234,7 @@ test.describe('ProcessesView – WorkflowResultCard', () => {
 // 5. ConversationMiniMap
 // ---------------------------------------------------------------------------
 
-test.describe('ProcessesView – ConversationMiniMap', () => {
+test.describe('Repo activity – ConversationMiniMap', () => {
     test('P.9 minimap panel renders for conversation with multiple turns', async ({ page, serverUrl }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'p9');
         try {
@@ -262,7 +259,7 @@ test.describe('ProcessesView – ConversationMiniMap', () => {
 // 6. Refresh and pause controls
 // ---------------------------------------------------------------------------
 
-test.describe('ProcessesView – Controls', () => {
+test.describe('Repo activity – Controls', () => {
     test('P.10 refresh button reloads the queue', async ({ page, serverUrl }) => {
         const { wsId, cleanup } = await makeWorkspace(serverUrl, 'p10');
         try {

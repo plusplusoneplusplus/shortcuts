@@ -1,6 +1,6 @@
 /**
  * Tests for frozen task visual effect in queue task cards.
- * Covers QueueTaskItem (ChatListPane) and QueueTaskCard (ProcessesSidebar).
+ * Covers QueueTaskItem (ChatListPane).
  *
  * Intentionally not tested (source-level tests dropped):
  * - CSS @keyframes frost-shimmer / .task-frozen class existence — verified
@@ -12,11 +12,10 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
-import { useEffect, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
-import { QueueProvider, useQueue } from '../../../src/server/spa/client/react/contexts/QueueContext';
+import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';
 import { ToastProvider } from '../../../src/server/spa/client/react/contexts/ToastContext';
-import { ProcessesSidebar } from '../../../src/server/spa/client/react/processes/ProcessesSidebar';
 import { QueueTaskItem } from '../../../src/server/spa/client/react/features/chat/ChatListPane';
 
 // ── Mocks for QueueTaskItem's transitive dependencies ──────────────────
@@ -93,21 +92,6 @@ function Wrap({ children }: { children: ReactNode }) {
     );
 }
 
-function SeededQueuePanel({ running, queued }: { running: any[]; queued: any[] }) {
-    const { dispatch } = useQueue();
-    useEffect(() => {
-        dispatch({
-            type: 'QUEUE_UPDATED',
-            queue: {
-                running,
-                queued,
-                stats: { queued: queued.length, running: running.length, completed: 0, failed: 0 },
-            },
-        });
-    }, [dispatch, running, queued]);
-    return <ProcessesSidebar />;
-}
-
 // ── QueueTaskItem (ChatListPane) ───────────────────────────────────
 
 describe('QueueTaskItem frozen visual', () => {
@@ -140,52 +124,3 @@ describe('QueueTaskItem frozen visual', () => {
     });
 });
 
-// ── ProcessesSidebar: QueueTaskCard frozen rendering ──────────────────
-
-describe('ProcessesSidebar frozen task rendering', () => {
-    it('renders frozen queued task card with task-frozen class', () => {
-        const queued = [
-            { id: 'q1', status: 'queued', frozen: true, prompt: 'frozen task' },
-        ];
-
-        render(<Wrap><SeededQueuePanel running={[]} queued={queued} /></Wrap>);
-
-        const frozenCard = document.querySelector('.task-frozen');
-        expect(frozenCard).toBeTruthy();
-    });
-
-    it('does not apply task-frozen class to non-frozen task', () => {
-        const queued = [
-            { id: 'q1', status: 'queued', frozen: false, prompt: 'normal task' },
-        ];
-
-        render(<Wrap><SeededQueuePanel running={[]} queued={queued} /></Wrap>);
-
-        const frozenCard = document.querySelector('.task-frozen');
-        expect(frozenCard).toBeNull();
-    });
-
-    it('renders ❄️ icon for frozen task', () => {
-        const queued = [
-            { id: 'q1', status: 'queued', frozen: true, prompt: 'frozen task' },
-        ];
-
-        render(<Wrap><SeededQueuePanel running={[]} queued={queued} /></Wrap>);
-
-        const frozenCard = document.querySelector('.task-frozen');
-        expect(frozenCard).toBeTruthy();
-        expect(frozenCard!.textContent).toContain('❄️');
-    });
-
-    it('shows Frozen badge label for frozen task in full layout', () => {
-        const queued = [
-            { id: 'q1', status: 'queued', frozen: true, prompt: 'frozen task' },
-        ];
-
-        render(<Wrap><SeededQueuePanel running={[]} queued={queued} /></Wrap>);
-
-        const frozenCard = document.querySelector('.task-frozen');
-        expect(frozenCard).toBeTruthy();
-        expect(frozenCard!.textContent).toContain('Frozen');
-    });
-});
