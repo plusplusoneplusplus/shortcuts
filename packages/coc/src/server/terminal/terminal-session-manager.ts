@@ -19,6 +19,7 @@ import {
     resolveWorkspaceExecutionContext,
 } from '@plusplusoneplusplus/forge';
 import * as fs from 'fs';
+import { getServerLogger } from '../logging/server-logger';
 import * as path from 'path';
 import type { IPty, TerminalSession, TerminalSessionInfo } from './types';
 import {
@@ -185,6 +186,8 @@ export class TerminalSessionManager {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private nodePty: { spawn: (...args: any[]) => IPty } | null = null;
     private nodePtyError: string | null = null;
+    /** Set once the bundled conpty.dll fails to spawn, so later sessions skip it. */
+    private bundledConptyFailed = false;
     private readonly persistence: TerminalPersistence | null;
     private readonly persistDebounceMs: number;
     /** Pending debounced flushes, keyed by session id. */
@@ -256,7 +259,7 @@ export class TerminalSessionManager {
         }
 
         const { shell, args } = this.detectShell(rootPath);
-        const pty: IPty = this.nodePty.spawn(shell, args, {
+        const pty = this.spawnPty(shell, args, {
             name: 'xterm-256color',
             cols,
             rows,
@@ -576,6 +579,26 @@ export class TerminalSessionManager {
     // --------------------------------------------------------------------
     // Private
     // --------------------------------------------------------------------
+
+    /**
+     * On Windows, prefer the conpty.dll bundled with node-pty over the inbox
+     * one: inbox ConPTY drops ED3 (`ESC[3J`), so `cls` leaves the old output
+     * in xterm's scrollback. If the bundled DLL cannot be loaded, fall back to
+     * the inbox ConPTY rather than failing to open the terminal.
+     */
+    private spawnPty(shell: string, args: string[], opts: Record<string, any>): IPty {
+        const nodePty = this.nodePty!;
+        if (this.options.platform !== 'win32' || this.bundledConptyFailed) {
+            return nodePty.spawn(shell, args, opts);
+        }
+        try {
+            return nodePty.spawn(shell, args, { ...opts, useConptyDll: true });
+        } catch (err) {
+            this.bundledConptyFailed = true;
+            getServerLogger().warn({ err }, 'Bundled conpty.dll unavailable; using inbox ConPTY');
+            return nodePty.spawn(shell, args, opts);
+        }
+    }
 
     private detectShell(rootPath: string): { shell: string; args: string[] } {
         if (this.options.platform === 'win32') {
