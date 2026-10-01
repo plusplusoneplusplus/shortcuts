@@ -74,6 +74,8 @@ export interface DiffSource {
      * Optional so patch-only sources continue to use the classic viewer.
      */
     fetchFileContent?(filePath: string): Promise<GitFileDiffContentResponse>;
+    /** Branch ranges may expose their head as the real document when the server confirms it. */
+    readonly supportsWorkingCopyLanguage?: boolean;
 
     /**
      * Build the API URL for a full-file-context diff.
@@ -208,6 +210,7 @@ export function createBranchRangeDiffSource(
     const baseMode = options?.baseMode ?? 'default-branch';
     const range = options?.range;
     return {
+        supportsWorkingCopyLanguage: true,
         ...(range ? { diffSelectionRef: { type: 'range' as const, baseRef: range.baseRef, headRef: range.headRef } } : {}),
 
         label: baseMode === 'upstream' ? 'Unpushed diff' : 'Branch diff',

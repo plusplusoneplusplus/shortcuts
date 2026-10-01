@@ -127,6 +127,9 @@ all have their own `references/*.md`.
   Anchor relocation excludes patch metadata and no-newline annotations.
   Selected Monaco files ignore classification; shared engine reports let host
   toolbars restore classification for Classic, including automatic fallback.
+  Branch-range content reports live `modifiedMatchesWorkingCopy` eligibility;
+  only a byte-identical, index-clean checked-out head shares the explorer's
+  real URI and language document. Commit, PR, and base models stay synthetic.
   `FileDiffPanel` and `WorkingTreeFileDiff` consume the same global
   `useDiffEngine` preference and
   Classic/Editor control. Cache identity includes

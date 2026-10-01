@@ -538,8 +538,9 @@ export function FileDiffPanel({
                             ref={monacoViewerRef}
                             workspaceId={workspaceId}
                             relativePath={filePath}
-                            stage="staged"
+                            stage={source.supportsWorkingCopyLanguage ? 'branch-range' : 'staged'}
                             modelIdentity={source.cacheKey}
+                            modifiedMatchesWorkingCopy={editorSides.modifiedMatchesWorkingCopy}
                             original={editorSides.base.content}
                             modified={editorSides.head.content}
                             viewMode={viewMode}
@@ -551,7 +552,7 @@ export function FileDiffPanel({
                             onAskAI={handleAskAIDiff}
                             onCopyAsContext={handleCopyAsContext}
                             diffSelectionDragSource={diffSelectionDragSource}
-                            languageFeatures={false}
+                            languageFeatures={source.supportsWorkingCopyLanguage === true && editorSides.modifiedMatchesWorkingCopy === true}
                             onEditorError={handleEditorError}
                             createEditor={createDiffEditor}
                             data-testid="file-diff-editor"

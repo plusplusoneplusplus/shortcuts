@@ -2,12 +2,10 @@
  * diffLanguageEligibility — which side of a working-tree diff may talk to a
  * language server (AC-06).
  *
- * Exactly one model ever qualifies: the modified side of an **unstaged** diff,
- * which is the real file on disk and carries the same `coc-file:` document URI
- * the explorer uses. The original side and both sides of a staged diff are git
- * blobs (HEAD / index) on synthetic `coc-diff-ref:` URIs; registering them would
- * put a second, different text under the file's identity and let diagnostics
- * from HEAD land on the working copy.
+ * Only a real modified working-copy model qualifies: an unstaged diff or a
+ * server-confirmed clean branch head. It carries the explorer's `coc-file:`
+ * URI. Base sides, staged files, commits, PRs, and ineligible branch heads
+ * remain synthetic `coc-diff-ref:` models and never register.
  *
  * Pure: no Monaco, no React, no store. The editor adapter repeats the URI check
  * against the model Monaco actually holds (see `attachModifiedLanguage`).
@@ -52,7 +50,7 @@ export function resolveDiffLanguageTarget(input: DiffLanguageTargetInput): DiffL
     const { workspaceId, stage, models } = input;
     const path = normalizePath(input.relativePath);
     if (!workspaceId || !path) return { eligible: false, reason: 'no-workspace' };
-    if (stage !== 'unstaged') return { eligible: false, reason: 'staged' };
+    if (stage !== 'unstaged' && stage !== 'branch-range') return { eligible: false, reason: 'staged' };
     const modified = models.modified;
     if (!modified.isWorkingCopy) return { eligible: false, reason: 'not-working-copy' };
     if (isDiffRefUri(modified.uri)) return { eligible: false, reason: 'synthetic-uri' };

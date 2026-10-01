@@ -55,12 +55,18 @@ vi.mock('../../../../../../src/server/spa/client/react/features/git/hooks/useFil
 vi.mock('../../../../../../src/server/spa/client/react/shared/ResolveContextDialog', () => ({
     shouldSkipResolveDialog: () => true,
 }));
+vi.mock('../../../../../../src/server/spa/client/react/features/language-servers/documentStore', async importOriginal => ({
+    ...await importOriginal<object>(),
+    getLanguageDocumentStore: () => languageStore,
+}));
 
 import { FileDiffPanel } from '../../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
 import { computeDiffLines } from '../../../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource } from '../../../../../../src/server/spa/client/react/features/git/diff/diffSource';
 import { DIFF_ENGINE_STORAGE_KEY, __resetDiffEngineForTesting } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine';
 import { useFileDiffEngineState } from '../../../../../../src/server/spa/client/react/features/git/hooks/useFileDiffEngineState';
+import { LanguageDocumentStore, browserDocumentUri } from '../../../../../../src/server/spa/client/react/features/language-servers/documentStore';
+import { FakeClient } from '../../../language-servers/fakeLanguageTransport';
 
 const ORIGINAL = 'a\nb\nc\n';
 const MODIFIED = 'a\nB\nc\nd\n';
@@ -99,6 +105,8 @@ function comment(source: DiffSource, id: string, extra: Partial<DiffComment> = {
 
 let stored: DiffComment[];
 let fakes: FakeDiffEditor[];
+let languageClient: FakeClient;
+let languageStore: LanguageDocumentStore;
 const fake = () => fakes[fakes.length - 1];
 const zoneOf = (id: string) => [...fake().zones.values()].find(z => z.domNode.querySelector(`[data-comment-id="${id}"]`))!;
 const cardOf = (id: string) => within(zoneOf(id).domNode).getByTestId(`comment-card-${id}`);
@@ -152,6 +160,8 @@ beforeEach(() => {
     vi.clearAllMocks();
     stored = [];
     fakes = [];
+    languageClient = new FakeClient();
+    languageStore = new LanguageDocumentStore({ workspaceId: 'ws-a', client: languageClient.asClient() });
     localStorage.clear();
     localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
     __resetDiffEngineForTesting();
@@ -458,4 +468,56 @@ it('restores classification on automatic fallback and clears fallback state for 
     await act(async () => { view.rerender(<ClassifiedPanel source={{ ...source, cacheKey: 'commit:new' }} />); });
     await act(async () => { fake().finishDiff(CHANGES); });
     expect(screen.queryByTestId('classify-control')).toBeNull();
+});
+
+it.each<SourceKind>(['commit', 'branch-range', 'pull-request'])(
+    '%s registers only an eligible branch head, never either immutable side', async kind => {
+        const original = makeSource(kind);
+        const source: DiffSource = { ...original, fetchFileContent: async filePath => ({
+            ...await original.fetchFileContent!(filePath), modifiedMatchesWorkingCopy: true,
+        }) };
+        const view = await mount(source);
+        expect(fake().models[0].original.uri).toMatch(/^coc-diff-ref:/);
+        expect(languageStore.documentCount).toBe(kind === 'branch-range' ? 1 : 0);
+        if (kind === 'branch-range') {
+            const uri = browserDocumentUri('ws-a', PATH);
+            expect(fake().models[0].modified.uri).toBe(uri);
+            expect(fake().languageMounts.filter(m => m.live)).toEqual([{ uri, live: true }]);
+            const attachment = languageClient.get(PATH);
+            act(() => attachment.attach());
+            act(() => attachment.notify('textDocument/publishDiagnostics', {
+                uri, diagnostics: [{ range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } }, message: 'diagnostic' }],
+            }));
+            expect(fake().markerLog.at(-1)).toEqual({ uri, count: 1 });
+        } else {
+            expect(fake().models[0].modified.uri).toMatch(/^coc-diff-ref:/);
+            expect(fake().languageMounts).toEqual([]);
+        }
+        view.unmount();
+        expect(languageStore.documentCount).toBe(0);
+    },
+);
+
+it('keeps an explorer-owned branch head open when its diff closes', async () => {
+    const original = makeSource('branch-range');
+    const source: DiffSource = { ...original, fetchFileContent: async filePath => ({
+        ...await original.fetchFileContent!(filePath), modifiedMatchesWorkingCopy: true,
+    }) };
+    const explorer = languageStore.open({ path: PATH, text: MODIFIED });
+    const attachment = languageClient.get(PATH);
+    act(() => attachment.attach());
+    const view = await mount(source);
+    expect(fake().languageMounts.some(m => m.live)).toBe(true);
+    view.unmount();
+    expect(languageStore.documentCount).toBe(1);
+    expect(attachment.methods()).not.toContain('textDocument/didClose');
+    explorer.close();
+    expect(attachment.methods()).toContain('textDocument/didClose');
+});
+
+it('leaves an ineligible branch head synthetic without registering a language document', async () => {
+    await mount(makeSource('branch-range'));
+    expect(languageStore.documentCount).toBe(0);
+    expect(fake().models[0].modified.uri).toMatch(/^coc-diff-ref:/);
+    expect(fake().languageMounts).toEqual([]);
 });

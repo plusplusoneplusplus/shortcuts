@@ -104,6 +104,8 @@ export interface GitWorkingTreeFileContentResponse {
   head: GitWorkingTreeFileSide;
   binary: boolean;
   tooLarge: boolean;
+  /** Branch-range head is checked-out HEAD with a clean index and byte-identical disk content. */
+  modifiedMatchesWorkingCopy?: boolean;
 }
 
 /** Both immutable git snapshots, with the working-tree full-text response shape. */

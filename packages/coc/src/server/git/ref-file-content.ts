@@ -7,8 +7,9 @@ import {
     loadGitBlobFileContent,
     resolveWorkingTreePath,
     toRepoRelative,
+    MAX_WORKING_TREE_CONTENT_BYTES,
 } from './working-tree-file-content';
-import type { GitBlobEntry, WorkingTreeFileContent } from './working-tree-file-content';
+import type { GitBlobEntry, WorkingTreeFileContent, WorkingTreeContentIO } from './working-tree-file-content';
 
 export interface RefFileChange {
     path: string;
@@ -112,7 +113,10 @@ export async function loadBranchRangeFileDiffContent(
     const prefix = `${workspaceId}:branch-range-file-diff-content:${baseMode}:${filePath}:`;
     const cacheKey = `${prefix}${mergeBase}:${headRef}`;
     const cached = cache.get<WorkingTreeFileContent>(cacheKey);
-    if (cached) return { ...cached, path: requestPath };
+    if (cached) return {
+        ...cached, path: requestPath,
+        modifiedMatchesWorkingCopy: await branchRangeMatchesWorkingCopy(repoRoot, filePath, cached),
+    };
 
     const changes = parseRefFileChanges(await execGitAsync(
         ['diff', '--name-status', '-z', '-M', '-C', mergeBase, headRef, '--'], repoRoot,
@@ -122,5 +126,26 @@ export async function loadBranchRangeFileDiffContent(
     const result = await loadRefFileContent(repoRoot, requestPath, mergeBase, headRef, change);
     cache.deletePrefix(prefix);
     cache.set(cacheKey, result);
-    return result;
+    return { ...result, modifiedMatchesWorkingCopy: await branchRangeMatchesWorkingCopy(repoRoot, filePath, result) };
+}
+
+/** Eligibility is live workspace state, not part of the immutable snapshot cache. */
+export async function branchRangeMatchesWorkingCopy(
+    repoRoot: string,
+    filePath: string,
+    content: WorkingTreeFileContent,
+    io: WorkingTreeContentIO = createWorkingTreeContentIO(repoRoot),
+): Promise<boolean> {
+    if (content.binary || content.tooLarge || !content.head.exists) return false;
+    if (await io.resolveHead() !== content.head.ref) return false;
+    const absPath = resolveWorkingTreePath(repoRoot, filePath);
+    if (!absPath) throw badRequest('Path is outside the workspace or invalid');
+    const disk = await io.statDisk(absPath);
+    if (!disk?.isFile || disk.size > MAX_WORKING_TREE_CONTENT_BYTES) return false;
+    const bytes = await io.readDisk(absPath);
+    if (!bytes.equals(Buffer.from(content.head.content, 'utf8'))) return false;
+    const changes = await execGitAsync([
+        '--literal-pathspecs', 'status', '--porcelain=v1', '-z', '--untracked-files=no', '--', filePath,
+    ], repoRoot);
+    return changes.length === 0 && await io.resolveHead() === content.head.ref;
 }

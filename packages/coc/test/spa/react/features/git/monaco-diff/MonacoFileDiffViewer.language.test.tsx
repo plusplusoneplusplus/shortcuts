@@ -65,6 +65,24 @@ function harness(overrides: Partial<MonacoFileDiffViewerProps> = {}) {
 const liveMounts = (fake: FakeDiffEditor) => fake.languageMounts.filter(m => m.live);
 
 describe('MonacoFileDiffViewer — language features (AC-06)', () => {
+    it('shares an eligible branch head with the explorer and releases only the diff reference', async () => {
+        const explorer = store.open({ path: 'src/a.ts', text: DISK });
+        const attachment = client.get('src/a.ts');
+        act(() => attachment.attach());
+        const h = harness({ stage: 'branch-range', modelIdentity: 'branch-range:upstream', modifiedMatchesWorkingCopy: true });
+        await act(flush);
+        expect(isDiffRefUri(h.fake().models[0].original.uri)).toBe(true);
+        expect(liveMounts(h.fake())).toEqual([{ uri: URI, live: true }]);
+        h.rerender({ stage: 'branch-range', modelIdentity: 'branch-range:upstream', modifiedMatchesWorkingCopy: false });
+        await act(flush);
+        expect(liveMounts(h.fake())).toEqual([]);
+        expect(store.documentCount).toBe(1);
+        expect(attachment.methods()).not.toContain('textDocument/didClose');
+        h.unmount();
+        expect(store.documentCount).toBe(1);
+        explorer.close();
+        expect(attachment.methods()).toContain('textDocument/didClose');
+    });
     it('mounts language features on the real modified document of an unstaged diff', async () => {
         const h = harness();
         await act(flush);

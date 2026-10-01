@@ -17,8 +17,8 @@ import { browserDocumentUri } from '../../language-servers/documentStore';
 import { getMonacoLanguage } from '../../../shared/file-viewer/monacoLanguage';
 import type { DiffViewMode } from '../hooks/useDiffViewMode';
 
-/** Working-tree diff stages that have two text sides. */
-export type MonacoDiffStage = 'staged' | 'unstaged';
+/** Two-sided diff kinds with distinct working-copy eligibility. */
+export type MonacoDiffStage = 'staged' | 'unstaged' | 'branch-range';
 
 /** Git ref a synthetic side is read from. */
 export type DiffRefSide = 'HEAD' | 'INDEX';
@@ -31,8 +31,8 @@ export interface DiffModelDescriptor {
     text: string;
     language: string;
     /**
-     * True only for the real on-disk working copy (the modified side of an
-     * unstaged diff). Nothing else may be offered to a language server.
+     * True only for the modified on-disk side of an unstaged diff or a
+     * server-confirmed clean branch head. Only that side may use a language server.
      */
     isWorkingCopy: boolean;
 }
@@ -48,10 +48,12 @@ export interface DiffModelsParams {
     relativePath: string;
     stage: MonacoDiffStage;
     /**
-     * Immutable source identity for non-working-tree diffs. When present,
-     * both sides use ref-backed URIs scoped to this identity.
+     * Ref identity for non-working-tree diffs. Both sides are synthetic except
+     * a server-confirmed branch-range working-copy head.
      */
     modelIdentity?: string;
+    /** Server-confirmed eligibility, used only for a branch-range modified side. */
+    modifiedMatchesWorkingCopy?: boolean;
     original: string;
     modified: string;
 }
@@ -104,6 +106,7 @@ export function buildDiffModels(params: DiffModelsParams): DiffModelsInput {
     const { workspaceId, relativePath, stage } = params;
     const language = diffLanguageFor(relativePath);
     if (params.modelIdentity) {
+        const workingCopy = stage === 'branch-range' && params.modifiedMatchesWorkingCopy === true;
         return {
             original: {
                 uri: immutableDiffRefUri(workspaceId, params.modelIdentity, 'original', relativePath),
@@ -112,10 +115,11 @@ export function buildDiffModels(params: DiffModelsParams): DiffModelsInput {
                 isWorkingCopy: false,
             },
             modified: {
-                uri: immutableDiffRefUri(workspaceId, params.modelIdentity, 'modified', relativePath),
+                uri: workingCopy ? browserDocumentUri(workspaceId, relativePath)
+                    : immutableDiffRefUri(workspaceId, params.modelIdentity, 'modified', relativePath),
                 text: params.modified,
                 language,
-                isWorkingCopy: false,
+                isWorkingCopy: workingCopy,
             },
         };
     }

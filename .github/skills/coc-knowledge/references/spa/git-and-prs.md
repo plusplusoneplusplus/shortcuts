@@ -99,7 +99,11 @@ and the same Classic/Editor toggle; the preference defaults to Monaco and update
 mounted file-diff surfaces immediately. In Editor mode, `FileDiffPanel` loads the
 paired content and renders `MonacoFileDiffViewer`; its synthetic model identity includes
 the source cache key so the same path at different commits, ranges, or PR heads cannot
-share a model.
+share a model. Branch-range sources opt into working-copy language support only
+when the server returns `modifiedMatchesWorkingCopy`; their modified model then
+uses the explorer's real document URI. Commit, PR, base, and ineligible branch
+models stay synthetic. See [language-servers.md](../language-servers.md) for
+document ownership.
 
 Both surfaces use `resolveDiffEngineSelection` for binary, oversized,
 content-load, and editor-start fallback; `DiffEngineFallbackBanner` exposes the reason.

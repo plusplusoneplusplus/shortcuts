@@ -58,6 +58,8 @@ export interface WorkingTreeFileContent {
     head: WorkingTreeFileSide;
     binary: boolean;
     tooLarge: boolean;
+    /** Branch-range head equals HEAD, the index, and the exact bytes on disk. */
+    modifiedMatchesWorkingCopy?: boolean;
 }
 
 /** One entry from `git ls-tree` / `git ls-files -s`. */

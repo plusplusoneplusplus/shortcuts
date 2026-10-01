@@ -36,6 +36,26 @@ const input = (stage: 'staged' | 'unstaged', overrides: { workspaceId?: string; 
 };
 
 describe('resolveDiffLanguageTarget', () => {
+    it.each([true, false])('allows only the server-confirmed working-copy branch head: %s', modifiedMatchesWorkingCopy => {
+        const models = buildDiffModels({
+            workspaceId: 'ws-1', relativePath: 'src/a.ts', stage: 'branch-range', modelIdentity: 'branch-range:upstream',
+            original: 'base\n', modified: 'head\n', modifiedMatchesWorkingCopy,
+        });
+        expect(isDiffRefUri(models.original.uri)).toBe(true);
+        expect(models.original.isWorkingCopy).toBe(false);
+        expect(isDiffRefUri(models.modified.uri)).toBe(!modifiedMatchesWorkingCopy);
+        expect(resolveDiffLanguageTarget({ workspaceId: 'ws-1', relativePath: 'src/a.ts', stage: 'branch-range', models }).eligible)
+            .toBe(modifiedMatchesWorkingCopy);
+    });
+
+    it.each(['commit:hash', 'pr:origin:42:head'])('ignores working-copy flags on immutable %s sources', modelIdentity => {
+        const models = buildDiffModels({
+            workspaceId: 'ws-1', relativePath: 'src/a.ts', stage: 'staged', modelIdentity,
+            original: 'base\n', modified: 'head\n', modifiedMatchesWorkingCopy: true,
+        });
+        expect(models.modified.isWorkingCopy).toBe(false);
+        expect(isDiffRefUri(models.modified.uri)).toBe(true);
+    });
     it('accepts the working copy of an unstaged diff under its real document URI', () => {
         const target = resolveDiffLanguageTarget(input('unstaged'));
         expect(target).toEqual({ eligible: true, path: 'src/a.ts', uri: browserDocumentUri('ws-1', 'src/a.ts') });

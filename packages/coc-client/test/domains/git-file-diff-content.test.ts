@@ -37,7 +37,7 @@ describe('GitClient.getCommitFileDiffContent', () => {
         path: 'a.ts', fileName: 'a.ts', language: 'ts',
         base: { content: 'base\r\n', ref: 'base', exists: true },
         head: { content: 'head\r\n', ref: 'head', exists: true },
-        binary: false, tooLarge: false,
+        binary: false, tooLarge: false, modifiedMatchesWorkingCopy: true,
       };
       const client = new GitClient(createMockAdapter(payload));
       await expect(client.getBranchRangeFileDiffContent('ws', 'a.ts', { base: 'upstream' })).resolves.toEqual(payload);

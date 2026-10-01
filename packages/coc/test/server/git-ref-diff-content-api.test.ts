@@ -8,7 +8,7 @@ import type { AddressInfo } from 'net';
 import { createRouter } from '../../src/server/shared/router';
 import { registerApiRoutes } from '../../src/server/core/api-handler';
 import { gitCache } from '../../src/server/git/git-cache';
-import { parseRefFileChanges } from '../../src/server/git/ref-file-content';
+import { branchRangeMatchesWorkingCopy, parseRefFileChanges } from '../../src/server/git/ref-file-content';
 import {
     loadGitBlobFileContent,
     MAX_WORKING_TREE_CONTENT_BYTES,
@@ -263,6 +263,36 @@ describe('commit and branch-range full-text diff content', () => {
         expect(gitCache.get(`ws-c:branch-range-file-diff-content:upstream:range.txt:${rangeUpstream}:${rangeHead}`)).toBeDefined();
     });
 
+    it.each(['default-branch', 'upstream'])('rechecks working-copy eligibility on cached snapshots with base=%s', async mode => {
+        const before = fs.readFileSync(path.join(c.root, 'range.txt'));
+        try {
+            c.write('range.txt', 'local\r\n');
+            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(true);
+            c.write('range.txt', 'unstaged\r\n');
+            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(false);
+            c.git('add', 'range.txt');
+            // Even with disk restored to HEAD, a staged change must disqualify it.
+            c.write('range.txt', 'local\r\n');
+            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(false);
+            c.git('add', 'range.txt');
+            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(true);
+            c.write('range.txt', 'local\n');
+            expect((await rangeRequest('range.txt', mode)).data.modifiedMatchesWorkingCopy).toBe(false);
+        } finally {
+            c.write('range.txt', 'local\r\n');
+            c.git('add', 'range.txt');
+            c.write('range.txt', before);
+        }
+    });
+
+    it('keeps eligibility file-scoped and refuses deleted, binary, and oversized heads', async () => {
+        expect((await rangeRequest('added.txt')).data.modifiedMatchesWorkingCopy).toBe(true);
+        expect((await rangeRequest('new.txt')).data.modifiedMatchesWorkingCopy).toBe(true);
+        expect((await rangeRequest('deleted.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+        expect((await rangeRequest('binary.bin')).data.modifiedMatchesWorkingCopy).toBe(false);
+        expect((await rangeRequest('large.txt')).data.modifiedMatchesWorkingCopy).toBe(false);
+    });
+
     it('rejects missing branch-range files and escaped paths', async () => {
         expect((await rangeRequest('missing.txt')).status).toBe(404);
         expect((await rangeRequest('../escape.txt')).status).toBe(400);
@@ -294,6 +324,24 @@ describe('commit and branch-range full-text diff content', () => {
 });
 
 describe('shared git snapshot guards', () => {
+    it('refuses a range head different from checked-out HEAD without touching disk', async () => {
+        const io: WorkingTreeContentIO = {
+            resolveHead: vi.fn().mockResolvedValue('different-head'), headEntry: vi.fn(), indexEntry: vi.fn(),
+            blobSize: vi.fn(), readBlob: vi.fn(), statDisk: vi.fn(), readDisk: vi.fn(),
+        };
+        const content: WorkingTreeFileContent = {
+            path: 'a.ts', fileName: 'a.ts', language: 'ts', binary: false, tooLarge: false,
+            base: { content: 'base\n', ref: 'base', exists: true },
+            head: { content: 'head\n', ref: 'range-head', exists: true },
+        };
+        expect(await branchRangeMatchesWorkingCopy(process.cwd(), 'a.ts', content, io)).toBe(false);
+        expect(io.statDisk).not.toHaveBeenCalled();
+        expect(io.readDisk).not.toHaveBeenCalled();
+        io.resolveHead = vi.fn().mockResolvedValue('range-head');
+        io.statDisk = vi.fn().mockResolvedValue({ size: MAX_WORKING_TREE_CONTENT_BYTES + 1, isFile: true });
+        expect(await branchRangeMatchesWorkingCopy(process.cwd(), 'a.ts', content, io)).toBe(false);
+        expect(io.readDisk).not.toHaveBeenCalled();
+    });
     it('checks sizes before reading blobs', async () => {
         const readBlob = vi.fn();
         const io: WorkingTreeContentIO = {
