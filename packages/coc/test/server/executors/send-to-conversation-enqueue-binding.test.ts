@@ -12,9 +12,12 @@
  *   enqueueChat = (input) => enqueueViaBridge(input, bridge, state, root, store)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-import { RepoQueueRegistry } from '@plusplusoneplusplus/forge';
+import { RepoQueueRegistry, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import type { CreateTaskInput } from '@plusplusoneplusplus/forge';
 
 // SDK mock — MultiRepoQueueRouter → CLITaskExecutor → getCopilotSDKService.
@@ -35,6 +38,9 @@ import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue
 import { createSendToConversationTool } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import { enqueueViaBridge, type QueueGlobalState } from '../../../src/server/routes/queue-shared';
 import { prepareTaskForEnqueue } from '../../../src/server/routes/queue-enqueue';
+import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
+import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
+import { TitleGenerationService } from '../../../src/server/executors/title-generator';
 
 const WS_ID = 'ws-spawn';
 const ROOT = '/repo/spawn';
@@ -155,5 +161,116 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
         expect(task.config?.reasoningEffort).toBe('medium');
         expect((task.config as any).afterEffortTier).toBe('medium');
         expect((task.config as any).effortTier).toBeUndefined();
+    });
+});
+
+describe('send_to_conversation custom title lifecycle and SQLite restarts', () => {
+    let tempDir: string;
+    let store: SqliteProcessStore;
+    let bridge: MultiRepoQueueRouter;
+    let persistence: SqliteQueuePersistence;
+
+    beforeEach(() => {
+        sdkMocks.resetAll();
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-spawn-title-'));
+        store = new SqliteProcessStore({ dbPath: path.join(tempDir, 'processes.db') });
+    });
+
+    afterEach(() => {
+        persistence?.dispose();
+        bridge?.dispose();
+        store.close();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it.each(['ws-caller', 'ws-other'])('retains a spawned custom title in %s across queue and process reloads', async targetWorkspaceId => {
+        const workspaces = [
+            { id: 'ws-caller', name: 'Caller', rootPath: path.join(tempDir, 'caller') },
+            { id: 'ws-other', name: 'Other', rootPath: path.join(tempDir, 'other') },
+        ];
+        for (const workspace of workspaces) {
+            fs.mkdirSync(workspace.rootPath);
+            await store.registerWorkspace(workspace);
+        }
+        await store.addProcess({
+            id: PARENT_PID,
+            type: 'chat',
+            promptPreview: 'Parent',
+            status: 'completed',
+            startTime: new Date(),
+            metadata: { type: 'chat', workspaceId: 'ws-caller', provider: 'copilot' },
+        });
+        bridge = new MultiRepoQueueRouter(new RepoQueueRegistry(), store, { autoStart: false });
+        for (const workspace of workspaces) bridge.registerRepoId(workspace.id, workspace.rootPath);
+        persistence = new SqliteQueuePersistence(bridge, store.getDatabase());
+        const { tool } = createSendToConversationTool({
+            store,
+            workspaceId: 'ws-caller',
+            parentProcessId: PARENT_PID,
+            enqueueChat: async input => {
+                await prepareTaskForEnqueue(input, { getDefaultProvider: () => 'copilot' });
+                return enqueueViaBridge(input, bridge, freshState(), workspaces[0].rootPath, store);
+            },
+        });
+        const result = await tool.handler({
+            content: 'Investigate the delegated task',
+            title: ' \tDelegated investigation\n ',
+            workspaceId: targetWorkspaceId,
+        });
+        if ('error' in result) throw new Error(result.error);
+        const taskId = result.processId.slice('queue_'.length);
+
+        persistence.dispose();
+        bridge.dispose();
+        store.close();
+        store = new SqliteProcessStore({ dbPath: path.join(tempDir, 'processes.db') });
+        bridge = new MultiRepoQueueRouter(new RepoQueueRegistry(), store, { autoStart: false });
+        persistence = new SqliteQueuePersistence(bridge, store.getDatabase());
+        persistence.restore();
+        const task = bridge.getTask(taskId)!;
+        const targetRoot = workspaces.find(ws => ws.id === targetWorkspaceId)!.rootPath;
+        expect(task.payload.customTitle).toBe('Delegated investigation');
+        expect(task.displayName).toBe('Delegated investigation');
+        expect(task.repoId).toBe(targetWorkspaceId);
+        expect(task.payload.workingDirectory).toBe(targetRoot);
+
+        sdkMocks.mockTransform.mockResolvedValue({
+            success: true, text: 'AI generated title', effectiveModel: 'gpt-5.4-mini',
+        });
+        const titles = new TitleGenerationService({
+            store,
+            aiService: sdkMocks.service,
+            queueManager: bridge.registry.getQueueForRepo(targetRoot),
+        });
+        const runner = new ProcessLifecycleRunner(store, tempDir,
+            (processId, turns) => titles.generateIfNeeded(processId, turns));
+        expect((await runner.run(task, {
+            cancelledTasks: new Set(),
+            executeFollowUpFn: vi.fn(),
+            executeByTypeFn: vi.fn().mockResolvedValue({ response: 'Investigation completed' }),
+            getWorkingDirectoryFn: () => targetRoot,
+        })).success).toBe(true);
+        await vi.waitFor(async () => {
+            expect((await store.getProcess(result.processId))?.title).toBe('AI generated title');
+            expect(bridge.getTask(taskId)?.displayName).toBe('Delegated investigation');
+        });
+        persistence.dispose();
+        bridge.dispose();
+        store.close();
+        store = new SqliteProcessStore({ dbPath: path.join(tempDir, 'processes.db') });
+        const process = await store.getProcess(result.processId);
+        expect(process).toMatchObject({
+            customTitle: 'Delegated investigation',
+            title: 'AI generated title',
+            parentProcessId: PARENT_PID,
+            workingDirectory: targetRoot,
+            metadata: { workspaceId: targetWorkspaceId, provider: 'copilot' },
+        });
+        const targetProcesses = await store.getAllProcesses({ workspaceId: targetWorkspaceId });
+        expect(targetProcesses.some(proc => proc.id === result.processId)).toBe(true);
+        const otherWorkspaceId = targetWorkspaceId === 'ws-caller' ? 'ws-other' : 'ws-caller';
+        const otherProcesses = await store.getAllProcesses({ workspaceId: otherWorkspaceId });
+        expect(otherProcesses.some(proc => proc.id === result.processId)).toBe(false);
+        expect((await store.getProcess(PARENT_PID))?.customTitle).toBeUndefined();
     });
 });

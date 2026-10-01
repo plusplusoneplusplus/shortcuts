@@ -62,7 +62,11 @@ can target another registered workspace, links spawned chats via
 provider uses that provider's defaults instead of inheriting parent model/effort; incompatible
 provider/model/tier combinations fail without fallback. Optional create-mode `title` is
 trimmed, must be non-empty and at most 80 characters, and travels through canonical task
-validation as `displayName` and `payload.customTitle`. Omitting it keeps automatic naming.
+validation as `displayName` and `payload.customTitle`. Queue SQLite serialization preserves
+the payload; `ProcessLifecycleRunner` seeds `AIProcess.customTitle`, persisted in the existing
+process-store column. AI title generation writes `title` while queue display-name sync prefers
+the current `customTitle`, so supplied titles remain visible across turns and restarts.
+Omitting the title keeps automatic naming.
 
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and

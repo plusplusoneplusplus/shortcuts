@@ -139,7 +139,7 @@ export class TitleGenerationService {
     private async generate(processId: string, firstUserContent: string, firstAssistantContent: string): Promise<void> {
         const existing = await this.options.store.getProcess(processId);
         if (existing?.title) {
-            this.syncQueueDisplayName(processId, existing.title);
+            this.syncQueueDisplayName(processId, existing.customTitle || existing.title);
             return;
         }
 
@@ -158,7 +158,8 @@ export class TitleGenerationService {
         if (!title) return;
 
         await this.options.store.updateProcess(processId, { title });
-        this.syncQueueDisplayName(processId, title);
+        const updated = await this.options.store.getProcess(processId);
+        this.syncQueueDisplayName(processId, updated?.customTitle || title);
     }
 
     private async generateTitle(prompt: string): Promise<string> {

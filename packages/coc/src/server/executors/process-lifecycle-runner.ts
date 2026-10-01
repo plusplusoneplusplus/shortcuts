@@ -710,6 +710,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             startTime: new Date(),
             workingDirectory,
             tokenLimit: seededTokenLimit,
+            ...(isChatPayload(task.payload) && task.payload.customTitle
+                ? { customTitle: task.payload.customTitle }
+                : {}),
             ...(spawnedFromProcessId ? { parentProcessId: spawnedFromProcessId } : {}),
             metadata: {
                 type: task.type,

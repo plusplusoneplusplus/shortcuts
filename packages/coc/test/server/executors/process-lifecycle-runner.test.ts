@@ -60,6 +60,37 @@ function makeOpts(overrides: Partial<LifecycleRunnerOptions> = {}): LifecycleRun
 // Selected-skills directive in initial turn
 // ============================================================================
 
+describe('ProcessLifecycleRunner — custom title seeding', () => {
+    it.each([undefined, 'Delegated helper'])('seeds only supplied custom titles (%s)', async customTitle => {
+        const store = createMockProcessStore();
+        const runner = new ProcessLifecycleRunner(store, '/data-dir', vi.fn());
+        const task = makeTask({
+            displayName: 'Replaceable queue name',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Hello', customTitle },
+        });
+        expect((await runner.run(task, makeOpts())).success).toBe(true);
+        const process = await store.getProcess(`queue_${task.id}`);
+        expect(process?.customTitle).toBe(customTitle);
+        if (customTitle === undefined) expect(process).not.toHaveProperty('customTitle');
+    });
+
+    it('does not rename an existing process from a follow-up payload', async () => {
+        const store = createMockProcessStore();
+        const runner = new ProcessLifecycleRunner(store, '/data-dir', vi.fn());
+        await runner.run(makeTask({
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Hello', customTitle: 'Original title' },
+        }), makeOpts());
+        await runner.run(makeTask({
+            id: 'follow-up',
+            payload: {
+                kind: 'chat', mode: 'ask', prompt: 'Continue', processId: 'queue_task-1',
+                customTitle: 'Ignored follow-up title',
+            },
+        }), makeOpts());
+        expect((await store.getProcess('queue_task-1'))?.customTitle).toBe('Original title');
+    });
+});
+
 describe('ProcessLifecycleRunner — selected_skills directive in stored turns', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     let runner: ProcessLifecycleRunner;
