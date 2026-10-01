@@ -108,6 +108,8 @@ Chat canvas side panel, gated by `canvas.enabled` (default on). Markdown or code
 | GET | `/api/fs/browse-helper` | Same-origin helper page for container-mode directory browsing |
 | GET | `/api/fs/blob?path=<absolute>` | Read one file under CoC trusted data dirs (`~/.copilot`, server data dir, OS temp) or any registered workspace/repo root; arbitrary paths rejected |
 | GET | `/api/workspaces/:id/files/preview?path=<path>` | Read a bounded text/image/directory preview with resolved absolute `path` and `resolvedWorkspaceId`. Regular relative paths anchor at the workspace root. A repo-group accepts absolute paths inside live registered member roots and probes a relative path under each live member root in membership order, selecting the first existing contained candidate; a miss lists attempted paths. Removed or missing-path members are skipped. Non-group scope and all write routes remain workspace-scoped |
+| GET | `/api/workspaces/:id/files/html?path=<path>` | Serve a sandboxed HTML preview from the workspace, its repo output data, OS temp, `~/.copilot`, `~/.codex`, or `~/.claude`; canonical-path checks reject symlink escapes |
+| GET | `/api/workspaces/:id/files/html/resolve?path=<path>` | Validate the same HTML allowlist and return `{ path }` with the canonical absolute path for a local desktop HTML tab |
 
 ## Repository browsing
 

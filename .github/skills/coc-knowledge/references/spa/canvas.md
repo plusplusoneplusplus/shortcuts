@@ -246,9 +246,11 @@ plan labels stay static because they name no on-disk file.
 With `features.htmlPageTab` on in the desktop host, assistant `.html`/`.htm`
 links resolve through `resolveSourceCanvasTarget` and open through
 `window.cocDesktop.htmlPage.open`; repo-group relative paths first use the
-preview endpoint to identify the owning member. Only absolute paths attributed
-unambiguously to a local workspace reach the desktop host, which checks that
-the file exists. A successful open emits `coc-open-html-page` with
+preview endpoint to identify the owning member. The owning local server then
+canonicalizes and authorizes the absolute path through `files/html/resolve`;
+workspace roots, repo output data, OS temp, `~/.copilot`, `~/.codex`, and
+`~/.claude` are eligible HTML roots. The desktop host checks that the approved
+path still names an existing HTML file. A successful open emits `coc-open-html-page` with
 `{ pageId, filePath, wsId, scopeWsId }`; the owning right panel claims the
 event and opens a workspace-scoped, session-only tab. Without a matching panel
 the native view closes and the ordinary source-canvas event fires. Rejected,

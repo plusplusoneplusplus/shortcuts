@@ -16,6 +16,7 @@ import type {
   MoveTaskRequest,
   MoveTaskResponse,
   OpenTaskFileRequest,
+  ResolveWorkspaceHtmlResponse,
   TaskComment,
   TaskCommentCountsResponse,
   TaskCommentResponse,
@@ -155,6 +156,12 @@ export class TasksClient {
 
   previewWorkspaceHtml(workspaceId: string, path: string): Promise<string> {
     return this.transport.request<string>(workspacePath(workspaceId, '/files/html'), {
+      query: { path },
+    });
+  }
+
+  resolveWorkspaceHtml(workspaceId: string, path: string): Promise<ResolveWorkspaceHtmlResponse> {
+    return this.transport.request<ResolveWorkspaceHtmlResponse>(workspacePath(workspaceId, '/files/html/resolve'), {
       query: { path },
     });
   }

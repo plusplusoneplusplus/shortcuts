@@ -24,6 +24,7 @@ async function setup(options: {
     workspaces?: Array<{ id: string; rootPath: string }>;
     response?: { ok: true } | { ok: false; reason: string };
     groupPreview?: { path: string; resolvedWorkspaceId: string };
+    resolvedPath?: string;
     panel?: boolean;
 } = {}) {
     const path = options.path ?? htmlPath;
@@ -49,6 +50,10 @@ async function setup(options: {
             json: async () => options.groupPreview,
         });
     }
+    fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ path: options.resolvedPath ?? options.groupPreview?.path ?? path }),
+    });
     vi.stubGlobal('fetch', fetch);
     await import('../../../src/server/spa/client/react/shared/file-path/file-path-preview');
     const events: CustomEvent[] = [];
@@ -84,12 +89,27 @@ describe('assistant HTML link routing', () => {
     });
 
     it('opens a local existing .html page using the resolved absolute path', async () => {
-        const { events, open } = await setup({ path: 'pages/index.html' });
+        const { events, open } = await setup({ path: 'pages/index.html', resolvedPath: htmlPath });
         expect(open).toHaveBeenCalledWith('page-id', htmlPath);
         expect(events[0].type).toBe('coc-open-html-page');
         expect(events[0].detail).toEqual({
             pageId: 'page-id', filePath: htmlPath, wsId: 'ws-local',
             scopeWsId: 'ws-local', handled: true,
+        });
+    });
+
+    it('opens a server-approved HTML file outside the workspace root', async () => {
+        const approvedPath = 'C:/Users/test/.copilot/session/output.html';
+        const { events, open, fetch } = await setup({ path: approvedPath });
+
+        expect(fetch).toHaveBeenNthCalledWith(2, expect.stringContaining(
+            `/api/workspaces/ws-local/files/html/resolve?path=${encodeURIComponent(approvedPath)}`,
+        ), expect.anything());
+        expect(open).toHaveBeenCalledWith('page-id', approvedPath);
+        expect(events[0].detail).toMatchObject({
+            filePath: approvedPath,
+            wsId: 'ws-local',
+            scopeWsId: 'ws-local',
         });
     });
 

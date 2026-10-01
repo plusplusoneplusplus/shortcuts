@@ -475,7 +475,7 @@ surface untouched.
 |---|---|---|
 | Chat diff action | `ChatDetail` `WHISPER_DIFF_EVENT` handler | A whisper diff is rebuilt from an in-memory transcript, so `unifiedDiffSources` is the join between a persisted tab and its source. |
 | Chat source link | `ChatDetail` `coc-open-source-canvas` | Declines relative/group refs and paths outside a known root — `PreviewPane` reads repo-relative blobs, so a tab for those could only render an error. The chat's clone-qualified selection disambiguates same-id local and remote workspaces. |
-| Desktop HTML link | `file-path-preview.ts` `coc-open-html-page` | The main process verifies a local file before the panel claims the event; the tab uses `UnifiedHtmlPageTab` to align a native view with its placeholder. Without a matching panel host the native view closes and the link takes the source-viewer path. |
+| Desktop HTML link | `file-path-preview.ts` `coc-open-html-page` | The local server authorizes and canonicalizes the path before the main process verifies the file and the panel claims the event. Approved roots include local workspaces, repo output data, OS temp, and the provider data folders under `~/.copilot`, `~/.codex`, and `~/.claude`; remote-server paths stay on the source-viewer path. The tab uses `UnifiedHtmlPageTab` to align a native view with its placeholder. Without a matching panel host the native view closes and the link takes the source-viewer path. |
 | Note link | same handler, `kind: 'note'` branch | `resourceId` is `<fetchMode>\|<root>\|<path>`: the note root is part of the identity, resolved once at open time because the link is gone by restore time. |
 | Explorer selection | `ExplorerPanel` `onOpenFile` | The tree column (and navigator mode elsewhere): `options.preview` picks the preview slot vs a permanent tab. |
 | Language navigation | `UnifiedTabView` `onOpenFile` | A "go to definition" out of a file tab. The descriptor takes its workspace id, concrete route, and repo label from the SOURCE tab, never from the dock's current target, so the target read and language document stay on the initiating clone. Always a permanent tab. |
@@ -502,7 +502,10 @@ the page, opens the file in the system browser, or requests the read-only source
 canvas (`forceSourceViewer` bypasses editable unified file tabs). Load errors
 surface inline with the same source fallback. The view is ephemeral: the tab
 model omits it from serialized state, and the main process tears it down with
-the window.
+the window. `file-path-preview.ts` calls the owning local server's
+`files/html/resolve` route before opening the native view, so paths outside a repo
+can open only from the server's canonical HTML allowlist and a remote path can
+never be handed to the local Electron process.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 
