@@ -13,7 +13,6 @@ import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
 import { withRemoteWorkspaces } from '../../repos/workspacesWithRemote';
 import {
-    getSourceCanvasWorkspaceRelativePath,
     isSourceCanvasResolveError,
     resolveSourceCanvasTarget,
 } from '../../features/chat/source-canvas/resolve';
@@ -291,18 +290,16 @@ async function openHtmlPageOrSource(ref: FileReference, bridge: DesktopHtmlPageB
             filePath = preview.path;
             ownerId = preview.resolvedWorkspaceId ?? ownerId;
         }
-        const owner = workspaces.find(ws => ws.id === ownerId
-            && !isRemoteWorkspace(ws)
-            && !!ws.rootPath
-            && getSourceCanvasWorkspaceRelativePath(filePath, ws.rootPath) !== filePath);
-        const remoteOwner = workspaces.some(ws => ws.id === ownerId
-            && isRemoteWorkspace(ws)
-            && !!ws.rootPath
-            && getSourceCanvasWorkspaceRelativePath(filePath, ws.rootPath) !== filePath);
+        const owner = workspaces.find(ws => ws.id === ownerId && !isRemoteWorkspace(ws));
+        const remoteOwner = workspaces.some(ws => ws.id === ownerId && isRemoteWorkspace(ws));
         if (!owner || remoteOwner || !isAbsolutePath(filePath)) {
             dispatchOpenSourceCanvas(ref);
             return;
         }
+
+        const resolved = await getCocClientForWorkspace(owner.id)
+            .tasks.resolveWorkspaceHtml(owner.id, filePath);
+        filePath = resolved.path;
 
         const pageKey = `${ref.wsId ?? owner.id}\0${filePath}`;
         let pageId = htmlPageIds.get(pageKey);

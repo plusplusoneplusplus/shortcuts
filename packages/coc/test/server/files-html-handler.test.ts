@@ -229,19 +229,40 @@ describe('GET /api/workspaces/:id/files/html', () => {
         expect(res.body).toContain('workspace file url');
     });
 
-    it('serves HTML from the Copilot CLI session folder (~/.copilot)', async () => {
+    it.each(['.copilot', '.codex', '.claude'])(
+        'serves HTML from the provider data folder (~/%s)',
+        async (providerDirName) => {
+            const srv = await startServer();
+            const providerRoot = path.join(os.homedir(), providerDirName);
+            fs.mkdirSync(providerRoot, { recursive: true });
+            const sessionDir = fs.mkdtempSync(path.join(providerRoot, 'files-html-provider-'));
+            try {
+                const filePath = path.join(sessionDir, 'session-output.html');
+                fs.writeFileSync(filePath, '<html><body>provider session</body></html>', 'utf-8');
+
+                const res = await request(`${srv.url}/api/workspaces/${wsId}/files/html?path=${encodeURIComponent(filePath)}`);
+
+                expect(res.status).toBe(200);
+                expect(res.body).toContain('provider session');
+            } finally {
+                fs.rmSync(sessionDir, { recursive: true, force: true });
+            }
+        },
+    );
+
+    it('resolves an approved HTML path to its canonical absolute path', async () => {
         const srv = await startServer();
-        const copilotRoot = path.join(os.homedir(), '.copilot');
-        fs.mkdirSync(copilotRoot, { recursive: true });
-        const sessionDir = fs.mkdtempSync(path.join(copilotRoot, 'files-html-copilot-'));
+        const providerRoot = path.join(os.homedir(), '.copilot');
+        fs.mkdirSync(providerRoot, { recursive: true });
+        const sessionDir = fs.mkdtempSync(path.join(providerRoot, 'files-html-resolve-'));
         try {
             const filePath = path.join(sessionDir, 'session-output.html');
-            fs.writeFileSync(filePath, '<html><body>copilot session</body></html>', 'utf-8');
+            fs.writeFileSync(filePath, '<html></html>', 'utf-8');
 
-            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/html?path=${encodeURIComponent(filePath)}`);
+            const res = await request(`${srv.url}/api/workspaces/${wsId}/files/html/resolve?path=${encodeURIComponent(filePath)}`);
 
             expect(res.status).toBe(200);
-            expect(res.body).toContain('copilot session');
+            expect(JSON.parse(res.body)).toEqual({ path: fs.realpathSync(filePath) });
         } finally {
             fs.rmSync(sessionDir, { recursive: true, force: true });
         }

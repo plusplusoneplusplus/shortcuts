@@ -1807,7 +1807,7 @@ describe('ProcessLifecycleRunner — effort tier resolved against the Auto-selec
     // default provider's model coerced away to a fallback.
     const MEDIUM_TIER_BY_PROVIDER: Array<[string, string, string | undefined]> = [
         ['copilot', 'gpt-6.1-sol', 'medium'],
-        ['codex', 'gpt-5.6-sol', 'medium'],
+        ['codex', 'gpt-6.1-sol', 'medium'],
         ['claude', 'opus', 'medium'],
         ['opencode', 'anthropic/claude-sonnet', 'high'],
     ];
@@ -1817,11 +1817,21 @@ describe('ProcessLifecycleRunner — effort tier resolved against the Auto-selec
         async (provider, expectedModel, expectedEffort) => {
             const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
             const task = makeAutoTask({ afterEffortTier: 'medium' });
+            const executeByTypeFn = vi.fn().mockResolvedValue({ response: 'done' });
 
-            await runner.run(task, makeOpts({ resolveDefaultProvider: autoResolverFor(provider) }));
+            await runner.run(task, makeOpts({
+                resolveDefaultProvider: autoResolverFor(provider),
+                executeByTypeFn,
+            }));
 
             expect(task.config.model).toBe(expectedModel);
             expect(task.config.reasoningEffort).toBe(expectedEffort);
+            expect(executeByTypeFn).toHaveBeenCalledWith(expect.objectContaining({
+                config: expect.objectContaining({ model: expectedModel, reasoningEffort: expectedEffort }),
+                payload: expect.objectContaining({ provider }),
+            }), expect.any(String));
+            const proc = await store.getProcess(`queue_${task.id}`);
+            expect(proc?.conversationTurns?.[0].model).toBe(expectedModel);
         },
     );
 

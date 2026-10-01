@@ -148,6 +148,11 @@ export interface FilePreviewResponse {
   [key: string]: unknown;
 }
 
+export interface ResolveWorkspaceHtmlResponse {
+  /** Canonical absolute path approved by the owning CoC server. */
+  path: string;
+}
+
 export interface OpenTaskFileRequest {
   path: string;
 }

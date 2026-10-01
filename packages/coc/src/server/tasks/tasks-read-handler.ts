@@ -16,12 +16,17 @@ import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { Route } from '../types';
 import { isRepoGroupWorkspaceId } from '../workspaces/repo-group-workspace';
 import { resolveTaskRoot } from './task-root-resolver';
-import { isWithinTrustedReadOnlyDir, resolveRepoGroupReadRoots, resolveRequestedFilePath, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
+import { isWithinTrustedReadOnlyDir, resolveRepoGroupReadRoots, resolveRequestedFilePath, TRUSTED_READ_ONLY_DIRS, DEFAULT_SETTINGS, readTasksSettings, writeTasksSettings } from './tasks-handler-utils';
 import { taskCache } from './task-cache';
 import { getRepoDataPath } from '../paths';
 
 const HTML_EMBED_MAX_BYTES = 4 * 1024 * 1024;
 const HTML_EMBED_TYPES = new Set(['.html', '.htm']);
+const TRUSTED_HTML_DIRS = [
+    ...TRUSTED_READ_ONLY_DIRS,
+    path.join(os.homedir(), '.codex'),
+    path.join(os.homedir(), '.claude'),
+];
 
 function htmlEmbedContentSecurityPolicy(): string {
     return [
@@ -83,8 +88,8 @@ async function resolveAllowedHtmlPath(filePath: string, ws: { id: string; rootPa
         return { status: 415, message: 'Unsupported HTML type' };
     }
 
-    const realWsRoot = await fs.promises.realpath(wsRoot);
-    if (isWithinDirectory(realCandidate, realWsRoot)) {
+    const realWsRoot = await realpathIfExists(wsRoot);
+    if (realWsRoot && isWithinDirectory(realCandidate, realWsRoot)) {
         return { path: realCandidate };
     }
 
@@ -93,15 +98,11 @@ async function resolveAllowedHtmlPath(filePath: string, ws: { id: string; rootPa
         return { path: realCandidate };
     }
 
-    const realTmpRoot = await fs.promises.realpath(os.tmpdir());
-    if (isWithinDirectory(realCandidate, realTmpRoot)) {
-        return { path: realCandidate };
-    }
-
-    const copilotCliRoot = path.join(os.homedir(), '.copilot');
-    const realCopilotCliRoot = await realpathIfExists(copilotCliRoot);
-    if (realCopilotCliRoot && isWithinDirectory(realCandidate, realCopilotCliRoot)) {
-        return { path: realCandidate };
+    for (const trustedRoot of TRUSTED_HTML_DIRS) {
+        const realTrustedRoot = await realpathIfExists(trustedRoot);
+        if (realTrustedRoot && isWithinDirectory(realCandidate, realTrustedRoot)) {
+            return { path: realCandidate };
+        }
     }
 
     return { status: 403, message: 'Access denied: path is outside allowed HTML roots' };
@@ -324,6 +325,31 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     return sendError(res, 404, 'File not found');
                 }
                 return sendError(res, 500, 'Failed to read file: ' + (err.message || 'Unknown error'));
+            }
+        },
+    });
+
+    // GET /api/workspaces/:id/files/html/resolve — Validate and canonicalize a local HTML path.
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/files\/html\/resolve$/,
+        handler: async (req, res, match) => {
+            const ws = await resolveWorkspaceOrFail(store, match!, res);
+            if (!ws) return;
+
+            const parsed = url.parse(req.url || '/', true);
+            const filePath = typeof parsed.query.path === 'string' ? parsed.query.path : '';
+            if (!filePath) return sendError(res, 400, 'Missing required query parameter: path');
+
+            try {
+                const resolved = await resolveAllowedHtmlPath(filePath, ws, dataDir);
+                if (!resolved.path) {
+                    return sendError(res, resolved.status ?? 403, resolved.message ?? 'Access denied');
+                }
+                return sendJSON(res, 200, { path: resolved.path });
+            } catch (err: any) {
+                if (err.code === 'ENOENT') return sendError(res, 404, 'HTML file not found');
+                return sendError(res, 500, 'Failed to resolve HTML file: ' + (err.message || 'Unknown error'));
             }
         },
     });
