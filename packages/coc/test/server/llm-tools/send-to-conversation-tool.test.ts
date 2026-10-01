@@ -129,6 +129,25 @@ describe('createSendToConversationTool — shape & description', () => {
         expect(desc).toMatch(/processId/);
         expect(desc.indexOf('With `processId`')).toBeLessThan(desc.indexOf('Without `processId`'));
     });
+
+    it('documents persistent task-specific titles without making them required', () => {
+        const { tool } = makeTool();
+        expect((tool.parameters as { required: string[] }).required).toEqual(['content']);
+        expect(tool.description).toContain('short, task-specific `title`');
+        expect(tool.description).toContain('visible custom title even after AI title generation');
+        expect(tool.parameters).toMatchObject({
+            required: ['content'],
+            properties: {
+                title: {
+                    type: 'string',
+                    description: expect.stringContaining('optional persistent custom title'),
+                },
+            },
+        });
+        const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;
+        expect(props.title.description).toContain('Trimmed, non-empty, max 80 characters');
+        expect(props.title.description).toContain('Ignored in post mode');
+    });
 });
 
 describe('createSendToConversationTool — create mode (no processId)', () => {

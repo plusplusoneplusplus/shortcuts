@@ -3,7 +3,7 @@ name: delegate
 description: Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.
 metadata:
   author: Yiheng Tao
-  version: "0.0.2"
+  version: "0.0.3"
 ---
 
 # Delegate
@@ -24,7 +24,9 @@ Users reach this skill either through plain language ("hand this off to a new ch
 
 Assemble a self-contained prompt holding the context, constraints, decisions, and expected outcome. Prefer file path references over pasted file contents. Describe the actual work so the child does it rather than delegating it onward.
 
-Call `send_to_conversation` **without** a `processId` so a new conversation is created. Return the created chat link plus a one-line summary of the task and the chosen provider. A queued chat is queued, not finished — say so.
+Call `send_to_conversation` **without** a `processId` so a new conversation is created. Always include a short, task-specific `title` in this create-mode call, along with `content`. Use a non-empty title of at most 80 characters; surrounding whitespace is trimmed. The title stays the conversation's visible custom title across AI title generation and restarts.
+
+Return the created chat link plus a one-line summary of the task and the chosen provider. A queued chat is queued, not finished — say so.
 
 ## Choosing a provider
 

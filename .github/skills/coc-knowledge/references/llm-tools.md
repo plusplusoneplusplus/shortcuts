@@ -68,6 +68,10 @@ process-store column. AI title generation writes `title` while queue display-nam
 the current `customTitle`, so supplied titles remain visible across turns and restarts.
 Omitting the title keeps automatic naming.
 
+The tool description asks agents for short, task-specific create-mode titles. The bundled
+`delegate` skill requires agents to include a title in its handoff calls; the JSON schema
+keeps only `content` unconditionally required so untitled creation and post mode stay valid.
+
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and
 lets an explicit `model` override the tier. Create-only titles are ignored in post mode.

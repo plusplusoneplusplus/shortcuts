@@ -130,7 +130,7 @@ describe('SKILL.md metadata', () => {
             description: entry!.description,
             metadata: {
                 author: 'Yiheng Tao',
-                version: '0.0.2',
+                version: '0.0.3',
             },
         });
 
@@ -146,6 +146,9 @@ describe('SKILL.md metadata', () => {
         // A new conversation, never a follow-up into an existing one.
         expect(body).toContain('without');
         expect(body).toContain('processId');
+        expect(body).toContain('Always include a short, task-specific `title` in this create-mode call');
+        expect(body).toContain('at most 80 characters');
+        expect(body).toContain('visible custom title across AI title generation and restarts');
         // Omitting the provider must preserve the tool's inheritance.
         expect(body).toMatch(/Omit `provider`/);
         // Ask mode and the current workspace are the child defaults.

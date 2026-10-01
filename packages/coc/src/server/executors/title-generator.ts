@@ -5,7 +5,7 @@
  * Extracted from CLITaskExecutor to keep the bridge as a thin facade.
  *
  * Idempotent: skips if the process already has a title.
- * Re-syncs the AI-generated title back to the task's displayName on every turn.
+ * Re-syncs the visible title to the task's displayName with custom-title precedence.
  */
 
 import type { ConversationTurn, ISDKService, ProcessStore, TaskQueueManager } from '@plusplusoneplusplus/forge';
