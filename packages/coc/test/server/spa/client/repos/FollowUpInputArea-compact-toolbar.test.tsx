@@ -4,7 +4,7 @@
  * Tests for the compact mobile/tablet (≤1023px) layout of the
  * FollowUpInputArea inner toolbar.
  *
- * On narrow viewports the toolbar must stay on a single row (no flex-wrap):
+ * The toolbar must stay on a single row at every viewport (no flex-wrap):
  *  - the low-priority tool actions (slash / attach) collapse into a
  *    single overflow ("⋯") menu, while remaining individually reachable;
  *  - the wide segmented mode pill collapses into a compact tap-to-cycle button;
@@ -155,16 +155,14 @@ describe('FollowUpInputArea – compact mobile toolbar', () => {
         Element.prototype.scrollIntoView = vi.fn();
     });
 
-    it('renders the inner toolbar as a single non-wrapping row on ≤1023px (no bare flex-wrap)', () => {
+    it('renders the inner toolbar as a single non-wrapping row at every viewport', () => {
         render(<FollowUpInputArea {...defaultProps()} />);
         const toolbar = screen.getByTestId('chat-input-toolbar');
         const tokens = toolbar.className.split(/\s+/);
-        // Mobile/tablet: explicit no-wrap single row.
         expect(tokens).toContain('flex-nowrap');
-        // Desktop (lg+) preserves the original wrapping behaviour.
-        expect(tokens).toContain('lg:flex-wrap');
-        // The unprefixed `flex-wrap` (which would wrap on mobile) must be gone.
-        expect(tokens).not.toContain('flex-wrap');
+        // No wrap at any breakpoint — a desktop `lg:flex-wrap` used to push
+        // Send onto a second row when the pane was ~500–640px wide.
+        expect(tokens.some(t => t.endsWith('flex-wrap'))).toBe(false);
     });
 
     it('gives visible mobile/tablet toolbar actions approximately 32px tap targets', () => {

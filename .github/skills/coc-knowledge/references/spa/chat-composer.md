@@ -91,12 +91,12 @@ meta strip can never push the toolbar onto a second row: it grows into free spac
 by truncating the cwd path, and — because basis-0 makes its width equal the toolbar's free
 space — container queries hide unshrinkable pieces rather than letting them overlap.
 
-The toolbar measures itself with `useContainerWidth` at a raised `wideThreshold` of 820px
-and sheds progressively: below 820px an icon-only model chip and cwd basename; below 500px
-mobile controls (mode pills become tap-to-cycle, slash/attach fold into a "⋯" menu) driven
-by the container signal, not the `lg:` viewport gate; below 380px provider chip and Send go
-`iconOnly` with accessible names preserved; below ~300px `lg:flex-wrap` wraps to a second
-row. With `features.chatProviderSwitching` enabled, idle Ask and Autopilot conversations
+The toolbar measures itself with `useContainerWidth` (`wideThreshold` 820px,
+`mediumThreshold` 640px) and sheds progressively: below 820px an icon-only model chip and
+cwd basename; below 640px mobile controls (mode pills become tap-to-cycle, slash/attach fold
+into a "⋯" menu) driven by the container signal, not the `lg:` viewport gate; below 380px
+provider chip and Send go `iconOnly` with accessible names preserved. The toolbar is
+`flex-nowrap` at every viewport and never wraps to a second row. With `features.chatProviderSwitching` enabled, idle Ask and Autopilot conversations
 list concrete providers from the owning server. Workflow-owned, active, queued, cancelling,
 compacting, rewinding, and interactive-waiting conversations expose an accessible disabled
 reason. `Auto` and the new-chat provider keyboard shortcut remain unavailable in follow-ups.
