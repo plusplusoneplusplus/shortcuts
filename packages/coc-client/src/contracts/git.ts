@@ -106,6 +106,9 @@ export interface GitWorkingTreeFileContentResponse {
   tooLarge: boolean;
 }
 
+/** Both immutable git snapshots, with the working-tree full-text response shape. */
+export type GitFileDiffContentResponse = GitWorkingTreeFileContentResponse;
+
 export interface GitBranch {
   name: string;
   isCurrent: boolean;

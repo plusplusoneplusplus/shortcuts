@@ -21,6 +21,7 @@ import type {
   GitDiffCommentTotalsResponse,
   GitDiscardAllResponse,
   GitFileContentResponse,
+  GitFileDiffContentResponse,
   GitPatchApplyRequest,
   GitPatchApplyResponse,
   GitPatchExportResponse,
@@ -267,6 +268,12 @@ export class GitClient {
     );
   }
 
+  getCommitFileDiffContent(workspaceId: string, hash: string, filePath: string): Promise<GitFileDiffContentResponse> {
+    return this.transport.request<GitFileDiffContentResponse>(
+      workspaceGitPath(workspaceId, `/commits/${encodePathSegment(hash)}/files/${encodePathSegment(filePath)}/diff-content`),
+    );
+  }
+
   getBranchRange(workspaceId: string, query?: GitBranchRangeQuery): Promise<GitBranchRangeResponse> {
     return this.transport.request<GitBranchRangeResponse>(workspaceGitPath(workspaceId, '/branch-range'), {
       query: serializeBranchRangeQuery(query),
@@ -289,6 +296,13 @@ export class GitClient {
     return this.transport.request<GitDiffResponse>(
       workspaceGitPath(workspaceId, `/branch-range/files/${encodePathSegment(filePath)}/diff`),
       { query: serializeBranchRangeFileDiffQuery(query) },
+    );
+  }
+
+  getBranchRangeFileDiffContent(workspaceId: string, filePath: string, query?: GitBranchRangeQuery): Promise<GitFileDiffContentResponse> {
+    return this.transport.request<GitFileDiffContentResponse>(
+      workspaceGitPath(workspaceId, `/branch-range/files/${encodePathSegment(filePath)}/diff-content`),
+      { query: serializeBranchRangeQuery(query) },
     );
   }
 

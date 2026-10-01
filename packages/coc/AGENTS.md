@@ -108,6 +108,11 @@ all have their own `references/*.md`.
   with a timing delay.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
+- **Git full-text diff snapshots** use workspace-scoped `files/*/diff-content`
+  routes for commits and branch ranges. `git/ref-file-content.ts` resolves the
+  first parent or merge-base, handles renamed paths, and reuses working-tree
+  byte/size guards. Cache identity includes workspace, resolved refs, path, and
+  range base mode; the `files/*/content` commit preview remains a line-array API.
 - **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
   team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
   with a prompt in the selected workspace (or the first registered workspace).
