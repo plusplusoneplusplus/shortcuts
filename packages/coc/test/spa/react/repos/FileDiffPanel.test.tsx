@@ -360,7 +360,7 @@ describe('FileDiffPanel', () => {
 
             expect(fetchFileContent).toHaveBeenNthCalledWith(1, 'src/foo.ts');
             expect(fetchFileContent).toHaveBeenNthCalledWith(2, 'src/bar.ts');
-            expect(mockMonacoProps?.modelIdentity).toBe('branch-range:upstream');
+            expect(mockMonacoProps?.modelIdentity).toBe(`branch-range:upstream\u0000${content.base.ref}\u0000${content.head.ref}`);
         });
 
         it('does not reload when a host recreates an equivalent source object', async () => {

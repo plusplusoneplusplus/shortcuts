@@ -98,7 +98,7 @@ and repo clone-selection metadata, and the source cache identity includes the he
 and the same Classic/Editor toggle; the preference defaults to Monaco and updates all
 mounted file-diff surfaces immediately. In Editor mode, `FileDiffPanel` loads the
 paired content and renders `MonacoFileDiffViewer`; its synthetic model identity includes
-the source cache key so the same path at different commits, ranges, or PR heads cannot
+the source cache key and the response's resolved base/head refs so the same path at different commits, ranges, or PR heads cannot
 share a model. Branch-range sources opt into working-copy language support only
 when the server returns `modifiedMatchesWorkingCopy`; their modified model then
 uses the explorer's real document URI. Commit, PR, base, and ineligible branch

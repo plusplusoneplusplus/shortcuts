@@ -545,7 +545,7 @@ export function FileDiffPanel({
                             workspaceId={workspaceId}
                             relativePath={filePath}
                             stage={source.supportsWorkingCopyLanguage ? 'branch-range' : 'staged'}
-                            modelIdentity={source.cacheKey}
+                            modelIdentity={`${source.cacheKey}\u0000${editorSides.base.ref}\u0000${editorSides.head.ref}`}
                             modifiedMatchesWorkingCopy={editorSides.modifiedMatchesWorkingCopy}
                             original={editorSides.base.content}
                             modified={editorSides.head.content}

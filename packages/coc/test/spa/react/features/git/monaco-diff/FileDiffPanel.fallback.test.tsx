@@ -303,3 +303,18 @@ it('renders deleted text against an empty modified side without fallback', async
     expect(fakes[0].models[0].modified.text).toBe('');
     expect(fakes[0].models[0].original.text).toBe('before\n');
 });
+
+it.each<SourceKind>(['commit', 'branch-range', 'pull-request'])(
+    '%s keeps equal-text models at different resolved refs separate', async kind => {
+        await mount(makeSource(kind));
+        await mount(makeSource(kind, vi.fn(async () => content({
+            base: { content: 'before\n', ref: 'other-base', exists: true },
+            head: { content: 'after\n', ref: 'other-head', exists: true },
+        }))));
+        expect(fakes).toHaveLength(2);
+        expect(fakes[0].models[0].original.text).toBe(fakes[1].models[0].original.text);
+        expect(fakes[0].models[0].modified.text).toBe(fakes[1].models[0].modified.text);
+        expect(fakes[0].models[0].original.uri).not.toBe(fakes[1].models[0].original.uri);
+        expect(fakes[0].models[0].modified.uri).not.toBe(fakes[1].models[0].modified.uri);
+    },
+);
