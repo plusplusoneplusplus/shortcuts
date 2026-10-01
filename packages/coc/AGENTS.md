@@ -118,7 +118,10 @@ all have their own `references/*.md`.
   pairs through `fetchFileContent` and resolve the workspace client on every
   call. `FileDiffPanel` renders those pairs through `MonacoFileDiffViewer` for
   commit, branch-range, and PR sources, using the source cache key to isolate
-  synthetic ref models; Classic continues to use the patch path. It and
+  synthetic ref models. Shared engine resolution falls back to Classic for
+  binary/oversized content, content-load failures, or editor-start failures,
+  retaining comments and the patch path. Retry refetches content and remounts
+  the editor for recoverable failures. It and
   `WorkingTreeFileDiff` consume the same global `useDiffEngine` preference and
   Classic/Editor control. Cache identity includes
   workspace or origin, ref identity, base mode where applicable, and path; PR

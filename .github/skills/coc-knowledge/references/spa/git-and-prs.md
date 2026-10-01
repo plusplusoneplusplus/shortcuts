@@ -93,13 +93,21 @@ patch URLs plus an optional paired-content loader. Each loader resolves
 becomes available after source construction is honored. Branch-range loaders carry
 the selected base mode. PR loaders use the origin-scoped content API with workspace
 and repo clone-selection metadata, and the source cache identity includes the head SHA.
+
 `FileDiffPanel` and `WorkingTreeFileDiff` share the global `useDiffEngine` preference
 and the same Classic/Editor toggle; the preference defaults to Monaco and updates all
 mounted file-diff surfaces immediately. In Editor mode, `FileDiffPanel` loads the
 paired content and renders `MonacoFileDiffViewer`; its synthetic model identity includes
 the source cache key so the same path at different commits, ranges, or PR heads cannot
-share a model. Classic rendering keeps the patch request path. Monaco supplies find,
-syntax, overview markers, unified/split layout, and hunk navigation while full-context
+share a model.
+
+Both surfaces use `resolveDiffEngineSelection` for binary, oversized,
+content-load, and editor-start fallback; `DiffEngineFallbackBanner` exposes the reason.
+Recoverable failures retry with a fresh content request and editor mount, keyed by
+workspace, source identity, file, and attempt. Classic retains the patch request and
+comment context, including full-context and truncation controls during fallback.
+User-selected Classic and patch-only sources render without a fallback reason.
+Monaco supplies find, syntax, overview markers, unified/split layout, and hunk navigation while full-context
 and truncation controls stay specific to Classic.
 
 ### Cherry-pick

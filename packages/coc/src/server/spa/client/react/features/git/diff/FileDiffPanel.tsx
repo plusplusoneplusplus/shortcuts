@@ -41,6 +41,8 @@ import type { AnyComment } from '../../../../comments/shared-comment-types';
 import type { TaskCommentCategory } from '../../../../comments/task-comments-types';
 import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from './MonacoFileDiffViewer';
 import type { DiffEditorFactory } from './monacoDiffEditorAdapter';
+import { resolveDiffEngineSelection, type DiffContentLoadState } from './diffEngineResolution';
+import { DiffEngineFallbackBanner } from './DiffEngineFallbackBanner';
 
 export interface FileDiffPanelProps {
     workspaceId: string;
@@ -131,8 +133,10 @@ export function FileDiffPanel({
     const [viewMode, setViewMode] = useDiffViewMode();
     const [diffEngine, setDiffEngine] = useDiffEngine();
     const [editorContent, setEditorContent] = useState<EditorContentState | null>(null);
+    const [editorAttempt, setEditorAttempt] = useState(0);
+    const [editorFailedKey, setEditorFailedKey] = useState<string | null>(null);
     const wantsEditor = diffEngine === 'monaco' && source.fetchFileContent !== undefined;
-    const editorContentKey = `${source.cacheKey}\u0000${filePath}`;
+    const editorContentKey = `${workspaceId}\u0000${source.cacheKey}\u0000${filePath}\u0000${editorAttempt}`;
     const sourceRef = useRef(source);
     sourceRef.current = source;
 
@@ -148,13 +152,24 @@ export function FileDiffPanel({
     }, [wantsEditor, filePath, editorContentKey]);
 
     const currentEditorContent = editorContent?.key === editorContentKey ? editorContent : null;
-    const editorSides = currentEditorContent?.status === 'loaded'
-        && !currentEditorContent.content.binary
-        && !currentEditorContent.content.tooLarge
+    const contentLoadState: DiffContentLoadState | null = !currentEditorContent ? null
+        : currentEditorContent.status === 'loaded'
+            ? { status: 'loaded', binary: currentEditorContent.content.binary, tooLarge: currentEditorContent.content.tooLarge }
+            : { status: currentEditorContent.status };
+    const engineSelection = resolveDiffEngineSelection({
+        preference: wantsEditor ? diffEngine : 'legacy',
+        content: contentLoadState,
+        editorFailed: editorFailedKey === editorContentKey,
+    });
+    const editorSides = engineSelection.engine === 'monaco' && currentEditorContent?.status === 'loaded'
         ? currentEditorContent.content
         : null;
-    const showEditor = wantsEditor && editorSides !== null;
-    const editorLoading = wantsEditor && (!currentEditorContent || currentEditorContent.status === 'loading');
+    const showEditor = editorSides !== null;
+    const editorLoading = engineSelection.engine === 'loading';
+    const classicActive = engineSelection.engine === 'legacy';
+    const fallbackReason = classicActive ? engineSelection.fallback : null;
+    const handleEditorError = useCallback(() => setEditorFailedKey(editorContentKey), [editorContentKey]);
+    const retryEditor = useCallback(() => setEditorAttempt(attempt => attempt + 1), []);
 
     // ── UI state ──
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -246,7 +261,7 @@ export function FileDiffPanel({
     }, [filePath]);
 
     useEffect(() => {
-        if (showEditor || !initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
+        if (!classicActive || !initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
         hasScrolledRef.current = true;
         const timer = setTimeout(() => {
             const viewer = viewerRef.current;
@@ -260,7 +275,7 @@ export function FileDiffPanel({
             }
         }, 50);
         return () => clearTimeout(timer);
-    }, [initialHunkTarget, diff, loading, showEditor]);
+    }, [initialHunkTarget, diff, loading, classicActive]);
 
     // ── Handlers ──
 
@@ -406,7 +421,7 @@ export function FileDiffPanel({
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                     <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                    {!wantsEditor && source.fullContextFileDiffUrl && (
+                    {classicActive && source.fullContextFileDiffUrl && (
                         <button
                             onClick={() => setFullContextMode(m => !m)}
                             title={fullContextMode ? 'Switch to hunk-only diff' : 'Show full-file context'}
@@ -466,7 +481,7 @@ export function FileDiffPanel({
             {/* ── Main content area ── */}
             <div className="relative flex flex-1 min-h-0">
                 {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}
-                {!showEditor && find.open && diff && !loading && !error && (
+                {classicActive && find.open && diff && !loading && !error && (
                     <DiffFindWidget
                         query={find.query}
                         caseSensitive={find.caseSensitive}
@@ -486,8 +501,12 @@ export function FileDiffPanel({
                     data-testid="file-diff-section"
                     tabIndex={-1}
                 >
+                    {fallbackReason && (
+                        <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
+                    )}
                     {showEditor ? (
                         <MonacoFileDiffViewer
+                            key={editorContentKey}
                             ref={monacoViewerRef}
                             workspaceId={workspaceId}
                             relativePath={filePath}
@@ -503,6 +522,7 @@ export function FileDiffPanel({
                             onCopyAsContext={handleCopyAsContext}
                             diffSelectionDragSource={diffSelectionDragSource}
                             languageFeatures={false}
+                            onEditorError={handleEditorError}
                             createEditor={createDiffEditor}
                             data-testid="file-diff-editor"
                         />
@@ -570,7 +590,7 @@ export function FileDiffPanel({
                                     data-testid="file-diff-content"
                                 />
                             )}
-                            {truncated && !wantsEditor && (
+                            {truncated && classicActive && (
                                 <div
                                     className="flex items-center gap-2 px-4 py-2 text-xs bg-[#fff3cd] dark:bg-[#3a3000] border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                                     data-testid="diff-truncation-banner"
@@ -588,7 +608,7 @@ export function FileDiffPanel({
                                     </button>
                                 </div>
                             )}
-                            {fullContextUnavailable && !wantsEditor && (
+                            {fullContextUnavailable && classicActive && (
                                 <div
                                     className="flex items-center gap-2 px-4 py-2 text-xs bg-[#fff3cd] dark:bg-[#3a3000] border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                                     data-testid="full-context-unavailable-banner"
@@ -607,7 +627,7 @@ export function FileDiffPanel({
                 </div>
 
                 {/* ── DiffMiniMap ── */}
-                {diff && !loading && !error && !showEditor && (
+                {diff && !loading && !error && classicActive && (
                     <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
                 )}
 
