@@ -21,7 +21,7 @@
   },
   "dependencies": {},
   "optionalDependencies": {
-    "@whiskeysockets/baileys": "^6.7.23",
+    "@whiskeysockets/baileys": "^6.7.24",
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
