@@ -26,7 +26,10 @@ auto-pull skips and failures report through `useTransientToast`, not the `action
 banner. `useGitAutoRefresh` only calls the existing `refreshAll` (local reads, no
 fetch/pull) and relies on its in-progress guard; hosts that keep the tab mounted behind
 `display: none` (`RepoDetail`, `RepoGroupView` → `RepoGroupGitTab`) pass `active` so the
-timer pauses while hidden and restarts when shown.
+timer pauses while hidden and restarts when shown. `RepoGroupGitTab` gives
+`RepoGitTab` the raw member id as its data `workspaceId` and the group's
+server-qualified `selectionId` as `routeWorkspaceId`, keeping commit and file
+navigation on the owning group even when another server has the same group id.
 
 ### Stale working-tree recovery
 

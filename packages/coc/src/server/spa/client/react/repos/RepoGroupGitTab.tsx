@@ -272,7 +272,7 @@ export function RepoGroupGitTab({
                     <RepoGitTab
                         key={selectedId}
                         workspaceId={selectedId}
-                        routeWorkspaceId={workspaceId}
+                        routeWorkspaceId={selectionId}
                         repositorySelector={repositorySelector}
                         layout={layout}
                         detailContainer={rightPanel ? splitGitPanel.detailContainer : detailContainer}

@@ -6,19 +6,28 @@
  * tests drive the host through the REAL route registry (`resolveDashboardRoute`
  * + `applyRouteEffects`, the exact pair `Router` uses) so the URL contract, the
  * member/preference precedence and the unavailable-member behaviour are all
- * exercised end to end, with only the git panel itself stubbed.
+ * exercised end to end, with the Git panel's presentation stubbed but its
+ * commit-selection controller intact.
  *
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { buildRemoteCloneKey, getWorkspaceIdFromSelectionId } from '../../../src/server/spa/client/react/repos/cloneIdentity';
+import { buildGitRouteHash } from '../../../src/server/spa/client/react/layout/gitRoute';
 
-// The panel itself is covered by the RepoGitTab family; what matters here is
-// which ids it is handed and whether it is mounted at all.
+// Keep the real selection controller so a click exercises the page-owner id
+// passed to the panel, without mounting the rest of the Git UI.
 const panelProps: Record<string, unknown>[] = [];
 vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
     RepoGitTab: (props: { workspaceId: string; routeWorkspaceId?: string; repositorySelector?: ReactNode }) => {
+        const selection = useRepoGitSelection({
+            workspaceId: props.workspaceId,
+            routeWorkspaceId: props.routeWorkspaceId,
+            commits: [],
+            loading: true,
+        });
         panelProps.push(props);
         return (
             <div
@@ -27,6 +36,12 @@ vi.mock('../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({
                 data-route-workspace={props.routeWorkspaceId ?? ''}
             >
                 {props.repositorySelector}
+                <button type="button" data-testid="select-commit" onClick={() => selection.selectCommit({
+                    hash: 'abc1234', shortHash: 'abc1234', subject: 'Example',
+                    author: 'Example', date: '2026-01-01', parentHashes: [],
+                })}>Select commit</button>
+                <button type="button" data-testid="select-commit-file"
+                    onClick={() => selection.selectCommitFile('abc1234', 'src/a.ts')}>Select file</button>
             </div>
         );
     },
@@ -55,6 +70,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
 
 import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { RepoGroupGitTab } from '../../../src/server/spa/client/react/repos/RepoGroupGitTab';
+import { useRepoGitSelection } from '../../../src/server/spa/client/react/features/git/repoGitTab/useRepoGitSelection';
 import {
     applyRouteEffects,
     resolveDashboardRoute,
@@ -131,7 +147,7 @@ function GroupGitHost({ groupId, members }: {
 }) {
     const { state } = useApp();
     if (state.selectedRepoId !== groupId || state.activeRepoSubTab !== 'git') return null;
-    return <RepoGroupGitTab workspaceId={groupId} members={members} />;
+    return <RepoGroupGitTab workspaceId={getWorkspaceIdFromSelectionId(groupId)} selectionId={groupId} members={members} />;
 }
 
 function tree(groupId: string, members: readonly RepoGroupMember[] | undefined) {
@@ -180,6 +196,42 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('group Git routes keep the group as the selected page', () => {
+    it('keeps a remote group selected when opening a member commit and file', async () => {
+        const remoteGroup = buildRemoteCloneKey('box-b', GROUP);
+        const otherGroup = buildRemoteCloneKey('box-a', GROUP);
+        const view = renderGroup([member('repo-a')], remoteGroup);
+        await navigate(buildGitRouteHash({
+            routeWorkspaceId: remoteGroup, workspaceId: 'repo-a', commitHash: null, filePath: null,
+        }));
+
+        expect(screen.getByTestId('stub-repo-git-tab').getAttribute('data-route-workspace')).toBe(remoteGroup);
+        fireEvent.click(screen.getByTestId('select-commit'));
+        await syncRoute();
+        expect(location.hash).toBe(buildGitRouteHash({
+            routeWorkspaceId: remoteGroup, workspaceId: 'repo-a', commitHash: 'abc1234', filePath: null,
+        }));
+        expect(probe('data-selected-repo')).toBe(remoteGroup);
+
+        fireEvent.click(screen.getByTestId('select-commit-file'));
+        await syncRoute();
+        expect(location.hash).toBe(buildGitRouteHash({
+            routeWorkspaceId: remoteGroup, workspaceId: 'repo-a', commitHash: 'abc1234', filePath: 'src/a.ts',
+        }));
+        expect(probe('data-selected-repo')).toBe(remoteGroup);
+        expect(probe('data-file')).toBe('src/a.ts');
+
+        view.rerender(tree(otherGroup, [member('repo-a')]));
+        await navigate(buildGitRouteHash({
+            routeWorkspaceId: otherGroup, workspaceId: 'repo-a', commitHash: null, filePath: null,
+        }));
+        fireEvent.click(screen.getByTestId('select-commit'));
+        await syncRoute();
+        expect(location.hash).toBe(buildGitRouteHash({
+            routeWorkspaceId: otherGroup, workspaceId: 'repo-a', commitHash: 'abc1234', filePath: null,
+        }));
+        expect(probe('data-selected-repo')).toBe(otherGroup);
+    });
+
     it('hands the group as routeWorkspaceId and the member as workspaceId', async () => {
         renderGroup([member('repo-a'), member('repo-b')]);
         await navigate(`#repos/${GROUP}/git/member/repo-b/abc1234`);
