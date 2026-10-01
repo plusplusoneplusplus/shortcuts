@@ -96,6 +96,26 @@ describe('WhatsAppMessagingManager', () => {
         expect(fake.bot.send).toHaveBeenCalledTimes(3);
     });
 
+    it('returns to connected after group creation without firing the reconnect handler again', async () => {
+        const fake = fakeBot();
+        // Mirror the real bot: busy status during creation, then the restored status.
+        fake.bot.createGroup.mockImplementation(async () => {
+            fake.options().onStatusChange?.('creating-group');
+            fake.options().onStatusChange?.('connected');
+            return '456@g.us';
+        });
+        const manager = new WhatsAppMessagingManager(directory(), { createBot: fake.createBot });
+        const reconnected = vi.fn();
+        manager.setConnectedHandler(reconnected);
+        await manager.updateConfig({ enabled: true });
+        await vi.waitFor(() => expect(reconnected).toHaveBeenCalledOnce());
+        await manager.createGroup('CoC');
+        expect(manager.getStatus()).toMatchObject({ status: 'connected', groupJid: '456@g.us' });
+        expect(await manager.send('reply')).toBe('sent-1');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(reconnected).toHaveBeenCalledOnce();
+    });
+
     it('exposes pairing QR only during the current connection and clears it on disable', async () => {
         const fake = fakeBot();
         const manager = new WhatsAppMessagingManager(directory(), { createBot: fake.createBot });

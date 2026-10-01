@@ -153,8 +153,10 @@ export class WhatsAppMessagingManager {
                 },
                 onStatusChange: status => {
                     if (generation !== this.generation) return;
+                    const previous = this.status;
                     this.status = status;
-                    if (status === 'connected') {
+                    // Returning from group creation is not a reconnect.
+                    if (status === 'connected' && previous !== 'creating-group') {
                         this.qr = null;
                         void Promise.resolve().then(() => this.reconnectHandler?.()).catch(err => {
                             console.error('[whatsapp-messaging] Reconnect callback failed:', err);
