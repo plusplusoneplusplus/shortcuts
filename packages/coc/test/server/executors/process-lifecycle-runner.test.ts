@@ -1813,7 +1813,7 @@ describe('ProcessLifecycleRunner — effort tier resolved against the Auto-selec
     ];
 
     it.each(MEDIUM_TIER_BY_PROVIDER)(
-        'runs the %s medium-tier model when Auto picks %s',
+        'runs the %s medium-tier model %s when Auto selects that provider',
         async (provider, expectedModel, expectedEffort) => {
             const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
             const task = makeAutoTask({ afterEffortTier: 'medium' });
