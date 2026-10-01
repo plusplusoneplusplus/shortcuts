@@ -209,3 +209,52 @@ export function writeDiffSelectionDragStart(
     writeDiffSelectionContextDragData(event.dataTransfer, payload);
     return true;
 }
+
+/** Add CoC context data to a Monaco selection drag handle. */
+export function writeMonacoDiffSelectionDragStart(
+    event: { dataTransfer: DataTransfer | null },
+    options: {
+        selection: {
+            oldLineStart?: number;
+            oldLineEnd?: number;
+            newLineStart?: number;
+            newLineEnd?: number;
+        };
+        selectedText: string;
+        source: DiffSelectionDragSource | undefined;
+    },
+): boolean {
+    const { source, selection, selectedText } = options;
+    if (!source || !event.dataTransfer || !selectedText || !isSessionContextAttachmentsEnabled()) return false;
+    const payload = createMonacoDiffSelectionDragPayload(selection, selectedText, source);
+    if (!payload) return false;
+    writeDiffSelectionContextDragData(event.dataTransfer, payload);
+    return true;
+}
+
+/** Build chat context directly from Monaco's persisted selection coordinates. */
+export function createMonacoDiffSelectionDragPayload(
+    selection: {
+        oldLineStart?: number;
+        oldLineEnd?: number;
+        newLineStart?: number;
+        newLineEnd?: number;
+    },
+    selectedText: string,
+    source: DiffSelectionDragSource,
+): DiffSelectionContextDragPayload | null {
+    const oldRange = selection.oldLineStart !== undefined && selection.oldLineEnd !== undefined
+        ? { start: selection.oldLineStart, end: selection.oldLineEnd }
+        : undefined;
+    const newRange = selection.newLineStart !== undefined && selection.newLineEnd !== undefined
+        ? { start: selection.newLineStart, end: selection.newLineEnd }
+        : undefined;
+    return createDiffSelectionContextDragPayload({
+        sourceWorkspaceId: source.workspaceId,
+        filePath: source.filePath,
+        oldRange,
+        newRange,
+        ref: source.ref,
+        snippet: selectedText,
+    });
+}

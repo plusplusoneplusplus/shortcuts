@@ -154,7 +154,7 @@ describe('AC-08 source assertions', () => {
         expect(read('features/git/hooks/useDiffEngine.ts')).toMatch(/DEFAULT_DIFF_ENGINE: DiffEngine = 'monaco'/);
     });
 
-    it('keeps the classic viewer for the fallback and non-pilot surfaces', () => {
+    it('keeps the classic viewer while Monaco stays inside the shared file surfaces', () => {
         const importsClassic = (rel: string) => /from '[^']*\/UnifiedDiffViewer'|from '\.\/UnifiedDiffViewer'|from '\.\.\/diff\/UnifiedDiffViewer'/.test(read(rel));
         for (const rel of [
             'features/git/working-tree/WorkingTreeFileDiff.tsx',
@@ -164,7 +164,8 @@ describe('AC-08 source assertions', () => {
         ]) {
             expect(importsClassic(rel), rel).toBe(true);
         }
-        for (const rel of ['features/git/diff/FileDiffPanel.tsx', 'features/git/commits/CommitDetail.tsx', 'features/pull-requests/PrFilesPanel.tsx']) {
+        expect(read('features/git/diff/FileDiffPanel.tsx')).toMatch(/useDiffEngine|MonacoFileDiffViewer/);
+        for (const rel of ['features/git/commits/CommitDetail.tsx', 'features/pull-requests/PrFilesPanel.tsx']) {
             expect(read(rel), rel).not.toMatch(/useDiffEngine|MonacoFileDiffViewer/);
         }
     });

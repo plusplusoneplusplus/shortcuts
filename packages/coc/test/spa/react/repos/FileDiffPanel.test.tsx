@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { forwardRef, useImperativeHandle } from 'react';
 
 // --- Module mocks (hoisted by Vitest) ---
 
@@ -12,6 +13,11 @@ const mockUseDiffComments = vi.fn();
 const mockUseFileDiff = vi.fn();
 const mockQueueDispatch = vi.fn();
 const mockSetDiffEngine = vi.fn();
+const mockMonacoNext = vi.fn();
+const mockMonacoPrev = vi.fn();
+let mockDiffEngine: 'legacy' | 'monaco' = 'monaco';
+let mockMonacoProps: Record<string, any> | null = null;
+let mockCrossFileNavOptions: Record<string, any> | null = null;
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComments', () => ({
     useDiffComments: (...args: any[]) => mockUseDiffComments(...args),
@@ -22,7 +28,23 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useFileDiff'
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
-    useDiffEngine: () => ['monaco', mockSetDiffEngine],
+    useDiffEngine: () => [mockDiffEngine, mockSetDiffEngine],
+}));
+
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/MonacoFileDiffViewer', () => ({
+    MonacoFileDiffViewer: forwardRef((props: Record<string, any>, ref) => {
+        mockMonacoProps = props;
+        useImperativeHandle(ref, () => ({
+            scrollToNextHunk: mockMonacoNext,
+            scrollToPrevHunk: mockMonacoPrev,
+            scrollToHunk: vi.fn(),
+            getHunkCount: () => 2,
+            getCurrentHunkIndex: () => 0,
+            isHunkNavigationReady: () => true,
+            revealComment: () => false,
+        }));
+        return <div data-testid={props['data-testid']}>Monaco: {props.original} → {props.modified}</div>;
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -78,7 +100,12 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffVi
             >Ask AI</button>
         </div>
     ),
-    HunkNavButtons: () => <div data-testid="hunk-nav-buttons" />,
+    HunkNavButtons: ({ onPrev, onNext }: any) => (
+        <div data-testid="hunk-nav-buttons">
+            <button data-testid="hunk-prev" onClick={onPrev}>Prev</button>
+            <button data-testid="hunk-next" onClick={onNext}>Next</button>
+        </div>
+    ),
 }));
 
 // Mock SideBySideDiffViewer
@@ -140,7 +167,13 @@ vi.mock('../../../../src/server/spa/client/react/ui', async (importOriginal) => 
 
 // Mock useCrossFileNav
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCrossFileNav', () => ({
-    useCrossFileNav: () => ({ handleNext: vi.fn(), handlePrev: vi.fn() }),
+    useCrossFileNav: (options: Record<string, any>) => {
+        mockCrossFileNavOptions = options;
+        return {
+            handleNext: () => options.viewerRef.current?.scrollToNextHunk(),
+            handlePrev: () => options.viewerRef.current?.scrollToPrevHunk(),
+        };
+    },
 }));
 
 // Mock shared/ResolveContextDialog
@@ -229,6 +262,7 @@ function makeCommitSource(overrides: Partial<DiffSource> = {}): DiffSource {
         chat: { workspaceId: 'ws1', commitHash: 'abc123', commitMessage: 'fix: something' },
         supportsTruncation: false,
         cacheKey: 'commit:abc123',
+        diffSelectionRef: { type: 'commit', commitHash: 'abc123' },
         ...overrides,
     };
 }
@@ -254,9 +288,157 @@ describe('FileDiffPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockViewMode = 'unified';
+        mockDiffEngine = 'monaco';
+        mockMonacoProps = null;
+        mockCrossFileNavOptions = null;
         mockUseDiffComments.mockReturnValue(makeCommentsHook());
         mockUseFileDiff.mockReturnValue(makeFileDiffHook());
         try { localStorage.removeItem('coc.commitChat.open'); } catch { /* ignore */ }
+    });
+
+    describe('Monaco editor wiring', () => {
+        const content = {
+            path: 'src/foo.ts',
+            fileName: 'foo.ts',
+            language: 'typescript',
+            base: { content: 'const before = 1;\n', ref: 'base', exists: true },
+            head: { content: 'const after = 2;\n', ref: 'head', exists: true },
+            binary: false,
+            tooLarge: false,
+        };
+
+        it.each([
+            ['commit', makeCommitSource],
+            ['branch range', makeBranchSource],
+            ['pull request', makePrSource],
+        ])('loads both sides and renders Monaco for a %s source', async (_kind, makeSource) => {
+            const fetchFileContent = vi.fn().mockResolvedValue(content);
+            const createDiffEditor = vi.fn();
+            const source = makeSource({ fetchFileContent });
+
+            render(
+                <FileDiffPanel
+                    workspaceId="ws1"
+                    filePath="src/foo.ts"
+                    source={source}
+                    createDiffEditor={createDiffEditor}
+                />,
+            );
+
+            expect(screen.getByTestId('file-diff-editor-loading')).toBeTruthy();
+            await waitFor(() => expect(screen.getByTestId('file-diff-editor')).toBeTruthy());
+            expect(fetchFileContent).toHaveBeenCalledWith('src/foo.ts');
+            expect(mockMonacoProps).toMatchObject({
+                workspaceId: 'ws1',
+                relativePath: 'src/foo.ts',
+                original: content.base.content,
+                modified: content.head.content,
+                viewMode: 'unified',
+                languageFeatures: false,
+                createEditor: createDiffEditor,
+            });
+            expect(screen.queryByTestId('diff-mini-map')).toBeNull();
+            expect(screen.queryByTestId('diff-truncation-banner')).toBeNull();
+            expect(screen.queryByTestId('full-context-toggle-btn')).toBeNull();
+        });
+
+        it('reloads paired content and resets the editor identity on file switch', async () => {
+            const fetchFileContent = vi.fn()
+                .mockResolvedValueOnce(content)
+                .mockResolvedValueOnce({
+                    ...content,
+                    path: 'src/bar.ts',
+                    fileName: 'bar.ts',
+                    head: { ...content.head, content: 'export const bar = 3;\n' },
+                });
+            const source = makeBranchSource({ fetchFileContent, cacheKey: 'branch-range:upstream' });
+            const view = render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={source} />);
+            await waitFor(() => expect(screen.getByTestId('file-diff-editor')).toBeTruthy());
+
+            view.rerender(<FileDiffPanel workspaceId="ws1" filePath="src/bar.ts" source={source} />);
+            await waitFor(() => expect(mockMonacoProps?.relativePath).toBe('src/bar.ts'));
+
+            expect(fetchFileContent).toHaveBeenNthCalledWith(1, 'src/foo.ts');
+            expect(fetchFileContent).toHaveBeenNthCalledWith(2, 'src/bar.ts');
+            expect(mockMonacoProps?.modelIdentity).toBe('branch-range:upstream');
+        });
+
+        it('does not reload when a host recreates an equivalent source object', async () => {
+            const fetchFileContent = vi.fn().mockResolvedValue(content);
+            const view = render(
+                <FileDiffPanel
+                    workspaceId="ws1"
+                    filePath="src/foo.ts"
+                    source={makeCommitSource({ fetchFileContent })}
+                />,
+            );
+            await waitFor(() => expect(screen.getByTestId('file-diff-editor')).toBeTruthy());
+
+            view.rerender(
+                <FileDiffPanel
+                    workspaceId="ws1"
+                    filePath="src/foo.ts"
+                    source={makeCommitSource({ fetchFileContent })}
+                />,
+            );
+
+            expect(fetchFileContent).toHaveBeenCalledOnce();
+        });
+
+        it('routes hunk navigation through the Monaco handle and keeps review, back, chat, and drag wiring', async () => {
+            const onBack = vi.fn();
+            const onToggleReviewed = vi.fn();
+            const onNavigateToFile = vi.fn();
+            const source = makeCommitSource({
+                files: ['src/foo.ts', 'src/bar.ts'],
+                fetchFileContent: vi.fn().mockResolvedValue(content),
+            });
+
+            render(
+                <FileDiffPanel
+                    workspaceId="ws1"
+                    filePath="src/foo.ts"
+                    source={source}
+                    onBack={onBack}
+                    isReviewed={false}
+                    onToggleReviewed={onToggleReviewed}
+                    onNavigateToFile={onNavigateToFile}
+                />,
+            );
+            await waitFor(() => expect(screen.getByTestId('file-diff-editor')).toBeTruthy());
+
+            fireEvent.click(screen.getByTestId('hunk-next'));
+            fireEvent.click(screen.getByTestId('hunk-prev'));
+            expect(mockMonacoNext).toHaveBeenCalledOnce();
+            expect(mockMonacoPrev).toHaveBeenCalledOnce();
+            expect(mockCrossFileNavOptions).toMatchObject({
+                filePath: 'src/foo.ts',
+                files: ['src/foo.ts', 'src/bar.ts'],
+                onNavigateToFile,
+            });
+
+            fireEvent.click(screen.getByTestId('file-diff-back-btn'));
+            fireEvent.click(screen.getByTestId('mark-reviewed-btn'));
+            fireEvent.click(screen.getByTestId('toggle-chat-btn'));
+            expect(onBack).toHaveBeenCalledOnce();
+            expect(onToggleReviewed).toHaveBeenCalledOnce();
+            expect(screen.getByTestId('commit-chat-panel')).toBeTruthy();
+            expect(mockMonacoProps?.diffSelectionDragSource).toEqual({
+                workspaceId: 'ws1',
+                ref: { type: 'commit', commitHash: 'abc123' },
+                filePath: 'src/foo.ts',
+            });
+        });
+
+        it('keeps user-selected Classic on the patch viewer without loading paired content', () => {
+            mockDiffEngine = 'legacy';
+            const fetchFileContent = vi.fn().mockResolvedValue(content);
+            render(<FileDiffPanel workspaceId="ws1" filePath="src/foo.ts" source={makeBranchSource({ fetchFileContent })} />);
+
+            expect(screen.getByTestId('file-diff-content')).toBeTruthy();
+            expect(screen.queryByTestId('file-diff-editor')).toBeNull();
+            expect(fetchFileContent).not.toHaveBeenCalled();
+        });
     });
 
     // ── Loading state ──

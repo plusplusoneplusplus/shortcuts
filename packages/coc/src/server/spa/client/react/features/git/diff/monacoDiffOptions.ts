@@ -47,6 +47,11 @@ export interface DiffModelsParams {
     /** Repo-relative path, `/`-separated. */
     relativePath: string;
     stage: MonacoDiffStage;
+    /**
+     * Immutable source identity for non-working-tree diffs. When present,
+     * both sides use ref-backed URIs scoped to this identity.
+     */
+    modelIdentity?: string;
     original: string;
     modified: string;
 }
@@ -63,6 +68,16 @@ function encodePath(relativePath: string): string {
 /** Synthetic URI for a ref-backed side; distinct per workspace, ref and path. */
 export function diffRefUri(workspaceId: string, ref: DiffRefSide, relativePath: string): string {
     return `${DIFF_REF_URI_SCHEME}://${encodeURIComponent(workspaceId)}/${ref}/${encodePath(relativePath)}`;
+}
+
+/** Synthetic URI for a side of an immutable commit, range, or PR snapshot. */
+export function immutableDiffRefUri(
+    workspaceId: string,
+    modelIdentity: string,
+    side: 'original' | 'modified',
+    relativePath: string,
+): string {
+    return `${DIFF_REF_URI_SCHEME}://${encodeURIComponent(workspaceId)}/${encodeURIComponent(modelIdentity)}/${side}/${encodePath(relativePath)}`;
 }
 
 /** True when `uri` is a ref-backed synthetic URI. */
@@ -88,6 +103,22 @@ export function diffLanguageFor(relativePath: string): string {
 export function buildDiffModels(params: DiffModelsParams): DiffModelsInput {
     const { workspaceId, relativePath, stage } = params;
     const language = diffLanguageFor(relativePath);
+    if (params.modelIdentity) {
+        return {
+            original: {
+                uri: immutableDiffRefUri(workspaceId, params.modelIdentity, 'original', relativePath),
+                text: params.original,
+                language,
+                isWorkingCopy: false,
+            },
+            modified: {
+                uri: immutableDiffRefUri(workspaceId, params.modelIdentity, 'modified', relativePath),
+                text: params.modified,
+                language,
+                isWorkingCopy: false,
+            },
+        };
+    }
     if (stage === 'unstaged') {
         return {
             original: { uri: diffRefUri(workspaceId, 'INDEX', relativePath), text: params.original, language, isWorkingCopy: false },

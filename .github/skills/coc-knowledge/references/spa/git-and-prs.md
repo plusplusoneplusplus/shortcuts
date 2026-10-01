@@ -95,7 +95,12 @@ the selected base mode. PR loaders use the origin-scoped content API with worksp
 and repo clone-selection metadata, and the source cache identity includes the head SHA.
 `FileDiffPanel` and `WorkingTreeFileDiff` share the global `useDiffEngine` preference
 and the same Classic/Editor toggle; the preference defaults to Monaco and updates all
-mounted file-diff surfaces immediately.
+mounted file-diff surfaces immediately. In Editor mode, `FileDiffPanel` loads the
+paired content and renders `MonacoFileDiffViewer`; its synthetic model identity includes
+the source cache key so the same path at different commits, ranges, or PR heads cannot
+share a model. Classic rendering keeps the patch request path. Monaco supplies find,
+syntax, overview markers, unified/split layout, and hunk navigation while full-context
+and truncation controls stay specific to Classic.
 
 ### Cherry-pick
 

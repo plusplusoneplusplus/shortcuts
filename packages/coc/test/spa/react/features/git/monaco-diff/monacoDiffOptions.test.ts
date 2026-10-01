@@ -77,6 +77,21 @@ describe('buildDiffModels', () => {
         expect(a.modified.uri).not.toBe(b.modified.uri);
     });
 
+    it('scopes immutable commit, range, and PR models by source identity', () => {
+        const commit = buildDiffModels({ ...base, stage: 'staged', modelIdentity: 'commit:abc123' });
+        const range = buildDiffModels({ ...base, stage: 'staged', modelIdentity: 'branch-range:upstream' });
+        const pr = buildDiffModels({ ...base, stage: 'staged', modelIdentity: 'pr:origin:42:head-sha' });
+
+        for (const models of [commit, range, pr]) {
+            expect(isDiffRefUri(models.original.uri)).toBe(true);
+            expect(isDiffRefUri(models.modified.uri)).toBe(true);
+            expect(models.original.isWorkingCopy).toBe(false);
+            expect(models.modified.isWorkingCopy).toBe(false);
+            expect(models.original.uri).not.toBe(models.modified.uri);
+        }
+        expect(new Set([commit.original.uri, range.original.uri, pr.original.uri]).size).toBe(3);
+    });
+
     it('keeps text byte-for-byte (CRLF and missing trailing newline)', () => {
         const models = buildDiffModels({ ...base, stage: 'unstaged', original: 'a\r\nb', modified: 'a\r\nb\r\n' });
         expect(models.original.text).toBe('a\r\nb');
