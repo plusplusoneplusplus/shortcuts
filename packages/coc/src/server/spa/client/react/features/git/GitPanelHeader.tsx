@@ -1,8 +1,10 @@
 /**
  * GitPanelHeader — fixed header strip for the git left panel.
  *
- * Shows branch name pill, ahead/behind badge, a split action button
- * (Pull as default + chevron dropdown for Fetch/Pull/Push), and a refresh button.
+ * Shows the branch (a `repo / branch ▾` breadcrumb when a repo selector is
+ * given), ahead/behind badge, one sync group holding the Pull split button
+ * (chevron dropdown for Fetch/Pull/Push/Rebase) and the auto-pull interval, and
+ * a refresh button that carries the last-refreshed time.
  */
 
 import { useState, useEffect, useRef, type ReactNode } from 'react';
@@ -18,7 +20,8 @@ interface GitPanelHeaderProps {
     behind: number;
     refreshing: boolean;
     onRefresh: () => void;
-    onBranchClick?: () => void;
+    /** Receives the branch button's rect so the picker can open as a dropdown under it. */
+    onBranchClick?: (anchor: DOMRect) => void;
     onFetch?: () => void;
     onPull?: () => void;
     onPush?: () => void;
@@ -94,19 +97,28 @@ export function GitPanelHeader({ repositorySelector, branch, ahead, behind, refr
             data-testid="git-panel-header"
         >
             {repositorySelector}
-            {/* Branch pill */}
+            {/* Branch: a breadcrumb segment after the repo selector, opening the branch dropdown */}
+            {repositorySelector && <span className="text-[#c0c0c0] dark:text-[#555] shrink-0" aria-hidden="true">/</span>}
             <button
-                className={`inline-flex items-center font-mono font-semibold border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white/70 dark:bg-[#2d2d2d]/70 text-[#1e1e1e] dark:text-[#ccc] rounded-full truncate min-w-0 ${repositorySelector ? 'shrink-0 max-w-[5rem]' : compact ? 'max-w-[160px]' : 'max-w-[360px]'} ${compact ? 'gap-1 px-1.5 py-0 text-[10px] leading-[15px]' : 'gap-1.5 px-2 py-[2px] text-[11px] leading-[18px]'} ${onBranchClick ? 'cursor-pointer hover:bg-white hover:border-[#0078d4] dark:hover:bg-[#2d2d2d] focus:outline-none focus:ring-2 focus:ring-[#0078d4]' : 'cursor-default'}`}
+                className={`inline-flex items-center font-mono text-[#1e1e1e] dark:text-[#ccc] rounded truncate min-w-0 ${repositorySelector ? 'shrink max-w-[7rem]' : compact ? 'max-w-[160px]' : 'max-w-[360px]'} ${compact ? 'gap-1 px-1 py-0 text-[10px] leading-[16px]' : 'gap-1.5 px-1.5 py-[2px] text-[11px] leading-[18px]'} ${onBranchClick ? 'cursor-pointer hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]' : 'cursor-default'}`}
                 title={branch}
                 data-testid="git-branch-pill"
-                onClick={onBranchClick}
+                onClick={e => onBranchClick?.(e.currentTarget.getBoundingClientRect())}
                 type="button"
                 disabled={!onBranchClick}
+                aria-haspopup={onBranchClick ? 'dialog' : undefined}
             >
-                <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
-                    <path fillRule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6A1.5 1.5 0 004.5 10v.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.993 2.993 0 016 6.5h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z" />
-                </svg>
+                {!repositorySelector && (
+                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path fillRule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6A1.5 1.5 0 004.5 10v.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.993 2.993 0 016 6.5h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z" />
+                    </svg>
+                )}
                 <span className="truncate">{branch}</span>
+                {onBranchClick && (
+                    <svg viewBox="0 0 8 6" fill="none" aria-hidden="true" className="h-1.5 w-2 shrink-0 opacity-60">
+                        <path d="M1 1l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                )}
             </button>
 
             {/* Ahead/behind badge */}
@@ -123,155 +135,163 @@ export function GitPanelHeader({ repositorySelector, branch, ahead, behind, refr
             {/* Spacer */}
             <div className="flex-1 min-w-[4px]" />
 
-            {/* Split action button (Fetch / Pull / Push) */}
-            {hasAnyAction && (
+            {/* Sync group: Pull split button (Fetch / Pull / Push / Rebase) and the
+                auto-pull interval share one bordered control. */}
+            {(hasAnyAction || onAutoPullChange) && (
                 <div
-                    className="relative inline-flex shrink-0"
-                    ref={dropdownRef}
-                    data-testid="git-sync-split-btn"
+                    className={`inline-flex shrink-0 items-stretch rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] ${compact ? 'h-[18px]' : 'h-6'}`}
+                    data-testid="git-sync-group"
                 >
-                    <div className={`flex items-stretch whitespace-nowrap rounded-md overflow-hidden border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] ${compact ? 'h-[18px]' : 'h-6'}`}>
-                        {/* Primary action: Pull */}
-                        <button
-                            className={`git-action-btn flex items-center gap-1 hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'px-1 text-[10px] leading-[16px]' : 'px-1.5 text-[11px] leading-[22px]'}`}
-                            onClick={() => handleAction(onPull)}
-                            disabled={!!isActioning}
-                            title="Pull --rebase from remote"
-                            data-testid="git-sync-primary-btn"
-                        >
-                            {isActioning ? (
-                                <svg className="w-3 h-3 git-refresh-spin" viewBox="0 0 16 16" fill="currentColor">
-                                    <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
-                                    <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
-                                </svg>
-                            ) : (
-                                <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
-                                    <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
-                                </svg>
-                            )}
-                            <span className={repositorySelector ? '[@container_(max-width:399px)]:hidden' : '[@container_(max-width:279px)]:hidden'}>Pull</span>
-                        </button>
-
-                        {/* Chevron toggle */}
-                        <button
-                            className={`git-action-btn flex items-center px-1 border-l border-[#e0e0e0] dark:border-[#3c3c3c] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'text-[10px] leading-[16px]' : 'text-[11px] leading-[22px]'}`}
-                            onClick={() => setDropdownOpen(prev => !prev)}
-                            disabled={!!isActioning}
-                            title="More git actions"
-                            data-testid="git-sync-dropdown-toggle"
-                            type="button"
-                        >
-                            ▾
-                        </button>
-                    </div>
-
-                    {/* Dropdown menu */}
-                    {dropdownOpen && (
+                    {hasAnyAction && (
                         <div
-                            className="absolute right-0 top-full mt-1 z-30 min-w-[110px] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#d0d0d0] dark:border-[#555] rounded shadow-md py-1"
-                            data-testid="git-sync-dropdown"
+                            className="relative inline-flex shrink-0"
+                            ref={dropdownRef}
+                            data-testid="git-sync-split-btn"
                         >
-                            {onFetch && (
+                            <div className="flex items-stretch whitespace-nowrap rounded-l-md overflow-hidden">
+                                {/* Primary action: Pull */}
                                 <button
-                                    className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
-                                    onClick={() => handleAction(onFetch)}
-                                    title="Fetch from remote"
-                                    data-testid="git-fetch-btn"
-                                    type="button"
-                                >
-                                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
-                                        <path d="M8 1a.5.5 0 01.5.5v5.793l2.146-2.147a.5.5 0 01.708.708l-3 3a.5.5 0 01-.708 0l-3-3a.5.5 0 11.708-.708L7.5 7.293V1.5A.5.5 0 018 1zM2 13.5a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z" />
-                                    </svg>
-                                    Fetch
-                                </button>
-                            )}
-                            {onPull && (
-                                <button
-                                    className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
+                                    className={`git-action-btn flex items-center gap-1 hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'px-1 text-[10px] leading-[16px]' : 'px-1.5 text-[11px] leading-[22px]'}`}
                                     onClick={() => handleAction(onPull)}
+                                    disabled={!!isActioning}
                                     title="Pull --rebase from remote"
-                                    data-testid="git-pull-btn"
-                                    type="button"
+                                    data-testid="git-sync-primary-btn"
                                 >
-                                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
-                                        <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
-                                    </svg>
-                                    Pull
-                                </button>
-                            )}
-                            {onPush && (
-                                <button
-                                    className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
-                                    onClick={() => handleAction(onPush)}
-                                    title="Push to remote"
-                                    data-testid="git-push-btn"
-                                    type="button"
-                                >
-                                    <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
-                                        <path fillRule="evenodd" d="M8 15a.5.5 0 01-.5-.5V2.707L4.354 5.854a.5.5 0 11-.708-.708l4-4a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L8.5 2.707V14.5a.5.5 0 01-.5.5z" />
-                                    </svg>
-                                    Push
-                                </button>
-                            )}
-                            {onRebaseAutosquash && (
-                                <button
-                                    className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50"
-                                    onClick={() => handleAction(onRebaseAutosquash)}
-                                    disabled={!!rebasing}
-                                    title="Non-interactive git rebase -i --autosquash against upstream"
-                                    data-testid="git-rebase-autosquash-btn"
-                                    type="button"
-                                >
-                                    {rebasing ? (
-                                        <svg className="w-3 h-3 flex-shrink-0 git-refresh-spin" viewBox="0 0 16 16" fill="currentColor">
+                                    {isActioning ? (
+                                        <svg className="w-3 h-3 git-refresh-spin" viewBox="0 0 16 16" fill="currentColor">
                                             <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
                                             <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
                                         </svg>
                                     ) : (
-                                        <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
-                                            <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
-                                            <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
+                                        <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor">
+                                            <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
                                         </svg>
                                     )}
-                                    Rebase (autosquash)
+                                    <span className={repositorySelector ? '[@container_(max-width:399px)]:hidden' : '[@container_(max-width:279px)]:hidden'}>Pull</span>
                                 </button>
+
+                                {/* Chevron toggle */}
+                                <button
+                                    className={`git-action-btn flex items-center px-1 border-l border-[#e0e0e0] dark:border-[#3c3c3c] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'text-[10px] leading-[16px]' : 'text-[11px] leading-[22px]'}`}
+                                    onClick={() => setDropdownOpen(prev => !prev)}
+                                    disabled={!!isActioning}
+                                    title="More git actions"
+                                    data-testid="git-sync-dropdown-toggle"
+                                    type="button"
+                                >
+                                    ▾
+                                </button>
+                            </div>
+
+                            {/* Dropdown menu */}
+                            {dropdownOpen && (
+                                <div
+                                    className="absolute right-0 top-full mt-1 z-30 min-w-[110px] bg-[#f5f5f5] dark:bg-[#2d2d2d] border border-[#d0d0d0] dark:border-[#555] rounded shadow-md py-1"
+                                    data-testid="git-sync-dropdown"
+                                >
+                                    {onFetch && (
+                                        <button
+                                            className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
+                                            onClick={() => handleAction(onFetch)}
+                                            title="Fetch from remote"
+                                            data-testid="git-fetch-btn"
+                                            type="button"
+                                        >
+                                            <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                                <path d="M8 1a.5.5 0 01.5.5v5.793l2.146-2.147a.5.5 0 01.708.708l-3 3a.5.5 0 01-.708 0l-3-3a.5.5 0 11.708-.708L7.5 7.293V1.5A.5.5 0 018 1zM2 13.5a.5.5 0 01.5-.5h11a.5.5 0 010 1h-11a.5.5 0 01-.5-.5z" />
+                                            </svg>
+                                            Fetch
+                                        </button>
+                                    )}
+                                    {onPull && (
+                                        <button
+                                            className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
+                                            onClick={() => handleAction(onPull)}
+                                            title="Pull --rebase from remote"
+                                            data-testid="git-pull-btn"
+                                            type="button"
+                                        >
+                                            <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                                <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" />
+                                            </svg>
+                                            Pull
+                                        </button>
+                                    )}
+                                    {onPush && (
+                                        <button
+                                            className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors"
+                                            onClick={() => handleAction(onPush)}
+                                            title="Push to remote"
+                                            data-testid="git-push-btn"
+                                            type="button"
+                                        >
+                                            <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                                <path fillRule="evenodd" d="M8 15a.5.5 0 01-.5-.5V2.707L4.354 5.854a.5.5 0 11-.708-.708l4-4a.5.5 0 01.708 0l4 4a.5.5 0 01-.708.708L8.5 2.707V14.5a.5.5 0 01-.5.5z" />
+                                            </svg>
+                                            Push
+                                        </button>
+                                    )}
+                                    {onRebaseAutosquash && (
+                                        <button
+                                            className="flex w-full items-center gap-2 px-3 py-1 text-xs text-[#1e1e1e] dark:text-[#ccc] hover:bg-[#e0e0e0] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50"
+                                            onClick={() => handleAction(onRebaseAutosquash)}
+                                            disabled={!!rebasing}
+                                            title="Non-interactive git rebase -i --autosquash against upstream"
+                                            data-testid="git-rebase-autosquash-btn"
+                                            type="button"
+                                        >
+                                            {rebasing ? (
+                                                <svg className="w-3 h-3 flex-shrink-0 git-refresh-spin" viewBox="0 0 16 16" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
+                                                    <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
+                                                </svg>
+                                            ) : (
+                                                <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" />
+                                                    <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
+                                                </svg>
+                                            )}
+                                            Rebase (autosquash)
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
+                    )}
+
+                    {/* Auto-pull interval selector (per-repo). Hidden unless a change handler is wired. */}
+                    {onAutoPullChange && (
+                        <GitAutoPullControl
+                            value={autoPull}
+                            onChange={onAutoPullChange}
+                            status={autoPullStatus}
+                            compact={compact}
+                            embedded
+                        />
                     )}
                 </div>
             )}
 
-            {/* Auto-pull interval selector (per-repo). Hidden unless a change handler is wired. */}
-            {onAutoPullChange && (
-                <GitAutoPullControl
-                    value={autoPull}
-                    onChange={onAutoPullChange}
-                    status={autoPullStatus}
-                    compact={compact}
-                />
-            )}
-
-            {/* Last refreshed timestamp */}
-            {lastRefreshedAt != null && (
-                <span
-                    className={`text-[#999] dark:text-[#777] whitespace-nowrap shrink-0 hidden sm:inline tabular-nums [@container_(max-width:319px)]:!hidden ${compact ? 'text-[10px]' : 'text-[11px]'}`}
-                    title={new Date(lastRefreshedAt).toLocaleString()}
-                    data-testid="git-last-refreshed"
-                >
-                    {compact
-                        ? formatRelativeTime(new Date(lastRefreshedAt).toISOString()).replace(/\s+ago$/, '')
-                        : formatRelativeTime(new Date(lastRefreshedAt).toISOString())}
-                </span>
-            )}
-
             {/* Refresh button */}
             <button
-                className={`git-refresh-btn flex shrink-0 items-center justify-center rounded-md hover:bg-white dark:hover:bg-[#2d2d2d] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'w-[18px] h-[18px]' : 'w-6 h-6'}`}
+                className={`git-refresh-btn flex shrink-0 items-center justify-center gap-1 rounded-md hover:bg-white dark:hover:bg-[#2d2d2d] transition-colors text-[#616161] dark:text-[#999] hover:text-[#1e1e1e] dark:hover:text-[#ccc] disabled:opacity-50 ${compact ? 'min-w-[18px] h-[18px] px-0.5' : 'min-w-6 h-6 px-1'}`}
                 onClick={onRefresh}
                 disabled={refreshing}
                 title="Refresh git data"
                 data-testid="git-refresh-btn"
             >
+                {/* Last refreshed timestamp, shown inside the refresh button */}
+                {lastRefreshedAt != null && (
+                    <span
+                        className={`text-[#999] dark:text-[#777] whitespace-nowrap shrink-0 hidden sm:inline tabular-nums [@container_(max-width:319px)]:!hidden ${compact ? 'text-[10px]' : 'text-[11px]'}`}
+                        title={new Date(lastRefreshedAt).toLocaleString()}
+                        data-testid="git-last-refreshed"
+                    >
+                        {compact
+                            ? formatRelativeTime(new Date(lastRefreshedAt).toISOString()).replace(/\s+ago$/, '')
+                            : formatRelativeTime(new Date(lastRefreshedAt).toISOString())}
+                    </span>
+                )}
                 <svg
                     className={`w-3.5 h-3.5 ${refreshing ? 'git-refresh-spin' : ''}`}
                     viewBox="0 0 16 16"

@@ -166,7 +166,7 @@ export function CommitRow({
                     )}
                 </span>
 
-                {/* Body column: subject + inline meta on a single compact row */}
+                {/* Body column: commit id + subject + inline meta on a single compact row */}
                 <span className="min-w-0 flex items-center gap-1.5">
                     {canDrag && (
                         <span
@@ -199,6 +199,8 @@ export function CommitRow({
                             {fixupEntry.pillLabel}
                         </span>
                     )}
+                    {/* Commit id leads the row so it stays visible however much the subject truncates. */}
+                    <span className={`font-mono text-[11px] flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`} data-testid={`commit-hash-${commit.shortHash}`}>{commit.shortHash}</span>
                     <span className="text-xs font-semibold text-[#1e1e1e] dark:text-[#ccc] truncate min-w-0 flex-1 leading-snug">
                         {isFixup ? fixupEntry!.displaySubject : commit.subject}
                     </span>
@@ -211,7 +213,6 @@ export function CommitRow({
                         {avatar.initials}
                     </span>
                     <span className="sr-only">{commit.author}</span>
-                    <span className={`font-mono text-[11px] flex-shrink-0 ${isUnpushed ? 'text-[#f57c00] dark:text-[#ffb74d]' : 'text-[#0078d4] dark:text-[#3794ff]'}`}>{commit.shortHash}</span>
                     <span className="text-[11px] text-[#848484] dark:text-[#9d9d9d] whitespace-nowrap flex-shrink-0">{formatRelativeTime(commit.date)}</span>
                 </span>
 

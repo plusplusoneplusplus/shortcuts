@@ -31,7 +31,17 @@ describe('basic rendering', () => {
         const header = screen.getByTestId('git-panel-header');
         const picker = screen.getByRole('combobox', { name: 'Member repository' });
         expect(header.contains(picker)).toBe(true);
-        expect(picker.nextElementSibling).toBe(screen.getByTestId('git-branch-pill'));
+        // `repo / branch`: a slash separator sits between the picker and the branch.
+        const separator = picker.nextElementSibling!;
+        expect(separator.textContent).toBe('/');
+        expect(separator.nextElementSibling).toBe(screen.getByTestId('git-branch-pill'));
+    });
+
+    it('omits the breadcrumb separator and keeps the branch icon without a repository selector', () => {
+        renderHeader();
+        const pill = screen.getByTestId('git-branch-pill');
+        expect(pill.previousElementSibling).toBeNull();
+        expect(pill.querySelector('svg')).toBeTruthy();
     });
 
     it('renders refresh button', () => {
@@ -55,30 +65,64 @@ describe('basic rendering', () => {
     });
 });
 
-// ── Redesigned layout (card-style split button + bordered branch pill) ────────
+// ── Compact layout (breadcrumb branch + one bordered sync group) ─────────────
 
 describe('redesigned layout', () => {
-    it('branch pill uses bordered card styling', () => {
-        renderHeader();
+    it('branch is a borderless breadcrumb segment with a dropdown chevron', () => {
+        renderHeader({ onBranchClick: vi.fn() });
         const pill = screen.getByTestId('git-branch-pill');
         const cls = pill.className;
-        expect(cls).toContain('rounded-full');
-        expect(cls).toContain('border');
+        expect(cls).not.toContain('rounded-full');
+        expect(cls).not.toMatch(/(^|\s)border(\s|$)/);
         expect(cls).toContain('font-mono');
+        expect(pill.getAttribute('aria-haspopup')).toBe('dialog');
+        // branch icon + chevron
+        expect(pill.querySelectorAll('svg').length).toBe(2);
     });
 
-    it('sync-split renders a single bordered container around primary + chevron', () => {
-        renderHeader({ onPull: vi.fn(), onFetch: vi.fn(), onPush: vi.fn() });
-        const split = screen.getByTestId('git-sync-split-btn');
-        const inner = split.querySelector('div');
-        expect(inner).toBeTruthy();
-        const innerCls = inner!.className;
-        expect(innerCls).toContain('border');
-        expect(innerCls).toContain('rounded-md');
-        expect(innerCls).toContain('overflow-hidden');
-        // Both action buttons sit inside the bordered shell, not stacked separately
-        expect(inner!.querySelector('[data-testid="git-sync-primary-btn"]')).toBeTruthy();
-        expect(inner!.querySelector('[data-testid="git-sync-dropdown-toggle"]')).toBeTruthy();
+    it('passes the branch button rect to onBranchClick so the picker can anchor under it', () => {
+        const onBranchClick = vi.fn();
+        renderHeader({ onBranchClick });
+        fireEvent.click(screen.getByTestId('git-branch-pill'));
+        expect(onBranchClick).toHaveBeenCalledTimes(1);
+        const rect = onBranchClick.mock.calls[0][0];
+        expect(typeof rect.left).toBe('number');
+        expect(typeof rect.bottom).toBe('number');
+    });
+
+    it('sync group is one bordered container around primary + chevron + auto-pull', () => {
+        renderHeader({ onPull: vi.fn(), onFetch: vi.fn(), onPush: vi.fn(), onAutoPullChange: vi.fn(), autoPull: { enabled: true, intervalMinutes: 1440 } });
+        const group = screen.getByTestId('git-sync-group');
+        expect(group.className).toContain('border');
+        expect(group.className).toContain('rounded-md');
+        expect(group.querySelector('[data-testid="git-sync-primary-btn"]')).toBeTruthy();
+        expect(group.querySelector('[data-testid="git-sync-dropdown-toggle"]')).toBeTruthy();
+        const autoPull = group.querySelector('[data-testid="git-autopull-toggle"]') as HTMLElement;
+        expect(autoPull).toBeTruthy();
+        // Embedded segment: divider instead of its own border, no chevron.
+        expect(autoPull.className).toContain('border-l');
+        expect(autoPull.className).not.toContain('rounded-md border ');
+        expect(autoPull.textContent).not.toContain('▾');
+        // The Pull shell itself no longer draws a border.
+        const shell = screen.getByTestId('git-sync-split-btn').querySelector('.overflow-hidden')!;
+        expect(shell.className).not.toMatch(/(^|\s)border(\s|$)/);
+    });
+
+    it('renders the sync group for auto-pull alone', () => {
+        renderHeader({ onAutoPullChange: vi.fn() });
+        expect(screen.getByTestId('git-sync-group')).toBeTruthy();
+        expect(screen.queryByTestId('git-sync-split-btn')).toBeNull();
+    });
+
+    it('omits the sync group when there are no actions and no auto-pull', () => {
+        renderHeader();
+        expect(screen.queryByTestId('git-sync-group')).toBeNull();
+    });
+
+    it('shows the last-refreshed time inside the refresh button', () => {
+        renderHeader({ lastRefreshedAt: Date.now() - 5 * 60_000 });
+        const btn = screen.getByTestId('git-refresh-btn');
+        expect(btn.contains(screen.getByTestId('git-last-refreshed'))).toBe(true);
     });
 
     it('chevron toggle has an internal vertical separator (border-l)', () => {
@@ -103,7 +147,7 @@ describe('redesigned layout', () => {
         renderHeader();
         const btn = screen.getByTestId('git-refresh-btn');
         const cls = btn.className;
-        expect(cls).toContain('w-6');
+        expect(cls).toContain('min-w-6');
         expect(cls).toContain('h-6');
         expect(cls).toContain('rounded-md');
     });

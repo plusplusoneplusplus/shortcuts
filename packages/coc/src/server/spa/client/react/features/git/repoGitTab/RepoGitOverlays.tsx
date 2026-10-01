@@ -10,7 +10,7 @@
 import { ContextMenu, type ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { SkillBrowserDialog } from '../../../queue/SkillBrowserDialog';
 import { SkillContextDialog } from '../../chat/SkillContextDialog';
-import { BranchPickerModal } from '../branches/BranchPickerModal';
+import { BranchPickerModal, type BranchPickerAnchor } from '../branches/BranchPickerModal';
 import { AmendMessageModal } from '../working-tree/AmendMessageModal';
 import { CrossCloneCherryPickModal } from '../CrossCloneCherryPickModal';
 import type { GitPatchApplyResponse } from '@plusplusoneplusplus/coc-client';
@@ -41,8 +41,8 @@ export interface RepoGitOverlaysProps {
     onCancelSkillRun: () => void;
     onConfirmSkillRun: (userContext: string, aiSelection: ResolvedModalJobAiSelection) => Promise<void>;
 
-    // Branch picker (switch branch)
-    branchPickerOpen: boolean;
+    // Branch picker (switch branch): a dropdown under the header's branch button, open while set
+    branchPickerAnchor: BranchPickerAnchor | null;
     onCloseBranchPicker: () => void;
     onBranchSwitched: (newBranch: string) => void;
 
@@ -110,7 +110,8 @@ export function RepoGitOverlays(props: RepoGitOverlaysProps) {
             <BranchPickerModal
                 workspaceId={workspaceId}
                 currentBranch={branchName || 'HEAD'}
-                isOpen={props.branchPickerOpen}
+                isOpen={props.branchPickerAnchor !== null}
+                anchorRect={props.branchPickerAnchor}
                 onClose={props.onCloseBranchPicker}
                 onSwitched={props.onBranchSwitched}
             />
