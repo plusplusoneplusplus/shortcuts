@@ -15,6 +15,7 @@ import type {
   PullRequestChatBindingListResponse,
   PullRequestChatFreshResponse,
   PullRequestChecksResponse,
+  PullRequestFileDiffContentResponse,
   PullRequestCommitsResponse,
   PullRequestListQuery,
   PullRequestListResponse,
@@ -285,6 +286,21 @@ export class PullRequestsClient {
       return this.transport.requestText(path, reqOptions);
     }
     return this.transport.request<string>(path, reqOptions);
+  }
+
+  getFileDiffContentForOrigin(
+    originId: string,
+    prId: string,
+    filePath: string,
+    options: OriginPrProviderOptions,
+  ): Promise<PullRequestFileDiffContentResponse> {
+    return this.transport.request<PullRequestFileDiffContentResponse>(
+      `/origins/${encodePathSegment(originId)}/pull-requests/${encodePathSegment(prId)}/files/${encodePathSegment(filePath)}/content`,
+      {
+        query: serializeOriginPrStateQuery(options),
+        signal: options.signal,
+      },
+    );
   }
 
   prDiffPathForOrigin(originId: string, prId: string, options: { workspaceId: string; repoId?: string }): string {

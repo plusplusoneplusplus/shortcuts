@@ -1,3 +1,5 @@
+import type { GitFileDiffContentResponse } from './git';
+
 export interface GitHubProviderConfigRequest {
   token: string;
 }
@@ -60,6 +62,14 @@ export interface PullRequestListResponse {
   pullRequests: PullRequestListItem[];
   total: number;
   fetchedAt?: number;
+}
+
+/** Both full-text sides of one pull-request file. */
+export type PullRequestFileDiffContentResponse = GitFileDiffContentResponse;
+
+export interface PullRequestFileContentFailureResponse {
+  error: string;
+  code: 'missing-pr-shas' | 'provider-not-supported' | 'content-unavailable';
 }
 
 // ── Recently opened PRs ─────────────────────────────────────────────

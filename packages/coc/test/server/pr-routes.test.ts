@@ -17,12 +17,15 @@ import { resolveCanonicalOriginId, type IPullRequestsService } from '@pluspluson
 import type { ProviderPullRequest, CommentThread, Reviewer } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequestCheck, ProviderPullRequestCommit } from '@plusplusoneplusplus/forge';
 import { safeRm } from '../helpers/safe-rm';
+import { clearPullRequestFileContentCache, type PullRequestFileCliRunner } from '../../src/server/git/pull-request-file-content';
 
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
 
 vi.mock('../../src/server/providers/provider-factory', function () { return ({
     ProviderFactory: {
         detectProviderType: vi.fn().mockReturnValue('github'),
+        parseGitHubRemote: vi.fn().mockReturnValue({ owner: 'org', repo: 'repo' }),
+        parseAdoRemote: vi.fn(),
         createPullRequestsService: vi.fn(),
     },
 }); });
@@ -152,9 +155,10 @@ function makeServer(
     dir: string,
     autoClassification?: Parameters<typeof registerPrRoutes>[5],
     aiService?: Parameters<typeof registerPrRoutes>[4],
+    fileContent?: Parameters<typeof registerPrRoutes>[6],
 ): http.Server {
     const routes: Route[] = [];
-    registerPrRoutes(routes, dir, undefined, undefined, aiService, autoClassification);
+    registerPrRoutes(routes, dir, undefined, undefined, aiService, autoClassification, fileContent);
     const handler = createRouter({ routes, spaHtml: '' });
     return http.createServer(handler);
 }
@@ -177,9 +181,10 @@ async function stopServer(): Promise<void> {
 async function restartServer(
     autoClassification?: Parameters<typeof registerPrRoutes>[5],
     aiService?: Parameters<typeof registerPrRoutes>[4],
+    fileContent?: Parameters<typeof registerPrRoutes>[6],
 ): Promise<void> {
     await stopServer();
-    server = makeServer(dataDir, autoClassification, aiService);
+    server = makeServer(dataDir, autoClassification, aiService, fileContent);
     await startServer();
 }
 
@@ -226,6 +231,7 @@ beforeEach(async () => {
     clearPrCommitsCache();
     clearPrReviewersCache();
     clearPrChecksCache();
+    clearPullRequestFileContentCache();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pr-routes-test-'));
     dataDir = path.join(tmpDir, 'data');
     fs.mkdirSync(dataDir, { recursive: true });
@@ -1709,6 +1715,65 @@ describe('GET .../diff/files/:path?fullContext=true (AC-02)', () => {
         // Fallback path DOES compute the combined diff.
         expect(body.diff).toContain('diff --git a/src/foo.ts');
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('GET /api/origins/:originId/pull-requests/:prId/files/:path/content', () => {
+    const baseSha = '1111111111111111111111111111111111111111';
+    const headSha = '2222222222222222222222222222222222222222';
+    const providerDiff = [
+        'diff --git a/src/foo.ts b/src/foo.ts',
+        '--- a/src/foo.ts',
+        '+++ b/src/foo.ts',
+        '@@ -1 +1 @@',
+        '-base',
+        '+head',
+    ].join('\n');
+
+    it('uses the selected clone and injected CLI runner for provider fallback', async () => {
+        const repoPath = path.join(tmpDir, 'content-clone');
+        fs.mkdirSync(repoPath, { recursive: true });
+        await initGitRepo(repoPath);
+        const runCommand = vi.fn<PullRequestFileCliRunner>(async (_command, args) => ({
+            stdout: Buffer.from(args.includes(`ref=${baseSha}`) ? 'base\r\n' : 'head\r\n'),
+            stderr: '',
+        }));
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, baseSha, headSha });
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(providerDiff);
+        await restartServer(undefined, undefined, { runCommand });
+        mockResolveRepo.mockResolvedValue({ ...mockRepoInfo, localPath: repoPath });
+
+        const res = await fetch(originPullRequestsUrl(`/42/files/${encodeURIComponent('src/foo.ts')}/content`));
+        expect(res.status).toBe(200);
+        expect(await res.json()).toMatchObject({
+            path: 'src/foo.ts',
+            base: { content: 'base\r\n', ref: baseSha, exists: true },
+            head: { content: 'head\r\n', ref: headSha, exists: true },
+            binary: false,
+            tooLarge: false,
+        });
+        expect(runCommand).toHaveBeenCalledTimes(2);
+        expect(mockResolveRepo).toHaveBeenCalledWith(REPO_ID);
+    });
+
+    it('returns a typed failure when local objects and provider content are unavailable', async () => {
+        const repoPath = path.join(tmpDir, 'content-failure-clone');
+        fs.mkdirSync(repoPath, { recursive: true });
+        await initGitRepo(repoPath);
+        const runCommand = vi.fn<PullRequestFileCliRunner>(async () => {
+            throw new Error('gh unavailable');
+        });
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, baseSha, headSha });
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(providerDiff);
+        await restartServer(undefined, undefined, { runCommand });
+        mockResolveRepo.mockResolvedValue({ ...mockRepoInfo, localPath: repoPath });
+
+        const res = await fetch(originPullRequestsUrl(`/42/files/${encodeURIComponent('src/foo.ts')}/content`));
+        expect(res.status).toBe(502);
+        expect(await res.json()).toMatchObject({
+            code: 'content-unavailable',
+            error: expect.stringContaining('gh unavailable'),
+        });
     });
 });
 

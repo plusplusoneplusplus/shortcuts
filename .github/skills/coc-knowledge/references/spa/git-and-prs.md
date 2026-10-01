@@ -461,10 +461,13 @@ reviewed/visited file progress through
 against `/api/origins/:originId/pull-requests/:prId/review-progress`, passing
 workspaceId/repoId metadata for pre-origin migration only.
 
-Pop-out file views expose a full-context toggle calling the per-file diff endpoint with
-`fullContext=true`. The server first tries a full-file-context git diff from PR
-`baseSha` to `headSha`, fetches missing PR commits into the requested checkout when
-possible, and only then returns the hunk-only diff with `fullContextUnavailable: true`.
+PR file data stays origin-scoped while `workspaceId` and optional `repoId` select a
+same-origin clone. Classic pop-out views call the per-file diff endpoint with
+`fullContext=true`; the server tries a full-file-context git diff from PR `baseSha` to
+`headSha`, fetches missing commits into that checkout, then degrades to hunk-only data
+with `fullContextUnavailable: true`. The paired-content endpoint reads both snapshots
+from local objects first and falls back to the user's authenticated `gh api` or
+`az devops invoke`; binary, symlink, and over-10MB files return no text.
 
 PR review suggestions sit behind `pullRequests.suggestions`. The For You filter's
 generate/refresh action first refreshes origin-scoped review history via
