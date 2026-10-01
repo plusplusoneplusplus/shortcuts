@@ -263,11 +263,12 @@ export function RepoGroupGitMemberPicker({
                 onClick={() => open ? close() : openPicker()}
                 data-testid="repo-group-git-member-trigger"
                 className={cn(
-                    'inline-flex h-6 min-w-0 max-w-[10rem] items-center gap-1 rounded-md border px-1.5',
-                    'border-[#d0d0d0] bg-white text-xs text-[#1e1e1e] dark:border-[#3c3c3c] dark:bg-[#2d2d2d] dark:text-[#cccccc]',
-                    'hover:border-[#9a9a9a] dark:hover:border-[#666] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',
+                    // Borderless: reads as the first segment of the header's `repo / branch` breadcrumb.
+                    'inline-flex h-6 min-w-0 max-w-[10rem] items-center gap-1 rounded px-1',
+                    'bg-transparent text-xs text-[#1e1e1e] dark:text-[#cccccc]',
+                    'hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0078d4]/50',
                     'disabled:cursor-not-allowed disabled:opacity-50',
-                    open && 'border-[#0078d4] dark:border-[#3794ff]',
+                    open && 'bg-black/[0.06] dark:bg-white/[0.08]',
                 )}
             >
                 <span className="text-[#0078d4] dark:text-[#3794ff]"><RepoIcon /></span>

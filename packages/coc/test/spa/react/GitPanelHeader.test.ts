@@ -90,8 +90,9 @@ describe('GitPanelHeader', () => {
             expect(source).toContain('data-testid="git-branch-pill"');
         });
 
-        it('uses rounded-full for pill styling', () => {
-            expect(source).toContain('rounded-full');
+        it('renders the branch as a `repo / branch` breadcrumb after a repo selector', () => {
+            expect(source).toContain('{repositorySelector && <span');
+            expect(source).toContain('>/</span>');
         });
 
         it('uses font-mono for branch name', () => {
@@ -115,19 +116,19 @@ describe('GitPanelHeader', () => {
             expect(source).toContain('<button');
             expect(source).toContain('data-testid="git-branch-pill"');
             const pillSection = source.slice(
-                source.indexOf('{/* Branch pill */}'),
+                source.indexOf('{/* Branch: a breadcrumb segment'),
                 source.indexOf('data-testid="git-branch-pill"'),
             );
             expect(pillSection).toContain('<button');
-            expect(pillSection).not.toContain('<span');
+            expect(pillSection.slice(pillSection.indexOf('<button'))).not.toContain('<span');
         });
 
         it('accepts optional onBranchClick prop', () => {
-            expect(source).toContain('onBranchClick?: () => void');
+            expect(source).toContain('onBranchClick?: (anchor: DOMRect) => void');
         });
 
         it('branch pill calls onBranchClick on click', () => {
-            expect(source).toContain('onClick={onBranchClick}');
+            expect(source).toContain('onClick={e => onBranchClick?.(e.currentTarget.getBoundingClientRect())}');
         });
 
         it('branch pill has cursor-pointer style when clickable', () => {
@@ -445,7 +446,8 @@ describe('GitPanelHeader', () => {
 
         it('keeps the split-action button from wrapping or shrinking', () => {
             expect(source).toContain("className=\"relative inline-flex shrink-0\"");
-            expect(source).toContain('flex items-stretch whitespace-nowrap rounded-md');
+            expect(source).toContain('flex items-stretch whitespace-nowrap rounded-l-md');
+            expect(source).toContain('data-testid="git-sync-group"');
         });
 
         it('drops the "Pull" word below 280px of header width, keeping the icon', () => {
@@ -463,7 +465,7 @@ describe('GitPanelHeader', () => {
 
         it('shrinks the split-action button and refresh button in compact', () => {
             expect(source).toContain("compact ? 'h-[18px]' : 'h-6'");
-            expect(source).toContain("compact ? 'w-[18px] h-[18px]' : 'w-6 h-6'");
+            expect(source).toContain("compact ? 'min-w-[18px] h-[18px] px-0.5' : 'min-w-6 h-6 px-1'");
         });
     });
 });

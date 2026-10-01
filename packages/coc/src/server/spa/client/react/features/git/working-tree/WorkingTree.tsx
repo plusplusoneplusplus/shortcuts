@@ -293,6 +293,28 @@ function Section({ title, count, children, defaultExpanded = true, onStageAll, o
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Compact working-tree counts: `+staged ~modified ?untracked`, zero counts
+ * omitted, or `✓ clean` when there is nothing. Full words live in the parent's
+ * title attribute.
+ */
+export function CompactWorkingTreeSummary({ staged, modified, untracked }: { staged: number; modified: number; untracked: number }) {
+    if (staged + modified + untracked === 0) {
+        return (
+            <span data-testid="working-tree-clean">
+                <span className="text-[#16825d] dark:text-[#3fb950]" aria-hidden="true">✓</span> clean
+            </span>
+        );
+    }
+    return (
+        <span className="inline-flex items-center gap-1.5 font-mono tabular-nums">
+            {staged > 0 && <span className="text-[#16825d] dark:text-[#3fb950]" data-testid="working-tree-count-staged">+{staged}</span>}
+            {modified > 0 && <span className="text-[#b45309] dark:text-[#e2c08d]" data-testid="working-tree-count-modified">~{modified}</span>}
+            {untracked > 0 && <span className="text-[#616161] dark:text-[#999]" data-testid="working-tree-count-untracked">?{untracked}</span>}
+        </span>
+    );
+}
+
 export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick, compact }: WorkingTreeProps) {
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
     const [loading, setLoading] = useState(true);
@@ -568,17 +590,20 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                             title={`${staged.length} staged · ${unstaged.length} modified · ${untracked.length} untracked`}
                         >
                             {compact
-                                ? `${staged.length}s · ${unstaged.length}m · ${untracked.length}u`
+                                ? <CompactWorkingTreeSummary staged={staged.length} modified={unstaged.length} untracked={untracked.length} />
                                 : `${staged.length} staged · ${unstaged.length} modified · ${untracked.length} untracked`}
                         </span>
                     </span>
-                    <span
-                        className={`ml-auto inline-flex items-center justify-center rounded-full bg-white dark:bg-[#1e1e1e] border border-[#16825d]/35 dark:border-[#3fb950]/40 text-[#16825d] dark:text-[#3fb950] font-mono font-semibold text-[10px] tabular-nums whitespace-nowrap flex-shrink-0 ${compact ? 'px-1.5 py-0' : 'min-w-[44px] px-1.5 py-0.5'}`}
-                        data-testid="working-tree-file-count"
-                        title={`${totalCount} files`}
-                    >
-                        {compact ? `${totalCount}f` : `${totalCount} files`}
-                    </span>
+                    {/* The compact summary already carries every count, so the total is dropped there. */}
+                    {!compact && (
+                        <span
+                            className="ml-auto inline-flex items-center justify-center rounded-full bg-white dark:bg-[#1e1e1e] border border-[#16825d]/35 dark:border-[#3fb950]/40 text-[#16825d] dark:text-[#3fb950] font-mono font-semibold text-[10px] tabular-nums whitespace-nowrap flex-shrink-0 min-w-[44px] px-1.5 py-0.5"
+                            data-testid="working-tree-file-count"
+                            title={`${totalCount} files`}
+                        >
+                            {`${totalCount} files`}
+                        </span>
+                    )}
                     {onAllCommentsClick && (
                         <button
                             onClick={(e) => { e.stopPropagation(); onAllCommentsClick(); }}
@@ -586,7 +611,7 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
                             className="ml-1 inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded border border-transparent hover:border-[#0078d4]/35 dark:hover:border-[#3794ff]/35 text-[#616161] dark:text-[#9d9d9d] hover:text-[#0078d4] dark:hover:text-[#3794ff] transition-colors flex-shrink-0"
                             data-testid="working-tree-all-comments-btn"
                         >
-                            💬 Comments {allWorkingComments.length > 0 ? allWorkingComments.length : ''}
+                            💬 {compact ? (allWorkingComments.length || '') : `Comments ${allWorkingComments.length > 0 ? allWorkingComments.length : ''}`}
                         </button>
                     )}
                 </div>

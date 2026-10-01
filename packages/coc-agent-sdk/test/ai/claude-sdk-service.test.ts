@@ -9,6 +9,7 @@ import {
     ClaudeSDKService,
     addClaudeContextUsage,
     extractClaudeAccessToken,
+    extractClaudeTokenExpiry,
     fetchClaudeOAuthQuota,
     mapClaudeAccountInfoToQuota,
     mapClaudeRateLimitInfoToQuota,
@@ -3258,6 +3259,184 @@ describe('ClaudeSDKService.getAccountQuota (Linux OAuth)', () => {
         expect(accountInfoFn).toHaveBeenCalled();
         expect(fetchSpy).toHaveBeenCalledOnce();
         expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(10);
+    });
+
+    // Regression: the OAuth access token expires after ~8h and only the Claude
+    // CLI refreshes it. Quota previously read the stale token, got a 401, and
+    // silently showed no quota until a Claude turn happened to refresh it.
+    const writeNestedCreds = (accessToken: string, expiresAt: number) => {
+        fs.writeFileSync(tempCredFile, JSON.stringify({
+            claudeAiOauth: { accessToken, refreshToken: 'r', expiresAt },
+        }));
+    };
+    const usageOk = (utilization: number) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ five_hour: { utilization } }),
+    });
+
+    it('refreshes an expired token through a promptless SDK accountInfo() probe before fetching', async () => {
+        writeNestedCreds('stale-tok', Date.now() - 1000);
+        const accountInfo = vi.fn(async () => {
+            writeNestedCreds('fresh-tok', Date.now() + 8 * 3600_000);
+            return {};
+        });
+        queryFn.mockReturnValueOnce({ accountInfo });
+        fetchSpy.mockResolvedValueOnce(usageOk(33));
+
+        const quota = await svc.getAccountQuota();
+
+        expect(accountInfo).toHaveBeenCalledOnce();
+        const probeOptions = queryFn.mock.calls[0][0];
+        expect(typeof probeOptions.prompt).not.toBe('string');
+        expect(probeOptions.options.settingSources).toEqual([]);
+        expect(probeOptions.abortController.signal.aborted).toBe(true);
+        expect(fetchSpy).toHaveBeenCalledOnce();
+        expect(fetchSpy).toHaveBeenCalledWith(
+            'https://api.anthropic.com/api/oauth/usage',
+            expect.objectContaining({ headers: expect.objectContaining({ 'Authorization': 'Bearer fresh-tok' }) }),
+        );
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(33);
+    });
+
+    it('refreshes and retries once when the usage API answers 401 for an unexpired token', async () => {
+        writeNestedCreds('revoked-tok', Date.now() + 3600_000);
+        const accountInfo = vi.fn(async () => {
+            writeNestedCreds('fresh-tok', Date.now() + 8 * 3600_000);
+            return {};
+        });
+        queryFn.mockReturnValueOnce({ accountInfo });
+        fetchSpy
+            .mockResolvedValueOnce({ ok: false, status: 401 })
+            .mockResolvedValueOnce(usageOk(21));
+
+        const quota = await svc.getAccountQuota();
+
+        expect(accountInfo).toHaveBeenCalledOnce();
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(fetchSpy.mock.calls[1][1].headers.Authorization).toBe('Bearer fresh-tok');
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(21);
+    });
+
+    it('does not spawn a refresh probe while the token is still valid', async () => {
+        writeNestedCreds('valid-tok', Date.now() + 3600_000);
+        fetchSpy.mockResolvedValueOnce(usageOk(5));
+
+        const quota = await svc.getAccountQuota();
+
+        expect(queryFn).not.toHaveBeenCalled();
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(5);
+    });
+
+    it('does not retry when the refresh leaves the token unchanged, and spaces out later probes', async () => {
+        writeNestedCreds('stale-tok', Date.now() - 1000);
+        const accountInfo = vi.fn().mockResolvedValue({});
+        queryFn.mockReturnValue({ accountInfo });
+        fetchSpy.mockResolvedValue({ ok: false, status: 401 });
+
+        expect(await svc.getAccountQuota()).toEqual({ quotaSnapshots: {} });
+        expect(await svc.getAccountQuota()).toEqual({ quotaSnapshots: {} });
+
+        // One probe across both polls; each poll makes a single usage request.
+        expect(accountInfo).toHaveBeenCalledOnce();
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls back to the cached rate-limit snapshot on Linux when OAuth yields nothing', async () => {
+        writeNestedCreds('stale-tok', Date.now() - 1000);
+        queryFn.mockReturnValueOnce(makeQueryHandle([
+            {
+                type: 'rate_limit_event',
+                rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 0.42 },
+            },
+            { type: 'result', subtype: 'success' },
+        ]));
+        await svc.sendMessage({ prompt: 'hello' });
+        await Promise.resolve();
+        // The refresh probe fails, so OAuth stays empty.
+        queryFn.mockImplementationOnce(() => { throw new Error('spawn failed'); });
+        fetchSpy.mockResolvedValueOnce({ ok: false, status: 401 });
+
+        const quota = await svc.getAccountQuota();
+
+        expect(quota.quotaSnapshots).toHaveProperty('five_hour');
+    });
+});
+
+describe('fetchClaudeOAuthQuota token refresh', () => {
+    let fetchSpy: ReturnType<typeof vi.fn>;
+    let creds: string;
+    const readFile = () => creds;
+    const setCreds = (accessToken: string, expiresAt?: number) => {
+        creds = JSON.stringify({ claudeAiOauth: { accessToken, ...(expiresAt !== undefined ? { expiresAt } : {}) } });
+    };
+
+    beforeEach(() => {
+        fetchSpy = vi.fn();
+        vi.stubGlobal('fetch', fetchSpy);
+        process.env['CLAUDE_CREDENTIALS_FILE'] = path.join(os.tmpdir(), 'coc-injected-creds.json');
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        delete process.env['CLAUDE_CREDENTIALS_FILE'];
+    });
+
+    it('treats a token inside the expiry skew window as expired', async () => {
+        setCreds('old', 1_000_000 + 30_000);
+        const refreshCredentials = vi.fn(async () => { setCreds('new', 99_000_000); });
+        fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ five_hour: { utilization: 1 } }) });
+
+        await fetchClaudeOAuthQuota({ readFile, refreshCredentials, now: () => 1_000_000 });
+
+        expect(refreshCredentials).toHaveBeenCalledOnce();
+        expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe('Bearer new');
+    });
+
+    it('still tries the stale token when the refresh throws', async () => {
+        setCreds('old', 1);
+        const refreshCredentials = vi.fn().mockRejectedValue(new Error('timed out'));
+        fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ five_hour: { utilization: 2 } }) });
+
+        const quota = await fetchClaudeOAuthQuota({ readFile, refreshCredentials, now: () => 1_000_000 });
+
+        expect(fetchSpy.mock.calls[0][1].headers.Authorization).toBe('Bearer old');
+        expect(quota.quotaSnapshots.five_hour.usedRequests).toBe(2);
+    });
+
+    it('refreshes at most once per call even when the token is expired and the API answers 401', async () => {
+        setCreds('old', 1);
+        const refreshCredentials = vi.fn(async () => { setCreds('newer', 99_000_000); });
+        fetchSpy.mockResolvedValue({ ok: false, status: 401 });
+
+        const quota = await fetchClaudeOAuthQuota({ readFile, refreshCredentials, now: () => 1_000_000 });
+
+        expect(quota).toEqual({ quotaSnapshots: {} });
+        expect(refreshCredentials).toHaveBeenCalledOnce();
+        expect(fetchSpy).toHaveBeenCalledOnce();
+    });
+
+    it('never refreshes a token without a known expiry unless the API answers 401', async () => {
+        setCreds('no-expiry');
+        const refreshCredentials = vi.fn();
+        fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ five_hour: { utilization: 3 } }) });
+
+        await fetchClaudeOAuthQuota({ readFile, refreshCredentials });
+
+        expect(refreshCredentials).not.toHaveBeenCalled();
+    });
+});
+
+describe('extractClaudeTokenExpiry', () => {
+    it('reads the nested claudeAiOauth.expiresAt', () => {
+        expect(extractClaudeTokenExpiry({ claudeAiOauth: { expiresAt: 1790837219453 } })).toBe(1790837219453);
+    });
+
+    it('returns undefined when absent or not a finite number', () => {
+        expect(extractClaudeTokenExpiry({ access_token: 'flat' })).toBeUndefined();
+        expect(extractClaudeTokenExpiry({ claudeAiOauth: { expiresAt: '123' } })).toBeUndefined();
+        expect(extractClaudeTokenExpiry({ claudeAiOauth: { expiresAt: NaN } })).toBeUndefined();
+        expect(extractClaudeTokenExpiry({ claudeAiOauth: null })).toBeUndefined();
     });
 });
 

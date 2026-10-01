@@ -6,12 +6,21 @@
  * POST /workspaces/:id/git/branches/switch; callers may provide onSelected to
  * reuse the picker as a branch-selection modal without switching here.
  * Supports keyboard navigation (ArrowUp/Down, Enter, Escape).
+ *
+ * With `anchorRect` it renders as a dropdown under that rect (no backdrop,
+ * last-commit subject per row) instead of a centered modal.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getCocClientForWorkspace } from '../../../repos/cloneRegistry';
 
 const PAGE_SIZE = 50;
+/** Width of the anchored dropdown variant. */
+const DROPDOWN_WIDTH = 320;
+/** Keeps the anchored dropdown off the viewport edge. */
+const VIEWPORT_MARGIN = 8;
+
+export type BranchPickerAnchor = Pick<DOMRect, 'left' | 'bottom'>;
 
 interface GitBranch {
     name: string;
@@ -31,6 +40,8 @@ interface BranchPickerModalProps {
     title?: string;
     busyLabel?: string;
     errorLabel?: string;
+    /** Open as a dropdown below this rect instead of a centered modal. */
+    anchorRect?: BranchPickerAnchor | null;
 }
 
 export function BranchPickerModal({
@@ -43,6 +54,7 @@ export function BranchPickerModal({
     title,
     busyLabel,
     errorLabel,
+    anchorRect,
 }: BranchPickerModalProps) {
     const [query, setQuery] = useState('');
     const [branches, setBranches] = useState<GitBranch[]>([]);
@@ -188,32 +200,45 @@ export function BranchPickerModal({
 
     if (!isOpen) return null;
 
+    const anchored = !!anchorRect;
+    const dropdownStyle = anchorRect
+        ? {
+            top: anchorRect.bottom + 4,
+            left: Math.max(VIEWPORT_MARGIN, Math.min(anchorRect.left, window.innerWidth - DROPDOWN_WIDTH - VIEWPORT_MARGIN)),
+            width: DROPDOWN_WIDTH,
+        }
+        : undefined;
+
     return (
         <div
-            className="fixed inset-0 z-[10020] flex items-start justify-center pt-[10vh]"
+            className={anchored ? 'fixed inset-0 z-[10020]' : 'fixed inset-0 z-[10020] flex items-start justify-center pt-[10vh]'}
             data-testid="branch-picker-overlay"
+            data-anchored={anchored ? 'true' : undefined}
             onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
-            {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+            {/* Backdrop (modal only; the dropdown closes on any outside click) */}
+            {!anchored && <div className="absolute inset-0 bg-black/40" aria-hidden="true" />}
 
             {/* Dialog */}
             <div
-                className="relative z-10 w-full max-w-lg bg-white dark:bg-[#252526] rounded-lg shadow-2xl border border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col max-h-[70vh]"
+                className={anchored
+                    ? 'absolute bg-white dark:bg-[#252526] rounded-md shadow-xl border border-[#d0d0d0] dark:border-[#454545] flex flex-col max-h-[min(60vh,420px)] text-xs'
+                    : 'relative z-10 w-full max-w-lg bg-white dark:bg-[#252526] rounded-lg shadow-2xl border border-[#e0e0e0] dark:border-[#3c3c3c] flex flex-col max-h-[70vh]'}
+                style={dropdownStyle}
                 data-testid="branch-picker-modal"
                 role="dialog"
                 aria-label={dialogTitle}
                 onKeyDown={handleKeyDown}
             >
                 {/* Header */}
-                <div className="flex items-center gap-2 px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c]">
+                <div className={`flex items-center gap-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] ${anchored ? 'px-2.5 py-1.5' : 'px-4 py-3'}`}>
                     <svg className="w-4 h-4 text-[#616161] dark:text-[#999] flex-shrink-0" viewBox="0 0 16 16" fill="currentColor">
                         <path fillRule="evenodd" d="M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6A2.5 2.5 0 0110 8.5H6A1.5 1.5 0 004.5 10v.128a2.251 2.251 0 11-1.5 0V5.372a2.25 2.25 0 111.5 0v1.836A2.993 2.993 0 016 6.5h4a1 1 0 001-1v-.628A2.25 2.25 0 019.5 3.25zM4.25 12a.75.75 0 100 1.5.75.75 0 000-1.5zM3.5 3.25a.75.75 0 111.5 0 .75.75 0 01-1.5 0z" />
                     </svg>
                     <input
                         ref={searchInputRef}
                         type="text"
-                        className="flex-1 bg-transparent text-sm text-[#1e1e1e] dark:text-[#ccc] placeholder-[#999] outline-none"
+                        className={`flex-1 bg-transparent text-[#1e1e1e] dark:text-[#ccc] placeholder-[#999] outline-none ${anchored ? 'text-xs' : 'text-sm'}`}
                         placeholder="Search branches…"
                         value={query}
                         onChange={e => setQuery(e.target.value)}
@@ -268,7 +293,7 @@ export function BranchPickerModal({
                                 key={branch.name}
                                 role="option"
                                 aria-selected={isCurrent}
-                                className={`flex items-center gap-2 px-4 py-2 cursor-pointer text-sm select-none ${
+                                className={`flex items-center gap-2 cursor-pointer select-none ${anchored ? 'px-2.5 py-1 text-xs' : 'px-4 py-2 text-sm'} ${
                                     isFocused
                                         ? 'bg-[#e8f0fe] dark:bg-[#2a3a5c]'
                                         : 'hover:bg-[#f5f5f5] dark:hover:bg-[#2a2d2e]'
@@ -281,8 +306,15 @@ export function BranchPickerModal({
                                 <span className={`w-4 flex-shrink-0 text-center ${isCurrent ? 'text-[#16825d]' : ''}`}>
                                     {isCurrent ? '✓' : ''}
                                 </span>
-                                <span className={`font-mono truncate ${isCurrent ? 'font-semibold text-[#16825d]' : 'text-[#1e1e1e] dark:text-[#ccc]'}`}>
-                                    {branch.name}
+                                <span className="min-w-0 flex flex-col">
+                                    <span className={`font-mono truncate ${isCurrent ? 'font-semibold text-[#16825d]' : 'text-[#1e1e1e] dark:text-[#ccc]'}`}>
+                                        {branch.name}
+                                    </span>
+                                    {anchored && branch.lastCommitSubject && (
+                                        <span className="truncate text-[10px] text-[#999]" data-testid={`branch-item-subject-${branch.name}`}>
+                                            {branch.lastCommitSubject}
+                                        </span>
+                                    )}
                                 </span>
                                 {isCurrent && (
                                     <span className="ml-auto text-xs text-[#16825d] flex-shrink-0" data-testid="branch-current-badge">

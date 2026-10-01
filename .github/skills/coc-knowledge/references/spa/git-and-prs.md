@@ -31,6 +31,22 @@ timer pauses while hidden and restarts when shown. `RepoGroupGitTab` gives
 server-qualified `selectionId` as `routeWorkspaceId`, keeping commit and file
 navigation on the owning group even when another server has the same group id.
 
+### Git panel header
+
+`GitPanelHeader` is one compact row: a `repo ▾ / branch ▾` breadcrumb (the
+borderless `RepoGroupGitMemberPicker` trigger, a `/` separator, then the branch
+button), the ahead/behind badge, one bordered **sync group** holding the Pull
+split button (chevron menu: Fetch / Pull / Push / Rebase autosquash) and the
+`GitAutoPullControl` interval rendered `embedded` (left divider, no chevron),
+and a refresh button that carries the last-refreshed time. The branch button
+passes its rect to `onBranchClick`; `RepoGitTab` keeps that rect as
+`branchPickerAnchor` and `BranchPickerModal` opens as a dropdown under it
+(`anchorRect`: no backdrop, viewport-clamped, last-commit subject per row). The
+cherry-pick target picker passes no anchor and stays a centered modal. In
+compact mode the working-tree header shows `+staged ~modified ?untracked` (or
+`✓ clean`) via `CompactWorkingTreeSummary` with no total file badge, and each
+commit row leads with its short hash before the subject.
+
 ### Stale working-tree recovery
 
 `git-changed` broadcasts come only from server-initiated git operations, so a file

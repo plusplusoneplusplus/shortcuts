@@ -310,12 +310,13 @@ describe('WorkingTree', () => {
         });
 
         it('shortens the staged/modified/untracked summary in compact, keeping the full text in a tooltip', () => {
-            expect(source).toContain('`${staged.length}s · ${unstaged.length}m · ${untracked.length}u`');
+            expect(source).toContain('<CompactWorkingTreeSummary staged={staged.length} modified={unstaged.length} untracked={untracked.length} />');
             expect(source).toContain('title={`${staged.length} staged · ${unstaged.length} modified · ${untracked.length} untracked`}');
         });
 
-        it('shortens the file-count badge in compact, keeping the full text in a tooltip', () => {
-            expect(source).toContain('{compact ? `${totalCount}f` : `${totalCount} files`}');
+        it('drops the file-count badge in compact (the summary already has every count)', () => {
+            expect(source).toContain('{!compact && (');
+            expect(source).toContain('{`${totalCount} files`}');
             expect(source).toContain('title={`${totalCount} files`}');
         });
 

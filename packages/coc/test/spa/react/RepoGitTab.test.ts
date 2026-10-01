@@ -790,7 +790,7 @@ describe('RepoGitTab', () => {
         });
 
         it('imports BranchPickerModal', () => {
-            expect(source).toContain("import { BranchPickerModal } from '../branches/BranchPickerModal'");
+            expect(source).toContain("import { BranchPickerModal, type BranchPickerAnchor } from '../branches/BranchPickerModal'");
         });
 
         it('renders a second BranchPickerModal for cherry-pick target selection', () => {
@@ -1726,14 +1726,14 @@ describe('RepoGitTab', () => {
     });
 
     describe('branch picker integration', () => {
-        it('tracks branchPickerOpen state', () => {
-            expect(source).toContain('branchPickerOpen');
-            expect(source).toContain('setBranchPickerOpen');
+        it('tracks the branch picker as an anchor rect (open while set)', () => {
+            expect(source).toContain('useState<BranchPickerAnchor | null>(null)');
+            expect(source).toContain('setBranchPickerAnchor');
         });
 
-        it('passes onBranchClick to GitPanelHeader', () => {
-            expect(source).toContain('onBranchClick=');
-            expect(source).toContain('setBranchPickerOpen(true)');
+        it('passes onBranchClick to GitPanelHeader and anchors the dropdown to the branch button', () => {
+            expect(source).toContain('onBranchClick={anchor => setBranchPickerAnchor({ left: anchor.left, bottom: anchor.bottom })}');
+            expect(source).toContain('anchorRect={props.branchPickerAnchor}');
         });
 
         it('renders BranchPickerModal', () => {
@@ -1745,11 +1745,11 @@ describe('RepoGitTab', () => {
         });
 
         it('passes isOpen to BranchPickerModal', () => {
-            expect(source).toContain('isOpen={props.branchPickerOpen}');
+            expect(source).toContain('isOpen={props.branchPickerAnchor !== null}');
         });
 
         it('passes onClose to BranchPickerModal', () => {
-            expect(source).toContain('setBranchPickerOpen(false)');
+            expect(source).toContain('setBranchPickerAnchor(null)');
         });
 
         it('onSwitched calls fetchBranchRange and fetchCommits to refresh', () => {

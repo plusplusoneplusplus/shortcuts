@@ -35,6 +35,11 @@ interface GitAutoPullControlProps {
     status?: GitAutoPullStatusResponse;
     /** Slim variant to match the compact GitPanelHeader row. */
     compact?: boolean;
+    /**
+     * Rendered as a segment inside GitPanelHeader's sync group: drops its own
+     * border and chevron and draws a left divider instead.
+     */
+    embedded?: boolean;
 }
 
 /** How often the "in 4m" label is recomputed. Display only — it starts no pull. */
@@ -58,7 +63,7 @@ function formatInterval(intervalMinutes: number): string {
     return `${intervalMinutes}m`;
 }
 
-export function GitAutoPullControl({ value, onChange, status, compact }: GitAutoPullControlProps) {
+export function GitAutoPullControl({ value, onChange, status, compact, embedded }: GitAutoPullControlProps) {
     const enabled = !!value?.enabled;
     const intervalMinutes = value?.intervalMinutes;
     const isPreset = enabled && intervalMinutes != null && (AUTO_PULL_PRESETS as readonly number[]).includes(intervalMinutes);
@@ -148,7 +153,7 @@ export function GitAutoPullControl({ value, onChange, status, compact }: GitAuto
         <div className="relative inline-flex shrink-0" ref={rootRef} data-testid="git-autopull-control">
             <button
                 type="button"
-                className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50 ${enabled ? 'text-[#16825d]' : 'text-[#616161] dark:text-[#999]'} ${compact ? 'h-[18px] px-1 text-[10px] leading-[16px]' : 'h-6 px-1.5 text-[11px] leading-[22px]'}`}
+                className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap hover:bg-[#f3f3f3] dark:hover:bg-[#3c3c3c] transition-colors disabled:opacity-50 ${embedded ? 'h-full rounded-r-md border-l border-[#e0e0e0] dark:border-[#3c3c3c]' : 'rounded-md border border-[#d0d0d0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d]'} ${enabled ? 'text-[#16825d]' : 'text-[#616161] dark:text-[#999]'} ${compact ? `${embedded ? '' : 'h-[18px] '}px-1 text-[10px] leading-[16px]` : `${embedded ? '' : 'h-6 '}px-1.5 text-[11px] leading-[22px]`}`}
                 onClick={toggleOpen}
                 title={title}
                 data-testid="git-autopull-toggle"
@@ -173,7 +178,7 @@ export function GitAutoPullControl({ value, onChange, status, compact }: GitAuto
                         {nextRunLabel}
                     </span>
                 )}
-                <span aria-hidden="true">▾</span>
+                {!embedded && <span aria-hidden="true">▾</span>}
             </button>
 
             {open && (

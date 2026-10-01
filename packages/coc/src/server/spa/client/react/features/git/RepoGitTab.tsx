@@ -35,6 +35,7 @@ import { Spinner } from '../../ui';
 import { isTouchOnly } from './commits/CommitList';
 import type { GitCommitItem } from './commits/CommitList';
 import { GitPanelHeader } from './GitPanelHeader';
+import type { BranchPickerAnchor } from './branches/BranchPickerModal';
 import { clearBranchRangeCache } from './hooks/useBranchRangeCache';
 import { useApp } from '../../contexts/AppContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../contexts/GitReviewPopOutContext';
@@ -148,7 +149,8 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
     // ── Shell-local UI state ──────────────────────────────────────────────────
     const [searchVisible, setSearchVisible] = useState(false);
     const [contextMenu, setContextMenu] = useState<GitContextMenuState | null>(null);
-    const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+    /** Rect of the header's branch button; the branch dropdown is open while set. */
+    const [branchPickerAnchor, setBranchPickerAnchor] = useState<BranchPickerAnchor | null>(null);
     const [amendingCommit, setAmendingCommit] = useState<GitCommitItem | null>(null);
     const [rewordingCommit, setRewordingCommit] = useState<GitCommitItem | null>(null);
     const [cherryPickTarget, setCherryPickTarget] = useState<{ commits: GitCommitItem[] } | null>(null);
@@ -475,7 +477,7 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
 
     const handleBranchSwitched = useCallback((newBranch: string) => {
         data.setBranchName(newBranch);
-        setBranchPickerOpen(false);
+        setBranchPickerAnchor(null);
         data.reloadAfterBranchSwitch();
     }, [data]);
 
@@ -643,7 +645,7 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
             behind={data.behind}
             refreshing={data.refreshing}
             onRefresh={data.refreshAll}
-            onBranchClick={() => setBranchPickerOpen(true)}
+            onBranchClick={anchor => setBranchPickerAnchor({ left: anchor.left, bottom: anchor.bottom })}
             onFetch={actions.fetch}
             onPull={actions.pull}
             onPush={actions.push}
@@ -774,8 +776,8 @@ export function RepoGitTab({ workspaceId, routeWorkspaceId, repositorySelector, 
             pendingSkillTargetSummary={skillActions.pendingSkillTargetSummary}
             onCancelSkillRun={skillActions.cancelSkillRun}
             onConfirmSkillRun={skillActions.confirmSkillRun}
-            branchPickerOpen={branchPickerOpen}
-            onCloseBranchPicker={() => setBranchPickerOpen(false)}
+            branchPickerAnchor={branchPickerAnchor}
+            onCloseBranchPicker={() => setBranchPickerAnchor(null)}
             onBranchSwitched={handleBranchSwitched}
             cherryPickOpen={cherryPickTarget !== null}
             onCloseCherryPick={() => setCherryPickTarget(null)}

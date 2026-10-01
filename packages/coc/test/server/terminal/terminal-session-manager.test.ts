@@ -143,6 +143,41 @@ describe('TerminalSessionManager', () => {
             );
         });
 
+        // Regression: inbox ConPTY drops ESC[3J, so `cls` left old output in
+        // xterm's scrollback. The bundled conpty.dll passes it through.
+        it('should use the bundled conpty.dll on Windows', () => {
+            manager = createManager({ platform: 'win32' });
+            manager.createSession('ws-abc', 'C:\\projects');
+
+            expect(mockSpawn).toHaveBeenCalledTimes(1);
+            expect(mockSpawn.mock.calls[0][2]).toMatchObject({ useConptyDll: true });
+        });
+
+        it('should not request the bundled conpty.dll on non-Windows platforms', () => {
+            manager = createManager({ platform: 'linux' });
+            manager.createSession('ws-abc', '/tmp');
+
+            expect(mockSpawn.mock.calls[0][2]).not.toHaveProperty('useConptyDll');
+        });
+
+        it('should fall back to inbox ConPTY when the bundled conpty.dll fails, and stop retrying it', () => {
+            mockSpawn.mockImplementation((_shell, _args, opts) => {
+                if (opts.useConptyDll) throw new Error('conpty.dll not found');
+                return createMockPty();
+            });
+            manager = createManager({ platform: 'win32' });
+
+            const session = manager.createSession('ws-abc', 'C:\\projects');
+            expect(session.status).toBe('running');
+            expect(mockSpawn).toHaveBeenCalledTimes(2);
+            expect(mockSpawn.mock.calls[1][2]).not.toHaveProperty('useConptyDll');
+            expect(mockSpawn.mock.calls[1][2]).toMatchObject({ cwd: 'C:\\projects' });
+
+            manager.createSession('ws-abc', 'C:\\projects');
+            expect(mockSpawn).toHaveBeenCalledTimes(3);
+            expect(mockSpawn.mock.calls[2][2]).not.toHaveProperty('useConptyDll');
+        });
+
         it('should spawn WSL bash for WSL UNC roots on Windows', () => {
             const origSystemRoot = process.env.SystemRoot;
             process.env.SystemRoot = 'C:\\Windows';
