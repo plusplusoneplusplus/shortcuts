@@ -18,6 +18,7 @@ import type { HunkCategory } from '../../features/pull-requests/classification-t
 import type { FileChange } from '../../features/git/diff/FileTree';
 import type { UseClassificationReturn } from '../../features/git/diff/useClassification';
 import type { UsePrReviewProgressReturn } from '../../features/git/diff/usePrReviewProgress';
+import { useFileDiffEngineState } from '../../features/git/hooks/useFileDiffEngineState';
 
 export type PopOutHunkTarget = 'first' | 'last' | undefined;
 
@@ -26,6 +27,7 @@ export interface UsePopOutReviewModelOptions {
     files: FileChange[];
     progress?: UsePrReviewProgressReturn;
     classification?: UseClassificationReturn;
+    diffIdentity?: string;
 }
 
 export interface PopOutPriorityNav {
@@ -39,6 +41,8 @@ export interface PopOutReviewModel {
     prioritySort: boolean;
     /** True once classification results are available for this review. */
     classifyReady: boolean;
+    classificationEnabled: boolean;
+    onDiffEngineChange: ReturnType<typeof useFileDiffEngineState>['onDiffEngineChange'];
     priorityNav: PopOutPriorityNav;
     handleFileSelect: (filePath: string) => void;
     handleNavigateToFile: (filePath: string, target: 'first' | 'last') => void;
@@ -53,10 +57,14 @@ export function usePopOutReviewModel({
     files,
     progress,
     classification,
+    diffIdentity = '',
 }: UsePopOutReviewModelOptions): PopOutReviewModel {
     const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
     const [hunkTarget, setHunkTarget] = useState<PopOutHunkTarget>(undefined);
     const [prioritySort, setPrioritySort] = useState(false);
+    const { classificationEnabled, onDiffEngineChange } = useFileDiffEngineState(
+        selectedFilePath ? `${diffIdentity}\u0000${selectedFilePath}` : null,
+    );
 
     const markVisited = useCallback((filePath: string) => {
         progress?.markVisited(filePath);
@@ -91,7 +99,7 @@ export function usePopOutReviewModel({
         setFilters?.(new Set<HunkCategory>(HUNK_CATEGORIES));
     }, [setFilters]);
 
-    const classifyReady = classification?.state.status === 'ready';
+    const classifyReady = classificationEnabled && classification?.state.status === 'ready';
     const getFileBadge = classification?.getFileBadge;
     const activeFilters = classification?.state.activeFilters;
     const reviewedFiles = progress?.state.reviewedFiles;
@@ -141,6 +149,8 @@ export function usePopOutReviewModel({
         hunkTarget,
         prioritySort,
         classifyReady,
+        classificationEnabled,
+        onDiffEngineChange,
         priorityNav,
         handleFileSelect,
         handleNavigateToFile,
@@ -153,6 +163,7 @@ export function usePopOutReviewModel({
 }
 
 export interface PopOutDiffPanelProps {
+    onDiffEngineChange: PopOutReviewModel['onDiffEngineChange'];
     onNavigateToFile: (filePath: string, target: 'first' | 'last') => void;
     initialHunkTarget: PopOutHunkTarget;
     onBack: () => void;
@@ -174,6 +185,7 @@ export function popOutDiffPanelProps(
 ): PopOutDiffPanelProps {
     const { progress, classification } = options;
     return {
+        onDiffEngineChange: model.onDiffEngineChange,
         onNavigateToFile: model.handleNavigateToFile,
         initialHunkTarget: model.hunkTarget,
         onBack: model.handleBack,

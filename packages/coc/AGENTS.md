@@ -125,6 +125,8 @@ all have their own `references/*.md`.
   `MonacoDiffCommentLayer`, `CommentCard`, and each source's existing comment
   refs; sidebar navigation uses the viewer's `revealComment` handle.
   Anchor relocation excludes patch metadata and no-newline annotations.
+  Selected Monaco files ignore classification; shared engine reports let host
+  toolbars restore classification for Classic, including automatic fallback.
   `FileDiffPanel` and `WorkingTreeFileDiff` consume the same global
   `useDiffEngine` preference and
   Classic/Editor control. Cache identity includes

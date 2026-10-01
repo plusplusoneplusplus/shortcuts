@@ -14,6 +14,9 @@ import type { FileChange } from '../../../../../src/server/spa/client/react/feat
 import type { UseClassificationReturn } from '../../../../../src/server/spa/client/react/features/git/diff/useClassification';
 import type { UsePrReviewProgressReturn } from '../../../../../src/server/spa/client/react/features/git/diff/usePrReviewProgress';
 import type { HunkCategory } from '../../../../../src/server/spa/client/react/features/pull-requests/classification-types';
+vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
+    useDiffEngine: () => ['legacy', vi.fn()],
+}));
 
 const FILES: FileChange[] = [
     { path: 'src/mechanical.ts', status: 'modified', additions: 1, deletions: 1 },

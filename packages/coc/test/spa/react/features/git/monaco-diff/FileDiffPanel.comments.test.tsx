@@ -60,6 +60,7 @@ import { FileDiffPanel } from '../../../../../../src/server/spa/client/react/fea
 import { computeDiffLines } from '../../../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffViewer';
 import { createCommitDiffSource, createBranchRangeDiffSource, createPrDiffSource } from '../../../../../../src/server/spa/client/react/features/git/diff/diffSource';
 import { DIFF_ENGINE_STORAGE_KEY, __resetDiffEngineForTesting } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine';
+import { useFileDiffEngineState } from '../../../../../../src/server/spa/client/react/features/git/hooks/useFileDiffEngineState';
 
 const ORIGINAL = 'a\nb\nc\n';
 const MODIFIED = 'a\nB\nc\nd\n';
@@ -417,4 +418,44 @@ it('keeps source file-line coordinates independent of the Classic patch preamble
     const rows = computeDiffLines(PATCH.split('\n'));
     expect(rows.find(r => r.type === 'removed')).toMatchObject({ index: 6, oldLine: 2 });
     expect(rows.find(r => r.type === 'added')).toMatchObject({ index: 7, newLine: 2 });
+});
+
+const classifyHunk = vi.fn(() => ({ category: 'logic' as const, intensity: 'high' as const }));
+function ClassifiedPanel({ source }: { source: DiffSource }) {
+    const state = useFileDiffEngineState(`${source.cacheKey}:${PATH}`);
+    return <>
+        {state.classificationEnabled && <button data-testid="classify-control">Classify</button>}
+        <FileDiffPanel workspaceId="ws-a" filePath={PATH} source={source} createDiffEditor={createEditor}
+            onDiffEngineChange={state.onDiffEngineChange} getHunkClassification={classifyHunk} hunkActiveFilters={new Set()} />
+    </>;
+}
+
+it.each<SourceKind>(['commit', 'branch-range', 'pull-request'])(
+    '%s ignores classification in Monaco and restores it in Classic', async kind => {
+        classifyHunk.mockClear();
+        await act(async () => { render(<ClassifiedPanel source={makeSource(kind)} />); });
+        await act(async () => { fake().finishDiff(CHANGES); });
+        expect(screen.queryByTestId('classify-control')).toBeNull();
+        expect(classifyHunk).not.toHaveBeenCalled();
+        expect(fake().models[0].modified.text).toBe(MODIFIED);
+        await toggleEngine('legacy');
+        expect(screen.getByTestId('classify-control')).toBeTruthy();
+        expect(classifyHunk).toHaveBeenCalled();
+        await toggleEngine('monaco');
+        expect(screen.queryByTestId('classify-control')).toBeNull();
+    },
+);
+
+it('restores classification on automatic fallback and clears fallback state for a new revision', async () => {
+    const source = makeSource('commit');
+    const binarySource = { ...source, fetchFileContent: async () => ({
+        path: PATH, fileName: 'a.ts', language: 'typescript', binary: true, tooLarge: false,
+        base: { content: '', ref: 'base', exists: true }, head: { content: '', ref: 'head', exists: true },
+    }) };
+    let view!: ReturnType<typeof render>;
+    await act(async () => { view = render(<ClassifiedPanel source={binarySource} />); });
+    expect(screen.getByTestId('classify-control')).toBeTruthy();
+    await act(async () => { view.rerender(<ClassifiedPanel source={{ ...source, cacheKey: 'commit:new' }} />); });
+    await act(async () => { fake().finishDiff(CHANGES); });
+    expect(screen.queryByTestId('classify-control')).toBeNull();
 });

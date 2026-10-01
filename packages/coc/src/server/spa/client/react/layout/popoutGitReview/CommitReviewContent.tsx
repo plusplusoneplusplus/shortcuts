@@ -64,7 +64,7 @@ export function CommitReviewContent({ workspaceId, commitHash }: CommitReviewCon
     const fileList = useMemo(() => diff ? parseDiffFileList(diff) : [], [diff]);
     const filePaths = useMemo(() => fileList.map(f => f.path), [fileList]);
 
-    const model = usePopOutReviewModel({ files: fileList, progress, classification });
+    const model = usePopOutReviewModel({ files: fileList, progress, classification, diffIdentity: `${workspaceId}:${commitHash}` });
     const fileCommentMap = useFileCommentMap(workspaceId, `${commitHash}^`, commitHash, fileList);
 
     if (loading) {
@@ -80,6 +80,7 @@ export function CommitReviewContent({ workspaceId, commitHash }: CommitReviewCon
             <PopOutClassificationToolbar
                 testIdPrefix="commit-popout"
                 classification={classification}
+                classificationEnabled={model.classificationEnabled}
                 aiSelection={aiSelection}
                 chatOpen={chat.chatOpen}
                 onToggleChat={chat.toggleChat}

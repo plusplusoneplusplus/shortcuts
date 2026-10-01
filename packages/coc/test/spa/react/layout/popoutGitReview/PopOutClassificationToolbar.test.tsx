@@ -50,6 +50,17 @@ afterEach(() => {
 });
 
 describe.each(PREFIXES)('PopOutClassificationToolbar (%s)', prefix => {
+    it('hides classification controls and errors while keeping chat in Monaco', () => {
+        render(<PopOutClassificationToolbar
+            testIdPrefix={prefix} classification={makeClassification('ready', { error: 'classification failed' })}
+            classificationEnabled={false} aiSelection={AI_SELECTION} chatOpen={false} onToggleChat={vi.fn()}
+        />);
+        expect(screen.queryByTestId(`${prefix}-classify-ai-controls`)).toBeNull();
+        expect(screen.queryByTestId(`${prefix}-classify-button`)).toBeNull();
+        expect(screen.queryByTestId(`${prefix}-filter-bar`)).toBeNull();
+        expect(screen.queryByText('classification failed')).toBeNull();
+        expect(screen.getByTestId(`${prefix}-chat-toggle`)).toBeTruthy();
+    });
     it('wraps whole groups inside a size container instead of wrapping control text', () => {
         render(
             <PopOutClassificationToolbar

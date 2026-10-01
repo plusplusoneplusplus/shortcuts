@@ -178,7 +178,7 @@ each worktree with its linked task/session and a Cleanup action calling
 
 ## Diff classification
 
-Classify-diff toolbars call `useModalJobAiSelection()` directly and render
+Classic classify-diff toolbars call `useModalJobAiSelection()` directly and render
 `features/git/diff/ClassifyDiffAiControls.tsx`, which hides the provider chip when only
 one provider is selectable and shows either an effort-tier selector or the
 pickable-model command picker.
@@ -188,6 +188,12 @@ low-attention by default. PR and commit pop-out file rails show category badges 
 critical marker, and their selected-file unified diff views render test fidelity
 comments, logic summaries, and critical usage/call-stack evidence near each classified
 hunk. Branch-range pop-out diff UI uses the compact classification-free path.
+`FileDiffPanel` reports its resolved engine through `onDiffEngineChange`;
+`useFileDiffEngineState` scopes that report to file/ref identity and the global
+preference. Selected Monaco files hide classification controls, rail badges,
+dimming, and priority navigation; Classic fallback restores them. Overview and
+mobile Classic views retain classification, and cached results and filters survive
+engine switches.
 
 ## Composer PR chips
 

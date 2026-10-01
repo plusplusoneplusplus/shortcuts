@@ -42,7 +42,7 @@ import type { AnyComment } from '../../../../comments/shared-comment-types';
 import type { TaskCommentCategory } from '../../../../comments/task-comments-types';
 import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from './MonacoFileDiffViewer';
 import type { DiffEditorFactory } from './monacoDiffEditorAdapter';
-import { resolveDiffEngineSelection, type DiffContentLoadState } from './diffEngineResolution';
+import { resolveDiffEngineSelection, type DiffContentLoadState, type DiffEngineResolution } from './diffEngineResolution';
 import { DiffEngineFallbackBanner } from './DiffEngineFallbackBanner';
 
 export interface FileDiffPanelProps {
@@ -77,6 +77,7 @@ export interface FileDiffPanelProps {
     headerActions?: React.ReactNode;
     /** Monaco diff editor factory; wiring tests pass an owned adapter. */
     createDiffEditor?: DiffEditorFactory;
+    onDiffEngineChange?: (engine: DiffEngineResolution['engine']) => void;
 }
 
 type PopupState = {
@@ -106,6 +107,7 @@ export function FileDiffPanel({
     hunkActiveFilters,
     headerActions,
     createDiffEditor,
+    onDiffEngineChange,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -171,6 +173,9 @@ export function FileDiffPanel({
     const fallbackReason = classicActive ? engineSelection.fallback : null;
     const handleEditorError = useCallback(() => setEditorFailedKey(editorContentKey), [editorContentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(attempt => attempt + 1), []);
+    useEffect(() => {
+        onDiffEngineChange?.(engineSelection.engine);
+    }, [onDiffEngineChange, engineSelection.engine]);
 
     // ── UI state ──
     const [sidebarOpen, setSidebarOpen] = useState(false);

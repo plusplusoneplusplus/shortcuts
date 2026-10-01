@@ -177,6 +177,7 @@ describe('source assertions', () => {
         walk(SRC);
         expect(readers.filter(f => !f.endsWith('hooks/useDiffEngine.ts')).sort()).toEqual([
             'features/git/diff/FileDiffPanel.tsx',
+            'features/git/hooks/useFileDiffEngineState.ts',
             'features/git/working-tree/WorkingTreeFileDiff.tsx',
         ]);
     });
