@@ -127,6 +127,17 @@ beforeEach(() => {
 });
 
 describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s fallback wiring', kind => {
+    it.each(['malformed', 'synchronous'] as const)('falls back safely for a %s content loader failure', async failure => {
+        const loader = failure === 'malformed'
+            ? vi.fn().mockResolvedValue({ comments: [] })
+            : vi.fn(() => { throw new Error('Loader failed before returning a promise'); });
+        await mount(makeSource(kind, loader));
+        expect(screen.getByTestId('diff-engine-fallback-banner').getAttribute('data-reason')).toBe('loadFailed');
+        expect(screen.getByTestId('classic-viewer')).toBeTruthy();
+        expect(fakes).toHaveLength(0);
+        expect(screen.getByTestId('diff-engine-fallback-retry')).toBeTruthy();
+    });
+
     it.each(['binary', 'tooLarge', 'loadFailed', 'editorFailed'] as const)(
         'shows %s and preserves the existing comments, context, and patch path',
         async reason => {

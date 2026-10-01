@@ -148,8 +148,14 @@ export function FileDiffPanel({
         if (!wantsEditor || !fetchFileContent) return;
         let cancelled = false;
         setEditorContent({ key: editorContentKey, status: 'loading' });
-        fetchFileContent(filePath)
-            .then(content => { if (!cancelled) setEditorContent({ key: editorContentKey, status: 'loaded', content }); })
+        Promise.resolve().then(() => fetchFileContent(filePath))
+            .then(content => {
+                if (!content || typeof content.binary !== 'boolean' || typeof content.tooLarge !== 'boolean'
+                    || typeof content.base?.content !== 'string' || typeof content.head?.content !== 'string') {
+                    throw new Error('Invalid file diff content response');
+                }
+                if (!cancelled) setEditorContent({ key: editorContentKey, status: 'loaded', content });
+            })
             .catch(() => { if (!cancelled) setEditorContent({ key: editorContentKey, status: 'failed' }); });
         return () => { cancelled = true; };
     }, [wantsEditor, filePath, editorContentKey]);

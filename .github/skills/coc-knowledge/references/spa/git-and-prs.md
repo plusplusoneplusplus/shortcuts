@@ -107,6 +107,7 @@ document ownership.
 
 Both surfaces use `resolveDiffEngineSelection` for binary, oversized,
 content-load, and editor-start fallback; `DiffEngineFallbackBanner` exposes the reason.
+Malformed content and synchronous loader exceptions count as content-load failures.
 Recoverable failures retry with a fresh content request and editor mount, keyed by
 workspace, source identity, file, and attempt. Classic retains the patch request and
 comment context, including full-context and truncation controls during fallback.
