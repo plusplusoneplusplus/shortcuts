@@ -142,8 +142,12 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/SideBySideDif
     ),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffViewToggle', () => ({
+vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffViewToggle', async importOriginal => ({
+    ...await importOriginal<object>(),
     DiffViewToggle: ({ mode }: { mode: string }) => <button data-testid="diff-view-toggle">{mode}</button>,
+}));
+vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
+    useDiffEngine: () => ['legacy', vi.fn()],
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffMiniMap', () => ({
