@@ -13,6 +13,7 @@ describe('WhatsApp workspace command routing', () => {
     let send: ReturnType<typeof vi.fn>;
     let react: ReturnType<typeof vi.fn>;
     let router: WhatsAppCommandRouter;
+    let getAllProcesses: ReturnType<typeof vi.fn>;
     const workspaces = [{ id: 'ws-a', name: 'Alpha' }, { id: 'ws-b', name: 'Beta' }];
     const processes = [
         { id: 'topic-a', metadata: { workspaceId: 'ws-a' }, startTime: new Date(), title: 'Topic A' },
@@ -26,10 +27,11 @@ describe('WhatsApp workspace command routing', () => {
     beforeEach(async () => {
         dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-router-'));
         bindings = new WhatsAppBindings(dir);
+        getAllProcesses = vi.fn().mockImplementation(async ({ workspaceId }: { workspaceId: string }) =>
+            processes.filter(proc => proc.metadata.workspaceId === workspaceId));
         const store = {
             getWorkspaces: vi.fn().mockResolvedValue(workspaces),
-            getAllProcesses: vi.fn().mockImplementation(async ({ workspaceId }: { workspaceId: string }) =>
-                processes.filter(proc => proc.metadata.workspaceId === workspaceId)),
+            getAllProcesses,
             getProcess: vi.fn().mockImplementation(async (id: string, workspaceId: string) =>
                 processes.find(proc => proc.id === id && proc.metadata.workspaceId === workspaceId)),
         } as unknown as WhatsAppRouterDeps['store'];
@@ -71,6 +73,17 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('create topic', 'new'));
         await router.handle(inbound('new question', 'new-chat'));
         expect(enqueue.mock.calls.at(-1)?.[3]).not.toBe('topic-a');
+    });
+
+    it('reads topics with a bounded, conversation-free query so large stores cannot stall replies', async () => {
+        await router.handle(inbound('select repo Alpha', 'select'));
+        await router.handle(inbound('list topics', 'list'));
+        await router.handle(inbound('select topic 1', 'pick'));
+        expect(getAllProcesses).toHaveBeenCalledTimes(2);
+        for (const [filter] of getAllProcesses.mock.calls) {
+            expect(filter).toEqual({ workspaceId: 'ws-a', limit: 10, exclude: ['conversation', 'toolCalls'] });
+        }
+        expect(send).toHaveBeenCalledWith('Selected topic: Topic A', 'pick');
     });
 
     it('routes quoted answers to their original workspace regardless of selected repo', async () => {
