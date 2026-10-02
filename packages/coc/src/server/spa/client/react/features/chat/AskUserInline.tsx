@@ -8,6 +8,7 @@ import { useCocClient } from '../../repos/cloneRouting';
 import type { AskUserBatch, AskUserQuestion } from './hooks/useChatSSE';
 import { AskUserMarkdown } from './AskUserMarkdown';
 import { DangerousCommandApprovalCard } from './DangerousCommandApprovalCard';
+import { LlmToolApprovalCard } from './LlmToolApprovalCard';
 import {
     clearAskUserDraft,
     clearOtherAskUserDraftsForProcess,
@@ -365,6 +366,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                     />
                                                 )}
                                                 {question.approval?.kind === 'dangerous-command' && <DangerousCommandApprovalCard approval={question.approval} />}
+                                                {question.approval?.kind === 'llm-tool' && <LlmToolApprovalCard approval={question.approval} />}
                                                 <QuestionProvenance question={question} />
                                             </div>
                                         </div>
