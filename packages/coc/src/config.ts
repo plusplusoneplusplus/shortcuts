@@ -997,7 +997,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
         teamsBridgeObservability: false,
-        teamsAiAnswerRelay: false,
+        teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
         quickAskSidenotes: true,
         arxivPaperIngest: false,

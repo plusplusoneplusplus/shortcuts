@@ -194,6 +194,26 @@ describe('RuntimeConfigService', () => {
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
+        it('defaults Teams answer relay on and persists a live opt-out without requiring restart', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.teamsAiAnswerRelayEnabled;
+            expect(runtimeFlag()).toBe(true);
+            expect(svc.sources['features.teamsAiAnswerRelay']).toBe('default');
+            const changed = vi.fn();
+            svc.onChange(changed);
+            const disabled = await svc.updateConfig({ 'features.teamsAiAnswerRelay': false });
+            expect(disabled.effects).toEqual([{
+                field: 'features.teamsAiAnswerRelay', runtime: 'live', requiresRestart: false,
+            }]);
+            expect(runtimeFlag()).toBe(false);
+            expect(changed).toHaveBeenCalledOnce();
+            const restored = new RuntimeConfigService({ configPath });
+            expect(restored.config.features.teamsAiAnswerRelay).toBe(false);
+            expect(restored.sources['features.teamsAiAnswerRelay']).toBe('file');
+            await svc.updateConfig({ 'features.teamsAiAnswerRelay': true });
+            expect(runtimeFlag()).toBe(true);
+        });
+
         it('applies Teams message reaction updates to the live runtime snapshot', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.teamsMessageReactionEnabled;
@@ -205,7 +225,7 @@ describe('RuntimeConfigService', () => {
             }]);
             expect(enabled.sources['features.teamsMessageReaction']).toBe('file');
             expect(runtimeFlag()).toBe(true);
-            expect(svc.config.features.teamsAiAnswerRelay).toBe(false);
+            expect(svc.config.features.teamsAiAnswerRelay).toBe(true);
             expect(svc.config.features.teamsBridgeObservability).toBe(false);
             expect((yaml.load(fs.readFileSync(configPath, 'utf-8')) as CLIConfig).features?.teamsMessageReaction).toBe(true);
 

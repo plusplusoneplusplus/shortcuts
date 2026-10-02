@@ -5,10 +5,12 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { TeamsAnswerRelay } from '../../../src/server/messaging/teams-answer-relay';
-import { TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
+import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
+import { formatTeamsOutbound } from '../../../src/server/messaging/teams-outbound-format';
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
 import { TeamsMessageNotSentError } from '../../../src/server/messaging/teams-messaging-manager';
 import { getRepoDataPath } from '../../../src/server/paths';
+import { TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 
 describe('TeamsAnswerRelay new topics', () => {
     let dataDir: string;
@@ -531,7 +533,7 @@ describe('TeamsAnswerRelay new topics', () => {
         await relay.acknowledged(root.taskId);
         expect(send).toHaveBeenCalledOnce();
         const outbound = { ...message('unrecorded-id'), replyToMessageId: 'root-crash',
-            text: `AI: ${send.mock.calls[0][0] as string}` };
+            text: formatTeamsOutbound(send.mock.calls[0][0] as string, 'html') };
         relay.dispose();
         const restored = new TeamsAnswerRelay({
             dataDir, store, queue, isEnabled: () => enabled,
@@ -539,6 +541,12 @@ describe('TeamsAnswerRelay new topics', () => {
         });
         await restored.restore();
         expect(restored.isOwnReply('team-1', outbound)).toBe(true);
+        const plain = outbound.text.replace(/<\/p>/g, '\n').replace(/<[^>]*>/g, '');
+        expect(restored.isOwnReply('team-1', { ...outbound, text: plain })).toBe(true);
+        expect(restored.isOwnReply('team-1', { ...outbound, text: plain.replace(/^CoC · /, 'AI: ') })).toBe(true);
+        expect(restored.isOwnReply('team-1', { ...outbound, text: 'CoC · Human question' })).toBe(false);
+        expect(restored.isOwnReply('team-2', outbound)).toBe(false);
+        expect(restored.isOwnReply('team-1', { ...outbound, channelId: 'other-channel' })).toBe(false);
         expect(restored.isOwnReply('team-1', { ...outbound, replyToMessageId: 'other-root' })).toBe(false);
         expect(send).toHaveBeenCalledTimes(1);
         restored.dispose();
@@ -846,6 +854,64 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[1][0]).toContain('Part 2/');
     });
 
+    it.each(['stable', 'shifted', 'unsent'] as const)(
+        'handles %s persisted chunk boundaries safely across attribution changes', async scenario => {
+            const root = message(`attribution-${scenario}`);
+            const id = (await relay.admitNew(root, 'workspace-a', async taskId => {
+                tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                    processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+                return taskId;
+            })).taskId;
+            const answer = scenario === 'stable' ? 'x'.repeat(12_000) + '\n' + 'y'.repeat(12_000)
+                : '&'.repeat(10_000);
+            finish(id, 'workspace-a', answer);
+            send.mockImplementationOnce(async () => {
+                enabled = false;
+                return 'confirmed-first-part';
+            });
+            await relay.acknowledged(id);
+            const folder = getRepoDataPath(dataDir, 'workspace-a', 'teams-answer-relay');
+            const receipt = path.join(folder, fs.readdirSync(folder)[0]);
+            const saved = JSON.parse(fs.readFileSync(receipt, 'utf8'));
+            const label = (send.mock.calls[0][0] as string).match(/Request ([\w-]+)/)![1];
+            const oldParts = formatTeamsAnswerChunks(answer, label, undefined, saved.sourceContext, 'legacy');
+            const newParts = formatTeamsAnswerChunks(answer, label, undefined, saved.sourceContext);
+            expect(oldParts.length).toBe(newParts.length);
+            if (scenario === 'stable') expect(oldParts).toEqual(newParts);
+            else expect(oldParts).not.toEqual(newParts);
+            delete saved.attribution;
+            saved.partCount = oldParts.length;
+            saved.nextPart = scenario === 'unsent' ? 0 : 1;
+            fs.writeFileSync(receipt, JSON.stringify(saved));
+            relay.dispose();
+            send.mockClear();
+            enabled = true;
+            const restored = new TeamsAnswerRelay({
+                dataDir, store, queue, isEnabled: () => enabled,
+                target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+            });
+            try {
+                await restored.restore();
+                const updated = JSON.parse(fs.readFileSync(receipt, 'utf8'));
+                if (scenario === 'shifted') {
+                    expect(send).not.toHaveBeenCalled();
+                    expect(updated.status).toBe('ambiguous');
+                    expect(updated.nextPart).toBe(1);
+                } else {
+                    expect(updated.status).toBe('delivered');
+                    expect(updated.attribution).toBe('compact');
+                    expect(send.mock.calls.map(([part]) => part))
+                        .toEqual(newParts.slice(scenario === 'unsent' ? 0 : 1));
+                }
+                const count = send.mock.calls.length;
+                await restored.reconcile();
+                expect(send).toHaveBeenCalledTimes(count);
+            } finally {
+                restored.dispose();
+            }
+        },
+    );
+
     it('delivers a persisted answer even when the immediate acknowledgement rejects', async () => {
         const ack = vi.fn().mockRejectedValueOnce(new Error('ACK rejected')).mockResolvedValue(undefined);
         const router = new TeamsCommandRouter({
@@ -873,6 +939,46 @@ describe('TeamsAnswerRelay new topics', () => {
         await relay.acknowledged(id);
         await relay.reconcile();
         expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['not-attempted', 'rejected', 'unknown'] as const)(
+        'retries only definitive Graph delivery outcomes (%s)', async outcome => {
+            const id = (await relay.admitNew(message('graph-outcome'), 'workspace-a', async taskId => {
+                tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+                return taskId;
+            })).taskId;
+            finish(id, 'workspace-a', 'saved answer');
+            vi.useFakeTimers();
+            try {
+                send.mockRejectedValueOnce(new TeamsOperationError('Graph request failed', 'graph', 'authentication', outcome));
+                await relay.acknowledged(id);
+                await vi.advanceTimersByTimeAsync(1_000);
+                expect(send).toHaveBeenCalledTimes(outcome === 'unknown' ? 1 : 2);
+                await relay.reconnected();
+                expect(send).toHaveBeenCalledTimes(outcome === 'unknown' ? 1 : 2);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+    it('honors Graph rate-limit Retry-After before retrying a definite rejection', async () => {
+        const id = (await relay.admitNew(message('graph-rate-limit'), 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        finish(id, 'workspace-a', 'saved answer');
+        vi.useFakeTimers();
+        try {
+            send.mockRejectedValueOnce(new TeamsOperationError('Graph rate limited', 'graph', 'rate-limited', 'rejected', 30_000));
+            await relay.acknowledged(id);
+            await vi.advanceTimersByTimeAsync(29_999);
+            await relay.reconcile();
+            expect(send).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(send).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('marks a send interrupted by restart ambiguous without replaying it', async () => {
@@ -1059,7 +1165,10 @@ describe('TeamsAnswerRelay new topics', () => {
                 processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
             return taskId;
         })).taskId;
-        finish(id, 'workspace-a', 'x'.repeat(TEAMS_ANSWER_MAX_BYTES - 65));
+        const overhead = Buffer.byteLength(formatTeamsOutbound(
+            '<p><strong>Request 0123456789 · Part 1/1</strong></p><p></p>', 'html',
+        ), 'utf8');
+        finish(id, 'workspace-a', 'x'.repeat(TEAMS_ANSWER_MAX_BYTES - overhead));
         send.mockRejectedValueOnce(new TeamsMessageNotSentError());
         await relay.acknowledged(id);
         expect(send.mock.calls[0][0]).not.toContain('Repo A');
@@ -1131,7 +1240,7 @@ describe('TeamsAnswerRelay new topics', () => {
                 expect(body).toContain(`Part ${index + 2}/${partCount}`);
                 expect(target).toBe(root.messageId);
                 expect(body).toContain('Repo A · Chat');
-                expect(Buffer.byteLength(`AI: ${body}`, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+                expect(Buffer.byteLength(formatTeamsOutbound(body, 'html'), 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
             }
             await restored.reconcile();
             expect(send).toHaveBeenCalledTimes(partCount + 1);
@@ -1160,7 +1269,7 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[0][0]).not.toContain('Repo A');
         for (const [part] of send.mock.calls.slice(1)) {
             expect(part).toContain('Repo A · Chat');
-            expect(Buffer.byteLength(`AI: ${part}`, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+            expect(Buffer.byteLength(formatTeamsOutbound(part, 'html'), 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
         }
         await relay.reconcile();
         expect(send.mock.calls.length).toBe(Number((send.mock.calls[0][0] as string).match(/Part 1\/(\d+)/)?.[1]));

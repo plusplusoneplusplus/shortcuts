@@ -844,10 +844,10 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.teamsAiAnswerRelay', default: false, runtime: 'live',
+        key: 'features.teamsAiAnswerRelay', default: true, runtime: 'live', runtimeFlag: 'teamsAiAnswerRelayEnabled',
         ui: {
             tab: 'integrations', group: 'dashboard', order: 61.5, label: 'Teams AI answer relay', badge: 'experimental',
-            hint: 'Reply with completed Ask answers or terminal notices in their originating Teams threads for new requests. Disabled by default.',
+            hint: 'Enabled by default for a connected bridge. Reply with completed Ask answers or safe terminal notices in their originating Teams threads for new requests. Turn off to stop answer relay and thread reply polling immediately; no restart or reconnect required.',
             testId: 'toggle-teams-ai-answer-relay-enabled',
         },
     }),

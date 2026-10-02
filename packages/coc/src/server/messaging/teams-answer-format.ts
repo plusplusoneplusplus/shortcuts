@@ -1,6 +1,6 @@
 /** Pure, bounded formatting for outbound Teams thread replies. */
 
-import { TEAMS_CHANNEL_PREFIX, escapeTeamsHtml, safeTeamsHref } from './teams-outbound-format';
+import { TEAMS_CHANNEL_PREFIX, escapeTeamsHtml, formatTeamsOutbound, safeTeamsHref } from './teams-outbound-format';
 
 export const TEAMS_ANSWER_MAX_BYTES = 20_000;
 
@@ -128,17 +128,19 @@ function splitOversized(block: Block, limit: number): string[] {
  */
 export function formatTeamsAnswerChunks(
     answer: string, requestLabel: string, contextLabel?: string, reservedContextLabel?: string,
+    attribution: 'compact' | 'legacy' = 'compact',
 ): string[] {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(requestLabel)) {
         throw new TypeError('Teams request label must be a compact opaque identifier');
     }
     const blocks = blocksFor(answer);
+    const prefix = attribution === 'legacy' ? 'AI: ' : TEAMS_CHANNEL_PREFIX;
     let expected = 1;
     for (;;) {
         const header = (part: number, total: number, label = contextLabel) =>
             `<p><strong>Request ${requestLabel} · Part ${part}/${total}</strong></p>`
             + (label ? `<p>${escapeTeamsHtml(label.slice(0, 140))}</p>` : '');
-        const budget = TEAMS_ANSWER_MAX_BYTES - bytes(TEAMS_CHANNEL_PREFIX
+        const budget = TEAMS_ANSWER_MAX_BYTES - bytes(prefix
             + header(expected, expected, contextLabel ?? reservedContextLabel));
         const bodies: string[] = [];
         let body = '';
@@ -163,7 +165,8 @@ export function formatTeamsAnswerChunks(
             continue;
         }
         const result = bodies.map((content, index) => header(index + 1, bodies.length) + content);
-        if (result.every(part => bytes(TEAMS_CHANNEL_PREFIX + part) <= TEAMS_ANSWER_MAX_BYTES)) {
+        if (result.every(part => bytes(attribution === 'legacy' ? prefix + part
+            : formatTeamsOutbound(part, 'html')) <= TEAMS_ANSWER_MAX_BYTES)) {
             return result;
         }
         expected = bodies.length + 1;

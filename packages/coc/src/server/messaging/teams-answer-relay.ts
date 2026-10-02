@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { toQueueProcessId, type AIProcess, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
-import { TeamsMcpSendRejectedError } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsMcpSendRejectedError, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { getRepoDataPath } from '../paths';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
@@ -33,6 +33,7 @@ interface AnswerBinding {
     partCount?: number;
     nextPart?: number;
     answerHash?: string;
+    attribution?: 'compact';
     answerContext?: string;
     sourceContext?: string;
     continuationNoticeSent?: boolean;
@@ -92,7 +93,7 @@ function answerLabel(binding: AnswerBinding): string {
 }
 
 function isRelayAnswer(text: string, label: string): boolean {
-    return new RegExp(`(?:^|>)Request ${label} \u00b7 Part [1-9]\\d*/[1-9]\\d*(?:<|\\s|$)`).test(text);
+    return new RegExp(`(?:^|>)(?:CoC \u00b7 |AI: )?Request ${label} \u00b7 Part [1-9]\\d*/[1-9]\\d*(?:<|\\s|$)`).test(text);
 }
 
 function readBinding(file: string): AnswerBinding | undefined {
@@ -112,6 +113,7 @@ function readBinding(file: string): AnswerBinding | undefined {
         || (row.commandIds !== undefined && (!Array.isArray(row.commandIds)
             || row.commandIds.some(id => typeof id !== 'string' || !id)))
         || (row.answerHash !== undefined && (typeof row.answerHash !== 'string' || !/^[a-f0-9]{64}$/.test(row.answerHash)))
+        || (row.attribution !== undefined && row.attribution !== 'compact')
         || (row.answerContext !== undefined && (typeof row.answerContext !== 'string' || row.answerContext.length > 140))
         || (row.sourceContext !== undefined && (typeof row.sourceContext !== 'string' || row.sourceContext.length > 140))
         || (row.continuationNoticeSent !== undefined && typeof row.continuationNoticeSent !== 'boolean')
@@ -842,6 +844,17 @@ export class TeamsAnswerRelay {
         const parts = plainParts && !sourceContext ? plainParts : formatTeamsAnswerChunks(
             text, label, context, !binding.answerHash || binding.sourceContext ? sourceContext : undefined,
         );
+        if (binding.answerHash && !binding.attribution && (binding.nextPart ?? 0) > 0) {
+            const savedParts = formatTeamsAnswerChunks(
+                text, label, context, binding.sourceContext ? sourceContext : undefined, 'legacy',
+            );
+            // Equal part counts alone do not prove that a confirmed boundary is unchanged.
+            if (savedParts.length !== parts.length || savedParts.some((part, index) => part !== parts[index])) {
+                this.update(file, 'ambiguous');
+                console.error('[teams-answer-relay] Saved chunk boundaries changed; manual reconciliation required');
+                return;
+            }
+        }
         const answerHash = createHash('sha256').update(text).digest('hex');
         if (binding.answerHash && (binding.answerHash !== answerHash
             || ((binding.nextPart ?? 0) > 0 && binding.partCount !== parts.length))) {
@@ -852,12 +865,15 @@ export class TeamsAnswerRelay {
         if (!binding.answerHash || (binding.nextPart ?? 0) === 0
             && (binding.partCount !== parts.length || binding.answerContext !== context)) {
             this.update(file, 'awaiting', {
-                answerHash, partCount: parts.length, nextPart: 0,
+                answerHash, attribution: 'compact', partCount: parts.length, nextPart: 0,
                 ...(sourceContext ? { sourceContext } : {}),
                 ...(context ? { answerContext: context.slice(0, 140) } : {}),
             });
-        } else if (binding.sourceContext && context && binding.answerContext !== context) {
-            this.update(file, 'awaiting', { answerContext: context });
+        } else if (!binding.attribution || (binding.sourceContext && context && binding.answerContext !== context)) {
+            this.update(file, 'awaiting', {
+                attribution: 'compact',
+                ...(binding.sourceContext && context ? { answerContext: context } : {}),
+            });
         }
         const startPart = binding.nextPart ?? 0;
         let resumePart = startPart;
@@ -908,15 +924,19 @@ export class TeamsAnswerRelay {
                 if (!sendStarted) {
                     this.update(file, 'awaiting');
                     console.error('[teams-answer-relay] Send was not started');
-                } else if (error instanceof TeamsMessageNotSentError || error instanceof TeamsMcpSendRejectedError) {
+                } else if (error instanceof TeamsMessageNotSentError || error instanceof TeamsMcpSendRejectedError
+                    || (error instanceof TeamsOperationError && error.outcome !== 'unknown')) {
                     const retryCount = (this.bindings.get(file)?.value.retryCount ?? 0) + 1;
                     if (retryCount >= 5) {
                         this.update(file, 'failed', { retryCount });
                         console.error('[teams-answer-relay] Definite send rejection exceeded retry budget');
                     } else {
+                        const retryAfterMs = error instanceof TeamsOperationError && Number.isFinite(error.retryAfterMs)
+                            ? Math.max(0, Math.min(2_147_483_647, error.retryAfterMs!)) : 0;
                         this.update(file, 'retryable', {
                             retryCount,
-                            nextAttemptAt: new Date(Date.now() + Math.min(60_000, 1_000 * 2 ** (retryCount - 1))).toISOString(),
+                            nextAttemptAt: new Date(Date.now() + Math.max(retryAfterMs,
+                                Math.min(60_000, 1_000 * 2 ** (retryCount - 1)))).toISOString(),
                         });
                         this.scheduleRetry();
                     }

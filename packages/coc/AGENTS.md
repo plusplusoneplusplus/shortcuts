@@ -192,20 +192,42 @@ references before editing. Paths are package-relative.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.
-  Region/account changes require reconnect.
+  Region/account changes require reconnect. Eligible Likes start before routing but
+  never block dispatch or subsequent reads; asynchronous failures are sanitized and logged.
+- Normal Teams `outboundBackend` defaults to `graph`; explicit `mcp` remains supported. Graph routes channel
+  sends/replies through stable v1.0; authoritative channel roots and paginated replies always use Graph beta
+  (preview API subject to change),
+  including omitted saved settings and explicit MCP writes. MCP owns discovery/create;
+  IC3 Likes remain independent/default-off/nonblocking. Separate Azure CLI Graph read
+  credentials require delegated `ChannelMessage.Read.All`; writes require `ChannelMessage.Send`.
+  Existing broader grants are accepted, not requested. Both credentials pin to the
+  configured MCP tenant/object identity. Reply reads use the live answer-relay gate,
+  enabled by default; explicit `features.teamsAiAnswerRelay: false` opts out.
+  Changes disconnect/reconnect; never fall back or replay ambiguous receipts.
 - Normal Teams connection settings expose experimental `enableTrouter` (off by default)
   through the messaging config API and Connections card; changing it disconnects and
   requires reconnect. Notifications use separate, identity-pinned Azure CLI IC3 credentials
-  without requiring a write region. Authoritative MCP reads, workspace bindings and
-  answer-relay admission stay unchanged; fallback is completion-relative 60 seconds.
+  without requiring a write region. Known-root wakes prioritize Graph replies without
+  root scans; startup/gaps/fallback reconcile known threads through the shared ID/binding
+  admission scanner. Fallback is completion-relative 60 seconds.
   Status exposes sanitized `notificationStatus` separately from reader connectivity;
   the Connections card displays notification degradation while fallback remains connected.
   Private Trouter is best-effort, not durable catch-up; container relay settings are separate.
 - Teams setup uses scoped admin styles and native disclosures for advanced settings,
   routing help, and connection history. Keep status/errors visible outside disclosures
   and preserve separate endpoint/channel saves and unsaved-change connect gating.
-- Teams sends start with `AI:`/safe HTML. Receipts differ from final answers:
-  relay captured terminal turns by request ID to the original thread/workspace.
+- Delegated Teams sends use safe HTML with `CoC ·` assistant attribution in the first
+  text block; the authenticated user's native sender identity stays unchanged.
+  Chunk budgets include attribution. Persisted partial receipts resume only with
+  identical chunk boundaries; changed boundaries require reconciliation.
+  Receipts differ from final answers:
+  accepted channel-thread follow-ups settle receipts without an acceptance post;
+  new chats retain confirmations. Relay captured terminal turns by request ID
+  to the original thread/workspace.
+  Normal Teams AI answer relay defaults on for missing settings, independently of
+  bridge connectivity, Trouter, Likes and observability. The Integrations toggle is
+  live, without restart/reconnect; disabling stops relay and thread reply polling.
+  The registry suppresses its experimental badge for the enabled default.
   Selection changes never redirect answers. Persist accepted multipart progress;
   never replay confirmed sends; reconcile unknown outcomes.
   Preserve thread cursors/own IDs on reconnect; WhatsApp shares the receipt rule.

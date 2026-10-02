@@ -104,7 +104,7 @@ import { upsertWorkItemTaskFile, toTaskFileStatus } from '../work-items/work-ite
 import { clearWorkItemResponseCacheForWorkspace } from '../work-items/work-item-response-cache';
 import { execGitAsync } from '@plusplusoneplusplus/forge';
 import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCommit } from '../work-items/types';
-import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
+import { DEFAULT_CONFIG, getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import { TaskDefs, type ChatProvider } from '../tasks/task-types';
@@ -899,7 +899,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         questionRelay,
         getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
-        getAnswerRelayEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay === true,
+        getAnswerRelayEnabled: () => ((opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay
+            ?? DEFAULT_CONFIG.features.teamsAiAnswerRelay) === true,
         getMessageReactionEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsMessageReaction === true,
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,

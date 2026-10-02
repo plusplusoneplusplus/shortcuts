@@ -185,6 +185,9 @@ Account/connection settings are server-global; accepted requests and answer rece
 are workspace-scoped. Explicit repo/topic bindings determine chat routing.
 Relays deliver the captured conversation's final answer to its original destination despite selection changes.
 Receipts preserve progress; uncertain sends require reconciliation rather than automatic replay.
+Accepted Teams channel-thread follow-ups acknowledge durable admission directly
+without a confirmation post; new chats retain confirmations. Upstream Like admission
+and request-correlated final-answer delivery remain independent of acceptance posts.
 
 `messaging/chat-target.ts` shares workspace/topic lookup (`resolveWorkspace`,
 bounded `listRecentTopics`, `resolveTopic`) and terminal queue subscriptions
@@ -235,9 +238,56 @@ answers only when exactly one question is pending in that chat.
 memory; question IDs persist in WhatsApp receipt `questionIds` and Teams root
 receipt `sentMessageIds`. Approvals stay dashboard-only.
 
+### Teams connection routing and consent
+
+The normal Teams bridge uses MCP for discovery/create, Graph beta for authoritative channel
+roots and paginated replies, and IC3 for supported channel Likes. Beta is a preview API
+subject to change; Graph sends/replies and standalone Graph clients retain stable v1.0. The manager always
+sets `mode: mcp, channelReadBackend: graph`, including omitted saved settings.
+`pollChannelReplies` uses the live, default-on `features.teamsAiAnswerRelay` gate.
+Missing relay settings resolve on; explicit false stops reply polling and answer relay
+without restart/reconnect. Connectivity, Likes and Trouter require their own enablement.
+The connector's standalone defaults remain independent.
+
+`teams-messaging.json` persists `outboundBackend: mcp | graph` (default `graph`, including missing saved settings);
+Graph fixes channel send/reply routes to `GraphOperations`; explicit MCP remains supported. Its separate Azure CLI
+credentials require Graph audience/expiry, delegated `ChannelMessage.Send` or an existing
+`Group.ReadWrite.All` grant, and the MCP
+reader's tenant/object identity. Invalid credentials fail connection before writes.
+
+Backend changes disconnect and require reconnect. Receipts retain original thread IDs;
+definitive typed rejections use bounded relay retries respecting Retry-After, unknown outcomes stay quarantined,
+and writes never fall back to MCP.
+
+Delegated outbound messages carry `CoC ·` assistant attribution inside the first
+text block of safe Teams HTML; body attribution does not change the native sender
+name/avatar. Code-first replies keep attribution outside the code. Multipart byte
+budgets include the complete labeled HTML. Receipts persist the attribution format;
+partial receipts without it resume only when their complete chunk boundaries match.
+Changed boundaries require manual reconciliation, even with equal part counts.
+Own-message admission uses durable outbound IDs and request markers, not the label.
+
+`/me` access does not prove channel-write authorization. The Graph
+[channel-post](https://learn.microsoft.com/en-us/graph/api/channel-post-messages?view=graph-rest-1.0)
+and [reply](https://learn.microsoft.com/en-us/graph/api/chatmessage-post-replies?view=graph-rest-1.0)
+APIs accept existing delegated `Group.ReadWrite.All` for compatibility.
+New Entra public clients should request least-privilege `ChannelMessage.Send` consent,
+not the broader grant.
+
+Normal CoC acquires Azure CLI client tokens; the outbound selector changes writes only,
+not the client or reader. Connector consumers can inject separately authorized
+`graphReadOptions.acquireToken` and `graphOutboundOptions.acquireToken`; normal CoC has
+no custom-client auth setting. Read credentials separately require delegated
+`ChannelMessage.Read.All` (least privilege); existing `Group.Read.All`/`Group.ReadWrite.All`
+grants are accepted, not requested. Read/write credentials validate Graph audience/expiry
+and pin to the configured MCP tenant/object identity on acquisition and refresh.
+`GraphCredentialStore` owns cancellable acquisition for both readers and writers.
+Connection initialization and shutdown guard their lifetime before publishing state.
+Missing consent, account mismatch and denied channel access surface sanitized actionable
+errors. Azure CLI sign-in alone does not grant consent; failed reads never fall back to MCP.
+
 ### Teams IC3 connection contract
 
-The Teams bridge uses MCP for polling/routing and IC3 for supported channel Likes.
 IC3 credentials, account identity and explicit `ic3Region` (`amer`, `emea`, `apac`)
 are connection-scoped snapshots; region/account changes require reconnect.
 An unset region rejects IC3 writes before credentials/network while MCP remains usable.
@@ -255,6 +305,9 @@ IC3 credentials to the MCP reader account, handles private Trouter registration/
 heartbeat/ACKs and reconnect, and accepts only selected-conversation wake hints.
 Real activity source threads override synthetic streams; notifications never authorize
 dispatch. Workspace/thread bindings remain owned by the existing messaging router.
+Known-thread wakes read authoritative Graph replies directly; root discovery/backfill runs
+on unknown/missing hints and reconciliation. Eligible IC3 Likes start before routing
+without blocking dispatch or subsequent reads; failures are sanitized and logged.
 
 `notificationStatus` exposes protocol state and sanitized typed errors independently
 of reader connectivity through the messaging status API and Connections card.
@@ -265,12 +318,16 @@ stale socket/registrar callbacks; a client is permanently disposed by stop.
 The bounded single-flight scheduler syncs at startup, coalesces wakes, follows wakes
 during reads and falls back 60 seconds after successful completion. Loss, disconnect
 and mailbox overflow reconcile known threads; failed reads retry after two seconds,
-retaining hints and honoring HTTP429 cooldown. Enabled MCP reply reads scope ordinary
+retaining hints and honoring HTTP429 cooldown. Enabled hybrid reply reads scope ordinary
 known-root wakes to hinted histories. Unknown/missing roots and fallback reconcile
 known threads within a cancellable bounded scan.
 
-MCP root-head pagination and Graph timestamp pagination are best-effort: retention,
-timestamp ties, unbound older threads and process restarts lack durable delta guarantees.
+Hybrid Graph and MCP share the ID/thread scanner, chronological admission and durable
+own/known-ID callbacks. Hybrid ordinary polls also complete reply pagination; heads commit
+only after admission. Collection-scoped Graph cursors, read cancellation and a single
+identity-pinned 401 refresh protect every page. Root-head backfill and standalone Graph
+timestamp polling remain best-effort: retention, unbound older threads and restarts lack
+durable delta guarantees.
 DM notification readers require explicit conversation targets without autodiscovery;
 synthetic `48:notes` streams do not activate them. Ordinary sends/replies/Likes retain
 their existing routes and admission.

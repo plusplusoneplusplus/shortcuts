@@ -473,12 +473,12 @@ Server-global connection settings. IC3 direct operations require an explicit reg
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/messaging/teams/status` | Server-global bridge/MCP/OAuth status and observability flag; `ic3Region: null` means unconfigured |
+| GET | `/api/messaging/teams/status` | Server-global bridge/MCP/OAuth status, fixed `channelReadBackend: graph`, `outboundBackend` (`graph` default / `mcp`), and observability flag; `ic3Region: null` means unconfigured. Live answer-relay opt-out is `features.teamsAiAnswerRelay` in admin config (default on, runtime flag `teamsAiAnswerRelayEnabled`); it does not enable/connect the bridge |
 | GET | `/api/messaging/teams/attempts` | Flag-gated (`features.teamsBridgeObservability`) newest-first safe connection summaries; `?offset=0&limit=20` (limit 1–100) returns `{attempts,total,nextOffset}`. Disabled → 404; invalid pagination → 400 |
 | GET | `/api/messaging/teams/attempts/:id` | Flag-gated safe attempt detail: phases, bounded non-routine events, aggregate totals and poll/send health. Unknown UUID → 404; invalid ID → 400 |
 | POST | `/api/messaging/teams/server` | Register or update the global `Microsoft Teams` HTTP MCP endpoint; body `{url}` (HTTPS) |
-| POST | `/api/messaging/teams/config` | Save bridge settings; optional `ic3Region` is `amer`/`emea`/`apac`, null clears, omitted preserves. Invalid → `400`; region change disconnects/requires reconnect, disable stops polling |
-| POST | `/api/messaging/teams/reconnect` | Connect the enabled channel bridge using the cached MCP OAuth token; reports connection failures |
+| POST | `/api/messaging/teams/config` | Save bridge settings; optional `outboundBackend: mcp \| graph` selects channel writes only, default Graph; roots/enabled replies always read via Graph. Optional `ic3Region: amer/emea/apac`, null clears, omitted preserves. Invalid → `400`; backend/region changes disconnect/require reconnect; disable stops polling |
+| POST | `/api/messaging/teams/reconnect` | Connect the enabled bridge with cached MCP discovery OAuth and separately scoped, identity-pinned Graph read/write credentials; validates delegated read consent (`ChannelMessage.Read.All`) and reports sanitized actionable failures without MCP read fallback |
 | GET | `/api/messaging/whatsapp/status` | Default-off WhatsApp manager status `{enabled,status,qr,error,groupJid,groupName,deviceName}` |
 | POST | `/api/messaging/whatsapp/config` | Save `{enabled?,deviceName?,groupJid?,groupName?}`; enabling connects, disabling disconnects; returns `{ok:true}` |
 | POST | `/api/messaging/whatsapp/reconnect` | Reconnect the enabled bot with optional `{repair:true}` to clear auth and return to QR; disabled → 409 |

@@ -84,6 +84,7 @@ describe('TeamsMessagingManager', () => {
         expect(status.enabled).toBe(false);
         expect(status.ic3Region).toBeNull();
         expect(status.enableTrouter).toBe(false);
+        expect(status.outboundBackend).toBe('graph');
         expect(status.notificationStatus).toEqual({ state: 'disabled', error: null });
         expect(status.status).toBe('disconnected');
         expect(status.botName).toBe('CoC');
@@ -120,6 +121,79 @@ describe('TeamsMessagingManager', () => {
         const saved = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         expect(saved.enabled).toBe(true);
         expect(saved.botName).toBe('TestBot');
+    });
+
+    it.each([false, true])('defaults channel roots, enabled replies and writes to Graph with saved settings present: %s', async savedSettings => {
+        if (savedSettings) {
+            fs.writeFileSync(path.join(tmpDir, 'teams-messaging.json'), JSON.stringify({
+                enabled: true, teamName: 'TestTeam', channelName: 'TestChannel',
+            }));
+        }
+        const restored = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home') });
+        restored.setMessageHandler(async () => {});
+        expect(restored.getStatus().outboundBackend).toBe('graph');
+        expect(restored.getStatus().channelReadBackend).toBe('graph');
+        await restored.configureServer('https://example.test/teams');
+        await restored.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        expect(new TeamsMessagingManager(tmpDir).getStatus().outboundBackend).toBe('graph');
+        await restored.connect();
+        const options = vi.mocked(TeamsBot).mock.lastCall![0];
+        expect(options.mode).toBe('mcp');
+        expect(options.channelReadBackend).toBe('graph');
+        expect(options.graphReadOptions).toEqual({});
+        expect(options.pollChannelReplies?.()).toBe(false);
+        expect(options.operationRoutes).toEqual({ channelSend: 'graph', channelReply: 'graph' });
+        expect(options.graphOutboundOptions).toEqual({});
+        expect(options.enableTrouter).toBe(false);
+        await restored.disconnect();
+    });
+
+    it('preserves explicit MCP outbound, keeps Graph reads, and disconnects on backend changes', async () => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home') });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel', outboundBackend: 'mcp' });
+        expect(new TeamsMessagingManager(tmpDir).getStatus().outboundBackend).toBe('mcp');
+        await m2.connect();
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].operationRoutes).toBeUndefined();
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].channelReadBackend).toBe('graph');
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].graphReadOptions).toEqual({});
+        await m2.updateConfig({ outboundBackend: 'graph' });
+        expect(m2.getStatus().status).toBe('disconnected');
+        expect(new TeamsMessagingManager(tmpDir).getStatus().outboundBackend).toBe('graph');
+        await m2.connect();
+        const options = vi.mocked(TeamsBot).mock.lastCall![0];
+        expect(options.mode).toBe('mcp');
+        expect(options.operationRoutes).toEqual({ channelSend: 'graph', channelReply: 'graph' });
+        expect(options.graphOutboundOptions).toEqual({});
+        await m2.updateConfig({ outboundBackend: 'mcp' });
+        expect(m2.getStatus().status).toBe('disconnected');
+        expect(m2.getStatus().teamId).toBe('team-id-resolved');
+        await m2.connect();
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].graphOutboundOptions).toBeUndefined();
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].channelReadBackend).toBe('graph');
+        await m2.disconnect();
+    });
+
+    it.each(['auto', 'ic3', '', null, true, 1])('rejects invalid outbound backend %j atomically', async outboundBackend => {
+        await manager.updateConfig({ outboundBackend: 'graph' });
+        await expect(manager.updateConfig({ outboundBackend, botName: 'Invalid patch' } as any))
+            .rejects.toThrow('outboundBackend must be');
+        expect(new TeamsMessagingManager(tmpDir).getStatus().outboundBackend).toBe('graph');
+        expect(manager.getStatus().botName).toBe('CoC');
+    });
+
+    it('fails closed until malformed saved outbound settings are explicitly corrected', async () => {
+        fs.writeFileSync(path.join(tmpDir, 'teams-messaging.json'), JSON.stringify({ enabled: true, outboundBackend: 'auto' }));
+        const restored = new TeamsMessagingManager(tmpDir);
+        expect(restored.getStatus().outboundBackend).toBe('graph');
+        expect(restored.getStatus().error).toContain('Invalid saved outbound backend');
+        await expect(restored.connect()).rejects.toThrow('Invalid saved outbound backend');
+        await expect(restored.updateConfig({ botName: 'New name' })).rejects.toThrow('valid outboundBackend');
+        expect(new TeamsMessagingManager(tmpDir).getStatus().error).toContain('Invalid saved outbound backend');
+        await restored.updateConfig({ outboundBackend: 'mcp' });
+        expect(new TeamsMessagingManager(tmpDir).getStatus().outboundBackend).toBe('mcp');
+        expect(new TeamsMessagingManager(tmpDir).getStatus().error).toBeNull();
     });
 
     it.each(['amer', 'emea', 'apac', null] as const)('persists, reloads, and propagates IC3 region %s', async ic3Region => {
@@ -258,7 +332,7 @@ describe('TeamsMessagingManager', () => {
         await options.onMessage(inbound);
         expect(inbound.text).toBe('/list repos');
         expect(bot.send).toHaveBeenLastCalledWith('channel-id-resolved',
-            expect.stringMatching(/^AI: <p>Repos \(1\):<\/p><ol><li><strong>Alpha<\/strong> — <code>C:\\repo\\alpha<\/code><\/li><\/ol>$/),
+            expect.stringMatching(/^<p>CoC · Repos \(1\):<\/p><ol><li><strong>Alpha<\/strong> — <code>C:\\repo\\alpha<\/code><\/li><\/ol>$/),
             { replyToId: 'user-msg' });
 
         getWorkspaces.mockResolvedValueOnce([
@@ -272,20 +346,20 @@ describe('TeamsMessagingManager', () => {
         expect(hostile).not.toMatch(/<(?:img|script)\b|href="javascript:/i);
 
         await options.onMessage({ ...inbound, messageId: 'missing', text: '/select repo Missing' });
-        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: <p>❌ Repo/);
+        expect(bot.send.mock.lastCall[1]).toMatch(/^<p>CoC · ❌ Repo/);
         getWorkspaces.mockRejectedValueOnce(new Error('offline'));
         await options.onMessage({ ...inbound, messageId: 'error' });
-        expect(bot.send.mock.lastCall[1]).toMatch(/^AI: <p>❌ Error: offline<\/p>$/);
+        expect(bot.send.mock.lastCall[1]).toMatch(/^<p>CoC · ❌ Error: offline<\/p>$/);
         bot.send.mockRejectedValueOnce(new Error('channel rejected message'));
         await expect(m2.sendMessage('**Retry**', 'user-msg')).rejects.toThrow('channel rejected message');
-        expect(bot.send.mock.lastCall[1]).toBe('AI: <p><strong>Retry</strong></p>');
+        expect(bot.send.mock.lastCall[1]).toBe('<p>CoC · <strong>Retry</strong></p>');
 
         const parts = formatTeamsAnswerChunks('👩‍💻 <unsafe> & '.repeat(4000), 'opaque-1');
         expect(parts.length).toBeGreaterThan(1);
         for (const part of parts) await m2.sendMessage(part, 'user-msg', 'html');
         for (const [index, call] of bot.send.mock.calls.slice(-parts.length).entries()) {
             const html = call[1] as string;
-            expect(html).toMatch(new RegExp(`^AI: <p><strong>Request opaque-1 · Part ${index + 1}/${parts.length}</strong></p>`));
+            expect(html).toMatch(new RegExp(`^<p>CoC · <strong>Request opaque-1 · Part ${index + 1}/${parts.length}</strong></p>`));
             expect(Buffer.byteLength(html, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
             expect(html).not.toContain('<unsafe>');
             expect(call[2]).toEqual({ replyToId: 'user-msg' });
@@ -642,7 +716,84 @@ describe('TeamsMessagingManager', () => {
 });
 
 describe('Teams messaging routes (integration)', () => {
-    it('routes initialization replies without Likes and persists their receipt watermark', async () => {
+    it('honors a live relay opt-out for thread polling, admission and terminal delivery without reconnect', async () => {
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-opt-out-test-'));
+        const manager = new TeamsMessagingManager(dir, { homeDir: path.join(dir, 'home') });
+        const tasks = new Map<string, QueuedTask>();
+        const queue = Object.assign(new EventEmitter(), { getTask: (id: string) => tasks.get(id) });
+        const store = {
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'workspace-a', name: 'A', rootPath: dir }]),
+            getProcess: vi.fn().mockResolvedValue(undefined),
+        } as unknown as ProcessStore;
+        let enabled = false;
+        const enqueueChat = vi.fn().mockResolvedValue('opt-out-task');
+        const enqueueRelayChat = vi.fn(async (workspaceId: string, _text: string, taskId: string) => {
+            const receipts = fs.readdirSync(getRepoDataPath(dir, workspaceId, 'teams-answer-relay'));
+            expect(receipts).toHaveLength(1);
+            tasks.set(taskId, {
+                id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
+            } as QueuedTask);
+            return taskId;
+        });
+        try {
+            registerTeamsMessagingRoutes([], {
+                dataDir: dir, manager, store, relayQueue: queue, enqueueChat, enqueueRelayChat,
+                executeFollowUp: vi.fn(), getAnswerRelayEnabled: () => enabled,
+            });
+            await manager.configureServer('https://example.test/teams');
+            await manager.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+            await manager.connect();
+            const opts = vi.mocked(TeamsBot).mock.lastCall![0];
+            const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+            const root = { channelId: 'channel-id-resolved', messageId: 'disabled-root', text: 'question', senderAadId: 'human' };
+            expect(opts.pollChannelReplies?.()).toBe(false);
+            await opts.onMessage(root);
+            expect(enqueueChat).toHaveBeenCalledOnce();
+            expect(enqueueRelayChat).not.toHaveBeenCalled();
+            expect(fs.existsSync(getRepoDataPath(dir, 'workspace-a', 'teams-answer-relay'))).toBe(false);
+
+            enabled = true;
+            expect(opts.pollChannelReplies?.()).toBe(true);
+            await opts.onMessage({ ...root, messageId: 'enabled-root', senderAadId: 'another-human' });
+            expect(enqueueRelayChat).toHaveBeenCalledOnce();
+            const taskId = enqueueRelayChat.mock.calls[0][2];
+            enabled = false;
+            expect(opts.pollChannelReplies?.()).toBe(false);
+            expect(manager.getStatus().status).toBe('connected');
+            bot.send.mockClear();
+            await opts.onMessage({ ...root, messageId: 'disabled-reply', replyToMessageId: 'enabled-root' });
+            expect(enqueueRelayChat).toHaveBeenCalledOnce();
+            expect(enqueueChat).toHaveBeenCalledOnce();
+            expect(bot.send.mock.calls[0][1]).toContain('thread follow-ups are unavailable');
+            bot.send.mockClear();
+            const task = tasks.get(taskId)!;
+            task.status = 'completed';
+            vi.mocked(store.getProcess).mockResolvedValue({
+                id: toQueueProcessId(taskId), type: 'chat', status: 'completed',
+                startTime: new Date(), promptPreview: 'question', fullPrompt: 'question',
+                metadata: { workspaceId: 'workspace-a' },
+                conversationTurns: [
+                    { role: 'user', content: 'question', turnIndex: 0, timestamp: new Date(), timeline: [] },
+                    { role: 'assistant', content: 'Answer withheld', turnIndex: 1, timestamp: new Date(), timeline: [] },
+                ],
+            });
+            queue.emit('taskCompleted', task);
+            await vi.waitFor(() => {
+                const folder = getRepoDataPath(dir, 'workspace-a', 'teams-answer-relay');
+                const receipt = JSON.parse(fs.readFileSync(path.join(folder, fs.readdirSync(folder)[0]), 'utf8'));
+                expect(receipt.terminalStatus).toBe('completed');
+            });
+            expect(bot.send).not.toHaveBeenCalled();
+            expect(bot.reactToChannelMessage).not.toHaveBeenCalled();
+            expect(opts.enableTrouter).toBe(false);
+        } finally {
+            manager.dispose();
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('silently acknowledges thread follow-ups while preserving Likes, replay suppression and final answers', async () => {
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-replay-test-'));
         const manager = new TeamsMessagingManager(dir, { homeDir: path.join(dir, 'home') });
@@ -653,11 +804,16 @@ describe('Teams messaging routes (integration)', () => {
             getProcess: vi.fn().mockResolvedValue(undefined),
         } as unknown as ProcessStore;
         const enqueueFollowUp = vi.fn().mockResolvedValue('follow-up-task');
+        const questionRelay = {
+            register: vi.fn(),
+            tryAnswer: vi.fn().mockResolvedValue(false),
+        };
         try {
             registerTeamsMessagingRoutes([], {
-                dataDir: dir, manager, store, relayQueue: queue,
-                getAnswerRelayEnabled: () => true, getMessageReactionEnabled: () => true,
+                dataDir: dir, manager, store, relayQueue: queue, questionRelay,
+                getMessageReactionEnabled: () => true,
                 enqueueChat: vi.fn(), executeFollowUp: vi.fn(),
+                admitRelayFollowUp: vi.fn().mockResolvedValue({}),
                 enqueueRelayChat: async (workspaceId, _text, taskId) => {
                     tasks.set(taskId, {
                         id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
@@ -671,8 +827,16 @@ describe('Teams messaging routes (integration)', () => {
             await manager.connect();
             const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
             const opts = vi.mocked(TeamsBot).mock.lastCall![0];
+            expect(opts.pollChannelReplies?.()).toBe(true);
             const root = { channelId: 'channel-id-resolved', messageId: 'root', text: 'new request', senderAadId: 'human' };
             await opts.onMessage(root);
+            expect(questionRelay.register).toHaveBeenCalledOnce();
+            expect(questionRelay.tryAnswer).toHaveBeenCalledWith('teams', expect.objectContaining({
+                messageId: 'root', text: 'new request',
+            }));
+            expect(bot.send).toHaveBeenCalledOnce();
+            expect(bot.send.mock.calls[0][1]).toContain('New topic created');
+            bot.send.mockClear();
             const historical = {
                 ...root, messageId: 'historical', replyToMessageId: 'root', text: 'old follow-up',
                 createdDateTime: '2026-01-01T00:00:00Z', initializationReplay: true,
@@ -686,6 +850,9 @@ describe('Teams messaging routes (integration)', () => {
             expect(receipts().find(receipt => receipt.messageId === 'root')).toMatchObject({
                 lastReplyAt: '2026-01-01T00:00:00.000Z', lastReplyIds: ['historical'],
             });
+            expect(receipts().find(receipt => receipt.messageId === 'historical')).toMatchObject({
+                status: 'awaiting', rootId: 'root', workspaceId: 'workspace-a',
+            });
             await opts.onMessage(historical);
             expect(enqueueFollowUp).toHaveBeenCalledOnce();
             await opts.onMessage({
@@ -698,6 +865,51 @@ describe('Teams messaging routes (integration)', () => {
             expect(receipts().find(receipt => receipt.messageId === 'root')).toMatchObject({
                 lastReplyAt: '2026-01-01T00:01:00.000Z', lastReplyIds: ['fresh'],
             });
+            const receipt = receipts().find(receipt => receipt.messageId === 'fresh');
+            expect(receipt).toMatchObject({ status: 'awaiting', rootId: 'root', workspaceId: 'workspace-a' });
+            expect(bot.send).not.toHaveBeenCalled();
+
+            await opts.onMessage({
+                ...historical, messageId: 'fresh', initializationReplay: false,
+            });
+            expect(enqueueFollowUp).toHaveBeenCalledTimes(2);
+            expect(bot.reactToChannelMessage).toHaveBeenCalledTimes(2);
+            expect(bot.send).not.toHaveBeenCalled();
+
+            vi.mocked(store.getProcess).mockResolvedValue({
+                id: receipt.processId, type: 'chat', status: 'completed',
+                startTime: new Date('2026-01-01T00:01:00Z'),
+                promptPreview: 'fresh follow-up', fullPrompt: 'fresh follow-up',
+                metadata: { workspaceId: 'workspace-a' },
+                conversationTurns: [
+                    { role: 'user', content: 'fresh follow-up', turnIndex: 0, relayRequestId: receipt.requestId,
+                        timestamp: new Date('2026-01-01T00:01:00Z'), timeline: [] },
+                    { role: 'assistant', content: 'Final follow-up answer', turnIndex: 1,
+                        timestamp: new Date('2026-01-01T00:02:00Z'), timeline: [] },
+                ],
+            });
+            const completed = {
+                id: receipt.taskId, repoId: 'workspace-a', processId: receipt.processId,
+                status: 'completed', payload: { relayRequestId: receipt.requestId },
+            } as QueuedTask;
+            tasks.set(completed.id, completed);
+            queue.emit('taskCompleted', completed);
+            await vi.waitFor(() => {
+                expect(receipts().find(value => value.messageId === 'fresh').status).toBe('delivered');
+            });
+            expect(bot.send).toHaveBeenCalledOnce();
+            expect(bot.send.mock.calls[0][1]).toContain('Final follow-up answer');
+            expect(bot.send.mock.calls[0][2]).toMatchObject({ replyToId: 'root' });
+            expect(bot.reactToChannelMessage).toHaveBeenCalledTimes(2);
+            questionRelay.tryAnswer.mockResolvedValueOnce(true);
+            await opts.onMessage({
+                ...root, messageId: 'question-answer', replyToMessageId: 'root', text: 'yes',
+            });
+            expect(questionRelay.tryAnswer).toHaveBeenLastCalledWith('teams', expect.objectContaining({
+                messageId: 'question-answer', replyToId: 'root', text: 'yes',
+            }));
+            expect(enqueueFollowUp).toHaveBeenCalledTimes(2);
+            expect(bot.send).toHaveBeenCalledOnce();
         } finally {
             await manager.disconnect();
             manager.dispose();
@@ -827,6 +1039,11 @@ describe('Teams messaging routes (integration)', () => {
             expect((await post('/server', { url: 'http://example.test/teams' })).status).toBe(400);
             expect((await post('/server', { url: 'https://example.test/teams' })).status).toBe(200);
             expect((await post('/config', { teamName: 'Team', channelName: 'General', enabled: true })).status).toBe(200);
+            for (const outboundBackend of ['graph', 'mcp']) {
+                expect((await post('/config', { outboundBackend })).status).toBe(200);
+                expect((await (await fetch(base + '/status')).json()).outboundBackend).toBe(outboundBackend);
+                expect(new TeamsMessagingManager(tmpDir).getStatus().outboundBackend).toBe(outboundBackend);
+            }
             for (const enableTrouter of [true, false]) {
                 expect((await post('/config', { enableTrouter })).status).toBe(200);
                 expect((await (await fetch(base + '/status')).json()).enableTrouter).toBe(enableTrouter);
@@ -840,6 +1057,10 @@ describe('Teams messaging routes (integration)', () => {
                 expect((await (await fetch(base + '/status')).json()).ic3Region).toBe(ic3Region);
             }
             const before = fs.readFileSync(path.join(tmpDir, 'teams-messaging.json'), 'utf8');
+            for (const outboundBackend of ['auto', null, 1, true, {}, []]) {
+                expect((await post('/config', { botName: 'Invalid patch', outboundBackend })).status).toBe(400);
+                expect(fs.readFileSync(path.join(tmpDir, 'teams-messaging.json'), 'utf8')).toBe(before);
+            }
             for (const enableTrouter of ['true', 1, null, {}, []]) {
                 expect((await post('/config', { botName: 'Invalid patch', enableTrouter })).status).toBe(400);
                 expect(fs.readFileSync(path.join(tmpDir, 'teams-messaging.json'), 'utf8')).toBe(before);

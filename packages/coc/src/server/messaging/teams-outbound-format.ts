@@ -1,6 +1,7 @@
 import { marked, type Token, type Tokens } from 'marked';
 
-export const TEAMS_CHANNEL_PREFIX = 'AI: ';
+/** Assistant attribution for delegated sends; it does not change the Teams sender. */
+export const TEAMS_CHANNEL_PREFIX = 'CoC \u00b7 ';
 
 export type TeamsOutboundSource = 'markdown' | 'html';
 
@@ -109,9 +110,24 @@ function renderBlocks(tokens: Token[]): string {
 }
 
 export function formatTeamsOutbound(text: string, source: TeamsOutboundSource): string {
-    return TEAMS_CHANNEL_PREFIX + (source === 'html'
+    const html = (source === 'html'
         ? text
-        : renderBlocks(marked.lexer(text, { gfm: true, breaks: true })));
+        : renderBlocks(marked.lexer(text, { gfm: true, breaks: true })))
+        .replace(/^(?:\s|<br\s*\/?>|<p>\s*(?:<br\s*\/?>\s*)*<\/p>)*/i, '');
+    if (!html) return `<p>${TEAMS_CHANNEL_PREFIX}(No answer provided.)</p>`;
+
+    // Descend through block containers, keeping attribution outside emphasis and code.
+    const firstTextBlock = html.match(
+        /^(?:(?:<(?:div|blockquote|ul|ol)\b[^>]*>)\s*)*<(?:p|h[1-6]|li)\b[^>]*>(?:\s*<p\b[^>]*>)?/i,
+    );
+    if (firstTextBlock) {
+        const offset = firstTextBlock[0].length;
+        return html.slice(0, offset) + TEAMS_CHANNEL_PREFIX + html.slice(offset);
+    }
+    if (!html.startsWith('<') || /^<(?:a|strong|em|b|i|span|code)\b/i.test(html)) {
+        return `<p>${TEAMS_CHANNEL_PREFIX}${html}</p>`;
+    }
+    return `<p>${TEAMS_CHANNEL_PREFIX}AI-generated response</p>${html}`;
 }
 
 export interface TeamsQuestion {

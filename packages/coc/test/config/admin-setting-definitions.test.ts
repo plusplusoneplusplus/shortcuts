@@ -191,17 +191,23 @@ describe('admin validate/apply round-trip', () => {
 // ── resolved config merge ─────────────────────────────────────────────────────
 
 describe('resolved config merge honors file overrides', () => {
-    it('keeps Teams answer relay disabled independently of bridge observability', () => {
-        expect(DEFAULT_CONFIG.features.teamsAiAnswerRelay).toBe(false);
+    it('defaults Teams answer relay on while preserving the explicit opt-out independently of other features', () => {
+        expect(DEFAULT_CONFIG.features.teamsAiAnswerRelay).toBe(true);
         expect(mergeConfig(DEFAULT_CONFIG, {
             features: { teamsBridgeObservability: true },
-        }).features.teamsAiAnswerRelay).toBe(false);
+        }).features.teamsAiAnswerRelay).toBe(true);
         expect(mergeConfig(DEFAULT_CONFIG, {
             features: { teamsAiAnswerRelay: true },
         }).features.teamsBridgeObservability).toBe(false);
         expect(mergeConfig(DEFAULT_CONFIG, {
-            features: { teamsAiAnswerRelay: true },
-        }).features.teamsAiAnswerRelay).toBe(true);
+            features: { teamsAiAnswerRelay: false },
+        }).features.teamsAiAnswerRelay).toBe(false);
+        for (const config of [{}, { features: {} }, { features: { teamsAiAnswerRelay: false } }]) {
+            const expected = config.features?.teamsAiAnswerRelay !== false;
+            const parsed = CLIConfigSchema.parse(config);
+            expect(mergeConfig(DEFAULT_CONFIG, parsed).features.teamsAiAnswerRelay).toBe(expected);
+            expect(buildRuntimeFeatureFlags(config).teamsAiAnswerRelayEnabled).toBe(expected);
+        }
     });
 
     it('keeps Teams message reactions disabled independently of other Teams features', () => {
@@ -213,7 +219,7 @@ describe('resolved config merge honors file overrides', () => {
             features: { teamsMessageReaction: true },
         });
         expect(enabled.features.teamsMessageReaction).toBe(true);
-        expect(enabled.features.teamsAiAnswerRelay).toBe(false);
+        expect(enabled.features.teamsAiAnswerRelay).toBe(true);
         expect(enabled.features.teamsBridgeObservability).toBe(false);
         expect(() => CLIConfigSchema.parse({ features: { teamsMessageReaction: 'yes' } })).toThrow();
     });
@@ -342,11 +348,13 @@ describe('Features card UI metadata', () => {
         })).teamsMessageReactionEnabled).toBe(true);
     });
 
-    it('exposes Teams answer relay as an independent live, default-off toggle beside bridge observability', () => {
+    it('exposes Teams answer relay as an independent live, default-on toggle beside bridge observability', () => {
         const relay = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsAiAnswerRelay')!;
         const dashboard = getFeatureCardSettings('dashboard');
-        expect(relay.default).toBe(false);
+        expect(relay.default).toBe(true);
         expect(relay.runtime).toBe('live');
+        expect(relay.absentFallback).toBeUndefined();
+        expect(relay.runtimeFlag).toBe('teamsAiAnswerRelayEnabled');
         expect(relay.ui).toMatchObject({
             group: 'dashboard',
             label: 'Teams AI answer relay',
@@ -355,8 +363,9 @@ describe('Features card UI metadata', () => {
         expect(dashboard.indexOf(relay)).toBe(dashboard.indexOf(
             ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.teamsBridgeObservability')!,
         ) + 1);
-        expect(readAdminSettingValue(relay, {})).toBe(false);
+        expect(readAdminSettingValue(relay, {})).toBe(true);
         expect(readAdminSettingValue(relay, { features: { teamsAiAnswerRelay: true } })).toBe(true);
+        expect(readAdminSettingValue(relay, { features: { teamsAiAnswerRelay: false } })).toBe(false);
     });
 
     it('has unique testIds', () => {

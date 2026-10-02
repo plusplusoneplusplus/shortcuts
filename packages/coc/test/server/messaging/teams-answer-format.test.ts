@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
-import { TEAMS_CHANNEL_PREFIX } from '../../../src/server/messaging/teams-outbound-format';
+import { formatTeamsOutbound } from '../../../src/server/messaging/teams-outbound-format';
 
 const size = (text: string) => Buffer.byteLength(text, 'utf8');
 
@@ -18,10 +18,13 @@ function expectValid(parts: string[], label: string): void {
     expect(parts.length).toBeGreaterThan(0);
     parts.forEach((part, index) => {
         expect(part.startsWith(`<p><strong>Request ${label} · Part ${index + 1}/${parts.length}</strong></p>`)).toBe(true);
-        expect(size(TEAMS_CHANNEL_PREFIX + part)).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+        const outbound = formatTeamsOutbound(part, 'html');
+        expect(size(outbound)).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+        expect(outbound.match(/CoC · /g)).toHaveLength(1);
+        expect(outbound).toMatch(/^<p>CoC · <strong>Request /);
         expect(part).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
         expect(part).not.toMatch(/&(?:amp|lt|gt|quot|#39)(?!;)/);
-        const tags = part.match(/<\/?(?:p|strong|em|code|pre|a|br)\b[^>]*>/g) ?? [];
+        const tags = outbound.match(/<\/?(?:p|strong|em|code|pre|a|br)\b[^>]*>/g) ?? [];
         const open: string[] = [];
         for (const tag of tags) {
             if (tag === '<br>') continue;
@@ -34,6 +37,20 @@ function expectValid(parts: string[], label: string): void {
 }
 
 describe('formatTeamsAnswerChunks', () => {
+    it('counts the complete UTF-8 attribution at the exact outbound byte boundary', () => {
+        const header = '<p><strong>Request edge · Part 1/1</strong></p>';
+        const overhead = size(formatTeamsOutbound(header + '<p></p>', 'html'));
+        const answer = 'x'.repeat(TEAMS_ANSWER_MAX_BYTES - overhead);
+        const parts = formatTeamsAnswerChunks(answer, 'edge');
+        expect(parts).toHaveLength(1);
+        expectValid(parts, 'edge');
+        expect(size(formatTeamsOutbound(parts[0], 'html'))).toBe(TEAMS_ANSWER_MAX_BYTES);
+        const overflowing = formatTeamsAnswerChunks(answer + 'x', 'edge');
+        expect(overflowing).toHaveLength(2);
+        expectValid(overflowing, 'edge');
+        expect(visible(content(overflowing))).toBe(answer + 'x');
+    });
+
     it('escapes an optional source context in the reply header', () => {
         const parts = formatTeamsAnswerChunks('Done', 'request-1', 'Repo A&B · Chat <topic>');
         expect(parts[0]).toContain('Repo A&amp;B · Chat &lt;topic&gt;');
