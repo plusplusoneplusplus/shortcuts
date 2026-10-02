@@ -10,6 +10,7 @@ import { execGitArgsAsync, readGitFileAtCommit } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest, internalError } from '../errors';
 import type { APIError } from '../errors';
 import { gitCache } from '../git/git-cache';
+import { loadCommitFileDiffContent } from '../git/ref-file-content';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { truncateDiffIfNeeded } from './api-shared';
@@ -372,6 +373,18 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
             } catch (err: any) {
                 return void handleAPIError(res, badRequest('Failed to get commit file diff: ' + (err.message || 'unknown error')));
             }
+        },
+    }));
+
+    routes.push(createRoute({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/commits\/([^/]+)\/files\/(.+)\/diff-content$/,
+        handler: async ({ res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            return loadCommitFileDiffContent(
+                ws.rootPath, ws.id, decodeURIComponent(match[2]), decodeURIComponent(match[3]), gitCache,
+            );
         },
     }));
 

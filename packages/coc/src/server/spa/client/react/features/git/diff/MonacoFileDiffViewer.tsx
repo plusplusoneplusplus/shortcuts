@@ -1,5 +1,5 @@
 /**
- * MonacoFileDiffViewer — one working-tree file's diff in Monaco's diff editor.
+ * MonacoFileDiffViewer — one file's diff in Monaco's diff editor.
  *
  * Both sides arrive as full text from the server (AC-01); this component never
  * reconstructs files from a patch. It renders a host element, measures it, and
@@ -14,9 +14,9 @@
  * Diff comments render through `MonacoDiffCommentLayer` once the editor is
  * attached and Monaco has computed the diff for the current models.
  *
- * On an unstaged diff the modified side is the real file, so it gets the
- * explorer's language features (hover, go-to-definition, diagnostics) through
- * `useDiffLanguageFeatures`. Ref-backed sides never do.
+ * Unstaged modified sides and server-confirmed clean branch heads share the
+ * explorer's language features through `useDiffLanguageFeatures`.
+ * Ref-backed sides never register.
  */
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -45,6 +45,7 @@ import { synthesizeDiffLines } from './monacoDiffLineShim';
 import type { LanguageDocumentStore } from '../../language-servers/documentStore';
 import { useDiffLanguageFeatures } from './useDiffLanguageFeatures';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
+import type { DiffSelectionDragSource } from './diffSelectionContext';
 
 export type MonacoFileDiffViewerHandle = Pick<
     UnifiedDiffViewerHandle,
@@ -61,6 +62,9 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     /** Repo-relative, `/`-separated path; drives model URIs and language. */
     relativePath: string;
     stage: MonacoDiffStage;
+    /** Immutable commit/range/PR identity; keeps ref-backed models distinct. */
+    modelIdentity?: string;
+    modifiedMatchesWorkingCopy?: boolean;
     /** Full text of the base side (HEAD for staged, index for unstaged). */
     original: string;
     /** Full text of the changed side (index for staged, disk for unstaged). */
@@ -84,16 +88,19 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     renderCommentThread?: (comment: DiffComment) => ReactNode;
     /** Editor factory; tests pass an owned adapter. Defaults to Monaco. */
     createEditor?: DiffEditorFactory;
-    /** Language features on the unstaged modified side. Default true. */
+    /** Language features on an eligible modified working-copy side. Default true. */
     languageFeatures?: boolean;
     /** Language document store; tests inject one. Defaults to the workspace's. */
     languageStore?: LanguageDocumentStore;
     /** Opens a go-to-definition target in another file of this workspace. */
     onNavigateDefinition?: DiffDefinitionNavigate;
+    /** Enables dragging a selected range into chat context. */
+    diffSelectionDragSource?: DiffSelectionDragSource;
     'data-testid'?: string;
 }
 
 const NO_COMMENTS: readonly DiffComment[] = [];
+const NO_COMMENT_THREAD = () => null;
 
 function prefersDarkScheme(): boolean {
     return typeof window !== 'undefined'
@@ -103,10 +110,10 @@ function prefersDarkScheme(): boolean {
 
 export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, MonacoFileDiffViewerProps>(
     function MonacoFileDiffViewer({
-        workspaceId, relativePath, stage, original, modified, viewMode, initialHunkTarget,
+        workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified, viewMode, initialHunkTarget,
         onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor,
         comments, renderCommentThread, onAddComment, onAskAI, onCopyAsContext,
-        languageFeatures = true, languageStore, onNavigateDefinition,
+        languageFeatures = true, languageStore, onNavigateDefinition, diffSelectionDragSource,
         'data-testid': testId = 'monaco-file-diff-viewer',
     }, ref) {
         const { theme } = useTheme();
@@ -119,10 +126,13 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         const commentLayerRef = useRef<MonacoDiffCommentLayerHandle>(null);
         const [failed, setFailed] = useState(false);
         const identical = original === modified;
+        const showCommentLayer = !!(
+            renderCommentThread || onAddComment || onAskAI || onCopyAsContext || diffSelectionDragSource
+        );
 
         const models = useMemo(
-            () => buildDiffModels({ workspaceId, relativePath, stage, original, modified }),
-            [workspaceId, relativePath, stage, original, modified],
+            () => buildDiffModels({ workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified }),
+            [workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified],
         );
         const options = useMemo(() => buildDiffEditorOptions(viewMode), [viewMode]);
         const language = useDiffLanguageFeatures({
@@ -264,18 +274,19 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
 
         return (
             <div className="flex flex-col h-full w-full overflow-hidden" data-testid={testId} data-view-mode={viewMode}>
-                {renderCommentThread && (
+                {showCommentLayer && (
                     <MonacoDiffCommentLayer
                         ref={commentLayerRef}
                         editor={editor}
                         modelsVersion={modelsVersion}
                         diff={commentDiff}
                         viewMode={viewMode}
-                        comments={comments ?? NO_COMMENTS}
-                        renderThread={renderCommentThread}
+                        comments={renderCommentThread ? (comments ?? NO_COMMENTS) : NO_COMMENTS}
+                        renderThread={renderCommentThread ?? NO_COMMENT_THREAD}
                         onAddComment={onAddComment}
                         onAskAI={onAskAI}
                         onCopyAsContext={onCopyAsContext}
+                        diffSelectionDragSource={diffSelectionDragSource}
                     />
                 )}
                 <div className="relative flex-1 min-h-0">

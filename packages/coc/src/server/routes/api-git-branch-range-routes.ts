@@ -8,11 +8,13 @@ import * as url from 'url';
 import { GitRangeService } from '@plusplusoneplusplus/forge';
 import type { GitRangeBaseMode } from '@plusplusoneplusplus/forge';
 import { sendJSON } from '../core/api-handler';
-import { handleAPIError, badRequest } from '../errors';
+import { handleAPIError, badRequest, notFound } from '../errors';
 import { gitCache } from '../git/git-cache';
+import { loadBranchRangeFileDiffContent } from '../git/ref-file-content';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import { truncateDiffIfNeeded } from './api-shared';
+import { createRoute } from './route-utils';
 
 export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
     const { routes, store } = ctx;
@@ -147,6 +149,21 @@ export function registerGitBranchRangeRoutes(ctx: ApiRouteContext): void {
             }
         },
     });
+
+    routes.push(createRoute({
+        method: 'GET',
+        pattern: /^\/api\/workspaces\/([^/]+)\/git\/branch-range\/files\/(.+)\/diff-content$/,
+        handler: async ({ req, res, match }) => {
+            const ws = await resolveWorkspaceOrFail(store, match, res);
+            if (!ws) return;
+            const requestedMode = parseBaseMode(req);
+            const resolved = await getGitRangeService().resolveBaseRef(ws.rootPath, requestedMode);
+            if (!resolved.baseRef) throw notFound('Branch-range base');
+            return loadBranchRangeFileDiffContent(
+                ws.rootPath, ws.id, requestedMode, resolved.baseRef, decodeURIComponent(match[2]), gitCache,
+            );
+        },
+    }));
 
     // GET /api/workspaces/:id/git/branch-range/files/*/diff — Per-file diff
     routes.push({

@@ -77,6 +77,21 @@ describe('buildDiffModels', () => {
         expect(a.modified.uri).not.toBe(b.modified.uri);
     });
 
+    it('scopes immutable commit, range, and PR models by source identity', () => {
+        const commit = buildDiffModels({ ...base, stage: 'staged', modelIdentity: 'commit:abc123' });
+        const range = buildDiffModels({ ...base, stage: 'staged', modelIdentity: 'branch-range:upstream' });
+        const pr = buildDiffModels({ ...base, stage: 'staged', modelIdentity: 'pr:origin:42:head-sha' });
+
+        for (const models of [commit, range, pr]) {
+            expect(isDiffRefUri(models.original.uri)).toBe(true);
+            expect(isDiffRefUri(models.modified.uri)).toBe(true);
+            expect(models.original.isWorkingCopy).toBe(false);
+            expect(models.modified.isWorkingCopy).toBe(false);
+            expect(models.original.uri).not.toBe(models.modified.uri);
+        }
+        expect(new Set([commit.original.uri, range.original.uri, pr.original.uri]).size).toBe(3);
+    });
+
     it('keeps text byte-for-byte (CRLF and missing trailing newline)', () => {
         const models = buildDiffModels({ ...base, stage: 'unstaged', original: 'a\r\nb', modified: 'a\r\nb\r\n' });
         expect(models.original.text).toBe('a\r\nb');
@@ -147,7 +162,7 @@ describe('source assertions', () => {
         }
     });
 
-    it('only the working-tree surface reads the diff-engine preference or renders the Monaco diff viewer', () => {
+    it('only the shared file-diff surfaces read the diff-engine preference or render the Monaco diff viewer', () => {
         const readers: string[] = [];
         const walk = (dir: string) => {
             for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -160,13 +175,19 @@ describe('source assertions', () => {
             }
         };
         walk(SRC);
-        expect(readers.filter(f => !f.endsWith('hooks/useDiffEngine.ts'))).toEqual(['features/git/working-tree/WorkingTreeFileDiff.tsx']);
+        expect(readers.filter(f => !f.endsWith('hooks/useDiffEngine.ts')).sort()).toEqual([
+            'features/git/diff/FileDiffPanel.tsx',
+            'features/git/hooks/useFileDiffEngineState.ts',
+            'features/git/working-tree/WorkingTreeFileDiff.tsx',
+        ]);
     });
 
-    it('diffEngine resolves to monaco by default and the preference code adds no TODOs', () => {
+    it('diffEngine has one preference field, resolves to monaco by default, and adds no TODOs', () => {
         const hook = readFileSync(join(SRC, 'features/git/hooks/useDiffEngine.ts'), 'utf8');
+        const preferencesSchema = readFileSync(join(SRC, '../../../preferences/schema.ts'), 'utf8');
         expect(hook).toMatch(/DEFAULT_DIFF_ENGINE: DiffEngine = 'monaco'/);
-        for (const file of ['features/git/hooks/useDiffEngine.ts', 'features/git/diff/DiffViewToggle.tsx', 'features/git/working-tree/WorkingTreeFileDiff.tsx']) {
+        expect(preferencesSchema.match(/^\s*diffEngine:/gm)).toHaveLength(1);
+        for (const file of ['features/git/hooks/useDiffEngine.ts', 'features/git/diff/DiffViewToggle.tsx', 'features/git/diff/FileDiffPanel.tsx', 'features/git/working-tree/WorkingTreeFileDiff.tsx']) {
             expect(readFileSync(join(SRC, file), 'utf8'), file).not.toMatch(/TODO|FIXME/);
         }
     });

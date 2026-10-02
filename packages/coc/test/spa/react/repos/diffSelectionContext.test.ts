@@ -3,6 +3,7 @@ import { computeDiffLines } from '../../../../src/server/spa/client/react/featur
 import {
     buildDiffLineSelection,
     createDiffSelectionDragPayloadFromLines,
+    createMonacoDiffSelectionDragPayload,
 } from '../../../../src/server/spa/client/react/features/git/diff/diffSelectionContext';
 import {
     buildDiffSelectionLabel,
@@ -150,6 +151,33 @@ describe('createDiffSelectionDragPayloadFromLines', () => {
         expect(createDiffSelectionDragPayloadFromLines({ ...base, startIndex: 0, endIndex: 3 })).toBeNull();
         const single = computeDiffLines(['@@ -1,1 +1,1 @@', '+y']);
         expect(createDiffSelectionDragPayloadFromLines({ ...base, diffLines: single, startIndex: 1, endIndex: 1 })).toBeNull();
+    });
+});
+
+describe('createMonacoDiffSelectionDragPayload', () => {
+    it('uses Monaco selection line coordinates without patch-row reconstruction', () => {
+        expect(createMonacoDiffSelectionDragPayload(
+            { oldLineStart: 10, oldLineEnd: 12, newLineStart: 10, newLineEnd: 13 },
+            'const selected = true;',
+            { workspaceId: 'ws-1', filePath: 'src/a.ts', ref: { type: 'commit', commitHash: 'abcdef123456' } },
+        )).toMatchObject({
+            sourceWorkspaceId: 'ws-1',
+            filePath: 'src/a.ts',
+            oldRange: { start: 10, end: 12 },
+            newRange: { start: 10, end: 13 },
+            snippet: 'const selected = true;',
+            ref: { type: 'commit', commitHash: 'abcdef123456' },
+        });
+    });
+
+    it('preserves a one-sided added-line selection', () => {
+        const payload = createMonacoDiffSelectionDragPayload(
+            { newLineStart: 5, newLineEnd: 7 },
+            'added',
+            { workspaceId: 'ws-1', filePath: 'src/a.ts', ref: { type: 'range', baseRef: 'main', headRef: 'feature' } },
+        );
+        expect(payload?.oldRange).toBeUndefined();
+        expect(payload?.newRange).toEqual({ start: 5, end: 7 });
     });
 });
 

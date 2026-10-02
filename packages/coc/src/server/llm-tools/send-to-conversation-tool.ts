@@ -58,7 +58,7 @@ export interface SendToConversationArgs {
     mode?: SendToConversationMode;
     /** Post mode: how the follow-up is delivered. Ignored in create mode. */
     deliveryMode?: SendToConversationDeliveryMode;
-    /** Create mode: display name for the new chat. Auto-generated when omitted. */
+    /** Create mode: persistent custom title (trimmed, non-empty, max 80 characters). Optional; ignored in post mode. */
     title?: string;
     /** Overrides the AI model (both modes). */
     model?: string;
@@ -190,7 +190,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'returns `{ processId, openLink, turnIndex }`. Without `processId`, starts a brand-new, separate ' +
             'fire-and-forget chat with `content` as its first prompt (it does NOT continue the current chat) and ' +
             'returns `{ processId, openLink }`. `content` is required; `mode` defaults to `ask` and create mode ' +
-            'defaults to the current workspace.',
+            'defaults to the current workspace. For new conversations, provide a short, task-specific `title` ' +
+            '(optional, max 80 characters); it remains the visible custom title even after AI title generation.',
         parameters: {
             type: 'object',
             properties: {
@@ -220,7 +221,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 },
                 title: {
                     type: 'string',
-                    description: 'Create mode: display name for the new chat. Auto-generated when omitted.',
+                    description: 'Create mode: optional persistent custom title. Trimmed, non-empty, max 80 characters. ' +
+                        'Use a short, task-specific title; omitted titles are auto-generated. Ignored in post mode.',
                 },
                 model: {
                     type: 'string',
@@ -427,6 +429,14 @@ async function createNewConversation(params: {
         getEffortTiersForProvider,
     } = params;
 
+    if (args.title !== undefined && (typeof args.title !== 'string' || !args.title.trim())) {
+        return { error: 'Invalid title: must be a non-empty string when provided.' };
+    }
+    const title = args.title?.trim();
+    if (title !== undefined && title.length > 80) {
+        return { error: 'Invalid title: exceeds 80 characters.' };
+    }
+
     // --- workspace (default to caller's; must be registered) --------------
     const requestedWorkspaceId =
         typeof args.workspaceId === 'string' && args.workspaceId.trim()
@@ -508,7 +518,6 @@ async function createNewConversation(params: {
     // auto-routing. Resolved model goes onto `config.model` (with the existing
     // `payload.model` mirror), inherited effort onto `config.reasoningEffort`,
     // and an explicit tier onto `config.effortTier` for queue preparation.
-    const title = typeof args.title === 'string' && args.title.trim() ? args.title.trim() : undefined;
     const config: Record<string, unknown> = {
         ...(resolvedModel ? { model: resolvedModel } : {}),
         ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
@@ -525,6 +534,7 @@ async function createNewConversation(params: {
             prompt: content,
             workspaceId: requestedWorkspaceId,
             provider: resolvedProvider,
+            ...(title ? { customTitle: title } : {}),
             ...(resolvedModel ? { model: resolvedModel } : {}),
             // Spawn link: persist the calling chat's processId onto the spawned
             // process's top-level `parentProcessId` so the chat list can nest

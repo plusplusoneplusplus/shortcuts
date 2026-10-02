@@ -7,7 +7,6 @@ import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
-import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
@@ -63,7 +62,6 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const workflowsEnabled = useWorkflowsEnabled();
     const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
-    const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
@@ -79,9 +77,9 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
 
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
+        pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
         splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled]);
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled]);
     const { clone: cloneTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
 
     const group = useMemo(() => {

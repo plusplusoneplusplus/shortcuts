@@ -91,14 +91,45 @@ describe('fallback source assertions', () => {
     const surface = fs.readFileSync(path.join(root, 'working-tree/WorkingTreeFileDiff.tsx'), 'utf8');
     const files = [
         surface,
+        fs.readFileSync(path.join(root, 'diff/FileDiffPanel.tsx'), 'utf8'),
         fs.readFileSync(path.join(root, 'diff/diffEngineResolution.ts'), 'utf8'),
         fs.readFileSync(path.join(root, 'diff/DiffEngineFallbackBanner.tsx'), 'utf8'),
     ];
 
     it('never falls back through console output only', () => {
         for (const source of files) expect(source).not.toMatch(/console\.(warn|error|log)/);
-        expect(surface).toContain('<DiffEngineFallbackBanner');
-        expect(surface).toContain('onEditorError={handleEditorError}');
+        for (const source of [surface, files[1]]) {
+            expect(source).toContain('resolveDiffEngineSelection({');
+            expect(source).toContain('<DiffEngineFallbackBanner');
+            expect(source).toContain('onEditorError={handleEditorError}');
+        }
+    });
+
+    describe.each(['commit', 'branch-range', 'pull-request'])('%s content resolution', () => {
+        const resolveSource = (input: Partial<DiffEngineResolutionInput> = {}) =>
+            resolveDiffEngineSelection({ preference: 'monaco', content: loaded(), editorFailed: false, ...input });
+
+        it.each([
+            [loaded({ binary: true }), false, 'binary'],
+            [loaded({ tooLarge: true }), false, 'tooLarge'],
+            [{ status: 'failed' } as const, false, 'loadFailed'],
+            [loaded(), true, 'editorFailed'],
+        ])('falls back for %j with editor failure %s', (content, editorFailed, fallback) => {
+            expect(resolveSource({ content, editorFailed })).toEqual({ engine: 'legacy', fallback });
+        });
+
+        it('waits for content, retries, and accepts full text including an empty deletion side', () => {
+            expect(resolveSource({ content: null })).toEqual({ engine: 'loading' });
+            expect(resolveSource({ content: { status: 'loading' } })).toEqual({ engine: 'loading' });
+            expect(resolveSource()).toEqual({ engine: 'monaco' });
+        });
+
+        it('keeps precedence and suppresses fallback for user-selected Classic', () => {
+            expect(resolveSource({ content: loaded({ binary: true, tooLarge: true }), editorFailed: true }))
+                .toEqual({ engine: 'legacy', fallback: 'binary' });
+            expect(resolveSource({ preference: 'legacy', content: { status: 'failed' }, editorFailed: true }))
+                .toEqual({ engine: 'legacy', fallback: null });
+        });
     });
 
     it('adds no TODOs', () => {

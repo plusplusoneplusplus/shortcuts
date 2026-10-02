@@ -197,6 +197,50 @@ describe('CLITaskExecutor — Title Generation', () => {
         );
     });
 
+    it('keeps the custom title as the queue display name when an AI title already exists', async () => {
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const updateTask = vi.fn();
+        executor.setQueueManager({ updateTask } as unknown as TaskQueueManager);
+        await store.addProcess({
+            id: 'queue_custom-title',
+            type: 'chat',
+            promptPreview: 'Some prompt',
+            status: 'completed',
+            startTime: new Date(),
+            title: 'AI title',
+            customTitle: 'Delegated helper',
+        });
+        (executor as any).generateTitleIfNeeded('queue_custom-title', [
+            { role: 'user', content: 'Some prompt', timestamp: new Date(), turnIndex: 0, timeline: [] },
+            { role: 'assistant', content: 'Some reply', timestamp: new Date(), turnIndex: 1, timeline: [] },
+        ]);
+        await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(
+            'custom-title', { displayName: 'Delegated helper' },
+        ));
+        expect(getTitleCalls()).toHaveLength(0);
+    });
+
+    it('uses the latest custom title when it changes during AI title generation', async () => {
+        let finishTitle!: () => void;
+        mockTransform.mockImplementation(async () => {
+            await new Promise<void>(resolve => { finishTitle = resolve; });
+            return { success: true, text: 'Generated title', effectiveModel: 'gpt-5.4-mini' };
+        });
+        const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
+        const updateTask = vi.fn();
+        executor.setQueueManager({ updateTask } as unknown as TaskQueueManager);
+        const task = makeChatTask('rename-during-title', 'Some prompt');
+        task.payload.customTitle = 'Initial helper title';
+        expect((await executor.execute(task)).success).toBe(true);
+        await vi.waitFor(() => expect(mockTransform).toHaveBeenCalledOnce());
+        await store.updateProcess('queue_rename-during-title', { customTitle: 'Renamed helper' });
+        finishTitle();
+        await vi.waitFor(() => expect(updateTask).toHaveBeenCalledWith(
+            'rename-during-title', { displayName: 'Renamed helper' },
+        ));
+        expect((await store.getProcess('queue_rename-during-title'))?.title).toBe('Generated title');
+    });
+
     it('should not throw when title generation fails', async () => {
         mockSendMessage.mockResolvedValue({ success: true, response: 'AI response text', sessionId: 'session-123' });
         mockTransform.mockResolvedValue({ success: false, text: '', error: 'AI unavailable' });

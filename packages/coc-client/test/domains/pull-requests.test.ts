@@ -110,6 +110,7 @@ describe('PullRequestsClient', () => {
     await client.getReviewersForOrigin('gh_owner_repo', 'pr/1', options);
     await client.getCommitsForOrigin('gh_owner_repo', 'pr/1', options);
     await client.getDiffForOrigin('gh_owner_repo', 'pr/1', options);
+    await client.getFileDiffContentForOrigin('gh_owner_repo', 'pr/1', 'src/a file.ts', options);
     await client.getChecksForOrigin('gh_owner_repo', 'pr/1', options);
 
     expect(adapter.calls).toEqual([
@@ -127,6 +128,10 @@ describe('PullRequestsClient', () => {
       },
       {
         path: '/origins/gh_owner_repo/pull-requests/pr%2F1/diff',
+        options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
+      },
+      {
+        path: '/origins/gh_owner_repo/pull-requests/pr%2F1/files/src%2Fa%20file.ts/content',
         options: { query: { workspaceId: 'ws/a', repoId: 'repo/a' }, signal: controller.signal },
       },
       {

@@ -82,7 +82,7 @@ const ENGINE_BUTTONS: SegmentButton<DiffEngine>[] = [
     { value: 'monaco', icon: '✎', label: 'Editor', title: 'Editor diff viewer' },
 ];
 
-/** Classic / Editor (Monaco) engine switch for the working-tree diff. */
+/** Shared Classic / Editor (Monaco) engine switch for file diffs. */
 export function DiffEngineToggle({ engine, onChange }: DiffEngineToggleProps) {
     return (
         <DiffToolbarSegments

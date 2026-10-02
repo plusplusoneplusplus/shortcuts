@@ -58,6 +58,8 @@ export interface WorkingTreeFileContent {
     head: WorkingTreeFileSide;
     binary: boolean;
     tooLarge: boolean;
+    /** Branch-range head equals HEAD, the index, and the exact bytes on disk. */
+    modifiedMatchesWorkingCopy?: boolean;
 }
 
 /** One entry from `git ls-tree` / `git ls-files -s`. */
@@ -195,8 +197,8 @@ function sideRef(s: SideSource): string {
 
 async function buildContent(
     io: WorkingTreeContentIO,
-    req: WorkingTreeContentRequest,
-    sources: ResolvedSources,
+    req: Pick<WorkingTreeContentRequest, 'requestPath' | 'absPath'>,
+    sources: Pick<ResolvedSources, 'base' | 'head'>,
 ): Promise<WorkingTreeFileContent> {
     const { base, head } = sources;
     const shell = {
@@ -233,6 +235,22 @@ async function buildContent(
         binary: false,
         tooLarge: false,
     };
+}
+
+/** Full-text git snapshots use the same byte, size, and unsupported-mode rules as working-tree files. */
+export function loadGitBlobFileContent(
+    io: WorkingTreeContentIO,
+    filePath: string,
+    base: { ref: string; entry: GitBlobEntry | null },
+    head: { ref: string; entry: GitBlobEntry | null },
+): Promise<WorkingTreeFileContent> {
+    const source = (side: typeof base): SideSource => side.entry
+        ? { kind: 'blob', ref: side.ref, entry: side.entry }
+        : { kind: 'missing', ref: side.ref };
+    return buildContent(io, { requestPath: filePath, absPath: filePath }, {
+        base: source(base),
+        head: source(head),
+    });
 }
 
 /**

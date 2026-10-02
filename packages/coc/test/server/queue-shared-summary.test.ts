@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
-import { getRepoIdentifierFromQuery, serializeTaskSummary, serializeQueueItemSummary } from '../../src/server/routes/queue-shared';
+import {
+    getRepoIdentifierFromQuery,
+    serializeTask,
+    serializeTaskSummary,
+    serializeQueueItemSummary,
+} from '../../src/server/routes/queue-shared';
 
 function makeTask(overrides: Partial<QueuedTask> = {}): QueuedTask {
     return {
@@ -16,6 +21,31 @@ function makeTask(overrides: Partial<QueuedTask> = {}): QueuedTask {
 }
 
 describe('serializeTaskSummary', () => {
+    it('projects a queued payload customTitle into canonical list presentation', () => {
+        const task = makeTask({
+            status: 'queued',
+            displayName: 'Delegated investigation',
+            payload: {
+                prompt: 'Investigate the delegated task',
+                customTitle: 'Delegated investigation',
+            },
+        });
+
+        const out = serializeTaskSummary(task);
+
+        expect(out.customTitle).toBe('Delegated investigation');
+        expect((out.payload as Record<string, unknown>)).not.toHaveProperty('customTitle');
+    });
+
+    it('keeps a process customTitle ahead of the original payload title', () => {
+        const task = makeTask({
+            payload: { customTitle: 'Original delegated title' },
+        }) as QueuedTask & { customTitle: string };
+        task.customTitle = 'Renamed process title';
+
+        expect(serializeTaskSummary(task).customTitle).toBe('Renamed process title');
+    });
+
     it('includes all metadata fields', () => {
         const task = makeTask({
             id: 't-42',
@@ -297,6 +327,16 @@ describe('serializeTaskSummary', () => {
         const out = serializeTaskSummary(task);
         const p = out.payload as Record<string, unknown>;
         expect(p.provider).toBeUndefined();
+    });
+});
+
+describe('serializeTask', () => {
+    it('projects payload customTitle into full task presentation', () => {
+        const task = makeTask({
+            payload: { customTitle: 'Delegated investigation' },
+        });
+
+        expect(serializeTask(task).customTitle).toBe('Delegated investigation');
     });
 });
 

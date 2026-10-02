@@ -21,6 +21,7 @@ export interface PopOutClassificationToolbarProps {
     aiSelection: UseModalJobAiSelectionResult;
     chatOpen: boolean;
     onToggleChat: () => void;
+    classificationEnabled?: boolean;
 }
 
 const CLASSIFY_BUTTON_LOADING_CLASS =
@@ -34,6 +35,7 @@ export function PopOutClassificationToolbar({
     aiSelection,
     chatOpen,
     onToggleChat,
+    classificationEnabled = true,
 }: PopOutClassificationToolbarProps) {
     const classifyStatus = classification.state.status;
 
@@ -45,7 +47,7 @@ export function PopOutClassificationToolbar({
                     className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5"
                     data-testid={`${testIdPrefix}-classify-bar`}
                 >
-                    <div className="flex flex-nowrap items-center gap-2 min-w-0" data-testid={`${testIdPrefix}-classify-left`}>
+                    {classificationEnabled && <div className="flex flex-nowrap items-center gap-2 min-w-0" data-testid={`${testIdPrefix}-classify-left`}>
                         <ClassifyDiffAiControls
                             selection={aiSelection}
                             disabled={classifyStatus === 'loading'}
@@ -66,7 +68,7 @@ export function PopOutClassificationToolbar({
                                 </>
                             ) : classifyStatus === 'ready' ? 'Re-classify' : 'Classify'}
                         </button>
-                    </div>
+                    </div>}
                     <div className="flex flex-nowrap items-center gap-2 shrink-0" data-testid={`${testIdPrefix}-classify-right`}>
                         <button
                             type="button"
@@ -80,7 +82,7 @@ export function PopOutClassificationToolbar({
                         >
                             💬 Chat
                         </button>
-                        {classification.state.error && (
+                        {classificationEnabled && classification.state.error && (
                             <span className="max-w-[240px] truncate text-[10px] text-red-600 dark:text-red-400" title={classification.state.error}>
                                 {classification.state.error}
                             </span>
@@ -89,7 +91,7 @@ export function PopOutClassificationToolbar({
                 </div>
             </div>
             {/* Classification filter bar — visible when results are ready */}
-            {classifyStatus === 'ready' && (
+            {classificationEnabled && classifyStatus === 'ready' && (
                 <div
                     className="flex items-center gap-3 px-3 py-1 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#262626]"
                     data-testid={`${testIdPrefix}-filter-bar`}

@@ -18,7 +18,6 @@ export interface SubTabDef {
 
 export const SUB_TABS: SubTabDef[] = [
     { key: 'chats', label: 'Chats', shortcut: 'Alt+A' },
-    { key: 'cli-sessions', label: 'CLI Sessions' },
     { key: 'git', label: 'Git', shortcut: 'Alt+G' },
     { key: 'terminal', label: 'Terminal' },
     { key: 'work-items', label: 'WIs', shortcut: 'Alt+I' },
@@ -44,7 +43,7 @@ export const VISIBLE_SUB_TABS: SubTabDef[] = SHOW_WIKI_TAB
  * Group identity is purely visual and does not affect functionality.
  */
 export const TAB_GROUP_INDEX: Record<string, number> = {
-    'chats': 1, 'activity': 1, 'cli-sessions': 1, 'copilot-sessions': 1, 'git': 1, 'terminal': 1,
+    'chats': 1, 'activity': 1, 'git': 1, 'terminal': 1,
     'work-items': 2, 'dreams': 2, 'pull-requests': 2, 'tasks': 2,
     'explorer': 3, 'workflows': 3, 'schedules': 3,
     'notes': 4, 'settings': 4, 'wiki': 4,
@@ -57,7 +56,6 @@ export interface VisibleSubTabOptions {
     workflowsEnabled: boolean;
     pullRequestsEnabled: boolean;
     dreamsEnabled: boolean;
-    nativeCliSessionsEnabled: boolean;
     /** When false (default), the deprecated `tasks` sub-tab is hidden in both layout modes. */
     showPlanDepTab: boolean;
     uiLayoutMode: 'classic' | 'dev-workflow';
@@ -101,7 +99,7 @@ export interface VisibleSubTabOptions {
 export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     const {
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
+        pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
         splitWorkspacePanelEnabled = false,
         schedulesInScheduledSlideEnabled = false,
     } = opts;
@@ -114,7 +112,6 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     if (!workflowsEnabled) tabs = tabs.filter(t => t.key !== 'workflows');
     if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
     if (!dreamsEnabled) tabs = tabs.filter(t => t.key !== 'dreams');
-    if (!nativeCliSessionsEnabled) tabs = tabs.filter(t => t.key !== 'cli-sessions' && t.key !== 'copilot-sessions');
     // Schedules tab retirement (AC-04): when the schedules-in-slide flag is ON,
     // hide the standalone `schedules` sub-tab. Applied before the layout
     // relabel/reorder so the dev-workflow "Jobs" rename has nothing to act on.
@@ -132,7 +129,7 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
             'pull-requests': 'Full Requests',
         };
         const devWorkflowOrder: RepoSubTab[] = [
-            'chats', 'cli-sessions', 'work-items', 'dreams', 'schedules', 'explorer',
+            'chats', 'work-items', 'dreams', 'schedules', 'explorer',
             'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',
         ];
         const tabMap = new Map(tabs.map(t => [t.key, t]));

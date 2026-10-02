@@ -60,11 +60,23 @@ can target another registered workspace, links spawned chats via
 `payload.context.spawnedFromProcessId`, and accepts a concrete `provider` (`copilot`, `codex`,
 `claude`, `opencode`) plus optional `effortTier` (`very-low`…`high`). An explicit create-mode
 provider uses that provider's defaults instead of inheriting parent model/effort; incompatible
-provider/model/tier combinations fail without fallback.
+provider/model/tier combinations fail without fallback. Optional create-mode `title` is
+trimmed, must be non-empty and at most 80 characters, and travels through canonical task
+validation as `displayName` and `payload.customTitle`. Queue SQLite serialization preserves
+the payload, and queue API serializers project its custom title into the canonical top-level
+list field while preferring a process-level custom title when present. `ProcessLifecycleRunner`
+seeds `AIProcess.customTitle`, persisted in the existing process-store column. AI title
+generation writes `title` while queue display-name sync prefers the current `customTitle`, so
+supplied titles remain visible across turns and restarts. Omitting the title keeps automatic
+naming.
+
+The tool description asks agents for short, task-specific create-mode titles. The bundled
+`delegate` skill requires agents to include a title in its handoff calls; the JSON schema
+keeps only `content` unconditionally required so untitled creation and post mode stay valid.
 
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and
-lets an explicit `model` override the tier.
+lets an explicit `model` override the tier. Create-only titles are ignored in post mode.
 
 ### Canvas tools
 

@@ -111,6 +111,12 @@ function firstStringQueryValue(value: unknown): string | undefined {
     return undefined;
 }
 
+function resolveTaskCustomTitle(task: QueuedTask, payload: Record<string, unknown> | undefined): string | undefined {
+    const taskCustomTitle = (task as QueuedTask & { customTitle?: unknown }).customTitle;
+    if (typeof taskCustomTitle === 'string') return taskCustomTitle;
+    return typeof payload?.customTitle === 'string' ? payload.customTitle : undefined;
+}
+
 // ============================================================================
 // Serialization Helpers
 // ============================================================================
@@ -153,7 +159,7 @@ export function serializeTask(task: QueuedTask): Record<string, unknown> {
         payload: serializedPayload,
         config: task.config,
         displayName: task.displayName,
-        customTitle: (task as any).customTitle,
+        customTitle: resolveTaskCustomTitle(task, payload),
         lastMessagePreview: (task as any).lastMessagePreview,
         title: (task as any).title,
         provider,
@@ -271,7 +277,7 @@ export function serializeTaskSummary(task: QueuedTask): Record<string, unknown> 
         completedAt: task.completedAt,
         payload: slimPayload,
         displayName: task.displayName,
-        customTitle: (task as any).customTitle,
+        customTitle: resolveTaskCustomTitle(task, payload),
         lastMessagePreview: (task as any).lastMessagePreview,
         title: (task as any).title,
         provider,

@@ -26,6 +26,10 @@ import {
 } from './diffCoords';
 import type { DiffEditorAdapter, DiffEditorSelection } from './monacoDiffController';
 import {
+    writeMonacoDiffSelectionDragStart,
+    type DiffSelectionDragSource,
+} from './diffSelectionContext';
+import {
     buildCommentDecorations,
     createCommentZoneManager,
     isThreadInitiallyExpanded,
@@ -59,6 +63,8 @@ export interface MonacoDiffCommentLayerProps extends MonacoDiffCommentHandlers {
     comments: readonly DiffComment[];
     /** Renders one comment thread (the app's existing comment component). */
     renderThread: (comment: DiffComment) => ReactNode;
+    /** Enables dragging the current editor selection into chat context. */
+    diffSelectionDragSource?: DiffSelectionDragSource;
 }
 
 export interface MonacoDiffCommentLayerHandle {
@@ -83,7 +89,7 @@ const EMPTY_POSITION = { top: 0, left: 0 };
 export const MonacoDiffCommentLayer = forwardRef<MonacoDiffCommentLayerHandle, MonacoDiffCommentLayerProps>(
     function MonacoDiffCommentLayer({
         editor, modelsVersion, diff, viewMode, comments, renderThread,
-        onAddComment, onAskAI, onCopyAsContext,
+        onAddComment, onAskAI, onCopyAsContext, diffSelectionDragSource,
     }, ref) {
         const placements = useMemo<CommentThreadPlacement[]>(
             () => (diff ? placeDiffComments({ comments, ...diff, viewMode }) : []),
@@ -209,10 +215,10 @@ export const MonacoDiffCommentLayer = forwardRef<MonacoDiffCommentLayerHandle, M
 
         const glyphNode = useMemo(() => createIsolatedNode('coc-diff-comment-glyph'), []);
         useEffect(() => {
-            if (!editor || !selection || !onAddComment) return;
+            if (!editor || !selection || (!onAddComment && !diffSelectionDragSource)) return;
             editor.setGlyphWidget({ side: selection.side, line: selection.range.endLineNumber, domNode: glyphNode });
             return () => editor.setGlyphWidget(null);
-        }, [editor, selection, onAddComment, glyphNode]);
+        }, [editor, selection, onAddComment, diffSelectionDragSource, glyphNode]);
 
         return (
             <>
@@ -255,17 +261,41 @@ export const MonacoDiffCommentLayer = forwardRef<MonacoDiffCommentLayerHandle, M
                         p.comment.id,
                     );
                 })}
-                {selection && onAddComment && createPortal(
-                    <button
-                        type="button"
-                        className="coc-diff-comment-glyph-button"
-                        title="Add comment"
-                        aria-label="Add comment"
-                        onClick={() => addComment(selection)}
-                        data-testid="monaco-diff-add-comment"
-                    >
-                        +
-                    </button>,
+                {selection && (onAddComment || diffSelectionDragSource) && createPortal(
+                    <div className="flex items-center">
+                        {onAddComment && (
+                            <button
+                                type="button"
+                                className="coc-diff-comment-glyph-button"
+                                title="Add comment"
+                                aria-label="Add comment"
+                                onClick={() => addComment(selection)}
+                                data-testid="monaco-diff-add-comment"
+                            >
+                                +
+                            </button>
+                        )}
+                        {diffSelectionDragSource && (
+                            <button
+                                type="button"
+                                draggable
+                                className="coc-diff-comment-glyph-button cursor-grab"
+                                title="Drag selection to chat"
+                                aria-label="Drag selection to chat"
+                                onDragStart={(event) => {
+                                    const request = buildRequest(selection);
+                                    if (request) writeMonacoDiffSelectionDragStart(event, {
+                                        selection: request.selection,
+                                        selectedText: request.selectedText,
+                                        source: diffSelectionDragSource,
+                                    });
+                                }}
+                                data-testid="monaco-diff-drag-selection"
+                            >
+                                ⋮
+                            </button>
+                        )}
+                    </div>,
                     glyphNode,
                 )}
             </>

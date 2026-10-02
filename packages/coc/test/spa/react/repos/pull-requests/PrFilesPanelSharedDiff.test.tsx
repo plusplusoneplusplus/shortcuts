@@ -20,6 +20,10 @@ import { PrFilesPanel } from '../../../../../src/server/spa/client/react/feature
 import { parseDiffFileList } from '../../../../../src/server/spa/client/react/features/git/diff';
 import type { DiffSource } from '../../../../../src/server/spa/client/react/features/git/diff/diffSource';
 import type { UseClassificationReturn } from '../../../../../src/server/spa/client/react/features/git/diff/useClassification';
+let engine: 'legacy' | 'monaco' = 'legacy';
+vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
+    useDiffEngine: () => [engine, vi.fn()],
+}));
 
 vi.mock('../../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
     useModalJobAiSelection: () => ({
@@ -139,6 +143,7 @@ function makeClassification(overrides: Partial<UseClassificationReturn> = {}): U
 }
 
 beforeEach(() => {
+    engine = 'legacy';
     lastPanelProps = null;
     currentClassification = undefined;
     fetchReviewProgressMock.mockReset();
@@ -151,6 +156,23 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('PrFilesPanel — desktop adopts the shared FileDiffPanel', () => {
+    it('hides classification in Monaco and restores it on reported Classic fallback', () => {
+        engine = 'monaco';
+        currentClassification = makeClassification();
+        const props = {
+            files: parsedFiles, diffText, workspaceId: 'ws-1', diffSource: makeSource(),
+            classificationKey: { type: 'pr' as const, repoId: 'repo-1', identifier: '7:head' },
+        };
+        const view = render(<PrFilesPanel {...props} />);
+        expect(screen.queryByTestId('classification-filter-bar')).toBeNull();
+        act(() => lastPanelProps.onDiffEngineChange('legacy'));
+        expect(screen.getByTestId('classification-filter-bar')).toBeTruthy();
+        act(() => lastPanelProps.onDiffEngineChange('monaco'));
+        expect(screen.queryByTestId('classification-filter-bar')).toBeNull();
+        act(() => lastPanelProps.onDiffEngineChange('legacy'));
+        view.rerender(<PrFilesPanel {...props} diffSource={{ ...props.diffSource, cacheKey: 'pr:next-head' }} />);
+        expect(screen.queryByTestId('classification-filter-bar')).toBeNull();
+    });
     it('renders FileDiffPanel for the selected file and drops the slim panel', () => {
         render(<PrFilesPanel files={parsedFiles} diffText={diffText} workspaceId="ws-1" diffSource={makeSource()} />);
 

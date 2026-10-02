@@ -234,6 +234,17 @@ project root, so mixed multi-root outcomes remain visible. Runtime payloads use
 workspace-relative root labels and opaque session IDs; host paths, environment
 values, capabilities, and internal session keys stay server-side.
 
+### Diff documents
+
+`MonacoFileDiffViewer` shares the explorer's reference-counted
+`LanguageDocumentStore` only for real modified working-copy models: unstaged
+diffs and server-confirmed clean branch-range heads. Branch-range eligibility
+requires checked-out HEAD, a clean index/file, and byte-identical disk content;
+the server rechecks it outside the immutable snapshot cache.
+`diffLanguageEligibility` and the owned editor adapter reject synthetic or
+foreign URIs. An unsaved explorer buffer disables diff language features without
+overwriting that buffer, and closing a diff releases only its own document reference.
+
 ### Retry
 
 Editor retry travels over `/ws/language-server`. Settings retry uses

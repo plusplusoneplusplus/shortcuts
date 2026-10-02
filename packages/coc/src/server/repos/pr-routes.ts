@@ -9,6 +9,7 @@
  * GET  /api/origins/:originId/pull-requests/:prId/commits    — get commits through an explicit workspace
  * GET  /api/origins/:originId/pull-requests/:prId/diff       — get unified diff through an explicit workspace
  * GET  /api/origins/:originId/pull-requests/:prId/diff/files/:path — get per-file diff through an explicit workspace
+ * GET  /api/origins/:originId/pull-requests/:prId/files/:path/content — get both full-text sides through an explicit workspace
  * GET  /api/origins/:originId/pull-requests/:prId/checks     — get CI/check statuses through an explicit workspace
  * GET  /api/origins/:originId/pull-requests/recent-opened    — list recently opened PRs
  * POST /api/origins/:originId/pull-requests/recent-opened    — record a recently opened PR
@@ -67,6 +68,11 @@ import {
     type PullRequestStorageScope,
 } from './pr-origin-scope';
 import type { RepoInfo } from './types';
+import {
+    loadPullRequestFileContent,
+    PullRequestFileContentError,
+    type PullRequestFileCliRunner,
+} from '../git/pull-request-file-content';
 
 // ============================================================================
 // Helpers
@@ -1275,6 +1281,10 @@ export interface PullRequestAutoClassificationOptions {
     getEnabled?: () => boolean;
 }
 
+export interface PullRequestFileContentOptions {
+    runCommand?: PullRequestFileCliRunner;
+}
+
 interface TriggerTeamAutoClassificationOptions {
     dataDir: string;
     store: ProcessStore;
@@ -1330,6 +1340,7 @@ export function registerPrRoutes(
     store?: ProcessStore,
     aiService?: ISDKService,
     autoClassification?: PullRequestAutoClassificationOptions,
+    fileContent?: PullRequestFileContentOptions,
 ): void {
     const svc = service ?? new RepoTreeService(dataDir, undefined, store);
 
@@ -1667,6 +1678,36 @@ export function registerPrRoutes(
         );
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(diff);
+    }
+
+    async function sendPullRequestFileContent(
+        res: Parameters<Route['handler']>[1],
+        options: { repoId: string; prId: string; filePath: string; repo: RepoInfo; cacheScopeId: string },
+    ): Promise<void> {
+        if (!options.repo.localPath) {
+            throw new PullRequestFileContentError('content-unavailable', 'The selected clone has no local path');
+        }
+        const prSvc = await createPullRequestsServiceForRepo(options.repo);
+        if (typeof prSvc.getDiff !== 'function') {
+            throw new PullRequestFileContentError('content-unavailable', 'The pull request provider cannot load file content');
+        }
+        const pullRequest = await getCachedPullRequestDetail(
+            options.cacheScopeId,
+            options.repoId,
+            options.prId,
+            prSvc.getPullRequest.bind(prSvc),
+        );
+        const content = await loadPullRequestFileContent({
+            repoRoot: options.repo.localPath,
+            remoteUrl: options.repo.remoteUrl ?? '',
+            originId: options.cacheScopeId,
+            prId: options.prId,
+            filePath: options.filePath,
+            pullRequest,
+            getProviderDiff: () => prSvc.getDiff!(options.repoId, options.prId),
+            runCommand: fileContent?.runCommand,
+        });
+        sendJson(res, content);
     }
 
     // -- Origin-scoped recent PRs ---------------------------------------------
@@ -2226,6 +2267,34 @@ export function registerPrRoutes(
 
                 return sendJson(res, { enabled: body.enabled });
             } catch (err) {
+                sendProviderBackedPrRouteError(res, err);
+            }
+        },
+    });
+
+    routes.push({
+        method: 'GET',
+        pattern: /^\/api\/origins\/([^/]+)\/pull-requests\/([^/]+)\/files\/(.+)\/content$/,
+        handler: async (req, res, match) => {
+            try {
+                const originId = parseOriginId(match![1]);
+                if (!originId) return send400(res, 'originId must be a non-empty string');
+                const prId = decodeURIComponent(match![2]);
+                const filePath = decodeURIComponent(match![3]);
+                const scopeResult = await resolveOriginPrRepoScope(req, undefined, originId, svc, store);
+                if (!scopeResult.ok) return sendOriginPrRepoScopeError(res, scopeResult);
+                const { repoId, repo, storageScope } = scopeResult.value;
+                await sendPullRequestFileContent(res, {
+                    repoId,
+                    prId,
+                    filePath,
+                    repo,
+                    cacheScopeId: storageScope.storageOriginId,
+                });
+            } catch (err) {
+                if (err instanceof PullRequestFileContentError) {
+                    return sendJson(res, { error: err.message, code: err.code }, 502);
+                }
                 sendProviderBackedPrRouteError(res, err);
             }
         },

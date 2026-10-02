@@ -64,7 +64,7 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
         persistence: { originId: progressOriginId, workspaceId, repoId, prId },
     });
 
-    const model = usePopOutReviewModel({ files: fileList, progress, classification });
+    const model = usePopOutReviewModel({ files: fileList, progress, classification, diffIdentity: `${workspaceId}:${prId}:${headSha}` });
 
     useEffect(() => {
         setLoading(true);
@@ -122,6 +122,7 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
             <PopOutClassificationToolbar
                 testIdPrefix="pr-popout"
                 classification={classification}
+                classificationEnabled={model.classificationEnabled}
                 aiSelection={aiSelection}
                 chatOpen={chat.chatOpen}
                 onToggleChat={chat.toggleChat}

@@ -1,6 +1,6 @@
 /**
  * useDiffLanguageFeatures — the language document behind the modified side of
- * an unstaged working-tree diff (AC-06).
+ * an unstaged diff or server-confirmed clean branch-range head.
  *
  * It joins the explorer's shared buffer through `useLanguageDocument` (one
  * document per path per workspace, ref-counted), so a file open in both the
@@ -8,7 +8,7 @@
  * only drops the diff's reference.
  *
  * Features are offered only while they can be right:
- *   - the target must pass `resolveDiffLanguageTarget` (unstaged, real URI,
+ *   - the target must pass `resolveDiffLanguageTarget` (working copy, real URI,
  *     within the explorer's size limit) — nothing else opens a document;
  *   - the shared buffer must hold exactly the text the diff shows. An unsaved
  *     explorer edit makes the buffer diverge from disk, and its positions and

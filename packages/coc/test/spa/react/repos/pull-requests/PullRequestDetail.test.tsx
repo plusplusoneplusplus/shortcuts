@@ -3,6 +3,9 @@ import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import { mockViewport } from '../../../helpers/viewport-mock';
 import { getReviewChatPlacementStorageKey } from '../../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
 import { extractFileDiffFromCombined } from '../../../../../src/server/spa/client/react/features/git/diff/diffSource';
+vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine', () => ({
+    useDiffEngine: () => ['legacy', vi.fn()],
+}));
 
 const configMocks = vi.hoisted(() => ({
     isCommitChatLensEnabled: vi.fn(() => false),

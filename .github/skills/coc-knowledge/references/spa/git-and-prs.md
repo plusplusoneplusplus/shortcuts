@@ -85,6 +85,43 @@ file-diff URLs and its cache key. With no upstream the server falls back to the 
 branch and sets `baseModeFallback`. Pop-out URLs serialize `&base=upstream`; the
 default mode is omitted.
 
+### Shared file diff sources
+
+`features/git/diff/diffSource.ts` supplies commit, branch-range, and PR views with
+patch URLs plus an optional paired-content loader. Each loader resolves
+`getCocClientForWorkspace(workspaceId)` when called, so a remote clone route that
+becomes available after source construction is honored. Branch-range loaders carry
+the selected base mode. PR loaders use the origin-scoped content API with workspace
+and repo clone-selection metadata, and the source cache identity includes the head SHA.
+
+`FileDiffPanel` and `WorkingTreeFileDiff` share the global `useDiffEngine` preference
+and the same Classic/Editor toggle; the preference defaults to Monaco and updates all
+mounted file-diff surfaces immediately. In Editor mode, `FileDiffPanel` loads the
+paired content and renders `MonacoFileDiffViewer`; its synthetic model identity includes
+the source cache key and the response's resolved base/head refs so the same path at different commits, ranges, or PR heads cannot
+share a model. Branch-range sources opt into working-copy language support only
+when the server returns `modifiedMatchesWorkingCopy`; their modified model then
+uses the explorer's real document URI. Commit, PR, base, and ineligible branch
+models stay synthetic. See [language-servers.md](../language-servers.md) for
+document ownership.
+
+Both surfaces use `resolveDiffEngineSelection` for binary, oversized,
+content-load, and editor-start fallback; `DiffEngineFallbackBanner` exposes the reason.
+Malformed content and synchronous loader exceptions count as content-load failures.
+Recoverable failures retry with a fresh content request and editor mount, keyed by
+workspace, source identity, file, and attempt. Classic retains the patch request and
+comment context, including full-context and truncation controls during fallback.
+User-selected Classic and patch-only sources render without a fallback reason.
+Monaco supplies find, syntax, overview markers, unified/split layout, and hunk navigation while full-context
+and truncation controls stay specific to Classic.
+
+Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
+and selection conversion owned by `monacoCommentThreads` and `diffCoords`.
+`FileDiffPanel` uses each source's existing comment refs for CRUD, replies, and AI
+actions; sidebar navigation reveals and expands the editor thread. Anchor relocation
+matches source rows, excluding patch headers and no-newline annotations during engine
+switches. Both engines share the persisted comment shape.
+
 ### Cherry-pick
 
 Same-clone: the commit context menu opens `BranchPickerModal` as a local-branch
@@ -146,7 +183,7 @@ each worktree with its linked task/session and a Cleanup action calling
 
 ## Diff classification
 
-Classify-diff toolbars call `useModalJobAiSelection()` directly and render
+Classic classify-diff toolbars call `useModalJobAiSelection()` directly and render
 `features/git/diff/ClassifyDiffAiControls.tsx`, which hides the provider chip when only
 one provider is selectable and shows either an effort-tier selector or the
 pickable-model command picker.
@@ -156,6 +193,12 @@ low-attention by default. PR and commit pop-out file rails show category badges 
 critical marker, and their selected-file unified diff views render test fidelity
 comments, logic summaries, and critical usage/call-stack evidence near each classified
 hunk. Branch-range pop-out diff UI uses the compact classification-free path.
+`FileDiffPanel` reports its resolved engine through `onDiffEngineChange`;
+`useFileDiffEngineState` scopes that report to file/ref identity and the global
+preference. Selected Monaco files hide classification controls, rail badges,
+dimming, and priority navigation; Classic fallback restores them. Overview and
+mobile Classic views retain classification, and cached results and filters survive
+engine switches.
 
 ## Composer PR chips
 
@@ -461,10 +504,13 @@ reviewed/visited file progress through
 against `/api/origins/:originId/pull-requests/:prId/review-progress`, passing
 workspaceId/repoId metadata for pre-origin migration only.
 
-Pop-out file views expose a full-context toggle calling the per-file diff endpoint with
-`fullContext=true`. The server first tries a full-file-context git diff from PR
-`baseSha` to `headSha`, fetches missing PR commits into the requested checkout when
-possible, and only then returns the hunk-only diff with `fullContextUnavailable: true`.
+PR file data stays origin-scoped while `workspaceId` and optional `repoId` select a
+same-origin clone. Classic pop-out views call the per-file diff endpoint with
+`fullContext=true`; the server tries a full-file-context git diff from PR `baseSha` to
+`headSha`, fetches missing commits into that checkout, then degrades to hunk-only data
+with `fullContextUnavailable: true`. The paired-content endpoint reads both snapshots
+from local objects first and falls back to the user's authenticated `gh api` or
+`az devops invoke`; binary, symlink, and over-10MB files return no text.
 
 PR review suggestions sit behind `pullRequests.suggestions`. The For You filter's
 generate/refresh action first refreshes origin-scoped review history via

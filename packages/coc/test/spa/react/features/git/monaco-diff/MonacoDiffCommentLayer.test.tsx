@@ -268,11 +268,15 @@ describe('MonacoFileDiffViewer — creating comments from a selection', () => {
         h.unmount();
     });
 
-    it('does not register comment overlays when no thread renderer is given', async () => {
+    it('keeps selection actions but omits comment zones when no thread renderer is given', async () => {
         const h = harness({ renderCommentThread: undefined });
         await ready(h);
-        expect(h.fake().actions).toEqual([]);
-        expect(h.fake().adapter.setCommentDecorations).not.toHaveBeenCalled();
+        expect(h.fake().actions.map(action => action.id)).toEqual([
+            'coc.diff.comment.add',
+            'coc.diff.comment.askAI',
+            'coc.diff.comment.copyContext',
+        ]);
+        expect(h.fake().zones.size).toBe(0);
         h.unmount();
     });
 });

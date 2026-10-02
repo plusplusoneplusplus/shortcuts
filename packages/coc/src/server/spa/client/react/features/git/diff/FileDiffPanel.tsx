@@ -6,23 +6,27 @@
  * mode-specific behavior (URL building, comment context, AI chat support).
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
+import type { GitFileDiffContentResponse } from '@plusplusoneplusplus/coc-client';
 import { Spinner, Button, TruncatedPath } from '../../../ui';
 import { UnifiedDiffViewer, HunkNavButtons } from './UnifiedDiffViewer';
 import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
-import { DiffViewToggle } from './DiffViewToggle';
+import { useDiffEngine } from '../hooks/useDiffEngine';
+import { DiffEngineToggle, DiffViewToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
 import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
 import { useDiffFindShortcut } from './useDiffFindShortcut';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
+import { CommentCard } from '../../../tasks/comments/CommentCard';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useCrossFileNav } from '../hooks/useCrossFileNav';
+import type { HunkNavigationHandle } from '../hooks/useCrossFileNav';
 import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { buildDiffContext } from '../../../../comments/diff-context-utils';
 import { copyToClipboard } from '../../../utils/format';
@@ -36,6 +40,10 @@ import type { DiffSelectionDragSource } from './diffSelectionContext';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
 import type { AnyComment } from '../../../../comments/shared-comment-types';
 import type { TaskCommentCategory } from '../../../../comments/task-comments-types';
+import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from './MonacoFileDiffViewer';
+import type { DiffEditorFactory } from './monacoDiffEditorAdapter';
+import { resolveDiffEngineSelection, type DiffContentLoadState, type DiffEngineResolution } from './diffEngineResolution';
+import { DiffEngineFallbackBanner } from './DiffEngineFallbackBanner';
 
 export interface FileDiffPanelProps {
     workspaceId: string;
@@ -67,6 +75,9 @@ export interface FileDiffPanelProps {
      * leaves the header markup unchanged.
      */
     headerActions?: React.ReactNode;
+    /** Monaco diff editor factory; wiring tests pass an owned adapter. */
+    createDiffEditor?: DiffEditorFactory;
+    onDiffEngineChange?: (engine: DiffEngineResolution['engine']) => void;
 }
 
 type PopupState = {
@@ -74,6 +85,11 @@ type PopupState = {
     selection: DiffCommentSelection;
     selectedText: string;
 } | null;
+
+type EditorContentState =
+    | { key: string; status: 'loading' }
+    | { key: string; status: 'loaded'; content: GitFileDiffContentResponse }
+    | { key: string; status: 'failed' };
 
 export function FileDiffPanel({
     workspaceId,
@@ -90,6 +106,8 @@ export function FileDiffPanel({
     getHunkClassification,
     hunkActiveFilters,
     headerActions,
+    createDiffEditor,
+    onDiffEngineChange,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -116,6 +134,54 @@ export function FileDiffPanel({
 
     // ── View mode ──
     const [viewMode, setViewMode] = useDiffViewMode();
+    const [diffEngine, setDiffEngine] = useDiffEngine();
+    const [editorContent, setEditorContent] = useState<EditorContentState | null>(null);
+    const [editorAttempt, setEditorAttempt] = useState(0);
+    const [editorFailedKey, setEditorFailedKey] = useState<string | null>(null);
+    const wantsEditor = diffEngine === 'monaco' && source.fetchFileContent !== undefined;
+    const editorContentKey = `${workspaceId}\u0000${source.cacheKey}\u0000${filePath}\u0000${editorAttempt}`;
+    const sourceRef = useRef(source);
+    sourceRef.current = source;
+
+    useEffect(() => {
+        const fetchFileContent = sourceRef.current.fetchFileContent;
+        if (!wantsEditor || !fetchFileContent) return;
+        let cancelled = false;
+        setEditorContent({ key: editorContentKey, status: 'loading' });
+        Promise.resolve().then(() => fetchFileContent(filePath))
+            .then(content => {
+                if (!content || typeof content.binary !== 'boolean' || typeof content.tooLarge !== 'boolean'
+                    || typeof content.base?.content !== 'string' || typeof content.head?.content !== 'string') {
+                    throw new Error('Invalid file diff content response');
+                }
+                if (!cancelled) setEditorContent({ key: editorContentKey, status: 'loaded', content });
+            })
+            .catch(() => { if (!cancelled) setEditorContent({ key: editorContentKey, status: 'failed' }); });
+        return () => { cancelled = true; };
+    }, [wantsEditor, filePath, editorContentKey]);
+
+    const currentEditorContent = editorContent?.key === editorContentKey ? editorContent : null;
+    const contentLoadState: DiffContentLoadState | null = !currentEditorContent ? null
+        : currentEditorContent.status === 'loaded'
+            ? { status: 'loaded', binary: currentEditorContent.content.binary, tooLarge: currentEditorContent.content.tooLarge }
+            : { status: currentEditorContent.status };
+    const engineSelection = resolveDiffEngineSelection({
+        preference: wantsEditor ? diffEngine : 'legacy',
+        content: contentLoadState,
+        editorFailed: editorFailedKey === editorContentKey,
+    });
+    const editorSides = engineSelection.engine === 'monaco' && currentEditorContent?.status === 'loaded'
+        ? currentEditorContent.content
+        : null;
+    const showEditor = editorSides !== null;
+    const editorLoading = engineSelection.engine === 'loading';
+    const classicActive = engineSelection.engine === 'legacy';
+    const fallbackReason = classicActive ? engineSelection.fallback : null;
+    const handleEditorError = useCallback(() => setEditorFailedKey(editorContentKey), [editorContentKey]);
+    const retryEditor = useCallback(() => setEditorAttempt(attempt => attempt + 1), []);
+    useEffect(() => {
+        onDiffEngineChange?.(engineSelection.engine);
+    }, [onDiffEngineChange, engineSelection.engine]);
 
     // ── UI state ──
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -123,6 +189,7 @@ export function FileDiffPanel({
     const [activePopoverComment, setActivePopoverComment] = useState<AnyComment | null>(null);
     const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
+    const monacoViewerRef = useRef<MonacoFileDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
 
@@ -162,10 +229,11 @@ export function FileDiffPanel({
         () => sourceFiles.length > 0 ? sourceFiles : fetchedFiles,
         [sourceFiles, fetchedFiles],
     );
+    const hunkNavRef: RefObject<HunkNavigationHandle | null> = showEditor ? monacoViewerRef : viewerRef;
     const { handleNext, handlePrev } = useCrossFileNav({
         filePath,
         files: allFiles,
-        viewerRef,
+        viewerRef: hunkNavRef,
         onNavigateToFile,
     });
 
@@ -205,7 +273,7 @@ export function FileDiffPanel({
     }, [filePath]);
 
     useEffect(() => {
-        if (!initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
+        if (!classicActive || !initialHunkTarget || !diff || loading || hasScrolledRef.current) return;
         hasScrolledRef.current = true;
         const timer = setTimeout(() => {
             const viewer = viewerRef.current;
@@ -219,7 +287,7 @@ export function FileDiffPanel({
             }
         }, 50);
         return () => clearTimeout(timer);
-    }, [initialHunkTarget, diff, loading]);
+    }, [initialHunkTarget, diff, loading, classicActive]);
 
     // ── Handlers ──
 
@@ -317,6 +385,10 @@ export function FileDiffPanel({
     );
 
     const handleSidebarCommentClick = useCallback((comment: AnyComment) => {
+        if (showEditor) {
+            monacoViewerRef.current?.revealComment(comment.id);
+            return;
+        }
         const dc = comment as DiffComment;
         const lineIdx = dc.selection?.diffLineStart;
         if (lineIdx == null) return;
@@ -327,7 +399,25 @@ export function FileDiffPanel({
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('ring-2', 'ring-yellow-400');
         setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
-    }, []);
+    }, [showEditor]);
+
+    const renderCommentThread = useCallback((comment: DiffComment) => (
+        <CommentCard
+            comment={comment}
+            onResolve={() => { void resolveComment(comment.id); }}
+            onUnresolve={() => { void unresolveComment(comment.id); }}
+            onEdit={(text) => { void updateComment(comment.id, { comment: text }); }}
+            onDelete={() => { void deleteComment(comment.id); }}
+            onAskAI={(commandId, question) => handleAskAI(comment.id, commandId, question)}
+            onFixWithAI={() => handleFixWithAI(comment.id)}
+            onClick={() => undefined}
+            aiLoading={aiLoadingIds.has(comment.id)}
+            aiError={aiErrors.get(comment.id) ?? null}
+            onClearAiError={() => clearAiError(comment.id)}
+            isResolving={resolvingIds.has(comment.id)}
+            isDeleting={deletingIds.has(comment.id)}
+        />
+    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, handleFixWithAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
 
     // ── Render ──
 
@@ -363,8 +453,9 @@ export function FileDiffPanel({
                 </div>
                 <div className="flex items-center gap-2">
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
+                    <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                    {source.fullContextFileDiffUrl && (
+                    {classicActive && source.fullContextFileDiffUrl && (
                         <button
                             onClick={() => setFullContextMode(m => !m)}
                             title={fullContextMode ? 'Switch to hunk-only diff' : 'Show full-file context'}
@@ -424,7 +515,7 @@ export function FileDiffPanel({
             {/* ── Main content area ── */}
             <div className="relative flex flex-1 min-h-0">
                 {/* ── In-diff find widget (Ctrl/Cmd+F) ── */}
-                {find.open && diff && !loading && !error && (
+                {classicActive && find.open && diff && !loading && !error && (
                     <DiffFindWidget
                         query={find.query}
                         caseSensitive={find.caseSensitive}
@@ -444,7 +535,39 @@ export function FileDiffPanel({
                     data-testid="file-diff-section"
                     tabIndex={-1}
                 >
-                    {loading ? (
+                    {fallbackReason && (
+                        <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
+                    )}
+                    {showEditor ? (
+                        <MonacoFileDiffViewer
+                            key={editorContentKey}
+                            ref={monacoViewerRef}
+                            workspaceId={workspaceId}
+                            relativePath={filePath}
+                            stage={source.supportsWorkingCopyLanguage ? 'branch-range' : 'staged'}
+                            modelIdentity={`${source.cacheKey}\u0000${editorSides.base.ref}\u0000${editorSides.head.ref}`}
+                            modifiedMatchesWorkingCopy={editorSides.modifiedMatchesWorkingCopy}
+                            original={editorSides.base.content}
+                            modified={editorSides.head.content}
+                            viewMode={viewMode}
+                            initialHunkTarget={initialHunkTarget}
+                            onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
+                            comments={comments}
+                            renderCommentThread={renderCommentThread}
+                            onAddComment={handleAddComment}
+                            onAskAI={handleAskAIDiff}
+                            onCopyAsContext={handleCopyAsContext}
+                            diffSelectionDragSource={diffSelectionDragSource}
+                            languageFeatures={source.supportsWorkingCopyLanguage === true && editorSides.modifiedMatchesWorkingCopy === true}
+                            onEditorError={handleEditorError}
+                            createEditor={createDiffEditor}
+                            data-testid="file-diff-editor"
+                        />
+                    ) : editorLoading ? (
+                        <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="file-diff-editor-loading">
+                            <Spinner size="sm" /> Loading file content...
+                        </div>
+                    ) : loading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="file-diff-loading">
                             <Spinner size="sm" /> Loading diff...
                         </div>
@@ -504,7 +627,7 @@ export function FileDiffPanel({
                                     data-testid="file-diff-content"
                                 />
                             )}
-                            {truncated && (
+                            {truncated && classicActive && (
                                 <div
                                     className="flex items-center gap-2 px-4 py-2 text-xs bg-[#fff3cd] dark:bg-[#3a3000] border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                                     data-testid="diff-truncation-banner"
@@ -522,7 +645,7 @@ export function FileDiffPanel({
                                     </button>
                                 </div>
                             )}
-                            {fullContextUnavailable && (
+                            {fullContextUnavailable && classicActive && (
                                 <div
                                     className="flex items-center gap-2 px-4 py-2 text-xs bg-[#fff3cd] dark:bg-[#3a3000] border-t border-[#e0e0e0] dark:border-[#3c3c3c]"
                                     data-testid="full-context-unavailable-banner"
@@ -541,7 +664,7 @@ export function FileDiffPanel({
                 </div>
 
                 {/* ── DiffMiniMap ── */}
-                {diff && !loading && !error && (
+                {diff && !loading && !error && classicActive && (
                     <DiffMiniMap diffLines={diffLines} scrollContainerRef={scrollContainerRef} />
                 )}
 

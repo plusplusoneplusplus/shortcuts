@@ -108,6 +108,34 @@ all have their own `references/*.md`.
   with a timing delay.
 - **Server Vitest tests** live under `packages/coc/test/server/`. Any
   server change should add or update tests there.
+- **Git full-text diff snapshots** use workspace-scoped `files/*/diff-content`
+  routes for commits and branch ranges, plus the origin-scoped PR
+  `files/*/content` route with an explicit workspace selecting the clone.
+  `git/ref-file-content.ts` handles immutable local objects and renames;
+  `git/pull-request-file-content.ts` falls back to the user's `gh` or Azure CLI
+  login when PR objects are absent. All paths share working-tree byte/size
+  rules. Shared commit, branch-range, and PR `DiffSource` factories expose these
+  pairs through `fetchFileContent` and resolve the workspace client on every
+  call. `FileDiffPanel` renders those pairs through `MonacoFileDiffViewer` for
+  commit, branch-range, and PR sources, using the source cache key to isolate
+  synthetic ref models. Shared engine resolution falls back to Classic for
+  binary/oversized content, content-load failures, or editor-start failures,
+  retaining comments and the patch path. Retry refetches content and remounts
+  the editor for recoverable failures. Monaco comment threads reuse
+  `MonacoDiffCommentLayer`, `CommentCard`, and each source's existing comment
+  refs; sidebar navigation uses the viewer's `revealComment` handle.
+  Anchor relocation excludes patch metadata and no-newline annotations.
+  Selected Monaco files ignore classification; shared engine reports let host
+  toolbars restore classification for Classic, including automatic fallback.
+  Branch-range content reports live `modifiedMatchesWorkingCopy` eligibility;
+  only a byte-identical, index-clean checked-out head shares the explorer's
+  real URI and language document. Commit, PR, and base models stay synthetic.
+  `FileDiffPanel` and `WorkingTreeFileDiff` consume the same global
+  `useDiffEngine` preference and
+  Classic/Editor control. Cache identity includes
+  workspace or origin, ref identity, base mode where applicable, and path; PR
+  source identity includes the head SHA. The commit `files/*/content` preview
+  remains a separate line-array API.
 - **Normal CoC Teams** uses Admin → Connections for its global MCP endpoint and
   team/channel inbound command bridge. Ordinary new messages enqueue Ask chats
   with a prompt in the selected workspace (or the first registered workspace).

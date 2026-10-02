@@ -18,7 +18,6 @@ const allOn: VisibleSubTabOptions = {
     workflowsEnabled: true,
     pullRequestsEnabled: true,
     dreamsEnabled: true,
-    nativeCliSessionsEnabled: true,
     showPlanDepTab: true,
     uiLayoutMode: 'dev-workflow',
 };
@@ -34,6 +33,11 @@ describe('VISIBLE_SUB_TABS', () => {
     it('labels the remote-scope tabs compactly as "WIs" and "PRs"', () => {
         expect(SUB_TABS.find(t => t.key === 'work-items')?.label).toBe('WIs');
         expect(SUB_TABS.find(t => t.key === 'pull-requests')?.label).toBe('PRs');
+    });
+
+    it('keeps CLI Sessions out of both dashboard tab strips', () => {
+        expect(SUB_TABS.find(t => t.key === 'cli-sessions')).toBeUndefined();
+        expect(computeVisibleSubTabs(allOn).find(t => t.key === 'cli-sessions')).toBeUndefined();
     });
 });
 
@@ -77,9 +81,8 @@ describe('computeVisibleSubTabs', () => {
             workflowsEnabled: false,
             pullRequestsEnabled: false,
             dreamsEnabled: false,
-            nativeCliSessionsEnabled: false,
         });
-        for (const key of ['terminal', 'notes', 'workflows', 'pull-requests', 'dreams', 'cli-sessions', 'copilot-sessions']) {
+        for (const key of ['terminal', 'notes', 'workflows', 'pull-requests', 'dreams']) {
             expect(tabs.find(t => t.key === key)).toBeUndefined();
         }
         // Non-gated tabs survive.

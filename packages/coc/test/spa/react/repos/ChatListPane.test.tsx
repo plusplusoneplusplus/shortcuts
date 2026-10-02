@@ -42,6 +42,9 @@ import {
     peekNewChatSeedContext,
     resetNewChatSeedContext,
 } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
+import { serializeTaskSummary } from '../../../../src/server/routes/queue-shared';
+import { processToHistorySummary } from '../../../../src/server/shared/process-history-mapper';
+import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
@@ -230,6 +233,40 @@ function makeQueuedTask(overrides: Record<string, any> = {}) {
 
 function makeHistoryTask(overrides: Record<string, any> = {}) {
     return makeTask({ id: 'h-1', status: 'completed', displayName: 'History Task', ...overrides });
+}
+
+function makeCanonicalDelegatedTitleTask(status: 'queued' | 'running' | 'completed'): Record<string, unknown> {
+    if (status === 'completed') {
+        return processToHistorySummary({
+            id: 'queue_delegated-title',
+            type: 'chat',
+            promptPreview: 'Investigate the delegated task',
+            fullPrompt: 'Investigate the delegated task',
+            status: 'completed',
+            startTime: new Date('2026-01-01T00:00:00Z'),
+            endTime: new Date('2026-01-01T00:01:00Z'),
+            title: 'AI generated title',
+            customTitle: 'Delegated investigation',
+            metadata: { type: 'chat', mode: 'ask', workspaceId: 'ws-1' },
+        } satisfies AIProcess);
+    }
+
+    return serializeTaskSummary({
+        id: 'delegated-title',
+        repoId: 'ws-1',
+        type: 'chat',
+        priority: 'normal',
+        status,
+        createdAt: Date.parse('2026-01-01T00:00:00Z'),
+        ...(status === 'running' ? { startedAt: Date.parse('2026-01-01T00:00:30Z') } : {}),
+        displayName: 'Delegated investigation',
+        payload: {
+            mode: 'ask',
+            prompt: 'Investigate the delegated task',
+            customTitle: 'Delegated investigation',
+        },
+        config: { retryOnFailure: false },
+    } satisfies QueuedTask);
 }
 
 // ── Default props ──────────────────────────────────────────────────────
@@ -2856,6 +2893,18 @@ describe('ChatListPane', () => {
     });
 
     describe('History card: title fallback', () => {
+        it.each([
+            ['queued', 'queued'],
+            ['running', 'running'],
+            ['completed', 'history'],
+        ] as const)('shows a delegated custom title while %s', (status, collection) => {
+            renderPane({ [collection]: [makeCanonicalDelegatedTitleTask(status)] });
+
+            expect(screen.getByText('Delegated investigation')).toBeTruthy();
+            expect(screen.queryByText('Investigate the delegated task')).toBeNull();
+            expect(screen.queryByText('AI generated title')).toBeNull();
+        });
+
         it('renders customTitle when set (user-set name)', () => {
             const task = makeHistoryTask({
                 displayName: undefined,

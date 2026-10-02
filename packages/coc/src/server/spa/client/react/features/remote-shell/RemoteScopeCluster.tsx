@@ -6,7 +6,6 @@ import { useNotesEnabled } from '../notes/hooks/useNotesEnabled';
 import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabled';
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
-import { useNativeCliSessionsEnabled } from '../../hooks/feature-flags/useNativeCliSessionsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
@@ -38,7 +37,6 @@ export function RemoteScopeCluster({ repo, repos, hideIdentity }: RemoteScopeClu
     const workflowsEnabled = useWorkflowsEnabled();
     const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
-    const nativeCliSessionsEnabled = useNativeCliSessionsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const [uiLayoutMode] = useUiLayoutMode();
     const isGitRepo = !!repo?.gitInfo?.isGitRepo;
@@ -49,8 +47,8 @@ export function RemoteScopeCluster({ repo, repos, hideIdentity }: RemoteScopeClu
 
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode]);
+        pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode]);
     const { remote: remoteTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
     const workItemOriginId = useMemo(() => repo ? resolveRepoWorkItemOriginScope(repo).originId : '', [repo]);
     const unseenWorkItemCount = repo ? (workItemState.unseenByRepo[workItemOriginId] || []).length : 0;

@@ -1,5 +1,5 @@
 /**
- * Decides which diff engine a working-tree file renders with, and why the
+ * Decides which diff engine a file renders with, and why the
  * classic viewer is used when the user asked for the editor.
  *
  * Pure: the surface feeds in the preference, the stage, the content-load
@@ -43,7 +43,8 @@ export type DiffContentLoadState =
 
 export interface DiffEngineResolutionInput {
     preference: DiffEngine;
-    stage: 'staged' | 'unstaged' | 'untracked';
+    /** Working-tree stage; immutable commit, range, and PR sources omit it. */
+    stage?: 'staged' | 'unstaged' | 'untracked';
     /** Content for the current file and attempt; `null` before the first request. */
     content: DiffContentLoadState | null;
     /** The editor reported an error for the current file and attempt. */

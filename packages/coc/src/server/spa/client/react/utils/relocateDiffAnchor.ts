@@ -25,6 +25,12 @@ function hashText(text: string): string {
     return Math.abs(hash).toString(36);
 }
 
+function isSourceLine(line: DiffLine): boolean {
+    return (line.type === 'added' || line.type === 'removed' || line.type === 'context')
+        && (line.content !== '\\ No newline at end of file'
+            || line.oldLine !== undefined || line.newLine !== undefined);
+}
+
 /**
  * Re-locate a comment's anchor against a new set of diff lines.
  *
@@ -39,14 +45,14 @@ export function relocateDiffAnchor(
 
     // Strategy 1 – exact hash match
     const byHash = newLines.findIndex(
-        (l) => hashText(l.content) === anchor.textHash,
+        (l) => isSourceLine(l) && hashText(l.content) === anchor.textHash,
     );
     if (byHash !== -1) return byHash;
 
     // Strategy 2 – substring match (first occurrence of selectedText)
     if (anchor.selectedText) {
         const byText = newLines.findIndex((l) =>
-            l.content.includes(anchor.selectedText),
+            isSourceLine(l) && l.content.includes(anchor.selectedText),
         );
         if (byText !== -1) return byText;
     }
@@ -54,6 +60,7 @@ export function relocateDiffAnchor(
     // Strategy 3 – context match (contextBefore on preceding line AND contextAfter on following line)
     if (anchor.contextBefore || anchor.contextAfter) {
         for (let i = 1; i < newLines.length - 1; i++) {
+            if (!isSourceLine(newLines[i])) {continue;}
             const prevMatch =
                 !anchor.contextBefore ||
                 newLines[i - 1].content.includes(anchor.contextBefore);

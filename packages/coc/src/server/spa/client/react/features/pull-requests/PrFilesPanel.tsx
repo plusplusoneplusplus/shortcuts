@@ -43,6 +43,7 @@ import type { UseClassificationReturn } from '../git/diff/useClassification';
 import { useClassification } from '../git/diff/useClassification';
 import type { ClassificationKey, DiffSource } from '../git/diff/diffSource';
 import { FileDiffPanel } from '../git/diff/FileDiffPanel';
+import { useFileDiffEngineState } from '../git/hooks/useFileDiffEngineState';
 import { usePrReviewProgress } from '../git/diff/usePrReviewProgress';
 import type { ReviewProgressClientKey } from '../git/diff/reviewProgressApi';
 import { useModalJobAiSelection } from '../../shared/ModalJobAiControls';
@@ -327,8 +328,13 @@ export function PrFilesPanel({
 
     const aiSelection = useModalJobAiSelection({ workspaceId, mode: 'ask' });
     const classificationHook = useClassification(classificationKey, aiSelection.resolved, { workspaceId });
-    const classification: UseClassificationReturn | undefined = SHOW_FOCUSED_DIFF && classificationKey ? classificationHook : undefined;
     const [activePath, setActivePath] = useState<string>(files[0]?.path ?? '');
+    const { classificationEnabled, onDiffEngineChange } = useFileDiffEngineState(
+        !isMobile && diffSource && workspaceId && activePath
+            ? `${workspaceId}\u0000${diffSource.cacheKey}\u0000${activePath}` : null,
+    );
+    const classification: UseClassificationReturn | undefined =
+        SHOW_FOCUSED_DIFF && classificationKey && classificationEnabled ? classificationHook : undefined;
 
     // Review progress — same hook and same persistence key as the pop-out review
     // window, so marking a file reviewed here shows up there and vice versa.
@@ -523,6 +529,7 @@ export function PrFilesPanel({
                     data-testid="pr-shared-diff-panel"
                 >
                     <FileDiffPanel
+                        onDiffEngineChange={onDiffEngineChange}
                         // Remount on file switch so per-file panel state (find,
                         // full-context toggle, comment sidebar) resets cleanly.
                         key={`pr-${diffSource!.cacheKey}-${activePath}`}

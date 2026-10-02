@@ -31,6 +31,16 @@ import { getCocClientForWorkspace, requestForWorkspace } from '../../../../src/s
 const mockedRequestForWorkspace = vi.mocked(requestForWorkspace);
 const mockedGetCocClientForWorkspace = vi.mocked(getCocClientForWorkspace);
 
+const fileContent = {
+    path: 'src/foo.ts',
+    fileName: 'foo.ts',
+    language: 'typescript',
+    base: { content: 'old\n', ref: 'base-sha', exists: true },
+    head: { content: 'new\n', ref: 'head-sha', exists: true },
+    binary: false,
+    tooLarge: false,
+};
+
 describe('createCommitDiffSource', () => {
     const ws = 'ws1';
     const hash = 'abc1234def5678';
@@ -133,6 +143,25 @@ describe('createCommitDiffSource', () => {
         const source = createCommitDiffSource(ws, longHash);
         expect(source.classificationKey?.identifier).toBe(longHash);
     });
+
+    it('loads paired content through the workspace client on every call', async () => {
+        const firstLoader = vi.fn().mockResolvedValue(fileContent);
+        const secondLoader = vi.fn().mockResolvedValue(fileContent);
+        mockedGetCocClientForWorkspace.mockClear();
+        mockedGetCocClientForWorkspace
+            .mockReturnValueOnce({ git: { getCommitFileDiffContent: firstLoader } } as unknown as ReturnType<typeof getCocClientForWorkspace>)
+            .mockReturnValueOnce({ git: { getCommitFileDiffContent: secondLoader } } as unknown as ReturnType<typeof getCocClientForWorkspace>);
+        const source = createCommitDiffSource(ws, hash);
+
+        await expect(source.fetchFileContent?.('src/foo.ts')).resolves.toBe(fileContent);
+        await expect(source.fetchFileContent?.('src/bar.ts')).resolves.toBe(fileContent);
+
+        expect(mockedGetCocClientForWorkspace).toHaveBeenCalledTimes(2);
+        expect(mockedGetCocClientForWorkspace).toHaveBeenNthCalledWith(1, ws);
+        expect(mockedGetCocClientForWorkspace).toHaveBeenNthCalledWith(2, ws);
+        expect(firstLoader).toHaveBeenCalledWith(ws, hash, 'src/foo.ts');
+        expect(secondLoader).toHaveBeenCalledWith(ws, hash, 'src/bar.ts');
+    });
 });
 
 describe('createBranchRangeDiffSource', () => {
@@ -221,6 +250,26 @@ describe('createBranchRangeDiffSource', () => {
         it('labels the panel "Unpushed diff"', () => {
             expect(upstream().label).toBe('Unpushed diff');
         });
+    });
+
+    it.each([
+        ['default-branch', undefined],
+        ['upstream', 'upstream'],
+    ] as const)('loads %s paired content with the selected base mode', async (expectedBase, configuredBase) => {
+        const getBranchRangeFileDiffContent = vi.fn().mockResolvedValue(fileContent);
+        mockedGetCocClientForWorkspace.mockReturnValueOnce({
+            git: { getBranchRangeFileDiffContent },
+        } as unknown as ReturnType<typeof getCocClientForWorkspace>);
+        const source = createBranchRangeDiffSource(ws, configuredBase ? { baseMode: configuredBase } : undefined);
+
+        await expect(source.fetchFileContent?.('src/foo.ts')).resolves.toBe(fileContent);
+
+        expect(mockedGetCocClientForWorkspace).toHaveBeenCalledWith(ws);
+        expect(getBranchRangeFileDiffContent).toHaveBeenCalledWith(
+            ws,
+            'src/foo.ts',
+            { base: expectedBase },
+        );
     });
 });
 
@@ -410,6 +459,11 @@ describe('createPrDiffSource', () => {
         expect(source.cacheKey).toBe('pr:gh_owner_repo:42');
     });
 
+    it('cacheKey includes the PR head SHA when known', () => {
+        const source = createPrDiffSource(ws, repoId, prId, { originId, headSha: 'abc123' });
+        expect(source.cacheKey).toBe('pr:gh_owner_repo:42:abc123');
+    });
+
     it('files defaults to empty array', () => {
         const source = createPrDiffSource(ws, repoId, prId, { originId });
         expect(source.files).toEqual([]);
@@ -477,6 +531,34 @@ describe('createPrDiffSource', () => {
 
         expect(mockedGetCocClientForWorkspace).toHaveBeenCalledTimes(3);
         expect(mockedGetCocClientForWorkspace).toHaveBeenCalledWith(ws);
+    });
+
+    it('loads paired content through the origin API with clone-selection arguments', async () => {
+        const firstLoader = vi.fn().mockResolvedValue(fileContent);
+        const secondLoader = vi.fn().mockResolvedValue(fileContent);
+        mockedGetCocClientForWorkspace.mockClear();
+        mockedGetCocClientForWorkspace
+            .mockReturnValueOnce({ pullRequests: { getFileDiffContentForOrigin: firstLoader } } as unknown as ReturnType<typeof getCocClientForWorkspace>)
+            .mockReturnValueOnce({ pullRequests: { getFileDiffContentForOrigin: secondLoader } } as unknown as ReturnType<typeof getCocClientForWorkspace>);
+        const source = createPrDiffSource(ws, repoId, prId, { originId, headSha: 'abc123' });
+
+        await expect(source.fetchFileContent?.('src/foo.ts')).resolves.toBe(fileContent);
+        await expect(source.fetchFileContent?.('src/bar.ts')).resolves.toBe(fileContent);
+
+        expect(mockedGetCocClientForWorkspace).toHaveBeenCalledTimes(2);
+        expect(firstLoader).toHaveBeenCalledWith(
+            originId,
+            prId,
+            'src/foo.ts',
+            { workspaceId: ws, repoId },
+        );
+        expect(secondLoader).toHaveBeenCalledWith(
+            originId,
+            prId,
+            'src/bar.ts',
+            { workspaceId: ws, repoId },
+        );
+        expect(source.cacheKey).toContain('abc123');
     });
 });
 
