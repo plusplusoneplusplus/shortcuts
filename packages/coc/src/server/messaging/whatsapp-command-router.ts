@@ -3,6 +3,8 @@ import { toQueueProcessId, type ProcessStore } from '@plusplusoneplusplus/forge'
 import { parseWhatsAppCommand, type InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 
+const TOPIC_LIST_LIMIT = 10;
+
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
     bindings: WhatsAppBindings;
@@ -67,10 +69,11 @@ export class WhatsAppCommandRouter {
                 return;
             }
             if (command.type === 'list-topics' || command.type === 'select-topic') {
-                const processes = (await this.deps.store.getAllProcesses({ workspaceId }))
-                    .filter(proc => proc.metadata?.workspaceId === workspaceId)
-                    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
-                    .slice(0, 10);
+                // Bounded, conversation-free read: an unbounded getAllProcesses loads every
+                // turn in the repo and stalls the server on large stores.
+                const processes = (await this.deps.store.getAllProcesses({
+                    workspaceId, limit: TOPIC_LIST_LIMIT, exclude: ['conversation', 'toolCalls'],
+                })).filter(proc => proc.metadata?.workspaceId === workspaceId);
                 if (command.type === 'list-topics') {
                     await reply(processes.length
                         ? processes.map((proc, i) => `${i + 1}. ${proc.id} ${proc.title ?? proc.customTitle ?? ''}`).join('\n')

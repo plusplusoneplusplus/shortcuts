@@ -195,7 +195,9 @@ all have their own `references/*.md`.
   persists account config/auth/selection under `messaging/whatsapp/`. Inbound
   processing admits only paired-account messages from the one bound group;
   workspace selection requires `select repo` and quote-replies to answer IDs
-  retain the originating workspace. Chat receipts live under each workspace's
+  retain the originating workspace. `list topics`/`select topic <n>` read a
+  bounded (10), conversation-free process page — never an unbounded
+  `getAllProcesses`, which stalls on large stores. Chat receipts live under each workspace's
   `whatsapp-bindings.json`, never in an account-wide per-repo bindings file.
   Account state also retains recent command-reply IDs so reconnects cannot
   dispatch the connector's own command responses as new requests.
