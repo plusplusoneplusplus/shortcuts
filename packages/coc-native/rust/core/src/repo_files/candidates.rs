@@ -12,6 +12,7 @@ use crate::git::{run_git, GitCommandOptions};
 
 /// The command and resource limits the workspace execution adapter needs.
 #[derive(Debug)]
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
 pub struct ContentCandidateCommand {
     pub args: Vec<String>,
     pub timeout_ms: u32,

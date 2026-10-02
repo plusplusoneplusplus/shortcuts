@@ -10,6 +10,7 @@ mod candidates;
 mod indexes;
 mod listing;
 mod replace;
+mod search;
 
 use std::fmt;
 use std::io;
@@ -29,6 +30,7 @@ pub use replace::{
     apply_replacements, build_matcher, preserve_case, replace_content, ReplaceFile, ReplaceOptions,
     ReplaceSkip, ReplaceSummary, ReplaceTarget,
 };
+pub use search::search_content;
 
 #[derive(Debug)]
 pub enum RepoFilesError {

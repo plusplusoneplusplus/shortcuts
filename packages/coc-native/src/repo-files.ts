@@ -36,7 +36,7 @@ export interface NativeRepoFilesAddon {
 /** Every `RepoFiles` method the server calls; an older binary lacks some. */
 const METHODS = [
     'readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent',
-    'indexFiles', 'searchFiles', 'searchFilesRanked', 'invalidate', 'dispose',
+    'indexFiles', 'searchFiles', 'searchFilesRanked', 'searchContent', 'prepareContentCandidates', 'invalidate', 'dispose',
 ] as const;
 
 function isRepoFilesAddon(addon: unknown): addon is NativeRepoFilesAddon {

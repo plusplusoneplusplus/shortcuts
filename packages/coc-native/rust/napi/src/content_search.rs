@@ -46,7 +46,7 @@ pub struct SearchContentOptions {
     pub context_lines: Option<u32>,
 }
 
-fn search_options(options: Option<SearchContentOptions>) -> ContentSearchOptions {
+pub(crate) fn search_options(options: Option<SearchContentOptions>) -> ContentSearchOptions {
     let Some(options) = options else { return ContentSearchOptions::default() };
     let defaults = ContentSearchOptions::default();
     ContentSearchOptions {

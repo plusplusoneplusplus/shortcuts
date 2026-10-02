@@ -6,7 +6,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use coc_native_core::repo_files::{
-    list_directory, list_files, read_blob, replace_content, write_blob, Blob, FileListing,
+    list_directory, list_files, prepare_content_candidates, read_blob, replace_content,
+    search_content, write_blob, Blob, ContentCandidateCommand, FileListing,
     ReplaceFile as RepoReplaceFile, ReplaceOptions, ReplaceSummary, RepoFilesError, RepoIndexes,
     TreeListing,
 };
@@ -14,7 +15,9 @@ use coc_native_core::repo_index::{FuzzyMatcher, Hit};
 use napi::bindgen_prelude::{AsyncTask, Error, Status};
 use napi_derive::napi;
 
+use crate::content_search::{search_options, SearchContentOptions};
 use crate::task::{blocking, Blocking};
+use coc_native_core::content_search::ContentSearchResult;
 
 // Results and replace targets are core's own types (core's `napi` feature
 // derives their JS shape); only option bags with optional fields live here.
@@ -93,7 +96,12 @@ fn to_napi_error(error: RepoFilesError) -> Error {
         RepoFilesError::Disposed => Status::Closing,
         _ => Status::GenericFailure,
     };
-    Error::new(status, error.to_string())
+    let message = if matches!(error, RepoFilesError::TrackedUnavailable(_)) {
+        format!("[repo-files:tracked-unavailable] {error}")
+    } else {
+        error.to_string()
+    };
+    Error::new(status, message)
 }
 
 /// The repository-file backend for one resolved root. It owns that root's
@@ -125,6 +133,43 @@ impl RepoFiles {
 
 #[napi]
 impl RepoFiles {
+    /// Git argv and limits for Node's WSL execution adapter. Checks disposal;
+    /// this only prepares a command and never touches the filesystem.
+    #[napi]
+    pub fn prepare_content_candidates(
+        &self,
+        include_untracked: bool,
+    ) -> napi::Result<ContentCandidateCommand> {
+        self.indexes.root().map_err(to_napi_error)?;
+        Ok(prepare_content_candidates(include_untracked))
+    }
+
+    /// Fresh content search with native Git eligibility. For WSL, pass the
+    /// prepared ls-files stdout (including an empty string); host Git is then
+    /// suppressed. Tracked enumeration errors carry the internal prefix
+    /// [repo-files:tracked-unavailable] for the REST adapter to map and strip.
+    #[napi(ts_return_type = "Promise<ContentSearchResult>")]
+    pub fn search_content(
+        &self,
+        query: String,
+        options: Option<SearchContentOptions>,
+        tracked: Option<bool>,
+        include_untracked: Option<bool>,
+        wsl_output: Option<String>,
+    ) -> AsyncTask<Blocking<ContentSearchResult>> {
+        let options = search_options(options);
+        self.run(move |_, root| {
+            search_content(
+                root,
+                &query,
+                options,
+                tracked.unwrap_or(false),
+                include_untracked.unwrap_or(false),
+                wsl_output.as_deref(),
+            )
+        })
+    }
+
     /// List a directory: dirs first, locale order, per-directory cap.
     #[napi(ts_return_type = "Promise<RepoTreeListing>")]
     pub fn list_directory(

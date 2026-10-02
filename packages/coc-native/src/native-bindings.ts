@@ -63,6 +63,18 @@ export declare class NotesIndex {
  * file indexes until `dispose`; Node opens one per workspace root.
  */
 export declare class RepoFiles {
+  /**
+   * Git argv and limits for Node's WSL execution adapter. Checks disposal;
+   * this only prepares a command and never touches the filesystem.
+   */
+  prepareContentCandidates(includeUntracked: boolean): ContentCandidateCommand
+  /**
+   * Fresh content search with native Git eligibility. For WSL, pass the
+   * prepared ls-files stdout (including an empty string); host Git is then
+   * suppressed. Tracked enumeration errors carry the internal prefix
+   * [repo-files:tracked-unavailable] for the REST adapter to map and strip.
+   */
+  searchContent(query: string, options?: SearchContentOptions | undefined | null, tracked?: boolean | undefined | null, includeUntracked?: boolean | undefined | null, wslOutput?: string | undefined | null): Promise<ContentSearchResult>
   /** List a directory: dirs first, locale order, per-directory cap. */
   listDirectory(path: string, options: RepoListOptions): Promise<RepoTreeListing>
   /** Every file under a subdirectory, depth-first in locale order. */
@@ -1108,6 +1120,13 @@ export declare function writeNote(root: string, path: string, content: string, e
  * the root itself.
  */
 export declare function writeNotesOrder(root: string, parentPath: string, order: Array<string>, options: NotesEntryOptions): Promise<void>
+/** The command and resource limits the workspace execution adapter needs. */
+export interface ContentCandidateCommand {
+  args: Array<string>
+  timeoutMs: number
+  maxBuffer: number
+}
+
 /** One matching line, with its position inside the line and its neighbours. */
 export interface ContentMatch {
   /** Repo-relative path with `/` separators on every platform. */

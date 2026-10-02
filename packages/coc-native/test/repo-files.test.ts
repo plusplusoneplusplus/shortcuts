@@ -38,7 +38,7 @@ afterEach(() => {
 /** A stand-in exposing the whole capability; `drop` omits one method. */
 function stubSource(drop?: string): string {
     const methods = ['readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent',
-        'indexFiles', 'searchFiles', 'searchFilesRanked', 'invalidate', 'dispose']
+        'indexFiles', 'searchFiles', 'searchFilesRanked', 'searchContent', 'prepareContentCandidates', 'invalidate', 'dispose']
         .filter(m => m !== drop)
         .map(m => `${m}() { return 7; }`)
         .join(' ');
@@ -94,8 +94,8 @@ describe('when the capability is missing', () => {
         expect(nativeRepoFilesStatus().loaded).toBe(false);
     });
 
-    it('rejects a binary whose handle predates one of the methods', () => {
-        useAddon(stubSource('searchFilesRanked'));
+    it.each(['searchFilesRanked', 'searchContent', 'prepareContentCandidates'])('rejects a binary missing %s', (method) => {
+        useAddon(stubSource(method));
         expect(() => loadNativeRepoFiles()).toThrow('does not export repo files');
         expect(nativeRepoFilesStatus().loaded).toBe(false);
     });

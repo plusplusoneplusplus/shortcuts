@@ -6,6 +6,7 @@
  */
 
 import * as fs from 'fs';
+import { execFileSync } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -128,5 +129,88 @@ describe('RepoFiles indexes', () => {
             await expect(call()).rejects.toMatchObject({ code: 'Closing', message: 'Repo files handle disposed' });
         }
         expect(fs.existsSync(path.join(root, 'd.txt'))).toBe(false);
+    });
+});
+
+
+describe('RepoFiles content search', () => {
+    it('owns tracked eligibility, fresh reads, untracked mode and UTF-16 offsets', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-repo-content-'));
+        const git = (...args: string[]) => execFileSync('git', args, { cwd: dir });
+        const files = addon.openRepoFiles(dir);
+        try {
+            git('init');
+            fs.mkdirSync(path.join(dir, 'ignored'));
+            fs.writeFileSync(path.join(dir, '.gitignore'), 'ignored/\n');
+            fs.writeFileSync(path.join(dir, 'tracked.txt'), 'before\n🎯 Needle\nafter\n');
+            fs.writeFileSync(path.join(dir, 'ignored', 'tracked.txt'), 'Needle\n');
+            fs.writeFileSync(path.join(dir, 'untracked.txt'), 'Needle\n');
+            fs.writeFileSync(path.join(dir, 'ignored', 'untracked.txt'), 'Needle\n');
+            git('add', '.gitignore', 'tracked.txt');
+            git('add', '-f', 'ignored/tracked.txt');
+            const tracked = await files.searchContent('needle', undefined, true);
+            expect(tracked.matches.map(m => m.path)).toEqual(['ignored/tracked.txt', 'tracked.txt']);
+            expect(tracked.matches[1]).toMatchObject({ startColumn: 3, endColumn: 9, before: ['before'], after: ['after'] });
+            const untracked = await files.searchContent('Needle', undefined, true, true);
+            expect(untracked.matches.map(m => m.path)).toEqual(['ignored/tracked.txt', 'tracked.txt', 'untracked.txt']);
+            const scoped = await files.searchContent('Needle', { path: '/ignored', include: ['*.txt'] }, true);
+            expect(scoped.matches.map(m => m.path)).toEqual(['ignored/tracked.txt']);
+            const multiline = await files.searchContent('before\n🎯 Needle', undefined, true);
+            expect(multiline.matches.map(m => m.line)).toEqual([1, 2]);
+            expect(multiline.matches[0].group).toBe(multiline.matches[1].group);
+            fs.writeFileSync(path.join(dir, 'tracked.txt'), 'gone\n');
+            expect((await files.searchContent('Needle', undefined, true)).matches.map(m => m.path)).toEqual(['ignored/tracked.txt']);
+        } finally {
+            files.dispose();
+            removeDir(dir);
+        }
+    });
+
+    it('parses WSL output without host Git and keeps empty candidates empty', async () => {
+        // Deliberately not a Git repo: any accidental host command would fail.
+        const files = addon.openRepoFiles(root);
+        expect(files.prepareContentCandidates(true)).toEqual({
+            args: ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+            timeoutMs: 15_000,
+            maxBuffer: 64 * 1024 * 1024,
+        });
+        expect((await files.searchContent('héllo', { path: './' }, true, false, 'a.md\0')).matches).toHaveLength(1);
+        expect((await files.searchContent('héllo', undefined, true, false, '')).matches).toEqual([]);
+        files.dispose();
+        expect(() => files.prepareContentCandidates(false)).toThrow('Repo files handle disposed');
+        await expect(files.searchContent('héllo')).rejects.toMatchObject({ code: 'Closing' });
+    });
+
+    it('preserves error categories and missing-root messages', async () => {
+        const files = addon.openRepoFiles(root);
+        await expect(files.searchContent('[', { regex: true })).rejects.toMatchObject({ code: 'InvalidArg' });
+        await expect(files.searchContent('x', { path: '../escape' })).rejects.toMatchObject({ code: 'InvalidArg' });
+        await expect(files.searchContent('x', { include: ['['] })).rejects.toMatchObject({ code: 'InvalidArg' });
+        await expect(files.searchContent('x', undefined, true)).rejects.toMatchObject({
+            code: 'GenericFailure',
+            message: expect.stringContaining('[repo-files:tracked-unavailable] Git-tracked search is unavailable:'),
+        });
+        const missing = path.join(root, 'missing-root');
+        await expect(addon.openRepoFiles(missing).searchContent('x')).rejects.toThrow(`Repo not found on disk: ${missing}`);
+        await expect(addon.openRepoFiles(path.join(root, 'a.md')).searchContent('x')).rejects.toThrow('Repo not found on disk:');
+        files.dispose();
+    });
+
+    it('keeps roots isolated and clamps repository result limits', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-repo-content-caps-'));
+        const files = addon.openRepoFiles(dir);
+        try {
+            fs.writeFileSync(path.join(dir, 'caps.txt'), 'unique-marker\n'.repeat(600));
+            const limited = await files.searchContent('unique-marker', { maxResults: 0 });
+            expect(limited.matches).toHaveLength(1);
+            expect(limited.truncated).toBe(true);
+            const capped = await files.searchContent('unique-marker', { maxResults: 1000, maxPerFile: 1000 });
+            expect(capped.matches).toHaveLength(500);
+            expect(capped.truncated).toBe(true);
+            expect((await addon.openRepoFiles(root).searchContent('unique-marker')).matches).toEqual([]);
+        } finally {
+            files.dispose();
+            removeDir(dir);
+        }
     });
 });
