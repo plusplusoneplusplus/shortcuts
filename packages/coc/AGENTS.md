@@ -159,6 +159,12 @@ references before editing. Paths are package-relative.
   both relays resolve request-correlated answers and failed/cancelled/empty texts
   through `src/server/messaging/relay-answer.ts`. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
+- Teams/WhatsApp command grammar is one spec table in
+  `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`, generated
+  `MESSAGING_HELP_TEXT`); unknown `/word` or malformed list/select/create replies
+  "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
+  answers selection, help and quota for both routers via a `MessagingSelection`
+  adapter. Ask is default; `/autopilot <msg>` runs one message in Autopilot.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

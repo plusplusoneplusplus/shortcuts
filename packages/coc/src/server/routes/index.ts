@@ -167,6 +167,7 @@ import { registerWhatsAppMessagingRoutes } from '../messaging/whatsapp-messaging
 import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-manager';
 import { WhatsAppBindings } from '../messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
+import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { WhatsAppAnswerRelay } from '../messaging/whatsapp-answer-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
@@ -855,7 +856,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     });
 
-    const messagingChatInput = (workspaceId: string, message: string, taskId?: string, mediumEffort = false): CreateTaskInput => {
+    const messagingChatInput = (workspaceId: string, message: string, taskId?: string, mediumEffort = false, mode: MessagingChatMode = 'ask'): CreateTaskInput => {
         const config: CreateTaskInput['config'] & { effortTier?: 'medium' } =
             mediumEffort ? { effortTier: 'medium' } : {};
         return {
@@ -863,15 +864,16 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             ...(taskId ? { processId: toQueueProcessId(taskId) } : {}),
             type: 'chat',
             repoId: workspaceId,
-            payload: { kind: 'chat', mode: 'ask', prompt: message, workspaceId },
+            payload: { kind: 'chat', mode, prompt: message, workspaceId },
             config,
             priority: 'normal',
         };
     };
     const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) =>
         bridge.enqueue(messagingChatInput(workspaceId, message, taskId));
-    const enqueueTeamsChat = (workspaceId: string, message: string, taskId?: string) =>
-        enqueueWithResolvedDefaults(messagingChatInput(workspaceId, message, taskId, true));
+    const enqueueTeamsChat = (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode) =>
+        enqueueWithResolvedDefaults(messagingChatInput(workspaceId, message, taskId, true, mode));
+    const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
     // Container default agent session routes (feature-flagged)
     if (opts.resolvedConfig?.containerDefaultAgent?.enabled) {
@@ -914,24 +916,24 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
         enqueueRelayChat: enqueueTeamsChat,
-        admitRelayFollowUp: async (proc, message, requestId) => {
+        admitRelayFollowUp: async (proc, message, requestId, mode = 'ask') => {
             const workspaceId = proc.metadata?.workspaceId;
             if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Teams conversation workspace is unavailable');
             return {
                 taskId: await bridge.enqueue({
                     type: 'chat', repoId: workspaceId, processId: proc.id, priority: 'normal',
                     payload: {
-                        kind: 'chat', mode: 'ask', processId: proc.id, prompt: message,
+                        kind: 'chat', mode, processId: proc.id, prompt: message,
                         workspaceId, relayRequestId: requestId,
                     },
                     config: {},
                 }),
             };
         },
-        enqueuePendingRelayFollowUp: (workspaceId, processId, message, requestId) => bridge.enqueue({
+        enqueuePendingRelayFollowUp: (workspaceId, processId, message, requestId, mode = 'ask') => bridge.enqueue({
             type: 'chat', repoId: workspaceId, processId, priority: 'normal',
             payload: {
-                kind: 'chat', mode: 'ask', processId, prompt: message,
+                kind: 'chat', mode, processId, prompt: message,
                 workspaceId, relayRequestId: requestId,
             },
             config: {},
@@ -939,8 +941,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,
-        enqueueChat: enqueueTeamsChat,
-        executeFollowUp: (processId, message) => bridge.executeFollowUp(processId, message),
+        enqueueChat: (workspaceId, message, mode) => enqueueTeamsChat(workspaceId, message, undefined, mode),
+        executeFollowUp: (processId, message, mode) => bridge.executeFollowUp(processId, message, undefined, mode),
+        getQuota: getMessagingQuota,
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
     const whatsappBindings = new WhatsAppBindings(dataDir);
@@ -961,6 +964,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         groupJid: () => whatsappMessagingManager.getStatus().groupJid ?? undefined,
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
         react: messageId => whatsappMessagingManager.react(messageId),
+        getQuota: getMessagingQuota,
         enqueue: (workspaceId, message, mode, processId, taskId) =>
             enqueueWithResolvedDefaults({
                 ...messagingChatInput(workspaceId, message, taskId, true),

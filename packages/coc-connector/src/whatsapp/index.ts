@@ -5,5 +5,5 @@
 export { WhatsAppBot } from './bot';
 export type { InboundWAMessage, BotOptions, BotStatus, WASocket } from './types';
 export { createBaileysConnection } from './connection';
-export { formatWhatsAppOutbound, chunkWhatsAppText, parseWhatsAppCommand, stripWhatsAppGlobalPrefix } from './message-utils';
-export type { WhatsAppOutbound, WhatsAppCommand } from './message-utils';
+export { formatWhatsAppOutbound, chunkWhatsAppText, stripWhatsAppGlobalPrefix } from './message-utils';
+export type { WhatsAppOutbound } from './message-utils';

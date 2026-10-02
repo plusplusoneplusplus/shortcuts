@@ -228,7 +228,7 @@ describe('TeamsAnswerRelay new topics', () => {
         await router.handle(inbound('select', '/select repo B', 'person-b'));
         expect(ack).toHaveBeenCalledTimes(3);
         await router.handle(inbound('malformed', '/select repo', 'person-a'));
-        expect(ack.mock.lastCall?.[0]).toContain('Invalid command');
+        expect(ack.mock.lastCall?.[0]).toContain('Unknown command');
         await router.handle(inbound('question', 'Question after selection', 'person-a'));
         expect(enqueue).toHaveBeenCalledExactlyOnceWith('workspace-b', 'Question after selection', expect.any(String));
         expect(ack.mock.lastCall?.[1]).toBe('existing-root');

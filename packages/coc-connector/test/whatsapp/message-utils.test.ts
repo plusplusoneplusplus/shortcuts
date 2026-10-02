@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    chunkWhatsAppText, formatWhatsAppOutbound, parseWhatsAppCommand, stripWhatsAppGlobalPrefix,
+    chunkWhatsAppText, formatWhatsAppOutbound, stripWhatsAppGlobalPrefix,
 } from '../../src/whatsapp/message-utils';
 
 describe('WhatsApp message helpers', () => {
@@ -23,22 +23,6 @@ describe('WhatsApp message helpers', () => {
         expect(chunkWhatsAppText('')).toEqual([]);
         expect(chunkWhatsAppText('short')).toEqual(['short']);
         expect(() => chunkWhatsAppText('abc', 1)).toThrow(RangeError);
-    });
-
-    it.each([
-        ['list repos', 'list-repos', ''],
-        ['/list topics', 'list-topics', ''],
-        ['create topic', 'create-topic', ''],
-        ['select repo 2', 'select-repo', '2'],
-        ['/select topic abc', 'select-topic', 'abc'],
-        ['/select repo', 'invalid', '/select repo'],
-        ['list nonsense', 'invalid', 'list nonsense'],
-        ['/unknown', 'invalid', '/unknown'],
-        ['/autopilot', 'invalid', '/autopilot'],
-        ['/autopilot investigate', 'chat', 'investigate'],
-        ['a normal question', 'chat', 'a normal question'],
-    ])('parses %s', (input, type, args) => {
-        expect(parseWhatsAppCommand(input)).toMatchObject({ type, args });
     });
 
     it('strips only the container global prefix', () => {

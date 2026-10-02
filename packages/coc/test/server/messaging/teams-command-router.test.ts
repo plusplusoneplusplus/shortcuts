@@ -6,66 +6,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { parseCommand, TeamsCommandRouter, type TeamsCommandRouterDeps } from '../../../src/server/messaging/teams-command-router';
+import { TeamsCommandRouter, type TeamsCommandRouterDeps } from '../../../src/server/messaging/teams-command-router';
 import { TeamsUserStateStore } from '../../../src/server/messaging/teams-user-state';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
-
-// ============================================================================
-// parseCommand
-// ============================================================================
-
-describe('parseCommand', () => {
-    it('parses "/list agents"', () => {
-        expect(parseCommand('/list agents')).toEqual({ type: 'list-agents', args: '' });
-        expect(parseCommand('/LIST AGENTS')).toEqual({ type: 'list-agents', args: '' });
-        expect(parseCommand('/list agent')).toEqual({ type: 'list-agents', args: '' });
-    });
-
-    it('parses "/list repos"', () => {
-        expect(parseCommand('/list repos')).toEqual({ type: 'list-repos', args: '' });
-        expect(parseCommand('/list repo')).toEqual({ type: 'list-repos', args: '' });
-    });
-
-    it('parses "/select repo <name>"', () => {
-        expect(parseCommand('/select repo my-project')).toEqual({ type: 'select-repo', args: 'my-project' });
-        expect(parseCommand('/select repos My Repo')).toEqual({ type: 'select-repo', args: 'My Repo' });
-    });
-
-    it('parses "/list topics"', () => {
-        expect(parseCommand('/list topics')).toEqual({ type: 'list-topics', args: '' });
-        expect(parseCommand('/list chat topics')).toEqual({ type: 'list-topics', args: '' });
-        expect(parseCommand('/list topic')).toEqual({ type: 'list-topics', args: '' });
-    });
-
-    it('parses "/create topic"', () => {
-        expect(parseCommand('/create topic')).toEqual({ type: 'create-topic', args: '' });
-        expect(parseCommand('/create chat topic')).toEqual({ type: 'create-topic', args: '' });
-    });
-
-    it('parses "/select topic <id>"', () => {
-        expect(parseCommand('/select topic abc123')).toEqual({ type: 'select-topic', args: 'abc123' });
-        expect(parseCommand('/select chat topic abc123')).toEqual({ type: 'select-topic', args: 'abc123' });
-    });
-
-    it('parses "[chatid] message" syntax', () => {
-        const result = parseCommand('[abc-123] Hello world');
-        expect(result.type).toBe('chat-explicit');
-        expect(result.args).toBe('abc-123\0Hello world');
-    });
-
-    it('treats unrecognized text as plain chat', () => {
-        expect(parseCommand('Hello, how are you?')).toEqual({ type: 'chat', args: 'Hello, how are you?' });
-    });
-
-    it('treats commands without / prefix as plain chat', () => {
-        expect(parseCommand('list agents')).toEqual({ type: 'chat', args: 'list agents' });
-        expect(parseCommand('select repo foo')).toEqual({ type: 'chat', args: 'select repo foo' });
-    });
-
-    it('trims whitespace', () => {
-        expect(parseCommand('  /list agents  ')).toEqual({ type: 'list-agents', args: '' });
-    });
-});
 
 // ============================================================================
 // TeamsUserStateStore
@@ -197,13 +140,14 @@ describe('TeamsCommandRouter', () => {
     it('lists repos (alias)', async () => {
         await router.handle(makeMsg('/list repos'));
         expect(sendReplySpy).toHaveBeenCalledTimes(1);
-        expect(sendReplySpy.mock.calls[0][0]).toContain('Agents / Repos');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Repos (2)');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('/repo/projectA');
     });
 
     it('handles empty workspace list', async () => {
         (deps.store.getWorkspaces as any).mockResolvedValue([]);
         await router.handle(makeMsg('/list agents'));
-        expect(sendReplySpy.mock.calls[0][0]).toContain('No agents');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('No repos registered');
     });
 
     // ── select repo ───────────────────────────────────────────
@@ -233,7 +177,7 @@ describe('TeamsCommandRouter', () => {
 
         await router.handle(makeMsg('/list topics'));
         const reply = sendReplySpy.mock.calls[0][0] as string;
-        expect(reply).toContain('Chat Topics');
+        expect(reply).toContain('Chat topics (repo: **ProjectA**)');
         expect(reply).toContain('Fix bug');
     });
 
@@ -310,7 +254,7 @@ describe('TeamsCommandRouter', () => {
 
     it('sends message to explicit chat ID', async () => {
         await router.handle(makeMsg('[proc-111] What is the status?'));
-        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'What is the status?');
+        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'What is the status?', 'ask');
         expect(sendReplySpy.mock.calls[0][0]).toContain('Message sent');
     });
 
@@ -326,7 +270,7 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('How is it going?'));
-        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-222', 'How is it going?');
+        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-222', 'How is it going?', 'ask');
     });
 
     it('creates new topic when no active topic and repo is selected', async () => {
@@ -334,13 +278,13 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('Start something new'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Start something new');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Start something new', 'ask');
         expect(sendReplySpy.mock.calls[0][0]).toContain('New topic created');
     });
 
     it('auto-selects first repo when no repo selected', async () => {
         await router.handle(makeMsg('Hello world'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Hello world');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Hello world', 'ask');
         expect(sendReplySpy.mock.calls[0][0]).toContain('ProjectA');
     });
 
@@ -358,6 +302,65 @@ describe('TeamsCommandRouter', () => {
         expect(sendReplySpy.mock.calls[0][0]).toContain('DB error');
     });
 
+    // ── shared grammar: bare commands, help, quota, unknown, autopilot ──
+
+    it('accepts commands without the leading slash, case-insensitively', async () => {
+        await router.handle(makeMsg('SELECT REPO ProjectB'));
+        await router.handle(makeMsg('list agents'));
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Selected repo');
+        expect(sendReplySpy.mock.calls[1][0]).toContain('Repos (2)');
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('replies with help generated from the shared command table', async () => {
+        await router.handle(makeMsg('/help'));
+        await router.handle(makeMsg('help'));
+        for (const [reply] of sendReplySpy.mock.calls) {
+            expect(reply).toContain('select repo <n|name|id>');
+            expect(reply).toContain('quota — show AI provider quota');
+            expect(reply).toContain('/autopilot <message>');
+        }
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('replies with per-provider quota and degrades when unavailable', async () => {
+        await router.handle(makeMsg('quota'));
+        expect(sendReplySpy.mock.lastCall?.[0]).toBe('Quota data is unavailable.');
+        deps.getQuota = vi.fn().mockResolvedValue({
+            lastUpdated: '2026-10-01T00:00:00Z',
+            providers: [
+                { id: 'copilot', quotaTypes: [{
+                    type: 'premium_interactions', isUnlimitedEntitlement: false, usedRequests: 38,
+                    entitlementRequests: 100, remainingPercentage: 0.62, usageAllowedWithExhaustedQuota: false,
+                    overage: 0, resetDate: '2026-11-01T00:00:00Z',
+                }] },
+                { id: 'codex', quotaTypes: [], error: 'boom' },
+            ],
+        });
+        router = new TeamsCommandRouter(deps);
+        await router.handle(makeMsg('/QUOTA'));
+        expect(sendReplySpy.mock.lastCall?.[0]).toBe(
+            'copilot: 62% left (premium_interactions, resets 2026-11-01)\ncodex: unavailable');
+        vi.mocked(deps.getQuota!).mockRejectedValueOnce(new Error('down'));
+        await router.handle(makeMsg('quota'));
+        expect(sendReplySpy.mock.lastCall?.[0]).toBe('Quota data is unavailable.');
+    });
+
+    it('replies "Unknown command" for an unknown /word instead of sending it to the AI', async () => {
+        await router.handle(makeMsg('/frobnicate now'));
+        await router.handle(makeMsg('/select repo'));
+        expect(sendReplySpy.mock.calls.every(([reply]) => String(reply).includes('Unknown command'))).toBe(true);
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+        expect(deps.executeFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('runs /autopilot messages in autopilot mode for new chats and explicit chats', async () => {
+        await router.handle(makeMsg('/autopilot fix the build'));
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'fix the build', 'autopilot');
+        await router.handle(makeMsg('/autopilot [proc-111] keep going'));
+        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'keep going', 'autopilot');
+    });
+
     // ── per-user isolation ────────────────────────────────────
 
     it('isolates state between users', async () => {
@@ -367,7 +370,7 @@ describe('TeamsCommandRouter', () => {
 
         // user-A sends a message — should enqueue in ProjectA (ws-1), not ProjectB
         await router.handle(makeMsg('Fix the bug', { senderAadId: 'user-A' }));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug', 'ask');
     });
 
     describe('channel-thread replies', () => {
@@ -421,10 +424,30 @@ describe('TeamsCommandRouter', () => {
             expect(deps.enqueueChat).not.toHaveBeenCalled();
             await router.handle(makeMsg('[proc-111] explicit chat', { replyToMessageId: 'root-b' }));
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
-                expect.any(Object), expect.objectContaining({ id: 'proc-b' }), '[proc-111] explicit chat');
+                expect.any(Object), expect.objectContaining({ id: 'proc-b' }), '[proc-111] explicit chat', 'ask');
             await router.handle(makeMsg('still selected', { replyToMessageId: 'unrelated-root' }));
             expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('/select repo <name>'), 'unrelated-root');
             expect(deps.admitFollowUp).toHaveBeenCalledTimes(1);
+        });
+
+        it('answers help, quota and unknown commands in the thread root without dispatching to AI', async () => {
+            const recordThreadCommand = vi.fn();
+            deps.recordThreadCommand = recordThreadCommand;
+            deps.getQuota = vi.fn().mockResolvedValue({ lastUpdated: null, providers: [{ id: 'copilot', quotaTypes: [] }] });
+            router = new TeamsCommandRouter(deps);
+            const msg = (text: string) => makeMsg(text, { replyToMessageId: 'root-a' });
+            await router.handle(msg('help'));
+            await router.handle(msg('/quota'));
+            await router.handle(msg('/nope'));
+            await router.handle(msg('/autopilot ship it'));
+            expect(sendReplySpy.mock.calls.map(([, root]) => root)).toEqual(['root-a', 'root-a', 'root-a', 'root-a']);
+            expect(sendReplySpy.mock.calls[0][0]).toContain('Commands (case-insensitive');
+            expect(sendReplySpy.mock.calls[1][0]).toBe('copilot: no quota data');
+            expect(sendReplySpy.mock.calls[2][0]).toContain('Unknown command');
+            expect(recordThreadCommand).toHaveBeenCalledTimes(3);
+            expect(deps.admitFollowUp).toHaveBeenCalledTimes(1);
+            expect(deps.admitFollowUp).toHaveBeenCalledWith(
+                expect.any(Object), expect.objectContaining({ id: 'proc-a' }), 'ship it', 'autopilot');
         });
 
         it('rejects cross-workspace and missing topics without changing the thread', async () => {
@@ -485,12 +508,12 @@ describe('TeamsCommandRouter', () => {
             sendReplySpy.mockClear();
             const reply = makeMsg('queued reply', { replyToMessageId: 'pending' });
             await router.handle(reply);
-            expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(reply, 'task-pending', 'queued reply');
+            expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(reply, 'task-pending', 'queued reply', 'ask');
             expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('Message sent'), 'pending');
             expect(deps.acknowledgeFollowUp).toHaveBeenCalledWith(reply);
             await router.handle(makeMsg('ordinary message'));
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
-                expect.any(Object), expect.objectContaining({ id: 'proc-111' }), 'ordinary message');
+                expect.any(Object), expect.objectContaining({ id: 'proc-111' }), 'ordinary message', 'ask');
         });
 
         it('reports missing bound targets in the same thread and never falls back', async () => {

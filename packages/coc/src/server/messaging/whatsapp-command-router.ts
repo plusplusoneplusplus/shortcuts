@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { toQueueProcessId, type ProcessStore } from '@plusplusoneplusplus/forge';
-import { parseWhatsAppCommand, type InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import { isMessagingControlCommand, parseMessagingCommand } from '@plusplusoneplusplus/coc-connector';
+import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
-import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
+import { handleMessagingCommand, invalidCommandReply, type MessagingQuotaSource } from './messaging-commands';
 
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
@@ -12,6 +13,7 @@ export interface WhatsAppRouterDeps {
     send: (text: string, quotedId: string) => Promise<string>;
     react: (messageId: string) => Promise<void>;
     queued?: (binding: WhatsAppBinding) => void;
+    getQuota?: MessagingQuotaSource;
 }
 
 export class WhatsAppCommandRouter {
@@ -20,41 +22,40 @@ export class WhatsAppCommandRouter {
     async handle(msg: InboundWAMessage): Promise<void> {
         if (!msg.fromMe || !this.deps.groupJid() || msg.chatJid !== this.deps.groupJid()
             || !msg.messageId || this.deps.bindings.isKnownMessage(msg.messageId)) return;
-        const command = parseWhatsAppCommand(msg.text);
+        const command = parseMessagingCommand(msg.text);
         const reply = async (text: string) => {
             const id = await this.deps.send(text, msg.messageId);
             this.deps.bindings.recordOutbound(id);
         };
         try {
-            const workspaces = await this.deps.store.getWorkspaces();
-            const repoId = this.deps.bindings.selectedRepo;
-            const repo = workspaces.find(workspace => workspace.id === repoId);
-            switch (command.type) {
-                case 'list-repos':
-                    await reply(workspaces.length
-                        ? workspaces.map((ws, i) => `${i + 1}. ${ws.name ?? ws.id} (${ws.id})`).join('\n')
-                        : 'No repos registered.');
-                    return;
-                case 'select-repo': {
-                    const selected = resolveWorkspace(workspaces, command.args);
-                    if (!selected) { await reply('Repo not found. Run `list repos` to see available repos.'); return; }
-                    this.deps.bindings.selectRepo(selected.id);
-                    await reply(`Selected repo: ${selected.name ?? selected.id}`);
-                    return;
-                }
-                case 'invalid':
-                    await reply('Unknown command or invalid argument. Try `list repos`, `select repo <n|name>`, `list topics`, `create topic`, or `select topic <id>`.');
-                    return;
-                case 'list-topics':
-                case 'create-topic':
-                case 'select-topic':
-                case 'chat':
-                    break;
+            if (command.type === 'invalid') { await reply(invalidCommandReply()); return; }
+            if (isMessagingControlCommand(command)) {
+                const bindings = this.deps.bindings;
+                await reply(await handleMessagingCommand(command, {
+                    store: this.deps.store,
+                    requireRepoForTopics: true,
+                    getQuota: this.deps.getQuota,
+                    selection: {
+                        repoId: () => bindings.selectedRepo,
+                        selectRepo: id => bindings.selectRepo(id),
+                        topicId: id => id ? bindings.topic(id) : null,
+                        selectTopic: (id, processId) => { if (id) bindings.selectTopic(id, processId); },
+                    },
+                }));
+                return;
             }
-
-            let workspaceId = repo?.id;
+            const workspaces = await this.deps.store.getWorkspaces();
+            let workspaceId = workspaces.find(workspace => workspace.id === this.deps.bindings.selectedRepo)?.id;
             let targetId = workspaceId ? this.deps.bindings.topic(workspaceId) : null;
-            if (command.type === 'chat' && msg.quotedMessageId) {
+            if (command.type === 'chat-explicit') {
+                const process = await this.deps.store.getProcess(command.chatId);
+                const owner = process?.metadata?.workspaceId;
+                if (!process || typeof owner !== 'string' || !workspaces.some(ws => ws.id === owner)) {
+                    await reply(`Chat "${command.chatId}" not found.`); return;
+                }
+                workspaceId = owner;
+                targetId = process.id;
+            } else if (msg.quotedMessageId) {
                 const quoted = this.deps.bindings.findMessage(msg.quotedMessageId);
                 if (quoted) {
                     workspaceId = quoted.workspaceId;
@@ -65,28 +66,6 @@ export class WhatsAppCommandRouter {
                 await reply('No repo selected. Run `list repos`, then `select repo <n|name>`.');
                 return;
             }
-            if (command.type === 'list-topics') {
-                const processes = await listRecentTopics(this.deps.store, workspaceId);
-                await reply(processes.length
-                    ? processes.map((proc, i) => `${i + 1}. ${proc.id} ${proc.title ?? proc.customTitle ?? ''}`).join('\n')
-                    : 'No chat topics found.');
-                return;
-            }
-            if (command.type === 'select-topic') {
-                const selected = await resolveTopic(this.deps.store, workspaceId, command.args);
-                if (!selected || selected.metadata?.workspaceId !== workspaceId) {
-                    await reply('Topic not found in the selected repo. Run `list topics`.'); return;
-                }
-                this.deps.bindings.selectTopic(workspaceId, selected.id);
-                await reply(`Selected topic: ${selected.title ?? selected.id}`);
-                return;
-            }
-            if (command.type === 'create-topic') {
-                this.deps.bindings.selectTopic(workspaceId, null);
-                await reply('Ready for a new topic. Send a message to start.');
-                return;
-            }
-            if (command.type !== 'chat') return;
             if (!command.args) { await reply('Send a message to start a chat.'); return; }
             if (targetId) {
                 const process = await this.deps.store.getProcess(targetId, workspaceId);
