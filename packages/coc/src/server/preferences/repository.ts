@@ -167,7 +167,7 @@ export function resolveDefaultModel(
 }
 
 /**
- * Explicit per-repo preferences win; otherwise defaults depend on the global UI layout mode.
+ * Explicit per-repo preferences win; otherwise the registry defaults apply.
  */
 export function readEffectiveDisabledLlmTools(dataDir: string, workspaceId: string): string[] {
     const repoPrefs = readRepoPreferences(dataDir, workspaceId);
@@ -175,8 +175,7 @@ export function readEffectiveDisabledLlmTools(dataDir: string, workspaceId: stri
         return repoPrefs.disabledLlmTools;
     }
 
-    const globalPrefs = readGlobalPreferences(dataDir);
-    return getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode);
+    return getEffectiveDefaultDisabledTools();
 }
 
 /**

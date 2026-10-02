@@ -9,7 +9,8 @@ tool + accessor **per invocation** so state never leaks across requests. All too
 
 `llm-tool-registry.ts` owns `LLM_TOOL_REGISTRY`, the list of user-toggleable tools. Each entry
 has `name`, `label`, `description`, and `enabledByDefault`. Exports:
-`DEFAULT_DISABLED_LLM_TOOLS`, `isLlmToolEnabled()`, `filterDisabledLlmTools()`.
+`DEFAULT_DISABLED_LLM_TOOLS`, `getEffectiveDefaultDisabledTools()`, `filterDisabledLlmTools()`.
+The folder has no barrel `index.ts`; import each tool module directly.
 
 ### Gating
 
@@ -18,9 +19,8 @@ filters `scheduleWakeup`, the canvas tools (`CANVAS_LLM_TOOL_NAMES`), `kusto_que
 (`KUSTO_LLM_TOOL_NAMES`), and `system_one` (`SYSTEM_ONE_LLM_TOOL_NAMES`) out of the settings
 list when their flags are off.
 
-`getEffectiveDefaultDisabledTools(uiLayoutMode)` disables `tavily_web_search` at registry
-level. `CLASSIC_MODE_EXTRA_DISABLED_TOOLS` is empty, so classic and dev-workflow modes share
-the same defaults.
+`getEffectiveDefaultDisabledTools()` returns the registry-level defaults (`tavily_web_search`
+off). They do not depend on the UI layout mode.
 
 ### Per-repo overrides
 
