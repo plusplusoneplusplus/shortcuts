@@ -5,10 +5,12 @@ import { toQueueProcessId, type AIProcess, type ProcessStore, type QueuedTask } 
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsMcpSendRejectedError } from '@plusplusoneplusplus/coc-connector/teams';
 import { getRepoDataPath } from '../paths';
+import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { TeamsMessageNotSentError } from './teams-messaging-manager';
 import { escapeTeamsHtml } from './teams-outbound-format';
+import { onTaskTerminal } from './chat-target';
 
 type BindingStatus = 'admitting' | 'awaiting' | 'retryable' | 'sending' | 'delivered' | 'ambiguous' | 'failed';
 
@@ -127,17 +129,6 @@ function readBinding(file: string): AnswerBinding | undefined {
     return row as unknown as AnswerBinding;
 }
 
-function writeBinding<T>(file: string, binding: T): void {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${randomUUID()}.tmp`;
-    try {
-        fs.writeFileSync(tmp, JSON.stringify(binding), { flag: 'wx' });
-        fs.renameSync(tmp, file);
-    } finally {
-        if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
-    }
-}
-
 /** Workspace-scoped receipts for new Ask chats and their correlated follow-ups. */
 export class TeamsAnswerRelay {
     private readonly bindings = new Map<string, { file: string; value: AnswerBinding }>();
@@ -177,10 +168,10 @@ export class TeamsAnswerRelay {
         });
     };
 
+    private readonly unsubscribeTerminal: () => void;
+
     constructor(private readonly deps: TeamsAnswerRelayDeps) {
-        for (const event of ['taskCompleted', 'taskFailed', 'taskCancelled'] as const) {
-            deps.queue.on(event, this.onTerminal);
-        }
+        this.unsubscribeTerminal = onTaskTerminal(deps.queue, this.onTerminal);
     }
 
     hasInbound(msg: InboundTeamsMessage): boolean {
@@ -208,7 +199,7 @@ export class TeamsAnswerRelay {
         const name = bindingName(teamId, msg.channelId, msg.messageId);
         if (this.discoveredRoots.has(name)) return;
         const value: DiscoveredRoot = { teamId, channelId: msg.channelId, rootId: msg.messageId };
-        writeBinding(path.join(this.deps.dataDir, 'teams-thread-discovery', name), value);
+        atomicWriteJsonUnique(path.join(this.deps.dataDir, 'teams-thread-discovery', name), value);
         this.discoveredRoots.set(name, value);
     }
 
@@ -293,7 +284,7 @@ export class TeamsAnswerRelay {
                 ? { commandIds: [...new Set([...(existing?.value.commandIds ?? []), ...(commandId ? [commandId] : [])])].slice(-500) }
                 : {}),
         };
-        writeBinding(file, value);
+        atomicWriteJsonUnique(file, value);
         if (existing && existing.file !== file) fs.unlinkSync(existing.file);
         this.threadSelections.set(name, { file, value });
     }
@@ -353,7 +344,7 @@ export class TeamsAnswerRelay {
         const state = this.threadSelections.get(name);
         if (state) {
             const value = { ...state.value, commandIds: [...new Set([...(state.value.commandIds ?? []), msg.messageId])].slice(-500) };
-            writeBinding(state.file, value);
+            atomicWriteJsonUnique(state.file, value);
             this.threadSelections.set(name, { file: state.file, value });
             return;
         }
@@ -369,7 +360,7 @@ export class TeamsAnswerRelay {
             teamId: target.teamId, channelId: msg.channelId, rootId: msg.replyToMessageId,
             commandIds: [...new Set([...(existing?.commandIds ?? []), msg.messageId])].slice(-500),
         };
-        writeBinding(path.join(this.deps.dataDir, 'teams-thread-discovery', name), value);
+        atomicWriteJsonUnique(path.join(this.deps.dataDir, 'teams-thread-discovery', name), value);
         this.discoveredRoots.set(name, value);
     }
 
@@ -589,7 +580,7 @@ export class TeamsAnswerRelay {
             taskId, processId: toQueueProcessId(taskId), status: 'admitting',
             createdAt: new Date().toISOString(),
         };
-        writeBinding(file, value);
+        atomicWriteJsonUnique(file, value);
         this.bindings.set(file, { file, value });
         try {
             if (await enqueue(taskId) !== taskId) throw new Error('Queue returned a different task ID');
@@ -644,7 +635,7 @@ export class TeamsAnswerRelay {
             processId: process.id, requestId: randomUUID(), status: 'admitting',
             createdAt: new Date().toISOString(),
         };
-        writeBinding(file, value);
+        atomicWriteJsonUnique(file, value);
         this.bindings.set(file, { file, value });
         try {
             const result = await admit(value.requestId!);
@@ -692,7 +683,7 @@ export class TeamsAnswerRelay {
             rootId: msg.replyToMessageId || msg.messageId, processId: parent.processId,
             taskId: parent.taskId, requestId, status: 'admitting', createdAt: new Date().toISOString(),
         };
-        writeBinding(file, value);
+        atomicWriteJsonUnique(file, value);
         this.bindings.set(file, { file, value });
         try {
             const taskId = await enqueue(parent.workspaceId, parent.processId, requestId);
@@ -954,7 +945,7 @@ export class TeamsAnswerRelay {
         const entry = this.bindings.get(file);
         if (!entry) throw new Error('Teams answer binding missing');
         const value = { ...entry.value, status, ...patch };
-        writeBinding(file, value);
+        atomicWriteJsonUnique(file, value);
         this.bindings.set(file, { file, value });
     }
 
@@ -988,8 +979,6 @@ export class TeamsAnswerRelay {
     dispose(): void {
         this.disposed = true;
         if (this.retryTimer) clearTimeout(this.retryTimer);
-        for (const event of ['taskCompleted', 'taskFailed', 'taskCancelled'] as const) {
-            this.deps.queue.off(event, this.onTerminal);
-        }
+        this.unsubscribeTerminal();
     }
 }

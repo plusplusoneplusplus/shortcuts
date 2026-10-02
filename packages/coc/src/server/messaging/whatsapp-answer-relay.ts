@@ -4,6 +4,7 @@ import { chunkWhatsAppText } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import { WhatsAppNotConnectedError } from './whatsapp-messaging-manager';
+import { onTaskTerminal } from './chat-target';
 
 export interface WhatsAppRelayDeps {
     bindings: WhatsAppBindings;
@@ -22,16 +23,14 @@ export class WhatsAppAnswerRelay {
         });
     };
 
+    private readonly unsubscribeTerminal: () => void;
+
     constructor(private readonly deps: WhatsAppRelayDeps) {
-        for (const event of ['taskCompleted', 'taskFailed', 'taskCancelled'] as const) {
-            deps.queue.on(event, this.onTerminal);
-        }
+        this.unsubscribeTerminal = onTaskTerminal(deps.queue, this.onTerminal);
     }
 
     dispose(): void {
-        for (const event of ['taskCompleted', 'taskFailed', 'taskCancelled'] as const) {
-            this.deps.queue.off(event, this.onTerminal);
-        }
+        this.unsubscribeTerminal();
     }
 
     async reconnected(): Promise<void> {

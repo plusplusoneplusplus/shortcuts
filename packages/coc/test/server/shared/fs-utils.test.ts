@@ -1,12 +1,12 @@
 /**
- * Unit tests for atomicWriteJSON, getErrorMessage, and resolveCollision.
+ * Unit tests for atomicWriteJSON, atomicWriteJsonUnique, getErrorMessage, and resolveCollision.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { atomicWriteJSON, getErrorMessage, resolveCollision } from '../../../src/server/shared/fs-utils';
+import { atomicWriteJSON, atomicWriteJsonUnique, getErrorMessage, resolveCollision } from '../../../src/server/shared/fs-utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,6 +59,34 @@ describe('atomicWriteJSON', () => {
         await atomicWriteJSON(filePath, { a: 1 });
         const content = fs.readFileSync(filePath, 'utf-8');
         expect(content).toBe(JSON.stringify({ a: 1 }, null, 2));
+    });
+});
+
+// ---------------------------------------------------------------------------
+// atomicWriteJsonUnique
+// ---------------------------------------------------------------------------
+
+describe('atomicWriteJsonUnique', () => {
+    it('writes compact JSON, creating parent directories', () => {
+        const filePath = path.join(tmpDir, 'a', 'b', 'state.json');
+        atomicWriteJsonUnique(filePath, { hello: 'world' });
+        expect(fs.readFileSync(filePath, 'utf-8')).toBe('{"hello":"world"}');
+    });
+
+    it('overwrites an existing file and leaves no temp files behind', () => {
+        const filePath = path.join(tmpDir, 'state.json');
+        atomicWriteJsonUnique(filePath, { v: 1 });
+        atomicWriteJsonUnique(filePath, { v: 2 });
+        expect(JSON.parse(fs.readFileSync(filePath, 'utf-8'))).toEqual({ v: 2 });
+        expect(fs.readdirSync(tmpDir)).toEqual(['state.json']);
+    });
+
+    it('removes the temp file and keeps the old content when the rename fails', () => {
+        const filePath = path.join(tmpDir, 'target');
+        fs.mkdirSync(filePath);
+        expect(() => atomicWriteJsonUnique(filePath, { v: 1 })).toThrow();
+        expect(fs.statSync(filePath).isDirectory()).toBe(true);
+        expect(fs.readdirSync(tmpDir)).toEqual(['target']);
     });
 });
 
