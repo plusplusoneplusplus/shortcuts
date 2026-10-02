@@ -146,8 +146,65 @@ describe('WhatsAppBot', () => {
         expect(mockSocket.sendMessage).toHaveBeenCalledWith(
             'group@g.us',
             { text: 'Reply text' },
-            { quoted: { key: { remoteJid: 'group@g.us', id: 'wamid.original', fromMe: true } } },
+            {
+                quoted: {
+                    key: { remoteJid: 'group@g.us', id: 'wamid.original', fromMe: true },
+                    message: { conversation: '' },
+                },
+            },
         );
+    });
+
+    it('should quote the cached body of inbound and previously sent messages', async () => {
+        const bot = new WhatsAppBot({
+            sessionDir: '/tmp/test-session',
+            onMessage: async () => {},
+            printQR: false,
+        });
+        await bot.start();
+        await new Promise(r => setTimeout(r, 10));
+        const inbound = { extendedTextMessage: { text: 'list repos', contextInfo: { stanzaId: 'older' } } };
+        await mockSocket.handlers.get('messages.upsert')!({
+            type: 'notify',
+            messages: [{ key: { remoteJid: 'group@g.us', id: 'wamid.in', fromMe: true }, message: inbound }],
+        });
+
+        await bot.send('group@g.us', 'First reply', { replyToId: 'wamid.in' });
+        expect(vi.mocked(mockSocket.sendMessage).mock.calls[0][2]?.quoted?.message).toEqual(inbound);
+
+        await bot.send('group@g.us', 'Second reply', { replyToId: 'wamid.test123' });
+        expect(vi.mocked(mockSocket.sendMessage).mock.calls[1][2]?.quoted?.message)
+            .toEqual({ conversation: 'First reply' });
+    });
+
+    // Regression: a key-only quote made Baileys throw
+    // "Cannot read properties of undefined (reading 'undefined')", so no reply was ever sent.
+    it('should build quoted options that real Baileys can turn into a reply', async () => {
+        const { generateWAMessageFromContent } = await import('@whiskeysockets/baileys');
+        const bot = new WhatsAppBot({
+            sessionDir: '/tmp/test-session',
+            onMessage: async () => {},
+            printQR: false,
+        });
+        await bot.start();
+        await new Promise(r => setTimeout(r, 10));
+        await mockSocket.handlers.get('messages.upsert')!({
+            type: 'notify',
+            messages: [{ key: { remoteJid: 'group@g.us', id: 'wamid.in', fromMe: true }, message: { conversation: 'test' } }],
+        });
+
+        await bot.send('group@g.us', 'Cached reply', { replyToId: 'wamid.in' });
+        await bot.send('group@g.us', 'Uncached reply', { replyToId: 'wamid.unknown' });
+
+        for (const [jid, content, options] of vi.mocked(mockSocket.sendMessage).mock.calls) {
+            const built = generateWAMessageFromContent(jid, { extendedTextMessage: content as { text: string } },
+                { userJid: 'me@s.whatsapp.net', quoted: options!.quoted as any });
+            expect(built.message?.extendedTextMessage?.contextInfo?.stanzaId).toBe(options!.quoted!.key.id);
+        }
+        expect(generateWAMessageFromContent('group@g.us', { extendedTextMessage: { text: 'x' } }, {
+            userJid: 'me@s.whatsapp.net',
+            quoted: vi.mocked(mockSocket.sendMessage).mock.calls[0][2]!.quoted as any,
+        }).message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation).toBe('test');
     });
 
     it('should handle inbound text messages', async () => {

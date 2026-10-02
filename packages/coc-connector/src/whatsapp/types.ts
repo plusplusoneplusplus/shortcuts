@@ -43,7 +43,7 @@ export interface WASocket {
     sendMessage(
         jid: string,
         content: { text: string } | { react: { text: string; key: { remoteJid: string; id: string; fromMe: boolean } } },
-        options?: { quoted?: { key: { remoteJid?: string; id?: string; fromMe?: boolean } } },
+        options?: { quoted?: { key: { remoteJid?: string; id?: string; fromMe?: boolean }; message?: Record<string, unknown> } },
     ): Promise<{ key: { id?: string } }>;
     groupCreate(subject: string, participants: string[]): Promise<{ id: string; [k: string]: unknown }>;
     groupFetchAllParticipating(): Promise<Record<string, { subject?: string; [k: string]: unknown }>>;

@@ -6,6 +6,8 @@ import type { BotOptions, BotStatus, InboundWAMessage, WASocket } from './types'
 import type { ConnectorStatus, MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { createBaileysConnection } from './connection';
 
+const RECENT_MESSAGE_LIMIT = 500;
+
 /** Map native WhatsApp status to the normalized connector status. */
 function toConnectorStatus(status: BotStatus): ConnectorStatus {
     switch (status) {
@@ -26,6 +28,8 @@ export class WhatsAppBot implements MessagingConnector {
     private _lastError: string | null = null;
     /** Track message IDs sent by this bot to distinguish from user-typed messages on same account. */
     private _sentMessageIds = new Set<string>();
+    /** Recent message bodies by ID; Baileys needs the quoted body, not just its key, to build a reply. */
+    private _recentMessages = new Map<string, Record<string, unknown>>();
 
     constructor(opts: BotOptions) {
         this.opts = {
@@ -102,13 +106,22 @@ export class WhatsAppBot implements MessagingConnector {
         if (!this.sock) {
             throw new Error('WhatsAppBot is not started');
         }
-        // The normalized replyToId maps to a WhatsApp quoted message.
+        // The normalized replyToId maps to a WhatsApp quoted message. Baileys throws
+        // when the quoted message has no body, so fall back to an empty one.
         const sendOpts = opts?.replyToId
-            ? { quoted: { key: { remoteJid: jid, id: opts.replyToId, fromMe: true } } }
+            ? {
+                quoted: {
+                    key: { remoteJid: jid, id: opts.replyToId, fromMe: true },
+                    message: this._recentMessages.get(opts.replyToId) ?? { conversation: '' },
+                },
+            }
             : undefined;
         const result = await this.sock.sendMessage(jid, { text }, sendOpts);
         const msgId = result.key.id ?? '';
-        if (msgId) this._sentMessageIds.add(msgId);
+        if (msgId) {
+            this._sentMessageIds.add(msgId);
+            this.rememberMessage(msgId, { conversation: text });
+        }
         return msgId;
     }
 
@@ -197,6 +210,14 @@ export class WhatsAppBot implements MessagingConnector {
         this.opts.onStatusChange?.(status);
     }
 
+    private rememberMessage(id: string, message: Record<string, unknown>): void {
+        this._recentMessages.delete(id);
+        this._recentMessages.set(id, message);
+        if (this._recentMessages.size > RECENT_MESSAGE_LIMIT) {
+            this._recentMessages.delete(this._recentMessages.keys().next().value!);
+        }
+    }
+
     private handleMessages(upsert: { messages?: any[]; type?: string }): void {
         if (upsert.type !== 'notify') return;
         for (const msg of upsert.messages ?? []) {
@@ -213,6 +234,7 @@ export class WhatsAppBot implements MessagingConnector {
                 ?? msg.message?.extendedTextMessage?.text
                 ?? '';
             if (!text) continue;
+            if (msgId) this.rememberMessage(msgId, msg.message);
 
             const inbound: InboundWAMessage = {
                 chatJid: msg.key.remoteJid ?? '',
