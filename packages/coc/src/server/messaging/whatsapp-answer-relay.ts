@@ -5,6 +5,7 @@ import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import { WhatsAppNotConnectedError } from './whatsapp-messaging-manager';
 import { onTaskTerminal } from './chat-target';
+import { RELAY_ANSWER_TEXT, findRequestAnswer, findRequestTurn, isTerminalStatus } from './relay-answer';
 
 export interface WhatsAppRelayDeps {
     bindings: WhatsAppBindings;
@@ -58,20 +59,16 @@ export class WhatsAppAnswerRelay {
         const process = await this.deps.store.getProcess(binding.processId, binding.workspaceId);
         if (process && process.metadata?.workspaceId && process.metadata.workspaceId !== binding.workspaceId) return;
         const status = task?.status ?? process?.status;
-        if (!['completed', 'failed', 'cancelled'].includes(status ?? '')) return;
+        if (!isTerminalStatus(status)) return;
         const turns = process?.conversationTurns ?? [];
-        const userIndex = turns.findIndex(turn => turn.role === 'user' && turn.relayRequestId === binding.taskId);
+        const userIndex = findRequestTurn(turns, binding.taskId);
         const start = userIndex >= 0 ? userIndex
             : process?.metadata?.queueTaskId === binding.taskId && turns[0]?.role === 'user' ? 0 : -1;
         if (start < 0 && status === 'completed') return;
-        const following = turns.slice(start + 1);
-        const nextUser = following.findIndex(turn => turn.role === 'user');
-        const answer = (nextUser >= 0 ? following.slice(0, nextUser) : following)
-            .filter(turn => turn.role === 'assistant' && !turn.streaming && !turn.displayOnly && !turn.interrupted)
-            .at(-1);
-        const text = status === 'failed' ? 'This request could not be completed.'
-            : status === 'cancelled' ? 'This request was cancelled.'
-                : answer?.content?.trim() || 'This request completed without a text answer.';
+        const { answer } = findRequestAnswer(turns, start);
+        const text = status === 'failed' ? RELAY_ANSWER_TEXT.failed
+            : status === 'cancelled' ? RELAY_ANSWER_TEXT.cancelled
+                : answer?.content?.trim() || RELAY_ANSWER_TEXT.empty;
         if (status === 'completed' && !answer) return;
         const workspace = (await this.deps.store.getWorkspaces()).find(ws => ws.id === binding.workspaceId);
         const header = binding.header

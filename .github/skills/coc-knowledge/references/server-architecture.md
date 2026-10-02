@@ -146,6 +146,9 @@ Ask mode unless the message starts with `/autopilot`.
 Workspace and topic lookup (`resolveWorkspace`, bounded `listRecentTopics`,
 `resolveTopic`) and the terminal queue subscription (`onTaskTerminal`) live in
 `messaging/chat-target.ts`, shared with the Teams command router and relay.
+Both relays locate a request's answer (its user turn by `relayRequestId`, then
+the last settled assistant turn before the next user turn) and the fixed
+failed/cancelled/empty texts through `messaging/relay-answer.ts`.
 
 Account selection and recent command-reply IDs live in `messaging/whatsapp/state.json`; accepted turn
 receipts live in `repos/<workspaceId>/whatsapp-bindings.json`. The relay listens

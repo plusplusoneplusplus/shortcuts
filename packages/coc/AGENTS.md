@@ -200,7 +200,9 @@ all have their own `references/*.md`.
   `resolveTopic`), which reads a bounded (10), conversation-free process page —
   never an unbounded `getAllProcesses`, which stalls on large stores. Shared
   connector plumbing (workspace/topic lookup, terminal-task subscription) belongs
-  there, and receipt files write through `atomicWriteJsonUnique`; platform
+  there, both relays find a request's answer and its fixed failed/cancelled/empty
+  texts through `messaging/relay-answer.ts`, and receipt files write through
+  `atomicWriteJsonUnique`; platform
   transport, reply wording and delivery formatting stay per connector. Chat receipts live under each workspace's
   `whatsapp-bindings.json`, never in an account-wide per-repo bindings file.
   Account state also retains recent command-reply IDs so reconnects cannot

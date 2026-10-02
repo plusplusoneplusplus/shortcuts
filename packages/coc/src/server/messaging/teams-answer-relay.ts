@@ -11,6 +11,7 @@ import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { TeamsMessageNotSentError } from './teams-messaging-manager';
 import { escapeTeamsHtml } from './teams-outbound-format';
 import { onTaskTerminal } from './chat-target';
+import { RELAY_ANSWER_TEXT, findRequestAnswer, findRequestTurn, isTerminalStatus, type RelayTerminalStatus } from './relay-answer';
 
 type BindingStatus = 'admitting' | 'awaiting' | 'retryable' | 'sending' | 'delivered' | 'ambiguous' | 'failed';
 
@@ -40,7 +41,7 @@ interface AnswerBinding {
     lastReplyIds?: string[];
     retryCount?: number;
     nextAttemptAt?: string;
-    terminalStatus?: 'completed' | 'failed' | 'cancelled';
+    terminalStatus?: RelayTerminalStatus;
     status: BindingStatus;
     createdAt: string;
 }
@@ -122,7 +123,7 @@ function readBinding(file: string): AnswerBinding | undefined {
             || (row.nextPart as number) < 0 || (row.nextPart as number) > (row.partCount as number)))
         || (row.retryCount !== undefined && (!Number.isSafeInteger(row.retryCount)
             || (row.retryCount as number) < 0 || (row.retryCount as number) > 5))
-        || (row.terminalStatus !== undefined && !['completed', 'failed', 'cancelled'].includes(String(row.terminalStatus)))
+        || (row.terminalStatus !== undefined && !isTerminalStatus(String(row.terminalStatus)))
         || (row.nextAttemptAt !== undefined && (typeof row.nextAttemptAt !== 'string' || !Number.isFinite(Date.parse(row.nextAttemptAt))))) {
         throw new Error('Invalid Teams answer binding');
     }
@@ -141,22 +142,22 @@ export class TeamsAnswerRelay {
     private readonly onTerminal = (task: QueuedTask) => {
         try {
             if (typeof task.payload?.relayRequestId === 'string'
-                && ['completed', 'failed', 'cancelled'].includes(task.status)) {
+                && isTerminalStatus(task.status)) {
                 for (const [file, { value }] of this.bindings) {
                     if (value.requestId !== task.payload.relayRequestId) continue;
                     if (value.workspaceId !== task.repoId || value.processId !== task.processId) continue;
                     this.update(file, value.status, {
                         taskId: task.id,
-                        terminalStatus: task.status as 'completed' | 'failed' | 'cancelled',
+                        terminalStatus: task.status,
                     });
                 }
-            } else if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+            } else if (isTerminalStatus(task.status)) {
                 for (const [file, { value }] of this.bindings) {
                     if (value.requestId || value.taskId !== task.id
                         || value.workspaceId !== task.repoId
                         || (task.processId && value.processId !== task.processId)) continue;
                     this.update(file, value.status, {
-                        terminalStatus: task.status as 'completed' | 'failed' | 'cancelled',
+                        terminalStatus: task.status,
                     });
                 }
             }
@@ -771,9 +772,9 @@ export class TeamsAnswerRelay {
         if (binding.requestId && task
             && (task.repoId !== binding.workspaceId || task.processId !== binding.processId)) return;
         if (binding.requestId && task?.payload?.relayRequestId === binding.requestId
-            && ['completed', 'failed', 'cancelled'].includes(task.status) && !binding.terminalStatus) {
+            && isTerminalStatus(task.status) && !binding.terminalStatus) {
             this.update(file, binding.status, {
-                taskId: task.id, terminalStatus: task.status as 'completed' | 'failed' | 'cancelled',
+                taskId: task.id, terminalStatus: task.status,
             });
             binding = this.bindings.get(file)!.value;
         }
@@ -783,43 +784,38 @@ export class TeamsAnswerRelay {
             (task && (task.repoId !== binding.workspaceId || (task.processId && task.processId !== binding.processId)))
             || (process && process.metadata?.queueTaskId !== binding.taskId)
             || (!task && !process && !binding.terminalStatus)
-            || !['completed', 'failed', 'cancelled'].includes(task?.status ?? binding.terminalStatus ?? process?.status ?? '')
+            || !isTerminalStatus(task?.status ?? binding.terminalStatus ?? process?.status)
             || (task?.status === 'completed' && !process)
         )) return;
         if (binding.requestId && !process) return;
         const turns = process?.conversationTurns ?? [];
         const userIndex = binding.requestId
-            ? turns.findIndex(turn => turn.role === 'user' && turn.relayRequestId === binding.requestId)
+            ? findRequestTurn(turns, binding.requestId)
             : turns[0]?.role === 'user' ? 0 : -1;
         if (userIndex < 0 && !['cancelled', 'failed'].includes(task?.status ?? binding.terminalStatus ?? '')) return;
-        const next = turns.slice(userIndex + 1);
-        const nextUser = next.findIndex(turn => turn.role === 'user');
-        const requestTurns = nextUser < 0 ? next : next.slice(0, nextUser);
-        const answer = requestTurns
-            .filter(turn => turn.role === 'assistant' && !turn.interrupted && !turn.streaming && !turn.displayOnly)
-            .at(-1);
-        const persistedTerminal = binding.requestId && nextUser < 0
+        const { answer, closed } = findRequestAnswer(turns, userIndex);
+        const persistedTerminal = binding.requestId && !closed
             && (process?.status === 'failed' || process?.status === 'cancelled')
             ? process.status : undefined;
         if (binding.requestId && !binding.terminalStatus && !persistedTerminal
             && !(answer && process?.status === 'completed')) return;
         let text: string;
         if (!binding.requestId && (task?.status ?? binding.terminalStatus ?? process?.status) === 'cancelled') {
-            text = 'This request was cancelled.';
+            text = RELAY_ANSWER_TEXT.cancelled;
         } else if (!binding.requestId && (task?.status ?? binding.terminalStatus ?? process?.status) === 'failed') {
-            text = 'This request could not be completed.';
+            text = RELAY_ANSWER_TEXT.failed;
         } else if (binding.requestId && (binding.terminalStatus ?? persistedTerminal) === 'cancelled') {
-            text = 'This request was cancelled.';
+            text = RELAY_ANSWER_TEXT.cancelled;
         } else if (binding.requestId && (binding.terminalStatus ?? persistedTerminal) === 'failed') {
-            text = 'This request could not be completed.';
+            text = RELAY_ANSWER_TEXT.failed;
         } else if (answer && typeof answer.content === 'string') {
-            text = answer.content.trim() ? answer.content : 'This request completed without a text answer.';
+            text = answer.content.trim() ? answer.content : RELAY_ANSWER_TEXT.empty;
         } else if (binding.requestId && userIndex < 0) {
             return;
         } else if ((task?.status ?? process?.status) === 'cancelled' && (!binding.requestId || process?.status === 'cancelled')) {
-            text = 'This request was cancelled.';
+            text = RELAY_ANSWER_TEXT.cancelled;
         } else if ((task?.status ?? process?.status) === 'failed' && (!binding.requestId || process?.status === 'failed')) {
-            text = 'This request could not be completed.';
+            text = RELAY_ANSWER_TEXT.failed;
         } else {
             return;
         }
