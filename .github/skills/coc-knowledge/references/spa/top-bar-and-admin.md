@@ -47,8 +47,11 @@ Both Teams forms expose explicit optional IC3 region configuration, saved with c
 settings and applied on reconnect. Unconfigured leaves MCP polling/sends available;
 IC3 writes require a region. The container stores it under `messaging.teams.ic3Region`
 in `config.yaml`; an absent bridge requires restart.
-The normal Teams card also exposes experimental `enableTrouter`, default off, saved
-through `/api/messaging/teams/config` and applied on reconnect. Its separate Azure CLI
+The normal Teams card groups endpoint/sign-in and channel settings separately,
+with optional IC3 and notification settings in a native advanced-options disclosure.
+Its controls use scoped admin styles; connection/OAuth and notification errors stay
+visible independently of disclosures. It exposes experimental `enableTrouter`, default off,
+saved through `/api/messaging/teams/config` and applied on reconnect. Its separate Azure CLI
 IC3 sign-in must match MCP; notification wakes retain authoritative reads and a
 60-second completion-relative fallback. This private protocol is not durable catch-up.
 It displays `notificationStatus` and sanitized errors separately from connected reader
@@ -56,8 +59,8 @@ status, making fallback degradation visible without misreporting the whole bridg
 
 With `features.teamsBridgeObservability` enabled, the normal Teams card loads
 server-global, newest-first connection attempts from the guarded messaging API.
-Its expandable native `<details>` rows show safe phase and activity timelines,
-poll/reply health, and aggregate counts. History fetch failures retain and mark
+Its collapsed history disclosure contains expandable native `<details>` rows with safe
+phase and activity timelines, poll/reply health, and aggregate counts. History fetch failures retain and mark
 the previous page stale; the existing connection/OAuth controls remain available.
 
 ## Admin as an overlay dialog

@@ -2042,20 +2042,46 @@
     flex: 1;
   }
 }
-.admin-redesign .ar-teams { display: grid; gap: 12px; }
-.admin-redesign .ar-teams-hint { color: var(--ar-text-mute); font-size: 12px; }
-.admin-redesign .ar-teams-status { color: var(--ar-text-2); }
-.admin-redesign .ar-teams-error { color: var(--ar-danger); }
-.admin-redesign .ar-teams-warning { color: var(--ar-warning); font-size: 12px; }
-.admin-redesign .ar-teams-field { display: grid; gap: 5px; min-width: 0; }
-.admin-redesign .ar-teams-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.admin-redesign .ar-teams-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-redesign .ar-teams { display: grid; gap: 16px; padding: 16px 20px; min-width: 0; }
+.admin-redesign .ar-teams p { margin: 0; overflow-wrap: anywhere; }
+.admin-redesign .ar-teams-hint { color: var(--ar-text-mute); font-size: 12px; line-height: 1.6; }
+.admin-redesign .ar-teams-overview { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.admin-redesign .ar-teams-status { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-redesign .ar-teams-status .ar-badge { text-transform: none; font-family: inherit; font-size: 12px; padding: 4px 8px; border-radius: 20px; }
+.admin-redesign .ar-teams-error,
+.admin-redesign .ar-teams-warning { padding: 10px 12px; border-radius: var(--ar-radius-sm); font-size: 12px; }
+.admin-redesign .ar-teams-error { color: var(--ar-danger); background: var(--ar-danger-bg); }
+.admin-redesign .ar-teams-warning { color: var(--ar-warning); background: var(--ar-warning-bg); }
+.admin-redesign .ar-teams-section { display: grid; gap: 12px; min-width: 0; border-top: 1px solid var(--ar-border); padding-top: 16px; }
+.admin-redesign .ar-teams-section h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 600; }
+.admin-redesign .ar-teams-step { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ar-accent-bg); color: var(--ar-accent-fg); font-size: 11px; }
+.admin-redesign .ar-teams-field { display: grid; gap: 6px; min-width: 0; font-size: 12px; font-weight: 500; color: var(--ar-text-2); }
+.admin-redesign .ar-teams-endpoint { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.admin-redesign .ar-teams-endpoint .ar-input { flex: 1; width: 0; }
+.admin-redesign .ar-teams-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.admin-redesign .ar-teams-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.admin-redesign .ar-teams .ar-btn { flex-shrink: 0; width: auto; justify-self: start; }
+.admin-redesign .ar-teams .ar-input:disabled { opacity: .6; cursor: not-allowed; }
+.admin-redesign .ar-teams-advanced { background: var(--ar-bg-2); border: 1px solid var(--ar-border); border-radius: var(--ar-radius); }
+.admin-redesign .ar-teams-advanced > summary,
+.admin-redesign .ar-teams-history-disclosure > summary { padding: 10px 12px; cursor: pointer; font-size: 12px; font-weight: 500; }
+.admin-redesign .ar-teams-advanced > summary .ar-teams-hint { margin-left: 8px; font-weight: 400; }
+.admin-redesign .ar-teams-advanced-body { display: grid; gap: 12px; padding: 4px 12px 12px; }
+.admin-redesign .ar-teams-checkbox { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; cursor: pointer; }
+.admin-redesign .ar-teams-checkbox input { flex: 0 0 auto; width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--ar-accent); }
+.admin-redesign .ar-teams-connect { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: var(--ar-bg-2); border: 1px solid var(--ar-border); border-radius: var(--ar-radius); padding: 12px; }
+.admin-redesign .ar-teams-connect > p { flex: 1 1 220px; }
+.admin-redesign .ar-teams-help > summary { cursor: pointer; color: var(--ar-text-mute); font-size: 12px; }
+.admin-redesign .ar-teams-help > p { padding-top: 8px; }
+.admin-redesign .ar-teams summary:focus-visible { outline: 2px solid var(--ar-accent); outline-offset: 2px; border-radius: var(--ar-radius-sm); }
 .admin-redesign .ar-teams-auth-link { align-self: center; color: var(--ar-accent-fg); font-size: 12px; font-weight: 600; text-decoration: underline; }
 .admin-redesign .ar-teams-auth-link:focus-visible { outline: 2px solid var(--ar-accent); outline-offset: 2px; }
 .admin-redesign .ar-teams-history { border-top: 1px solid var(--ar-border); padding-top: 12px; display: grid; gap: 8px; min-width: 0; }
-.admin-redesign .ar-teams-history h4 { margin: 0; }
 .admin-redesign .ar-teams-history details { border: 1px solid var(--ar-border); border-radius: 6px; }
-.admin-redesign .ar-teams-attempt-summary { cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; padding: 8px 12px; }
+.admin-redesign .ar-teams-history-disclosure > summary .ar-badge { margin-left: 6px; }
+.admin-redesign .ar-teams-history-list { display: grid; gap: 6px; padding: 0 12px 12px; }
+.admin-redesign .ar-teams-attempt-summary { cursor: pointer; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; padding: 8px 12px; font-size: 12px; }
+.admin-redesign .ar-teams-attempt-summary:hover { background: var(--ar-bg-hover); }
 .admin-redesign .ar-teams-attempt-summary:focus-visible { outline: 2px solid var(--ar-accent); outline-offset: 2px; }
 .admin-redesign .ar-teams-attempt-summary time { color: var(--ar-text-mute); }
 .admin-redesign .ar-teams-attempt-detail { padding: 4px 12px 12px; border-top: 1px solid var(--ar-border); font-size: 12px; }
@@ -2067,6 +2093,14 @@
 .admin-redesign .ar-teams-counts dd { margin: 0; font-weight: 600; }
 .admin-redesign .ar-teams-pages { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 @container ar-main (max-width: 600px) {
+  .admin-redesign .ar-teams { padding: 12px; }
+  .admin-redesign .ar-teams-endpoint { flex-wrap: wrap; }
+  .admin-redesign .ar-teams-endpoint .ar-input { flex-basis: 100%; width: 100%; }
+  .admin-redesign .ar-teams-fields { grid-template-columns: 1fr; }
+  .admin-redesign .ar-teams .ar-btn { min-height: 36px; }
+  .admin-redesign .ar-teams-advanced > summary,
+  .admin-redesign .ar-teams-history-disclosure > summary,
+  .admin-redesign .ar-teams-help > summary { min-height: 36px; }
   .admin-redesign .ar-teams-attempt-summary { display: grid; grid-template-columns: 1fr auto; }
   .admin-redesign .ar-teams-attempt-summary time { grid-column: 1 / -1; }
 }

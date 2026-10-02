@@ -171,6 +171,9 @@ references before editing. Paths are package-relative.
   Status exposes sanitized `notificationStatus` separately from reader connectivity;
   the Connections card displays notification degradation while fallback remains connected.
   Private Trouter is best-effort, not durable catch-up; container relay settings are separate.
+- Teams setup uses scoped admin styles and native disclosures for advanced settings,
+  routing help, and connection history. Keep status/errors visible outside disclosures
+  and preserve separate endpoint/channel saves and unsaved-change connect gating.
 - Teams sends start with `AI:`/safe HTML. Receipts differ from final answers:
   relay captured terminal turns by request ID to the original thread/workspace.
   Selection changes never redirect answers. Persist accepted multipart progress;

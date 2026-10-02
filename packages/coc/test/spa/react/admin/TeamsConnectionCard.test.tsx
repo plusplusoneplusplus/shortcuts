@@ -19,6 +19,40 @@ const status = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('TeamsConnectionCard', () => {
+    it('groups setup separately from collapsed optional settings and history', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+            ok: true, json: async () => url.endsWith('/status')
+                ? { ...status, teamsBridgeObservabilityEnabled: true }
+                : { attempts: [], total: 0, nextOffset: null },
+        })));
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        expect(screen.getByRole('region', { name: 'Endpoint and sign-in' })
+            .contains(screen.getByLabelText('Teams MCP server URL'))).toBe(true);
+        expect(screen.getByRole('region', { name: 'Channel settings' })
+            .contains(screen.getByLabelText('Channel'))).toBe(true);
+        const advanced = screen.getByText('Advanced options').closest('details')!;
+        expect(advanced.hasAttribute('open')).toBe(false);
+        expect(advanced.contains(screen.getByLabelText('IC3 region'))).toBe(true);
+        const checkbox = screen.getByLabelText('Experimental notification-driven inbound (Trouter)');
+        expect(checkbox.closest('label')?.className).toBe('ar-teams-checkbox');
+        expect(checkbox.getAttribute('aria-describedby')).toBe('teams-trouter-hint');
+        const history = screen.getByRole('region', { name: 'Connection attempts' }).querySelector('details')!;
+        expect(history.hasAttribute('open')).toBe(false);
+        expect(screen.getByRole('button', { name: 'Enable & connect' }).className).toContain('ar-btn-primary');
+        expect(screen.getByRole('button', { name: 'Save MCP endpoint' }).className).toContain('ar-btn-secondary');
+    });
+
+    it('keeps form controls disabled until connection settings are available', () => {
+        vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+        render(<TeamsConnectionCard />);
+        for (const name of ['Teams MCP server URL', 'Team', 'Channel', 'Bot name', 'IC3 region',
+            'Experimental notification-driven inbound (Trouter)']) {
+            expect((screen.getByLabelText(name) as HTMLInputElement).disabled).toBe(true);
+        }
+        expect(screen.getByRole('button', { name: 'Refresh status' })).toBeDefined();
+    });
+
     it('offers an off-by-default notification opt-in and persists it before reconnect', async () => {
         let current = { ...status, enableTrouter: false };
         const fetch = vi.fn(async (url: string, options?: RequestInit) => {
@@ -52,7 +86,9 @@ describe('TeamsConnectionCard', () => {
         render(<TeamsConnectionCard />);
         await screen.findByText(/Connection: connected/);
         expect(screen.getByTestId('teams-notification-status').textContent).toContain('retrying');
-        expect(screen.getByText(/Trouter authentication rejected/).getAttribute('role')).toBe('alert');
+        const warning = screen.getByText(/Trouter authentication rejected/);
+        expect(warning.getAttribute('role')).toBe('alert');
+        expect(warning.closest('details')).toBeNull();
         expect(screen.getByText(/60-second fallback reads/)).toBeDefined();
     });
     it.each(['amer', 'emea', 'apac', ''] as const)('saves container region %s with the existing form and reconnect guidance', async region => {
@@ -176,7 +212,8 @@ describe('TeamsConnectionCard', () => {
         await screen.findByText(/Connected · degraded/);
         fail = true;
         fireEvent.click(screen.getByText('Refresh status'));
-        expect(await screen.findByText(/Previous results are stale/)).toBeDefined();
+        const warning = await screen.findByText(/Previous results are stale/);
+        expect(warning.closest('details')).toBeNull();
         expect(screen.getByText(/Connected · degraded/)).toBeDefined();
     });
 

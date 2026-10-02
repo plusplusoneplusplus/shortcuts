@@ -253,148 +253,194 @@ export function TeamsConnectionCard() {
     };
 
     return (
-        <SettingsCard title="Microsoft Teams" description="Receive commands and chat messages from one Teams channel, routed to a selected CoC workspace." data-testid="teams-connection-card">
+        <SettingsCard title="Microsoft Teams" description="Connect a Teams channel to your CoC workspaces." badge="Global" data-testid="teams-connection-card">
             <div className="ar-teams">
-                <p className="ar-teams-hint">
-                    Configure a global Teams MCP endpoint, complete Microsoft sign-in, then connect.
-                    This bridge reads a team channel for inbound messages; it does not relay agent output to a self-chat.
-                    A missing team or channel is created when you connect.
-                    Use a different channel on each machine (including machines with the same name) to avoid duplicate replies.
-                    Users can run <code>list repos</code> and <code>select repo &lt;name&gt;</code> to choose their workspace.
-                </p>
-                <p role="status" className="ar-teams-status">
-                    Connection: {status?.status ?? 'Loading…'} · OAuth: {status?.authStatus ?? 'not configured'}
-                </p>
-                {status?.enableTrouter && <p role="status" className="ar-teams-status" data-testid="teams-notification-status">
+                <div className="ar-teams-overview">
+                    <div role="status" className="ar-teams-status">
+                        <span className={`ar-badge ${status?.status === 'connected' ? 'ar-badge-success' : status?.status === 'error' ? 'ar-badge-danger' : ''}`}>
+                            Connection: {status?.status ?? 'Loading…'}
+                        </span>
+                        <span className={`ar-badge ${status?.authStatus === 'authenticated' ? 'ar-badge-success' : 'ar-badge-warning'}`}>
+                            OAuth: {status?.authStatus ?? 'not configured'}
+                        </span>
+                    </div>
+                    <Button size="sm" variant="ghost" className="ar-btn ar-btn-ghost ar-btn-sm"
+                        disabled={busy} onClick={() => void load()}>Refresh status</Button>
+                </div>
+                {status?.enableTrouter && <p role="status" className="ar-teams-hint" data-testid="teams-notification-status">
                     Notifications: {status.notificationStatus?.state ?? 'stopped'} · 60-second fallback reads
                 </p>}
                 {status?.enableTrouter && status.notificationStatus?.error
                     && <p role="alert" className="ar-teams-warning">{status.notificationStatus.error.message}</p>}
                 {status?.error && <p role="alert" className="ar-teams-error">{status.error}</p>}
                 {error && <p role="alert" className="ar-teams-error">{error}</p>}
-                <label className="ar-teams-field">Teams MCP server URL
-                    <input className="ar-input ar-full" type="url" value={serverUrl} onChange={e => setServerUrl(e.target.value)}
-                        placeholder="https://…/servers/mcp_TeamsServer" />
-                </label>
-                <Button size="sm" disabled={busy || !serverUrl.trim()} onClick={() => void run(async () => {
-                    await request('/messaging/teams/server', { url: serverUrl.trim() });
-                })}>Save MCP endpoint</Button>
-                <div className="ar-teams-fields">
-                    {([
-                        ['Team', teamName, setTeamName],
-                        ['Channel', channelName, setChannelName],
-                        ['Bot name', botName, setBotName],
-                    ] as const).map(([label, value, setter]) => (
-                        <label key={label} className="ar-teams-field">{label}
-                            <input className="ar-input ar-full" value={value} onChange={e => setter(e.target.value)} />
-                        </label>
-                    ))}
+                <section className="ar-teams-section" aria-label="Endpoint and sign-in">
+                    <h4><span className="ar-teams-step" aria-hidden="true">1</span> Endpoint &amp; sign-in</h4>
+                    <p className="ar-teams-hint">Save your global Teams MCP endpoint, then sign in with Microsoft.</p>
+                    <label className="ar-teams-field" htmlFor="teams-server-url">Teams MCP server URL</label>
+                    <div className="ar-teams-endpoint">
+                        <input id="teams-server-url" className="ar-input ar-full ar-mono" type="url" value={serverUrl}
+                            disabled={busy || !status} onChange={e => setServerUrl(e.target.value)}
+                            placeholder="https://…/servers/mcp_TeamsServer" />
+                        <Button size="sm" variant="secondary" className="ar-btn ar-btn-secondary ar-btn-sm"
+                            disabled={busy || !serverUrl.trim()} onClick={() => void run(async () => {
+                                await request('/messaging/teams/server', { url: serverUrl.trim() });
+                            })}>Save MCP endpoint</Button>
+                    </div>
+                    <div className="ar-teams-actions">
+                        <Button size="sm" variant="secondary" className="ar-btn ar-btn-secondary ar-btn-sm"
+                            disabled={busy || authorizing || dirty || !status?.serverUrl || !status?.teamsOAuthAvailable}
+                            onClick={() => void authenticate()}>{authorizing ? 'Authorizing…' : 'Authenticate'}</Button>
+                        {authorizationUrl && <a className="ar-teams-auth-link" href={authorizationUrl} target="_blank" rel="noopener noreferrer">Continue Microsoft sign-in</a>}
+                    </div>
+                    {status && !status.teamsOAuthAvailable && <p className="ar-teams-warning">
+                        MCP OAuth is unavailable. Enable mcpOauth and restart CoC.
+                    </p>}
+                    {authorizationUrl && <p className="ar-teams-warning">Open the sign-in link on the same computer as CoC; the callback uses localhost.</p>}
+                </section>
+                <section className="ar-teams-section" aria-label="Channel settings">
+                    <h4><span className="ar-teams-step" aria-hidden="true">2</span> Choose a channel</h4>
+                    <p className="ar-teams-hint">A missing team or channel is created when you connect.</p>
+                    <div className="ar-teams-fields">
+                        {([
+                            ['Team', teamName, setTeamName],
+                            ['Channel', channelName, setChannelName],
+                            ['Bot name', botName, setBotName],
+                        ] as const).map(([label, value, setter]) => (
+                            <label key={label} className="ar-teams-field">{label}
+                                <input className="ar-input ar-full" value={value} disabled={busy || !status}
+                                    onChange={e => setter(e.target.value)} />
+                            </label>
+                        ))}
+                    </div>
+                    <p className="ar-teams-hint">
+                        Use a different channel on each machine (including machines with the same name) to avoid duplicate replies.
+                    </p>
+                    <details className="ar-teams-advanced">
+                        <summary>Advanced options <span className="ar-teams-hint">Optional</span></summary>
+                        <div className="ar-teams-advanced-body">
+                            <label className="ar-teams-field">IC3 region
+                                <select className="ar-input ar-full" value={ic3Region} disabled={busy || !status}
+                                    onChange={e => setIc3Region(e.target.value)} aria-describedby="teams-region-hint">
+                                    <option value="">Unconfigured</option>
+                                    <option value="amer">Americas</option>
+                                    <option value="emea">Europe-Middle East-Africa</option>
+                                    <option value="apac">Asia-Pacific</option>
+                                </select>
+                            </label>
+                            <p id="teams-region-hint" className="ar-teams-hint">
+                                Required for optional IC3 Likes and self sends only; MCP polling and ordinary sends work unconfigured.
+                                Choose your account's region; automatic discovery is not available. Save changes, then reconnect.
+                            </p>
+                            <label className="ar-teams-checkbox">
+                                <input type="checkbox" checked={enableTrouter} disabled={busy || !status}
+                                    onChange={e => setEnableTrouter(e.target.checked)}
+                                    data-testid="teams-trouter-enabled" aria-describedby="teams-trouter-hint" />
+                                <span>Experimental notification-driven inbound (Trouter)</span>
+                            </label>
+                            <p id="teams-trouter-hint" className="ar-teams-hint">
+                                Off by default. Uses separate IC3 credentials from the server's Azure CLI sign-in, for the same
+                                account as MCP. Notifications trigger authoritative reads with a 60-second fallback.
+                                This private protocol is best-effort, not durable catch-up. Save, then reconnect.
+                            </p>
+                        </div>
+                    </details>
+                    <div className="ar-teams-actions">
+                        <Button size="sm" variant="secondary" className="ar-btn ar-btn-secondary ar-btn-sm"
+                            disabled={busy || !teamName.trim() || !channelName.trim() || !botName.trim()}
+                            onClick={() => void run(async () => {
+                                await request('/messaging/teams/config', {
+                                    teamName: teamName.trim(), channelName: channelName.trim(), botName: botName.trim(),
+                                    ic3Region: ic3Region || null,
+                                    enableTrouter,
+                                });
+                            })}>Save channel</Button>
+                    </div>
+                </section>
+                <div className="ar-teams-connect">
+                    <p className={dirty ? 'ar-teams-warning' : 'ar-teams-hint'}>
+                        {dirty ? 'Save endpoint and channel changes before connecting.'
+                            : status?.status === 'connected' ? 'Connected. Send a message in your Teams channel to get started.'
+                                : 'Once your endpoint and channel are saved, connect to start receiving messages.'}
+                    </p>
+                    <div className="ar-teams-actions">
+                        <Button size="sm" className="ar-btn ar-btn-primary ar-btn-sm"
+                            disabled={busy || dirty || !status?.serverUrl || !['authenticated', 'expired'].includes(status.authStatus ?? '')}
+                            onClick={() => void run(async () => {
+                                if (!status?.enabled) await request('/messaging/teams/config', { enabled: true });
+                                await request('/messaging/teams/reconnect', {});
+                            })}>{status?.enabled ? 'Reconnect' : 'Enable & connect'}</Button>
+                        {status?.enabled && <Button size="sm" variant="ghost" className="ar-btn ar-btn-ghost ar-btn-sm"
+                            disabled={busy} onClick={() => void run(async () => {
+                                await request('/messaging/teams/config', { enabled: false });
+                            })}>Disable</Button>}
+                    </div>
                 </div>
-                <label className="ar-teams-field">IC3 region
-                    <select className="ar-input ar-full" value={ic3Region} onChange={e => setIc3Region(e.target.value)}>
-                        <option value="">Unconfigured</option>
-                        <option value="amer">Americas</option>
-                        <option value="emea">Europe-Middle East-Africa</option>
-                        <option value="apac">Asia-Pacific</option>
-                    </select>
-                </label>
-                <p className="ar-teams-hint">
-                    Required for optional IC3 Likes and self sends only; MCP polling and ordinary sends work unconfigured.
-                    Choose your account's region; automatic discovery is not available. Save changes, then reconnect.
-                </p>
-                <div className="ar-teams-actions">
-                    <label className="ar-teams-field">
-                        <input type="checkbox" checked={enableTrouter} onChange={e => setEnableTrouter(e.target.checked)}
-                            data-testid="teams-trouter-enabled" />
-                        Experimental notification-driven inbound (Trouter)
-                    </label>
-                </div>
-                <p className="ar-teams-hint">
-                    Off by default. Uses separate IC3 credentials from the server's Azure CLI sign-in, for the same
-                    account as MCP. Notifications trigger authoritative reads with a 60-second fallback.
-                    This private protocol is best-effort, not durable catch-up. Save, then reconnect.
-                </p>
-                <div className="ar-teams-actions">
-                    <Button size="sm" disabled={busy || !teamName.trim() || !channelName.trim() || !botName.trim()}
-                        onClick={() => void run(async () => {
-                            await request('/messaging/teams/config', {
-                                teamName: teamName.trim(), channelName: channelName.trim(), botName: botName.trim(),
-                                ic3Region: ic3Region || null,
-                                enableTrouter,
-                            });
-                        })}>Save channel</Button>
-                    <Button size="sm" disabled={busy || authorizing || dirty || !status?.serverUrl || !status?.teamsOAuthAvailable}
-                        onClick={() => void authenticate()}>{authorizing ? 'Authorizing…' : 'Authenticate'}</Button>
-                    {authorizationUrl && <a className="ar-teams-auth-link" href={authorizationUrl} target="_blank" rel="noopener noreferrer">Continue Microsoft sign-in</a>}
-                    <Button size="sm" disabled={busy || dirty || !status?.serverUrl || !['authenticated', 'expired'].includes(status.authStatus ?? '')}
-                        onClick={() => void run(async () => {
-                            if (!status?.enabled) await request('/messaging/teams/config', { enabled: true });
-                            await request('/messaging/teams/reconnect', {});
-                        })}>{status?.enabled ? 'Reconnect' : 'Enable & connect'}</Button>
-                    {status?.enabled && <Button size="sm" disabled={busy} onClick={() => void run(async () => {
-                        await request('/messaging/teams/config', { enabled: false });
-                    })}>Disable</Button>}
-                    <Button size="sm" disabled={busy} onClick={() => void load()}>Refresh status</Button>
-                </div>
-                {status && !status.teamsOAuthAvailable && <p className="ar-teams-warning">
-                    MCP OAuth is unavailable. Enable mcpOauth and restart CoC.
-                </p>}
-                {authorizationUrl && <p className="ar-teams-warning">Open the sign-in link on the same computer as CoC; the callback uses localhost.</p>}
-                {dirty && <p className="ar-teams-warning">Save endpoint and channel changes before connecting.</p>}
+                <details className="ar-teams-help">
+                    <summary>How workspace routing works</summary>
+                    <p className="ar-teams-hint">
+                        This bridge reads a team channel for inbound messages; it does not relay agent output to a self-chat.
+                        Users can run <code>list repos</code> and <code>select repo &lt;name&gt;</code> to choose their workspace.
+                    </p>
+                </details>
                 {status?.teamsBridgeObservabilityEnabled && (
                     <section className="ar-teams-history" aria-label="Connection attempts">
-                        <h4>Connection attempts</h4>
                         {historyLoading && !history && <p role="status">Loading connection history…</p>}
                         {historyError && <p role="alert" className="ar-teams-error">
                             Could not load connection history: {historyError}{history && ' · Previous results are stale.'}
                         </p>}
-                        {history && history.attempts.length === 0 && <p>No connection attempts yet{status.enabled ? '.' : ' (bridge disabled).'}</p>}
-                        {history?.attempts.map(attempt => (
-                            <details key={attempt.id} open={expandedId === attempt.id}
-                                onToggle={event => {
-                                    if (event.currentTarget.open && expandedId !== attempt.id) setExpandedId(attempt.id);
-                                    else if (!event.currentTarget.open && expandedId === attempt.id) setExpandedId(null);
-                                }}>
-                                <summary className="ar-teams-attempt-summary">
-                                    <time dateTime={attempt.startedAt}>{localTime(attempt.startedAt)}</time>
-                                    <strong>{attempt.result === 'failed' ? '✕ ' : attempt.degraded ? '! ' : '○ '}{attemptLabel(attempt)}</strong>
-                                    <span>{duration(attempt.startedAt, attempt.endedAt)}</span>
-                                    {attempt.failureCategory && <span>{attempt.failureCategory} failure</span>}
-                                </summary>
-                                {expandedId === attempt.id && (
-                                    detail?.id === attempt.id ? (
-                                        <div className="ar-teams-attempt-detail">
-                                            <ol className="ar-teams-timeline">
-                                                {timeline(detail).map((event, index) => <li key={index}>
-                                                    <time dateTime={event.at}>{localTime(event.at)}</time> {event.label}
-                                                </li>)}
-                                            </ol>
-                                            {detail.failureCategory && <p>{guidance[detail.failureCategory] ?? guidance.unknown}</p>}
-                                            {detail.events.some(event => event.type === 'reply-rejected') && <p>{guidance.send}</p>}
-                                            <p>Poll: {detail.pollDegraded ? 'Degraded' : detail.lastPollSuccessAt ? 'Healthy' : 'No successful poll yet'} · last success: {detail.lastPollSuccessAt ? localTime(detail.lastPollSuccessAt) : 'none'}</p>
-                                            <p>Reply send: {detail.sendDegraded ? 'Degraded' : detail.lastSendSuccessAt ? 'Healthy' : 'No MCP acceptance yet'} · last MCP acceptance: {detail.lastSendSuccessAt ? localTime(detail.lastSendSuccessAt) : 'none'}</p>
-                                            <p>MCP acceptance does not confirm Teams displayed a reply.</p>
-                                            <dl className="ar-teams-counts">
-                                                {Object.entries(detail.totals).map(([key, count]) => (
-                                                    <div key={key}><dt>{key.replace(/([A-Z])/g, ' $1')}</dt><dd>{count}</dd></div>
-                                                ))}
-                                            </dl>
-                                        </div>
-                                    ) : <p role={detailError ? 'alert' : 'status'}>
-                                        {detailError ? `Could not load attempt: ${detailError}` : 'Loading attempt…'}
-                                    </p>
+                        <details className="ar-teams-history-disclosure">
+                            <summary>Connection attempts {history && <span className="ar-badge">{history.total}</span>}</summary>
+                            <div className="ar-teams-history-list">
+                                {history && history.attempts.length === 0 && <p>No connection attempts yet{status.enabled ? '.' : ' (bridge disabled).'}</p>}
+                                {history?.attempts.map(attempt => (
+                                    <details key={attempt.id} open={expandedId === attempt.id}
+                                        onToggle={event => {
+                                            if (event.currentTarget.open && expandedId !== attempt.id) setExpandedId(attempt.id);
+                                            else if (!event.currentTarget.open && expandedId === attempt.id) setExpandedId(null);
+                                        }}>
+                                        <summary className="ar-teams-attempt-summary">
+                                            <time dateTime={attempt.startedAt}>{localTime(attempt.startedAt)}</time>
+                                            <strong>{attempt.result === 'failed' ? '✕ ' : attempt.degraded ? '! ' : '○ '}{attemptLabel(attempt)}</strong>
+                                            <span>{duration(attempt.startedAt, attempt.endedAt)}</span>
+                                            {attempt.failureCategory && <span>{attempt.failureCategory} failure</span>}
+                                        </summary>
+                                        {expandedId === attempt.id && (
+                                            detail?.id === attempt.id ? (
+                                                <div className="ar-teams-attempt-detail">
+                                                    <ol className="ar-teams-timeline">
+                                                        {timeline(detail).map((event, index) => <li key={index}>
+                                                            <time dateTime={event.at}>{localTime(event.at)}</time> {event.label}
+                                                        </li>)}
+                                                    </ol>
+                                                    {detail.failureCategory && <p>{guidance[detail.failureCategory] ?? guidance.unknown}</p>}
+                                                    {detail.events.some(event => event.type === 'reply-rejected') && <p>{guidance.send}</p>}
+                                                    <p>Poll: {detail.pollDegraded ? 'Degraded' : detail.lastPollSuccessAt ? 'Healthy' : 'No successful poll yet'} · last success: {detail.lastPollSuccessAt ? localTime(detail.lastPollSuccessAt) : 'none'}</p>
+                                                    <p>Reply send: {detail.sendDegraded ? 'Degraded' : detail.lastSendSuccessAt ? 'Healthy' : 'No MCP acceptance yet'} · last MCP acceptance: {detail.lastSendSuccessAt ? localTime(detail.lastSendSuccessAt) : 'none'}</p>
+                                                    <p>MCP acceptance does not confirm Teams displayed a reply.</p>
+                                                    <dl className="ar-teams-counts">
+                                                        {Object.entries(detail.totals).map(([key, count]) => (
+                                                            <div key={key}><dt>{key.replace(/([A-Z])/g, ' $1')}</dt><dd>{count}</dd></div>
+                                                        ))}
+                                                    </dl>
+                                                </div>
+                                            ) : <p role={detailError ? 'alert' : 'status'}>
+                                                {detailError ? `Could not load attempt: ${detailError}` : 'Loading attempt…'}
+                                            </p>
+                                        )}
+                                    </details>
+                                ))}
+                                {history && history.total > 20 && (
+                                    <nav className="ar-teams-pages" aria-label="Connection history pages">
+                                        <Button size="sm" variant="secondary" className="ar-btn ar-btn-secondary ar-btn-sm" disabled={historyLoading || displayOffset === 0}
+                                            onClick={() => setHistoryOffset(Math.max(0, displayOffset - 20))}>Previous</Button>
+                                        <span>{displayOffset + 1}–{displayOffset + history.attempts.length} of {history.total}</span>
+                                        <Button size="sm" variant="secondary" className="ar-btn ar-btn-secondary ar-btn-sm" disabled={historyLoading || history.nextOffset === null}
+                                            onClick={() => setHistoryOffset(history.nextOffset ?? 0)}>Next</Button>
+                                    </nav>
                                 )}
-                            </details>
-                        ))}
-                        {history && history.total > 20 && (
-                            <nav className="ar-teams-pages" aria-label="Connection history pages">
-                                <Button size="sm" disabled={historyLoading || displayOffset === 0}
-                                    onClick={() => setHistoryOffset(Math.max(0, displayOffset - 20))}>Previous</Button>
-                                <span>{displayOffset + 1}–{displayOffset + history.attempts.length} of {history.total}</span>
-                                <Button size="sm" disabled={historyLoading || history.nextOffset === null}
-                                    onClick={() => setHistoryOffset(history.nextOffset ?? 0)}>Next</Button>
-                            </nav>
-                        )}
+                            </div>
+                        </details>
                     </section>
                 )}
             </div>
