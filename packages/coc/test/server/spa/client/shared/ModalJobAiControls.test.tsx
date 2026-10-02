@@ -92,8 +92,12 @@ const MODELS = [
     },
 ];
 
-function Harness({ workspaceId = 'ws-1', mode = 'ask' as const }) {
-    const selection = useModalJobAiSelection({ workspaceId, mode });
+function Harness({ workspaceId = 'ws-1', mode = 'ask', initialSelection }: {
+    workspaceId?: string;
+    mode?: 'ask' | 'ralph';
+    initialSelection?: ResolvedModalJobAiSelection;
+}) {
+    const selection = useModalJobAiSelection({ workspaceId, mode, initialSelection });
     return (
         <>
             <ModalJobAiControls selection={selection} testIdPrefix="job" />
@@ -204,6 +208,40 @@ describe('ModalJobAiControls', () => {
 
         expect(mocks.patchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'auto' });
         await waitFor(() => expect(readResolved()).toEqual({ effortTier: 'medium', autoProviderRouting: true }));
+    });
+
+    it.each(['ask', 'ralph'] as const)('offers Auto after routing is enabled live in %s controls', async (mode) => {
+        const initialSelection = { provider: 'codex' as const, effortTier: 'medium' as const };
+        render(<Harness mode={mode} initialSelection={initialSelection} />);
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').hasAttribute('disabled')).toBe(false));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        expect(screen.queryByTestId('agent-option-auto')).toBeNull();
+
+        mocks.autoProviderRoutingEnabled = true;
+        fireEvent(window, new Event('dashboard-config-updated'));
+
+        expect(screen.getByTestId('agent-selector-chip-btn').textContent).toContain('Codex');
+        fireEvent.click(screen.getByTestId('agent-option-auto'));
+
+        expect(mocks.patchRepo).toHaveBeenCalledWith('ws-1', { lastChatProvider: 'auto' });
+        await waitFor(() => expect(readResolved()).toEqual({ effortTier: 'medium', autoProviderRouting: true }));
+    });
+
+    it.each(['ask', 'ralph'] as const)('removes Auto after routing is disabled live in %s controls', async (mode) => {
+        mocks.autoProviderRoutingEnabled = true;
+        render(<Harness mode={mode} initialSelection={{ provider: 'codex' }} />);
+
+        await waitFor(() => expect(screen.getByTestId('agent-selector-chip-btn').hasAttribute('disabled')).toBe(false));
+        fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+        expect(screen.getByTestId('agent-option-auto')).toBeTruthy();
+
+        mocks.autoProviderRoutingEnabled = false;
+        fireEvent(window, new Event('dashboard-config-updated'));
+
+        expect(screen.queryByTestId('agent-option-auto')).toBeNull();
+        expect(readResolved().provider).toBe('codex');
+        expect(mocks.patchRepo).not.toHaveBeenCalled();
     });
 
     it('omits model and reasoning-effort overrides when legacy controls resolve to defaults only', async () => {

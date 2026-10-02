@@ -309,7 +309,9 @@ Modal job-submission dialogs use `shared/ModalJobAiControls.tsx` for New Chat-co
 provider/model/reasoning controls. Its `useModalJobAiSelection()` hook centralizes
 workspace-scoped `lastChatProvider` restore/persist, provider-scoped model catalogs,
 effort-tier mode, the plain picker + `EffortPillSelector` fallback, optional initial
-selections for Resume-style flows, a dirty bit, and resolved payload values. Concrete
+selections for Resume-style flows, a dirty bit, and resolved payload values. The provider
+list subscribes to `DASHBOARD_CONFIG_UPDATED_EVENT` so Auto availability follows live
+routing-config changes; caller-supplied provider lists stay authoritative. Concrete
 selections resolve to `{ provider, model?, reasoningEffort? }`; Auto resolves to
 `{ effortTier, autoProviderRouting: true }` with no provider/model override, and submitters
 translate that flag to `context.autoProviderRouting.requested` or route-level

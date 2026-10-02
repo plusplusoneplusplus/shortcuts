@@ -16,7 +16,7 @@ import { useModels } from '../hooks/useModels';
 import { useProviderEffortTiers } from '../hooks/useProviderEffortTiers';
 import type { EffortTierKey, LocalEffortTiersMap } from '../hooks/useProviderEffortTiers';
 import { useProviderReasoningEfforts } from '../hooks/useProviderReasoningEfforts';
-import { isEffortLevelsEnabled } from '../utils/config';
+import { DASHBOARD_CONFIG_UPDATED_EVENT, isAutoAgentProviderRoutingEnabled, isEffortLevelsEnabled } from '../utils/config';
 import { deriveEffort } from '../utils/effortUtils';
 import { resolveEffectiveTier, resolveEffortTier } from '../utils/resolveEffortTier';
 import { AgentSelectorChip } from '../features/chat/AgentSelectorChip';
@@ -146,10 +146,17 @@ export function useModalJobAiSelection({
     const initialProvider = getInitialProvider(initialSelection);
     const initialSelectionKey = getInitialSelectionKey(initialSelection);
 
+    const [autoRoutingEnabled, setAutoRoutingEnabled] = useState(isAutoAgentProviderRoutingEnabled);
+    useEffect(() => {
+        const onConfigUpdated = () => setAutoRoutingEnabled(isAutoAgentProviderRoutingEnabled());
+        window.addEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
+        return () => window.removeEventListener(DASHBOARD_CONFIG_UPDATED_EVENT, onConfigUpdated);
+    }, []);
+
     const { providers: rawAgentProviders, loading: rawProvidersLoading } = useAgentProviders();
     const agentProviders = useMemo(
         () => externalAgentProviders ?? getAgentSelectorProviders(rawAgentProviders),
-        [externalAgentProviders, rawAgentProviders],
+        [externalAgentProviders, rawAgentProviders, autoRoutingEnabled],
     );
     const providersLoading = externalAgentProviders !== undefined ? false : rawProvidersLoading;
     const providerForClientHooks = getConcreteProviderForClientHooks(provider);
