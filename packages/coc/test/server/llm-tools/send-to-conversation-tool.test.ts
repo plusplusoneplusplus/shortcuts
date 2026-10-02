@@ -7,6 +7,8 @@
  *   - post mode (processId): delivers `content` into the existing conversation
  *     via the injected `sendMessage` capability, returns `turnIndex`, and ignores
  *     create-only fields.
+ *   - ralph mode (create only): launches through the injected `launchRalph`
+ *     capability with the resolved goal/workspace/AI selection.
  *   - description disambiguates the two modes.
  */
 
@@ -19,6 +21,7 @@ import type {
     SendToConversationRuntimeOptions,
 } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
+import type { LaunchRalphFn } from '../../../src/server/ralph/ralph-launch-service';
 
 // Minimal invocation stub for handler calls (matches the SDK invocation arg).
 const invocationStub = {
@@ -29,7 +32,7 @@ const invocationStub = {
 };
 
 /** Parent process metadata the handler inherits provider/model/reasoningEffort from. */
-type ParentMeta = { provider?: string; model?: string; reasoningEffort?: string };
+type ParentMeta = { provider?: string; model?: string; reasoningEffort?: string; mode?: string };
 
 /** Default parent so the common create-mode success path has a provider to inherit. */
 const DEFAULT_PARENT_ID = 'queue_parent';
@@ -60,6 +63,8 @@ interface MakeToolOpts {
     sendMessage?: SendMessageFn;
     /** Runtime provider/tier helpers supplied by the route layer. */
     runtime?: SendToConversationRuntimeOptions;
+    /** Ralph launch capability. Omit to model an unwired ralph mode. */
+    launchRalph?: LaunchRalphFn;
     /** Additional process records addressable by post-mode tests. */
     extraProcesses?: Record<string, { id: string; metadata?: ParentMeta }>;
 }
@@ -84,6 +89,7 @@ function makeTool(opts?: MakeToolOpts) {
         workspaceId: opts?.workspaceId ?? 'ws-1',
         enqueueChat,
         sendMessage: opts?.sendMessage,
+        launchRalph: opts?.launchRalph,
         parentProcessId: parentProcessId ?? undefined,
         runtime: opts?.runtime,
     });
@@ -267,13 +273,6 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
     it('rejects mode:plan', async () => {
         const { tool, enqueueChat } = makeTool();
         const result = await tool.handler({ content: 'hi', mode: 'plan' as never }, invocationStub);
-        expect('error' in result && result.error).toMatch(/invalid mode/i);
-        expect(enqueueChat).not.toHaveBeenCalled();
-    });
-
-    it('rejects mode:ralph', async () => {
-        const { tool, enqueueChat } = makeTool();
-        const result = await tool.handler({ content: 'hi', mode: 'ralph' as never }, invocationStub);
         expect('error' in result && result.error).toMatch(/invalid mode/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
@@ -713,5 +712,129 @@ describe('createSendToConversationTool — post mode (processId provided)', () =
         const { tool } = makeTool({ sendMessage });
         const result = await tool.handler({ processId: 'queue_missing', content: 'hi' }, invocationStub);
         expect('error' in result && result.error).toMatch(/process not found/i);
+    });
+});
+
+describe('createSendToConversationTool — ralph mode (create only)', () => {
+    function makeLaunch(result: Awaited<ReturnType<LaunchRalphFn>> = {
+        ok: true, processId: 'queue_ralph-task', sessionId: 'ralph-1',
+    }) {
+        return vi.fn<LaunchRalphFn>(async () => result);
+    }
+
+    it('launches with the trimmed goal, caller workspace, and inherited AI selection', async () => {
+        const launchRalph = makeLaunch();
+        const { tool, enqueueChat } = makeTool({
+            launchRalph,
+            parentMeta: { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'high' },
+        });
+        const result = asSuccess(await tool.handler({ content: '  Build the thing  ', mode: 'ralph' }, invocationStub));
+
+        expect(result).toEqual({ processId: 'queue_ralph-task', sessionId: 'ralph-1', openLink: '#/process/queue_ralph-task' });
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(launchRalph).toHaveBeenCalledWith({
+            goalSpec: 'Build the thing',
+            workspaceId: 'ws-1',
+            aiSelection: {
+                provider: 'claude',
+                config: { model: 'claude-opus-5-5', reasoningEffort: 'high' },
+            },
+            spawnedFromProcessId: DEFAULT_PARENT_ID,
+        });
+    });
+
+    it('never requests a worktree or max iterations', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({ launchRalph });
+        await tool.handler({ content: 'goal', mode: 'ralph' }, invocationStub);
+        const input = launchRalph.mock.calls[0][0];
+        expect(input).not.toHaveProperty('worktree');
+        expect(input).not.toHaveProperty('maxIterations');
+    });
+
+    it('an explicit provider uses that provider defaults instead of the parent selection', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({
+            launchRalph,
+            parentMeta: { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'high' },
+        });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', provider: 'copilot' }, invocationStub));
+        expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'copilot', config: {} });
+    });
+
+    it('passes an explicit effortTier through the AI selection config', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({ launchRalph, parentMeta: { provider: 'copilot', model: 'gpt-5', reasoningEffort: 'low' } });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', effortTier: 'high' }, invocationStub));
+        expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'copilot', config: { effortTier: 'high' } });
+    });
+
+    it('applies a trimmed title as the session custom title', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({ launchRalph });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', title: '  Ship search  ' }, invocationStub));
+        expect(launchRalph.mock.calls[0][0].title).toBe('Ship search');
+    });
+
+    it('targets another registered workspace when workspaceId is provided', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({ launchRalph, storeWorkspaces: ['ws-1', 'ws-2'] });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', workspaceId: 'ws-2' }, invocationStub));
+        expect(launchRalph.mock.calls[0][0].workspaceId).toBe('ws-2');
+    });
+
+    it('errors on an unknown workspace without launching', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({ launchRalph });
+        const result = await tool.handler({ content: 'goal', mode: 'ralph', workspaceId: 'nope' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/unknown workspaceId/i);
+        expect(launchRalph).not.toHaveBeenCalled();
+    });
+
+    it('errors on blank content without launching', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({ launchRalph });
+        const result = await tool.handler({ content: '   ', mode: 'ralph' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/content/i);
+        expect(launchRalph).not.toHaveBeenCalled();
+    });
+
+    it('rejects ralph in post mode', async () => {
+        const launchRalph = makeLaunch();
+        const sendMessage = vi.fn<SendMessageFn>(async () => ({ turnIndex: 1 }));
+        const { tool } = makeTool({ launchRalph, sendMessage });
+        const result = await tool.handler({ content: 'goal', mode: 'ralph', processId: 'queue_other' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/only applies when creating a new conversation/i);
+        expect(launchRalph).not.toHaveBeenCalled();
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('is accepted from an Ask-mode caller (no caller-mode gate)', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({ launchRalph, parentMeta: { provider: 'copilot', mode: 'ask' } });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph' }, invocationStub));
+        expect(launchRalph).toHaveBeenCalledTimes(1);
+    });
+
+    it('surfaces a launch-service error', async () => {
+        const launchRalph = makeLaunch({ ok: false, error: 'Invalid reasoningEffort' });
+        const { tool } = makeTool({ launchRalph });
+        const result = await tool.handler({ content: 'goal', mode: 'ralph' }, invocationStub);
+        expect('error' in result && result.error).toBe('Failed to launch Ralph session: Invalid reasoningEffort');
+    });
+
+    it('errors when no launch capability is wired', async () => {
+        const { tool, enqueueChat } = makeTool();
+        const result = await tool.handler({ content: 'goal', mode: 'ralph' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/not available/i);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('declares ralph in the mode enum and documents it; plan stays unsupported', () => {
+        const { tool } = makeTool();
+        const props = (tool.parameters as { properties: Record<string, { enum?: string[] }> }).properties;
+        expect(props.mode.enum).toEqual(['autopilot', 'ask', 'ralph']);
+        expect(tool.description).toContain('mode: "ralph"');
+        expect(tool.description).toContain('`plan` is not supported');
     });
 });

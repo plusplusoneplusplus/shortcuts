@@ -156,9 +156,23 @@ references before editing. Paths are package-relative.
   Teams and WhatsApp topic list/select uses `src/server/messaging/chat-target.ts`
   for bounded (10), conversation-free process pages, not unbounded `getAllProcesses`.
   Shared workspace/topic lookup and terminal-task subscriptions belong there;
-  both relays resolve request-correlated answers and failed/cancelled/empty texts
-  through `src/server/messaging/relay-answer.ts`. Receipt files use
+  both relays resolve request-correlated answers and safe failure notices
+  through `src/server/messaging/relay-answer.ts`. Session/usage-limit notices
+  include recognized UTC/GMT reset times; other failures use fixed text. Never
+  relay raw exceptions or partial output, or borrow another request's error. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
+- Teams/WhatsApp command grammar is one spec table in
+  `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`, generated
+  `MESSAGING_HELP_TEXT`); unknown `/word` or malformed list/select/create replies
+  "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
+  answers selection, help and quota for both routers via a `MessagingSelection`
+  adapter. Ask is default; `/autopilot <msg>` runs one message in Autopilot.
+- Ask turns started from WhatsApp/Teams (first and connector follow-ups) relay
+  `ask_user` questions one at a time to the originating group/thread through
+  `src/server/messaging/ask-user-relay.ts`, wired at emit time via the late-bound
+  `getAskUserQuestionRelay` capability. A reply (or a plain message while exactly
+  one is pending) answers; unpostable questions resolve `unavailable`; turn end
+  clears pending ones; approvals stay dashboard-only.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

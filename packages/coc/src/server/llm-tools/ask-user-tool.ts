@@ -174,8 +174,25 @@ export interface AskUserAnswerInput {
     note?: string;
 }
 
+/**
+ * Per-question control handed to `emitQuestions`, so a host can answer
+ * questions one at a time from outside the dashboard (the WhatsApp/Teams
+ * question relay) through the same pending map the dashboard resolves.
+ */
+export interface AskUserEmitControl {
+    isPending: (questionId: string) => boolean;
+    /** Resolves when the question settles by any path; immediately if it already has. */
+    waitFor: (questionId: string) => Promise<void>;
+    answer: (questionId: string, answer: AskUserAnswerValue) => boolean;
+    skip: (questionId: string) => boolean;
+    /** Resolve as `unavailable`, the same response a non-interactive turn gets. */
+    resolveUnavailable: (questionId: string) => boolean;
+    /** Runs once when `cancelAll` clears the turn's questions; returns an unsubscribe. */
+    onCancelAll: (listener: () => void) => () => void;
+}
+
 export interface AskUserToolDeps {
-    emitQuestions: (payloads: AskUserSSEPayload[]) => void | Promise<void>;
+    emitQuestions: (payloads: AskUserSSEPayload[], control: AskUserEmitControl) => void | Promise<void>;
     computeTurnIndex: () => number;
     /**
      * Whether a human can answer this turn. Evaluated at call time, not at
@@ -241,6 +258,35 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     const pending = new Map<string, {
         resolve: (response: AskUserResponse) => void;
     }>();
+    const settleListeners = new Map<string, Array<() => void>>();
+    const cancelListeners = new Set<() => void>();
+
+    function settle(questionId: string, response: AskUserResponse): boolean {
+        const entry = pending.get(questionId);
+        if (!entry) return false;
+        pending.delete(questionId);
+        entry.resolve(response);
+        const listeners = settleListeners.get(questionId) ?? [];
+        settleListeners.delete(questionId);
+        for (const listener of listeners) listener();
+        return true;
+    }
+
+    const control: AskUserEmitControl = {
+        isPending: questionId => pending.has(questionId),
+        waitFor: questionId => pending.has(questionId)
+            ? new Promise<void>(resolve => {
+                settleListeners.set(questionId, [...(settleListeners.get(questionId) ?? []), resolve]);
+            })
+            : Promise.resolve(),
+        answer: (questionId, answer) => answerQuestion(questionId, answer),
+        skip: questionId => skipQuestion(questionId),
+        resolveUnavailable: questionId => settle(questionId, unavailableResponse(questionId)),
+        onCancelAll: listener => {
+            cancelListeners.add(listener);
+            return () => { cancelListeners.delete(listener); };
+        },
+    };
 
     const tool = defineTool<AskUserArgs>('ask_user', {
         overridesBuiltInTool: true,
@@ -323,7 +369,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             }));
 
             try {
-                await deps.emitQuestions(payloads);
+                await deps.emitQuestions(payloads, control);
             } catch (err) {
                 for (const payload of payloads) {
                     pending.delete(payload.questionId);
@@ -378,7 +424,7 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         });
 
         try {
-            await deps.emitQuestions([payload]);
+            await deps.emitQuestions([payload], control);
         } catch (err) {
             pending.delete(payload.questionId);
             throw err;
@@ -392,19 +438,11 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     }
 
     function answerQuestion(questionId: string, answer: AskUserAnswerValue): boolean {
-        const entry = pending.get(questionId);
-        if (!entry) return false;
-        pending.delete(questionId);
-        entry.resolve({ questionId, answer, skipped: false });
-        return true;
+        return settle(questionId, { questionId, answer, skipped: false });
     }
 
     function skipQuestion(questionId: string): boolean {
-        const entry = pending.get(questionId);
-        if (!entry) return false;
-        pending.delete(questionId);
-        entry.resolve({ questionId, answer: null, skipped: true, reason: 'user-skipped' });
-        return true;
+        return settle(questionId, { questionId, answer: null, skipped: true, reason: 'user-skipped' });
     }
 
     function answerQuestions(responses: AskUserAnswerInput[]): boolean {
@@ -420,24 +458,24 @@ export function createAskUserTool(deps: AskUserToolDeps) {
             if (response.skipped !== true && !isDeferredResponse(response) && response.answer === undefined) return false;
         }
         for (const response of responses) {
-            const entry = pending.get(response.questionId)!;
-            pending.delete(response.questionId);
             if (response.skipped === true) {
-                entry.resolve({ questionId: response.questionId, answer: null, skipped: true, reason: 'user-skipped' });
+                settle(response.questionId, { questionId: response.questionId, answer: null, skipped: true, reason: 'user-skipped' });
             } else if (isDeferredResponse(response)) {
-                entry.resolve(deferredResponse(response.questionId, response.note));
+                settle(response.questionId, deferredResponse(response.questionId, response.note));
             } else {
-                entry.resolve({ questionId: response.questionId, answer: response.answer as AskUserAnswerValue, skipped: false });
+                settle(response.questionId, { questionId: response.questionId, answer: response.answer as AskUserAnswerValue, skipped: false });
             }
         }
         return true;
     }
 
     function cancelAll(): void {
-        for (const [questionId, entry] of pending) {
-            entry.resolve({ questionId, answer: null, skipped: true, reason: 'cancelled' });
+        for (const questionId of [...pending.keys()]) {
+            settle(questionId, { questionId, answer: null, skipped: true, reason: 'cancelled' });
         }
-        pending.clear();
+        const listeners = [...cancelListeners];
+        cancelListeners.clear();
+        for (const listener of listeners) listener();
     }
 
     function hasPending(): boolean {

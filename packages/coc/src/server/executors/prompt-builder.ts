@@ -31,6 +31,7 @@ import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
+import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
 import type { CronToolDeps } from '../llm-tools/cron-tools';
@@ -472,6 +473,7 @@ export function buildSearchConversationsAddon(
  * @param parentProcessId The current chat's processId; the spawned conversation
  *                        inherits its resolved provider/model/reasoningEffort.
  * @param sendMessage  Bound in-process follow-up delivery capability (post mode).
+ * @param launchRalph  Bound in-process Ralph launch (create mode, `mode: "ralph"`).
  */
 export function buildSendToConversationAddon(
     store: ProcessStore | undefined,
@@ -480,12 +482,15 @@ export function buildSendToConversationAddon(
     parentProcessId?: string,
     sendMessage?: SendMessageFn,
     runtime?: SendToConversationRuntimeOptions,
+    launchRalph?: LaunchRalphFn,
 ): { tools: Tool<any>[]; suffix: string } {
     if (!store || !enqueueChat) {
         return { tools: [], suffix: '' };
     }
 
-    const { tool } = createSendToConversationTool({ store, workspaceId, enqueueChat, sendMessage, parentProcessId, runtime });
+    const { tool } = createSendToConversationTool({
+        store, workspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime,
+    });
 
     // No prose suffix — the send_to_conversation tool description carries its own guidance.
     return { tools: [tool], suffix: '' };

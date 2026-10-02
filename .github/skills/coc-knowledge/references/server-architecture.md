@@ -190,9 +190,38 @@ Receipts preserve progress; uncertain sends require reconciliation rather than a
 bounded `listRecentTopics`, `resolveTopic`) and terminal queue subscriptions
 (`onTaskTerminal`) across Teams and WhatsApp. `messaging/relay-answer.ts` locates
 each request's user turn by `relayRequestId`, selects the last settled assistant
-turn before the next user turn, and supplies shared failed/cancelled/empty texts.
+turn before the next user turn, and formats safe failure notices. Session/usage-limit
+errors project only a fixed notice and a recognized UTC/GMT reset time from the last
+persisted assistant error; only the latest request can fall back to the failed
+process's error. Other failures, cancellations and empty answers use fixed text;
+partial output and raw exceptions stay out of relay messages.
 Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
+
+Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
+grammar from `coc-connector` (slash optional, `help`, `quota`, `[chatid]`,
+`/autopilot`; unknown `/word` → "Unknown command" + the generated
+`MESSAGING_HELP_TEXT`, never sent to the AI). `messaging/messaging-commands.ts`
+answers repo/topic selection, help and quota (from `AgentProvidersQuotaCache`)
+for both routers via a `MessagingSelection` adapter; routers keep platform state
+and transport. Chats run in Ask mode unless the message starts with `/autopilot`.
+
+### Messaging ask_user question relay
+
+`messaging/ask-user-relay.ts` (`AskUserQuestionRelayHub`) is the executor's
+`getAskUserQuestionRelay` capability. Each connector registers a
+`QuestionTransport` (`createWhatsAppQuestionTransport`,
+`TeamsAnswerRelay.questionTransport()`) that locates the request receipt by
+`(processId, relayRequestId | taskId)` and posts one question at a time
+(WhatsApp: quoted under the request; Teams: thread reply, relay flag required),
+formatted by `formatWhatsAppQuestion` / `formatTeamsQuestion`. `tryAnswer` runs
+before command routing: a reply to the question answers it; a plain message
+answers only when exactly one question is pending in that chat.
+`parseQuestionReply` handles numbers/option text, `1,3`, yes/no, text and
+`skip`. First answer wins through the tool's pending map; a failed post resolves
+`unavailable`; turn `cancelAll` clears pending questions. Pending state is in
+memory; question IDs persist in WhatsApp receipt `questionIds` and Teams root
+receipt `sentMessageIds`. Approvals stay dashboard-only.
 
 ### Teams IC3 connection contract
 

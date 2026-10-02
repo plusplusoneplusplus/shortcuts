@@ -689,12 +689,18 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             computeTurnIndex: () => number;
             isInteractive?: () => boolean;
             ralphGrillPlanningState?: { plan?: RalphGrillQuestionPlanningResult };
+            /**
+             * Relay request id of an Ask turn, read when questions are emitted.
+             * A connector-originated request also posts its questions to that
+             * WhatsApp group / Teams thread; approvals never leave the dashboard.
+             */
+            questionRelayRequestId?: () => string | undefined;
         },
     ): { enabled: boolean; deps: AskUserToolDeps } {
         return {
             enabled: this.askUser.enabled,
             deps: {
-                emitQuestions: async (questionPayloads) => {
+                emitQuestions: async (questionPayloads, control) => {
                     const enrichedQuestionPayloads = attachRalphGrillMetadataToAskUserPayloads(
                         questionPayloads,
                         opts.ralphGrillPlanningState?.plan,
@@ -705,6 +711,11 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             type: 'ask-user',
                             askUser: questionPayload,
                         });
+                    }
+                    const requestId = opts.questionRelayRequestId?.();
+                    const questions = enrichedQuestionPayloads.filter(question => !question.approval);
+                    if (requestId && questions.length > 0) {
+                        this.runtime.getAskUserQuestionRelay?.()?.relay({ processId, requestId, questions, control });
                     }
                 },
                 computeTurnIndex: opts.computeTurnIndex,
@@ -867,6 +878,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
             enqueueChat: this.runtime.getEnqueueChat?.(),
+            launchRalph: this.runtime.getLaunchRalph?.(),
             sendMessage: this.runtime.getSendMessage?.(),
             sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,
@@ -881,7 +893,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
-                ...(isAsk ? { ralphGrillPlanningState } : { isInteractive: () => true }),
+                ...(isAsk
+                    ? { ralphGrillPlanningState, questionRelayRequestId: () => payload.relayRequestId ?? task.id }
+                    : { isInteractive: () => true }),
             }),
         });
         this.setAskUserHandles(processId, {

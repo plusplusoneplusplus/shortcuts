@@ -21,6 +21,7 @@ import { acquireTokenViaAzCli } from './auth';
 import type { Ic3DirectMessageOptions } from './ic3/ic3-direct-message-config';
 import type { TeamsDestination, TeamsMessageBody, TeamsMessageRef, TeamsOperationRoutes,
     OperationContext, SendReceipt } from './operations';
+import { parseMessagingCommand } from '../shared/commands';
 
 export function createTransport(mode: TeamsTransportMode, opts: {
     mcpServerUrl?: string; pollChannelReplies?: () => boolean;
@@ -43,11 +44,9 @@ export function createTransport(mode: TeamsTransportMode, opts: {
 }
 
 function isHistoricalSelectionCommand(text: string): boolean {
-    const command = text.trim();
-    if (/^\/select\s+repos?\s+\S/i.test(command)
-        || /^\/create\s+(?:chat\s+)?topic$/i.test(command)) return true;
-    const topic = /^\/select\s+(?:chat\s+)?topic\s+(.+)$/i.exec(command)?.[1].trim();
-    return !!topic && !/^\d+$/.test(topic);
+    const command = parseMessagingCommand(text);
+    return command.type === 'select-repo' || command.type === 'create-topic'
+        || (command.type === 'select-topic' && !/^\d+$/.test(command.args));
 }
 
 export class TeamsBot implements MessagingConnector {

@@ -113,3 +113,21 @@ export function formatTeamsOutbound(text: string, source: TeamsOutboundSource): 
         ? text
         : renderBlocks(marked.lexer(text, { gfm: true, breaks: true })));
 }
+
+export interface TeamsQuestion {
+    progress?: string;
+    question: string;
+    options: string[];
+    hint: string;
+}
+
+/** Phone-readable relayed question as safe Teams HTML (send with source `html`). */
+export function formatTeamsQuestion(q: TeamsQuestion): string {
+    const lines = (text: string) => text.split('\n').map(escapeTeamsHtml).join('<br>');
+    return [
+        ...(q.progress ? [`<p><em>${escapeTeamsHtml(q.progress)}</em></p>`] : []),
+        `<p><strong>${lines(q.question)}</strong></p>`,
+        ...(q.options.length ? [`<p>${q.options.map(escapeTeamsHtml).join('<br>')}</p>`] : []),
+        `<p>${escapeTeamsHtml(q.hint)}</p>`,
+    ].join('');
+}

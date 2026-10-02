@@ -258,7 +258,7 @@ describe('TeamsMessagingManager', () => {
         await options.onMessage(inbound);
         expect(inbound.text).toBe('/list repos');
         expect(bot.send).toHaveBeenLastCalledWith('channel-id-resolved',
-            expect.stringMatching(/^AI: <p><strong>Agents \/ Repos<\/strong> \(1\):<\/p><ol><li><strong>Alpha<\/strong> — <code>C:\\repo\\alpha<\/code><\/li><\/ol>$/),
+            expect.stringMatching(/^AI: <p>Repos \(1\):<\/p><ol><li><strong>Alpha<\/strong> — <code>C:\\repo\\alpha<\/code><\/li><\/ol>$/),
             { replyToId: 'user-msg' });
 
         getWorkspaces.mockResolvedValueOnce([

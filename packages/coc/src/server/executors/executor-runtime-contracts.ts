@@ -36,8 +36,10 @@ import type { CronEventEmit, CronExecutor } from '../cron/cron-executor';
 import type { CronStore } from '../cron/cron-store';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
 import type { DecisionService } from '../decisions/decision-service';
+import type { AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { McpOauthManager } from '../mcp-oauth';
+import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { TriggerManager } from '../triggers/trigger-manager';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
@@ -116,6 +118,12 @@ export interface ExecutorRuntimeCapabilities {
      * mode of `send_to_conversation` — posting into an existing conversation.
      */
     readonly getSendMessage?: () => SendMessageFn | undefined;
+    /**
+     * In-process Ralph launch bound at the route layer (same path as
+     * `POST /api/ralph-launch`). Powers `send_to_conversation` create mode with
+     * `mode: "ralph"`; absent → that mode reports it is unavailable.
+     */
+    readonly getLaunchRalph?: () => LaunchRalphFn | undefined;
     /** Provider/tier helpers for `send_to_conversation`. */
     readonly getSendToConversationRuntime?: () => SendToConversationRuntimeOptions | undefined;
     /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
@@ -152,6 +160,12 @@ export interface ExecutorRuntimeCapabilities {
      * the provider is disabled or unavailable.
      */
     readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    /**
+     * WhatsApp/Teams question relay, bound at the route layer. Looked up when
+     * an Ask turn's `ask_user` questions are emitted, so the tool block never
+     * varies; absent → questions stay dashboard-only.
+     */
+    readonly getAskUserQuestionRelay?: () => AskUserQuestionRelay | undefined;
     /** Dreams runner, created during route composition. */
     readonly getDreamRunExecutor?: () => DreamRunExecutor | undefined;
     /**
@@ -180,12 +194,14 @@ export type ChatExecutorRuntime = Pick<
     | 'getCronInfra'
     | 'getEnqueueChat'
     | 'getSendMessage'
+    | 'getLaunchRalph'
     | 'getSendToConversationRuntime'
     | 'getDecisionService'
     | 'getMcpOauthManager'
     | 'getTurnPerformanceStore'
     | 'getGlobalSystemPrompt'
     | 'resolveAiServiceForProvider'
+    | 'getAskUserQuestionRelay'
     | 'inFlightTurns'
 >;
 

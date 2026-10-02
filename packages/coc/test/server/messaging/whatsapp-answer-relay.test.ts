@@ -146,6 +146,30 @@ describe('WhatsApp final-answer relay', () => {
         expect(send).toHaveBeenCalledWith(expect.stringContaining('could not be completed'), 'inbound');
     });
 
+    it('quotes the session-limit reset notice for the matching failed request only', async () => {
+        bindings.add(receipt());
+        task!.status = 'failed';
+        turns[2] = { role: 'assistant', content: 'private partial output', interrupted: true,
+            interruptionReason: "You've hit your session limit · resets 7:10pm (UTC)" };
+        turns.push({ role: 'user', content: 'later request', relayRequestId: 'task-b' },
+            { role: 'assistant', content: 'later answer' });
+        await relay.reconcileTask('task-a');
+        expect(send).toHaveBeenCalledExactlyOnceWith(
+            'Alpha · Topic\n\nProvider session limit reached. Resets at 7:10pm (UTC). Send a follow-up after the reset to retry.', 'inbound',
+        );
+        await relay.reconcileTask('task-a');
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps unrecognized failure details and partial output private', async () => {
+        bindings.add(receipt());
+        task!.status = 'failed';
+        turns[2] = { role: 'assistant', content: 'private partial output', interrupted: true,
+            interruptionReason: 'private provider exception' };
+        await relay.reconcileTask('task-a');
+        expect(send).toHaveBeenCalledExactlyOnceWith('Alpha · Topic\n\nThis request could not be completed.', 'inbound');
+    });
+
     it('does not resend an uncertain part after a send failure or restart', async () => {
         bindings.add(receipt());
         send.mockReset().mockRejectedValueOnce(new Error('connection lost'));

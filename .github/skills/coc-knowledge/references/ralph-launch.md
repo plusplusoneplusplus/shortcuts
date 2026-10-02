@@ -8,7 +8,9 @@ and writer protocol are in [ralph.md](ralph.md); everything after the first iter
 ## Direct Goal Launch
 
 `POST /api/ralph-launch` (`packages/coc/src/server/routes/ralph-launch-routes.ts`) starts
-an execution-phase session from an already-written goal spec. The SPA
+an execution-phase session from an already-written goal spec. The route is a thin adapter
+over `launchRalphSession` (`packages/coc/src/server/ralph/ralph-launch-service.ts`), which
+`send_to_conversation` mode `ralph` also uses via the `getLaunchRalph` runtime capability. The SPA
 `shared/RalphLaunchDialog.tsx` serves both goal-file launches from Notes (read-only preview)
 and direct-goal launches from New Chat (editable review prefilled from the composer,
 carrying its workspace-scoped provider/model/reasoning-effort selection). The New Chat

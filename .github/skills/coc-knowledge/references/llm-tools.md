@@ -74,6 +74,16 @@ The tool description asks agents for short, task-specific create-mode titles. Th
 `delegate` skill requires agents to include a title in its handoff calls; the JSON schema
 keeps only `content` unconditionally required so untitled creation and post mode stay valid.
 
+Create mode with `mode: "ralph"` launches a Ralph session straight into iteration 1 (no
+grilling) through the late-bound `getLaunchRalph` runtime capability, which wraps
+`launchRalphSession` (`src/server/ralph/ralph-launch-service.ts`) over the same
+resolved-defaults bridge as `POST /api/ralph-launch`. `content` is the trimmed goal spec; the
+workspace check, title, spawn link, and provider/model/effort resolution match ordinary create
+mode. No worktree is requested and max iterations come from repo preferences. It returns
+`{ processId, sessionId, openLink }`, is allowed from Ask and Autopilot callers, and is
+rejected in post mode. `plan` stays unsupported. The custom title is the iteration-1
+`customTitle`, which the SPA Ralph session row prefers over the goal-derived title.
+
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and
 lets an explicit `model` override the tier. Create-only titles are ignored in post mode.
@@ -234,6 +244,13 @@ opt in based on `options.tools`; no executor changes are needed. See
   on the same tick with `{ skipped: true, reason: 'unavailable', guidance }` per question instead
   of blocking. There is no timer fallback; Codex pins the MCP tool timeout to 365 days.
   `ExecutorRegistry.getAskUserHandles()` searches the chat, follow-up, and autopilot executors.
+- **Messaging question relay:** `emitQuestions(payloads, control)` receives an
+  `AskUserEmitControl` (per-question `isPending`/`waitFor`/`answer`/`skip`/`resolveUnavailable`,
+  `onCancelAll`). After the dashboard emit, `buildAskUserWiring` hands non-approval questions to
+  the late-bound `getAskUserQuestionRelay` runtime capability when the turn supplies
+  `questionRelayRequestId` — Ask first turns (`payload.relayRequestId ?? task.id`) and Ask
+  follow-ups carrying `FollowUpTurnOptions.relayRequestId`. Autopilot turns, dashboard follow-ups
+  and approvals stay dashboard-only; registration never varies.
 - **Ralph grill exception:** the grill terminal round strips `ask_user` from the already-built
   array to end the questioning phase. It is the one path that mutates the tool block mid-turn.
   Because it runs after the system message is assembled, the Codex discovery block below can

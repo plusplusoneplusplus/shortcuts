@@ -228,7 +228,7 @@ describe('TeamsAnswerRelay new topics', () => {
         await router.handle(inbound('select', '/select repo B', 'person-b'));
         expect(ack).toHaveBeenCalledTimes(3);
         await router.handle(inbound('malformed', '/select repo', 'person-a'));
-        expect(ack.mock.lastCall?.[0]).toContain('Invalid command');
+        expect(ack.mock.lastCall?.[0]).toContain('Unknown command');
         await router.handle(inbound('question', 'Question after selection', 'person-a'));
         expect(enqueue).toHaveBeenCalledExactlyOnceWith('workspace-b', 'Question after selection', expect.any(String));
         expect(ack.mock.lastCall?.[1]).toBe('existing-root');
@@ -674,6 +674,26 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[0][0]).not.toMatch(/private|sensitive|provider exception/);
     });
 
+    it('relays the session limit and reset time without leaking interrupted output', async () => {
+        const id = (await relay.admitNew(message('limit-post'), 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        finish(id, 'workspace-a', 'sensitive partial output');
+        tasks.get(id)!.status = 'failed';
+        const proc = processes.get(toQueueProcessId(id));
+        proc.status = 'failed';
+        proc.conversationTurns[1].interrupted = true;
+        proc.conversationTurns[1].interruptionReason = "You've hit your session limit · resets 7:10pm (UTC)";
+        await relay.acknowledged(id);
+        expect(send).toHaveBeenCalledExactlyOnceWith(
+            expect.stringContaining('Provider session limit reached. Resets at 7:10pm (UTC).'), 'limit-post',
+        );
+        expect(send.mock.calls[0][0]).not.toContain('sensitive partial output');
+        await relay.reconcile();
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+
     it('selects the final persisted assistant turn rather than an earlier tool-only turn', async () => {
         const id = (await relay.admitNew(message('multi-part-turn'), 'workspace-a', async taskId => {
             tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
@@ -985,9 +1005,9 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[0][0]).not.toContain('old answer');
     });
 
-    it('recovers the last failed follow-up from persisted process status after queue history is lost', async () => {
+    it.each([undefined, "You've hit your session limit · resets 7:10pm (UTC)"])('recovers a failed follow-up after queue history is lost (error: %s)', async error => {
         const process = {
-            id: 'queue_failed_follow', status: 'running',
+            id: 'queue_failed_follow', status: 'running', error,
             metadata: { workspaceId: 'workspace-a', queueTaskId: 'old-task' },
             conversationTurns: [
                 { role: 'user', content: 'old request', turnIndex: 0 },
@@ -1009,7 +1029,8 @@ describe('TeamsAnswerRelay new topics', () => {
         });
         await restarted.restore();
         expect(send).toHaveBeenCalledExactlyOnceWith(
-            expect.stringContaining('This request could not be completed.'), 'failed-follow',
+            expect.stringContaining(error ? 'Provider session limit reached. Resets at 7:10pm (UTC).'
+                : 'This request could not be completed.'), 'failed-follow',
         );
         expect(send.mock.calls[0][0]).not.toContain('old answer');
         restarted.dispose();

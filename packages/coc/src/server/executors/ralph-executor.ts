@@ -82,6 +82,7 @@ export class RalphExecutor extends ChatBaseExecutor {
             query: prompt,
             followUpSuggestions: this.followUpSuggestions,
             enqueueChat: this.runtime.getEnqueueChat?.(),
+            launchRalph: this.runtime.getLaunchRalph?.(),
             sendMessage: this.runtime.getSendMessage?.(),
             sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
             scheduleWakeup: cronDeps.scheduleWakeup,

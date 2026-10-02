@@ -7,6 +7,7 @@ import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 import {
     RELAY_ANSWER_TEXT,
     findRequestAnswer,
+    findRequestFailureText,
     findRequestTurn,
     isTerminalStatus,
 } from '../../../src/server/messaging/relay-answer';
@@ -68,5 +69,55 @@ describe('findRequestAnswer', () => {
     it('reports no answer when the request has no settled assistant turn', () => {
         const turns = [turn('user', 'q'), turn('assistant', 'partial', { streaming: true })];
         expect(findRequestAnswer(turns, 0)).toEqual({ answer: undefined, closed: false });
+    });
+});
+
+describe('findRequestFailureText', () => {
+    const limit = "You've hit your session limit · resets 7:10pm (UTC)";
+    const notice = 'Provider session limit reached. Resets at 7:10pm (UTC). Send a follow-up after the reset to retry.';
+
+    it('relays a safe limit notice from an interrupted turn, excluding partial output', () => {
+        expect(findRequestFailureText([
+            turn('user', 'question'),
+            turn('assistant', 'private partial output', { interrupted: true, interruptionReason: limit }),
+        ], 0)).toBe(notice);
+    });
+
+    it('recognizes an error turn without partial output and a current process failure', () => {
+        expect(findRequestFailureText([turn('user', 'q'), turn('assistant', `Error: ${limit}`)], 0)).toBe(notice);
+        expect(findRequestFailureText([turn('user', 'q')], 0, limit)).toBe(notice);
+    });
+
+    it('uses the matched request error even after a later request fails', () => {
+        const turns = [turn('user', 'q1'),
+            turn('assistant', '', { interrupted: true, interruptionReason: limit }),
+            turn('user', 'q2'), turn('assistant', 'Error: private exception')];
+        expect(findRequestFailureText(turns, 0, 'private exception')).toBe(notice);
+        expect(findRequestFailureText(turns, 2, limit)).toBe(RELAY_ANSWER_TEXT.failed);
+    });
+
+    it('does not borrow errors from earlier or later requests, or an unknown request', () => {
+        const turns = [turn('user', 'q1'), turn('assistant', 'answer'), turn('user', 'q2'),
+            turn('assistant', '', { interrupted: true, interruptionReason: limit }), turn('user', 'q3')];
+        expect(findRequestFailureText(turns, 0, limit)).toBe(RELAY_ANSWER_TEXT.failed);
+        expect(findRequestFailureText(turns, 4)).toBe(RELAY_ANSWER_TEXT.failed);
+        expect(findRequestFailureText(turns, -1, limit)).toBe(RELAY_ANSWER_TEXT.failed);
+    });
+
+    it('ignores streaming, display-only and ordinary assistant content', () => {
+        const turns = [turn('user', 'q'), turn('assistant', limit),
+            turn('assistant', `Error: ${limit}`, { streaming: true }),
+            turn('assistant', `Error: ${limit}`, { displayOnly: true })];
+        expect(findRequestFailureText(turns, 0)).toBe(RELAY_ANSWER_TEXT.failed);
+    });
+
+    it.each([
+        ['private exception with /secret/path and token=secret', RELAY_ANSWER_TEXT.failed],
+        ['Usage limit reached; resets at 19:10 (GMT)', 'Provider usage limit reached. Resets at 19:10 (GMT). Send a follow-up after the reset to retry.'],
+        ['Session limit reached; resets 99:99pm (UTC)', 'Provider session limit reached. Send a follow-up after the reset to retry.'],
+        ['Session limit reached; resets <script>secret</script>', 'Provider session limit reached. Send a follow-up after the reset to retry.'],
+        ['Session limit reached; resets 7pm (UTC); token=secret', 'Provider session limit reached. Resets at 7pm (UTC). Send a follow-up after the reset to retry.'],
+    ])('projects only recognized details from %s', (error, expected) => {
+        expect(findRequestFailureText([turn('user', 'q')], 0, error)).toBe(expected);
     });
 });

@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
-import { chunkWhatsAppText } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import { chunkWhatsAppText, formatWhatsAppQuestion } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import { WhatsAppNotConnectedError } from './whatsapp-messaging-manager';
 import { onTaskTerminal } from './chat-target';
-import { RELAY_ANSWER_TEXT, findRequestAnswer, findRequestTurn, isTerminalStatus } from './relay-answer';
+import type { QuestionTransport } from './ask-user-relay';
+import { RELAY_ANSWER_TEXT, findRequestFailureText, findRequestAnswer, findRequestTurn, isTerminalStatus } from './relay-answer';
 
 export interface WhatsAppRelayDeps {
     bindings: WhatsAppBindings;
@@ -66,7 +67,8 @@ export class WhatsAppAnswerRelay {
             : process?.metadata?.queueTaskId === binding.taskId && turns[0]?.role === 'user' ? 0 : -1;
         if (start < 0 && status === 'completed') return;
         const { answer } = findRequestAnswer(turns, start);
-        const text = status === 'failed' ? RELAY_ANSWER_TEXT.failed
+        const text = status === 'failed' ? findRequestFailureText(turns, start,
+            process?.status === 'failed' ? process.error : undefined)
             : status === 'cancelled' ? RELAY_ANSWER_TEXT.cancelled
                 : answer?.content?.trim() || RELAY_ANSWER_TEXT.empty;
         if (status === 'completed' && !answer) return;
@@ -108,4 +110,29 @@ export class WhatsAppAnswerRelay {
             this.deps.bindings.update(binding);
         }
     }
+}
+
+/** Posts relayed ask_user questions quoted under the WhatsApp request that started the turn. */
+export function createWhatsAppQuestionTransport(
+    deps: Pick<WhatsAppRelayDeps, 'bindings' | 'connected' | 'groupJid' | 'send'>,
+): QuestionTransport {
+    const find = (request: { processId: string; requestId: string }) => deps.bindings.entries()
+        .find(binding => binding.processId === request.processId && binding.taskId === request.requestId);
+    return {
+        platform: 'whatsapp',
+        locate: request => {
+            const binding = find(request);
+            return binding ? { chatKey: binding.groupJid } : undefined;
+        },
+        post: async (target, layout, request) => {
+            const binding = find(request);
+            if (!binding || !deps.connected() || deps.groupJid() !== target.chatKey) {
+                throw new WhatsAppNotConnectedError();
+            }
+            const id = await deps.send(formatWhatsAppQuestion(layout), binding.inboundId);
+            if (id) deps.bindings.recordQuestion(binding, id);
+            return id;
+        },
+        isPastQuestion: messageId => deps.bindings.isQuestionMessage(messageId),
+    };
 }

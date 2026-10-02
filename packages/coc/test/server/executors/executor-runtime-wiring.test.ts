@@ -46,6 +46,7 @@ function makeSentinelRuntime() {
         getTriggerInfra: vi.fn(() => undefined),
         getEnqueueChat: vi.fn(() => undefined),
         getSendMessage: vi.fn(() => undefined),
+        getLaunchRalph: vi.fn(() => undefined),
         getSendToConversationRuntime: vi.fn(() => undefined),
         getMcpOauthManager: vi.fn(() => undefined),
         getTurnPerformanceStore: vi.fn(() => undefined),
@@ -53,6 +54,7 @@ function makeSentinelRuntime() {
         getChatStyleSelectorEnabled: vi.fn(() => false),
         getDefaultChatStyle: vi.fn(() => 'default'),
         resolveAiServiceForProvider: vi.fn(() => sdkMocks.service),
+        getAskUserQuestionRelay: vi.fn(() => undefined),
     };
     return sentinels as unknown as ExecutorRuntimeCapabilities & typeof sentinels;
 }
@@ -128,10 +130,12 @@ describe('Executor runtime capability wiring', () => {
             ['getCronInfra', 'chat executors', p => p.chatExecutor.runtime.getCronInfra],
             ['getEnqueueChat', 'chat executors', p => p.chatExecutor.runtime.getEnqueueChat],
             ['getSendMessage', 'chat executors', p => p.chatExecutor.runtime.getSendMessage],
+            ['getLaunchRalph', 'chat executors', p => p.chatExecutor.runtime.getLaunchRalph],
             ['getSendToConversationRuntime', 'chat executors', p => p.chatExecutor.runtime.getSendToConversationRuntime],
             ['getMcpOauthManager', 'chat executors', p => p.chatExecutor.runtime.getMcpOauthManager],
             ['getGlobalSystemPrompt', 'chat executors', p => p.chatExecutor.runtime.getGlobalSystemPrompt],
             ['resolveAiServiceForProvider', 'chat executors', p => p.chatExecutor.runtime.resolveAiServiceForProvider],
+            ['getAskUserQuestionRelay', 'chat executors', p => p.chatExecutor.runtime.getAskUserQuestionRelay],
             // The base executor keeps its own alias for the recorder accessor.
             ['getTurnPerformanceStore', 'base executor recorder', p => p.chatExecutor.getTurnPerformanceRecorder],
             ['getChatStyleSelectorEnabled', 'lifecycle runner', p => p.runner.runtime.getChatStyleSelectorEnabled],

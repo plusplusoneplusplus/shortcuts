@@ -11,8 +11,8 @@ export interface RalphSession {
     kind: 'ralph-session';
     sessionId: string;
     /**
-     * Concise, goal-derived display title for the session row. Derived on the
-     * fly from existing Ralph goal metadata (no new persistent title state);
+     * Concise display title for the session row: a process's custom title when
+     * one was set, else derived on the fly from existing Ralph goal metadata;
      * falls back to "Ralph Session" when no usable goal text is available.
      */
     title: string;
@@ -64,6 +64,14 @@ export function getRalphGoal(task: any): string | undefined {
  */
 function resolveSessionTitle(grillingProcess: any | undefined, iterations: any[]): string {
     const ordered = [grillingProcess, ...iterations].filter(Boolean);
+    // An explicit custom title (e.g. set by `send_to_conversation` when it
+    // launched the session) wins over the goal-derived title.
+    for (const task of ordered) {
+        const customTitle = task.customTitle ?? task.payload?.customTitle;
+        if (typeof customTitle === 'string' && customTitle.trim()) {
+            return customTitle.trim();
+        }
+    }
     for (const task of ordered) {
         const goal = getRalphGoal(task);
         if (typeof goal === 'string' && goal.trim()) {

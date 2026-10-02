@@ -15,6 +15,8 @@ export interface WhatsAppBinding {
     status: 'queued' | 'sending' | 'delivered';
     answerHash?: string;
     header?: string;
+    /** Relayed ask_user question message ids, so late quote-replies are recognized. */
+    questionIds?: string[];
 }
 
 /** Account selection is global; per-conversation receipts remain workspace-scoped. */
@@ -61,6 +63,17 @@ export class WhatsAppBindings {
         return this.entries().find(binding => binding.inboundId === messageId || binding.outboundIds.includes(messageId));
     }
 
+    /** Persist a relayed question id on its request receipt and the own-message guard. */
+    recordQuestion(binding: WhatsAppBinding, messageId: string): void {
+        this.recordOutbound(messageId);
+        binding.questionIds = [...(binding.questionIds ?? []), messageId].slice(-50);
+        this.save(binding.workspaceId);
+    }
+
+    isQuestionMessage(messageId: string): boolean {
+        return this.entries().some(binding => binding.questionIds?.includes(messageId));
+    }
+
     isKnownMessage(messageId: string): boolean {
         return this.state.outboundIds.includes(messageId) || !!this.findMessage(messageId);
     }
@@ -101,6 +114,8 @@ export class WhatsAppBindings {
             || typeof row.processId !== 'string' || typeof row.taskId !== 'string'
             || typeof row.inboundId !== 'string' || !Array.isArray(row.outboundIds)
             || row.outboundIds.some((id: unknown) => typeof id !== 'string')
+            || (row.questionIds !== undefined && (!Array.isArray(row.questionIds)
+                || row.questionIds.some((id: unknown) => typeof id !== 'string')))
             || !Number.isSafeInteger(row.nextPart) || row.nextPart < 0
             || !['queued', 'sending', 'delivered'].includes(row.status))) {
             throw new Error(`Invalid WhatsApp bindings for workspace ${workspaceId}`);

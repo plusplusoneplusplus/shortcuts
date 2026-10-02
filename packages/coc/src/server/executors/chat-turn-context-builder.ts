@@ -14,6 +14,7 @@
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
+import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
@@ -51,6 +52,8 @@ export interface ChatTurnContextInput {
      * Absent → post mode reports the capability is unavailable.
      */
     sendMessage?: SendMessageFn;
+    /** Bound in-process Ralph launch for `send_to_conversation` mode "ralph". */
+    launchRalph?: LaunchRalphFn;
     /** Runtime provider/tier helpers used by send_to_conversation. */
     sendToConversationRuntime?: SendToConversationRuntimeOptions;
     scheduleWakeup?: WakeupToolDeps;
@@ -172,6 +175,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         followUpSuggestions: input.followUpSuggestions,
         enqueueChat: input.enqueueChat,
         sendMessage: input.sendMessage,
+        launchRalph: input.launchRalph,
         sendToConversationRuntime: input.sendToConversationRuntime,
         memoryV2: includeMemoryV2 ? memoryV2 : undefined,
         scheduleWakeup: input.scheduleWakeup,

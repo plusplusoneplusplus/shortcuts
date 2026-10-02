@@ -130,7 +130,7 @@ describe('SKILL.md metadata', () => {
             description: entry!.description,
             metadata: {
                 author: 'Yiheng Tao',
-                version: '0.0.4',
+                version: '0.0.5',
             },
         });
 
@@ -156,6 +156,8 @@ describe('SKILL.md metadata', () => {
         expect(body).toContain('Use `ask` for read-only jobs');
         expect(body).toContain('Use `autopilot` for jobs that change files, the repo, or external state');
         expect(body).toContain('opening PRs');
+        expect(body).toContain('Use `ralph` (create mode only)');
+        expect(body).toContain('self-contained goal spec');
         expect(body).toContain('An explicit user request for a mode wins');
         expect(body).toContain('Autopilot jobs share one execution queue and may wait');
         expect(body).toContain('The destination defaults to the current workspace');

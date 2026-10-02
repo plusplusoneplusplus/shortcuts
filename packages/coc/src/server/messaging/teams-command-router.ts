@@ -2,23 +2,22 @@
  * Parses inbound Teams messages into structured commands and dispatches them.
  * Manages per-user state (selected repo, selected chat topic).
  *
- * Supported commands:
- *   list agents       — list registered workspaces (agents)
- *   list repos        — alias for list agents
- *   select repo <n>   — set the target workspace for subsequent chats
- *   list topics       — list recent chat processes
- *   create topic      — start a new chat process
- *   select topic <id> — set the active topic for follow-up messages
- *   [chatid] <msg>    — send message to an explicit chat process
- *   <msg>             — send message to the selected/last-active topic
+ * The command grammar comes from the shared coc-connector parser; repo/topic
+ * selection, help and quota replies come from `messaging-commands.ts`. This
+ * router keeps Teams threads, relay receipts and per-user state.
  */
 
 import { toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
+import {
+    MESSAGING_HELP_TEXT, isMessagingControlCommand, parseMessagingCommand,
+    type MessagingChatMode, type MessagingCommand, type MessagingControlCommand,
+} from '@plusplusoneplusplus/coc-connector';
 import { TeamsUserStateStore } from './teams-user-state';
 import type { TeamsEventType } from './teams-attempt-store';
 import { escapeTeamsMarkdown, teamsCodeSpan } from './teams-outbound-format';
 import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
+import { handleMessagingCommand, invalidCommandReply, readQuotaReply, type MessagingQuotaSource } from './messaging-commands';
 
 // ============================================================================
 // Types
@@ -28,76 +27,29 @@ export interface TeamsCommandRouterDeps {
     /** ProcessStore for querying workspaces and processes. */
     store: ProcessStore;
     /** Enqueue a new chat message. Returns the enqueued task ID. */
-    enqueueChat: (workspaceId: string, message: string) => Promise<string>;
+    enqueueChat: (workspaceId: string, message: string, mode?: MessagingChatMode) => Promise<string>;
     /** Admit a relay-enabled new chat with its Teams receipt persisted before enqueue. */
-    admitNewChat?: (msg: InboundTeamsMessage, workspaceId: string, message: string) => Promise<{ taskId: string; duplicate: boolean }>;
+    admitNewChat?: (msg: InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) => Promise<{ taskId: string; duplicate: boolean }>;
     acknowledgeNewChat?: (taskId: string) => Promise<void>;
-    admitFollowUp?: (msg: InboundTeamsMessage, process: AIProcess, message: string) => Promise<{ duplicate: boolean }>;
-    admitPendingFollowUp?: (msg: InboundTeamsMessage, taskId: string, message: string) => Promise<{ duplicate: boolean } | null>;
+    admitFollowUp?: (msg: InboundTeamsMessage, process: AIProcess, message: string, mode?: MessagingChatMode) => Promise<{ duplicate: boolean }>;
+    admitPendingFollowUp?: (msg: InboundTeamsMessage, taskId: string, message: string, mode?: MessagingChatMode) => Promise<{ duplicate: boolean } | null>;
     resolveThreadReply?: (msg: InboundTeamsMessage) => Promise<{ process?: AIProcess; taskId?: string; workspaceId: string } | null>;
     getThreadSelection?: (msg: InboundTeamsMessage) => { workspaceId: string } | null;
     /** Persist a shared selection for an already-bound channel thread. */
     selectThreadTarget?: (msg: InboundTeamsMessage, workspaceId: string, processId: string | null) => Promise<void>;
     hasThreadCommand?: (msg: InboundTeamsMessage) => boolean;
     recordThreadCommand?: (msg: InboundTeamsMessage) => void;
-    admitThreadNew?: (msg: InboundTeamsMessage, workspaceId: string, message: string) => Promise<{ taskId: string; duplicate: boolean }>;
+    admitThreadNew?: (msg: InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) => Promise<{ taskId: string; duplicate: boolean }>;
     acknowledgeFollowUp?: (msg: InboundTeamsMessage) => Promise<void>;
     isAnswerRelayEnabled?: () => boolean;
     /** Send a follow-up message to an existing process. */
-    executeFollowUp: (processId: string, message: string) => Promise<void>;
+    executeFollowUp: (processId: string, message: string, mode?: MessagingChatMode) => Promise<void>;
+    /** Provider quota for the `quota` command. */
+    getQuota?: MessagingQuotaSource;
     /** Send a reply back to Teams. */
     sendReply: (text: string, replyToId?: string) => Promise<void>;
     /** Data directory for persisting user state. */
     dataDir: string;
-}
-
-export interface ParsedCommand {
-    type:
-        | 'list-agents'
-        | 'list-repos'
-        | 'select-repo'
-        | 'list-topics'
-        | 'create-topic'
-        | 'select-topic'
-        | 'chat-explicit'
-        | 'chat';
-    args: string;
-}
-
-// ============================================================================
-// Command Parser
-// ============================================================================
-
-const COMMAND_PATTERNS: Array<{ pattern: RegExp; type: ParsedCommand['type'] }> = [
-    { pattern: /^\/list\s+agents?\s*$/i, type: 'list-agents' },
-    { pattern: /^\/list\s+repos?\s*$/i, type: 'list-repos' },
-    { pattern: /^\/select\s+repos?\s+(.+)$/i, type: 'select-repo' },
-    { pattern: /^\/list\s+(?:chat\s+)?topics?\s*$/i, type: 'list-topics' },
-    { pattern: /^\/create\s+(?:chat\s+)?topic\s*$/i, type: 'create-topic' },
-    { pattern: /^\/select\s+(?:chat\s+)?topic\s+(.+)$/i, type: 'select-topic' },
-];
-
-/** Matches `[chatid] message` syntax. */
-const EXPLICIT_CHAT_PATTERN = /^\[([^\]]+)\]\s*(.+)$/s;
-
-export function parseCommand(text: string): ParsedCommand {
-    const trimmed = text.trim();
-
-    for (const { pattern, type } of COMMAND_PATTERNS) {
-        const match = trimmed.match(pattern);
-        if (match) {
-            return { type, args: (match[1] ?? '').trim() };
-        }
-    }
-
-    // Check for explicit chat ID syntax: [chatid] message
-    const explicitMatch = trimmed.match(EXPLICIT_CHAT_PATTERN);
-    if (explicitMatch) {
-        return { type: 'chat-explicit', args: `${explicitMatch[1].trim()}\0${explicitMatch[2].trim()}` };
-    }
-
-    // Default: plain chat message
-    return { type: 'chat', args: trimmed };
 }
 
 // ============================================================================
@@ -133,7 +85,7 @@ export class TeamsCommandRouter {
     }
 
     private async handleMessage(msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
-        let command: ParsedCommand | undefined;
+        let command: MessagingCommand | undefined;
         let boundThread = false;
 
         try {
@@ -144,9 +96,9 @@ export class TeamsCommandRouter {
             }
             if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
                 boundThread = true;
-                command = parseCommand(msg.text);
+                command = parseMessagingCommand(msg.text);
                 if ('historicalSelectionReplay' in msg && msg.historicalSelectionReplay === true) {
-                    if (!this.isControlCommand(command) || this.deps.hasThreadCommand?.(msg)) return;
+                    if (!isMessagingControlCommand(command) || this.deps.hasThreadCommand?.(msg)) return;
                     const key = `${msg.channelId}\0${msg.replyToMessageId}`;
                     if (!this.hydratingRoots.has(key)) {
                         if (this.deps.getThreadSelection?.(msg)) return;
@@ -157,13 +109,13 @@ export class TeamsCommandRouter {
                     await this.handleThreadCommand(msg, command, true);
                     return;
                 }
-                if (command.type === 'chat' && /^\/(?:list|select|create)\b/i.test(command.args)) {
+                if (command.type === 'invalid') {
                     if (this.deps.hasThreadCommand?.(msg)) return;
                     this.deps.recordThreadCommand?.(msg);
-                    await this.deps.sendReply('❌ Invalid command. Use `/list repos`, `/select repo <name>`, `/list topics`, `/select topic <id>`, or `/create topic`.', msg.replyToMessageId);
+                    await this.deps.sendReply(`❌ ${invalidCommandReply()}`, msg.replyToMessageId);
                     return;
                 }
-                if (this.isControlCommand(command)) {
+                if (isMessagingControlCommand(command)) {
                     if (this.deps.hasThreadCommand?.(msg)) return;
                     observe?.('dispatch-command');
                     await this.handleThreadCommand(msg, command);
@@ -174,17 +126,20 @@ export class TeamsCommandRouter {
                     await this.deps.sendReply('❌ Choose a repo in this thread: `/list repos`, then `/select repo <name>`.', msg.replyToMessageId);
                     return;
                 }
-                const message = msg.text.trim();
+                // A thread is already bound to its target, so `[id]` text is part of the question.
+                const mode = command.mode;
+                const message = command.type === 'chat' ? command.args
+                    : msg.text.trim().replace(/^\/autopilot\s+/i, '');
                 if (!message) {
                     return;
                 }
                 const newChat = !binding.process && !binding.taskId;
                 const admission: { duplicate: boolean; taskId?: string } | null | undefined = binding.process
-                    ? await this.deps.admitFollowUp?.(msg, binding.process, message)
+                    ? await this.deps.admitFollowUp?.(msg, binding.process, message, mode)
                     : binding.taskId
-                        ? await this.deps.admitPendingFollowUp?.(msg, binding.taskId, message)
+                        ? await this.deps.admitPendingFollowUp?.(msg, binding.taskId, message, mode)
                         : this.deps.admitThreadNew
-                            ? await this.deps.admitThreadNew(msg, binding.workspaceId, message)
+                            ? await this.deps.admitThreadNew(msg, binding.workspaceId, message, mode)
                             : null;
                 if (!admission) {
                     throw new Error('Teams thread target is unavailable');
@@ -202,32 +157,17 @@ export class TeamsCommandRouter {
                 return;
             }
 
-            command = parseCommand(msg.text);
+            command = parseMessagingCommand(msg.text);
             const userKey = msg.senderAadId ?? msg.senderName ?? 'anonymous';
             if (command.type !== 'chat' && command.type !== 'chat-explicit') observe?.('dispatch-command');
-            switch (command.type) {
-                case 'list-agents':
-                case 'list-repos':
-                    await this.handleListAgents(msg);
-                    break;
-                case 'select-repo':
-                    await this.handleSelectRepo(userKey, command.args, msg);
-                    break;
-                case 'list-topics':
-                    await this.handleListTopics(userKey, msg);
-                    break;
-                case 'create-topic':
-                    await this.handleCreateTopic(userKey, msg);
-                    break;
-                case 'select-topic':
-                    await this.handleSelectTopic(userKey, command.args, msg);
-                    break;
-                case 'chat-explicit':
-                    await this.handleExplicitChat(userKey, command.args, msg, observe);
-                    break;
-                case 'chat':
-                    await this.handleChat(userKey, command.args, msg, observe);
-                    break;
+            if (command.type === 'invalid') {
+                await this.deps.sendReply(`❌ ${invalidCommandReply()}`, msg.messageId);
+            } else if (command.type === 'chat-explicit') {
+                await this.handleExplicitChat(userKey, command, msg, observe);
+            } else if (command.type === 'chat') {
+                await this.handleChat(userKey, command.args, command.mode, msg, observe);
+            } else {
+                await this.deps.sendReply(await this.handleControlCommand(userKey, command), msg.messageId);
             }
         } catch (err: any) {
             observe?.('dispatch-failed');
@@ -250,16 +190,33 @@ export class TeamsCommandRouter {
         }
     }
 
-    private isControlCommand(command: ParsedCommand): boolean {
-        return command.type !== 'chat' && command.type !== 'chat-explicit';
+    private handleControlCommand(userKey: string, command: MessagingControlCommand): Promise<string> {
+        return handleMessagingCommand(command, {
+            store: this.deps.store,
+            requireRepoForTopics: false,
+            getQuota: this.deps.getQuota,
+            strong: text => `**${escapeTeamsMarkdown(text)}**`,
+            code: teamsCodeSpan,
+            selection: {
+                repoId: () => this.userState.get(userKey).selectedRepo,
+                selectRepo: workspaceId => this.userState.update(userKey, { selectedRepo: workspaceId }),
+                topicId: () => this.userState.get(userKey).selectedTopic,
+                selectTopic: (_workspaceId, processId) => this.userState.update(userKey, processId
+                    ? { selectedTopic: processId }
+                    : { selectedTopic: null, lastActiveTopic: null }),
+            },
+        });
     }
 
-    private async handleThreadCommand(msg: InboundTeamsMessage, command: ParsedCommand, silent = false): Promise<void> {
+    private async handleThreadCommand(msg: InboundTeamsMessage, command: MessagingControlCommand, silent = false): Promise<void> {
         const root = msg.replyToMessageId!;
-        if (silent && (command.type === 'list-agents' || command.type === 'list-repos' || command.type === 'list-topics')) return;
-        if (command.type === 'list-agents' || command.type === 'list-repos') {
+        if (silent && (command.type === 'list-repos' || command.type === 'list-topics'
+            || command.type === 'help' || command.type === 'quota')) return;
+        if (command.type === 'list-repos' || command.type === 'help' || command.type === 'quota') {
             this.deps.recordThreadCommand?.(msg);
-            await this.handleListAgents({ ...msg, messageId: root });
+            await this.deps.sendReply(command.type === 'help' ? MESSAGING_HELP_TEXT
+                : command.type === 'quota' ? await readQuotaReply(this.deps.getQuota)
+                    : await this.handleControlCommand('', command), root);
             return;
         }
         if (!this.deps.selectThreadTarget) throw new Error('Teams thread selection is unavailable');
@@ -316,106 +273,12 @@ export class TeamsCommandRouter {
     // Command Handlers
     // ────────────────────────────────────────────────────────────────────────
 
-    private async handleListAgents(msg: InboundTeamsMessage): Promise<void> {
-        const workspaces = await this.deps.store.getWorkspaces();
-        if (workspaces.length === 0) {
-            await this.deps.sendReply('No agents/repos registered.', msg.messageId);
-            return;
-        }
-
-        const lines = workspaces.map((w, i) =>
-            `${i + 1}. **${escapeTeamsMarkdown(w.name ?? w.id)}** — ${teamsCodeSpan(w.rootPath ?? 'N/A')}`,
-        );
-        await this.deps.sendReply(`**Agents / Repos** (${workspaces.length}):\n${lines.join('\n')}`, msg.messageId);
-    }
-
-    private async handleSelectRepo(userKey: string, repoNameOrIndex: string, msg: InboundTeamsMessage): Promise<void> {
-        const workspaces = await this.deps.store.getWorkspaces();
-        const workspace = resolveWorkspace(workspaces, repoNameOrIndex, false);
-
-        if (!workspace) {
-            await this.deps.sendReply(
-                `❌ Repo "${repoNameOrIndex}" not found. Use \`list repos\` to see available repos.`,
-                msg.messageId,
-            );
-            return;
-        }
-
-        this.userState.update(userKey, { selectedRepo: workspace.id });
-        await this.deps.sendReply(
-            `✅ Selected repo: **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**`,
-            msg.messageId,
-        );
-    }
-
-    private async handleListTopics(userKey: string, msg: InboundTeamsMessage): Promise<void> {
-        const state = this.userState.get(userKey);
-        const recent = await listRecentTopics(this.deps.store, state.selectedRepo ?? undefined);
-
-        if (recent.length === 0) {
-            await this.deps.sendReply('No chat topics found.', msg.messageId);
-            return;
-        }
-
-        const lines = recent.map((p, i) => {
-            const title = p.title ?? p.customTitle ?? p.promptPreview?.slice(0, 60) ?? p.id;
-            const status = p.status ?? 'unknown';
-            const selected = state.selectedTopic === p.id ? ' ⬅️' : '';
-            return `${i + 1}. \`${p.id.slice(0, 8)}\` [${status}] ${title}${selected}`;
-        });
-
-        const header = state.selectedRepo
-            ? `**Chat Topics** (repo: ${state.selectedRepo})`
-            : '**Chat Topics** (all repos)';
-        await this.deps.sendReply(`${header}:\n${lines.join('\n')}`, msg.messageId);
-    }
-
-    private async handleCreateTopic(userKey: string, msg: InboundTeamsMessage): Promise<void> {
-        const state = this.userState.get(userKey);
-        const repoId = state.selectedRepo;
-
-        if (!repoId) {
-            await this.deps.sendReply(
-                '❌ No repo selected. Use `/select repo <name>` first.',
-                msg.messageId,
-            );
-            return;
-        }
-
-        // Clear topic selection — the next message will auto-create a new chat
-        this.userState.update(userKey, { selectedTopic: null, lastActiveTopic: null });
-
-        await this.deps.sendReply(
-            '✅ Ready for a new topic. Send your first message to start.',
-            msg.messageId,
-        );
-    }
-
-    private async handleSelectTopic(userKey: string, topicIdOrIndex: string, msg: InboundTeamsMessage): Promise<void> {
-        const trimmed = topicIdOrIndex.trim();
-        // Resolves against the same list as /list topics, then falls back to a direct ID lookup.
-        const process = await resolveTopic(this.deps.store, this.userState.get(userKey).selectedRepo ?? undefined, trimmed, false);
-
-        if (!process) {
-            await this.deps.sendReply(
-                `❌ Topic "${trimmed}" not found. Use \`/list topics\` to see available topics.`,
-                msg.messageId,
-            );
-            return;
-        }
-
-        this.userState.update(userKey, { selectedTopic: process.id });
-        const title = process.title ?? process.customTitle ?? process.promptPreview?.slice(0, 60) ?? process.id;
-        await this.deps.sendReply(
-            `✅ Selected topic: **${title}** (\`${process.id.slice(0, 8)}\`)`,
-            msg.messageId,
-        );
-    }
-
-    private async handleExplicitChat(userKey: string, args: string, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
-        const separatorIdx = args.indexOf('\0');
-        const chatId = args.slice(0, separatorIdx).trim();
-        const message = args.slice(separatorIdx + 1).trim();
+    private async handleExplicitChat(
+        userKey: string,
+        { chatId, args: message, mode }: Extract<MessagingCommand, { type: 'chat-explicit' }>,
+        msg: InboundTeamsMessage,
+        observe?: (type: TeamsEventType) => void,
+    ): Promise<void> {
 
         if (!message) {
             await this.deps.sendReply('❌ Message content is required.', msg.messageId);
@@ -429,10 +292,10 @@ export class TeamsCommandRouter {
         }
 
         if (this.deps.admitFollowUp) {
-            const admission = await this.deps.admitFollowUp(msg, process, message);
+            const admission = await this.deps.admitFollowUp(msg, process, message, mode);
             if (admission.duplicate) return;
         } else {
-            await this.deps.executeFollowUp(chatId, message);
+            await this.deps.executeFollowUp(chatId, message, mode);
         }
         observe?.('dispatch-follow-up');
         this.userState.update(userKey, { lastActiveTopic: chatId });
@@ -441,7 +304,7 @@ export class TeamsCommandRouter {
             this.deps.acknowledgeFollowUp?.(msg));
     }
 
-    private async handleChat(userKey: string, message: string, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
+    private async handleChat(userKey: string, message: string, mode: MessagingChatMode, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
         if (!message) return;
 
         const state = this.userState.get(userKey);
@@ -458,7 +321,7 @@ export class TeamsCommandRouter {
             if (targetProcess) {
                 targetId = targetProcess.id;
             } else {
-                const pending = await this.deps.admitPendingFollowUp?.(msg, targetId, message);
+                const pending = await this.deps.admitPendingFollowUp?.(msg, targetId, message, mode);
                 if (pending) {
                     if (pending.duplicate) return;
                     observe?.('dispatch-follow-up');
@@ -472,10 +335,10 @@ export class TeamsCommandRouter {
 
         if (targetId) {
             if (this.deps.admitFollowUp && targetProcess) {
-                const admission = await this.deps.admitFollowUp(msg, targetProcess, message);
+                const admission = await this.deps.admitFollowUp(msg, targetProcess, message, mode);
                 if (admission.duplicate) return;
             } else {
-                await this.deps.executeFollowUp(targetId, message);
+                await this.deps.executeFollowUp(targetId, message, mode);
             }
             observe?.('dispatch-follow-up');
             this.userState.update(userKey, { lastActiveTopic: targetId });
@@ -496,8 +359,8 @@ export class TeamsCommandRouter {
                 }
                 const firstRepo = workspaces[0];
                 const admission = this.deps.admitNewChat
-                    ? await this.deps.admitNewChat(msg, firstRepo.id, message)
-                    : { taskId: await this.deps.enqueueChat(firstRepo.id, message), duplicate: false };
+                    ? await this.deps.admitNewChat(msg, firstRepo.id, message, mode)
+                    : { taskId: await this.deps.enqueueChat(firstRepo.id, message, mode), duplicate: false };
                 const { taskId } = admission;
                 if (admission.duplicate) return;
                 observe?.('dispatch-queued');
@@ -511,8 +374,8 @@ export class TeamsCommandRouter {
                 );
             } else {
                 const admission = this.deps.admitNewChat
-                    ? await this.deps.admitNewChat(msg, repoId, message)
-                    : { taskId: await this.deps.enqueueChat(repoId, message), duplicate: false };
+                    ? await this.deps.admitNewChat(msg, repoId, message, mode)
+                    : { taskId: await this.deps.enqueueChat(repoId, message, mode), duplicate: false };
                 const { taskId } = admission;
                 if (admission.duplicate) return;
                 observe?.('dispatch-queued');

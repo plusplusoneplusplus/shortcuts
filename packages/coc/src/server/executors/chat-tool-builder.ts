@@ -1,6 +1,7 @@
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { Tool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
+import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
@@ -42,6 +43,8 @@ export interface ChatToolBundleOptions {
      * `send_to_conversation` (posting into an existing conversation). Optional.
      */
     sendMessage?: SendMessageFn;
+    /** Bound in-process Ralph launch for `send_to_conversation` mode "ralph". */
+    launchRalph?: LaunchRalphFn;
     /** Runtime provider/tier helpers used by send_to_conversation. */
     sendToConversationRuntime?: SendToConversationRuntimeOptions;
     processId?: string;
@@ -127,6 +130,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
             options.processId,
             options.sendMessage,
             options.sendToConversationRuntime,
+            options.launchRalph,
         ));
     }
 

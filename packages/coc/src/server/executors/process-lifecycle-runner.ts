@@ -568,6 +568,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                             ...(typeof followUpPayload.historyCutoffTurnIndex === 'number'
                                 ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }
                                 : {}),
+                            ...(followUpPayload.relayRequestId ? { relayRequestId: followUpPayload.relayRequestId } : {}),
                         },
                     );
                 }

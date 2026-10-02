@@ -14,6 +14,7 @@ describe('WhatsApp workspace command routing', () => {
     let react: ReturnType<typeof vi.fn>;
     let router: WhatsAppCommandRouter;
     let getAllProcesses: ReturnType<typeof vi.fn>;
+    let store: WhatsAppRouterDeps['store'];
     const workspaces = [{ id: 'ws-a', name: 'Alpha' }, { id: 'ws-b', name: 'Beta' }];
     const processes = [
         { id: 'topic-a', metadata: { workspaceId: 'ws-a' }, startTime: new Date(), title: 'Topic A' },
@@ -29,11 +30,11 @@ describe('WhatsApp workspace command routing', () => {
         bindings = new WhatsAppBindings(dir);
         getAllProcesses = vi.fn().mockImplementation(async ({ workspaceId }: { workspaceId: string }) =>
             processes.filter(proc => proc.metadata.workspaceId === workspaceId));
-        const store = {
+        store = {
             getWorkspaces: vi.fn().mockResolvedValue(workspaces),
             getAllProcesses,
             getProcess: vi.fn().mockImplementation(async (id: string, workspaceId: string) =>
-                processes.find(proc => proc.id === id && proc.metadata.workspaceId === workspaceId)),
+                processes.find(proc => proc.id === id && (!workspaceId || proc.metadata.workspaceId === workspaceId))),
         } as unknown as WhatsAppRouterDeps['store'];
         await bindings.restore(store);
         enqueue = vi.fn().mockResolvedValue('queued');
@@ -83,7 +84,7 @@ describe('WhatsApp workspace command routing', () => {
         for (const [filter] of getAllProcesses.mock.calls) {
             expect(filter).toEqual({ workspaceId: 'ws-a', limit: 10, exclude: ['conversation', 'toolCalls'] });
         }
-        expect(send).toHaveBeenCalledWith('Selected topic: Topic A', 'pick');
+        expect(send).toHaveBeenCalledWith('✅ Selected topic: Topic A', 'pick');
     });
 
     it('routes quoted answers to their original workspace regardless of selected repo', async () => {
@@ -122,6 +123,49 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('next', 'accepted'));
         expect(enqueue).toHaveBeenCalledTimes(2);
         expect(bindings.findMessage('accepted')).toBeDefined();
+    });
+
+    it('answers help, list agents and quota without enqueueing, and records the replies as own messages', async () => {
+        await router.handle(inbound('HELP', 'help'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('select topic <n|id>'), 'help');
+        expect(send.mock.lastCall?.[0]).toContain('[chatid] <message>');
+        await router.handle(inbound('/list agents', 'agents'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('Alpha'), 'agents');
+        await router.handle(inbound('quota', 'quota'));
+        expect(send).toHaveBeenLastCalledWith('Quota data is unavailable.', 'quota');
+        const getQuota = vi.fn().mockResolvedValue({ lastUpdated: null, providers: [
+            { id: 'copilot', quotaTypes: [{ type: 'chat', isUnlimitedEntitlement: true, usedRequests: 0,
+                entitlementRequests: 0, remainingPercentage: 1, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+            { id: 'claude', quotaTypes: [{ type: 'weekly', isUnlimitedEntitlement: false, usedRequests: 0,
+                entitlementRequests: 0, remainingPercentage: 0.05, usageAllowedWithExhaustedQuota: false, overage: 0 }] },
+        ] });
+        router = new WhatsAppCommandRouter({
+            store, bindings, groupJid: () => 'group@g.us', enqueue, send, react, getQuota,
+        });
+        await router.handle(inbound('/Quota', 'quota-2'));
+        expect(send).toHaveBeenLastCalledWith('copilot: unlimited\nclaude: 5% left (weekly)', 'quota-2');
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(bindings.isKnownMessage('outbound')).toBe(true);
+    });
+
+    it('sends [chatid] messages to that chat in its own workspace, with or without autopilot', async () => {
+        await router.handle(inbound('select repo Alpha', 'select'));
+        await router.handle(inbound('[topic-b] continue there', 'explicit'));
+        expect(enqueue).toHaveBeenLastCalledWith('ws-b', 'continue there', 'ask', 'topic-b', expect.any(String));
+        await router.handle(inbound('/autopilot [topic-a] go', 'explicit-auto'));
+        expect(enqueue).toHaveBeenLastCalledWith('ws-a', 'go', 'autopilot', 'topic-a', expect.any(String));
+        await router.handle(inbound('[missing] hello', 'missing'));
+        expect(send).toHaveBeenLastCalledWith('Chat "missing" not found.', 'missing');
+        expect(bindings.selectedRepo).toBe('ws-a');
+    });
+
+    it('replies "Unknown command" with help for unknown /words and malformed commands', async () => {
+        await router.handle(inbound('/whatever', 'unknown'));
+        await router.handle(inbound('select topic', 'malformed'));
+        for (const id of ['unknown', 'malformed']) {
+            expect(send).toHaveBeenCalledWith(expect.stringMatching(/Unknown command[\s\S]*list repos/), id);
+        }
+        expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('restores workspace receipts and sticky account selection after restart', async () => {
