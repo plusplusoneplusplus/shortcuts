@@ -40,9 +40,10 @@ describe('commit and branch-range full-text diff content', () => {
     let rangeBase: string;
     let rangeUpstream: string;
     let rangeHead: string;
-    let server: http.Server;
+    let server: http.Server | undefined;
     let baseUrl: string;
-    const unusualPath = 'literal [*]\tname.txt';
+    // Square brackets exercise Git pathspec handling while remaining valid on Windows.
+    const unusualPath = 'literal [x] name.txt';
 
     async function request(hash: string, filePath: string, workspace = 'ws-a') {
         const url = `${baseUrl}/api/workspaces/${workspace}/git/commits/${encodeURIComponent(hash)}`
@@ -131,7 +132,10 @@ describe('commit and branch-range full-text diff content', () => {
 
     beforeEach(() => gitCache.clear());
     afterAll(async () => {
-        await new Promise<void>(resolve => server.close(() => resolve()));
+        if (server?.listening) {
+            const activeServer = server;
+            await new Promise<void>(resolve => activeServer.close(() => resolve()));
+        }
         for (const root of roots) fs.rmSync(root, { recursive: true, force: true });
     });
 
