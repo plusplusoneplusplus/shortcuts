@@ -104,6 +104,8 @@ export interface FollowUpTurnOptions {
      * ask_user resume turns), which fall back to dropping a trailing user turn.
      */
     historyCutoffTurnIndex?: number;
+    /** Connector request id (WhatsApp/Teams) this follow-up was admitted under. */
+    relayRequestId?: string;
 }
 
 /** Log prefix for every line this executor writes. */
@@ -515,6 +517,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 askUser: this.buildAskUserWiring(processId, {
                     computeTurnIndex: () => process.conversationTurns?.length ?? 0,
                     isInteractive: () => turnSource === undefined,
+                    questionRelayRequestId: () => currentMode === 'ask' ? options?.relayRequestId : undefined,
                 }),
             });
             const filteredTools = chatCtx.tools;

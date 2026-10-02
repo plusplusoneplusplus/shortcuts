@@ -234,6 +234,13 @@ opt in based on `options.tools`; no executor changes are needed. See
   on the same tick with `{ skipped: true, reason: 'unavailable', guidance }` per question instead
   of blocking. There is no timer fallback; Codex pins the MCP tool timeout to 365 days.
   `ExecutorRegistry.getAskUserHandles()` searches the chat, follow-up, and autopilot executors.
+- **Messaging question relay:** `emitQuestions(payloads, control)` receives an
+  `AskUserEmitControl` (per-question `isPending`/`waitFor`/`answer`/`skip`/`resolveUnavailable`,
+  `onCancelAll`). After the dashboard emit, `buildAskUserWiring` hands non-approval questions to
+  the late-bound `getAskUserQuestionRelay` runtime capability when the turn supplies
+  `questionRelayRequestId` — Ask first turns (`payload.relayRequestId ?? task.id`) and Ask
+  follow-ups carrying `FollowUpTurnOptions.relayRequestId`. Autopilot turns, dashboard follow-ups
+  and approvals stay dashboard-only; registration never varies.
 - **Ralph grill exception:** the grill terminal round strips `ask_user` from the already-built
   array to end the questioning phase. It is the one path that mutates the tool block mid-turn.
   Because it runs after the system message is assembled, the Codex discovery block below can

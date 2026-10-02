@@ -9,7 +9,8 @@ import { atomicWriteJsonUnique } from '../shared/fs-utils';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { TeamsMessageNotSentError } from './teams-messaging-manager';
-import { escapeTeamsHtml } from './teams-outbound-format';
+import { escapeTeamsHtml, formatTeamsQuestion } from './teams-outbound-format';
+import type { QuestionTransport } from './ask-user-relay';
 import { onTaskTerminal } from './chat-target';
 import { RELAY_ANSWER_TEXT, findRequestAnswer, findRequestTurn, isTerminalStatus, type RelayTerminalStatus } from './relay-answer';
 
@@ -72,6 +73,10 @@ export interface TeamsAnswerRelayDeps {
     isEnabled: () => boolean;
     target: () => { connected: boolean; teamId?: string; channelId?: string };
     send: (text: string, rootId: string) => Promise<string>;
+}
+
+export function teamsQuestionChatKey(teamId: string, channelId: string): string {
+    return `${teamId}\0${channelId}`;
 }
 
 function bindingName(teamId: string, channelId: string, messageId: string): string {
@@ -970,6 +975,31 @@ export class TeamsAnswerRelay {
                 console.error('[teams-answer-relay] Failed to compact delivered receipt');
             }
         }
+    }
+
+    /** Posts relayed ask_user questions as replies in the thread of the request that started the turn. */
+    questionTransport(): QuestionTransport {
+        const find = (request: { processId: string; requestId: string }) => [...this.bindings.values()]
+            .map(({ value }) => value)
+            .find(value => value.processId === request.processId
+                && (value.requestId ? value.requestId === request.requestId : value.taskId === request.requestId));
+        return {
+            platform: 'teams',
+            locate: request => {
+                const binding = find(request);
+                return binding
+                    ? { chatKey: teamsQuestionChatKey(binding.teamId, binding.channelId), threadId: binding.rootId }
+                    : undefined;
+            },
+            post: async (target, layout) => {
+                const current = this.deps.target();
+                if (this.disposed || !this.deps.isEnabled() || !current.connected || !current.teamId || !current.channelId
+                    || teamsQuestionChatKey(current.teamId, current.channelId) !== target.chatKey) {
+                    throw new TeamsMessageNotSentError();
+                }
+                return this.deps.send(formatTeamsQuestion(layout), target.threadId!);
+            },
+        };
     }
 
     dispose(): void {

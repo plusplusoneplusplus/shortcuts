@@ -23,6 +23,7 @@ export const RUNTIME_CAPABILITY_KEYS = [
     'getDefaultChatStyle',
     'resolveAiServiceForProvider',
     'getDreamRunExecutor',
+    'getAskUserQuestionRelay',
     'inFlightTurns',
 ] as const;
 

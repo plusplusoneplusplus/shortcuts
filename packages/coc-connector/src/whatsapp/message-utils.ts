@@ -15,6 +15,20 @@ export function formatWhatsAppOutbound(opts: WhatsAppOutbound): string {
     return lines.join('\n');
 }
 
+export interface WhatsAppQuestion {
+    progress?: string;
+    question: string;
+    options: string[];
+    hint: string;
+}
+
+/** Phone-readable question: bold question, one option per line, then the reply hint. */
+export function formatWhatsAppQuestion(q: WhatsAppQuestion): string {
+    // WhatsApp bold cannot span a newline, so each question line is bolded on its own.
+    const question = q.question.split('\n').map(line => line.trim() ? `*${line.trim()}*` : '').join('\n');
+    return [...(q.progress ? [q.progress] : []), question, ...q.options, '', q.hint].join('\n');
+}
+
 /** Split on natural boundaries when possible, retaining every character of the message. */
 export function chunkWhatsAppText(text: string, limit = 4096): string[] {
     if (!Number.isSafeInteger(limit) || limit < 2) throw new RangeError('Invalid WhatsApp chunk size');

@@ -73,6 +73,7 @@ export function createQueueInfrastructure(
     getDefaultChatStyle?: () => import('@plusplusoneplusplus/coc-client').ChatStyle,
     getTurnPerformanceStore?: () => import('../executors/turn-performance-tracker').TurnPerformanceRecorder | undefined,
     getDecisionService?: () => import('../decisions/decision-service').DecisionService | undefined,
+    getAskUserQuestionRelay?: () => import('../messaging/ask-user-relay').AskUserQuestionRelay | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -104,6 +105,7 @@ export function createQueueInfrastructure(
         getMcpOauthManager,
         getTurnPerformanceStore,
         getDecisionService,
+        getAskUserQuestionRelay,
         getGlobalSystemPrompt,
         getChatStyleSelectorEnabled,
         getDefaultChatStyle,

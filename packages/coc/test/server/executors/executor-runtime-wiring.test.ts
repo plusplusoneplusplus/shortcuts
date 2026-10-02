@@ -53,6 +53,7 @@ function makeSentinelRuntime() {
         getChatStyleSelectorEnabled: vi.fn(() => false),
         getDefaultChatStyle: vi.fn(() => 'default'),
         resolveAiServiceForProvider: vi.fn(() => sdkMocks.service),
+        getAskUserQuestionRelay: vi.fn(() => undefined),
     };
     return sentinels as unknown as ExecutorRuntimeCapabilities & typeof sentinels;
 }
@@ -132,6 +133,7 @@ describe('Executor runtime capability wiring', () => {
             ['getMcpOauthManager', 'chat executors', p => p.chatExecutor.runtime.getMcpOauthManager],
             ['getGlobalSystemPrompt', 'chat executors', p => p.chatExecutor.runtime.getGlobalSystemPrompt],
             ['resolveAiServiceForProvider', 'chat executors', p => p.chatExecutor.runtime.resolveAiServiceForProvider],
+            ['getAskUserQuestionRelay', 'chat executors', p => p.chatExecutor.runtime.getAskUserQuestionRelay],
             // The base executor keeps its own alias for the recorder accessor.
             ['getTurnPerformanceStore', 'base executor recorder', p => p.chatExecutor.getTurnPerformanceRecorder],
             ['getChatStyleSelectorEnabled', 'lifecycle runner', p => p.runner.runtime.getChatStyleSelectorEnabled],

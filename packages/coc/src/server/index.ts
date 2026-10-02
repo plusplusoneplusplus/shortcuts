@@ -311,6 +311,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // getter passed to createQueueInfrastructure reads this once routes register.
     let sendMessageCapability: import('./llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
     let sendToConversationRuntime: import('./llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
+    // Forward declaration — the WhatsApp/Teams ask_user question relay, bound at
+    // the route layer where the connectors are created.
+    let askUserQuestionRelay: import('./messaging/ask-user-relay').AskUserQuestionRelay | undefined;
 
     // MCP OAuth infra — enabled by default when any MCP server may be configured.
     const mcpOauthEnabled = resolvedConfig.mcpOauth?.enabled ?? true;
@@ -467,6 +470,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // Late-bound turn-performance metric store; created after queue infra.
         () => turnPerformanceInfra?.turnPerformanceStore,
         () => decisionService,
+        () => askUserQuestionRelay,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -845,6 +849,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },
         setSendMessage: (fn) => { sendMessageCapability = fn; },
+        setAskUserQuestionRelay: (relay) => { askUserQuestionRelay = relay; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,
     });

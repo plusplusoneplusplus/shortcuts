@@ -36,6 +36,7 @@ import type { CronEventEmit, CronExecutor } from '../cron/cron-executor';
 import type { CronStore } from '../cron/cron-store';
 import type { DreamRunExecutor } from '../dreams/dream-runner';
 import type { DecisionService } from '../decisions/decision-service';
+import type { AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { McpOauthManager } from '../mcp-oauth';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
@@ -152,6 +153,12 @@ export interface ExecutorRuntimeCapabilities {
      * the provider is disabled or unavailable.
      */
     readonly resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
+    /**
+     * WhatsApp/Teams question relay, bound at the route layer. Looked up when
+     * an Ask turn's `ask_user` questions are emitted, so the tool block never
+     * varies; absent → questions stay dashboard-only.
+     */
+    readonly getAskUserQuestionRelay?: () => AskUserQuestionRelay | undefined;
     /** Dreams runner, created during route composition. */
     readonly getDreamRunExecutor?: () => DreamRunExecutor | undefined;
     /**
@@ -186,6 +193,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getTurnPerformanceStore'
     | 'getGlobalSystemPrompt'
     | 'resolveAiServiceForProvider'
+    | 'getAskUserQuestionRelay'
     | 'inFlightTurns'
 >;
 

@@ -168,7 +168,8 @@ import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-m
 import { WhatsAppBindings } from '../messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
-import { WhatsAppAnswerRelay } from '../messaging/whatsapp-answer-relay';
+import { WhatsAppAnswerRelay, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
+import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
 import type { ContainerAgentInfo } from '../container-sessions/container-session-types';
@@ -281,6 +282,8 @@ export interface RegisterRoutesOptions {
      */
     setSendMessage?: (fn: SendMessageFn) => void;
     setSendToConversationRuntime?: (runtime: SendToConversationRuntimeOptions) => void;
+    /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
+    setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
     notesSearchService: NotesSearchService;
 }
@@ -908,8 +911,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     }
 
+    const questionRelay = new AskUserQuestionRelayHub({ store });
+    opts.setAskUserQuestionRelay?.(questionRelay);
     const teamsMessagingManager = registerTeamsMessagingRoutes(routes, {
         dataDir,
+        questionRelay,
         getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
         getAnswerRelayEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay === true,
         getMessageReactionEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsMessageReaction === true,
@@ -958,6 +964,15 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         groupJid: () => whatsappMessagingManager.getStatus().groupJid,
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
     });
+    questionRelay.register(createWhatsAppQuestionTransport({
+        bindings: whatsappBindings,
+        connected: () => {
+            const status = whatsappMessagingManager.getStatus();
+            return status.enabled && status.status === 'connected' && !!status.groupJid;
+        },
+        groupJid: () => whatsappMessagingManager.getStatus().groupJid,
+        send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
+    }));
     const whatsappRouter = new WhatsAppCommandRouter({
         store,
         bindings: whatsappBindings,
@@ -965,6 +980,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
         react: messageId => whatsappMessagingManager.react(messageId),
         getQuota: getMessagingQuota,
+        questions: questionRelay,
         enqueue: (workspaceId, message, mode, processId, taskId) =>
             enqueueWithResolvedDefaults({
                 ...messagingChatInput(workspaceId, message, taskId, true),

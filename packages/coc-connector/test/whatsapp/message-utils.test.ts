@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    chunkWhatsAppText, formatWhatsAppOutbound, stripWhatsAppGlobalPrefix,
+    chunkWhatsAppText, formatWhatsAppOutbound, formatWhatsAppQuestion, stripWhatsAppGlobalPrefix,
 } from '../../src/whatsapp/message-utils';
 
 describe('WhatsApp message helpers', () => {
@@ -29,5 +29,19 @@ describe('WhatsApp message helpers', () => {
         expect(stripWhatsAppGlobalPrefix('[global] Ask')).toBe('Ask');
         expect(stripWhatsAppGlobalPrefix('regular')).toBeNull();
         expect(stripWhatsAppGlobalPrefix('[global]')).toBe('');
+    });
+});
+
+describe('formatWhatsAppQuestion', () => {
+    it('bolds the question, lists options one per line, and ends with the hint', () => {
+        expect(formatWhatsAppQuestion({
+            progress: '(Question 2 of 3)', question: 'Which database?',
+            options: ['1. Postgres', '2. SQLite'], hint: 'Reply: 1-2 or "skip"',
+        })).toBe('(Question 2 of 3)\n*Which database?*\n1. Postgres\n2. SQLite\n\nReply: 1-2 or "skip"');
+    });
+
+    it('bolds each line of a multi-line question and omits progress and options when absent', () => {
+        expect(formatWhatsAppQuestion({ question: 'Name the repo\n\n for the release ', options: [], hint: 'Reply: your answer or "skip"' }))
+            .toBe('*Name the repo*\n\n*for the release*\n\nReply: your answer or "skip"');
     });
 });

@@ -165,6 +165,12 @@ references before editing. Paths are package-relative.
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
   answers selection, help and quota for both routers via a `MessagingSelection`
   adapter. Ask is default; `/autopilot <msg>` runs one message in Autopilot.
+- Ask turns started from WhatsApp/Teams (first and connector follow-ups) relay
+  `ask_user` questions one at a time to the originating group/thread through
+  `src/server/messaging/ask-user-relay.ts`, wired at emit time via the late-bound
+  `getAskUserQuestionRelay` capability. A reply (or a plain message while exactly
+  one is pending) answers; unpostable questions resolve `unavailable`; turn end
+  clears pending ones; approvals stay dashboard-only.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

@@ -3,6 +3,7 @@ import { toQueueProcessId, type ProcessStore } from '@plusplusoneplusplus/forge'
 import { isMessagingControlCommand, parseMessagingCommand } from '@plusplusoneplusplus/coc-connector';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
+import type { AskUserQuestionRelayHub } from './ask-user-relay';
 import { handleMessagingCommand, invalidCommandReply, type MessagingQuotaSource } from './messaging-commands';
 
 export interface WhatsAppRouterDeps {
@@ -14,6 +15,8 @@ export interface WhatsAppRouterDeps {
     react: (messageId: string) => Promise<void>;
     queued?: (binding: WhatsAppBinding) => void;
     getQuota?: MessagingQuotaSource;
+    /** Relayed ask_user questions; a matching reply is an answer, not a request. */
+    questions?: Pick<AskUserQuestionRelayHub, 'tryAnswer'>;
 }
 
 export class WhatsAppCommandRouter {
@@ -28,6 +31,10 @@ export class WhatsAppCommandRouter {
             this.deps.bindings.recordOutbound(id);
         };
         try {
+            if (await this.deps.questions?.tryAnswer('whatsapp', {
+                chatKey: msg.chatJid, messageId: msg.messageId, replyToId: msg.quotedMessageId, text: msg.text,
+                reply, acknowledge: () => this.deps.react(msg.messageId),
+            })) return;
             if (command.type === 'invalid') { await reply(invalidCommandReply()); return; }
             if (isMessagingControlCommand(command)) {
                 const bindings = this.deps.bindings;

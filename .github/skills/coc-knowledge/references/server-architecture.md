@@ -202,6 +202,23 @@ answers repo/topic selection, help and quota (from `AgentProvidersQuotaCache`)
 for both routers via a `MessagingSelection` adapter; routers keep platform state
 and transport. Chats run in Ask mode unless the message starts with `/autopilot`.
 
+### Messaging ask_user question relay
+
+`messaging/ask-user-relay.ts` (`AskUserQuestionRelayHub`) is the executor's
+`getAskUserQuestionRelay` capability. Each connector registers a
+`QuestionTransport` (`createWhatsAppQuestionTransport`,
+`TeamsAnswerRelay.questionTransport()`) that locates the request receipt by
+`(processId, relayRequestId | taskId)` and posts one question at a time
+(WhatsApp: quoted under the request; Teams: thread reply, relay flag required),
+formatted by `formatWhatsAppQuestion` / `formatTeamsQuestion`. `tryAnswer` runs
+before command routing: a reply to the question answers it; a plain message
+answers only when exactly one question is pending in that chat.
+`parseQuestionReply` handles numbers/option text, `1,3`, yes/no, text and
+`skip`. First answer wins through the tool's pending map; a failed post resolves
+`unavailable`; turn `cancelAll` clears pending questions. Pending state is in
+memory; question IDs persist in WhatsApp receipt `questionIds` and Teams root
+receipt `sentMessageIds`. Approvals stay dashboard-only.
+
 ### Teams IC3 connection contract
 
 The Teams bridge uses MCP for polling/routing and IC3 for supported channel Likes.

@@ -22,7 +22,8 @@ import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { MessagingQuotaSource } from './messaging-commands';
 import { TeamsOAuthFlow } from './teams-oauth-flow';
 import type { TeamsAttempt } from './teams-attempt-store';
-import { TeamsAnswerRelay } from './teams-answer-relay';
+import { TeamsAnswerRelay, teamsQuestionChatKey } from './teams-answer-relay';
+import type { AskUserQuestionRelayHub } from './ask-user-relay';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 
 function attemptSummary(attempt: TeamsAttempt) {
@@ -66,6 +67,8 @@ export interface TeamsMessagingRoutesOptions {
     manager?: TeamsMessagingManager;
     oauthAvailable?: boolean;
     oauthManager?: McpOauthManager;
+    /** Relays ask_user questions into relay-bound threads; replies there answer them. */
+    questionRelay?: Pick<AskUserQuestionRelayHub, 'register' | 'tryAnswer'>;
 }
 
 export function registerTeamsMessagingRoutes(
@@ -101,6 +104,7 @@ export function registerTeamsMessagingRoutes(
                 }
             });
             manager.setAnswerRelay(relay, unsubscribe, opts.getAnswerRelayEnabled);
+            opts.questionRelay?.register(relay.questionTransport());
         }
         const router = new TeamsCommandRouter({
             store: opts.store,
@@ -173,6 +177,26 @@ export function registerTeamsMessagingRoutes(
                             ? err.message : err instanceof Error
                                 ? `${err.name}${'status' in err && typeof err.status === 'number' ? ` (HTTP ${err.status})` : ''}`
                                 : 'unknown error');
+                }
+            }
+            if (relay && opts.questionRelay && opts.getAnswerRelayEnabled?.() === true && msg.text.trim()
+                && !msg.botAuthored && !msg.initializationReplay && !msg.historicalSelectionReplay) {
+                const teamId = manager.getStatus().teamId ?? '';
+                const replyTo = msg.replyToMessageId || msg.messageId;
+                const answered = await opts.questionRelay.tryAnswer('teams', {
+                    chatKey: teamsQuestionChatKey(teamId, msg.channelId),
+                    messageId: msg.messageId,
+                    replyToId: msg.replyToMessageId,
+                    text: msg.text,
+                    reply: async text => { await manager.sendMessage(text, replyTo); },
+                    // A reaction-enabled bridge already Liked the message above.
+                    acknowledge: async () => {
+                        if (opts.getMessageReactionEnabled?.() !== true) await manager.reactToChannelMessage(msg);
+                    },
+                });
+                if (answered) {
+                    if (msg.replyToMessageId) relay.recordSeenReply(teamId, msg);
+                    return;
                 }
             }
             await router.handle(msg, observe);
