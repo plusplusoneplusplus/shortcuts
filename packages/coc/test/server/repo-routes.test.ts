@@ -12,9 +12,6 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerRepoRoutes } from '../../src/server/repos/repo-routes';
 import { RepoTreeService } from '../../src/server/repos/tree-service';
 import type { Route } from '../../src/server/types';
-import type {
-    NativeFileIndexAddon,
-} from '@plusplusoneplusplus/coc-native';
 import { safeRmSync } from '../helpers/safe-rm';
 
 // Partially mock child_process: intercept only OS reveal commands (explorer.exe,
@@ -60,19 +57,6 @@ async function replaceServer(service: RepoTreeService): Promise<void> {
     server = makeServer(dataDir, service);
     await startServer();
 }
-
-const unusedFileIndex: NativeFileIndexAddon = {
-    async buildFileIndex() {
-        return {
-            len: () => 0,
-            truncated: () => false,
-            files: () => [],
-            search: async () => [],
-            searchRanked: async () => [],
-            refresh: async () => {},
-        };
-    },
-};
 
 async function startServer(): Promise<void> {
     return new Promise((resolve, reject) => {

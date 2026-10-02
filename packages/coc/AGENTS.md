@@ -61,7 +61,8 @@ references before editing. Paths are package-relative.
 - Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
-  complete snapshots and shutdown disposes watchers.
+  complete snapshots and shutdown disposes watchers. One `RepoFiles` handle per
+  workspace owns its file indexes/refresh; dispose it on root change, removal, or shutdown.
 - Search fresh working-tree bytes; test Git narrowing/native walks.
   QuickOpen uses server indices; reuse requires the current workspace root
   for each `showIgnored` variant. Payload caps never cap search candidates.

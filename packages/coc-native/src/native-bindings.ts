@@ -74,19 +74,45 @@ export declare class NotesIndex {
   refreshChanged(changedPaths: Array<string>): Promise<void>
 }
 
-/** The repository-file backend for one resolved root. */
+/**
+ * The repository-file backend for one resolved root. It owns that root's
+ * file indexes until `dispose`; Node opens one per workspace root.
+ */
 export declare class RepoFiles {
   /** List a directory: dirs first, locale order, per-directory cap. */
   listDirectory(path: string, options: RepoListOptions): Promise<RepoTreeListing>
   /** Every file under a subdirectory, depth-first in locale order. */
   listFiles(path: string, options: RepoListOptions): Promise<RepoFileListing>
+  /**
+   * The first `maxEntries` paths of the whole-root index, in index order.
+   * The index itself is uncapped, so search still reaches every file.
+   */
+  indexFiles(options: RepoListOptions): Promise<RepoFileListing>
+  /** Fuzzy-search the whole-root index; the best `limit` matches first. */
+  searchFiles(query: string, limit: number, showIgnored: boolean): Promise<FileMatch[]>
+  /** `searchFiles` plus the native ordering tuple for server-side merging. */
+  searchFilesRanked(query: string, limit: number, showIgnored: boolean): Promise<RankedFileMatch[]>
+  /**
+   * Re-walk the built indexes after an outside change, queued behind any
+   * scan in flight. Resolves `false` when a walk failed and the previous
+   * snapshot was kept.
+   */
+  invalidate(): Promise<boolean>
+  /** Close the handle: later calls reject, background work publishes nothing. */
+  dispose(): void
   /** Read a file: text or base64, MIME type, 1 MiB cap. */
   readBlob(path: string): Promise<RepoBlob>
-  /** Write text to a file, creating missing parent directories. */
+  /**
+   * Write text to a file, creating missing parent directories, then
+   * refresh the indexes so search sees it. A failed refresh keeps the old
+   * snapshot but does not fail the committed write.
+   */
   writeBlob(path: string, content: string): Promise<void>
   /**
    * Rewrite exactly the supplied spans; stale files are skipped whole and
    * reported. A bad query rejects with `InvalidArg` before any write.
+   * Indexes are refreshed whenever a file may have been written, including
+   * a request that failed part way through.
    */
   replaceContent(query: string, replacement: string, files: Array<RepoReplaceFile>, options?: RepoReplaceOptions | undefined | null): Promise<RepoReplaceResult>
 }
@@ -973,8 +999,11 @@ export interface NotesWriteResult {
   currentContent?: string
 }
 
-/** Open the backend for an already-resolved repository root. */
-export declare function openRepoFiles(root: string): RepoFiles
+/**
+ * Open the backend for an already-resolved repository root. Indexes older
+ * than `ttlMs` (default 10 s) are re-walked in the background on next use.
+ */
+export declare function openRepoFiles(root: string, ttlMs?: number | undefined | null): RepoFiles
 
 /**
  * Parse `--porcelain=v2 --branch` text produced somewhere else.

@@ -19,7 +19,10 @@ export interface NativeRepoFilesAddon {
 }
 
 /** Every `RepoFiles` method the server calls; an older binary lacks some. */
-const METHODS = ['readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent'] as const;
+const METHODS = [
+    'readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent',
+    'indexFiles', 'searchFiles', 'searchFilesRanked', 'invalidate', 'dispose',
+] as const;
 
 /**
  * The repository-file capability. Throws {@link NativeAddonLoadError} when no

@@ -83,7 +83,11 @@ fn ranked_match(snapshot: &coc_native_core::repo_index::Snapshot, hit: Hit) -> R
     }
 }
 
-fn search_ranked(matcher: &FuzzyMatcher, query: &str, limit: usize) -> Vec<RankedFileMatch> {
+pub(crate) fn search_ranked(
+    matcher: &FuzzyMatcher,
+    query: &str,
+    limit: usize,
+) -> Vec<RankedFileMatch> {
     let snapshot = matcher.snapshot();
     matcher.search(query, limit).into_iter().map(|hit| ranked_match(snapshot, hit)).collect()
 }

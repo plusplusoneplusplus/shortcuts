@@ -1,7 +1,8 @@
 /**
  * N-API boundary tests for the repository-file backend: blob shapes, error
  * codes and messages as the REST routes see them. Path and blob semantics are
- * pinned by `rust/core/tests/repo_files_blob.rs`.
+ * pinned by `rust/core/tests/repo_files_blob.rs`; index lifecycle by
+ * `repo_files_indexes.rs`.
  */
 
 import * as fs from 'fs';
@@ -97,5 +98,35 @@ describe('RepoFiles listings', () => {
         await expect(files.listFiles('../x', { showIgnored: false, maxEntries: 10 })).rejects.toMatchObject({
             code: 'InvalidArg',
         });
+    });
+});
+
+describe('RepoFiles indexes', () => {
+    it('lists, searches and refreshes the whole-root index after a write', async () => {
+        const files = addon.openRepoFiles(root, 60_000);
+        const before = await files.indexFiles({ showIgnored: true, maxEntries: 1 });
+        expect(before).toEqual({ files: [expect.any(String)], truncated: true });
+
+        await files.writeBlob('zz-created.ts', 'x');
+        const [hit] = await files.searchFiles('zzcreated', 5, true);
+        expect(hit).toMatchObject({ path: 'zz-created.ts', indices: expect.any(Array) });
+        const [ranked] = await files.searchFilesRanked('zzcreated', 5, true);
+        expect(ranked.ranking).toMatchObject({ tier: 2 });
+        await expect(files.invalidate()).resolves.toBe(true);
+    });
+
+    it('rejects every call after dispose', async () => {
+        const files = addon.openRepoFiles(root);
+        await files.searchFiles('a', 5, false);
+        files.dispose();
+        for (const call of [
+            () => files.searchFiles('a', 5, false),
+            () => files.indexFiles({ showIgnored: false, maxEntries: 5 }),
+            () => files.readBlob('a.md'),
+            () => files.writeBlob('d.txt', 'x'),
+        ]) {
+            await expect(call()).rejects.toMatchObject({ code: 'Closing', message: 'Repo files handle disposed' });
+        }
+        expect(fs.existsSync(path.join(root, 'd.txt'))).toBe(false);
     });
 });
