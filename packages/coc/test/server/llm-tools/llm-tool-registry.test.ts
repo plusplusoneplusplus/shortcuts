@@ -7,7 +7,6 @@ import {
     LLM_TOOL_REGISTRY,
     DEFAULT_DISABLED_LLM_TOOLS,
     getEffectiveDefaultDisabledTools,
-    isLlmToolEnabled,
     filterDisabledLlmTools,
     filterRemovedLlmToolNames,
 } from '../../../src/server/llm-tools/llm-tool-registry';
@@ -83,20 +82,18 @@ describe('DEFAULT_DISABLED_LLM_TOOLS', () => {
 });
 
 describe('getEffectiveDefaultDisabledTools', () => {
-    it('disables web search tools and never the removed work-item tools in classic mode', () => {
-        expect(getEffectiveDefaultDisabledTools('classic')).toContain('tavily_web_search');
-        expect(getEffectiveDefaultDisabledTools('classic')).not.toContain('get_work_item');
-        expect(getEffectiveDefaultDisabledTools('classic')).not.toContain('create_update_work_item');
-        expect(getEffectiveDefaultDisabledTools('classic')).not.toContain('create_bug');
+    it('disables web search tools and never the removed work-item tools', () => {
+        expect(getEffectiveDefaultDisabledTools()).toContain('tavily_web_search');
+        expect(getEffectiveDefaultDisabledTools()).not.toContain('get_work_item');
+        expect(getEffectiveDefaultDisabledTools()).not.toContain('create_update_work_item');
+        expect(getEffectiveDefaultDisabledTools()).not.toContain('create_bug');
     });
 
-    it('uses classic mode defaults when layout mode is undefined', () => {
-        expect(getEffectiveDefaultDisabledTools(undefined)).toEqual(getEffectiveDefaultDisabledTools('classic'));
-    });
-
-    it('uses only registry-level defaults in dev-workflow mode', () => {
-        expect(getEffectiveDefaultDisabledTools('dev-workflow')).toEqual(DEFAULT_DISABLED_LLM_TOOLS);
-        expect(getEffectiveDefaultDisabledTools('dev-workflow')).not.toContain('get_work_item');
+    it('returns the registry defaults as a fresh copy', () => {
+        const first = getEffectiveDefaultDisabledTools();
+        expect(first).toEqual(DEFAULT_DISABLED_LLM_TOOLS);
+        first.push('suggest_follow_ups');
+        expect(getEffectiveDefaultDisabledTools()).toEqual(DEFAULT_DISABLED_LLM_TOOLS);
     });
 });
 
@@ -112,51 +109,6 @@ describe('filterRemovedLlmToolNames', () => {
             'suggest_follow_ups',
             'memory',
         ]);
-    });
-});
-
-describe('isLlmToolEnabled', () => {
-    it('returns true for enabled tools when disabledList is undefined (default)', () => {
-        expect(isLlmToolEnabled('suggest_follow_ups', undefined)).toBe(true);
-        expect(isLlmToolEnabled('search_conversations', undefined)).toBe(true);
-    });
-
-    it('returns false for tavily_web_search when disabledList is undefined (default)', () => {
-        expect(isLlmToolEnabled('tavily_web_search', undefined)).toBe(false);
-    });
-
-    it('returns true for send_to_conversation when disabledList is undefined (default)', () => {
-        expect(isLlmToolEnabled('send_to_conversation', undefined)).toBe(true);
-    });
-
-    it('returns false for send_to_conversation when explicitly disabled', () => {
-        expect(isLlmToolEnabled('send_to_conversation', ['send_to_conversation'])).toBe(false);
-    });
-
-    it('returns true for tavily_web_search when explicitly enabled (empty disabled list)', () => {
-        expect(isLlmToolEnabled('tavily_web_search', [])).toBe(true);
-    });
-
-    it('returns false for tools in the disabled list', () => {
-        expect(isLlmToolEnabled('suggest_follow_ups', ['suggest_follow_ups', 'memory'])).toBe(false);
-        expect(isLlmToolEnabled('memory', ['suggest_follow_ups', 'memory'])).toBe(false);
-    });
-
-    it('returns true for tools not in the disabled list', () => {
-        expect(isLlmToolEnabled('ask_user', ['suggest_follow_ups'])).toBe(true);
-    });
-
-    it('handles unknown tool names gracefully', () => {
-        expect(isLlmToolEnabled('unknown_tool', undefined)).toBe(true);
-        expect(isLlmToolEnabled('unknown_tool', ['unknown_tool'])).toBe(false);
-    });
-
-    it('treats removed tools as disabled', () => {
-        expect(isLlmToolEnabled('create_bug', undefined)).toBe(false);
-        expect(isLlmToolEnabled('create_bug', [])).toBe(false);
-        expect(isLlmToolEnabled('get_work_item', undefined)).toBe(false);
-        expect(isLlmToolEnabled('create_update_work_item', undefined)).toBe(false);
-        expect(isLlmToolEnabled('create_update_work_item', [])).toBe(false);
     });
 });
 

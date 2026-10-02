@@ -162,18 +162,18 @@ describe('LLM Tools Config API endpoints', () => {
             expect(names).not.toContain('scheduleWakeup');
         });
 
-        it('returns classic-mode defaults when no preferences are set', async () => {
+        it('returns registry defaults when no preferences are set', async () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools(undefined));
+            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools());
             expect(data.disabledLlmTools).toContain('tavily_web_search');
             expect(data.disabledLlmTools).not.toContain('create_update_work_item');
             expect(data.disabledLlmTools).not.toContain('get_work_item');
             expect(data.disabledLlmTools).not.toContain('create_bug');
         });
 
-        it('returns classic-mode defaults when global layout mode is classic', async () => {
+        it('ignores a classic global layout mode', async () => {
             fs.writeFileSync(
                 path.join(tmpDir, 'preferences.json'),
                 JSON.stringify({ global: { uiLayoutMode: 'classic' } }),
@@ -182,10 +182,10 @@ describe('LLM Tools Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools('classic'));
+            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools());
         });
 
-        it('returns dev-workflow defaults when global layout mode is dev-workflow', async () => {
+        it('ignores a dev-workflow global layout mode', async () => {
             fs.writeFileSync(
                 path.join(tmpDir, 'preferences.json'),
                 JSON.stringify({ global: { uiLayoutMode: 'dev-workflow' } }),
@@ -194,7 +194,7 @@ describe('LLM Tools Config API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
             expect(res.status).toBe(200);
             const data = res.json();
-            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools('dev-workflow'));
+            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools());
             expect(data.disabledLlmTools).not.toContain('create_update_work_item');
             expect(data.disabledLlmTools).not.toContain('create_bug');
         });

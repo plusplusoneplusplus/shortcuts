@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 
 /**
  * Write data to a file atomically using a temp-file + rename pattern.
@@ -13,6 +14,22 @@ export function atomicWriteJson(filePath: string, data: unknown): void {
     }
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tmpPath, filePath);
+}
+
+/**
+ * Compact-JSON variant of atomicWriteJson whose temp file name is unique and
+ * created exclusively, so concurrent writers to the same target never share a
+ * temp file. The temp file is removed if the write or rename fails.
+ */
+export function atomicWriteJsonUnique(filePath: string, data: unknown): void {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const tmpPath = `${filePath}.${randomUUID()}.tmp`;
+    try {
+        fs.writeFileSync(tmpPath, JSON.stringify(data), { flag: 'wx' });
+        fs.renameSync(tmpPath, filePath);
+    } finally {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    }
 }
 
 /**

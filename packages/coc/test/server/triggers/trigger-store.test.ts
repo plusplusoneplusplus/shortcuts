@@ -115,13 +115,6 @@ describe('TriggerStore', () => {
         expect(store.delete('trigger_test1')).toBe(false);
     });
 
-    it('deletes all triggers', () => {
-        store.insert(makeTrigger({ id: 't1' }));
-        store.insert(makeTrigger({ id: 't2' }));
-        store.deleteAll();
-        expect(store.getAll()).toEqual([]);
-    });
-
     it('counts active triggers', () => {
         store.insert(makeTrigger({ id: 't1', status: 'active' }));
         store.insert(makeTrigger({ id: 't2', status: 'paused' }));

@@ -19,7 +19,6 @@ import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-uti
 import type { ApiRouteContext } from './api-shared';
 import {
     readEffectiveDisabledLlmTools,
-    readGlobalPreferences,
     readRepoPreferences,
     writeRepoPreferences,
     validatePerRepoPreferences,
@@ -917,10 +916,9 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
                 disabledLlmTools: body.disabledLlmTools,
             });
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
-            const globalPrefs = readGlobalPreferences(ctx.dataDir);
             sendJSON(res, 200, {
                 tools: withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false, llmToolSystemOneEnabled: ctx.getLiveFeatureFlags?.()?.llmToolSystemOneEnabled ?? false })),
-                disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(globalPrefs.uiLayoutMode),
+                disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(),
                 conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',
             });
         },

@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { toQueueProcessId, type ProcessStore } from '@plusplusoneplusplus/forge';
 import { parseWhatsAppCommand, type InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
-
-const TOPIC_LIST_LIMIT = 10;
+import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
 
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
@@ -37,9 +36,7 @@ export class WhatsAppCommandRouter {
                         : 'No repos registered.');
                     return;
                 case 'select-repo': {
-                    const index = /^[1-9]\d*$/.test(command.args) ? Number(command.args) : 0;
-                    const selected = (index ? workspaces[index - 1] : undefined)
-                        ?? workspaces.find(ws => ws.id === command.args || ws.name?.toLowerCase() === command.args.toLowerCase());
+                    const selected = resolveWorkspace(workspaces, command.args);
                     if (!selected) { await reply('Repo not found. Run `list repos` to see available repos.'); return; }
                     this.deps.bindings.selectRepo(selected.id);
                     await reply(`Selected repo: ${selected.name ?? selected.id}`);
@@ -68,21 +65,15 @@ export class WhatsAppCommandRouter {
                 await reply('No repo selected. Run `list repos`, then `select repo <n|name>`.');
                 return;
             }
-            if (command.type === 'list-topics' || command.type === 'select-topic') {
-                // Bounded, conversation-free read: an unbounded getAllProcesses loads every
-                // turn in the repo and stalls the server on large stores.
-                const processes = (await this.deps.store.getAllProcesses({
-                    workspaceId, limit: TOPIC_LIST_LIMIT, exclude: ['conversation', 'toolCalls'],
-                })).filter(proc => proc.metadata?.workspaceId === workspaceId);
-                if (command.type === 'list-topics') {
-                    await reply(processes.length
-                        ? processes.map((proc, i) => `${i + 1}. ${proc.id} ${proc.title ?? proc.customTitle ?? ''}`).join('\n')
-                        : 'No chat topics found.');
-                    return;
-                }
-                const index = /^[1-9]\d*$/.test(command.args) ? Number(command.args) : 0;
-                const selected = (index ? processes[index - 1] : undefined)
-                    ?? await this.deps.store.getProcess(command.args, workspaceId);
+            if (command.type === 'list-topics') {
+                const processes = await listRecentTopics(this.deps.store, workspaceId);
+                await reply(processes.length
+                    ? processes.map((proc, i) => `${i + 1}. ${proc.id} ${proc.title ?? proc.customTitle ?? ''}`).join('\n')
+                    : 'No chat topics found.');
+                return;
+            }
+            if (command.type === 'select-topic') {
+                const selected = await resolveTopic(this.deps.store, workspaceId, command.args);
                 if (!selected || selected.metadata?.workspaceId !== workspaceId) {
                     await reply('Topic not found in the selected repo. Run `list topics`.'); return;
                 }

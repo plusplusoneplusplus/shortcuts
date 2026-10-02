@@ -13,11 +13,12 @@
  *   <msg>             — send message to the selected/last-active topic
  */
 
-import { toQueueProcessId, type ProcessStore, type AIProcess, type ProcessFilter } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsUserStateStore } from './teams-user-state';
 import type { TeamsEventType } from './teams-attempt-store';
 import { escapeTeamsMarkdown, teamsCodeSpan } from './teams-outbound-format';
+import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
 
 // ============================================================================
 // Types
@@ -266,7 +267,7 @@ export class TeamsCommandRouter {
         const reply = (text: string) => silent ? Promise.resolve() : this.deps.sendReply(text, root);
         if (command.type === 'select-repo') {
             const workspaces = await this.deps.store.getWorkspaces();
-            const workspace = resolveWorkspace(workspaces, command.args, true);
+            const workspace = resolveWorkspace(workspaces, command.args);
             if (!workspace) {
                 this.deps.recordThreadCommand?.(msg);
                 await reply('❌ Repo not found. Use `/list repos` to see available repos.');
@@ -284,8 +285,7 @@ export class TeamsCommandRouter {
             return;
         }
         if (command.type === 'list-topics') {
-            const processes = await this.deps.store.getAllProcesses({ workspaceId: workspace.id });
-            const recent = processes.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime()).slice(0, 10);
+            const recent = await listRecentTopics(this.deps.store, workspace.id);
             this.deps.recordThreadCommand?.(msg);
             await reply(recent.length
                 ? `**Chat Topics** (repo: ${escapeTeamsMarkdown(workspace.name ?? workspace.id)}):\n${recent.map((p, i) =>
@@ -299,15 +299,7 @@ export class TeamsCommandRouter {
             return;
         }
         if (command.type === 'select-topic') {
-            const trimmed = command.args.trim();
-            let process: AIProcess | undefined;
-            if (/^[1-9]\d*$/.test(trimmed)) {
-                const processes = await this.deps.store.getAllProcesses({ workspaceId: workspace.id });
-                process = processes.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
-                    .slice(0, 10)[Number(trimmed) - 1];
-            } else {
-                process = await this.deps.store.getProcess(trimmed, workspace.id);
-            }
+            const process = await resolveTopic(this.deps.store, workspace.id, command.args);
             if (!process || process.metadata?.workspaceId !== workspace.id
                 || ['failed', 'cancelled'].includes(process.status)) {
                 this.deps.recordThreadCommand?.(msg);
@@ -339,7 +331,7 @@ export class TeamsCommandRouter {
 
     private async handleSelectRepo(userKey: string, repoNameOrIndex: string, msg: InboundTeamsMessage): Promise<void> {
         const workspaces = await this.deps.store.getWorkspaces();
-        const workspace = resolveWorkspace(workspaces, repoNameOrIndex);
+        const workspace = resolveWorkspace(workspaces, repoNameOrIndex, false);
 
         if (!workspace) {
             await this.deps.sendReply(
@@ -358,16 +350,7 @@ export class TeamsCommandRouter {
 
     private async handleListTopics(userKey: string, msg: InboundTeamsMessage): Promise<void> {
         const state = this.userState.get(userKey);
-        const filter: ProcessFilter = {};
-        if (state.selectedRepo) {
-            filter.workspaceId = state.selectedRepo;
-        }
-
-        const processes = await this.deps.store.getAllProcesses(filter);
-        // Show most recent 10
-        const recent = processes
-            .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
-            .slice(0, 10);
+        const recent = await listRecentTopics(this.deps.store, state.selectedRepo ?? undefined);
 
         if (recent.length === 0) {
             await this.deps.sendReply('No chat topics found.', msg.messageId);
@@ -410,29 +393,8 @@ export class TeamsCommandRouter {
 
     private async handleSelectTopic(userKey: string, topicIdOrIndex: string, msg: InboundTeamsMessage): Promise<void> {
         const trimmed = topicIdOrIndex.trim();
-        let process: AIProcess | undefined;
-
-        // Try numeric index — resolve against the same sorted list as /list topics
-        const idx = parseInt(trimmed, 10);
-        if (!isNaN(idx) && idx >= 1) {
-            const state = this.userState.get(userKey);
-            const filter: ProcessFilter = {};
-            if (state.selectedRepo) {
-                filter.workspaceId = state.selectedRepo;
-            }
-            const processes = await this.deps.store.getAllProcesses(filter);
-            const recent = processes
-                .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
-                .slice(0, 10);
-            if (idx <= recent.length) {
-                process = recent[idx - 1];
-            }
-        }
-
-        // Fall back to direct ID lookup
-        if (!process) {
-            process = await this.deps.store.getProcess(trimmed);
-        }
+        // Resolves against the same list as /list topics, then falls back to a direct ID lookup.
+        const process = await resolveTopic(this.deps.store, this.userState.get(userKey).selectedRepo ?? undefined, trimmed, false);
 
         if (!process) {
             await this.deps.sendReply(
@@ -572,33 +534,4 @@ export class TeamsCommandRouter {
             await settle();
         }
     }
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-function resolveWorkspace(
-    workspaces: Array<{ id: string; name?: string; rootPath?: string }>,
-    nameOrIndex: string,
-    strictIndex = false,
-): { id: string; name?: string; rootPath?: string } | undefined {
-    // Try numeric index (1-based)
-    const idx = strictIndex
-        ? (/^[1-9]\d*$/.test(nameOrIndex) ? Number(nameOrIndex) : NaN)
-        : parseInt(nameOrIndex, 10);
-    if (!isNaN(idx) && idx >= 1 && idx <= workspaces.length) {
-        return workspaces[idx - 1];
-    }
-
-    // Try exact ID match
-    const byId = workspaces.find(w => w.id === nameOrIndex);
-    if (byId) return byId;
-
-    // Try case-insensitive name match
-    const lower = nameOrIndex.toLowerCase();
-    return workspaces.find(w =>
-        (w.name ?? '').toLowerCase() === lower ||
-        (w.id ?? '').toLowerCase() === lower,
-    );
 }

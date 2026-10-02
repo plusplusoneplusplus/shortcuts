@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { getRepoDataPath } from '../paths';
+import { atomicWriteJsonUnique } from '../shared/fs-utils';
 
 export interface WhatsAppBinding {
     groupJid: string;
@@ -15,17 +15,6 @@ export interface WhatsAppBinding {
     status: 'queued' | 'sending' | 'delivered';
     answerHash?: string;
     header?: string;
-}
-
-function writeJSON(file: string, value: unknown): void {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const temporary = `${file}.${randomUUID()}.tmp`;
-    try {
-        fs.writeFileSync(temporary, JSON.stringify(value), { flag: 'wx' });
-        fs.renameSync(temporary, file);
-    } finally {
-        if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
-    }
 }
 
 /** Account selection is global; per-conversation receipts remain workspace-scoped. */
@@ -58,12 +47,12 @@ export class WhatsAppBindings {
 
     selectRepo(workspaceId: string): void {
         this.state.selectedRepo = workspaceId;
-        writeJSON(this.stateFile, this.state);
+        atomicWriteJsonUnique(this.stateFile, this.state);
     }
 
     selectTopic(workspaceId: string, processId: string | null): void {
         this.state.topics[workspaceId] = processId;
-        writeJSON(this.stateFile, this.state);
+        atomicWriteJsonUnique(this.stateFile, this.state);
     }
 
     entries(): WhatsAppBinding[] { return [...this.receipts.values()].flat(); }
@@ -80,7 +69,7 @@ export class WhatsAppBindings {
         if (!messageId) throw new Error('WhatsApp send did not return a message ID');
         this.state.outboundIds.push(messageId);
         if (this.state.outboundIds.length > 2_000) this.state.outboundIds.shift();
-        writeJSON(this.stateFile, this.state);
+        atomicWriteJsonUnique(this.stateFile, this.state);
     }
 
     add(binding: WhatsAppBinding): boolean {
@@ -121,6 +110,6 @@ export class WhatsAppBindings {
     }
 
     private save(workspaceId: string): void {
-        writeJSON(getRepoDataPath(this.dataDir, workspaceId, 'whatsapp-bindings.json'), this.load(workspaceId));
+        atomicWriteJsonUnique(getRepoDataPath(this.dataDir, workspaceId, 'whatsapp-bindings.json'), this.load(workspaceId));
     }
 }

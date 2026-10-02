@@ -180,9 +180,6 @@ export const DEFAULT_DISABLED_LLM_TOOLS: string[] = LLM_TOOL_REGISTRY
     .filter(t => !t.enabledByDefault)
     .map(t => t.name);
 
-/** Additional tool names disabled by default when the dashboard uses classic mode. */
-export const CLASSIC_MODE_EXTRA_DISABLED_TOOLS: string[] = [];
-
 const REMOVED_LLM_TOOL_NAMES = new Set([
     'create_bug',
     'get_work_item',
@@ -197,36 +194,9 @@ export function filterRemovedLlmToolNames(toolNames: readonly string[]): string[
     return toolNames.filter(name => !isRemovedLlmToolName(name));
 }
 
-/**
- * Resolve the default disabled tools for the current UI layout mode.
- * Classic mode is the safe default when no layout preference has been saved.
- */
-export function getEffectiveDefaultDisabledTools(
-    uiLayoutMode?: 'classic' | 'dev-workflow',
-): string[] {
-    if (uiLayoutMode === 'dev-workflow') {
-        return [...DEFAULT_DISABLED_LLM_TOOLS];
-    }
-
-    return Array.from(new Set([
-        ...DEFAULT_DISABLED_LLM_TOOLS,
-        ...CLASSIC_MODE_EXTRA_DISABLED_TOOLS,
-    ]));
-}
-
-/**
- * Returns true if a tool should be included given the disabled tools list.
- * When `disabledLlmTools` is undefined, falls back to the default disabled list.
- */
-export function isLlmToolEnabled(
-    toolName: string,
-    disabledLlmTools: string[] | undefined,
-): boolean {
-    if (isRemovedLlmToolName(toolName)) {
-        return false;
-    }
-    const disabled = filterRemovedLlmToolNames(disabledLlmTools ?? DEFAULT_DISABLED_LLM_TOOLS);
-    return !disabled.includes(toolName);
+/** Default disabled tool names, as a fresh copy callers may mutate. */
+export function getEffectiveDefaultDisabledTools(): string[] {
+    return [...DEFAULT_DISABLED_LLM_TOOLS];
 }
 
 /**

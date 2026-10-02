@@ -149,11 +149,11 @@ describe('TeamsCommandRouter', () => {
                     { id: 'ws-2', name: 'ProjectB', rootPath: '/repo/projectB' },
                 ]),
                 getAllProcesses: vi.fn().mockResolvedValue([
-                    { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: '2025-01-02T00:00:00Z', promptPreview: 'Fix the bug' },
-                    { id: 'proc-222', status: 'running', title: 'Add feature', startTime: '2025-01-01T00:00:00Z', promptPreview: 'Add a feature' },
+                    { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: '2025-01-02T00:00:00Z', promptPreview: 'Fix the bug', metadata: { workspaceId: 'ws-1' } },
+                    { id: 'proc-222', status: 'running', title: 'Add feature', startTime: '2025-01-01T00:00:00Z', promptPreview: 'Add a feature', metadata: { workspaceId: 'ws-1' } },
                 ]),
                 getProcess: vi.fn().mockImplementation(async (id: string) => {
-                    if (id === 'proc-111') return { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: '2025-01-02T00:00:00Z', promptPreview: 'Fix the bug' };
+                    if (id === 'proc-111') return { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: '2025-01-02T00:00:00Z', promptPreview: 'Fix the bug', metadata: { workspaceId: 'ws-1' } };
                     if (id === 'proc-222') return { id: 'proc-222', status: 'running', title: 'Add feature', startTime: '2025-01-01T00:00:00Z', promptPreview: 'Add feature' };
                     return undefined;
                 }),
@@ -290,6 +290,22 @@ describe('TeamsCommandRouter', () => {
         expect(sendReplySpy.mock.calls[0][0]).toContain('not found');
     });
 
+    it('reads topics with a bounded, conversation-free query so large stores cannot stall replies', async () => {
+        const getAllProcesses = deps.store.getAllProcesses as ReturnType<typeof vi.fn>;
+        await router.handle(makeMsg('/list topics'));
+        await router.handle(makeMsg('/select topic 1'));
+        await router.handle(makeMsg('/select repo ProjectA'));
+        await router.handle(makeMsg('/list topics'));
+        await router.handle(makeMsg('/select topic 2'));
+        expect(getAllProcesses.mock.calls.map(([filter]) => filter)).toEqual([
+            { limit: 10, exclude: ['conversation', 'toolCalls'] },
+            { limit: 10, exclude: ['conversation', 'toolCalls'] },
+            { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
+            { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
+        ]);
+        expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('Add feature'), expect.anything());
+    });
+
     // ── explicit chat [chatid] message ────────────────────────
 
     it('sends message to explicit chat ID', async () => {
@@ -372,6 +388,17 @@ describe('TeamsCommandRouter', () => {
                 return null;
             });
             router = new TeamsCommandRouter(deps);
+        });
+
+        it('reads thread topics with a bounded, conversation-free query', async () => {
+            const getAllProcesses = deps.store.getAllProcesses as ReturnType<typeof vi.fn>;
+            await router.handle(makeMsg('/list topics', { replyToMessageId: 'root-a' }));
+            await router.handle(makeMsg('/select topic 1', { replyToMessageId: 'root-a' }));
+            expect(getAllProcesses.mock.calls.map(([filter]) => filter)).toEqual([
+                { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
+                { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
+            ]);
+            expect(deps.selectThreadTarget).toHaveBeenCalledWith(expect.any(Object), 'ws-1', 'proc-111');
         });
 
         it('dispatches control commands in the shared thread without sending them to AI', async () => {

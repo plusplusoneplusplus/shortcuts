@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
+import { atomicWriteJsonUnique } from '../shared/fs-utils';
 
 export type TeamsAttemptStage = 'started' | 'authenticating' | 'resolving' | 'starting-polling' | 'connected';
 export type TeamsAttemptResult = 'disconnected' | 'superseded' | 'failed' | 'interrupted';
@@ -250,13 +251,6 @@ export class TeamsAttemptStore {
     }
 
     private save(): void {
-        fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-        const temporary = `${this.filePath}.${randomUUID()}.tmp`;
-        try {
-            fs.writeFileSync(temporary, JSON.stringify(this.attempts));
-            fs.renameSync(temporary, this.filePath);
-        } finally {
-            if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
-        }
+        atomicWriteJsonUnique(this.filePath, this.attempts);
     }
 }

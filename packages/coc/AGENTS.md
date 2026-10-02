@@ -195,9 +195,15 @@ all have their own `references/*.md`.
   persists account config/auth/selection under `messaging/whatsapp/`. Inbound
   processing admits only paired-account messages from the one bound group;
   workspace selection requires `select repo` and quote-replies to answer IDs
-  retain the originating workspace. `list topics`/`select topic <n>` read a
-  bounded (10), conversation-free process page — never an unbounded
-  `getAllProcesses`, which stalls on large stores. Chat receipts live under each workspace's
+  retain the originating workspace. Teams and WhatsApp `list topics`/`select
+  topic <n>` both go through `messaging/chat-target.ts` (`listRecentTopics`/
+  `resolveTopic`), which reads a bounded (10), conversation-free process page —
+  never an unbounded `getAllProcesses`, which stalls on large stores. Shared
+  connector plumbing (workspace/topic lookup, terminal-task subscription) belongs
+  there, both relays find a request's answer and its fixed failed/cancelled/empty
+  texts through `messaging/relay-answer.ts`, and receipt files write through
+  `atomicWriteJsonUnique`; platform
+  transport, reply wording and delivery formatting stay per connector. Chat receipts live under each workspace's
   `whatsapp-bindings.json`, never in an account-wide per-repo bindings file.
   Account state also retains recent command-reply IDs so reconnects cannot
   dispatch the connector's own command responses as new requests.
