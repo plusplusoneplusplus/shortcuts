@@ -18,12 +18,13 @@ import { gitInfoCache, type GitInfoResult } from '../git/git-info-cache';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
 import {
+    readApprovalRequiredLlmTools,
     readEffectiveDisabledLlmTools,
     readRepoPreferences,
     writeRepoPreferences,
     validatePerRepoPreferences,
 } from '../preferences-handler';
-import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry } from '../llm-tools/llm-tool-registry';
+import { getEffectiveDefaultDisabledTools, getEffectiveLlmToolRegistry, isLlmToolApprovalGateable, type LlmToolMeta } from '../llm-tools/llm-tool-registry';
 import { withToolParameterMetadata } from '../llm-tools/llm-tool-parameter-schemas';
 import { detectEnDevEligibility } from '../endev/endev-detector';
 import { resolveHostCopyPath } from '../host-copy-path';
@@ -861,7 +862,7 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
         },
     });
 
-    // GET /api/workspaces/:id/llm-tools-config — Get LLM tool registry and disabled state
+    // GET /api/workspaces/:id/llm-tools-config — Get LLM tool registry, disabled and approval-required state
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/llm-tools-config$/,
@@ -871,12 +872,13 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             // Static config — short-lived private cache (both branches below are 200s).
             setStaticConfigCacheHeaders(res);
             const liveFlags = ctx.getLiveFeatureFlags?.() ?? { excalidrawEnabled: false, canvasEnabled: false, kustoEnabled: false, llmToolSystemOneEnabled: false, chatStyleSelectorEnabled: false, chatProviderSwitchingEnabled: false };
-            const effectiveRegistry = withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: liveFlags.canvasEnabled, kustoEnabled: liveFlags.kustoEnabled, llmToolSystemOneEnabled: liveFlags.llmToolSystemOneEnabled }));
+            const effectiveRegistry = buildSettingsToolList(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: liveFlags.canvasEnabled, kustoEnabled: liveFlags.kustoEnabled, llmToolSystemOneEnabled: liveFlags.llmToolSystemOneEnabled }));
             const conversationRetrievalAvailable = typeof ctx.store.searchConversations === 'function';
             if (!ctx.dataDir) {
                 sendJSON(res, 200, {
                     tools: effectiveRegistry,
                     disabledLlmTools: getEffectiveDefaultDisabledTools(),
+                    approvalRequiredLlmTools: [],
                     conversationRetrievalAvailable,
                 });
                 return;
@@ -884,12 +886,14 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             sendJSON(res, 200, {
                 tools: effectiveRegistry,
                 disabledLlmTools: readEffectiveDisabledLlmTools(ctx.dataDir, ws.id),
+                approvalRequiredLlmTools: readApprovalRequiredLlmTools(ctx.dataDir, ws.id),
                 conversationRetrievalAvailable,
             });
         },
     });
 
-    // PUT /api/workspaces/:id/llm-tools-config — Save disabled LLM tools list
+    // PUT /api/workspaces/:id/llm-tools-config — Save disabled and/or approval-required LLM tool lists.
+    // Each list is optional; at least one must be present. Omitted lists are left unchanged.
     routes.push({
         method: 'PUT',
         pattern: /^\/api\/workspaces\/([^/]+)\/llm-tools-config$/,
@@ -901,26 +905,41 @@ export function registerApiWorkspaceRoutes(ctx: ApiRouteContext): void {
             }
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
-            if (!Object.prototype.hasOwnProperty.call(body, 'disabledLlmTools')) {
+            const hasDisabled = Object.prototype.hasOwnProperty.call(body, 'disabledLlmTools');
+            const hasApproval = Object.prototype.hasOwnProperty.call(body, 'approvalRequiredLlmTools');
+            if (!hasDisabled && !hasApproval) {
                 return handleAPIError(res, missingFields(['disabledLlmTools']));
             }
-            if (!Array.isArray(body.disabledLlmTools)) {
-                return handleAPIError(res, badRequest('`disabledLlmTools` must be an array of strings'));
-            }
-            if (body.disabledLlmTools.some((e: any) => typeof e !== 'string')) {
-                return handleAPIError(res, badRequest('`disabledLlmTools` items must be strings'));
+            for (const field of ['disabledLlmTools', 'approvalRequiredLlmTools'] as const) {
+                if (!Object.prototype.hasOwnProperty.call(body, field)) continue;
+                if (!Array.isArray(body[field])) {
+                    return handleAPIError(res, badRequest(`\`${field}\` must be an array of strings`));
+                }
+                if (body[field].some((e: any) => typeof e !== 'string')) {
+                    return handleAPIError(res, badRequest(`\`${field}\` items must be strings`));
+                }
             }
             const existing = readRepoPreferences(ctx.dataDir, ws.id);
             const merged = validatePerRepoPreferences({
                 ...existing,
-                disabledLlmTools: body.disabledLlmTools,
+                ...(hasDisabled ? { disabledLlmTools: body.disabledLlmTools } : {}),
+                ...(hasApproval ? { approvalRequiredLlmTools: body.approvalRequiredLlmTools } : {}),
             });
             writeRepoPreferences(ctx.dataDir, ws.id, merged);
             sendJSON(res, 200, {
-                tools: withToolParameterMetadata(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false, llmToolSystemOneEnabled: ctx.getLiveFeatureFlags?.()?.llmToolSystemOneEnabled ?? false })),
+                tools: buildSettingsToolList(getEffectiveLlmToolRegistry({ cronEnabled: ctx.cronEnabled, canvasEnabled: ctx.getLiveFeatureFlags?.()?.canvasEnabled ?? false, kustoEnabled: ctx.getLiveFeatureFlags?.()?.kustoEnabled ?? false, llmToolSystemOneEnabled: ctx.getLiveFeatureFlags?.()?.llmToolSystemOneEnabled ?? false })),
                 disabledLlmTools: merged.disabledLlmTools ?? getEffectiveDefaultDisabledTools(),
+                approvalRequiredLlmTools: merged.approvalRequiredLlmTools ?? [],
                 conversationRetrievalAvailable: typeof ctx.store.searchConversations === 'function',
             });
         },
     });
+}
+
+/** Registry entries for the settings UI: parameter summaries plus approval gateability. */
+function buildSettingsToolList(registry: readonly LlmToolMeta[]): LlmToolMeta[] {
+    return withToolParameterMetadata(registry).map(tool => ({
+        ...tool,
+        approvalGateable: isLlmToolApprovalGateable(tool.name),
+    }));
 }

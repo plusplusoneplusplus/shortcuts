@@ -105,6 +105,7 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
     const seed = peekConfig<LlmToolsConfig>(configCacheKey.llmToolsConfig(workspaceId));
     const [tools, setTools] = useState<LlmToolMeta[]>(seed?.tools ?? []);
     const [disabledTools, setDisabledTools] = useState<string[]>(seed?.disabledLlmTools ?? []);
+    const [approvalTools, setApprovalTools] = useState<string[]>(seed?.approvalRequiredLlmTools ?? []);
     const [loading, setLoading] = useState(seed === undefined);
     const [saving, setSaving] = useState(false);
 
@@ -115,6 +116,7 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
         if (cached !== undefined) {
             setTools(cached.tools ?? []);
             setDisabledTools(cached.disabledLlmTools ?? []);
+            setApprovalTools(cached.approvalRequiredLlmTools ?? []);
             setLoading(false);
             return;
         }
@@ -123,6 +125,7 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
             .then((data: LlmToolsConfig) => {
                 setTools(data.tools ?? []);
                 setDisabledTools(data.disabledLlmTools ?? []);
+                setApprovalTools(data.approvalRequiredLlmTools ?? []);
             })
             .catch(() => {})
             .finally(() => setLoading(false));
@@ -147,6 +150,27 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
             invalidateConfig(configCacheKey.llmToolsConfig(workspaceId));
         } catch (e: any) {
             setDisabledTools(prevDisabled);
+            addToast(e?.message ?? 'Failed to save LLM tools config', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleApprovalToggle = async (toolName: string, required: boolean) => {
+        const nextApproval = required
+            ? [...approvalTools.filter(n => n !== toolName), toolName]
+            : approvalTools.filter(n => n !== toolName);
+        const prevApproval = approvalTools;
+        setApprovalTools(nextApproval);
+        setSaving(true);
+        try {
+            await getSpaCocClient().preferences.updateLlmToolsConfig(
+                workspaceId,
+                { approvalRequiredLlmTools: nextApproval },
+            );
+            invalidateConfig(configCacheKey.llmToolsConfig(workspaceId));
+        } catch (e: any) {
+            setApprovalTools(prevApproval);
             addToast(e?.message ?? 'Failed to save LLM tools config', 'error');
         } finally {
             setSaving(false);
@@ -201,8 +225,25 @@ export function LlmToolsPanel({ workspaceId }: LlmToolsPanelProps) {
                                     <p className="text-[10px] leading-tight text-[#848484] mt-0.5 line-clamp-2">{tool.description}</p>
                                 </div>
                             </label>
-                            <div className="pl-[46px] pr-2.5 pb-1.5">
+                            <div className="pl-[46px] pr-2.5 pb-1.5 flex flex-col gap-1">
                                 <ToolParams tool={tool} />
+                                {tool.approvalGateable && (
+                                    <label
+                                        className={`inline-flex w-fit items-center gap-1.5 text-[10px] text-[#1e1e1e] dark:text-[#cccccc] ${enabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                                        title={enabled ? 'Ask before this tool runs on interactive turns' : 'Enable the tool to require approval'}
+                                        data-testid={`llm-tool-approval-label-${tool.name}`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            className="h-3 w-3"
+                                            checked={approvalTools.includes(tool.name)}
+                                            onChange={e => handleApprovalToggle(tool.name, e.target.checked)}
+                                            disabled={saving || !enabled}
+                                            data-testid={`llm-tool-approval-toggle-${tool.name}`}
+                                        />
+                                        Require approval
+                                    </label>
+                                )}
                             </div>
                         </div>
                     );

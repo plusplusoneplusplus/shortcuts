@@ -26,6 +26,7 @@ import {
     validateGlobalPreferences,
     normalizeGlobalPreferencesForRead,
     resolveDefaultModel,
+    readApprovalRequiredLlmTools,
     registerPreferencesRoutes,
     applyGlobalPreferencesPatch,
     applyRepoPreferencesPatch,
@@ -3156,6 +3157,35 @@ describe('registerPreferencesRoutes — sync engine wiring', () => {
 // ============================================================================
 // resolveDefaultModel
 // ============================================================================
+
+describe('readApprovalRequiredLlmTools', () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-approval-tools-'));
+    });
+
+    afterEach(() => {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('defaults to an empty list', () => {
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual([]);
+    });
+
+    it('round-trips through writeRepoPreferences per workspace', () => {
+        writeRepoPreferences(tmpDir, 'ws-1', { approvalRequiredLlmTools: ['send_to_conversation'] });
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-1')).toEqual(['send_to_conversation']);
+        expect(readApprovalRequiredLlmTools(tmpDir, 'ws-2')).toEqual([]);
+    });
+
+    it('validation drops non-gateable, removed, duplicate, and non-string entries', () => {
+        const validated = validatePerRepoPreferences({
+            approvalRequiredLlmTools: ['ask_user', 'suggest_follow_ups', 'create_bug', 'get_conversation', 'get_conversation', 42, ''],
+        });
+        expect(validated.approvalRequiredLlmTools).toEqual(['get_conversation']);
+    });
+});
 
 describe('resolveDefaultModel', () => {
     let tmpDir: string;

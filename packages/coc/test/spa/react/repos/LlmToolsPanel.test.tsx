@@ -27,6 +27,7 @@ const TOOLS = [
         label: 'Demo Tool',
         description: 'A demo tool with a locally declared parameter schema.',
         enabledByDefault: true,
+        approvalGateable: true,
         params: [
             { name: 'title', type: 'string', required: true },
             { name: 'description', type: 'string', required: false },
@@ -38,6 +39,7 @@ const TOOLS = [
         label: 'Tavily Web Search',
         description: 'Searches the web.',
         enabledByDefault: false,
+        approvalGateable: true,
         params: [],
     },
     {
@@ -236,5 +238,61 @@ describe('LlmToolsPanel', () => {
 
         expect(screen.getByTestId('llm-tool-params-empty-schemaless_tool').textContent).toBe('Parameters unavailable');
         expect(screen.queryByTestId('llm-tool-params-toggle-schemaless_tool')).toBeNull();
+    });
+
+    describe('Require approval toggle', () => {
+        it('renders unchecked by default and only for gateable tools', async () => {
+            render(<LlmToolsPanel workspaceId="approval-default" />);
+            await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+            const toggle = screen.getByTestId('llm-tool-approval-toggle-demo_tool') as HTMLInputElement;
+            expect(toggle.checked).toBe(false);
+            expect(toggle.disabled).toBe(false);
+            expect(screen.queryByTestId('llm-tool-approval-toggle-schemaless_tool')).toBeNull();
+        });
+
+        it('is disabled while the tool itself is off', async () => {
+            render(<LlmToolsPanel workspaceId="approval-disabled-tool" />);
+            await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+            expect((screen.getByTestId('llm-tool-approval-toggle-tavily_web_search') as HTMLInputElement).disabled).toBe(true);
+        });
+
+        it('reflects the saved approval list', async () => {
+            mocks.preferences.getLlmToolsConfig.mockResolvedValue({
+                tools: TOOLS,
+                disabledLlmTools: [],
+                approvalRequiredLlmTools: ['demo_tool'],
+            });
+            render(<LlmToolsPanel workspaceId="approval-saved" />);
+            await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+            expect((screen.getByTestId('llm-tool-approval-toggle-demo_tool') as HTMLInputElement).checked).toBe(true);
+        });
+
+        it('saves only the approval list when toggled on and off', async () => {
+            render(<LlmToolsPanel workspaceId="approval-save" />);
+            await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+            const toggle = screen.getByTestId('llm-tool-approval-toggle-demo_tool') as HTMLInputElement;
+            await act(async () => { fireEvent.click(toggle); });
+            expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenLastCalledWith('approval-save', { approvalRequiredLlmTools: ['demo_tool'] });
+            expect(toggle.checked).toBe(true);
+
+            await act(async () => { fireEvent.click(toggle); });
+            expect(mocks.preferences.updateLlmToolsConfig).toHaveBeenLastCalledWith('approval-save', { approvalRequiredLlmTools: [] });
+            expect(toggle.checked).toBe(false);
+        });
+
+        it('reverts and shows a toast when saving fails', async () => {
+            mocks.preferences.updateLlmToolsConfig.mockRejectedValueOnce(new Error('nope'));
+            render(<LlmToolsPanel workspaceId="approval-fail" />);
+            await waitFor(() => expect(screen.getByTestId('llm-tools-panel')).toBeTruthy());
+
+            const toggle = screen.getByTestId('llm-tool-approval-toggle-demo_tool') as HTMLInputElement;
+            await act(async () => { fireEvent.click(toggle); });
+            expect(toggle.checked).toBe(false);
+            expect(mocks.addToast).toHaveBeenCalledWith('nope', 'error');
+        });
     });
 });

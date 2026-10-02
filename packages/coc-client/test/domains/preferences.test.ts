@@ -89,4 +89,16 @@ describe('PreferencesClient', () => {
       },
     ]);
   });
+
+  it('sends only the provided LLM tool lists on update', async () => {
+    const adapter = createMockAdapter({});
+    const client = new PreferencesClient(adapter);
+    const approvalRequiredLlmTools = ['send_to_conversation'];
+
+    await client.updateLlmToolsConfig('repo-a', { approvalRequiredLlmTools });
+    approvalRequiredLlmTools.push('mutated');
+
+    expect(adapter.calls).toHaveLength(1);
+    expect(adapter.calls[0].options?.body).toEqual({ approvalRequiredLlmTools: ['send_to_conversation'] });
+  });
 });

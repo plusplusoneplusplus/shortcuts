@@ -44,6 +44,8 @@ export interface PerRepoPreferences {
   commitSkillUsageMap?: Record<string, string>;
   linkedRepoIds?: string[];
   disabledLlmTools?: string[];
+  /** LLM tools that pause for user approval on interactive turns. Default `[]`. */
+  approvalRequiredLlmTools?: string[];
   filesViewMode?: 'flat' | 'tree';
   /** Repo-wide default model used when no explicit model is provided. */
   defaultModel?: string;
@@ -138,17 +140,23 @@ export interface LlmToolMeta {
    * clients that only read name/label/description/enabledByDefault ignore this.
    */
   params?: LlmToolParam[];
+  /** Whether the tool can be marked "require approval" (false for ask_user / suggest_follow_ups). */
+  approvalGateable?: boolean;
 }
 
 export interface LlmToolsConfig {
   tools: LlmToolMeta[];
   disabledLlmTools: string[];
+  /** Tools that pause for user approval on interactive turns. */
+  approvalRequiredLlmTools?: string[];
   /** True when the active process store can provide get_conversation/search_conversations. */
   conversationRetrievalAvailable: boolean;
 }
 
+/** At least one list must be provided; omitted lists are left unchanged. */
 export interface LlmToolsConfigUpdate {
-  disabledLlmTools: string[];
+  disabledLlmTools?: string[];
+  approvalRequiredLlmTools?: string[];
 }
 
 export interface SkillUsageEntry {
