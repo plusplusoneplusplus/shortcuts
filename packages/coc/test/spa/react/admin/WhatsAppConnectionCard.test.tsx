@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import QRCode from 'qrcode';
 import { WhatsAppConnectionCard } from '../../../../src/server/spa/client/react/admin/WhatsAppConnectionCard';
 import { IMSettingsSection } from '../../../../src/server/spa/client/react/admin/IMSettingsSection';
@@ -29,6 +29,36 @@ function mockApi(status = initial, groups = [{ jid: 'one@g.us', name: 'First' }]
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('WhatsAppConnectionCard', () => {
+    it('groups settings into named sections and uses the scoped admin controls', async () => {
+        mockApi({ ...initial, enabled: true, status: 'connected' });
+        render(<WhatsAppConnectionCard />);
+        await screen.findByText('Connected');
+        const group = screen.getByRole('region', { name: 'Chat group' });
+        const device = screen.getByRole('region', { name: 'Device & pairing' });
+        expect(within(group).getByLabelText('Group').className).toBe('ar-select');
+        expect(within(group).getByLabelText('New group name').className).toBe('ar-input');
+        expect(within(device).getByLabelText('Device name').className).toBe('ar-input');
+        for (const button of within(screen.getByTestId('whatsapp-connection-card')).getAllByRole('button')) {
+            expect(button.className).toContain('ar-btn');
+        }
+    });
+
+    it('preserves unsaved edits on refresh and rejects blank device and group names', async () => {
+        const { fetch } = mockApi({ ...initial, enabled: true, status: 'connected' });
+        render(<WhatsAppConnectionCard />);
+        await screen.findByRole('option', { name: 'First' });
+        fireEvent.change(screen.getByLabelText('Device name'), { target: { value: 'My bridge' } });
+        fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'one@g.us' } });
+        fireEvent.click(screen.getByText('Refresh status'));
+        await waitFor(() => expect(fetch.mock.calls.filter(([url]) => url.endsWith('/status'))).toHaveLength(2));
+        expect(screen.getByLabelText('Device name')).toHaveProperty('value', 'My bridge');
+        expect(screen.getByLabelText('Group')).toHaveProperty('value', 'one@g.us');
+        fireEvent.change(screen.getByLabelText('Device name'), { target: { value: '   ' } });
+        fireEvent.change(screen.getByLabelText('New group name'), { target: { value: '   ' } });
+        expect(screen.getByRole('button', { name: 'Save & Re-pair' })).toHaveProperty('disabled', true);
+        expect(screen.getByRole('button', { name: 'Create group' })).toHaveProperty('disabled', true);
+    });
+
     it('loads disabled state and enables without a redundant reconnect', async () => {
         const { fetch } = mockApi();
         render(<WhatsAppConnectionCard />);
