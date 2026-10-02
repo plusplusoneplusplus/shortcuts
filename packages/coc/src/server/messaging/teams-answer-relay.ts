@@ -12,7 +12,7 @@ import { TeamsMessageNotSentError } from './teams-messaging-manager';
 import { escapeTeamsHtml, formatTeamsQuestion } from './teams-outbound-format';
 import type { QuestionTransport } from './ask-user-relay';
 import { onTaskTerminal } from './chat-target';
-import { RELAY_ANSWER_TEXT, findRequestAnswer, findRequestTurn, isTerminalStatus, type RelayTerminalStatus } from './relay-answer';
+import { RELAY_ANSWER_TEXT, findRequestFailureText, findRequestAnswer, findRequestTurn, isTerminalStatus, type RelayTerminalStatus } from './relay-answer';
 
 type BindingStatus = 'admitting' | 'awaiting' | 'retryable' | 'sending' | 'delivered' | 'ambiguous' | 'failed';
 
@@ -804,15 +804,17 @@ export class TeamsAnswerRelay {
             ? process.status : undefined;
         if (binding.requestId && !binding.terminalStatus && !persistedTerminal
             && !(answer && process?.status === 'completed')) return;
+        const failureText = findRequestFailureText(turns, userIndex,
+            process?.status === 'failed' ? process.error : undefined);
         let text: string;
         if (!binding.requestId && (task?.status ?? binding.terminalStatus ?? process?.status) === 'cancelled') {
             text = RELAY_ANSWER_TEXT.cancelled;
         } else if (!binding.requestId && (task?.status ?? binding.terminalStatus ?? process?.status) === 'failed') {
-            text = RELAY_ANSWER_TEXT.failed;
+            text = failureText;
         } else if (binding.requestId && (binding.terminalStatus ?? persistedTerminal) === 'cancelled') {
             text = RELAY_ANSWER_TEXT.cancelled;
         } else if (binding.requestId && (binding.terminalStatus ?? persistedTerminal) === 'failed') {
-            text = RELAY_ANSWER_TEXT.failed;
+            text = failureText;
         } else if (answer && typeof answer.content === 'string') {
             text = answer.content.trim() ? answer.content : RELAY_ANSWER_TEXT.empty;
         } else if (binding.requestId && userIndex < 0) {
@@ -820,7 +822,7 @@ export class TeamsAnswerRelay {
         } else if ((task?.status ?? process?.status) === 'cancelled' && (!binding.requestId || process?.status === 'cancelled')) {
             text = RELAY_ANSWER_TEXT.cancelled;
         } else if ((task?.status ?? process?.status) === 'failed' && (!binding.requestId || process?.status === 'failed')) {
-            text = RELAY_ANSWER_TEXT.failed;
+            text = failureText;
         } else {
             return;
         }

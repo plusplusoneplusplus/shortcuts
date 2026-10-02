@@ -156,8 +156,10 @@ references before editing. Paths are package-relative.
   Teams and WhatsApp topic list/select uses `src/server/messaging/chat-target.ts`
   for bounded (10), conversation-free process pages, not unbounded `getAllProcesses`.
   Shared workspace/topic lookup and terminal-task subscriptions belong there;
-  both relays resolve request-correlated answers and failed/cancelled/empty texts
-  through `src/server/messaging/relay-answer.ts`. Receipt files use
+  both relays resolve request-correlated answers and safe failure notices
+  through `src/server/messaging/relay-answer.ts`. Session/usage-limit notices
+  include recognized UTC/GMT reset times; other failures use fixed text. Never
+  relay raw exceptions or partial output, or borrow another request's error. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
 - Teams/WhatsApp command grammar is one spec table in
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`, generated

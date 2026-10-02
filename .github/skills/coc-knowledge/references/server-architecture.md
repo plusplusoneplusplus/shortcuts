@@ -190,7 +190,11 @@ Receipts preserve progress; uncertain sends require reconciliation rather than a
 bounded `listRecentTopics`, `resolveTopic`) and terminal queue subscriptions
 (`onTaskTerminal`) across Teams and WhatsApp. `messaging/relay-answer.ts` locates
 each request's user turn by `relayRequestId`, selects the last settled assistant
-turn before the next user turn, and supplies shared failed/cancelled/empty texts.
+turn before the next user turn, and formats safe failure notices. Session/usage-limit
+errors project only a fixed notice and a recognized UTC/GMT reset time from the last
+persisted assistant error; only the latest request can fall back to the failed
+process's error. Other failures, cancellations and empty answers use fixed text;
+partial output and raw exceptions stay out of relay messages.
 Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
 

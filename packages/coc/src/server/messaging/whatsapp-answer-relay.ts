@@ -6,7 +6,7 @@ import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import { WhatsAppNotConnectedError } from './whatsapp-messaging-manager';
 import { onTaskTerminal } from './chat-target';
 import type { QuestionTransport } from './ask-user-relay';
-import { RELAY_ANSWER_TEXT, findRequestAnswer, findRequestTurn, isTerminalStatus } from './relay-answer';
+import { RELAY_ANSWER_TEXT, findRequestFailureText, findRequestAnswer, findRequestTurn, isTerminalStatus } from './relay-answer';
 
 export interface WhatsAppRelayDeps {
     bindings: WhatsAppBindings;
@@ -67,7 +67,8 @@ export class WhatsAppAnswerRelay {
             : process?.metadata?.queueTaskId === binding.taskId && turns[0]?.role === 'user' ? 0 : -1;
         if (start < 0 && status === 'completed') return;
         const { answer } = findRequestAnswer(turns, start);
-        const text = status === 'failed' ? RELAY_ANSWER_TEXT.failed
+        const text = status === 'failed' ? findRequestFailureText(turns, start,
+            process?.status === 'failed' ? process.error : undefined)
             : status === 'cancelled' ? RELAY_ANSWER_TEXT.cancelled
                 : answer?.content?.trim() || RELAY_ANSWER_TEXT.empty;
         if (status === 'completed' && !answer) return;
