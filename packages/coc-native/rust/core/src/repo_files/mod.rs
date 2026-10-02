@@ -6,6 +6,7 @@
 //! branch on `Path traversal` and `not found` — so they must not be reworded.
 
 mod blob;
+mod candidates;
 mod indexes;
 mod listing;
 mod replace;
@@ -17,6 +18,9 @@ use std::path::{Path, PathBuf};
 use crate::notes_fs::resolve_lexically;
 
 pub use blob::{mime_type, read_blob, write_blob, Blob, MAX_BLOB_SIZE};
+pub use candidates::{
+    prepare_content_candidates, tracked_content_candidates, ContentCandidateCommand,
+};
 pub use indexes::RepoIndexes;
 pub use listing::{
     list_directory, list_files, locale_compare, FileListing, TreeEntry, TreeListing,
@@ -42,6 +46,8 @@ pub enum RepoFilesError {
     TooLarge(String),
     /// A bad query (empty, multi-line, or rejected by the regex engine).
     InvalidArg(String),
+    /// Git could not enumerate tracked content-search candidates.
+    TrackedUnavailable(String),
     /// The handle was disposed (workspace removed or re-rooted).
     Disposed,
     Io(io::Error),
@@ -59,6 +65,9 @@ impl fmt::Display for RepoFilesError {
                 write!(f, "File exceeds maximum size of {MAX_BLOB_SIZE} bytes: {path}")
             }
             Self::InvalidArg(message) => f.write_str(message),
+            Self::TrackedUnavailable(message) => {
+                write!(f, "Git-tracked search is unavailable: {message}")
+            }
             Self::Disposed => f.write_str("Repo files handle disposed"),
             Self::Io(error) => write!(f, "{error}"),
         }
