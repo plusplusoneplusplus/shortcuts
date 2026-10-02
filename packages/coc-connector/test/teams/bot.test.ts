@@ -15,7 +15,7 @@ vi.stubGlobal('fetch', (url: string, options?: RequestInit) => {
 });
 
 import { TeamsBot } from '../../src/teams/bot';
-import { McpHttpError } from '../../src/teams/mcp-client';
+import { McpHttpError } from '../../src/teams/mcp/mcp-client';
 import type { InboundTeamsMessage, TeamsTransport } from '../../src/teams/types';
 
 describe('TeamsBot', () => {
@@ -88,6 +88,11 @@ describe('TeamsBot', () => {
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage).toHaveBeenCalledOnce();
                 expect(onMessage.mock.calls[0][0].messageId).toBe('new');
+                expect(onMessage.mock.calls[0][0].reference).toMatchObject({
+                    backend: 'graph',
+                    destination: { kind: 'channel', teamId: 'team-123', channelId: 'channel-123' },
+                    messageId: 'new',
+                });
                 expect(String(mockFetch.mock.calls.at(-1)?.[0])).not.toContain('%24filter');
                 await bot.stop();
             });
@@ -462,9 +467,12 @@ describe('TeamsBot', () => {
                     });
                 }
                 const result = body.method === 'initialize' ? { protocolVersion: '2025-03-26' }
-                    : body.method === 'tools/list' ? { tools: [{ name: 'ListChannelMessageReplies' }] }
-                        : { content: [{ text: JSON.stringify(tool === 'ListChannelMessages'
-                            ? [{ id: 'root', body: { content: 'initial' } }] : []) }] };
+                    : body.method === 'tools/list' ? { tools: [
+                        { name: 'ListChannelMessageReplies' }, { name: 'SendMessageToChannel' },
+                    ] }
+                        : { content: [{ type: 'text', text: JSON.stringify(tool === 'ListChannelMessages'
+                            ? [{ id: 'root', body: { content: 'initial' } }]
+                            : tool === 'SendMessageToChannel' ? { id: 'outbound-message' } : []) }] };
                 return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result }));
             });
             const bot = createMcpBot({ pollChannelReplies: () => true });
@@ -571,6 +579,7 @@ describe('TeamsBot', () => {
         describe('send', () => {
             it('should call SendMessageToChannel tool', async () => {
                 mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
+                mockMcpResponse({ tools: [{ name: 'SendMessageToChannel' }] });
 
                 const bot = createMcpBot();
                 await bot.start();
@@ -599,6 +608,7 @@ describe('TeamsBot', () => {
 
             it('should call ReplyToChannelMessage for replies', async () => {
                 mockMcpResponse({ protocolVersion: '2025-03-26', capabilities: {} });
+                mockMcpResponse({ tools: [{ name: 'ReplyToChannelMessage' }] });
 
                 const bot = createMcpBot();
                 await bot.start();
@@ -621,6 +631,48 @@ describe('TeamsBot', () => {
 
                 await bot.stop();
             });
+
+            it.each([
+                [{ kind: 'chat', chatId: 'explicit-chat' } as const, 'SendMessageToChat'],
+                [{ kind: 'self' } as const, 'SendMessageToSelf'],
+            ])('sends to explicit $0.kind without reinterpreting the destination', async (destination, tool) => {
+                mockMcpResponse({ protocolVersion: '2025-03-26' });
+                mockMcpResponse({ tools: [{ name: tool }] });
+                const bot = createMcpBot();
+                await bot.start();
+                mockMcpResponse({ content: [{ type: 'text', text: '{"messageId":"sent-id"}' }] });
+
+                const receipt = await bot.sendMessage(destination, { content: '<literal>', contentType: 'text' });
+
+                expect(receipt).toEqual({
+                    outcome: 'accepted',
+                    message: {
+                        destination, messageId: 'sent-id', backend: 'mcp',
+                        connectionId: (bot as unknown as { transport: TeamsTransport }).transport.connectionId,
+                    },
+                });
+                expect(JSON.parse(mockFetch.mock.calls.at(-1)![1].body).params).toEqual({
+                    name: tool, arguments: {
+                        content: '<literal>', contentType: 'text',
+                        ...(destination.kind === 'chat' ? { chatId: 'explicit-chat' } : {}),
+                    },
+                });
+                expect(mockFetch).toHaveBeenCalledTimes(3);
+                await bot.stop();
+            });
+
+            it('rejects an explicit chat send when only the self-send tool is advertised', async () => {
+                mockMcpResponse({ protocolVersion: '2025-03-26' });
+                mockMcpResponse({ tools: [{ name: 'SendMessageToSelf' }] });
+                const bot = createMcpBot();
+                await bot.start();
+                await expect(bot.sendMessage({ kind: 'chat', chatId: 'explicit-chat' },
+                    { content: 'hello', contentType: 'text' })).rejects.toMatchObject({
+                    code: 'unsupported', outcome: 'not-attempted',
+                });
+                expect(mockFetch).toHaveBeenCalledTimes(2);
+                await bot.stop();
+            });
         });
 
         describe('polling', () => {
@@ -640,6 +692,11 @@ describe('TeamsBot', () => {
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage.mock.calls.map(([msg]) => msg.messageId))
                     .toEqual(['new-root', 'new-reply']);
+                expect(onMessage.mock.calls[1][0].reference).toMatchObject({
+                    backend: 'mcp',
+                    destination: { kind: 'channel', teamId: 'team-123', channelId: 'channel-123' },
+                    messageId: 'new-reply', rootMessageId: 'new-root',
+                });
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage).toHaveBeenCalledTimes(2);
                 await bot.stop();
@@ -756,7 +813,7 @@ describe('TeamsBot', () => {
                     const result = body.method === 'initialize'
                         ? { protocolVersion: '2025-03-26' }
                         : body.method === 'tools/list'
-                            ? { tools: [{ name: 'ListChannelMessageReplies' }] }
+                            ? { tools: [{ name: 'ListChannelMessageReplies' }, { name: 'ReplyToChannelMessage' }] }
                             : tool === 'ListChannelMessages'
                                 ? { content: [{ text: JSON.stringify([{ id: 'root', body: { content: 'initial' } }]) }] }
                                 : tool === 'ListChannelMessageReplies'
@@ -768,7 +825,7 @@ describe('TeamsBot', () => {
                                         ...(poll > 2 ? [{ id: 'bot-reply', body: { content: 'answer' } }] : []),
                                     ]) }] }
                                     : tool === 'ReplyToChannelMessage'
-                                        ? { content: [{ text: '{"id":"bot-reply"}' }] }
+                                        ? { content: [{ type: 'text', text: '{"id":"bot-reply"}' }] }
                                     : {};
                     return {
                         ok: true, headers: new Map(),
@@ -783,6 +840,13 @@ describe('TeamsBot', () => {
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage.mock.calls.map(([msg]) => [msg.messageId, msg.replyToMessageId]))
                     .toEqual([['first', 'root'], ['second', 'root']]);
+                expect(onMessage.mock.calls.map(([msg]) => msg.reference)).toEqual(
+                    ['first', 'second'].map(messageId => ({
+                        destination: { kind: 'channel', teamId: 'team-123', channelId: '19:channel@thread.tacv2' },
+                        messageId, rootMessageId: 'root', backend: 'mcp',
+                        connectionId: (bot as unknown as { transport: TeamsTransport }).transport.connectionId,
+                    })),
+                );
                 await bot.send('19:channel@thread.tacv2', 'answer', { replyToId: 'root' });
                 await vi.advanceTimersByTimeAsync(1000);
                 expect(onMessage).toHaveBeenCalledTimes(2);

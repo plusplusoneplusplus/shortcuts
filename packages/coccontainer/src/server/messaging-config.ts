@@ -8,9 +8,11 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import * as jsYaml from 'js-yaml';
+import { isIc3DirectMessageRegion, type Ic3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
 
 /** Teams config fields that can be persisted to `config.yaml`. */
 export interface TeamsConfigPatch {
+    ic3Region?: Ic3DirectMessageRegion | null;
     enabled?: boolean;
     botName?: string;
     channelId?: string;
@@ -54,7 +56,11 @@ export class MessagingConfigService {
 
     /** Persist the provided Teams config fields (only defined fields are written). */
     saveTeamsConfig(patch: TeamsConfigPatch): void {
+        if (patch.ic3Region !== undefined && patch.ic3Region !== null && !isIc3DirectMessageRegion(patch.ic3Region)) {
+            throw new RangeError('IC3 region must be amer, emea, apac, or null (unconfigured)');
+        }
         this.writeTeams((teams) => {
+            if (patch.ic3Region !== undefined) teams.ic3Region = patch.ic3Region;
             if (patch.enabled !== undefined) teams.enabled = patch.enabled;
             if (patch.botName !== undefined) teams.botName = patch.botName;
             if (patch.channelId !== undefined) teams.channelId = patch.channelId;

@@ -28,6 +28,7 @@ export interface GraphMessage {
     body: { content: string; contentType?: string };
     from?: { user?: { displayName?: string; id?: string }; application?: { id?: string } };
     createdDateTime: string;
+    lastModifiedDateTime?: string;
     replyToId?: string;
 }
 
@@ -46,6 +47,38 @@ export interface GraphChannel {
 interface GraphListResponse {
     value: GraphMessage[];
     '@odata.nextLink'?: string;
+}
+
+export interface GraphWriteOptions {
+    contentType?: 'text' | 'html';
+    signal?: AbortSignal;
+}
+
+export interface GraphChannelWriteOptions extends GraphWriteOptions {
+    teamId: string;
+    channelId: string;
+}
+
+/** A received HTTP response, distinct from an ambiguous transport failure. */
+export class GraphHttpError extends Error {
+    readonly retryAfterMs?: number;
+
+    constructor(readonly status: number, retryAfter?: string | null, message = `Graph API POST ${status}`) {
+        super(message);
+        this.name = 'GraphHttpError';
+        if (retryAfter?.trim()) {
+            const seconds = Number(retryAfter);
+            const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now();
+            if (Number.isFinite(delay)) this.retryAfterMs = Math.max(0, delay);
+        }
+    }
+}
+
+export class GraphProtocolError extends Error {
+    constructor() {
+        super('Graph returned an invalid message response');
+        this.name = 'GraphProtocolError';
+    }
 }
 
 export class GraphClient {
@@ -307,11 +340,13 @@ export class GraphClient {
     // ── Messaging ─────────────────────────────────────────────
 
     /** Post a message to the configured channel. Returns the message ID. */
-    async postChannelMessage(content: string, mentions?: Array<{ aadId: string; displayName: string }>): Promise<string> {
-        if (!this.channelId) throw new Error('No channelId configured');
-        if (!this.teamId) throw new Error('No teamId configured');
-        const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages`;
-        const body: Record<string, unknown> = { body: { content, contentType: 'html' } };
+    async postChannelMessage(content: string, mentions?: Array<{ aadId: string; displayName: string }>, options?: GraphChannelWriteOptions): Promise<string> {
+        const channelId = options ? options.channelId : this.channelId;
+        const teamId = options ? options.teamId : this.teamId;
+        if (!channelId) throw new Error('No channelId configured');
+        if (!teamId) throw new Error('No teamId configured');
+        const url = `${this.graphBase}/teams/${encodeURIComponent(teamId)}/channels/${encodeURIComponent(channelId)}/messages`;
+        const body: Record<string, unknown> = { body: { content, contentType: options?.contentType ?? 'html' } };
         if (mentions && mentions.length > 0) {
             body['mentions'] = mentions.map((m, idx) => ({
                 id: idx,
@@ -319,16 +354,18 @@ export class GraphClient {
                 mentioned: { user: { id: m.aadId, displayName: m.displayName } },
             }));
         }
-        const res = await this.post(url, body);
+        const res = await this.post(url, body, options?.signal);
         return res.id;
     }
 
     /** Reply to a thread in the configured channel. Returns the reply message ID. */
-    async replyToChannelMessage(parentMessageId: string, content: string, mentions?: Array<{ aadId: string; displayName: string }>): Promise<string> {
-        if (!this.channelId) throw new Error('No channelId configured');
-        if (!this.teamId) throw new Error('No teamId configured');
-        const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages/${parentMessageId}/replies`;
-        const body: Record<string, unknown> = { body: { content, contentType: 'html' } };
+    async replyToChannelMessage(parentMessageId: string, content: string, mentions?: Array<{ aadId: string; displayName: string }>, options?: GraphChannelWriteOptions): Promise<string> {
+        const channelId = options ? options.channelId : this.channelId;
+        const teamId = options ? options.teamId : this.teamId;
+        if (!channelId) throw new Error('No channelId configured');
+        if (!teamId) throw new Error('No teamId configured');
+        const url = `${this.graphBase}/teams/${encodeURIComponent(teamId)}/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(parentMessageId)}/replies`;
+        const body: Record<string, unknown> = { body: { content, contentType: options?.contentType ?? 'html' } };
         if (mentions && mentions.length > 0) {
             body['mentions'] = mentions.map((m, idx) => ({
                 id: idx,
@@ -336,20 +373,23 @@ export class GraphClient {
                 mentioned: { user: { id: m.aadId, displayName: m.displayName } },
             }));
         }
-        const res = await this.post(url, body);
+        const res = await this.post(url, body, options?.signal);
         return res.id;
     }
 
     /** Set Teams' native thumbs-up reaction on a channel root or reply. */
-    async reactToChannelMessage(messageId: string, replyToMessageId?: string): Promise<void> {
-        if (!this.channelId || !this.teamId) throw new Error('Teams channel Like reaction unavailable: no channel');
+    async reactToChannelMessage(messageId: string, replyToMessageId?: string, options?: GraphChannelWriteOptions): Promise<void> {
+        const channelId = options ? options.channelId : this.channelId;
+        const teamId = options ? options.teamId : this.teamId;
+        if (!channelId || !teamId) throw new Error('Teams channel Like reaction unavailable: no channel');
         const rootId = replyToMessageId ?? messageId;
-        const url = `${this.graphBase}/teams/${encodeURIComponent(this.teamId)}/channels/${encodeURIComponent(this.channelId)}`
+        const url = `${this.graphBase}/teams/${encodeURIComponent(teamId)}/channels/${encodeURIComponent(channelId)}`
             + `/messages/${encodeURIComponent(rootId)}`
             + (replyToMessageId ? `/replies/${encodeURIComponent(messageId)}` : '')
             + '/setReaction';
-        const signal = AbortSignal.timeout(5_000);
+        const signal = options?.signal ?? AbortSignal.timeout(5_000);
         try {
+            signal.throwIfAborted();
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -360,7 +400,9 @@ export class GraphClient {
                 signal,
             });
             if (response.status !== 204) {
-                throw new Error(`Teams channel Like reaction rejected (HTTP ${response.status})`);
+                await response.body?.cancel();
+                throw new GraphHttpError(response.status, response.headers?.get('Retry-After'),
+                    `Teams channel Like reaction rejected (HTTP ${response.status})`);
             }
         } catch (error) {
             if (signal.aborted) throw new Error('Teams channel Like reaction timed out', { cause: error });
@@ -369,11 +411,11 @@ export class GraphClient {
     }
 
     /** Post a message to a 1:1 or group chat. Returns the message ID. */
-    async postChatMessage(content: string, chatId?: string): Promise<string> {
+    async postChatMessage(content: string, chatId?: string, options?: GraphWriteOptions): Promise<string> {
         const target = chatId ?? this.chatId;
         if (!target) throw new Error('No chatId configured');
-        const url = `${this.graphBase}/chats/${target}/messages`;
-        const res = await this.post(url, { body: { content, contentType: 'html' } });
+        const url = `${this.graphBase}/chats/${encodeURIComponent(target)}/messages`;
+        const res = await this.post(url, { body: { content, contentType: options?.contentType ?? 'html' } }, options?.signal);
         return res.id;
     }
 
@@ -381,15 +423,29 @@ export class GraphClient {
      * List recent channel messages (for polling).
      * @param top Number of messages to fetch (default: 20).
      */
-    async listChannelMessages(opts?: { top?: number }): Promise<GraphMessage[]> {
+    async listChannelMessages(opts?: { top?: number; pageSince?: string; signal?: AbortSignal }): Promise<GraphMessage[]> {
         if (!this.channelId) throw new Error('No channelId configured');
         if (!this.teamId) throw new Error('No teamId configured');
         const params = new URLSearchParams();
         if (opts?.top) params.set('$top', String(opts.top));
         const qs = params.toString() ? `?${params.toString()}` : '';
         const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages${qs}`;
-        const data = await this.get<GraphListResponse>(url);
-        return data.value ?? [];
+        let next: string | undefined = url;
+        const messages: GraphMessage[] = [];
+        const visited = new Set<string>();
+        while (next) {
+            const parsed = new URL(next);
+            if (parsed.origin !== new URL(this.graphBase).origin || parsed.username || parsed.password
+                || visited.has(next) || visited.size >= 100) throw new GraphProtocolError();
+            visited.add(next);
+            const data: GraphListResponse = await this.get<GraphListResponse>(next, opts?.signal);
+            if (!Array.isArray(data.value)) throw new GraphProtocolError();
+            messages.push(...data.value);
+            if (opts?.pageSince === undefined || (data.value.length > 0 && data.value.every(message =>
+                Date.parse(message.lastModifiedDateTime ?? message.createdDateTime) <= Date.parse(opts.pageSince!)))) break;
+            next = data['@odata.nextLink'];
+        }
+        return messages;
     }
 
     /**
@@ -423,7 +479,8 @@ export class GraphClient {
         await this.get(url);
     }
 
-    private async post(url: string, body: unknown): Promise<GraphMessage> {
+    private async post(url: string, body: unknown, signal?: AbortSignal): Promise<GraphMessage> {
+        signal?.throwIfAborted();
         const res = await fetch(url, {
             method: 'POST',
             headers: {
@@ -431,22 +488,31 @@ export class GraphClient {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
+            signal,
         });
         if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            throw new Error(`Graph API POST ${res.status}: ${text}`);
+            await res.body?.cancel();
+            throw new GraphHttpError(res.status, res.headers?.get('Retry-After'));
         }
-        return await res.json() as GraphMessage;
+        try {
+            const result = await res.json() as GraphMessage;
+            if (!result || typeof result.id !== 'string' || !result.id.trim()) throw new GraphProtocolError();
+            return result;
+        } catch (error) {
+            if (error instanceof SyntaxError) throw new GraphProtocolError();
+            throw error;
+        }
     }
 
-    private async get<T>(url: string): Promise<T> {
+    private async get<T>(url: string, signal?: AbortSignal): Promise<T> {
         const res = await fetch(url, {
             method: 'GET',
+            ...(signal ? { signal } : {}),
             headers: { 'Authorization': `Bearer ${this.bearerToken}` },
         });
         if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            throw new Error(`Graph API GET ${res.status}: ${text}`);
+            await res.body?.cancel();
+            throw new GraphHttpError(res.status, res.headers?.get('Retry-After'), `Graph API GET ${res.status}`);
         }
         return await res.json() as T;
     }

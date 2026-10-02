@@ -1,110 +1,181 @@
 # Monorepo Layout, Build, and Release
 
-An npm workspaces monorepo of published Node packages. This file owns the cross-package contract, build/test commands, package management, and repo-wide conventions. For the internals of `packages/coc/` itself see [server-architecture.md](server-architecture.md).
+This npm workspaces repository separates reusable Node packages from the CoC
+server/dashboard and desktop hosts. Paths below are repository-relative.
+See [server architecture](server-architecture.md) for CoC internals.
 
-## Products & Shared Packages
+## Package Boundaries
 
-| Product | Location | Description |
-|---------|----------|-------------|
-| **CoC CLI** | `packages/coc/` | CLI + dashboard server for YAML-based AI workflows |
-| **CoC Container** | `packages/coccontainer/` | Container-oriented CoC server with messaging integrations, native SQLite agent/message stores, and service entry points |
-| **CoC Client** | `packages/coc-client/` | Framework-free TypeScript client for CoC REST and realtime APIs (Node/browser) |
-| **Deep Wiki** | `packages/deep-wiki/` | CLI that generates wikis for codebases (`deep-wiki seeds\|discover\|generate\|theme\|init`) |
+### Products and libraries
 
-| Shared Package | Location | Description |
-|----------------|----------|-------------|
-| **coc-workflow** | `packages/coc-workflow/` | Pure DAG workflow compiler/executor, portable Ralph orchestration contracts, workflow types, validation, scheduling, node executors, result adapter, pipeline YAML compatibility types |
-| **forge** | `packages/forge/` | Core AI utilities: re-exports the AI SDK from `coc-agent-sdk`, task queue, runtime policies, process store, git CLI, remote server connectors (`connectors` sub-path: SSH, DevTunnel), utilities, workflow compatibility exports |
-| **coc-agent-sdk** | `packages/coc-agent-sdk/` | Provider-agnostic agent SDK: `CopilotSDKService`, `CodexSDKService`, `SDKServiceRegistry`, session lifecycle, streaming state machine, MCP config, model registry |
-| **coc-memory** | `packages/coc-memory/` | Memory V2 core: SQLite fact/episode stores, hybrid search, embedding provider abstraction, capture service, safety scanning |
-| **coc-native** | `packages/coc-native/` | Rust/N-API native capabilities (see below) |
-| **coc-connector** | `packages/coc-connector/` | Messaging connectors behind one `MessagingConnector` contract (see below) |
+| Workspace under `packages/` | Responsibility / navigation |
+|-----------------------------|-----------------------------|
+| `coc/` | CLI, HTTP server, dashboard and runtime composition; [server](server-architecture.md), [SPA](spa/shell.md) |
+| `coccontainer/` | Messaging-integrated server and native agent/message stores |
+| `coc-desktop/` | Private Electron host embedding CoC/CoCContainer servers |
+| `deep-wiki/` | Independent wiki-generation CLI; CoC can invoke it as a child process; [pipeline](deep-wiki.md) |
+| `coc-client/` | Node/browser REST and realtime client; [clone routing](spa/clone-routing.md) |
+| `coc-workflow/` | DAG compiler/executor, scheduling and portable Ralph contracts; [workflow engine](workflow-engine.md) |
+| `forge/` | Queue/process stores, Git, policies, connectors and utilities; SDK/workflow re-exports |
+| `coc-agent-sdk/` | Providers, sessions, streaming, MCP and models; [SDK](sdk-wrapper.md) |
+| `coc-memory/` | Memory stores, search, embeddings, capture and safety; [memory](memory-system.md) |
+| `coc-native/` | Rust/N-API SQLite, Git, repository/Notes indexes and symbol language server; [native contracts](../../../../packages/coc-native/AGENTS.md) |
+| `coc-connector/` | Dependency-independent messaging contract; `/teams` and lazy `/whatsapp` exports; [connector contracts](../../../../packages/coc-connector/AGENTS.md) |
 
-**Architectural boundary:** shared behavior belongs in Node packages with explicit package contracts. UI-facing dashboard behavior lives under `packages/coc/`; reusable REST clients in `packages/coc-client/`; workflow, memory, SDK, and utility logic in their dedicated packages.
+Reusable behavior belongs behind package contracts. Workspace dependencies
+resolve through npm symlinks during development; published manifests use
+caret ranges or `*`. Deep Wiki's publishing build bundles its CLI source and
+selected dependencies while externalizing packages such as forge and coc-native;
+see `packages/deep-wiki/esbuild.config.mjs`.
 
-### coc-native
+## Development
 
-One module per capability lives on the Rust core, N-API, and TypeScript sides. The file index behind quick-open search combines an `ignore`-crate parallel gitignore-aware walk with a fuzzy path scorer ported from `packages/coc/src/server/shared/fuzzy-file-score.ts`. `FileIndex.search()` returns the public path, score, and highlight positions; `searchRanked()` adds the native basename tier, scored-target length, full-path length, and snapshot index for deterministic server-side merges across repositories.
+### Commands
 
-The Notes index exposes asynchronous initial build, bounded search, full rebuild, and batches of at most 1,024 root-relative incremental upserts/removals over immutable Markdown-content snapshots. Refresh writers serialize per index, build from the last complete snapshot, and atomically swap only on success, so searches during refresh see a complete old or new state. Each root retains its Unicode lowercase cache and symlink policy.
+Run from the repository root unless noted:
 
-`loadNativeAddon()` covers the binary; `loadNativeFileIndex()` and `loadNativeNotesIndex()` validate their own capability exports. Missing, unloadable, or capability-stale binaries raise `NativeAddonLoadError` with the expected triple, paths tried, and rebuild guidance. The addon is mandatory — there is no environment switch that disables it and no JavaScript fallback behind `RepoTreeService`. `COC_NATIVE_PATH` overrides resolution. Status accessors never throw and return `{ loaded, binaryPath?, reason? }`.
+| Command | Scope |
+|---------|-------|
+| `npm run build` | All workspace builds; `build:packages` and `compile` select the same chain |
+| `npm run test` | Root `test:packages` chain; `test:all` aliases it |
+| `npm run test:run -w packages/coc -- test/server/<test>.test.ts` | Targeted non-watch CoC tests; other workspaces also expose `test:run` |
+| `npm run lint` | Selected workspaces listed in root `package.json` |
+| `npm run ensure:native` | Ensure native addon and symbol-server binaries |
+| `npm run coc:link` | Build/link the local CoC CLI dependency chain |
+| `npm run deep-wiki:link` | Link Deep Wiki; build shared dependencies first |
+| `npm run dev:desktop` | Build/start Electron; build container dependencies first |
 
-TS glue (`npm run build`) needs no Rust; only `build:native` does, driving `@napi-rs/cli` to compile the addon and regenerate `src/native-bindings.ts` — the `#[napi]` type surface, committed so `tsc` never needs cargo, aliased by capability modules, and CI-gated by a regenerate-and-diff step. Binaries resolve from a locally built `coc-native.<triple>.node`, then `prebuilt/<triple>/`, and are ABI-stable across Node and Electron.
+Package `test` scripts run Vitest watch mode; `test:run` is non-watch.
+The root test chain excludes `coc-connector` and `coccontainer`; test them explicitly
+with `npm run test:run -w packages/<name>`. Native integration tests require binaries.
+Root lint/coverage covers selected packages; `package.json` is authoritative.
 
-`ensure:native` keeps a machine's binary current by rebuilding only when the `.node` is missing or older than a file under `rust/`. The serve loops run it before `coc:link`, and the Windows service installer runs it during the initial build before registering a task that skips its first loop build. When cargo is absent, it downloads the official target-specific `rustup-init`, installs the minimal toolchain without changing shell profiles, and continues; `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning. A failed install or build keeps the daemon on an existing binary and fails when there is no binary to use.
+### Dependency order
 
-### coc-connector
+Root `build:packages` runs:
 
-No CoC/forge deps. Core interface at the root (`@plusplusoneplusplus/coc-connector`), Teams at `/teams` (Graph API + MCP, used by `coc` and `coccontainer`), WhatsApp at `/whatsapp` (Baileys, lazy-loaded, used by `coccontainer` when `messaging.whatsapp.enabled` is true). Baileys and qrcode-terminal are `optionalDependencies`. Subpath exports avoid the `BotStatus` name collision; physical `teams/` + `whatsapp/` proxy `package.json` dirs let `moduleResolution: node10` consumers resolve the subpaths.
+```text
+coc-native -> coc-agent-sdk -> coc-workflow -> forge -> coc-client
+-> coc-memory -> coc-connector -> coc -> coccontainer -> deep-wiki -> coc-desktop
+```
 
-WhatsApp inbound messages carry `chatJid`, optional `participantJid`, and `fromMe`; `senderJid` retains the chat JID for container compatibility. `WhatsAppBot.react()` rejects on transport failure or after five seconds.
-The `/whatsapp` message helpers provide outbound formatting, lossless chunking, and inbound command/prefix parsing without CoC or forge imports; the container bridge consumes them directly.
+Forge's prebuild builds native, SDK, workflow and memory before forge itself.
+CoC's prebuild builds those plus forge, client and connector, then emits build
+metadata; CoC's build cleans `dist` and compiles/copies the SPA.
+See `packages/forge/scripts/prebuild.mjs` and `packages/coc/scripts/prebuild.mjs`.
+SDK imports native Git output, so native TypeScript emission must precede SDK.
+Desktop packaging needs both server packages built.
 
-Teams MCP channel posts, thread replies, and self-DMs escape backslashes in tool content so Windows workspace paths survive the MCP server's content parser. Tool-level errors reject the send without changing connection health; CoC's Teams manager records rejected sends separately from poll failures when bridge observability is enabled. With thread polling opted in and `ListChannelMessageReplies` advertised, channel polls retrieve visible roots' replies and handle unseen IDs with bounded deduplication; default channel and DM polls keep last-message routing. The bot polls every 12 seconds while active and every 30 seconds after a minute without new inbound messages; HTTP 429 delays the entire next poll via `Retry-After` or capped jittered exponential backoff, cleared after success. The MCP client reinitializes an expired HTTP session once on 404 and replays the request; other 404s remain visible errors.
+### Local runtime
 
-## Package Management & Publishing
+After linking, use `coc serve --no-open` or `deep-wiki generate <repo>`.
+CoC and CoCContainer rebuild loops live in
+`scripts/coc-serve-loop.sh` / `.ps1` and `scripts/coccontainer-serve-loop.sh` / `.ps1`;
+they install dependencies and ensure native binaries before serving.
+See [Windows service](coc-service.md) for managed startup.
 
-Published workspaces (`coc`, `coc-workflow`, `forge`, `coc-agent-sdk`, `coc-memory`, `coc-client`, `deep-wiki`, `coccontainer`, `coc-connector`) go to npm under the `@plusplusoneplusplus` scope with public access, coordinated by **`@changesets/cli`**. `.changeset/config.json`: independent versioning, public access, `main` base branch, `updateInternalDependencies: "patch"`.
+Use Node.js 24 for development/CI. Published workspaces declare `engines.node`
+`>=24`; the private desktop manifest declares `>=20`, while its embedded server
+packages require 24. Electron is pinned exactly in the desktop manifest.
 
-`coc` and `deep-wiki` depend on published workspace packages via caret ranges; npm workspaces symlink them in local development. Nothing is bundled or copied into consumers — everything resolves from `node_modules` at runtime.
+## Native and Distribution
 
-The root and consuming workspaces pin `@github/copilot-sdk` to `1.0.9`; the root override pins its transitive `@github/copilot` CLI and platform packages to `1.0.78`. Copilot child processes disable CLI auto-update so cached versions cannot replace the installed runtime.
+### Native build boundary
 
-**Build order:** `coc-native` -> `coc-agent-sdk` -> `coc-workflow` -> `forge`/`coc`. `coc-native` leads because `coc-agent-sdk` imports its git capability and has no `prebuild` hook of its own, so nothing else would build it first. `coc` also consumes compiled `coc-memory`, `coc-client`, `coc-connector`, and `coc-native` output. Root `build:packages` and `coc:link` build `coc-native` before `coc-agent-sdk`; `build:packages` then builds `coccontainer` before `coc-desktop` so both desktop server entry points exist for packaging. `scripts/prebuild.mjs` enforces the same dependency order for direct `packages/forge` and `packages/coc` builds; the `coc` build also cleans `dist` before `tsc`.
+`coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
+the committed bindings, N-API addon and symbol-server executable.
+`ensure:native` refreshes missing/stale binaries and can provision Rust;
+`COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning.
+Production server persistence/index capabilities require the addon and fail
+without it, rather than falling back to JavaScript.
 
-**Versioning:** `npm run changeset` (add), `npm run version-packages` (apply, bump versions/changelogs), `npm run publish-packages` (build all, then `changeset publish`). npm publishing is manual.
+The loader accepts `COC_NATIVE_PATH`, local binaries and target-specific prebuilts.
+N-API binaries work in Node and Electron. Desktop packaging unpacks native
+artifacts and agent runtimes from `app.asar`; bundled Codex/Claude directories
+augment the server child's `PATH`. Capability details belong in the
+[native instructions](../../../../packages/coc-native/AGENTS.md) and
+[language-server reference](language-servers.md).
 
-**Minimum Node.js:** every package requires Node.js >= 24 (`engines.node`); CI runs `24.x`.
+### Desktop hosts
 
-## CI Release
+`packages/coc-desktop/src/server-controller.ts` attaches to a healthy server or
+forks one on the preferred port, using an ephemeral port when occupied.
+CoC defaults to 4000; CoCContainer defaults to 5000 and shares `~/.coccontainer`
+with its CLI. Enabled Windows DevTunnel hosting prefers a configured tunnel's
+single HTTP binding. The hosts use separate tunnel identities.
+`packages/coc-desktop/electron-builder.container.cjs` selects the container variant.
 
-`.github/workflows/release.yml` fires on `v*.*.*` tags (stable, draft release) and `v*.*.*-*` pre-release tags (non-draft, marked pre-release); `workflow_dispatch` reruns it for an existing tag. It builds the CoC macOS DMG plus Windows NSIS installers for CoC and CoCContainer and attaches them to a GitHub Release.
+### Container image
 
-`packages/coc-desktop` pins Electron to an exact version because release packaging installs production dependencies at the workspace root before electron-builder resolves and downloads the target runtime. A semver range cannot be resolved in that environment.
+The root `Dockerfile` ships the CoC server, distinct from the `coccontainer`
+workspace. It runs as uid 1000 with `HOME=/data`, data at `/data/.coc`, and `tini`
+as PID 1. The server binds `127.0.0.1:4000`: no `EXPOSE` or published CoC port.
+Use host networking or an authenticated same-network-namespace sidecar
+(`deploy/tenant/`). `docker/entrypoint.sh` owns optional first-boot seeding.
 
-A parallel `build-docker` job (not a dependency of `create-release`) builds the root `Dockerfile` for `linux/amd64,linux/arm64` and pushes `ghcr.io/plusplusoneplusplus/coc` — `X.Y.Z`, `X.Y`, `latest` for stable tags, only `X.Y.Z-pre` for pre-releases (`packages: write`). Release CI builds native addons on Linux x64/ARM64, macOS x64/ARM64, and Windows x64/ARM64; installer jobs download only their matching architecture, while Docker stages both Linux binaries and never compiles Rust inside the image (arm64 is qemu-emulated). The pushed-image smoke requires both `nativeFileIndex.loaded` and `nativeNotesIndex.loaded`.
+Build/dependency stages separate host-platform JavaScript compilation from
+target-platform production dependencies. Release CI stages Linux native prebuilts;
+the image does not compile Rust. New workspaces need manifest `COPY` entries
+in both install stages. `BUILD_COMMIT` feeds `COC_BUILD_COMMIT` when `.git` is absent.
+Docker contracts live in `packages/coc/test/docker/`.
 
-`.github/workflows/symbol-index-benchmark.yml` is manually dispatched with an LLVM ref. It builds and tests the native addon on all six release targets, runs real clangd integration tests on macOS and Windows, and resolves the LLVM ref once for matching Linux and Windows x64 benchmarks. The benchmark jobs run the production storage workload and fixed 1/2/4-thread extraction workload, append reports to the run summary, and retain JSON plus the resolved LLVM commit as artifacts. Linux additionally records a cold-cache extraction pass.
+## Versioning and Release
 
-The image runs `coc serve --host 127.0.0.1 --port 4000 --data-dir /data/.coc` as uid 1000 (`HOME=/data`, `tini` PID 1, `docker/entrypoint.sh` does optional `COC_INIT_*` first-boot seeding). Loopback bind is policy: no `EXPOSE`; single-box use is `--network host`, managed use is an auth sidecar in the same network namespace (`deploy/tenant/`). Stages: `build` (native `$BUILDPLATFORM`, `.git` excluded so the `COC_BUILD_COMMIT` build-arg feeds `prebuild.mjs`), `deps` (target arch, `npm ci --omit=dev`), slim runtime with git/gh/curl. A new root workspace needs a matching `COPY packages/<x>/package.json` line in **both** install stages.
+### npm and runtime contracts
 
-`ci.yml`'s `build-shared` job runs the build prelude the fifteen `coc-test` shards used to each repeat, uploading `packages/{coc-native,coc-agent-sdk,coc-workflow,coc-memory,forge}/dist` plus `packages/coc/src/server/spa/client/dist` as one `shared-build.tar.gz` (tarred because `upload-artifact` is per-file bound). The output is plain `tsc` and esbuild with no absolute paths or platform-conditional emit, so a single ubuntu build feeds the macOS and Windows shards too; the job declares no `needs` so it runs beside `coc-native` rather than delaying `coc-test`. `coc-client` and `coc-connector` are excluded because `packages/coc/vitest.config.ts` aliases them to `src/`. `e2e` does not use the artifact — it boots the real server and gets everything from `npm run build` in `packages/coc`, whose `prebuild` already walks `REQUIRED_BUILD_WORKSPACES`. Contract test: `scripts/shared-build-workflow.test.mjs`, which re-derives the payload from the vitest aliases rather than trusting the list.
+All workspaces except private `coc-desktop` have public npm configuration under
+`@plusplusoneplusplus`. Changesets uses independent versions, `main` as base, and
+patch updates to internal dependencies (`.changeset/config.json`).
+`npm run changeset` adds a changeset; `npm run version-packages` applies it.
+`npm run publish-packages` builds its selected packages and Deep Wiki bundle,
+then invokes `changeset publish`; it is not the complete root build chain.
+npm publication is manual, separate from installer/image release CI.
 
-`ci.yml` has a required `docker-build-smoke` job (amd64 build, health check, loopback-only `/proc/net/tcp` assertion, clean `docker stop`, sidecar-netns reachability, `coc --version`). Contract tests: `packages/coc/test/docker/*.test.ts` and `scripts/docker-workflow.test.mjs`.
+Root and consuming manifests pin Copilot SDK `1.0.9`; the root override pins
+Copilot CLI `1.0.78`, with matching platform packages in `package-lock.json`.
+SDK child processes set `COPILOT_AUTO_UPDATE=false`.
+CoC build metadata uses the root package version and Git commit, with
+`COC_BUILD_COMMIT` overriding commit discovery; the CoC package version is distinct.
 
-## Build & Test
+### GitHub release workflow
 
-- **Build packages:** `npm run build:packages`; **build all:** `npm run build`; **compile:** `npm run compile` (alias for package build)
-- **Test all:** `npm run test`; **per package:** `npm run test:run` in the package directory (Vitest)
-- **Lint:** `npm run lint`
-- **Debug CoC:** `cd packages/coc && npm run build && npm link && cd ../..`, then `coc run <path>` or `coc serve --no-open`
-- **Debug Deep Wiki:** `cd packages/deep-wiki && npm run build && npm link && cd ../..`, then `deep-wiki generate <repo>`
-- **CoCContainer rebuild loop:** `./scripts/coccontainer-serve-loop.sh --port 8080` installs dependencies, ensures the coc-native binary is current, builds and links the package chain, then starts `coccontainer serve --no-open`
-- **Run CoC as a service:** see [coc-service.md](coc-service.md)
+`.github/workflows/release.yml` handles stable/prerelease version tags and manual
+dispatch for an existing tag. It copies tag semver into the desktop manifest for
+packaging. Stable releases are drafts; prereleases are published as prereleases.
+Public downloads are CoC macOS DMG and Windows NSIS installers, not the
+CoCContainer variant or loose native binaries.
 
-## Native binaries in desktop and server
+Release CI audits dependencies and builds/tests native artifacts for Linux,
+macOS and Windows on x64/ARM64; installers stage their matching target.
+The parallel Docker job publishes `ghcr.io/plusplusoneplusplus/coc` for
+Linux amd64/arm64: stable tags get version, major.minor and `latest`; prereleases
+get the full prerelease version. GitHub release creation depends on installer
+jobs, not Docker. Image smoke checks require both native file and Notes indexes.
+CI lives in `.github/workflows/ci.yml`.
 
-`coc-native` ships ABI-stable N-API binaries shared by Node and Electron. Desktop
-packaging unpacks the native addon and the symbols language-server executable;
-the serve loops use `ensure:native` to keep local binaries current.
+## Workspace and Origin Boundaries
 
-## Desktop Server Ports & Bundled CLIs
+### Storage versus execution
 
-- **CoC desktop:** when Windows DevTunnel hosting is enabled and the configured tunnel has exactly one HTTP binding, that port is the preferred attach/start port; otherwise 4000. Either way it attaches to a healthy CoC server, starts the embedded server on the preferred port when free, and falls back to an ephemeral port only when the preferred one is unusable.
-- **CoCContainer desktop:** built from `packages/coc-desktop/electron-builder.container.cjs` with the dedicated `container-main` and `container-server-entry` outputs. Same DevTunnel port rule, otherwise port 5000 with free-port fallback. It shares the CLI's `~/.coccontainer` data directory and uses tunnel identity `<hostname>-coccontainer` so it does not contend with CoC desktop's `<hostname>-coc`.
-- **Packaged agent runtimes:** the desktop build prepends bundled standalone Codex/Claude CLI directories to the forked server `PATH`. Copilot runs the native binary from `@github/copilot-<platform>-<arch>/`; the platform package is unpacked from `app.asar` so the CLI stays executable.
+Multi-workspace support is required. Workspace-specific data uses
+`~/.coc/repos/<workspaceId>/` and
+`getRepoDataPath(dataDir, workspaceId, filename)`, re-exported by
+`packages/coc/src/server/paths.ts`. Do not add top-level per-repo directories.
+Same-origin clones share work items and PR state under `repos/<originId>/`;
+the concrete workspace still selects checkout, queue and execution.
+See [server storage](server-architecture.md#storage-layout) and
+[work items](spa/work-items.md).
 
-## Cross-Package Conventions
+### Canonical identity and mutations
 
-**Repo-scoped data:** all runtime data specific to one repository lives under `~/.coc/repos/<workspaceId>/`, resolved with `getRepoDataPath(dataDir, workspaceId, filename)` from `packages/coc/src/server/`. Do **not** add new top-level directories under `~/.coc/` for per-repo data.
+`packages/forge/src/git/origin-id.ts` supplies synchronous, browser-safe origin
+IDs: `gh_<owner>_<repo>`, `ado_<org>_<project>`, `git_<remoteHash>`, and
+`local_<workspaceId>`. Server and SPA share this resolver.
+`computeRemoteHash()` in `packages/forge/src/git/remote.ts` has separate,
+protocol-sensitive semantics; do not substitute it for canonical identity.
 
-**Canonical origin IDs:** `resolveCanonicalOrigin()` / `resolveCanonicalOriginId()` derive `gh_<owner>_<repo>` (GitHub), `ado_<org>_<project>` (Azure DevOps), `git_<remoteHash>` (unknown remotes), and `local_<workspaceId>` (no remote). Both are synchronous and pure, and live in `packages/forge/src/git/origin-id.ts` — reachable as `@plusplusoneplusplus/forge/git` (Node) and `@plusplusoneplusplus/forge/git/origin-id` (browser-safe). The SPA's `repos/originScope.ts` is a thin adapter over the same module, so persisted origin keys agree byte-for-byte; hashing uses the portable `git/sha256.ts` rather than Node `crypto` so the browser gets the same digest synchronously. The SPA adapter keeps one deliberate deviation: an empty workspace ID with no remote yields the `local_` placeholder instead of throwing.
-
-`computeRemoteHash()` in `git/remote.ts` is a *separate*, historical, protocol-sensitive hash — not the canonical origin hash. Do not merge the two.
-
-**Creating work items:** work items are JSON files in `~/.coc/repos/<originId>/work-items/` keyed by canonical origin ID, not `.plan.md` files in `tasks/`. Same-origin workspace directories migrate into the canonical origin directory on first store access. **Always use the REST API** while the server runs — `POST http://localhost:4000/api/workspaces/<workspaceId>/work-items` with `{ title, description, priority, tags, source }` — and never write work-item JSON directly, because the server uses an atomic write-queue.
-
-**Model resolution:** `task.config.model` > `PerRepoPreferences.defaultModels[mode]` > `defaultModel` > CLI default.
-
-**Development notes:** TypeScript targeting Node.js ≥ 24; format-on-save and import organization enabled; cross-platform on Linux, macOS, and Windows.
+Work-item storage mutations use `/api/origins/:originId/work-items` and the
+server's command/write-queue boundary, never direct JSON writes.
+Execution supplies a concrete workspace. Route ownership is in
+`packages/coc/src/server/routes/work-item-routes.ts`; cross-server client routing
+belongs in [clone routing](spa/clone-routing.md).

@@ -20,6 +20,7 @@ interface WhatsAppStatus {
 }
 
 interface TeamsStatus {
+    ic3Region?: 'amer' | 'emea' | 'apac' | null;
     enabled: boolean;
     status: 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
     mode: 'graph' | 'mcp';
@@ -59,7 +60,7 @@ async function fetchTeamsStatus(): Promise<TeamsStatus> {
     return res.json();
 }
 
-async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string; mode?: 'graph' | 'mcp' }): Promise<void> {
+async function postTeamsConfig(patch: { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string; mode?: 'graph' | 'mcp'; ic3Region?: TeamsStatus['ic3Region'] }): Promise<void> {
     const res = await fetch(getRawApiBase() + '/container/messaging/teams/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -364,9 +365,11 @@ function TeamsStatusLabel({ status }: { status: TeamsStatus['status'] }) {
 function TeamsTargetConfig({ status, onSaved, setError }: { status: TeamsStatus; onSaved: () => void; setError: (e: string) => void }) {
     const [teamName, setTeamName] = useState(status.teamName ?? '');
     const [channelName, setChannelName] = useState(status.channelName ?? '');
+    const [ic3Region, setIc3Region] = useState(status.ic3Region ?? '');
     const [saving, setSaving] = useState(false);
 
-    const dirty = teamName !== (status.teamName ?? '') || channelName !== (status.channelName ?? '');
+    const dirty = teamName !== (status.teamName ?? '') || channelName !== (status.channelName ?? '')
+        || ic3Region !== (status.ic3Region ?? '');
 
     return (
         <div className="space-y-2 pt-2 border-t border-[#e0e0e0] dark:border-[#3c3c3c]">
@@ -390,7 +393,20 @@ function TeamsTargetConfig({ status, onSaved, setError }: { status: TeamsStatus;
                     className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc] outline-none focus:border-blue-500"
                     placeholder="Coc-General"
                 />
+                <label htmlFor="container-teams-ic3-region" className="text-xs text-[#616161] dark:text-[#999]">IC3 region</label>
+                <select id="container-teams-ic3-region" value={ic3Region}
+                    onChange={e => setIc3Region(e.target.value as typeof ic3Region)}
+                    className="text-sm px-2 py-1 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#2d2d2d] text-[#1e1e1e] dark:text-[#cccccc]">
+                    <option value="">Unconfigured</option>
+                    <option value="amer">Americas</option>
+                    <option value="emea">Europe-Middle East-Africa</option>
+                    <option value="apac">Asia-Pacific</option>
+                </select>
             </div>
+            <p className="text-[10px] text-[#616161] dark:text-[#999]">
+                IC3 writes require your account's configured region. MCP polling and sends work unconfigured.
+                Automatic discovery is not available. Save, then reconnect (restart if the bridge is not initialized).
+            </p>
             {dirty && (
                 <Button
                     size="sm"
@@ -399,7 +415,7 @@ function TeamsTargetConfig({ status, onSaved, setError }: { status: TeamsStatus;
                     onClick={async () => {
                         setSaving(true);
                         try {
-                            await postTeamsConfig({ teamName: teamName.trim(), channelName: channelName.trim() });
+                            await postTeamsConfig({ teamName: teamName.trim(), channelName: channelName.trim(), ic3Region: ic3Region || null });
                             onSaved();
                         } catch (e: any) {
                             setError(e.message);

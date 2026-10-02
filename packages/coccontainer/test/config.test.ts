@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveConfig, getDefaultDataDir } from '../src/config';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
@@ -63,9 +64,27 @@ describe('config', () => {
     it('should default teams to disabled', () => {
         const config = resolveConfig();
         expect(config.messaging.teams.enabled).toBe(false);
+        expect(config.messaging.teams.ic3Region).toBeUndefined();
         expect(config.messaging.teams.botName).toBe('CoC');
         expect(config.messaging.teams.pollIntervalMs).toBe(12_000);
         expect(config.messaging.teams.mcpServerUrl).toContain('agent365.svc.cloud.microsoft');
+    });
+
+    it.each(['amer', 'emea', 'apac', null] as const)('resolves explicit IC3 region %s', ic3Region => {
+        expect(resolveConfig({ messaging: { teams: { ic3Region } } }).messaging.teams.ic3Region).toBe(ic3Region);
+    });
+
+    it('loads the saved region, lets an explicit override win, and permits explicit clearing', () => {
+        const exists = vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+        const read = vi.spyOn(fs, 'readFileSync').mockReturnValue('messaging:\n  teams:\n    ic3Region: amer\n');
+        try {
+            expect(resolveConfig().messaging.teams.ic3Region).toBe('amer');
+            expect(resolveConfig({ messaging: { teams: { ic3Region: 'emea' } } }).messaging.teams.ic3Region).toBe('emea');
+            expect(resolveConfig({ messaging: { teams: { ic3Region: null } } }).messaging.teams.ic3Region).toBeNull();
+        } finally {
+            exists.mockRestore();
+            read.mockRestore();
+        }
     });
 
     it('should apply teams overrides', () => {
@@ -87,5 +106,23 @@ describe('config', () => {
         expect(config.messaging.teams.botName).toBe('MyBot');
         expect(config.messaging.teams.pollIntervalMs).toBe(5000);
         expect(config.messaging.teams.defaultAgentId).toBe('agent-456');
+    });
+
+    it.each(['AMER', 'auto', ''])('normalizes invalid saved region %j before enabled bridge startup with an actionable warning', ic3Region => {
+        const exists = vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+        const read = vi.spyOn(fs, 'readFileSync').mockReturnValue(
+            `messaging:\n  teams:\n    enabled: true\n    ic3Region: ${JSON.stringify(ic3Region)}\n`,
+        );
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            const config = resolveConfig();
+            expect(config.messaging.teams.enabled).toBe(true);
+            expect(config.messaging.teams.ic3Region).toBeNull();
+            expect(warn).toHaveBeenCalledWith(expect.stringMatching(/Invalid Teams IC3 region.*unconfigured.*amer, emea, or apac.*reconnect/));
+        } finally {
+            exists.mockRestore();
+            read.mockRestore();
+            warn.mockRestore();
+        }
     });
 });

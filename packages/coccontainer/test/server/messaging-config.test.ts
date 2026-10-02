@@ -28,6 +28,20 @@ function memFs(initial: Record<string, string> = {}): MessagingConfigFs & { file
 }
 
 describe('MessagingConfigService', () => {
+    it.each(['amer', 'emea', 'apac', null] as const)('persists region %s and preserves it on unrelated saves', ic3Region => {
+        const fs = memFs();
+        const service = new MessagingConfigService('/data', fs, jsYaml);
+        service.saveTeamsConfig({ ic3Region });
+        service.saveTeamsConfig({ botName: 'Bot' });
+        expect((jsYaml.load(fs.files[CONFIG_PATH]) as any).messaging.teams).toEqual({ ic3Region, botName: 'Bot' });
+    });
+
+    it.each(['', 'auto', 'AMER', '../amer', 'https://example.test', 1])('rejects invalid region %j before persistence', ic3Region => {
+        const fs = memFs();
+        expect(() => new MessagingConfigService('/data', fs, jsYaml).saveTeamsConfig({ ic3Region } as any)).toThrow('IC3 region must be');
+        expect(fs.files).toEqual({});
+    });
+
     it('saveTeamsConfig writes only defined fields under messaging.teams', () => {
         const fs = memFs();
         new MessagingConfigService('/data', fs, jsYaml).saveTeamsConfig({ enabled: true, botName: 'Bot', mode: 'mcp' });

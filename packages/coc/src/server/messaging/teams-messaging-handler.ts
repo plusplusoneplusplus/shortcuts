@@ -2,7 +2,7 @@
  * Registers HTTP routes for the Teams messaging integration:
  *   GET  /api/messaging/teams/status   — current connection status
  *   POST /api/messaging/teams/server   — configure global MCP endpoint
- *   POST /api/messaging/teams/config   — update config (botName, teamName, channelName, enabled)
+ *   POST /api/messaging/teams/config   — update config (botName, teamName, channelName, enabled, ic3Region)
  *   POST /api/messaging/teams/reconnect — (re)connect the bot
  *
  * Also wires the {@link TeamsCommandRouter} as the inbound message handler,
@@ -323,6 +323,8 @@ export function registerTeamsMessagingRoutes(
             if (typeof body.teamName === 'string') patch.teamName = body.teamName;
             if (typeof body.channelName === 'string') patch.channelName = body.channelName;
             if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
+            if ('ic3Region' in body) patch.ic3Region = body.ic3Region;
+            if ('enableTrouter' in body) patch.enableTrouter = body.enableTrouter;
 
             try {
                 if (Object.keys(patch).length === 0) {
@@ -332,7 +334,7 @@ export function registerTeamsMessagingRoutes(
                 await manager.updateConfig(patch);
                 sendJSON(res, 200, manager.getStatus());
             } catch (err) {
-                sendError(res, 500, err instanceof Error ? err.message : String(err));
+                sendError(res, err instanceof RangeError ? 400 : 500, err instanceof Error ? err.message : String(err));
             }
         },
     });

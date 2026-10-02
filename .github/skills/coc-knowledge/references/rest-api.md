@@ -1,27 +1,29 @@
 # REST API
 
-CoC server exposes HTTP endpoints organized by domain. All routes are registered via `registerAllRoutes()` in `src/server/routes/index.ts`.
+Single-file endpoint lookup catalog. Route registration: `packages/coc/src/server/routes/index.ts`; typed clients: `packages/coc-client/src/`.
 
 ## Conventions
 
-These rules apply across the catalog; rows below state only what is specific to them.
+Rows state endpoint-specific behavior. `/api/workspaces/:id` selects a registered workspace; `/api/repos/:repoId` uses the route's repo resolver; `/api/origins/:originId` shares persisted data across same-origin clones. Unscoped settings are server-global. Repo-owned runtime files belong under `~/.coc/repos/<workspaceId>/`. Never edit Work Item storage files directly.
 
 ### Provider overrides
 
-Chat-launching bodies accept optional `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier` (`very-low`\|`low`\|`medium`\|`high`), and `autoProviderRouting`. An omitted provider resolves through Auto when `features.autoAgentProviderRouting` is enabled, and the resolved concrete provider is stored on the owning record. Explicit `config.model` / `config.reasoningEffort` take precedence over `effortTier`, which is expanded from the provider's tier map and not stored. Chat modes are `ask` and `autopilot`; `plan` inputs are accepted as an Ask alias.
+Chat launches accept `provider`, `config.model`, `config.reasoningEffort`, `config.effortTier` (`very-low`\|`low`\|`medium`\|`high`), and `autoProviderRouting`. Auto routing resolves omitted providers when enabled; records store the concrete provider. Explicit model/effort overrides the expanded, unpersisted tier. Modes: `ask` or `autopilot`; `plan` aliases Ask. See [sdk-wrapper.md](sdk-wrapper.md).
+
+Chat styles: `default`, `human`, `direct`, `terse`, `structured`; invalid style → `400`. Omitted style uses `features.defaultChatStyle`.
 
 ### Origin scoping
 
-`/api/origins/:originId/*` routes are keyed by canonical origin. Two rules:
+Canonical-origin routes distinguish execution from shared files:
 
-- **Provider-hitting routes** require a `workspaceId` query/body param naming the concrete clone the provider call runs through, and accept optional `repoId`; the selection must resolve to `originId` or the request is rejected.
-- **Origin-file routes** (recent-opened, coworker-roster, review-history, suggestions, review-progress, chat bindings, classification files) take `workspaceId`/`repoId` as *optional* metadata, used only to migrate a matching workspace/repo-scoped file into the origin file on access.
+- **Clone-dependent PR/provider and execution routes** require query/body `workspaceId` where noted, selecting a concrete same-origin clone; PR routes also accept `repoId`. Unknown or different-origin selections are rejected.
+- **Origin-file routes** accept optional clone metadata for validation/migration: recent-opened, roster, cached history/suggestions, progress, bindings, classification polling. Fresh-chat resets require a concrete workspace.
 
-Caches are keyed per canonical origin (plus PR/item id and `headSha` where noted); `force=true` bypasses and invalidates them.
+Caches use canonical origin plus item/PR identity and `headSha` where noted; `force=true` refreshes supported reads.
 
 ### Chat bindings
 
-Commit, PR, and Work Item binding families share one shape: `GET`/`POST` on the collection lists or creates a binding, `GET`/`DELETE` on `/:key` reads or removes one (removal of a missing binding is a no-op), and `POST /:key/fresh` archives the currently bound chat process and clears the binding so the next send starts an empty chat — a stale binding whose process is already gone is cleared and returns `archivedTaskId: null`.
+Commit/PR/Work Item collections list/create bindings; keyed routes read/remove them (missing removal is a no-op). `POST /:key/fresh` archives the chat and clears its binding; an absent process yields `archivedTaskId: null`.
 
 ### Feature gates
 
@@ -35,9 +37,9 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health` | `{ status, uptime, processCount, nativeFileIndex, nativeNotesIndex }`; each native status is `{ loaded, binaryPath?, reason? }`. File indexing may use its JavaScript fallback; Notes content search requires its native capability at startup |
+| GET | `/api/health` | Health, uptime, process count, and native file/Notes index availability |
 | GET | `/api/config` | Server configuration |
-| GET | `/api/config/runtime` | Dashboard feature flags + config revision: provider flags, `defaultProvider`, `autoAgentProviderRoutingEnabled`, `pullRequestsAutoClassifyTeamEnabled`, `workItemsWorkflowEnabled`, `gitWorktreeExecutionEnabled` (also the remote-target UI's worktree-execution capability signal) |
+| GET | `/api/config/runtime` | Runtime feature/provider flags and config revision; remote worktree capability via `gitWorktreeExecutionEnabled` |
 | GET/PUT | `/api/preferences` | Read/update global UI preferences |
 | GET | `/api/logs` | Server log ring buffer |
 | GET | `/api/stats` | Token usage + cost stats |
@@ -58,47 +60,47 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | Method | Path | Description |
 |--------|------|-------------|
 | GET/POST | `/api/workspaces` | List / register workspaces |
-| GET | `/api/workspaces/active` | Dashboard clients' recent active-workspace reports: `activeWorkspaceIds` + per-client `lastSeenAt` |
-| POST | `/api/workspaces/active` | Report a client's selected workspace. Body `{ clientId, workspaceId }`; `workspaceId: null` clears that client |
+| GET | `/api/workspaces/active` | Recent active-workspace reports by dashboard client |
+| POST | `/api/workspaces/active` | Report selected workspace by `clientId`; `workspaceId: null` clears it |
 | DELETE | `/api/workspaces/:id` | Unregister workspace |
-| PATCH | `/api/workspaces/:id` | Update metadata. Register/update/unregister broadcast `workspace-topology-changed`, decoupled from process activity |
-| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty, upstream divergence, repository, persisted remote metadata. Live reads use one porcelain-v2 status; failures use bounded cache backoff |
-| POST | `/api/git-info/batch` | Cached Git metadata for multiple physical workspaces, bounded concurrency. Optional `trigger` appears only in privacy-safe diagnostics (counts, cache outcomes, Git process count, duration) |
+| PATCH | `/api/workspaces/:id` | Update metadata; workspace mutations broadcast `workspace-topology-changed` |
+| GET | `/api/workspaces/:id/git-info` | Cached branch, dirty state, upstream divergence and remote metadata |
+| POST | `/api/git-info/batch` | Batched cached metadata for physical workspaces |
 | GET/PATCH | `/api/workspaces/:id/preferences` | Read/update per-repo preferences |
 | GET | `/api/workspaces/:id/instructions` | List custom instruction files for modes `base`, `ask`, `autopilot` |
 | GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read/update/delete one instruction file (`base`\|`ask`\|`autopilot`; `plan` is an Ask alias) |
-| GET/PUT/PATCH | `/api/workspaces/:id/language-servers` | Read/replace/merge workspace language-server configuration (`repos/<workspaceId>/language-servers.json`). Response includes `{ enabled, definitions, effective, startable, status, warnings, runtimes }`; runtime rows expose an opaque `sessionId`, definition, workspace-relative project root, classified state, sanitized detail, runtime label, optional recovery command, and last-attempt time. PUT treats omitted fields as defaults, PATCH keeps stored values. Invalid definitions return `400` field errors plus untouched stored config |
-| POST | `/api/workspaces/:id/language-servers/retry` | Retry one live project-root session by opaque `{ sessionId }`. Runtime discovery runs again before startup. Returns the updated language-server configuration/status response; `404` for an unknown or cross-workspace session |
+| GET/PUT/PATCH | `/api/workspaces/:id/language-servers` | Read/replace/merge config and sanitized runtime status. PUT defaults omitted fields; PATCH preserves them; invalid definitions → `400`, no write |
+| POST | `/api/workspaces/:id/language-servers/retry` | Rediscover/retry opaque `sessionId`; unknown or cross-workspace session → `404`. See [language-servers.md](language-servers.md) |
 | POST | `/api/workspaces/:id/sentinel/check-now` | Run the workspace watchlist owner's active Sentinel scan cron immediately. Registered only when Sentinel is enabled; `404` without a live owner, `409` while busy or without an active scan cron |
-| GET/PUT | `/api/workspaces/:id/llm-tools-config` | Read/update per-workspace disabled LLM tools. Response adds `conversationRetrievalAvailable`, derived from the process store's conversation-search support. Unknown tool names such as `create_bug` are filtered from responses and from rewritten preferences |
+| GET/PUT | `/api/workspaces/:id/llm-tools-config` | Disabled tools + `conversationRetrievalAvailable`; unknown tool names filtered |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility; `?refresh=true` revalidates |
 | POST | `/api/workspaces/:id/endev/revalidate` | Force EnDev xDPU revalidation |
-| POST | `/api/repo-groups` | Create a repo-group virtual workspace. Body `{ name, members: [workspaceId...], descriptions?: { [workspaceId]: string }, readOnly?: { [workspaceId]: boolean } }`; members must be registered non-virtual repo workspaces and map keys must be members (`400` otherwise). Registers `group-<slug>` rooted at `~/.coc/repos/<groupId>/`, wires queue bridge + schedule manager, broadcasts `workspace-topology-changed` `added`. Returns `201 { workspace, members }` |
-| GET | `/api/repo-groups/:id` | Membership file + registry-resolved members, each carrying its optional `description` and `readOnly: true`; unregistered or missing-path members come back `stale` with `staleReason` |
-| GET | `/api/repo-groups/:id/search` | Group-owner file search. Requires non-empty `q`; `limit` defaults to 50 and clamps to 1..200; `showIgnored` defaults false. Resolves live members per request, searches their native indexes with concurrency four, globally merges the complete native rank tuple with membership order as the cross-repo tie-break, and returns public `{ workspaceId, repoName, path, score, indices }` rows plus counts and `status: complete\|partial\|failed\|no-searchable-members` |
-| PATCH | `/api/repo-groups/:id` | Rename, replace membership, and/or patch `descriptions` / `readOnly` (same validation as create; rename syncs the workspace name). The two maps are partial patches: keys present are set, an empty string or `false` clears the entry, and entries for removed members are pruned. Only non-empty maps are written to `group.json`. Broadcasts `updated` |
-| DELETE | `/api/repo-groups/:id` | Deregister the group workspace (broadcasts `removed`); its data directory stays on disk |
+| POST | `/api/repo-groups` | Create virtual group; members must be registered non-virtual repos, description/read-only keys must be members |
+| GET | `/api/repo-groups/:id` | Resolved membership and description/read-only metadata; missing members marked stale |
+| GET | `/api/repo-groups/:id/search` | Search live member indexes by `q`; ranked cross-repo results and completeness status, `limit` 1–200 |
+| PATCH | `/api/repo-groups/:id` | Rename/replace members; partially patch descriptions/read-only flags, pruning removed members |
+| DELETE | `/api/repo-groups/:id` | Deregister group, retain its data |
 
 ## Canvases
 
-Chat canvas side panel, gated by `canvas.enabled` (default on). Markdown or code artifacts (`type` + optional `language` on the descriptor) the AI and user co-edit; AI edits go through the canvas LLM tools, these routes serve the dashboard panel. Every mutation goes through `CanvasMutationService`, emitting one `canvas-updated` WebSocket event plus a ProcessStore/SSE update on the owning process.
+Gated by `canvas.enabled` (default on). Mutations emit `canvas-updated` on WebSocket and owning-process SSE. See [spa/canvas.md](spa/canvas.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/canvases` | Descriptors only, newest first; `?processId=` filters to one chat process |
 | GET | `/api/workspaces/:id/canvases/:canvasId` | Full record (descriptor + content) |
-| PUT | `/api/workspaces/:id/canvases/:canvasId` | User save. Body `{ content?, edits?, expectedRevision?, title? }`; stale revision → `409 { error: 'revision-conflict', currentRevision, canvas }` |
+| PUT | `/api/workspaces/:id/canvases/:canvasId` | Save content/edits/title with optional `expectedRevision`; stale revision → `409 revision-conflict` with current canvas/revision |
 | GET | `/api/workspaces/:id/canvases/:canvasId/versions` | Snapshot metadata (revision, editor, updatedAt) newest first; written per persisted revision, capped at 50 |
 | GET | `/api/workspaces/:id/canvases/:canvasId/versions/:rev` | One full snapshot (metadata + content) |
 | GET | `/api/workspaces/:id/canvases/:canvasId/comments` | Anchored comments; `?status=open\|sent\|resolved` |
-| POST | `/api/workspaces/:id/canvases/:canvasId/comments` | Add comment. Body `{ anchorText, body }` (anchor ≤500 chars, body ≤4000) |
+| POST | `/api/workspaces/:id/canvases/:canvasId/comments` | Add anchored comment (anchor ≤500 chars, body ≤4000) |
 | PATCH | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Set status (`open`/`sent`/`resolved`) |
 | DELETE | `/api/workspaces/:id/canvases/:canvasId/comments/:cid` | Delete comment |
 | GET | `/api/workspaces/:id/canvases/:canvasId/extension` | Extension documents (`manifest`, `uiHtml`, `capabilitiesJs`) for an `extension`-type canvas |
-| GET | `/api/workspaces/:id/canvases/:canvasId/files` | Read-only data files: `{ files: [{ path, size, encoding }] }`, sorted, recursive, symlinks omitted, ≤2000 entries; `404` for unknown canvas |
-| GET | `/api/workspaces/:id/canvases/:canvasId/files/<path>` | `{ file: { path, size, encoding, content } }`; `encoding` is `utf-8` for text else `base64`, `?encoding=base64` forces bytes (other values `400`). Layered path safety (encoded-escape screen on the raw pathname → shape → resolve → `isWithinDirectory` → `realpath` re-verify): `400` for traversal, absolute paths, backslashes, NUL, escaping symlinks; `404` missing file/dir; `413` over 1 MB text / 10 MB binary |
-| POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Invoke a declared capability against the canvas JSON state. Sync capabilities run as a vm-sandboxed pure transform (1s budget); `async: true` capabilities run in a terminable `worker_threads` worker (30s budget, `host.complete`) and `404` unless `features.canvasHostApis` is on. Runs are serialized per canvas and re-read the canvas inside the critical section, so concurrent invocations both land; revision-checked write. `422` on capability error, `409` on a concurrent user save |
+| GET | `/api/workspaces/:id/canvases/:canvasId/files` | Read-only file metadata, ≤2000 entries; symlinks omitted |
+| GET | `/api/workspaces/:id/canvases/:canvasId/files/<path>` | Text/base64 content; optional `encoding=base64`. Canonical containment rejects traversal/absolute/backslash/NUL/symlink escapes (`400`); missing → `404`; over 1 MB text/10 MB binary → `413` |
+| POST | `/api/workspaces/:id/canvases/:canvasId/capabilities/:name` | Serialized, revision-checked state transform; sync 1s sandbox, async 30s terminable worker with `host.complete` gated by `features.canvasHostApis` (`404` off). Capability error → `422`; save race → `409` |
 
 ## Filesystem
 
@@ -107,7 +109,7 @@ Chat canvas side panel, gated by `canvas.enabled` (default on). Markdown or code
 | GET | `/api/fs/browse` | Browse local directories for repo path selection |
 | GET | `/api/fs/browse-helper` | Same-origin helper page for container-mode directory browsing |
 | GET | `/api/fs/blob?path=<absolute>` | Read one file under CoC trusted data dirs (`~/.copilot`, server data dir, OS temp) or any registered workspace/repo root; arbitrary paths rejected |
-| GET | `/api/workspaces/:id/files/preview?path=<path>` | Read a bounded text/image/directory preview with resolved absolute `path` and `resolvedWorkspaceId`. Regular relative paths anchor at the workspace root. A repo-group accepts absolute paths inside live registered member roots and probes a relative path under each live member root in membership order, selecting the first existing contained candidate; a miss lists attempted paths. Removed or missing-path members are skipped. Non-group scope and all write routes remain workspace-scoped |
+| GET | `/api/workspaces/:id/files/preview?path=<path>` | Bounded preview; relative paths anchor to workspace. Groups probe live member roots in order or accept contained absolute paths, returning `resolvedWorkspaceId`. Writes remain workspace-scoped |
 | GET | `/api/workspaces/:id/files/html?path=<path>` | Serve a sandboxed HTML preview from the workspace, its repo output data, OS temp, `~/.copilot`, `~/.codex`, or `~/.claude`; canonical-path checks reject symlink escapes |
 | GET | `/api/workspaces/:id/files/html/resolve?path=<path>` | Validate the same HTML allowlist and return `{ path }` with the canonical absolute path for a local desktop HTML tab |
 
@@ -115,49 +117,49 @@ Chat canvas side panel, gated by `canvas.enabled` (default on). Markdown or code
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/repos/:repoId/search/content` | Bounded repository content search with case, whole-word, regex, include/exclude glob, path, and limit controls. `fileScope=tracked` derives exact candidates with Git; `includeUntracked=true` adds non-ignored untracked files while ignored tracked files remain eligible. A non-Git workspace returns `409` with `TRACKED_CONTENT_SEARCH_UNAVAILABLE`. Client disconnects suppress late success and error responses |
+| GET | `/api/repos/:repoId/search/content` | Bounded content search with text/regex/glob filters. `fileScope=tracked` includes ignored tracked files; `includeUntracked` adds non-ignored files. Non-Git tracked search → `409 TRACKED_CONTENT_SEARCH_UNAVAILABLE` |
 
 ## Git
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/git/clone` | Clone a git URL into a parent directory with the server process's credentials; returns `clonedPath`, or `{ error }` on failure |
-| GET | `/api/workspaces/:id/git/commits/:hash/files/*/diff-content` | Both full-text snapshots (`base` first parent, `head` commit; empty base for root commits). `GitClient.getCommitFileDiffContent`; unchanged/missing path → `404`, invalid/unresolved hash → `400`. Uses `git/ref-file-content.ts`, workspace/ref/path cache identity, rename-aware blob reads, exact line endings, and working-tree binary/submodule/symlink/10MB guards |
-| GET | `/api/workspaces/:id/git/branch-range/files/*/diff-content` | Both full-text snapshots (`base` merge-base, `head` resolved HEAD), honoring `base=default-branch\|upstream` through `GitRangeService.resolveBaseRef`. `GitClient.getBranchRangeFileDiffContent`; missing path/base → `404`. Shares commit content rules; cache identity adds requested base mode and both resolved refs. Live `modifiedMatchesWorkingCopy` is rechecked on every request, including cache hits: head equals checked-out HEAD, no staged/unstaged changes, and exact disk bytes match |
-| POST | `/api/workspaces/:id/git/fetch` | Fetch remote refs. `{ currentBranchOnly: true }` resolves the checked-out branch's configured upstream remote/merge ref at request time, validates one exact `refs/heads/...` source ref, and fetches only that branch with no automatic tags; detached HEAD or missing/multiple/malformed upstream refs fail without network access. Without the flag, omitted `remote` fetches all remotes and `{ remote }` fetches that remote's configured refs |
-| POST | `/api/workspaces/:id/git/pull` | Start an async pull job. Body `{ rebase?, currentBranchOnly? }`; `currentBranchOnly` applies the same exact-upstream resolution and failure rules as fetch |
-| POST | `/api/workspaces/:id/git/cherry-pick` | Body `{ hash }` picks one commit onto current HEAD; `{ hash, hashes, targetBranch }` applies multiple commits in caller order onto a local target branch. Cross-branch picks need a clean tree and return `409 { dirty: true }` otherwise |
-| POST | `/api/workspaces/:id/git/patch/export` | Export commits as a format-patch payload for cross-clone picks. Body `{ hash }` or `{ hashes }` (oldest-first, concatenated into one `git am` mailbox; range responses add ordered `sourceCommits` and set `sourceCommit` to the first). Response carries source workspace/commit metadata, normalized source remote URL, and `{ format: 'format-patch', body }` — no source root paths or raw remote credentials |
-| POST | `/api/workspaces/:id/git/patch/apply` | Apply a payload in one `git am --3way` session. Body `{ patch: { format: 'format-patch', body }, stashAndContinue?, sourceServer?, sourceWorkspace?, sourceCommit?, sourceCommits?, normalizedSourceRemoteUrl? }`. Dirty target → `409 { dirty: true }` unless `stashAndContinue` is true; conflict → `409 { conflicts: true, appliedCount }` with the target left paused in the `am`; success returns target branch, new HEAD/commit hash, `appliedCount`, and a target-scoped `cherry-pick-transfer` git-op record with sanitized source/target metadata |
-| POST | `/api/workspaces/:id/git/rebase-reorder` | AI-driven interactive reorder. Body `{ commits }` (oldest-first); enqueues an autopilot chat task, returns `202 { taskId, jobId }`. `409` with no queue bridge or a reorder already running. The tracking job settles from queue events: completed → `success`, failed → `failed`, cancelled/removed → `interrupted` |
+| GET | `/api/workspaces/:id/git/commits/:hash/files/*/diff-content` | First-parent/commit text snapshots (empty base for root); rename-aware, binary/submodule/symlink/10 MB guards. Missing → `404`; invalid hash → `400` |
+| GET | `/api/workspaces/:id/git/branch-range/files/*/diff-content` | Merge-base/HEAD snapshots, `base=default-branch\|upstream`; same content guards. `modifiedMatchesWorkingCopy` rechecks clean HEAD and exact disk bytes, including cache hits |
+| POST | `/api/workspaces/:id/git/fetch` | Fetch all or selected remote; `currentBranchOnly` fetches one validated upstream ref without tags, rejecting detached/missing/ambiguous upstream before network access |
+| POST | `/api/workspaces/:id/git/pull` | Async pull, optional rebase; `currentBranchOnly` uses fetch's exact-upstream rules |
+| POST | `/api/workspaces/:id/git/cherry-pick` | Pick `hash` or ordered `hashes` onto optional local `targetBranch`; cross-branch dirty tree → `409` |
+| POST | `/api/workspaces/:id/git/patch/export` | Export `hash`/oldest-first `hashes` as one format-patch mailbox; sanitized source metadata, no root paths/credentials |
+| POST | `/api/workspaces/:id/git/patch/apply` | One `git am --3way`; dirty → `409` unless `stashAndContinue`, conflict → `409` with `appliedCount`, leaving am paused |
+| POST | `/api/workspaces/:id/git/rebase-reorder` | Enqueue Autopilot reorder of oldest-first commits; `202` task/job IDs, `409` unavailable/busy |
 | GET | `/api/workspaces/:id/git/ops/latest` | Most recent git-op job, optional `?op=` filter; `null` when none |
 | GET | `/api/workspaces/:id/git/ops/:jobId` | One git-op job scoped to the workspace; `404` when unknown |
 | GET/POST | `/api/workspaces/:id/commit-chat-bindings` | List/create commit hash → chat task bindings (see [Chat bindings](#chat-bindings)) |
 | GET/DELETE | `/api/workspaces/:id/commit-chat-bindings/:commitHash` | Read/remove one binding |
-| POST | `/api/workspaces/:id/commit-chat-bindings/rebind` | Move a binding from `oldHash` to `newHash` after amend/rebase and update the bound process's `metadata.commitChat.commitHash` (keeping any saved commit message). Resolves bare and `queue_`-prefixed task IDs; a failed process update rolls the binding back and errors |
+| POST | `/api/workspaces/:id/commit-chat-bindings/rebind` | Move `oldHash` → `newHash` and update process metadata; failed process update rolls binding back |
 | POST | `/api/workspaces/:id/commit-chat-bindings/:commitHash/fresh` | Archive + clear the bound commit chat |
 
 ## Git Worktrees
 
-Opt-in isolated-worktree execution for Work Item and Ralph runs, gated by the disabled-by-default `features.gitWorktreeExecution` flag (runtime flag `gitWorktreeExecutionEnabled`). The **target** server (owner of the workspace checkout) creates a per-run worktree under `~/.coc/repos/<workspaceId>/git-worktrees/<runId>/` on a fresh `coc/<slug>-<shortid>` branch based on committed objects only — no fetch/pull/push/rebase, no source-branch switch. Uncommitted source changes are excluded and a warning is surfaced. Records live in `git-worktrees/index.json` and are exposed by `@plusplusoneplusplus/coc-client` as `client.git.listWorktrees` / `client.git.cleanupWorktree`. See [ralph.md](ralph.md) and [spa/git-and-prs.md](spa/git-and-prs.md).
+Disabled-by-default `features.gitWorktreeExecution`. The target server creates isolated per-run worktrees from committed objects under workspace data: no network Git operations or source-branch switch; dirty source changes are excluded with a warning. See [ralph-launch.md](ralph-launch.md) and [spa/git-and-prs.md](spa/git-and-prs.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:workspaceId/worktrees` | CoC-created worktree records, newest first: `id`, `workspaceId`, `path`, `branch`, requested `baseRef`, resolved `baseSha`, `createdAt`, `sourceDirty` (+ optional `sourceDirtyWarning`), `processId`/`ralphSessionId`, `status` (`active`\|`cleaned`), `cleanedAt`. `{ worktrees: [] }` when the flag is off or no data dir is configured |
-| POST | `/api/workspaces/:workspaceId/worktrees/:id/cleanup` | `git worktree remove` (never `--force`) + mark record `cleaned`; returns `{ worktree, alreadyCleaned }`. The generated branch is never deleted. `400` flag off, `404` unknown record, `200` idempotent when already cleaned, `409` while a linked task/session runs, `409` with the raw Git error (record intact) when Git refuses removal (e.g. dirty worktree). No force/discard path |
+| GET | `/api/workspaces/:workspaceId/worktrees` | Newest-first run worktree records; empty when flag off or data dir unavailable |
+| POST | `/api/workspaces/:workspaceId/worktrees/:id/cleanup` | Idempotent non-force removal; retain branch. Flag off → `400`, unknown → `404`, active run/dirty Git refusal → `409`, record retained |
 
 ## Processes
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/processes` | List processes (search/filter) |
-| GET | `/api/processes/:id` | Process detail. A `queue_<taskId>` id whose task is still queued returns a synthetic process whose `metadata` mirrors `{ type, queueTaskId, mode, workspaceId, commitChat, chatStyle }` so the SPA can resolve mode and style before the executor starts (`chatStyle` omitted when absent or unknown) |
+| GET | `/api/processes/:id` | Detail; queued `queue_<taskId>` returns a synthetic process with launch metadata |
 | PATCH | `/api/processes/:id` | Partial update. `metadata` replaces the stored object; `metadataPatch: { set?: object, unset?: string[] }` merges into current metadata. The two are mutually exclusive |
 | DELETE | `/api/processes/:id` | Delete process |
-| POST | `/api/processes/:id/message` | Follow-up message. Body: `content`, optional `mode` (`ask`\|`autopilot`, `plan` accepted as Ask), `deliveryMode`, `images`, `skillNames`, `model`, concrete `provider`, per-turn `reasoningEffort` (`low`\|`medium`\|`high`\|`xhigh`), and `chatStyle` (`default`\|`human`\|`direct`\|`terse`\|`structured`; omitted falls back to `features.defaultChatStyle`). An unknown `chatStyle` is rejected `400` (an unknown `reasoningEffort` is dropped). A style differing from `metadata.chatStyle` is never steered into an in-flight response — it is buffered as the next pending turn so that turn gets a freshly built system message — and becomes the conversation style thereafter. Cross-provider delivery rechecks process/task idleness inside process-scoped admission before any delivery mutation and returns `409 PROVIDER_SWITCH_REQUIRES_IDLE` if it loses the idle race. A `cancelled` process is accepted only with a saved `sdkSessionId`; the continuation binds to that session for strict resume, else `409 SESSION_NOT_RESUMABLE`. `metadata.stoppedChatResume.resumable === false` also returns `409 SESSION_NOT_RESUMABLE`, so a failed strict resume cannot be retried or converted to a fresh session |
-| POST | `/api/processes/:id/turns/:turnIndex/rewind` | Rewind the active provider segment to a user turn with a native SDK event anchor. The process publishes `status: running` and transient `metadata.rewind` while native history and stored turns mutate under process-scoped admission, then restores its prior terminal status on success or failure. Earlier-provider segments return `409 CROSS_PROVIDER_REWIND_UNAVAILABLE`; other non-idle conversations return `409 CONVERSATION_NOT_IDLE` |
-| POST | `/api/processes/:id/note` | Retarget a Notes chat at another note. Body `{ notePath, noteTitle? }`; rewrites `metadata.notePath` / `metadata.noteTitle`, which is what follow-up turns read when they snapshot the note for the inline diff. `notePath` is normalized (no traversal, no absolute) and re-checked against the workspace's notes root; when `metadata.noteChatScope` is `per-section` it must also stay inside the bound folder. Anything else is `400` and the chat stays put. See [spa/notes.md](spa/notes.md) |
-| POST | `/api/processes/:id/ask-user-response` | Resolve the active ask-user batch. Body `{ batchId, answers }`; each answer has `questionId` plus `answer`, `skipped: true`, or `deferred: true` with `reason: "needs-context"` and optional `note` |
+| POST | `/api/processes/:id/message` | Follow-up with delivery/AI/style overrides. Style changes buffer a new turn, never steer in-flight output. Provider switch requires idle (`409 PROVIDER_SWITCH_REQUIRES_IDLE`); cancelled chats require strict resumable SDK binding (`409 SESSION_NOT_RESUMABLE`), never fresh fallback |
+| POST | `/api/processes/:id/turns/:turnIndex/rewind` | Native-anchor rewind in active provider segment, serialized with admission. Earlier segment → `409 CROSS_PROVIDER_REWIND_UNAVAILABLE`; non-idle → `409 CONVERSATION_NOT_IDLE` |
+| POST | `/api/processes/:id/note` | Retarget Notes chat; normalized relative path must remain in workspace notes root and bound section (`400` otherwise). See [spa/notes.md](spa/notes.md) |
+| POST | `/api/processes/:id/ask-user-response` | Resolve batch with answered, skipped or needs-context-deferred answers |
 | POST | `/api/processes/:id/cancel` | Cancel running process |
 | POST | `/api/processes/:id/promote-to-ralph` | Promote a completed ask-mode chat to a Ralph session ([ralph.md](ralph.md)) |
 | PATCH | `/api/processes/:id/pin` | Pin/unpin process |
@@ -167,25 +169,25 @@ Opt-in isolated-worktree execution for Work Item and Ralph runs, gated by the di
 | PATCH | `/api/processes/:id/turns/:idx/restore` | Restore deleted turn |
 | PATCH | `/api/processes/:id/turns/:idx/pin` | Pin a turn |
 | PATCH | `/api/processes/:id/turns/:idx/archive` | Archive a turn |
-| GET | `/api/workspaces/:id/group-pins` | Workspace-scoped parent-row group pins (Ralph session, For Each run, Map Reduce run groups), newest pin first |
-| PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin a parent group row. `type` is an open string: `ralph-session`, `for-each-run`, `map-reduce-run`, or any registered task-group type; body `{ pinned: boolean }`. Updates only the group pin record, never child pin/archive metadata |
-| PUT | `/api/workspaces/:id/pin-order` | Reorder the Pinned section. Body `{ entries: Array<{ kind: 'chat', id } \| { kind: 'group', type, groupId }> }` (top first, 1–500, no duplicates). Pin time is the sort key: entry `i` is restamped to `now - i` ms. Only entries already pinned in this workspace change; others are skipped. Returns `{ chats: [{ id, pinnedAt }], groups: GroupPin[] }`; `400` bad entries, `404` unknown workspace. `client.processes.setPinOrder` |
-| GET | `/api/workspaces/:id/chat-folders` | User-created chat folders, in manual order (`sortIndex` asc, ties on `createdAt` desc) |
-| POST | `/api/workspaces/:id/chat-folders` | Create a folder at the top (`sortIndex 0`; the rest shift down). Body `{ name, color? }`; `400` on an empty/over-60-char name or unknown color |
-| PATCH | `/api/workspaces/:id/chat-folders/:folderId` | Rename / recolor / reorder. Body `{ name?, color?, sortIndex? }`. A non-folder group id is `404` — run groups are not mutable here |
-| DELETE | `/api/workspaces/:id/chat-folders/:folderId` | Delete a folder; no conversations are deleted. Returns `{ deleted, unfiled }` — the process ids that became unfiled |
+| GET | `/api/workspaces/:id/group-pins` | Parent-group pins, newest first |
+| PATCH | `/api/workspaces/:id/group-pins/:type/:groupId` | Pin/unpin group only; child metadata untouched |
+| PUT | `/api/workspaces/:id/pin-order` | Reorder already-pinned chats/groups in this workspace; 1–500 unique entries, others skipped |
+| GET | `/api/workspaces/:id/chat-folders` | Folders in manual order |
+| POST | `/api/workspaces/:id/chat-folders` | Create at top; validate name/color |
+| PATCH | `/api/workspaces/:id/chat-folders/:folderId` | Rename/recolor/reorder folder; run-group IDs → `404` |
+| DELETE | `/api/workspaces/:id/chat-folders/:folderId` | Delete folder and unfile chats, retaining conversations |
 | PATCH | `/api/processes/:id/folder` | File one process into a folder, or unfile with `folderId: null`. One folder per process. `400` when the folder belongs to another workspace |
 | POST | `/api/processes/folder` | Batch file/unfile. Body `{ ids, folderId }`; ids that no longer exist are skipped and omitted from `updated` |
 
 ## Quick Ask Side-notes
 
-Per-process AI lookups on assistant chat turns: a text selection triggers a cheap grounded ask whose answer is stored as a repo-scoped annotation and never enters the conversation. A side-note can be followed up on, growing a persisted `turns` thread (turn 0 mirrors `question`/`answer`, capped at `MAX_TURNS_PER_SIDENOTE` = 10). Gated by the live admin flag `features.quickAskSidenotes` (default `true`); disabled → `404`. Storage: `{dataDir}/repos/<workspaceId>/chat-sidenotes/<sha256(processId)>.json`. All routes take `?workspace=<id>`.
+Repo-scoped annotations outside conversation history; all routes take `?workspace=<id>`. `features.quickAskSidenotes` defaults on (`404` off); threads cap at 10 turns. See [spa/chat-conversation.md](spa/chat-conversation.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/processes/:processId/sidenotes?workspace=<id>` | List side-notes → `{ sidenotes }` |
-| POST | `/api/processes/:processId/sidenotes?workspace=<id>` | Body `{ turnIndex, selectedText, contextBefore?, contextAfter?, question? }`. Builds a compact grounded prompt, runs the one-shot invoker (model from `defaultModels.quickAsk` > `defaultModel`), persists, returns `201 { sidenote }`. `502`/`503` on AI failure/unavailability |
-| POST | `/api/processes/:processId/sidenotes/:id/follow-up?workspace=<id>` | Body `{ question }`. Reads the note's thread from disk as grounding history (client sends only the new question), appends the answered turn, returns `200 { sidenote }`. `400` empty question, `404` unknown note, `409` at the turn cap, `502`/`503` on AI failure |
+| POST | `/api/processes/:processId/sidenotes?workspace=<id>` | Ask about selected turn text; persist annotation (`201`); AI failure/unavailable → `502`/`503` |
+| POST | `/api/processes/:processId/sidenotes/:id/follow-up?workspace=<id>` | Append grounded answer to stored thread; empty → `400`, missing → `404`, cap → `409`, AI failure → `502`/`503` |
 | DELETE | `/api/processes/:processId/sidenotes/:id?workspace=<id>` | Delete one side-note (`204`; `404` when missing) |
 
 ## Task Groups
@@ -201,21 +203,21 @@ Generic parent/child task registry shared by For Each, Map Reduce, Ralph, and Dr
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/queue` | Queued/running tasks. Pause markers appear with `kind: 'pause-marker'`, `id`, `createdAt`, optional `durationHours` (number in `(0, 24]`, floats allowed). `dream-run` summaries carry provider, model, reasoning effort, and timeout metadata when resolved |
-| GET | `/api/queue/models` | Model IDs for the resolved concrete default provider; with `features.autoAgentProviderRouting` it uses the enqueue-time Auto routing resolver and adds `autoProviderRouting` metadata (selected provider, fallback state, warnings, decision reasons) |
-| GET | `/api/queue/:id` | One queue task, falling back to reconstructed process history for completed/historical tasks. Reconstructed `dream-run` tasks include analyzer/critic process IDs under `payload.processes` |
-| GET | `/api/queue/history` | In-memory queue history merged with durable process history after restart. Store-backed `dream-run` entries include provider/model/reasoning/timeout metadata plus `payload.processes` |
-| POST | `/api/queue` | Enqueue a task. Chat payloads use `mode='ask'`, `mode='autopilot'`, or internal Ralph routing (`mode='plan'` normalizes to Ask). For Each item-plan generation is a normal Ask chat with `payload.context.forEach.kind='generation'`; the UI-only `for-each` mode value is rejected by the generic validator. Optional `payload.chatStyle` (`default`\|`human`\|`direct`\|`terse`\|`structured`) is rejected `400` when unknown and copied into `process.metadata.chatStyle` at execution start; omitting it entirely falls back to the server-wide `features.defaultChatStyle`, while an explicit `default` always injects nothing. `config.effortTier` follows [Provider overrides](#provider-overrides). `config.prGate = { autoMerge: true }` starts an implement-plan PR chain; the accepting server adds an opaque `chainId` and persists both values in task config. Notes chat edits may carry `payload.context.lensChat = { inherited: true, source: 'features.commitChatLens' }` when the Lens Chat flag is active; the marker is copied to process metadata |
+| GET | `/api/queue` | Queued/running tasks and pause markers |
+| GET | `/api/queue/models` | Resolved default-provider model IDs and Auto routing diagnostics when enabled |
+| GET | `/api/queue/:id` | Task or durable process-history reconstruction |
+| GET | `/api/queue/history` | Live + durable history; Dream records retain analyzer/critic process IDs |
+| POST | `/api/queue` | Enqueue with [Provider overrides](#provider-overrides); Ask/Autopilot or internal Ralph routing, not UI-only `for-each`. `chatStyle` persists; omitted uses server default, explicit `default` injects nothing. `config.prGate.autoMerge` starts a persisted PR chain |
 | POST | `/api/workspaces/:id/queue/generate` | Enqueue a Generate Plan chat task with Ask semantics. Accepts `provider`, `model`, `reasoningEffort` through the shared chat validation path |
-| POST | `/api/queue/:id/retry` | Re-run a failed/cancelled task by enqueueing a fresh copy from its preserved payload/config in a new chat. Accepts a bare task id or `queue_<taskId>`; a follow-up task resolves to the chat's first task, and a failed persisted process counts as failed even when its first-turn task completed. Strips `processId`/temp-attachment fields; keeps `payload.images` and repo/group workspace fields. Optional body `{ provider }` restarts an Ask/Autopilot chat on another provider: drops model/effort/effort-tier and stale Auto routing so defaults resolve for the new provider (not gated by `features.chatProviderSwitching`). Sets `payload.restartedFrom` (persisted as new process `metadata.restartedFrom`) and source `metadata.restartedAs = { processId, provider }`. `201 { task }`; `400` invalid/disabled/unavailable provider; `404` not found; `409` when not failed/cancelled, or `RESTART_UNSUPPORTED` for non-chat, Ralph, Sentinel, For Each, Map Reduce, or task-group chats |
+| POST | `/api/queue/:id/retry` | Fresh-chat restart of failed/cancelled Ask/Autopilot, preserving images/workspace. Optional provider resets AI defaults/routing. `201` task; unsupported non-chat/orchestrated runs or non-failed source → `409` |
 | POST | `/api/queue/pause` | Pause queue processing globally or per repo (`workspace`/`repoId` query). Body: empty for indefinite, `{ durationHours }` (number in `(0, 24]`), or `{ until }` timestamp |
 | POST | `/api/queue/resume` | Resume queue processing globally or per repo |
 | POST | `/api/queue/repo-gate/release` | Release the active implement-plan PR gate for the required `workspace`/`repoId` query and resume that repo. Returns `409` when the repo has no active gate |
 | POST | `/api/queue/pause-autopilot` | Pause automatic autopilot admission globally or per repo; same timed-pause body as `/api/queue/pause` |
 | POST | `/api/queue/resume-autopilot` | Resume automatic autopilot admission globally or per repo |
-| POST | `/api/queue/task-delay` | Set or clear the repeating task cooldown globally or per repo (`workspace`/`repoId` query). Body `{ scope: 'all'\|'autopilot', delayMinutes: <integer 1..1440>\|null }`; returns the configured value and updated queue stats |
-| POST | `/api/queue/task-delay/skip` | Release the active cooldown without changing its configured value, globally or per repo. Body `{ scope: 'all'\|'autopilot' }` |
-| POST | `/api/queue/pause-marker` | Insert a pause marker between queued items. Body `{ afterIndex?, repoId?, durationHours? }` (`durationHours` in `(0, 24]`). Indefinite markers pause until manual resume; timed markers start counting when the executor consumes the marker. `201 { markerId, afterIndex, durationHours? }` |
+| POST | `/api/queue/task-delay` | Global/per-repo cooldown for `all`/`autopilot`: 1–1440 integer minutes, null clears |
+| POST | `/api/queue/task-delay/skip` | Release active cooldown, retain configuration; global/per-repo |
+| POST | `/api/queue/pause-marker` | Insert after queue index, optional repo and `(0,24]` hours; timer starts on consumption, omitted duration needs manual resume |
 | DELETE | `/api/queue/pause-marker/:markerId` | Remove a queued pause marker before the executor reaches it |
 | DELETE | `/api/queue/:id` | Cancel a queued or running task |
 
@@ -225,26 +227,26 @@ All launch/continue/resume bodies take [Provider overrides](#provider-overrides)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/processes/:id/ralph-start` | Start Ralph execution after grilling. Optional `worktree` opt-in (see [Worktree opt-in](#worktree-opt-in)); worktree creation is fail-before-queue and the resolved path is persisted on the session record so all iterations/resume/final-check run in it |
-| POST | `/api/ralph-launch` | Direct launch (skip grilling). Optional `folderPath` as goal source context and `workingDirectory` as explicit execution directory; omitted `workingDirectory` resolves from `workspaceId` via the multi-repo queue router. Optional `worktree` opt-in on the target server |
-| GET | `/api/workspaces/:wsId/ralph-sessions/attention` | `{ count }` of persisted `awaiting-input` sessions for this workspace; independent of process seen-state. Client: `workspaces.ralphAttention()` |
-| GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Session journal: `record`, parsed progress `sections`, alphabetically ordered raw session `files`, optional transient `resumeDefaults` recovered from the latest iteration process for stuck-session Resume UI |
+| POST | `/api/processes/:id/ralph-start` | Start after grilling; optional worktree created before queue admission, reused for iterations/resume/final-check |
+| POST | `/api/ralph-launch` | Direct launch; optional goal `folderPath`, execution `workingDirectory` (defaults via `workspaceId`), target-server worktree opt-in |
+| GET | `/api/workspaces/:wsId/ralph-sessions/attention` | Awaiting-input count, independent of seen-state |
+| GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Journal, progress, files and recovered resume defaults |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend a completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/new-cron` | New goal cron after RALPH_COMPLETE, preserving prior provider/model when recoverable |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/resume` | Resume a stuck executing session (no in-flight task), preserving prior provider/model/reasoning-effort when recoverable |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/input` | Resolve an `awaiting-input` session with index-aligned `answers[]`, optional `note`, and optional AI controls; append the human input and enqueue a fresh next iteration. `409` outside the waiting phase or on duplicate submit. Client: `workspaces.submitRalphInput()` |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/stop` | Stop an `awaiting-input` session as `USER_STOPPED`, clear its pending request, and leave Submit PR available. Client: `workspaces.stopRalphSession()` |
-| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/submit-pr` | Submit all commits of a `phase === 'complete'` session (any `terminalReason`) as a GitHub PR via an attached autopilot job; no body (workspace default provider/model). `409` when not complete, a Ralph task is in flight, or a submit is queued/running. Returns `{ submitted: true, sessionId, taskId, submitIndex }` and appends a `submits[]` record. Client: `workspaces.submitRalphPr()` |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/input` | Submit index-aligned answers and enqueue next iteration; wrong phase/duplicate → `409` |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/stop` | Stop awaiting-input as `USER_STOPPED`; retain Submit PR |
+| POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/submit-pr` | Submit completed-session commits through Autopilot using workspace defaults; incomplete/in-flight/duplicate submit → `409` |
 
 ## For Each Runs
 
-Workspace-scoped, gated by `forEach.enabled` (default `false`). Parent run state lives under `~/.coc/repos/<workspaceId>/for-each-runs/<runId>/` as `run.json` + `items.json`, never as a Ralph session. Exposed via `client.forEach`. Visible item-plan generation chats are normal queue/process records whose metadata links to the eventual parent run; reviewed chat-backed plans use the non-AI create endpoint so approval persists exactly what the user reviewed. [Provider overrides](#provider-overrides) apply.
+Workspace-scoped, `forEach.enabled` default off; `client.forEach`. Reviewed plans use non-AI create; approval and execution are separate. [Provider overrides](#provider-overrides) apply.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/for-each-runs` | List runs with item status counts |
-| POST | `/api/workspaces/:id/for-each-runs` | Create a draft run from an already-reviewed plan without AI generation. Requires `originalRequest`, `childMode`, `items`; accepts `sharedInstructions`, `provider`, `config.model`/`config.reasoningEffort`, `generationProcessId`, `generationId` |
-| POST | `/api/workspaces/:id/for-each-runs/generate` | Generate a structured JSON draft item plan and persist a draft run. Requires `prompt`, `childMode` (`ask`\|`autopilot`); accepts `sharedInstructions`, `provider`, `config.model`/`config.reasoningEffort` |
+| POST | `/api/workspaces/:id/for-each-runs` | Create reviewed draft from `originalRequest`, `childMode`, `items`; no AI |
+| POST | `/api/workspaces/:id/for-each-runs/generate` | AI-generate/persist draft from `prompt`, `childMode` |
 | GET | `/api/workspaces/:id/for-each-runs/:runId` | Read run with reviewed item plan/state |
 | PUT | `/api/workspaces/:id/for-each-runs/:runId/plan` | Replace the draft plan and optional shared instructions / child mode before approval |
 | POST | `/api/workspaces/:id/for-each-runs/:runId/approve` | Mark the draft approved; approval does not enqueue child chats |
@@ -256,13 +258,13 @@ Workspace-scoped, gated by `forEach.enabled` (default `false`). Parent run state
 
 ## Map Reduce Runs
 
-Workspace-scoped, gated by `mapReduce.enabled` (default `false`). State lives under `~/.coc/repos/<workspaceId>/map-reduce-runs/<runId>/` as `run.json`, `items.json`, `reduce-step.json`. Map items run as normal Ask/Autopilot child chats in parallel up to `maxParallel`; the reduce step runs as one child chat after all map items complete or skip. Exposed via `client.mapReduce`. [Provider overrides](#provider-overrides) apply to map and reduce orchestration.
+Workspace-scoped, `mapReduce.enabled` default off; `client.mapReduce`. Map chats run up to `maxParallel`; reduce follows completed/skipped maps. [Provider overrides](#provider-overrides) apply.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/map-reduce-runs` | List runs with map item status counts and reduce status |
-| POST | `/api/workspaces/:id/map-reduce-runs` | Create a draft run from an already-reviewed map plan without AI generation. Requires `originalRequest`, `childMode`, `reduceInstructions`, `items`; accepts `sharedInstructions`, `maxParallel`, `provider`, `config.model`/`config.reasoningEffort`, `generationProcessId`, `generationId` |
-| POST | `/api/workspaces/:id/map-reduce-runs/generate` | Generate a structured JSON map plan plus reduce instructions and persist a draft run. Requires `prompt`, `childMode`; accepts `sharedInstructions`, `provider`, `config.model`/`config.reasoningEffort` |
+| POST | `/api/workspaces/:id/map-reduce-runs` | Create reviewed draft from request, child mode, reduce instructions and items; no AI |
+| POST | `/api/workspaces/:id/map-reduce-runs/generate` | AI-generate/persist map/reduce draft from prompt and child mode |
 | GET | `/api/workspaces/:id/map-reduce-runs/:runId` | Read run with reviewed map plan/state and reduce-step state |
 | PUT | `/api/workspaces/:id/map-reduce-runs/:runId/plan` | Replace the draft map plan and optional shared instructions, reduce instructions, `maxParallel`, or child mode before approval |
 | POST | `/api/workspaces/:id/map-reduce-runs/:runId/approve` | Mark the draft approved; approval does not enqueue child chats |
@@ -275,32 +277,32 @@ Workspace-scoped, gated by `mapReduce.enabled` (default `false`). State lives un
 
 ## Native Copilot Sessions
 
-Read-only compatibility views over the server user's native GitHub Copilot CLI session store (`~/.copilot/session-store.db`). Share the disabled-by-default `features.nativeCliSessions` live guard with the unified CLI Sessions API, so one switch covers native Copilot/Codex/Claude browsing. CoC opens the SQLite store read-only with short-lived per-request connections and never writes to it; native sessions enter CoC process history only through the explicit import route below. Disabled/unavailable states return HTTP 200 typed payloads: `{ enabled: false, reason: 'feature-disabled' }`, or `{ enabled: true, available: false, reason: 'db-missing' | 'db-invalid' }`. Workspace scoping matches native `sessions.cwd` against the registered workspace root (equal or descendant) or native `sessions.repository` against the workspace's origin-remote `owner/repo` (case-insensitive). Exposed as `client.nativeCopilotSessions`.
+Read-only server-local CLI store; `features.nativeCliSessions` defaults off. No native-store writes; explicit import alone adds CoC history. HTTP `200` reports `feature-disabled` or `db-missing`/`db-invalid`. Workspace scope matches cwd root/descendants or case-insensitive origin repository. `client.nativeCopilotSessions`.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/native-copilot-sessions` | Workspace-matching sessions sorted by newest `updated_at`. Query: `q` (text search via the native `search_index` FTS table with match snippets; parameterized literal-quoted terms), `sessionId` (exact or partial), `branch`, `from`/`to` ISO bounds, `limit` (default 50, max 200), `offset`, `scope` (`all` = import picker: every session regardless of cwd/repository, no `sdk_session_id` hiding, and each item tagged with `importedProcessId` when this workspace already has a chat for it). Response: `items` (summary preview + turn counts), `total`, `searchIndexAvailable` (false when the FTS table is absent — text queries then return no hits non-fatally), `deduplicatedCount` (sessions hidden because `sessions.id` matches a CoC process `sdk_session_id`), `backgroundJobCount` (automated background-job sessions hidden by first-turn or stored-summary prompt match, e.g. title summarization) |
-| GET | `/api/workspaces/:id/native-copilot-sessions/:sessionId` | One session: metadata, full stored summary, turns ordered by `turn_index` with per-turn char counts and search-index diagnostics (`searchIndexSourceId`/`searchIndexChars`, null when unindexed). Always returns `conversation`: a reconstructed `ReconstructedConversationTurn[]` built from `session-state/<id>/events.jsonl` when available, else mapped from flat DB turns as text-only user/assistant turns. Out-of-workspace or unknown IDs → `404` |
-| POST | `/api/workspaces/:id/native-copilot-sessions/:sessionId/import` | Import any native session (cwd need not match) into workspace `:id` as a completed `chat` process holding the reconstructed transcript, with `metadata.importedFrom` and a `copilot` binding to the native session id so follow-ups resume it. `201 { processId, created: true }` for a new chat; `200 { processId, created: false }` when the workspace already has a chat for that session (explicit import or CoC-run `sdkSessionId`). `404` when the flag is off or the workspace/session is unknown; `503` with `code` = `db-missing`/`db-invalid` when the store is unreadable |
+| GET | `/api/workspaces/:id/native-copilot-sessions` | Newest-first list with text/session/branch/date filters, limit 50/max 200, offset. `scope=all` import picker bypasses workspace/dedup hiding and tags existing imports; absent FTS yields no text hits, not failure |
+| GET | `/api/workspaces/:id/native-copilot-sessions/:sessionId` | Metadata, turns and reconstructed conversation (JSONL, else text-only DB fallback); unknown/out-of-workspace → `404` |
+| POST | `/api/workspaces/:id/native-copilot-sessions/:sessionId/import` | Import any native session as resumable completed chat in selected workspace; `201` new, `200` existing, disabled/unknown → `404`, unreadable DB → `503` |
 
 ## Native CLI Sessions
 
-Unified read-only, workspace-scoped views over native Copilot (`~/.copilot/session-store.db`), Codex (`~/.codex/sessions`), and Claude Code (`~/.claude/projects`) stores. Gated by the disabled-by-default live `features.nativeCliSessions` flag; exposed as `client.nativeCliSessions`. `provider=copilot|codex|claude` selects the backing store and defaults to `copilot`. Disabled/unavailable states return HTTP 200 typed payloads `{ enabled: false, reason: 'feature-disabled' }` or `{ enabled: true, available: false, reason: 'store-missing' | 'store-invalid' }`. Deduplicates against `ProcessStore.getSdkSessionIds(workspaceId)`. Codex and Claude text search is on-demand substring scanning over JSONL and reports `searchIndexAvailable: false`; Copilot delegates to the native SQLite provider.
+Unified read-only Copilot/Codex/Claude views, same live gate; `client.nativeCliSessions`. Provider defaults to Copilot. HTTP `200` reports `feature-disabled` or `store-missing`/`store-invalid`; workspace SDK IDs are deduplicated. Copilot uses SQLite search; Codex/Claude scan JSONL (`searchIndexAvailable: false`).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/native-cli-sessions?provider=copilot\|codex\|claude` | List workspace-matching sessions. `provider` is validated against the shared descriptor registry: unknown id → `400` listing every known id; a provider staged as `planned` (currently `opencode`) → `400` with its descriptor note. Query also accepts `q`, `sessionId`, `branch`, `from`/`to`, `limit`, `offset`. Response: provider-tagged `items`, `total`, `searchStrategy` (`native-index`\|`on-demand-scan`\|`unavailable`), `searchIndexAvailable`, `deduplicatedCount`, `backgroundJobCount`, `limit`, `offset` |
-| GET | `/api/workspaces/:id/native-cli-sessions/:sessionId?provider=copilot\|codex\|claude` | One session: provider-tagged metadata, `searchStrategy`, store path, reconstructed `conversation: ReconstructedConversationTurn[]`. Same provider validation; unknown or out-of-workspace → `404` |
+| GET | `/api/workspaces/:id/native-cli-sessions?provider=copilot\|codex\|claude` | Filtered/paginated workspace list, provider/search strategy/counts; unknown/planned provider → `400` |
+| GET | `/api/workspaces/:id/native-cli-sessions/:sessionId?provider=copilot\|codex\|claude` | Provider-tagged metadata and reconstructed conversation; invalid provider → `400`, unknown/out-of-workspace → `404` |
 
 ## Dreams
 
-Workspace-scoped, gated by `dreams.enabled` (default `false`); generation also requires the workspace's `preferences.dreams.enabled` opt-in. Cards are review records only: approval records user intent, conversion records an explicit artifact link, and no route mutates skills, prompts, notes, memory, work items, or code.
+Workspace-scoped; `dreams.enabled` defaults off and generation needs workspace opt-in. Cards record review intent/artifact links, never mutate other domains. See [spa/routes.md](spa/routes.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/workspaces/:id/dreams/cards` | Visible cards by default. `includeHidden=true` adds candidate/approved/dismissed/converted/superseded history; `status=visible,approved` filters |
 | GET | `/api/workspaces/:id/dreams/cards/:cardId` | Card detail: source ranges, confidence, fingerprint, dedup rationale |
-| POST | `/api/workspaces/:id/dreams/run` | Enqueue a visible queue-backed `dream-run` task for a manual read-only pass. Body accepts `provider`, `config.model`, `config.reasoningEffort`, `confidenceThreshold`, `maxCandidates`, `conversationLimit`, `timeoutMs`; returns `202 { task }`. Run records persist resolved provider/model/reasoning/timeout metadata, source coverage, and analyzer/critic process IDs; the outer process result and metadata carry those IDs so `/api/processes/:id`, `/api/queue/:id`, and `/api/queue/history` surface analyzer/critic prompts after restart |
+| POST | `/api/workspaces/:id/dreams/run` | Enqueue read-only `dream-run` (`202`); AI/threshold/limit/timeout controls; persist analyzer/critic links |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/approve` | Mark a visible card approved (intent only, no next action) |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/dismiss` | Dismiss a visible card, optionally recording `dedupRationale` |
 | POST | `/api/workspaces/:id/dreams/cards/:cardId/convert` | Mark a visible/approved card converted with `{ artifactType, artifactId, artifactUrl? }` |
@@ -308,11 +310,11 @@ Workspace-scoped, gated by `dreams.enabled` (default `false`); generation also r
 
 ## Decisions
 
-Always registered. Bounded Noul/Choice/Score evaluation over caller-supplied `state`; exposed as `client.decisions.evaluate(workspaceId, request)`. Question/answer naming follows TypeSafe. The workspace is resolved through the process store and its root is the `cwd`; the route never reads repository files. Not part of `SDKServiceRegistry` and independent of the workspace's default chat provider.
+Always registered; evaluates caller-supplied state without repository reads, independently of chat-provider defaults.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/workspaces/:id/decisions/evaluate` | Body `{ backend?: 'copilot'\|'typesafe', state, questions: { [id]: { type: 'noul'\|'choice'\|'score', instructions, criteria } } }`. `copilot` (default) runs one isolated `transform()` with fixed model `gpt-5.4-mini` (no MCP/tools, permissions denied, 30 s timeout, aborted on client disconnect, `effectiveModel` mismatch rejected) plus at most one repair attempt for invalid JSON/schema. Code normalizes each distribution, derives Choice `choice`, Score `score`/`legend`, and entropy-based `confidence` (`metadata.confidenceKind: 'self_reported'`). Limits: 256 KiB body, 64 questions, 2–64 Choice options, 2–10 Score levels, 100-char ids, no `__proto__`/`prototype`/`constructor` keys. Errors: `400` invalid, `404` workspace, `413` too large, `501` `typesafe` (placeholder), `502` Copilot failure/invalid output/model mismatch, `503` Copilot unavailable, `504` timeout |
+| POST | `/api/workspaces/:id/decisions/evaluate` | Noul/Choice/Score evaluation; isolated fixed-model Copilot, no MCP/tools/permissions, 30s timeout/disconnect abort. ≤256 KiB/64 questions, unsafe keys rejected; `typesafe` → `501`, failure/unavailable/timeout → `502`/`503`/`504` |
 
 ## Schedules
 
@@ -324,7 +326,7 @@ Always registered. Bounded Noul/Choice/Score evaluation over caller-supplied `st
 | GET | `/api/schedules/:id/runs` | Run history |
 | POST | `/api/schedules/refine` | AI-refine prompt-routine instructions (`{ instructions, hint?, model? }` → `{ refined, raw }`) |
 
-Prompt schedules expose Ask and Autopilot modes; stored or incoming entries with `mode='plan'` read as Ask at runtime, requiring no data migration. They also accept an optional `provider` override (`copilot`\|`codex`\|`claude`\|`opencode`); omitted/empty means the server default. It round-trips through create/update, `schedules.json`, and repo-defined `.github/schedules/*.yaml`, and is passed to the enqueued chat/Ralph payload so the run executes under that provider. Invalid values are rejected `400` on create and ignored when parsing repo YAML.
+Prompt schedules use Ask/Autopilot (`plan` aliases Ask). Optional provider persists into queued runs; empty uses server default. Invalid provider → `400` on create, ignored in repo YAML.
 
 ## Tasks
 
@@ -343,25 +345,17 @@ Read/write/comment/search/image endpoints accept an optional `root` query or bod
 | GET/POST | `/api/workspaces/:id/notes` | Note tree / create note |
 | POST | `/api/workspaces/:id/notes/ai-create` | Enqueue AI note creation. Body: `prompt`, optional `chatTaskId`, optional inherited `lensChat` marker when Lens Chat mode is active |
 | GET/PUT/DELETE | `/api/workspaces/:id/notes/:path` | Read / update / delete note |
-| GET | `/api/workspaces/:id/notes-git/status` | Git status (default root only): working-tree state plus `hasUpstream`, `ahead`, `behind` (local commits vs `origin/<branch>`, computed with no fetch; null without a tracking ref). `hasUpstream` reflects only a local `origin/<branch>` ref, which can outlive a cleared `notesGit.remoteUrl`, so consumers surfacing push state must also require a configured `notesGit.remoteUrl` — push/sync routes `400` without it |
+| GET | `/api/workspaces/:id/notes-git/status` | Default-root Git status/divergence, no fetch. `hasUpstream` is a local ref check; push/sync additionally require configured `notesGit.remoteUrl` |
 | POST | `/api/workspaces/:id/notes-git/commit` | Git commit (default root only) |
 | GET/POST/DELETE | `/api/workspaces/:id/notes/roots` | List configured + task-derived roots; add / remove a repo-folder root |
-| POST/GET | `/api/workspaces/:id/notes/image` | Upload/serve note attachments (`notes-image-handler.ts`): images ≤10 MB plus `application/pdf` ≤50 MB. Repo-folder roots co-locate in `<root>/.images/`; the default root uses `.attachments/`. GET also serves `.papers/<id>.pdf` cached-paper artifacts from the selected root, never the adjacent `.papers/*.txt` extraction sidecars |
-| GET | `/api/workspaces/:id/notes/chat-bindings` | List note-chat bindings for the workspace. Keys are note paths under `per-note` scope and **folder paths** under `per-section` scope; `useNotesChat` resolves as `perNoteMap[folder] ?? perNoteMap[notePath]` |
-| GET/PUT/DELETE | `/api/workspaces/:id/notes/chat-bindings/by-path?path=` | Read / bind / remove one binding. `PUT` (body `{ taskId }`) exists for one case: widening an existing per-note chat to section scope, which re-keys the chat onto its folder with no new enqueue behind it. Bindings are otherwise created as a side effect of enqueue. See [spa/notes.md](spa/notes.md) |
-| POST | `/api/workspaces/:id/notes/paper-ingest` | arXiv paper ingest. Body `{ url, root? }`; caches `.papers/<id>.pdf` plus a best-effort `.papers/<id>.txt` sidecar in the selected root. Available independently of UI feature flags — the disabled-by-default live `features.arxivPaperIngest` flag gates only automatic interception of a lone arXiv link pasted into the editor |
+| POST/GET | `/api/workspaces/:id/notes/image` | Upload/serve images ≤10 MB or PDFs ≤50 MB; serve cached paper PDFs, never text extraction sidecars |
+| GET | `/api/workspaces/:id/notes/chat-bindings` | Bindings keyed by note or section folder |
+| GET/PUT/DELETE | `/api/workspaces/:id/notes/chat-bindings/by-path?path=` | Read/remove binding; PUT widens existing chat to section scope, without enqueue |
+| POST | `/api/workspaces/:id/notes/paper-ingest` | Cache arXiv PDF/text in selected root; UI auto-interception flag does not gate this route |
 
 ### Multi-Root Notes
 
-Up to **10** additional notes roots per workspace — subfolders inside the workspace git repo. The default managed root (`~/.coc/repos/<workspaceId>/notes/`) is always present. Task directories are exposed as protected roots: the repo-scoped `tasks/` directory, `<workspace>/.vscode/tasks`, and relative or absolute paths from `tasks-settings.json#folderPaths`.
-
-- **Root resolution:** default root via `getRepoDataPath(dataDir, workspaceId, 'notes')`; repo-folder roots via `<workspace-git-root>/<relative-path>`; task-derived roots via opaque `task:<sha256>` identities recomputed from the selected workspace's canonical directories per request. A client path or task identity is never filesystem authority. Non-default-root operations reject POSIX absolute, Windows drive/UNC, and parent-reference paths, treat both slash styles as separators, and check the canonical existing path prefix so symlinks cannot escape; tree and search scans omit symlink entries.
-- **Task-root discovery:** missing task directories are omitted, canonical duplicates collapse with primary > legacy > configured label priority, and a task-derived protected entry hides an overlapping normal Notes root. Discovery writes neither `additionalNotesRoots` nor task settings and does not count toward the 10-root limit.
-- **Git ops** apply only to the default root; repo-folder roots inherit the workspace repo's git.
-- **Comment / paper-annotation sidecars** (`notes-sidecar-resolver.ts`) sit next to the note only when it lives under `~/.coc/repos/<workspaceId>/` or `~/.copilot`. Repo-folder roots, and default-root notes opened by absolute path inside the workspace git repo (chat scratchpad files), store sidecars at `~/.coc/repos/<workspaceId>/notes-comments/<encoded-bucket>/<note-path>` so the workspace repo stays clean. The access check runs on the *note* path (allowed: workspace data dir, `~/.copilot`, workspace git root).
-- **PDFs** render inline in the notes editor via the `pdfBlock` Tiptap node.
-- **System folders** (e.g. Plans) are auto-created only in the default root.
-- User-configured roots persist in `PerRepoPreferences.additionalNotesRoots`; task-derived roots stay owned by task settings.
+Default managed root plus ≤10 configured workspace-repo subfolders and protected task-derived roots. Opaque task IDs resolve server-side per workspace; client paths are not authority. Non-default operations reject absolute/drive/UNC/parent paths and canonical symlink escapes; scans omit symlinks. Task roots do not consume the limit or modify settings. Git routes use only the default root; sidecars for workspace files stay in workspace data. See [spa/notes.md](spa/notes.md).
 
 ## Workflows
 
@@ -374,19 +368,18 @@ Up to **10** additional notes roots per workspace — subfolders inside the work
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/workspaces/:id/skills` | Skills merged for the workspace, in priority order: repo-local `.github/skills` → managed global `~/.coc/skills` → configured global extra folders (`source: 'global-extra-folder'`, tagged `folderPath`) → per-repo extra/linked-repo folders → auto-detected OneDrive/CloudStorage folders. Every detected OneDrive root probes `.github/skills` before `skills`; name collisions resolve to the earlier source |
+| GET | `/api/workspaces/:id/skills` | Priority-merged workspace/global/configured/auto-detected skills; earlier source wins |
 | GET | `/api/workspaces/:id/skills/:name` | Skill detail from any merged source, same folder settings and precedence as the list route |
 | POST | `/api/workspaces/:id/skills/install` | Install skill |
 | GET | `/api/workspaces/:id/skills/:name/file?path=<rel>` | Read a file inside a skill folder |
 | DELETE | `/api/workspaces/:id/skills/:name` | Delete skill |
-| GET/POST | `/api/skills`, `/api/skills/install` | List / install global skills |
-| GET | `/api/skills/config` | `{ globalDisabledSkills, globalSkillsDir, globalExtraFolders, autoDetectDefaultFolders }`. `globalDisabledSkills` from `preferences.json`; `globalSkillsDir` is the managed install dir (`dataDir/skills`, normally `~/.coc/skills`); the last two come from the config file's `skills` namespace (defaulting to `[]` / `true` when absent or malformed) |
-| PUT | `/api/skills/config` | Body `{ globalDisabledSkills, globalExtraFolders?, autoDetectDefaultFolders? }`. `globalDisabledSkills` persists to `preferences.json`; when present, `globalExtraFolders` (array of strings) and `autoDetectDefaultFolders` (boolean) merge into the config file's `skills` namespace via whole-file load-merge-write. Folder-source changes invalidate cached workspace skill lists. Returns the GET shape |
-| GET | `/api/skills/effective-paths` | Read-only diagnostic of the agent's effective skill search order. Global-only by default; `?workspaceId=<id>` adds repo-local + per-repo extra folder paths and echoes the resolved `workspaceId` (unknown ids fall back to global-only with no echo). Returns `{ workspaceId?, paths: EffectiveSkillPath[] }`, each `{ source, scope, status, path, skillCount?, note? }`. Declared-but-missing sources are retained so the UI can explain them; every existing `.github/skills` or `skills` container under a detected OneDrive root is reported, a root with neither convention gets one `skipped` entry, and an absent root stays silent |
+| GET | `/api/skills` | List global skills |
+| POST | `/api/skills/install` | Install global skill |
+| GET | `/api/skills/config` | Disabled skills, managed directory and global folder-source settings |
+| PUT | `/api/skills/config` | Save disabled skills and optional extra folders/auto-detection; invalidate source caches |
+| GET | `/api/skills/effective-paths` | Read-only search-order diagnostics; optional known `workspaceId` adds repo sources, unknown falls back to global-only |
 
-`/api/skills/config` and `/api/skills/effective-paths` are registered before the catch-all `/api/skills/:name` and reserved in `RESERVED_GLOBAL_SKILL_NAMES` so the detail route never swallows them. CoC installs/deletes only into the managed `globalSkillsDir`; configured global extra folders, auto-detected OneDrive/CloudStorage folders, and per-repo extra folders are read-only sources. Resolution order and the three consumers (execution, diagnostic, UI listing) are documented in [admin-config.md](admin-config.md).
-
-`EffectiveSkillPath.source` ∈ `repo` \| `managed-global` \| `auto-detected` \| `configured` \| `repo-extra` \| `bundled`; `status` ∈ `available` \| `no-skills` \| `missing` \| `skipped`; `scope` ∈ `global` \| `workspace`.
+Only managed install sources are writable; extra/auto-detected folders are read-only. Resolution/settings: [admin-config.md](admin-config.md).
 
 ## Memory
 
@@ -409,46 +402,46 @@ Up to **10** additional notes roots per workspace — subfolders inside the work
 
 ## Pull Requests
 
-Follows [Origin scoping](#origin-scoping). Cache TTLs below are per canonical origin and PR id.
+Follows [Origin scoping](#origin-scoping). TTLs are per origin/PR; head-dependent caches include `headSha`. See [spa/git-and-prs.md](spa/git-and-prs.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/origins/:originId/pull-requests` | List PRs through the selected clone. Rows carry `diffStats` (`additions`, `deletions`, `changedFiles`) when the provider exposes diffs, plus `fetchedAt`; served from the active-workspace background-warmed in-memory cache for 60 min unless `force=true`. Rows and diff stats are cached by canonical origin, status/scope, PR id, and `headSha` when present; no diff contents are durably stored. `scope=team` fetches provider `scope=all`, supplements with best-effort per-roster-member queries (`login`, else provider id), filters by the origin-scoped Team roster before pagination, and reports the filtered total. With Pull Requests, focused diff, and `pullRequests.autoClassifyTeam` enabled, loaded open Team PRs with `headSha` opportunistically enqueue missing low-priority diff classifications |
-| GET | `/api/origins/:originId/pull-requests/:prId` | PR detail, cached 10 min by origin + PR id, including provider `baseSha`/`headSha` when available. `force=true` refreshes only this PR and invalidates its detail, subresource, provider combined diff, and diff-stats entries |
+| GET | `/api/origins/:originId/pull-requests` | Clone-backed list/diff stats; warmed 60-min cache. `scope=team` filters origin roster before pagination; gated Team auto-classification may enqueue missing results |
+| GET | `/api/origins/:originId/pull-requests/:prId` | Detail/base/head SHAs, 10-min cache; force refresh invalidates this PR's subresources/diffs |
 | GET | `/api/origins/:originId/pull-requests/:prId/threads` | Comment threads; cached 10 min |
 | GET | `/api/origins/:originId/pull-requests/:prId/reviewers` | Reviewers; cached 30 min unless `force=true` |
 | GET | `/api/origins/:originId/pull-requests/:prId/commits` | PR commits; cached 30 min |
 | GET | `/api/origins/:originId/pull-requests/:prId/checks` | CI/check statuses; cached 10 min |
-| GET | `/api/origins/:originId/pull-requests/:prId/diff` | Plain-text provider unified diff; the combined diff is cached with no TTL by origin, PR id, and resolved `headSha` when available |
-| GET | `/api/origins/:originId/pull-requests/:prId/diff/files/:path` | `{ diff }` extracted from the origin-scoped combined diff cache. `fullContext=true` attempts full-file local git context in the selected checkout and falls back with `fullContextUnavailable` metadata |
-| GET | `/api/origins/:originId/pull-requests/:prId/files/:path/content` | Both full-text snapshots for Monaco. Requires `workspaceId` (optional `repoId`) to select a same-origin clone; reads provider `baseSha`/`headSha` from local objects first and falls back through the user's authenticated `gh api` or `az devops invoke`. Rename-aware; binary/symlink/over-10MB responses omit content. Cache identity is origin + PR id + head SHA + path. A provider/local failure returns typed `502` content-unavailable metadata. `PullRequestsClient.getFileDiffContentForOrigin` |
+| GET | `/api/origins/:originId/pull-requests/:prId/diff` | Plain-text unified diff; head-keyed cache, no TTL |
+| GET | `/api/origins/:originId/pull-requests/:prId/diff/files/:path` | File diff; `fullContext=true` tries selected checkout, reports unavailable fallback |
+| GET | `/api/origins/:originId/pull-requests/:prId/files/:path/content` | Base/head text from same-origin clone then authenticated provider fallback; rename-aware, binary/symlink/10 MB guards; typed unavailable → `502` |
 | GET | `/api/origins/:originId/pull-requests/recent-opened` | Recently opened PR entries for the origin |
-| POST | `/api/origins/:originId/pull-requests/recent-opened` | Record an entry after successful validation/open; body includes `number`, `title`, optional `webUrl` |
-| DELETE | `/api/origins/:originId/pull-requests/recent-opened/:prNumber` | Remove an entry (per-entry remove control and automatic stale cleanup on a confirmed 404) |
-| GET | `/api/origins/:originId/pull-requests/coworker-candidates` | Search open PR authors for Team roster candidates through the selected clone. Requires `query` (min 2 chars); optional `status`, `scope`, `top`, `includeRoster`. Calls provider list pagination directly with a bounded page/result cap, skips diff-stat enrichment, caches provider-backed results 2 min per clone/query/status/scope, and returns de-duplicated candidates with `id`, `displayName`, optional `login`, `email`, `avatarUrl`, plus `prCount` and `isInRoster` |
+| POST | `/api/origins/:originId/pull-requests/recent-opened` | Record validated PR entry |
+| DELETE | `/api/origins/:originId/pull-requests/recent-opened/:prNumber` | Remove entry |
+| GET | `/api/origins/:originId/pull-requests/coworker-candidates` | Bounded clone-backed author search; `query` ≥2 chars, 2-min cache |
 | GET | `/api/origins/:originId/pull-requests/coworker-roster` | Persisted Team roster coworkers |
-| POST | `/api/origins/:originId/pull-requests/coworker-roster` | Add/update a roster coworker; body includes `displayName`, optional `id`, `login`, `email`, `avatarUrl` |
+| POST | `/api/origins/:originId/pull-requests/coworker-roster` | Add/update roster entry |
 | DELETE | `/api/origins/:originId/pull-requests/coworker-roster/:coworkerKey` | Remove a coworker by provider id or displayName fallback key |
-| POST | `/api/origins/:originId/pull-requests/team-auto-classification` | Manually trigger the bounded Team PR auto-classification helper used by list/background-warm paths. Requires the live Team auto-classification gate plus explicit `workspaceId` (optional `repoId`); body includes loaded PR list items. Returns counts for eligible/considered/skipped/ready/running/started/notFound/errors, reads/writes classification result and pending state under `originId`, uses low priority, caps each call at 10 new enqueues |
+| POST | `/api/origins/:originId/pull-requests/team-auto-classification` | Gated low-priority classification of loaded Team PRs; concrete workspace required, ≤10 new enqueues, origin results |
 | GET | `/api/origins/:originId/pull-requests/review-history` | Cached PR review history |
-| POST | `/api/origins/:originId/pull-requests/review-history/refresh` | Fetch provider review history through an explicit `workspaceId` (optional `repoId`) and cache it under the origin |
+| POST | `/api/origins/:originId/pull-requests/review-history/refresh` | Clone-backed refresh of origin review history |
 | GET | `/api/origins/:originId/pull-requests/suggestions` | Cached AI-ranked PR suggestions |
-| POST | `/api/origins/:originId/pull-requests/suggestions/refresh` | Rank open PRs through an explicit `workspaceId` (optional `repoId`) using origin-scoped cached review history, persisting suggestions under the same origin |
+| POST | `/api/origins/:originId/pull-requests/suggestions/refresh` | Clone-backed AI ranking using origin review history |
 | GET/PUT | `/api/origins/:originId/pull-requests/:prId/review-progress` | Read/save PR pop-out reviewer progress; `headSha` is required |
-| GET/POST | `/api/origins/:originId/pull-request-chat-bindings` | List/create origin-scoped PR → chat task bindings; workspace rows resolving to the same origin migrate on access |
+| GET/POST | `/api/origins/:originId/pull-request-chat-bindings` | List/create origin PR chat bindings |
 | GET/DELETE | `/api/origins/:originId/pull-request-chat-bindings/:prId` | Read/remove one PR chat binding |
-| POST | `/api/origins/:originId/pull-request-chat-bindings/:prId/fresh` | Archive + clear the bound PR chat. Requires `workspaceId` selecting a concrete clone; workspaces resolving to a different origin are rejected |
+| POST | `/api/origins/:originId/pull-request-chat-bindings/:prId/fresh` | Archive/clear PR chat; concrete same-origin workspace required |
 
 ## Diff Classification
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/origins/:originId/classify-diff` | Trigger AI hunk classification for a PR. Body `{ type: 'pr', identifier: '<prId>:<headSha>', workspaceId, repoId?, model?, provider? }`; `workspaceId` supplies queue routing and provider context. Returns `{ status: 'started'\|'ready'\|'running', … }`; result and pending marker files live under `originId` |
-| GET | `/api/origins/:originId/classify-diff` | Poll one PR result. Query `type=pr`, `identifier=<prId>:<headSha>`. Returns `{ status: 'none'\|'ready'\|'running', result? }` |
-| POST | `/api/repos/:repoId/classify-diff` | Trigger classification for commit or branch-range diffs. Body `{ type: 'commit'\|'branch-range', identifier, workspaceId?, model?, provider? }`; `type: 'pr'` is rejected here and belongs on the origin route |
-| GET | `/api/repos/:repoId/classify-diff` | Poll one commit/branch-range result under the resolved canonical origin. Query `type=commit\|branch-range`, `identifier`, `workspaceId?`; `type: 'pr'` rejected. Returns `{ status, result? }` |
-| GET | `/api/repos/:repoId/classify-diff/batch-status` | Batch-check commit/branch-range identifiers under the resolved origin. Query `type=commit\|branch-range`, `identifiers` (comma-separated, max 200), `workspaceId?`; `type: 'pr'` rejected. Returns `{ statuses: { [identifier]: 'none'\|'ready'\|'running' } }`. Read-only — never triggers a new task |
-| GET | `/api/origins/:originId/classify-diff/batch-status` | Batch-check PR identifiers. Query `type=pr`, `identifiers` (max 200). Same read-only `{ statuses }` shape |
+| POST | `/api/origins/:originId/classify-diff` | PR classification: `type=pr`, `identifier=<prId>:<headSha>`, concrete workspace; origin result/pending state |
+| GET | `/api/origins/:originId/classify-diff` | Poll PR identifier: none/ready/running, optional result |
+| POST | `/api/repos/:repoId/classify-diff` | Classify commit/branch-range; PR type rejected |
+| GET | `/api/repos/:repoId/classify-diff` | Poll commit/branch-range result under resolved origin; PR type rejected |
+| GET | `/api/repos/:repoId/classify-diff/batch-status` | Read-only status for ≤200 commit/branch-range identifiers; PR type rejected |
+| GET | `/api/origins/:originId/classify-diff/batch-status` | Read-only status for ≤200 PR identifiers |
 
 ## Crons
 
@@ -476,13 +469,15 @@ See [mcp-settings.md](mcp-settings.md).
 
 ## Messaging
 
+Server-global connection settings. IC3 direct operations require an explicit region; null/unconfigured makes them unavailable before network access, with no inferred/default region.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/messaging/teams/status` | Normal-CoC Teams channel bridge status and configured `channelName` (per-machine default only when settings are new), global MCP URL, OAuth cache status and availability, plus `teamsBridgeObservabilityEnabled` for the owning server |
+| GET | `/api/messaging/teams/status` | Server-global bridge/MCP/OAuth status and observability flag; `ic3Region: null` means unconfigured |
 | GET | `/api/messaging/teams/attempts` | Flag-gated (`features.teamsBridgeObservability`) newest-first safe connection summaries; `?offset=0&limit=20` (limit 1–100) returns `{attempts,total,nextOffset}`. Disabled → 404; invalid pagination → 400 |
 | GET | `/api/messaging/teams/attempts/:id` | Flag-gated safe attempt detail: phases, bounded non-routine events, aggregate totals and poll/send health. Unknown UUID → 404; invalid ID → 400 |
 | POST | `/api/messaging/teams/server` | Register or update the global `Microsoft Teams` HTTP MCP endpoint; body `{url}` (HTTPS) |
-| POST | `/api/messaging/teams/config` | Save Teams channel bridge settings (`teamName`, `channelName`, `botName`, `enabled`); disabling stops polling |
+| POST | `/api/messaging/teams/config` | Save bridge settings; optional `ic3Region` is `amer`/`emea`/`apac`, null clears, omitted preserves. Invalid → `400`; region change disconnects/requires reconnect, disable stops polling |
 | POST | `/api/messaging/teams/reconnect` | Connect the enabled channel bridge using the cached MCP OAuth token; reports connection failures |
 | GET | `/api/messaging/whatsapp/status` | Default-off WhatsApp manager status `{enabled,status,qr,error,groupJid,groupName,deviceName}` |
 | POST | `/api/messaging/whatsapp/config` | Save `{enabled?,deviceName?,groupJid?,groupName?}`; enabling connects, disabling disconnects; returns `{ok:true}` |
@@ -492,37 +487,61 @@ See [mcp-settings.md](mcp-settings.md).
 
 ## Work Items
 
-Core CRUD/listing routes are origin-scoped (see [Origin scoping](#origin-scoping)) and exposed by `coc-client` as `workItems.*ForOrigin(...)`. Workspace-scoped URLs resolve to the workspace's canonical origin for storage/cache reads. Mutations clear cache entries and broadcast events for both the caller workspace id and the resolved origin id when those differ. `syncLinks` payloads are rejected. Create/update logic lives in the shared command service (`work-items/work-item-commands.ts`), so hierarchy validation, provider sync, cache invalidation, and broadcasts behave the same for every REST caller.
+Core storage/cache is canonical-origin scoped; workspace aliases select the concrete clone. Mutations invalidate caches and broadcast both scopes when different. `syncLinks` input is rejected. Use REST/client commands, never direct storage writes. See [spa/work-items.md](spa/work-items.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/origins/:originId/work-items` | List. Standard field filters plus `tracker=local-only\|github-backed\|azure-boards-backed` (inherited Epic-rooted identity). Warmed cache unless `force=true` |
+| GET | `/api/origins/:originId/work-items` | Filtered list, including inherited Epic `tracker`; warmed cache unless force |
 | GET | `/api/origins/:originId/work-items/grouped` | Grouped by status, per-group pagination; warmed cache unless `force=true` |
-| GET | `/api/origins/:originId/work-items/tree` | Hierarchy tree. `tracker=`, content/status/type filters, `includeArchived`, `includeDone`; descendants inherit the root Epic's identity. Active-origin Local and detected Remote trees come from the warmed cache unless `force=true` |
-| POST | `/api/origins/:originId/work-items` | Create. Root Epic payloads may carry `tracker` metadata; absent means `local-only`. A child under a GitHub-backed Epic creates the issue first, encodes the parent via hidden body metadata, then stores `githubMirror`; under an Azure-backed Epic it creates the Azure item and native parent relation first, then stores `azureBoardsMirror` |
+| GET | `/api/origins/:originId/work-items/tree` | Tracker/content/status/type-filtered hierarchy, archive/done controls; warmed cache unless force |
+| POST | `/api/origins/:originId/work-items` | Create; root Epic tracker defaults local-only. Provider-backed children create remote item/parent link before local mirror |
 | GET | `/api/origins/:originId/work-items/:itemId` | Read work item |
-| PATCH | `/api/origins/:originId/work-items/:itemId` | Update. `tracker` is valid only on root Epics. Core edits on mirror items push provider-owned fields before local storage; a stale provider snapshot returns a typed sync conflict unless a matching reviewed `syncConflictResolution` is included. Also accepts an optional `plan` object (see [Plan versioning](#plan-versioning-on-patch)) |
+| PATCH | `/api/origins/:originId/work-items/:itemId` | Update fields + optional [plan](#plan-versioning-on-patch); tracker only on root Epics. Provider edits precede local save; stale snapshot needs reviewed sync resolution |
 | DELETE | `/api/origins/:originId/work-items/:itemId` | Delete work item |
-| GET/PUT | `/api/origins/:originId/work-items/:itemId/plan` | Read or replace the current plan. `PUT` creates the next immutable version (non-empty content required) and accepts optional `workspaceId` |
+| GET/PUT | `/api/origins/:originId/work-items/:itemId/plan` | Read/replace current plan; PUT creates immutable non-empty version, optional workspace |
 | GET | `/api/origins/:originId/work-items/:itemId/plan/versions` | List immutable plan/content versions |
 | GET | `/api/origins/:originId/work-items/:itemId/plan/versions/:version` | Read one version |
 | GET | `/api/origins/:originId/work-items/:itemId/plan/versions/compare?base=N&target=M` | Compare two versions for a local-only `work-item`/`goal`. Requires `workItems.workflow.enabled` |
-| POST | `/api/origins/:originId/work-items/:itemId/plan/versions/:version/restore` | Restore an older version as a new current version. Requires `workItems.workflow.enabled`; body accepts `summary`, `reason`, `workspaceId` |
+| POST | `/api/origins/:originId/work-items/:itemId/plan/versions/:version/restore` | Restore as new version; local-only work-item/goal, workflow gate required |
 | POST | `/api/origins/:originId/work-items/:itemId/plan/refine` | AI-assisted current-plan refinement when a refinement invoker is configured |
-| POST | `/api/origins/:originId/work-items/:itemId/execute` | Enqueue an implementation run. Requires `workspaceId`; accepts `executionMode` (`one-shot`\|`ralph`), `skillNames`, [Provider overrides](#provider-overrides). One-shot is the default; with `workItems.workflow.enabled` local-only Goals default to Ralph. Ralph is accepted only for local-only `work-item`/`goal` and returns `ralphSessionId` with `taskId`. Optional `worktree` opt-in (fail-before-enqueue) sets the task's `workingDirectory` to the worktree path and returns `worktree` plus optional `worktreeWarning` for a dirty source |
-| POST | `/api/origins/:originId/work-items/:itemId/ai-review` | Optional AI review of a Review-state local-only `work-item`/`goal`. Requires `workspaceId` + `workItems.workflow.enabled`; enqueues an Ask-mode `code-review` chat, records a non-mutating `work-item-ai-review` history entry, and leaves the item in Review even on failure |
-| POST | `/api/origins/:originId/work-items/:itemId/submit-pr` | Submit the latest eligible Review-state local-only change with commits as a PR. Requires `workspaceId`, `workItems.workflow.enabled`, clean workspace, registered workspace root, `gh` auth, and no existing PR metadata on the change. Body accepts `changeId`, `title`, `body`, `baseBranch`, `branchName`; success records branch/PR metadata, links the PR URL on the execution, and marks the item Done |
-| POST | `/api/origins/:originId/work-items/:itemId/resolve-comments` | Resolve plan or commit review comments; `workspaceId` required so task/comment files and queue routing use the selected clone |
+| POST | `/api/origins/:originId/work-items/:itemId/execute` | Concrete workspace run, one-shot default; workflow local Goals default Ralph (local work-item/goal only). AI/skill overrides; worktree creation fails before enqueue |
+| POST | `/api/origins/:originId/work-items/:itemId/ai-review` | Workflow-gated Review-state local work-item/goal; Ask code review leaves state unchanged |
+| POST | `/api/origins/:originId/work-items/:itemId/submit-pr` | Workflow-gated Review-state local change with commits; clean registered clone, `gh` auth, no prior PR required. Success links PR and marks Done |
+| POST | `/api/origins/:originId/work-items/:itemId/resolve-comments` | Resolve plan/commit comments through selected clone |
 | GET | `/api/origins/:originId/work-items/:itemId/changes` | List plan-version/commit change records; optional `workspaceId` validates the clone. No workspace alias |
-| POST | `/api/origins/:originId/work-items/:itemId/changes` | Create an open change record. Body: `planVersion`, `taskId`, `headBefore`, optional `workspaceId` |
-| PATCH | `/api/origins/:originId/work-items/:itemId/changes/:changeId` | Update a change record's commits, status, completion timestamp, task id, or `headBefore` |
-| GET | `/api/origins/:originId/work-items/sync/status?workspaceId=:workspaceId` | Sync provider status for the selected clone; returns disabled reasons unless both `workItems.hierarchy.enabled` and `workItems.sync.enabled` are true. Without a `provider` query it derives `remoteProvider` from the repo remote and reports only that one; unsupported remotes report none. Warmed cache unless `force=true` |
-| POST | `/api/origins/:originId/work-items/import-from-github` | Import a GitHub Epic issue. Body: `workspaceId` plus `issueNumber` or `issueUrl` (URL owner/repo must match the workspace-configured repo). Pulls the root plus descendants found via hidden `coc-work-item-sync` parent metadata into a local read mirror; returns the root Epic |
-| POST | `/api/origins/:originId/work-items/import-from-azure-boards` | Import an Azure Boards Epic-rooted tree. Body: `workspaceId` plus `workItemId` or `workItemUrl`; bare IDs use the workspace's Azure DevOps remote for org/project when available, else configured ADO org/project. URL org/project must match the resolved context. Pulls descendants via native hierarchy relations; returns the root Epic |
-| POST | `/api/origins/:originId/work-items/:itemId/convert-to-github?workspaceId=:workspaceId` | Convert a local-only root Epic tree to GitHub-backed: create an issue per item in the workspace-configured repo, encode parent links in hidden body metadata, store mirror metadata locally |
-| POST | `/api/origins/:originId/work-items/:itemId/convert-to-local?workspaceId=:workspaceId` | Detach a GitHub-backed root Epic tree to local-only by dropping mirror metadata from root and descendants; local status, plans, history, runs, and commits are preserved and remote issues untouched |
+| POST | `/api/origins/:originId/work-items/:itemId/changes` | Create open change linked to plan version/task/base HEAD |
+| PATCH | `/api/origins/:originId/work-items/:itemId/changes/:changeId` | Update change commits/status/completion/task/base HEAD |
+| GET | `/api/origins/:originId/work-items/sync/status?workspaceId=:workspaceId` | Clone provider status; hierarchy + sync gates required. Omitted provider derives from remote; unsupported host reports none |
+| POST | `/api/origins/:originId/work-items/import-from-github` | Clone-backed Epic issue/tree import; issue URL must match configured repository |
+| POST | `/api/origins/:originId/work-items/import-from-azure-boards` | Clone-backed Epic/tree import; remote org/project precedes config, supplied URL must match |
+| POST | `/api/origins/:originId/work-items/:itemId/convert-to-github?workspaceId=:workspaceId` | Publish local root Epic tree as linked GitHub issues |
+| POST | `/api/origins/:originId/work-items/:itemId/convert-to-local?workspaceId=:workspaceId` | Detach GitHub mirrors; retain local history/plans/runs, leave remote issues untouched |
+| POST | `/api/origins/:originId/work-items/:itemId/request-changes` | Incorporate review comments into plan and transition to ready-to-execute |
+| PATCH | `/api/origins/:originId/work-items/:itemId/pin` | Pin/unpin item |
+| PATCH | `/api/origins/:originId/work-items/:itemId/archive` | Archive/unarchive item |
 | GET | `/api/workspaces/:id/work-items/tree` | Workspace-compatible tree route resolving to the canonical origin |
-| GET/POST | `/api/workspaces/:id/work-items/...` | Remaining workspace-compatible routes resolve to the canonical origin for storage/cache reads and writes while `:id` names the concrete workspace. Changes and AI authoring routes are origin-only |
+| GET/POST | `/api/workspaces/:id/work-items` | List/create at workspace's origin |
+| GET | `/api/workspaces/:id/work-items/grouped` | Grouped list at workspace's origin |
+| GET/PATCH/DELETE | `/api/workspaces/:id/work-items/:itemId` | Read/update/delete at workspace's origin |
+| POST | `/api/workspaces/:id/work-items/:itemId/request-changes` | Review-comment plan update |
+| PATCH | `/api/workspaces/:id/work-items/:itemId/pin` | Pin/unpin |
+| PATCH | `/api/workspaces/:id/work-items/:itemId/archive` | Archive/unarchive |
+| GET/PUT | `/api/workspaces/:id/work-items/:itemId/plan` | Read/replace immutable plan |
+| GET | `/api/workspaces/:id/work-items/:itemId/plan/versions` | List versions |
+| GET | `/api/workspaces/:id/work-items/:itemId/plan/versions/:version` | Read version |
+| GET | `/api/workspaces/:id/work-items/:itemId/plan/versions/compare?base=N&target=M` | Workflow-gated version compare |
+| POST | `/api/workspaces/:id/work-items/:itemId/plan/versions/:version/restore` | Workflow-gated restore as new version |
+| POST | `/api/workspaces/:id/work-items/:itemId/plan/refine` | AI plan refinement |
+| POST | `/api/workspaces/:id/work-items/:itemId/execute` | Run through this concrete workspace |
+| POST | `/api/workspaces/:id/work-items/:itemId/ai-review` | Workflow-gated AI review |
+| POST | `/api/workspaces/:id/work-items/:itemId/submit-pr` | Workflow-gated PR submission |
+| POST | `/api/workspaces/:id/work-items/:itemId/resolve-comments` | Resolve comments in this clone |
+| GET | `/api/workspaces/:id/work-items/sync/status` | Remote-derived provider status |
+| POST | `/api/workspaces/:id/work-items/import-from-github` | Import GitHub Epic tree |
+| POST | `/api/workspaces/:id/work-items/import-from-azure-boards` | Import Azure Boards Epic tree |
+| POST | `/api/workspaces/:id/work-items/:itemId/convert-to-github` | Publish local Epic tree |
+| POST | `/api/workspaces/:id/work-items/:itemId/convert-to-local` | Detach GitHub mirror |
+| POST | `/api/workspaces/:id/work-items/from-chat` | Create item from chat |
 
 ### Work Item chat bindings
 
@@ -532,49 +551,42 @@ Shape per [Chat bindings](#chat-bindings); workspace-scoped callers resolve to t
 |--------|------|---------|
 | GET | `/api/origins/:originId/work-item-chat-bindings` | List bindings for the origin |
 | GET | `/api/origins/:originId/work-item-chat-bindings/:workItemId` | Read one; `404` when none |
-| POST | `/api/origins/:originId/work-item-chat-bindings` | Create/replace. Body `{ workItemId, taskId }`; optional `workspaceId` validated against the origin |
+| POST | `/api/origins/:originId/work-item-chat-bindings` | Create/replace; optional workspace validated against origin |
 | DELETE | `/api/origins/:originId/work-item-chat-bindings/:workItemId` | Remove (missing is a no-op) |
-| POST | `/api/origins/:originId/work-item-chat-bindings/:workItemId/fresh` | Archive + clear the bound chat; requires `workspaceId`, rejects a different origin |
+| POST | `/api/origins/:originId/work-item-chat-bindings/:workItemId/fresh` | Archive/clear chat; concrete same-origin workspace required |
+| GET/POST | `/api/workspaces/:id/work-item-chat-bindings` | List/create origin bindings through workspace |
+| GET/DELETE | `/api/workspaces/:id/work-item-chat-bindings/:workItemId` | Read/remove binding |
+| POST | `/api/workspaces/:id/work-item-chat-bindings/:workItemId/fresh` | Archive/clear chat through workspace |
 
 ### Tracker identity
 
-A root Epic carries `tracker: { kind: 'local-only' }`, `{ kind: 'github-backed', provider: 'github', github: { issueId?, issueNumber?, issueUrl?, lastPulledAt? } }`, or `{ kind: 'azure-boards-backed', provider: 'azure-boards', azureBoards: { workItemId?, workItemUrl?, revision?, updatedAt?, lastPulledAt? } }`. Descendants inherit it for listing and tree filtering; tracker metadata is invalid on non-root items.
-
-Mirror metadata matches each local item to its remote counterpart while sync ownership stays at the Epic: `githubMirror: { issueId?, issueNumber, issueUrl?, state?, updatedAt?, lastPulledAt? }` and `azureBoardsMirror: { workItemId, workItemUrl?, revision?, workItemType?, state?, updatedAt?, lastPulledAt? }` (no credentials). The public contract exposes no per-item `syncLinks`; persisted ones migrate on read when rootable at a GitHub-backed Epic — root link becomes Epic tracker metadata, item links become `githubMirror`, `syncLinks` are dropped from stored detail/index data.
+Root Epics own `tracker.kind`: `local-only`, `github-backed`, or `azure-boards-backed`. Descendants inherit identity; individual mirrors retain provider IDs/revisions, never credentials. Tracker edits on non-root items and public `syncLinks` are invalid.
 
 ### Provider sync
 
-`workItems.sync.enabled` is the disabled-by-default global gate: with it off, local saves persist but no GitHub/Azure PATCH transport calls or background polling timers run. Provider-backed saves compare stored mirror metadata against the live provider and fail with `WORK_ITEM_SYNC_CONFLICT` when the remote changed; a retry may include `syncConflictResolution: { provider: 'github', acknowledgedRemoteUpdatedAt }` or `{ provider: 'azure-boards', acknowledgedRemoteRevision }`, and the save proceeds only if the live snapshot still matches.
-
-GitHub sync mirrors title, description, status, type, parent, tags, and issue open/closed state; parsed `coc:status:*` values apply only when they agree with the issue state, else `open` → `created` and `closed` → `done`. Issue mapping owns only `coc:` labels (`coc:type:*`, `coc:status:*`, `coc:priority:*`) and the hidden `<!-- coc-work-item-sync {json} -->` block; other labels stay user tags. Azure sync mirrors title, description, status/state, priority, tags, type, parent relation, revision, URL, and updated metadata from native fields/relations, and local edits push the same core editable fields back, refreshing mirror revision/URL/update metadata from the returned item. CoC plans, execution history, runs, and commits stay local.
-
-Background pollers pull provider-backed Epic roots when remote integration is enabled. `workItems.sync.github` supports `owner`, `repo`, `pollingEnabled` (default `true`), `pollIntervalMinutes` (default `5`, range `1..1440`); `workItems.sync.azureBoards` supports `project` plus the same polling keys. Polling scans only workspaces with imported provider-backed roots, stays workspace-scoped, updates mirrors, prunes missing mirrored descendants, deletes mirrored root trees when the provider root is gone, and warns on remote-wins overwrites of local unsynced provider-owned edits.
+`workItems.sync.enabled` defaults off: local saves persist, provider writes/pollers stop. A changed live snapshot yields `WORK_ITEM_SYNC_CONFLICT`; reviewed retry supplies GitHub `acknowledgedRemoteUpdatedAt` or Azure `acknowledgedRemoteRevision`, which must still match. Provider-owned fields sync; plans/history/runs/commits stay local. Pollers act only on imported workspace roots and may prune deleted remote trees.
 
 ### Provider registration and mapping
 
-The sync route layer keeps provider status for GitHub and Azure Boards availability while Epic-rooted operations use the explicit import, pull, and conversion endpoints. GitHub Issues is registered by default, authenticates externally through `gh`/environment-backed auth without persisting tokens, and its status adapter resolves workspace owner/repo. Azure Boards is registered by default for status checks, authenticates externally with Azure CLI (no PATs or bearer values stored), reports missing remote / config project / CLI auth and config-vs-remote mismatches explicitly, and returns only sanitized org/project metadata. Provider visibility is workspace-scoped by remote host (`github.com`; `dev.azure.com`, `ssh.dev.azure.com`, `*.visualstudio.com`), and configuration cannot make an unsupported host visible.
-
-Azure org/project resolution prefers the workspace Azure DevOps remote (including `visualstudio.com/<collection>/<project>/_git/<repo>`), then the global org URL from `/api/providers/config` (`providers.ado.orgUrl`) plus workspace-scoped `workItems.sync.azureBoards.project`, and reports a mismatch status when saved values conflict with the remote. Azure field mapping is deterministic without custom fields: Epic/Feature/Bug map natively, PBI prefers Product Backlog Item then User Story, Work Item and Goal map to Task, Goal identity uses a CoC-owned Azure tag, common Azure states map to CoC statuses, and unknown states/types/priorities are preserved as local status strings or metadata tags.
+GitHub/Azure visibility derives from the workspace remote host, not configuration alone. Auth uses external `gh`/Azure CLI, without stored tokens/PATs. Azure remote org/project precedes configured fallback; conflicting values produce mismatch status. Operations use explicit imports/conversions and background polling, not a manual pull endpoint.
 
 ### Plan versioning on PATCH
 
-`PATCH .../work-items/:itemId` accepts metadata fields and an optional `plan: { content, resolvedBy?, summary?, reason? }` in one request; `plan.content` must contain non-whitespace Markdown. When present the server creates the next immutable version, records source/author metadata (`user` or `ai`), stores the pointer on `plan.currentVersion` and `currentContentVersion`, opens the corresponding change record, broadcasts one `work-item-updated`, and returns the updated item. `PUT .../plan` is the plan-only path with the same content requirement. Execution records and queued task payloads carry the selected `planVersion` so runs trace to the exact version executed.
+PATCH accepts fields plus `plan.content` (non-whitespace Markdown), creating the next immutable version/change and updating current-version pointers. PUT plan uses the same requirement; restore creates a new version. Runs carry the exact `planVersion`.
 
 ### Execution routes
 
-`/execute`, `/submit-pr`, `/ai-review`, and `/resolve-comments` all require `workspaceId` in body or query, resolving to `originId`. Queue payloads, git/PR operations, task files, and comment resolution use that workspace; execution history, changes, cache invalidation, and `work-item-updated` broadcasts write to the origin scope. `coc-client` exposes `executeForOrigin`, `submitPullRequestForOrigin`, `startAiReviewForOrigin`, `resolveCommentsForOrigin`.
-
-Work-Item-bound Goal grilling is queue-driven, not a REST endpoint: when a completed chat task carries `context.workItemGoalGrilling` and `workItems.workflow.enabled` is true, the server extracts the final assistant `## Goal` block and saves it to the addressed local-only `goal` as the next AI-authored immutable content version.
+Origin `/execute`, `/submit-pr`, `/ai-review`, `/resolve-comments` require same-origin `workspaceId` in body/query. Queue, Git, task/comment files use that clone; history/changes/cache/events use origin. Workspace aliases supply the clone through `:id`; changes and AI authoring remain origin-only. Workflow Goal grilling is queue-driven, not a separate endpoint.
 
 ### AI Authoring
 
-Gated by `workItems.aiAuthoring` (default `false`). The `ai-draft` generation endpoints are ephemeral — nothing persists until the caller applies the content. All routes are origin-scoped and require a concrete `workspaceId` in the body for generation context; workspace aliases are not registered. Response: `{ kind: 'clarification', questions: string[], clarificationCount: number }` or `{ kind: 'draft', workItem: {...}, goal?: string, childTasks?: [...] }`.
+`workItems.aiAuthoring.enabled` defaults off. Origin-only routes require body `workspaceId` for concrete clone context. Draft generation is ephemeral (clarification or draft); explicit apply persists with revision gates.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/origins/:originId/work-items/ai-draft` | Draft a **new** work item. Body: `workspaceId` plus `{ prompt, type?, parentId?, clarificationAnswers?, clarificationCount? }`. Returns clarification (up to 3 rounds) or a draft |
-| POST | `/api/origins/:originId/work-items/:itemId/ai-draft` | Draft an **improvement** for an existing item. Body: `workspaceId` plus `{ prompt, targets?: ['fields','goal','childTasks'], clarificationAnswers?, clarificationCount? }` |
-| POST | `/api/origins/:originId/work-items/:itemId/ai-draft/apply` | Generate and apply a draft to a saved local-only `work-item`, creating the next immutable version. Requires `workItems.aiAuthoring.enabled` + `workItems.workflow.enabled`; body: `workspaceId` plus `{ prompt, baseUpdatedAt, baseContentVersion?, targets?, clarificationAnswers?, clarificationCount?, summary?, reason? }`. The base snapshot is checked before and after generation, returning `409 WORK_ITEM_AI_DRAFT_STALE` rather than overwriting newer edits |
+| POST | `/api/origins/:originId/work-items/ai-draft` | Draft new item from prompt; ≤3 clarification rounds |
+| POST | `/api/origins/:originId/work-items/:itemId/ai-draft` | Draft improvement to fields/goal/child tasks |
+| POST | `/api/origins/:originId/work-items/:itemId/ai-draft/apply` | Generate/apply local work-item version; AI authoring + workflow gates. `baseUpdatedAt`/optional `baseContentVersion` checked before and after generation; stale → `409 WORK_ITEM_AI_DRAFT_STALE` |
 
 ## Seen State
 
@@ -616,7 +628,9 @@ Gated by `workItems.aiAuthoring` (default `false`). The `ai-draft` generation en
 |----------|------|-------------|
 | WebSocket | `/ws` | Process events (workspace-scoped, file subscriptions) |
 | WebSocket | `/ws/terminal` | Terminal PTY sessions |
-| SSE | `/api/processes/:id/stream` | Per-process event streaming |
+| SSE | `/api/processes/:id/stream` | GET named JSON events; initial conversation snapshot, live output, heartbeat, terminal status + `done`. `?warm=1` sends only warm status/heartbeats, stays open across terminal status |
+
+Streams belong to the owning server/clone. SSE framing preserves split UTF-8 and multiline data; native CLI session endpoints are JSON transcript views, not live streams. REST CORS reflects only loopback origins; WebSocket rejects non-loopback browser origins. See [streaming-architecture.md](streaming-architecture.md).
 
 ## Remote Servers
 
@@ -627,7 +641,7 @@ Gated by `workItems.aiAuthoring` (default `false`). The `ai-draft` generation en
 | POST | `/api/servers/:id/test` | Test connection |
 | POST | `/api/servers/:id/connect` | Connect (DevTunnel) |
 | POST | `/api/servers/:id/disconnect` | Disconnect |
-| POST | `/api/servers/cherry-pick-transfer` | Orchestrate a patch-transfer cherry-pick through the initiating server. Body `{ source: { serverId?, workspaceId, commitHash \| commitHashes }, target: { serverId?, workspaceId, stashAndContinue? } }` (`commitHashes` is oldest-first; either form normalizes to one export + one apply round-trip). Omitted/`local` `serverId` means the current CoC, otherwise the id must be an online registered remote. Composes the workspace git patch export/apply endpoints, propagates dirty/conflict fields (including `appliedCount`), and returns source/target server/workspace metadata (range transfers add source `commits`) without effective URLs or local paths |
+| POST | `/api/servers/cherry-pick-transfer` | Export/apply oldest-first commit(s) across selected server/workspace pair; omitted/local server means current, remote must be online/registered. Propagate dirty/conflict/counts; omit effective URLs/local paths |
 
 ## Sync
 

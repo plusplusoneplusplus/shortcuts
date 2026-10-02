@@ -10,6 +10,8 @@
 import type { ContainerRuntime } from '../runtime';
 import type { MessagingConfigService } from '../messaging-config';
 import { type RouteTable, sendJson, readBody } from '../http-util';
+import { isIc3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
+import type { TeamsConfigPatch } from '../messaging-config';
 
 export function installMessagingRoutes(table: RouteTable, runtime: ContainerRuntime, messagingConfig: MessagingConfigService): void {
     const { config } = runtime;
@@ -75,20 +77,31 @@ export function installMessagingRoutes(table: RouteTable, runtime: ContainerRunt
             mode: config.messaging?.teams?.mode ?? 'graph',
             error: null,
             botName: config.messaging?.teams?.botName ?? 'CoC',
+            ic3Region: config.messaging?.teams?.ic3Region ?? null,
         });
     });
 
     table.on('POST', '/api/container/messaging/teams/config', async ({ req, res }) => {
         const body = await readBody(req);
-        const { botName, channelId, enabled, teamName, channelName, mode } = body as { botName?: string; channelId?: string; enabled?: boolean; teamName?: string; channelName?: string; mode?: 'graph' | 'mcp' };
+        const { botName, channelId, enabled, teamName, channelName, mode, ic3Region } = body as TeamsConfigPatch;
+        if (ic3Region !== undefined && ic3Region !== null && !isIc3DirectMessageRegion(ic3Region)) {
+            sendJson(res, { ok: false, error: 'IC3 region must be amer, emea, apac, or null (unconfigured)' }, 400);
+            return;
+        }
+        const patch: TeamsConfigPatch = Object.fromEntries(
+            Object.entries({ botName, channelId, enabled, teamName, channelName, mode, ic3Region })
+                .filter(([, value]) => value !== undefined),
+        );
         if (runtime.teamsBridge) {
-            await runtime.teamsBridge.updateConfig({ botName, channelId, enabled, teamName, channelName, mode });
+            await runtime.teamsBridge.updateConfig(patch);
+            Object.assign(config.messaging.teams, patch);
             sendJson(res, { ok: true, message: 'Teams config updated' });
             return;
         }
         // Even without active bridge, persist the config
         try {
-            messagingConfig.saveTeamsConfig({ botName, channelId, enabled, teamName, channelName, mode });
+            messagingConfig.saveTeamsConfig(patch);
+            Object.assign(config.messaging.teams, patch);
             sendJson(res, { ok: true, message: 'Teams config saved (restart required)' });
         } catch (err: any) {
             sendJson(res, { ok: false, error: err.message });

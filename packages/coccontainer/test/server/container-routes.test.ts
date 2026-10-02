@@ -70,6 +70,7 @@ describe('Container routes (characterization + regression)', () => {
         const server = await createContainerServer({
             serve: { port: 0, host: '127.0.0.1', dataDir: tmpDir },
             healthCheckIntervalMs: 600_000,
+            messaging: { teams: { enabled: false, mode: 'graph', botName: 'CoC', pollIntervalMs: 12000 } },
         });
         containerUrl = server.url;
         closeContainer = () => server.close();
@@ -132,6 +133,26 @@ describe('Container routes (characterization + regression)', () => {
         const doc = jsYaml.load(fs.readFileSync(path.join(tmpDir, 'config.yaml'), 'utf8')) as any;
         expect(doc.messaging.teams.botName).toBe('Persisted');
         expect(doc.messaging.teams.enabled).toBe(false);
+    });
+
+    it('validates and persists IC3 region through the disabled bridge API and status', async () => {
+        const url = `${containerUrl}/api/container/messaging/teams`;
+        for (const ic3Region of ['amer', 'emea', 'apac', null]) {
+            const response = await httpRequest(`${url}/config`, { method: 'POST', body: { ic3Region } });
+            expect(response.status).toBe(200);
+            expect(response.body.ok).toBe(true);
+            const doc = jsYaml.load(fs.readFileSync(path.join(tmpDir, 'config.yaml'), 'utf8')) as any;
+            expect(doc.messaging.teams.ic3Region).toBe(ic3Region);
+            expect((await httpRequest(`${url}/status`)).body.ic3Region).toBe(ic3Region);
+        }
+        const before = fs.readFileSync(path.join(tmpDir, 'config.yaml'), 'utf8');
+        for (const ic3Region of ['', 'auto', 'AMER', '../amer', 'https://example.test', 1, {}, []]) {
+            const response = await httpRequest(`${url}/config`, {
+                method: 'POST', body: { botName: 'Invalid patch', ic3Region },
+            });
+            expect(response.status).toBe(400);
+            expect(fs.readFileSync(path.join(tmpDir, 'config.yaml'), 'utf8')).toBe(before);
+        }
     });
 
     it('REGRESSION: workspace-registered seeds aggregation (route → /api/workspaces)', async () => {

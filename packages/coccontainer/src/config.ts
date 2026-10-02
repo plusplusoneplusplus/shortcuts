@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import yaml from 'js-yaml';
+import { isIc3DirectMessageRegion, type Ic3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
 
 export interface WhatsAppConfig {
     /** Enable WhatsApp bridge (default: false) */
@@ -21,6 +22,7 @@ export interface WhatsAppConfig {
 }
 
 export interface TeamsConfig {
+    ic3Region?: Ic3DirectMessageRegion | null;
     /** Enable Teams bridge (default: false) */
     enabled?: boolean;
     /** Transport mode: 'graph' (default, uses Graph API with az tokens) or 'mcp' (Teams MCP server). */
@@ -77,6 +79,7 @@ export interface ResolvedWhatsAppConfig {
 }
 
 export interface ResolvedTeamsConfig {
+    ic3Region?: Ic3DirectMessageRegion | null;
     enabled: boolean;
     mode: 'graph' | 'mcp';
     /** Message target: 'chat' sends DM to self, 'channel' posts to configured channel. */
@@ -153,6 +156,11 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
     const waOver = overrides?.messaging?.whatsapp;
     const teamsFile = fileConfig.messaging?.teams;
     const teamsOver = overrides?.messaging?.teams;
+    let ic3Region = teamsOver?.ic3Region !== undefined ? teamsOver.ic3Region : teamsFile?.ic3Region;
+    if (ic3Region != null && !isIc3DirectMessageRegion(ic3Region)) {
+        ic3Region = null;
+        console.warn('[container] Invalid Teams IC3 region in configuration; left unconfigured. Set messaging.teams.ic3Region to amer, emea, or apac in config.yaml or Teams connection settings, then reconnect.');
+    }
     return {
         serve: {
             port: overrides?.serve?.port ?? fileConfig.serve?.port ?? DEFAULTS.serve.port,
@@ -170,6 +178,7 @@ export function resolveConfig(overrides?: Partial<ContainerConfig>): ResolvedCon
                 defaultAgentId: waOver?.defaultAgentId ?? waFile?.defaultAgentId ?? DEFAULTS.messaging.whatsapp.defaultAgentId,
             },
             teams: {
+                ic3Region,
                 enabled: teamsOver?.enabled ?? teamsFile?.enabled ?? DEFAULTS.messaging.teams.enabled,
                 mode: teamsOver?.mode ?? teamsFile?.mode ?? DEFAULTS.messaging.teams.mode,
                 target: (teamsOver as any)?.target ?? (teamsFile as any)?.target ?? DEFAULTS.messaging.teams.target,

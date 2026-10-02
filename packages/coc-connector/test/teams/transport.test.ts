@@ -16,9 +16,15 @@ vi.stubGlobal('fetch', (url: string, options?: RequestInit) => {
 });
 
 import { createTransport } from '../../src/teams/bot';
-import { GraphTransport } from '../../src/teams/transport-graph';
-import { McpTransport } from '../../src/teams/transport-mcp';
+import { GraphTransport } from '../../src/teams/graph/transport-graph';
+import { McpTransport } from '../../src/teams/mcp/transport-mcp';
+import { Ic3ReactionClient } from '../../src/teams/ic3/ic3-reaction';
 import type { TeamsTransport } from '../../src/teams/types';
+
+const primaryToken = `header.${Buffer.from(JSON.stringify({
+    tid: '11111111-1111-4111-8111-111111111111',
+    oid: '22222222-2222-4222-8222-222222222222',
+})).toString('base64url')}.signature`;
 
 describe('createTransport', () => {
     it('should create GraphTransport for graph mode', () => {
@@ -219,7 +225,7 @@ describe('McpTransport', () => {
     let transport: TeamsTransport;
 
     beforeEach(() => {
-        transport = new McpTransport('https://mcp.test.com/server');
+        transport = new McpTransport('https://mcp.test.com/server', undefined, undefined, undefined, undefined, { region: 'amer' });
         mockFetch.mockReset();
         initialized.mockClear();
     });
@@ -243,6 +249,10 @@ describe('McpTransport', () => {
             headers: new Map([['mcp-session-id', 'session-1']]),
             json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
         } as any);
+        mockFetch.mockResolvedValueOnce({
+            ok: true, headers: new Map(),
+            json: async () => ({ result: { tools: [{ name: 'SendMessageToChannel' }] } }),
+        });
         await transport.initialize('token', { teamId: 'team-1' });
 
         // Send
@@ -312,51 +322,27 @@ describe('McpTransport', () => {
         ]);
     });
 
-    it('calls only an advertised compatible MCP channel reaction tool for roots and replies', async () => {
-        const response = (result: unknown) => ({
-            ok: true, headers: new Map(),
-            json: async () => ({ jsonrpc: '2.0', id: 1, result }),
-        });
-        const tool = {
-            name: 'AddReactionToChannelMessage',
-            inputSchema: { properties: {
-                teamId: {}, channelId: {}, messageId: {}, replyId: {},
-                reactionType: { enum: ['like', 'heart'] },
-            } },
-        };
-        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
-        mockFetch.mockResolvedValueOnce(response({ tools: [
-            { ...tool, name: 'RemoveReactionFromChannelMessage' }, tool,
-        ] }));
-        await transport.initialize('token', { teamId: 'team-1' });
-        mockFetch.mockResolvedValue(response({ content: [] }));
-        await transport.reactToChannelMessage({ channelId: 'channel-1', messageId: 'root', text: 'ask' });
-        await transport.reactToChannelMessage({
-            channelId: 'channel-1', messageId: 'reply', replyToMessageId: 'root', text: 'follow-up',
-        });
-        const calls = mockFetch.mock.calls.slice(-2).map(([, init]) => JSON.parse(init.body).params);
-        expect(calls).toEqual([
-            { name: tool.name, arguments: {
-                teamId: 'team-1', channelId: 'channel-1', messageId: 'root', reactionType: 'like',
-            } },
-            { name: tool.name, arguments: {
-                teamId: 'team-1', channelId: 'channel-1', messageId: 'root', replyId: 'reply', reactionType: 'like',
-            } },
-        ]);
-        expect(mockFetch.mock.calls.at(-1)![1].signal).toBeInstanceOf(AbortSignal);
-    });
-
-    it('reports unavailable reaction capability without calling an unadvertised tool or blocking later polls', async () => {
+    it('uses a separate IC3 reaction client for roots and replies without an MCP reaction tool', async () => {
         const response = (result: unknown) => ({
             ok: true, headers: new Map(),
             json: async () => ({ jsonrpc: '2.0', id: 1, result }),
         });
         mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
         mockFetch.mockResolvedValueOnce(response({ tools: [{ name: 'SendMessageToChannel' }] }));
-        await transport.initialize('token', { teamId: 'team-1' });
-        await expect(transport.reactToChannelMessage({
-            channelId: 'channel-1', messageId: 'root', text: 'ask',
-        })).rejects.toThrow('no compatible channel reaction tool');
+        await transport.initialize(primaryToken, { teamId: 'team-1' });
+        const react = vi.spyOn(Ic3ReactionClient.prototype, 'reactToChannelMessage').mockResolvedValue(undefined);
+        const root = { channelId: 'channel-1', messageId: 'root', text: 'ask' };
+        const reply = { channelId: 'channel-1', messageId: 'reply', replyToMessageId: 'root', text: 'follow-up' };
+        try {
+            await transport.reactToChannelMessage(root);
+            await transport.reactToChannelMessage(reply);
+            expect(react.mock.calls.map(([msg]) => msg)).toEqual([
+                { channelId: root.channelId, messageId: root.messageId, text: '' },
+                { channelId: reply.channelId, messageId: reply.messageId, text: '' },
+            ]);
+        } finally {
+            react.mockRestore();
+        }
         expect(mockFetch).toHaveBeenCalledTimes(2);
         mockFetch.mockResolvedValueOnce(response({ content: [{ text: JSON.stringify([
             { id: 'root', body: { content: 'ask' } },
@@ -364,40 +350,47 @@ describe('McpTransport', () => {
         expect((await transport.poll('channel-1')).messages).toHaveLength(1);
     });
 
-    it('reports rejected or timed-out MCP reactions while keeping the connection usable', async () => {
+    it('propagates IC3 reaction failure while keeping MCP polling usable', async () => {
         const response = (result: unknown) => ({
             ok: true, headers: new Map(),
             json: async () => ({ jsonrpc: '2.0', id: 1, result }),
         });
         mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
-        mockFetch.mockResolvedValueOnce(response({ tools: [{
-            name: 'ReactToChannelMessage',
-            inputSchema: { properties: { teamId: {}, channelId: {}, messageId: {}, reactionType: {} } },
-        }] }));
-        await transport.initialize('token', { teamId: 'team-1' });
+        mockFetch.mockResolvedValueOnce(response({ tools: [] }));
+        await transport.initialize(primaryToken, { teamId: 'team-1' });
         const msg = { channelId: 'channel-1', messageId: 'root', text: 'ask' };
-        mockFetch.mockResolvedValueOnce(response({
-            isError: true, content: [{ text: 'private provider response' }],
-        }));
-        await expect(transport.reactToChannelMessage(msg)).rejects.toThrow('rejected by MCP tool');
-        mockFetch.mockResolvedValueOnce({
-            ok: false, status: 401, statusText: 'Unauthorized', headers: new Headers(),
-        });
-        await expect(transport.reactToChannelMessage(msg)).rejects.toMatchObject({ status: 401 });
-        const controller = new AbortController();
-        const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
-        mockFetch.mockImplementationOnce((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
-            init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
-        }));
+        const react = vi.spyOn(Ic3ReactionClient.prototype, 'reactToChannelMessage')
+            .mockRejectedValue(new Error('Teams channel Like reaction rejected (HTTP 403)'));
         try {
-            const pending = transport.reactToChannelMessage(msg);
-            controller.abort();
-            await expect(pending).rejects.toThrow('timed out');
+            await expect(transport.reactToChannelMessage(msg)).rejects.toThrow('HTTP 403');
         } finally {
-            timeout.mockRestore();
+            react.mockRestore();
         }
+        expect(mockFetch).toHaveBeenCalledTimes(2);
         mockFetch.mockResolvedValueOnce(response({ content: [{ text: '[]' }] }));
         expect((await transport.poll('channel-1')).messages).toEqual([]);
+    });
+
+    it('does not acquire IC3 credentials for a primary bearer without account identity', async () => {
+        const response = (result: unknown) => ({
+            ok: true, headers: new Map(),
+            json: async () => ({ result }),
+        });
+        mockFetch.mockResolvedValueOnce(response({ protocolVersion: '2025-03-26' }));
+        mockFetch.mockResolvedValueOnce(response({ tools: [{ name: 'SendMessageToChannel' }] }));
+        await transport.initialize('opaque-example-bearer', { teamId: 'team-1' });
+        const react = vi.spyOn(Ic3ReactionClient.prototype, 'reactToChannelMessage');
+        try {
+            await expect(transport.reactToChannelMessage({
+                channelId: 'channel-1', messageId: 'root', text: 'ask',
+            })).rejects.toMatchObject({
+                backend: 'ic3', code: 'authentication', outcome: 'not-attempted',
+            });
+            expect(react).not.toHaveBeenCalled();
+            expect(mockFetch).toHaveBeenCalledTimes(2);
+        } finally {
+            react.mockRestore();
+        }
     });
 
     it('accepts empty Teams reply lists without dropping channel roots', async () => {
@@ -799,6 +792,10 @@ describe('McpTransport', () => {
             headers: new Map([['mcp-session-id', 'session-1']]),
             json: async () => ({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } }),
         } as any);
+        mockFetch.mockResolvedValueOnce({
+            ok: true, headers: new Map(),
+            json: async () => ({ result: { tools: [{ name: 'ReplyToChannelMessage' }] } }),
+        });
         await transport.initialize('token', { teamId: 'team-1' });
         mockFetch.mockResolvedValueOnce({
             ok: true,
@@ -809,7 +806,9 @@ describe('McpTransport', () => {
             }),
         } as any);
         await expect(transport.send('channel-1', 'plain text', { replyToId: 'root-message' }))
-            .rejects.toMatchObject({ name: 'TeamsMcpSendRejectedError', message: 'Send rejected' });
+            .rejects.toMatchObject({
+                name: 'TeamsMcpSendRejectedError', message: 'Teams MCP send rejected', outcome: 'rejected',
+            });
     });
 
     it('should stop and nullify client', async () => {
@@ -989,7 +988,7 @@ describe('McpTransport', () => {
             expect(body.params.arguments.content).toBe('Repo: C:\\\\src\\\\alpha');
         });
 
-        it('should fall back to ListChats when SendMessageToSelf init fails', async () => {
+        it('keeps polling unset without guessing a ListChats target when self init fails', async () => {
             const t = new McpTransport('https://mcp.test.com/server');
 
             // Initialize
@@ -1016,19 +1015,13 @@ describe('McpTransport', () => {
                     result: { content: [{ type: 'text', text: 'Error: something went wrong' }] },
                 }),
             } as any);
-            // ListChats fallback
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                headers: new Map(),
-                json: async () => ({
-                    jsonrpc: '2.0', id: 4,
-                    result: { content: [{ type: 'text', text: JSON.stringify({ chats: [{ id: '19:fallback-chat@spaces', chatType: 'oneOnOne' }] }) }] },
-                }),
-            } as any);
-
             await t.initialize('token', {});
 
-            expect(t.getChatId()).toBe('19:fallback-chat@spaces');
+            expect(t.getChatId()).toBeNull();
+            expect(t.getInitMessageId()).toBeNull();
+            expect(mockFetch).toHaveBeenCalledTimes(3);
+            expect(mockFetch.mock.calls.map(([, options]) => JSON.parse(options.body).params?.name))
+                .not.toContain('ListChats');
         });
 
         it('should throw error response from SendMessageToSelf during send', async () => {
@@ -1070,7 +1063,9 @@ describe('McpTransport', () => {
                 }),
             } as any);
 
-            await expect(t.send('19:c@s', 'test')).rejects.toThrow('Error: Failed to send message: NotFound');
+            await expect(t.send('19:c@s', 'test')).rejects.toMatchObject({
+                name: 'TeamsMcpSendRejectedError', message: 'Teams MCP send rejected', outcome: 'rejected',
+            });
         });
     });
 });

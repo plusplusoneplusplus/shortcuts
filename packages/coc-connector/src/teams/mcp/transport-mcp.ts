@@ -3,25 +3,15 @@
  * Supports both channel messaging and direct chat messaging.
  */
 
-import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions, McpToolsListResult } from './types';
+import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from '../types';
 import { McpClient } from './mcp-client';
-
-export class TeamsMcpSendRejectedError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'TeamsMcpSendRejectedError';
-    }
-}
-
-function escapeMcpContent(text: string): string {
-    return text.replace(/\\/g, '\\\\');
-}
-
-function reactionProperties(tool: McpToolsListResult['tools'][number]): Record<string, unknown> | null {
-    const properties = tool.inputSchema?.properties;
-    return properties && typeof properties === 'object' && !Array.isArray(properties)
-        ? properties as Record<string, unknown> : null;
-}
+import type { TeamsReadHints } from '../notification-scheduler';
+import { randomUUID } from 'node:crypto';
+import type { Ic3DirectMessageOptions } from '../ic3/ic3-direct-message-config';
+import { Ic3Operations } from '../ic3/operations-ic3';
+import { McpOperations } from './operations-mcp';
+import { RoutedTeamsOperations, TeamsOperationError, type TeamsDestination, type TeamsOperationRoutes } from '../operations';
+export { TeamsMcpSendRejectedError } from './operations-mcp';
 
 export interface McpChannelRootPage {
     roots: InboundTeamsMessage[];
@@ -29,14 +19,34 @@ export interface McpChannelRootPage {
     nextSince: string;
 }
 
+function tokenAccount(token: string): { tenantId: string; objectId: string } | undefined {
+    try {
+        const claims: unknown = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+        const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (claims && typeof claims === 'object' && 'tid' in claims && 'oid' in claims
+            && typeof claims.tid === 'string' && guid.test(claims.tid)
+            && typeof claims.oid === 'string' && guid.test(claims.oid)) {
+            return { tenantId: claims.tid.toLowerCase(), objectId: claims.oid.toLowerCase() };
+        }
+    } catch {
+        // Opaque MCP credentials cannot establish a hybrid account binding.
+    }
+    return undefined;
+}
+
 export class McpTransport implements TeamsTransport {
     private client: McpClient | null = null;
     private serverUrl: string;
     private teamId: string | null = null;
     private _availableTools: string[] = [];
-    private _reactionTools: McpToolsListResult['tools'] = [];
+    private toolsDiscovered = false;
+    private outbound: RoutedTeamsOperations | null = null;
+    readonly connectionId: string;
+    private readonly ic3Options: Ic3DirectMessageOptions;
+    private account: ReturnType<typeof tokenAccount>;
     private _useChat = false;
     private _chatId: string | null = null;
+    private selfChatId: string | null = null;
     private _initMessageId: string | null = null;
     private nextTrackedRoot = 0;
     private readonly rootPages = new Map<string, string>();
@@ -47,6 +57,8 @@ export class McpTransport implements TeamsTransport {
     private readonly nextDiscoveredRoot = new Map<string, number>();
     private readonly replyPages = new Map<string, string>();
     private readonly bufferedReplies = new Map<string, InboundTeamsMessage[]>();
+    private readonly notificationRootWatermarks = new Map<string, string>();
+    private readonly pendingNotificationHeads = new Map<string, string>();
     private static readonly TRACKED_ROOTS_PER_POLL = 5;
     debug = false;
 
@@ -55,8 +67,60 @@ export class McpTransport implements TeamsTransport {
         private readonly pollChannelReplies: () => boolean = () => false,
         private readonly channelThreadRoots: (channelId: string) => readonly string[] = () => [],
         private readonly onChannelRootDiscovered?: (root: InboundTeamsMessage) => Promise<void>,
+        private readonly enableIc3DirectMessages = false,
+        ic3DirectMessageOptions?: Ic3DirectMessageOptions,
+        private readonly operationOptions: {
+            connectionId?: string;
+            routes?: Partial<TeamsOperationRoutes>;
+            onTokenRefresh?: () => Promise<string | null>;
+        } = {},
     ) {
+        this.connectionId = operationOptions.connectionId ?? randomUUID();
+        this.operationOptions = { ...operationOptions, routes: { ...operationOptions.routes } };
+        this.ic3Options = { ...ic3DirectMessageOptions };
+        // Validate immutable IC3 configuration without acquiring credentials.
+        new Ic3Operations({ ...this.ic3Options, connectionId: this.connectionId });
         this.serverUrl = serverUrl;
+    }
+
+    get operations(): RoutedTeamsOperations {
+        if (!this.outbound) throw new Error('McpTransport not initialized');
+        return this.outbound;
+    }
+
+    private configureOperations(token: string): void {
+        if (!this.client) return;
+        void this.outbound?.dispose();
+        const mcp = new McpOperations({
+            connectionId: this.connectionId, client: this.client,
+            availableTools: this.toolsDiscovered ? this._availableTools : undefined,
+            onTokenRefresh: this.operationOptions.onTokenRefresh && (async () => {
+                const refreshed = await this.operationOptions.onTokenRefresh!();
+                if (refreshed) this.bindAccount(refreshed);
+                return refreshed;
+            }),
+            onSelfChatResolved: chatId => {
+                this.selfChatId = chatId;
+                this._chatId ??= chatId;
+            },
+        });
+        const ic3 = new Ic3Operations({
+            ...this.ic3Options, connectionId: this.connectionId,
+            enableSelfSend: this.enableIc3DirectMessages, expectedAccount: tokenAccount(token), requireAccountMatch: true,
+        });
+        this.outbound = new RoutedTeamsOperations({
+            selfSend: this.enableIc3DirectMessages ? 'ic3' : 'mcp',
+            chatSend: 'mcp', channelSend: 'mcp', channelReply: 'mcp', channelLike: 'ic3',
+            ...this.operationOptions.routes,
+        }, [mcp, ic3]);
+    }
+
+    private bindAccount(token: string): void {
+        const account = tokenAccount(token);
+        if (this.account && (this.account.tenantId !== account?.tenantId || this.account.objectId !== account?.objectId)) {
+            throw new TeamsOperationError('Teams account changed; create a new connection', 'mcp', 'authentication', 'not-attempted');
+        }
+        this.account = account;
     }
 
     hasDiscoveredRoot(channelId: string, rootId: string): boolean {
@@ -64,12 +128,12 @@ export class McpTransport implements TeamsTransport {
     }
 
     /** Fetch one provider page without consuming the poller's backfill cursor. */
-    async listChannelRootPage(channelId: string, nextLink?: string): Promise<McpChannelRootPage> {
+    async listChannelRootPage(channelId: string, nextLink?: string, signal?: AbortSignal, top = 5): Promise<McpChannelRootPage> {
         if (!this.client || !this.teamId || this._useChat) throw new Error('MCP channel transport not initialized');
         const result = await this.client.callTool('ListChannelMessages', {
             teamId: this.teamId, channelId,
-            ...(nextLink ? { nextLink } : { top: 5 }),
-        });
+            ...(nextLink ? { nextLink } : { top }),
+        }, signal);
         if (result.isError) throw new Error('Teams channel messages could not be polled');
         const text = result.content?.[0]?.text ?? '[]';
         const parsed = this.parseMessages(text, channelId, true);
@@ -89,7 +153,14 @@ export class McpTransport implements TeamsTransport {
     }
 
     async initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void> {
+        this.bindAccount(token);
         this.teamId = opts.teamId ?? null;
+        this._useChat = !this.teamId;
+        this._chatId = null;
+        this.selfChatId = null;
+        this._initMessageId = null;
+        void this.outbound?.dispose();
+        this.outbound = null;
         console.log(`[mcp-transport] Initializing with teamId=${this.teamId}, serverUrl=${this.serverUrl}`);
         this.client = new McpClient({
             serverUrl: this.serverUrl,
@@ -98,25 +169,28 @@ export class McpTransport implements TeamsTransport {
         await this.client.initialize();
 
         this._availableTools = [];
-        this._reactionTools = [];
+        this.toolsDiscovered = false;
         try {
             const toolsResult = await this.client.listTools();
             this._availableTools = (toolsResult.tools ?? []).map(t => t.name);
-            this._reactionTools = (toolsResult.tools ?? []).filter(tool =>
-                /^(set|add|react|like)/i.test(tool.name)
-                && /reaction|react|like/i.test(tool.name) && !!reactionProperties(tool));
+            this.toolsDiscovered = Array.isArray(toolsResult.tools);
             console.log(`[mcp-transport] Available tools: ${this._availableTools.join(', ')}`);
         } catch (err: any) {
             console.warn(`[mcp-transport] Failed to list tools: ${err.message}`);
         }
+        this.configureOperations(token);
 
         if (!this.teamId) {
             this._useChat = true;
             console.log(`[mcp-transport] No teamId — using direct message (self) mode`);
-            console.log(`[mcp-transport] Will use SendMessageToSelf tool to send messages to the authenticated user`);
+            console.log(`[mcp-transport] Self-DM sends use ${this.enableIc3DirectMessages ? 'IC3 (48:notes only)' : 'SendMessageToSelf'}`);
 
-            // Discover self-chatId for polling (sends still use SendMessageToSelf)
-            await this.discoverSelfChatForPolling();
+            // IC3 notes IDs are not MCP chat IDs. Poll only an explicit MCP target.
+            if (this.enableIc3DirectMessages || opts.chatId) {
+                this._chatId = opts.chatId ?? null;
+            } else {
+                await this.discoverSelfChatForPolling();
+            }
         }
 
         console.log(`[mcp-transport] MCP session initialized successfully (mode=${this._useChat ? 'self-dm' : 'channel'}, pollTarget=${this._chatId ?? 'pending'})`);
@@ -142,190 +216,70 @@ export class McpTransport implements TeamsTransport {
         // Send a brief init message to discover the chatId
         if (this._availableTools.includes('SendMessageToSelf')) {
             try {
-                const result = await this.client.callTool('SendMessageToSelf', {
+                const result = await this.operations.send({ kind: 'self' }, {
                     content: '🤖 CoC bridge connected',
                     contentType: 'text',
                 });
-                const responseText = result.content?.[0]?.text ?? '';
-                console.log(`[mcp-transport] SendMessageToSelf init response: ${responseText.substring(0, 200)}`);
-
-                if (!responseText.startsWith('Error:')) {
-                    const parsed = JSON.parse(responseText);
-                    if (parsed.id) {
-                        this._initMessageId = parsed.id;
-                    }
-                    if (parsed.chatId) {
-                        this._chatId = parsed.chatId;
-                        console.log(`[mcp-transport] Discovered self-chat for polling: ${this._chatId}`);
-                        return;
-                    }
-                }
+                this._initMessageId = result.message.messageId;
             } catch (err: any) {
                 console.warn(`[mcp-transport] SendMessageToSelf init failed: ${err.message}`);
             }
         }
-
-        // Fallback: use ListChats to find a chat
-        if (this._availableTools.includes('ListChats')) {
-            try {
-                const result = await this.client.callTool('ListChats', {});
-                const responseText = result.content?.[0]?.text ?? '[]';
-                const parsed = JSON.parse(responseText);
-                const chats = Array.isArray(parsed) ? parsed : (parsed.value ?? parsed.chats ?? []);
-                if (chats.length > 0) {
-                    // Use first oneOnOne chat (likely the self-chat since we just sent a message there)
-                    const selfChat = chats.find((c: any) => c.chatType === 'oneOnOne' || c.type === 'oneOnOne');
-                    this._chatId = selfChat?.id ?? chats[0].id;
-                    console.log(`[mcp-transport] Using chat for polling: ${this._chatId}`);
-                }
-            } catch (err: any) {
-                console.warn(`[mcp-transport] ListChats fallback failed: ${err.message}`);
-            }
-        }
+        if (!this._chatId) console.warn('[mcp-transport] Self-chat unresolved; DM polling requires an explicit chat ID');
     }
 
     async send(channelId: string, text: string, opts?: TransportSendOptions): Promise<string> {
         if (!this.client) throw new Error('McpTransport not initialized');
-
-        // In chat mode, use SendChatMessage or SendMessageToChat
-        if (this._useChat) {
-            return this.sendChat(channelId, text);
+        const destination: TeamsDestination = this.teamId
+            ? { kind: 'channel', teamId: this.teamId, channelId }
+            : channelId === '48:notes' || (!this.enableIc3DirectMessages && channelId === this.selfChatId)
+                ? { kind: 'self' } : { kind: 'chat', chatId: channelId };
+        const body = { content: text, contentType: 'html' as const,
+            ...(opts?.mentions !== undefined ? { mentions: opts.mentions.map(m => ({ id: m.aadId, displayName: m.displayName })) } : {}) };
+        if (this._useChat && this.enableIc3DirectMessages && destination.kind !== 'self') {
+            throw new TeamsOperationError('IC3 direct messages support only self-chat 48:notes',
+                'ic3', 'unsupported', 'not-attempted');
         }
-
-        const args: Record<string, unknown> = {
-            teamId: this.teamId,
-            channelId,
-            content: escapeMcpContent(text),
-            contentType: 'html',
-        };
-
-        if (opts?.mentions && opts.mentions.length > 0) {
-            args['mentions'] = opts.mentions.map((m, idx) => ({
-                id: idx,
-                mentionText: m.displayName,
-                mentioned: { user: { id: m.aadId, displayName: m.displayName } },
-            }));
-        }
-
-        let toolName: string;
-        if (opts?.replyToId) {
-            toolName = 'ReplyToChannelMessage';
-            args['messageId'] = opts.replyToId;
-        } else {
-            toolName = 'SendMessageToChannel';
-        }
-
-        console.log(`[mcp-transport] Calling ${toolName} with teamId=${this.teamId}, channelId=${channelId}, content length=${text.length}`);
-        const result = await this.client.callTool(toolName, args);
-        const responseText = result.content?.[0]?.text ?? '';
-        console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
-
-        if (result.isError || responseText.startsWith('Error:')) {
-            throw new TeamsMcpSendRejectedError(responseText || `${toolName} failed`);
-        }
-
-        try {
-            const parsed = JSON.parse(responseText);
-            return parsed.messageId ?? parsed.id ?? '';
-        } catch {
-            return responseText;
-        }
+        const receipt = opts?.replyToId !== undefined
+            ? await this.operations.reply({ destination, messageId: opts.replyToId,
+                backend: 'mcp', connectionId: this.connectionId }, body)
+            : await this.operations.send(destination, body);
+        return receipt.message.messageId;
     }
 
     async reactToChannelMessage(msg: InboundTeamsMessage): Promise<void> {
         if (!this.client || this._useChat || !this.teamId) {
             throw new Error('Teams channel Like reaction unavailable in direct messages or while disconnected');
         }
-        const tool = this._reactionTools.find(candidate => {
-            const properties = reactionProperties(candidate);
-            const replyKey = properties && ('replyId' in properties ? 'replyId'
-                : 'replyMessageId' in properties ? 'replyMessageId' : null);
-            const required = candidate.inputSchema?.required;
-            return properties && ['teamId', 'channelId', 'messageId', 'reactionType'].every(key => key in properties)
-                && (msg.replyToMessageId ? !!replyKey : !Array.isArray(required)
-                    || !required.some(key => key === 'replyId' || key === 'replyMessageId'));
-        });
-        if (!tool) throw new Error('Teams channel Like reaction unavailable: MCP advertises no compatible channel reaction tool');
-        const properties = reactionProperties(tool)!;
-        const replyKey = 'replyId' in properties ? 'replyId' : 'replyMessageId';
-        const typeSchema = properties.reactionType;
-        const allowed = typeSchema && typeof typeSchema === 'object' && 'enum' in typeSchema
-            ? (typeSchema as { enum: unknown }).enum : undefined;
-        const reactionType = Array.isArray(allowed)
-            ? allowed.includes('like') ? 'like' : allowed.includes('👍') ? '👍' : null
-            : '👍';
-        if (!reactionType) throw new Error('Teams channel Like reaction unavailable: MCP tool does not advertise Like');
-        const signal = AbortSignal.timeout(5_000);
-        try {
-            const result = await this.client.callTool(tool.name, {
-                teamId: this.teamId, channelId: msg.channelId,
-                messageId: msg.replyToMessageId ?? msg.messageId, reactionType,
-                ...(msg.replyToMessageId ? { [replyKey]: msg.messageId } : {}),
-            }, signal);
-            if (result.isError || result.content?.some(item => item.text?.startsWith('Error:'))) {
-                throw new Error('Teams channel Like reaction rejected by MCP tool');
-            }
-        } catch (error) {
-            if (signal.aborted) throw new Error('Teams channel Like reaction timed out', { cause: error });
-            throw error;
-        }
+        await this.operations.react({
+            destination: { kind: 'channel', teamId: this.teamId, channelId: msg.channelId },
+            messageId: msg.messageId, rootMessageId: msg.replyToMessageId,
+            backend: 'mcp', connectionId: this.connectionId,
+        }, 'like');
     }
 
-    /** Send a direct message to the authenticated user via SendMessageToSelf. */
-    private async sendChat(_chatId: string, text: string): Promise<string> {
+    async poll(channelId: string, _since?: string, hints?: TeamsReadHints): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('McpTransport not initialized');
 
-        // SendMessageToSelf sends to the logged-in user — no chatId needed
-        const toolName = this._availableTools.includes('SendMessageToSelf')
-            ? 'SendMessageToSelf'
-            : (this._availableTools.includes('SendMessageToChat') ? 'SendMessageToChat' : 'SendMessageToSelf');
-
-        const args: Record<string, unknown> = {
-            content: escapeMcpContent(text),
-            contentType: 'html',
-        };
-
-        if (toolName === 'SendMessageToChat' && _chatId) {
-            args['chatId'] = _chatId;
-        }
-
-        console.log(`[mcp-transport] *** SENDING DM TO SELF ***`);
-        console.log(`[mcp-transport]   Tool: ${toolName}`);
-        console.log(`[mcp-transport]   Recipient: authenticated user (self — the account used to login to Teams MCP)`);
-        console.log(`[mcp-transport]   Content length: ${text.length}`);
-        console.log(`[mcp-transport]   Content preview: ${text.substring(0, 100)}...`);
-
-        const result = await this.client.callTool(toolName, args);
-        const responseText = result.content?.[0]?.text ?? '';
-        console.log(`[mcp-transport] ${toolName} response: ${responseText.substring(0, 200)}`);
-
-        if (result.isError || responseText.startsWith('Error:')) {
-            throw new Error(responseText || `${toolName} failed`);
-        }
-
-        try {
-            const parsed = JSON.parse(responseText);
-            const messageId = parsed.messageId ?? parsed.id ?? '';
-            // Capture chatId from response for polling if not yet known
-            if (!this._chatId && parsed.chatId) {
-                this._chatId = parsed.chatId;
-                console.log(`[mcp-transport] Captured chatId from send response: ${this._chatId}`);
-            }
-            console.log(`[mcp-transport] *** DM SENT SUCCESSFULLY *** messageId=${messageId}`);
-            return messageId;
-        } catch {
-            return responseText;
-        }
-    }
-
-    async poll(channelId: string, _since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
-        if (!this.client) throw new Error('McpTransport not initialized');
-
+        const signal = hints ? AbortSignal.any([AbortSignal.timeout(300_000), ...(hints.signal ? [hints.signal] : [])]) : undefined;
         if (this._useChat) {
-            return this.pollChat(channelId, _since);
+            return this.pollChat(channelId, _since, signal);
         }
 
-        const roots = await this.listChannelRootPage(channelId);
+        const roots = await this.listChannelRootPage(channelId, undefined, signal, hints ? 50 : 5);
+        const newestRoot = roots.roots.at(-1)?.messageId;
+        if (hints) {
+            const watermark = this.notificationRootWatermarks.get(channelId);
+            const visited = new Set<string>();
+            let cursor = roots.nextLink;
+            while (watermark && !roots.roots.some(root => root.messageId === watermark) && cursor) {
+                if (visited.has(cursor) || visited.size >= 100) throw new Error('Teams root pagination limit');
+                visited.add(cursor);
+                const page = await this.listChannelRootPage(channelId, cursor, signal, 50);
+                roots.roots.push(...page.roots);
+                cursor = page.nextLink;
+            }
+        }
         if (!this.pollChannelReplies() || !this._availableTools.includes('ListChannelMessageReplies')) {
             this.replyPages.clear();
             this.bufferedReplies.clear();
@@ -335,6 +289,7 @@ export class McpTransport implements TeamsTransport {
             this.historicalReplies.clear();
             this.nextDiscoveredRoot.clear();
             this.notifiedRootIds.clear();
+            if (hints && newestRoot) this.pendingNotificationHeads.set(channelId, newestRoot);
             return { messages: roots.roots, nextSince: roots.nextSince };
         }
 
@@ -346,7 +301,7 @@ export class McpTransport implements TeamsTransport {
         let historicalRoots: InboundTeamsMessage[] = [];
         let followingCursor = cursor;
         if (pendingCursor) {
-            const history = await this.listChannelRootPage(channelId, pendingCursor);
+            const history = await this.listChannelRootPage(channelId, pendingCursor, signal);
             historicalRoots = history.roots;
             followingCursor = history.nextLink;
         }
@@ -383,7 +338,24 @@ export class McpTransport implements TeamsTransport {
             discoveredBatch.push(discovered[(discoveredIndex + i) % discovered.length]);
         }
         discoveredIndex = discovered.length ? (discoveredIndex + discoveredBatch.length) % discovered.length : 0;
-        for (const rootId of new Set([...roots.roots.map(root => root.messageId), ...batch, ...discoveredBatch])) {
+        const knownRoots = new Set([...tracked, ...discovered, ...roots.roots.map(root => root.messageId)]);
+        const hintedRoots = hints?.rootMessageIds ?? [];
+        const reconcile = hints?.reconcile || !hintedRoots.length || hintedRoots.some(root => !knownRoots.has(root));
+        const replyRoots = hints
+            ? reconcile ? [...hintedRoots.filter(root => knownRoots.has(root)), ...knownRoots] : hintedRoots
+            : [...roots.roots.map(root => root.messageId), ...batch, ...discoveredBatch];
+        for (const rootId of new Set(replyRoots)) {
+            signal?.throwIfAborted();
+            if (hints) {
+                const replies = await this.readNotificationReplies(channelId, rootId, signal!);
+                if (messages.length + replies.length > 10_000) throw new Error('Teams notification read limit');
+                const key = JSON.stringify([channelId, rootId]);
+                messages.push(...replies.map(reply => ({
+                    ...reply, ...(this.historicalReplies.has(key) ? { initializationReplay: true } : {}),
+                })));
+                this.historicalReplies.delete(key);
+                continue;
+            }
             const key = JSON.stringify([channelId, rootId]);
             const trackedRoot = tracked.includes(rootId) || discoveredIds.has(rootId);
             const nextLink = trackedRoot ? this.replyPages.get(key) : undefined;
@@ -418,12 +390,45 @@ export class McpTransport implements TeamsTransport {
         }
         this.rootPages.set(channelId, followingCursor ?? '');
         this.nextDiscoveredRoot.set(channelId, discoveredIndex);
+        if (hints && newestRoot) this.pendingNotificationHeads.set(channelId, newestRoot);
         messages.sort((a, b) => {
             const left = a.createdDateTime ? Date.parse(a.createdDateTime) : 0;
             const right = b.createdDateTime ? Date.parse(b.createdDateTime) : 0;
             return (Number.isFinite(left) ? left : 0) - (Number.isFinite(right) ? right : 0);
         });
         return { messages, nextSince: roots.nextSince };
+    }
+
+    commitNotificationRead(channelId: string): void {
+        const head = this.pendingNotificationHeads.get(channelId);
+        if (head) this.notificationRootWatermarks.set(channelId, head);
+        this.pendingNotificationHeads.delete(channelId);
+    }
+
+    private async readNotificationReplies(channelId: string, rootId: string, signal: AbortSignal): Promise<InboundTeamsMessage[]> {
+        const messages: InboundTeamsMessage[] = [];
+        const visited = new Set<string>();
+        let nextLink: string | undefined;
+        do {
+            signal.throwIfAborted();
+            const result = await this.client!.callTool('ListChannelMessageReplies', {
+                teamId: this.teamId, channelId, messageId: rootId, maxReplies: 50,
+                ...(nextLink ? { nextLink } : {}),
+            }, signal);
+            if (result.isError) throw new Error('Teams channel replies could not be read');
+            const response = result.content?.[0]?.text ?? '';
+            messages.push(...this.parseMessages(response, channelId, true, true).messages
+                .filter(reply => reply.messageId !== rootId)
+                .map(reply => ({ ...reply, replyToMessageId: rootId })));
+            nextLink = this.pageCursor(JSON.parse(response), 'reply');
+            if (nextLink) {
+                if (visited.has(nextLink) || visited.size >= 100 || messages.length > 5000) {
+                    throw new Error('Teams reply pagination limit');
+                }
+                visited.add(nextLink);
+            }
+        } while (nextLink);
+        return messages;
     }
 
     private pageCursor(page: unknown, kind: 'root' | 'reply'): string | undefined {
@@ -437,7 +442,7 @@ export class McpTransport implements TeamsTransport {
     }
 
     /** Poll chat messages via MCP. */
-    private async pollChat(chatId: string, _since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
+    private async pollChat(chatId: string, _since?: string, signal?: AbortSignal): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('McpTransport not initialized');
 
         // Try known tool names for listing chat messages
@@ -450,7 +455,7 @@ export class McpTransport implements TeamsTransport {
             top: 5,
         };
 
-        const result = await this.client.callTool(toolName, args);
+        const result = await this.client.callTool(toolName, args, signal);
         const responseText = result.content?.[0]?.text ?? '[]';
 
         return this.parseMessages(responseText, chatId);
@@ -619,6 +624,7 @@ export class McpTransport implements TeamsTransport {
     }
 
     setToken(token: string): void {
+        this.bindAccount(token);
         this.client?.setBearerToken(token);
     }
 
@@ -628,6 +634,8 @@ export class McpTransport implements TeamsTransport {
 
     stop(): void {
         this.client = null;
+        void this.outbound?.dispose();
+        this.outbound = null;
         this.replyPages.clear();
         this.bufferedReplies.clear();
         this.rootPages.clear();

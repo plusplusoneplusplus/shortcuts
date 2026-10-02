@@ -397,11 +397,11 @@ export async function exchangeCodeForToken(
 }
 
 /**
- * Acquire a Graph API token using the Azure CLI (`az account get-access-token`).
+ * Acquire an access token for an Azure resource using the Azure CLI.
  * Requires user to have previously run `az login`.
  * Returns the access token string.
  */
-export async function acquireTokenViaAzCli(resource?: string): Promise<string> {
+export async function acquireTokenViaAzCli(resource?: string, signal?: AbortSignal): Promise<string> {
     const { execFile } = await import('child_process');
     const { promisify } = await import('util');
     const fs = await import('fs');
@@ -428,7 +428,7 @@ export async function acquireTokenViaAzCli(resource?: string): Promise<string> {
         if (azPath) {
             try {
                 // Use cmd.exe /c to handle .cmd files with spaces in path
-                const { stdout } = await execFileAsync('cmd.exe', ['/c', azPath, ...args], { timeout: 15000 });
+                const { stdout } = await execFileAsync('cmd.exe', ['/c', azPath, ...args], { timeout: 15000, signal });
                 const token = stdout.trim();
                 if (!token) throw new Error('az CLI returned empty token — run `az login` first');
                 return token;
@@ -440,7 +440,7 @@ export async function acquireTokenViaAzCli(resource?: string): Promise<string> {
 
     // Unix or az in PATH
     try {
-        const { stdout } = await execFileAsync('az', args, { timeout: 15000 });
+        const { stdout } = await execFileAsync('az', args, { timeout: 15000, signal });
         const token = stdout.trim();
         if (!token) {
             throw new Error('az CLI returned empty token — run `az login` first');

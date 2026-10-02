@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { TeamsConnectionCard } from '../../../../src/server/spa/client/react/admin/TeamsConnectionCard';
+import { IMSettingsSection } from '../../../../src/server/spa/client/react/admin/IMSettingsSection';
 
 const status = {
     enabled: false,
@@ -18,6 +19,102 @@ const status = {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('TeamsConnectionCard', () => {
+    it('groups setup separately from collapsed optional settings and history', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+            ok: true, json: async () => url.endsWith('/status')
+                ? { ...status, teamsBridgeObservabilityEnabled: true }
+                : { attempts: [], total: 0, nextOffset: null },
+        })));
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        expect(screen.getByRole('region', { name: 'Endpoint and sign-in' })
+            .contains(screen.getByLabelText('Teams MCP server URL'))).toBe(true);
+        expect(screen.getByRole('region', { name: 'Channel settings' })
+            .contains(screen.getByLabelText('Channel'))).toBe(true);
+        const advanced = screen.getByText('Advanced options').closest('details')!;
+        expect(advanced.hasAttribute('open')).toBe(false);
+        expect(advanced.contains(screen.getByLabelText('IC3 region'))).toBe(true);
+        const checkbox = screen.getByLabelText('Experimental notification-driven inbound (Trouter)');
+        expect(checkbox.closest('label')?.className).toBe('ar-teams-checkbox');
+        expect(checkbox.getAttribute('aria-describedby')).toBe('teams-trouter-hint');
+        const history = screen.getByRole('region', { name: 'Connection attempts' }).querySelector('details')!;
+        expect(history.hasAttribute('open')).toBe(false);
+        expect(screen.getByRole('button', { name: 'Enable & connect' }).className).toContain('ar-btn-primary');
+        expect(screen.getByRole('button', { name: 'Save MCP endpoint' }).className).toContain('ar-btn-secondary');
+    });
+
+    it('keeps form controls disabled until connection settings are available', () => {
+        vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+        render(<TeamsConnectionCard />);
+        for (const name of ['Teams MCP server URL', 'Team', 'Channel', 'Bot name', 'IC3 region',
+            'Experimental notification-driven inbound (Trouter)']) {
+            expect((screen.getByLabelText(name) as HTMLInputElement).disabled).toBe(true);
+        }
+        expect(screen.getByRole('button', { name: 'Refresh status' })).toBeDefined();
+    });
+
+    it('offers an off-by-default notification opt-in and persists it before reconnect', async () => {
+        let current = { ...status, enableTrouter: false };
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            if (url.endsWith('/config')) current = { ...current, ...JSON.parse(String(options?.body)) };
+            return { ok: true, json: async () => url.endsWith('/status') ? current : { ok: true } };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByText(/Connection: disconnected/);
+        const checkbox = screen.getByTestId('teams-trouter-enabled') as HTMLInputElement;
+        expect(checkbox.checked).toBe(false);
+        fireEvent.click(checkbox);
+        expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByText('Save channel'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/messaging\/teams\/config$/),
+            expect.objectContaining({ body: JSON.stringify({
+                teamName: 'Engineering', channelName: 'General', botName: 'CoC', ic3Region: null, enableTrouter: true,
+            }) }),
+        ));
+        await waitFor(() => expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(false));
+        expect(screen.getByText(/not durable catch-up/)).toBeDefined();
+    });
+    it('displays notification degradation while authoritative reader connectivity remains connected', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+            ...status, enabled: true, status: 'connected', enableTrouter: true,
+            notificationStatus: { state: 'retrying', error: {
+                code: 'authentication', message: 'Trouter authentication rejected; verify IC3 account permissions',
+            } },
+        }) })));
+        render(<TeamsConnectionCard />);
+        await screen.findByText(/Connection: connected/);
+        expect(screen.getByTestId('teams-notification-status').textContent).toContain('retrying');
+        const warning = screen.getByText(/Trouter authentication rejected/);
+        expect(warning.getAttribute('role')).toBe('alert');
+        expect(warning.closest('details')).toBeNull();
+        expect(screen.getByText(/60-second fallback reads/)).toBeDefined();
+    });
+    it.each(['amer', 'emea', 'apac', ''] as const)('saves container region %s with the existing form and reconnect guidance', async region => {
+        let current = { ...status, enabled: true, mode: 'mcp', ic3Region: region === '' ? 'emea' : null as string | null };
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            if (url.endsWith('/teams/config')) current = { ...current, ...JSON.parse(String(options?.body)) };
+            return { ok: true, json: async () => url.includes('/teams/') ? current : {
+                enabled: false, status: 'disconnected', qr: null, error: null, userName: 'CoC',
+            } };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<IMSettingsSection />);
+        const select = await screen.findByLabelText('IC3 region') as HTMLSelectElement;
+        expect(select.value).toBe(region === '' ? 'emea' : '');
+        expect(Array.from(select.options).map(option => option.value)).toEqual(['', 'amer', 'emea', 'apac']);
+        fireEvent.change(select, { target: { value: region } });
+        fireEvent.click(screen.getByText('Save & Resolve'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/container\/messaging\/teams\/config$/),
+            expect.objectContaining({ body: JSON.stringify({
+                teamName: 'Engineering', channelName: 'General', ic3Region: region || null,
+            }) }),
+        ));
+        expect(screen.getByText(/Save, then reconnect/)).toBeDefined();
+    });
+
     const active = {
         id: 'attempt-1', startedAt: '2026-01-01T00:00:00Z', stage: 'connected',
         degraded: true,
@@ -115,7 +212,8 @@ describe('TeamsConnectionCard', () => {
         await screen.findByText(/Connected · degraded/);
         fail = true;
         fireEvent.click(screen.getByText('Refresh status'));
-        expect(await screen.findByText(/Previous results are stale/)).toBeDefined();
+        const warning = await screen.findByText(/Previous results are stale/);
+        expect(warning.closest('details')).toBeNull();
         expect(screen.getByText(/Connected · degraded/)).toBeDefined();
     });
 
@@ -161,8 +259,34 @@ describe('TeamsConnectionCard', () => {
         fireEvent.click(screen.getByText('Save channel'));
         await waitFor(() => expect(fetch).toHaveBeenCalledWith(
             expect.stringMatching(/\/messaging\/teams\/config$/),
-            expect.objectContaining({ body: '{"teamName":"Engineering","channelName":"Private-Channel","botName":"CoC"}' }),
+            expect.objectContaining({ body: '{"teamName":"Engineering","channelName":"Private-Channel","botName":"CoC","ic3Region":null,"enableTrouter":false}' }),
         ));
+    });
+
+    it.each(['amer', 'emea', 'apac', ''] as const)('saves region %s explicitly and gates reconnect on unsaved changes', async region => {
+        let current = { ...status, enabled: true, ic3Region: 'emea' as string | null };
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            if (url.endsWith('/config')) current = { ...current, ...JSON.parse(String(options?.body)) };
+            return { ok: true, json: async () => url.endsWith('/status') ? current : { ok: true } };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByText(/Connection: disconnected/);
+        const select = screen.getByLabelText('IC3 region') as HTMLSelectElement;
+        expect(select.value).toBe('emea');
+        expect(Array.from(select.options).map(option => option.text))
+            .toEqual(['Unconfigured', 'Americas', 'Europe-Middle East-Africa', 'Asia-Pacific']);
+        fireEvent.change(select, { target: { value: region } });
+        expect((screen.getByText('Reconnect') as HTMLButtonElement).disabled).toBe(region !== 'emea');
+        fireEvent.click(screen.getByText('Save channel'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+            expect.stringMatching(/\/messaging\/teams\/config$/),
+            expect.objectContaining({ body: JSON.stringify({
+                teamName: 'Engineering', channelName: 'General', botName: 'CoC', ic3Region: region || null, enableTrouter: false,
+            }) }),
+        ));
+        await waitFor(() => expect((screen.getByText('Reconnect') as HTMLButtonElement).disabled).toBe(false));
+        expect(screen.getByText(/Save changes, then reconnect/)).toBeDefined();
     });
 
     it('does not offer OAuth when the server lacks support and displays connection errors', async () => {
