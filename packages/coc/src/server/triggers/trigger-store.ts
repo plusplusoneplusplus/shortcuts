@@ -27,7 +27,6 @@ export class TriggerStore {
     private readonly stmtGetActive: NativeStatement;
     private readonly stmtGetAll: NativeStatement;
     private readonly stmtDelete: NativeStatement;
-    private readonly stmtDeleteAll: NativeStatement;
     private readonly stmtCountActive: NativeStatement;
 
     constructor(db: NativeDatabase) {
@@ -66,7 +65,6 @@ export class TriggerStore {
         this.stmtGetActive = db.prepare("SELECT * FROM triggers WHERE status = 'active' ORDER BY created_at ASC");
         this.stmtGetAll = db.prepare('SELECT * FROM triggers ORDER BY created_at DESC');
         this.stmtDelete = db.prepare('DELETE FROM triggers WHERE id = ?');
-        this.stmtDeleteAll = db.prepare('DELETE FROM triggers');
         this.stmtCountActive = db.prepare("SELECT COUNT(*) as cnt FROM triggers WHERE status = 'active'");
     }
 
@@ -119,11 +117,6 @@ export class TriggerStore {
     /** Delete a trigger by id. */
     delete(id: string): boolean {
         return this.stmtDelete.run(id).changes > 0;
-    }
-
-    /** Delete all triggers (used by data wiper). */
-    deleteAll(): void {
-        this.stmtDeleteAll.run();
     }
 
     /** Count active triggers server-wide. */
