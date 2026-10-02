@@ -14,16 +14,17 @@ pub const MAX_BLOB_SIZE: u64 = 1024 * 1024;
 /// A file is binary when a NUL byte appears in its first 8 KiB.
 const BINARY_PROBE_SIZE: usize = 8192;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BlobEncoding {
-    Utf8,
-    Base64,
-}
-
+/// File content as the blob route returns it.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "napi",
+    napi_derive::napi(object, object_from_js = false, js_name = "RepoBlob")
+)]
 pub struct Blob {
+    /// UTF-8 text, or base64 when the file looks binary.
     pub content: String,
-    pub encoding: BlobEncoding,
+    #[cfg_attr(feature = "napi", napi(ts_type = "'utf-8' | 'base64'"))]
+    pub encoding: &'static str,
     pub mime_type: &'static str,
 }
 
@@ -108,10 +109,10 @@ pub fn read_blob(root: &Path, relative: &str) -> Result<Blob, RepoFilesError> {
     let mime_type = mime_type(&path);
     if is_binary(&bytes) {
         let content = base64::engine::general_purpose::STANDARD.encode(&bytes);
-        return Ok(Blob { content, encoding: BlobEncoding::Base64, mime_type });
+        return Ok(Blob { content, encoding: "base64", mime_type });
     }
     let content = String::from_utf8_lossy(&bytes).into_owned();
-    Ok(Blob { content, encoding: BlobEncoding::Utf8, mime_type })
+    Ok(Blob { content, encoding: "utf-8", mime_type })
 }
 
 /// A NUL byte in the first 8 KiB marks a file as binary.

@@ -105,44 +105,6 @@ export interface BuildOptions {
   maxEntries?: number
 }
 
-/** One matching line, with its position inside the line and its neighbours. */
-export interface ContentMatch {
-  /** Repo-relative path with `/` separators on every platform. */
-  path: string
-  /** One-based line number. */
-  line: number
-  /** The matching line without its trailing newline, possibly truncated. */
-  text: string
-  /**
-   * UTF-16 offset of the match within `text` — the same offset a JavaScript
-   * string index would use, so highlight and match cannot disagree.
-   */
-  startColumn: number
-  /** UTF-16 offset one past the end of the match within `text`. */
-  endColumn: number
-  /**
-   * Present when this line is one piece of a match that crossed a line
-   * break; every piece of that match shares the id, and it is unique within
-   * a path. Absent for an ordinary single-line match.
-   */
-  group?: number
-  /** Lines preceding `line`, in file order. */
-  before: Array<string>
-  /** Lines following `line`, in file order. */
-  after: Array<string>
-}
-
-/** The bounded response from one content search. */
-export interface ContentSearchResult {
-  /** Matches sorted by path, then by line. */
-  matches: Array<ContentMatch>
-  /**
-   * True when any cap bit: the total cap, a per-file cap, or a file skipped
-   * for exceeding `maxFileSizeBytes`.
-   */
-  truncated: boolean
-}
-
 /**
  * Create a notebook, section, or page. `kind` is `notebook`, `section` or
  * `page`; a page gets `.md` appended when it is missing.
@@ -1068,19 +1030,6 @@ export declare function readNote(root: string, path: string, options: NotesConte
  */
 export declare function renameNotesEntry(root: string, oldPath: string, newPath: string, options: NotesEntryOptions): Promise<NotesRenameResult>
 
-/** File content as the blob route returns it. */
-export interface RepoBlob {
-  /** UTF-8 text, or base64 when the file looks binary. */
-  content: string
-  encoding: 'utf-8' | 'base64'
-  mimeType: string
-}
-
-export interface RepoFileListing {
-  files: Array<string>
-  truncated: boolean
-}
-
 /** Listing options; `maxEntries` caps each directory (or the file walk). */
 export interface RepoListOptions {
   showIgnored: boolean
@@ -1089,50 +1038,11 @@ export interface RepoListOptions {
   depth?: number
 }
 
-export interface RepoReplaceFile {
-  path: string
-  targets: Array<RepoReplaceTarget>
-}
-
 export interface RepoReplaceOptions {
   caseSensitive?: boolean
   wholeWord?: boolean
   regex?: boolean
   preserveCase?: boolean
-}
-
-export interface RepoReplaceResult {
-  replacedMatches: number
-  replacedFiles: number
-  skipped: Array<RepoReplaceSkip>
-}
-
-export interface RepoReplaceSkip {
-  path: string
-  reason: 'stale' | 'missing' | 'unreadable'
-  message: string
-}
-
-/** One span to rewrite, as the search reported it (UTF-16 columns). */
-export interface RepoReplaceTarget {
-  line: number
-  text: string
-  startColumn: number
-  endColumn: number
-}
-
-/** One row of a directory listing. */
-export interface RepoTreeEntry {
-  name: string
-  type: 'dir' | 'file'
-  size?: number
-  path: string
-  children?: Array<RepoTreeEntry>
-}
-
-export interface RepoTreeListing {
-  entries: Array<RepoTreeEntry>
-  truncated: boolean
 }
 
 /**
@@ -1196,3 +1106,110 @@ export declare function writeNote(root: string, path: string, content: string, e
  * the root itself.
  */
 export declare function writeNotesOrder(root: string, parentPath: string, order: Array<string>, options: NotesEntryOptions): Promise<void>
+/** One matching line, with its position inside the line and its neighbours. */
+export interface ContentMatch {
+  /** Repo-relative path with `/` separators on every platform. */
+  path: string
+  /** One-based line number. */
+  line: number
+  /** The matching line without its trailing newline, possibly truncated. */
+  text: string
+  /**
+   * UTF-16 offset of the match within `text` — a JavaScript string index,
+   * so the client's highlight cannot disagree with what matched.
+   */
+  startColumn: number
+  /** UTF-16 offset one past the end of the match within `text`. */
+  endColumn: number
+  /**
+   * Set when this line is one piece of a match that spanned a line break;
+   * every piece of that match carries the same id. Unique within a path,
+   * which is the only scope a client ever compares two pieces in. `None`
+   * for an ordinary single-line match.
+   */
+  group?: number
+  /** Up to `context_lines` lines preceding `line`, in file order. */
+  before: Array<string>
+  /** Up to `context_lines` lines following `line`, in file order. */
+  after: Array<string>
+}
+
+/** The bounded response from one content search. */
+export interface ContentSearchResult {
+  /**
+   * Matches sorted by path, then by line — deterministic across platforms
+   * and across runs, which the parallel walk's own order is not.
+   */
+  matches: Array<ContentMatch>
+  /**
+   * True when any cap bit: the total cap, a per-file cap, or a file skipped
+   * for being larger than `max_file_size_bytes`.
+   */
+  truncated: boolean
+}
+
+/** File content as the blob route returns it. */
+export interface RepoBlob {
+  /** UTF-8 text, or base64 when the file looks binary. */
+  content: string
+  encoding: 'utf-8' | 'base64'
+  mimeType: string
+}
+
+export interface RepoFileListing {
+  files: Array<string>
+  truncated: boolean
+}
+
+export interface RepoReplaceFile {
+  /** Repo-relative path. */
+  path: string
+  targets: Array<RepoReplaceTarget>
+}
+
+export interface RepoReplaceResult {
+  replacedMatches: number
+  replacedFiles: number
+  skipped: Array<RepoReplaceSkip>
+}
+
+/** Why one file was left alone: `stale`, `missing` or `unreadable`. */
+export interface RepoReplaceSkip {
+  path: string
+  reason: 'stale' | 'missing' | 'unreadable'
+  /** Human-readable detail, safe to show in the UI. */
+  message: string
+}
+
+/**
+ * One matched span to rewrite. Numbers are JSON numbers, kept as `f64` so a
+ * fractional or out-of-range value reads as stale, as it always has.
+ */
+export interface RepoReplaceTarget {
+  /** One-based line number. */
+  line: number
+  /** The line's full text at search time, without its terminator. */
+  text: string
+  /** UTF-16 offset of the match within `text`. */
+  startColumn: number
+  /** UTF-16 offset one past the end of the match. */
+  endColumn: number
+}
+
+/** One row of a directory listing. */
+export interface RepoTreeEntry {
+  name: string
+  /** `"dir"` or `"file"`. */
+  type: 'dir' | 'file'
+  /** Byte size for files (symlinks report their target); `None` for dirs. */
+  size?: number
+  /** Repo-relative, `/`-separated. */
+  path: string
+  /** Populated by deep listings when the directory was not truncated. */
+  children?: Array<RepoTreeEntry>
+}
+
+export interface RepoTreeListing {
+  entries: Array<RepoTreeEntry>
+  truncated: boolean
+}

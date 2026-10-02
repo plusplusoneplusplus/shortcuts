@@ -166,6 +166,8 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "napi",
+ "napi-derive",
  "parking_lot",
  "rayon",
  "regex",

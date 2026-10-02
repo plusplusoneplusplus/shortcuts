@@ -15,8 +15,10 @@ use std::path::{Path, PathBuf};
 
 use crate::notes_fs::resolve_lexically;
 
-pub use blob::{mime_type, read_blob, write_blob, Blob, BlobEncoding, MAX_BLOB_SIZE};
-pub use listing::{list_directory, list_files, locale_compare, TreeEntry};
+pub use blob::{mime_type, read_blob, write_blob, Blob, MAX_BLOB_SIZE};
+pub use listing::{
+    list_directory, list_files, locale_compare, FileListing, TreeEntry, TreeListing,
+};
 pub use replace::{
     apply_replacements, build_matcher, preserve_case, replace_content, ReplaceFile, ReplaceOptions,
     ReplaceSkip, ReplaceSummary, ReplaceTarget,

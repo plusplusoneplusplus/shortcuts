@@ -44,3 +44,10 @@ feruca = "0.12"
 # Replace re-finds spans with JavaScript `RegExp` semantics (non-unicode, UTF-16
 # columns, Annex B syntax); MIT/Apache, only dependency is memchr.
 regress = { version = "0.12", features = ["utf16"] }
+# The `napi` feature lets the addon expose repo-file DTOs as JS objects as is,
+# instead of mirroring each one in the binding crate. Off for the LSP binary.
+napi = { version = "3", default-features = false, features = ["napi4"], optional = true }
+napi-derive = { version = "3", optional = true }
+
+[features]
+napi = ["dep:napi", "dep:napi-derive"]

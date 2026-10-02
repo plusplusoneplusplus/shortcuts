@@ -21,6 +21,7 @@ use super::{resolve_in_root, RepoFilesError};
 /// One matched span to rewrite. Numbers are JSON numbers, kept as `f64` so a
 /// fractional or out-of-range value reads as stale, as it always has.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "napi", napi_derive::napi(object, js_name = "RepoReplaceTarget"))]
 pub struct ReplaceTarget {
     /// One-based line number.
     pub line: f64,
@@ -33,6 +34,7 @@ pub struct ReplaceTarget {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "napi", napi_derive::napi(object, js_name = "RepoReplaceFile"))]
 pub struct ReplaceFile {
     /// Repo-relative path.
     pub path: String,
@@ -50,14 +52,23 @@ pub struct ReplaceOptions {
 
 /// Why one file was left alone: `stale`, `missing` or `unreadable`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "napi",
+    napi_derive::napi(object, object_from_js = false, js_name = "RepoReplaceSkip")
+)]
 pub struct ReplaceSkip {
     pub path: String,
+    #[cfg_attr(feature = "napi", napi(ts_type = "'stale' | 'missing' | 'unreadable'"))]
     pub reason: &'static str,
     /// Human-readable detail, safe to show in the UI.
     pub message: String,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "napi",
+    napi_derive::napi(object, object_from_js = false, js_name = "RepoReplaceResult")
+)]
 pub struct ReplaceSummary {
     pub replaced_matches: u32,
     pub replaced_files: u32,

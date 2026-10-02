@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use coc_native_core::repo_files::{
-    mime_type, read_blob, resolve_in_root, write_blob, BlobEncoding, RepoFilesError, MAX_BLOB_SIZE,
+    mime_type, read_blob, resolve_in_root, write_blob, RepoFilesError, MAX_BLOB_SIZE,
 };
 
 fn repo() -> tempfile::TempDir {
@@ -43,7 +43,7 @@ fn reads_text_with_mime_and_lossy_utf8() {
     let dir = repo();
     fs::write(dir.path().join("a.TS"), b"const x = 1;\n\xff\n").unwrap();
     let blob = read_blob(dir.path(), "a.TS").unwrap();
-    assert_eq!(blob.encoding, BlobEncoding::Utf8);
+    assert_eq!(blob.encoding, "utf-8");
     assert_eq!(blob.mime_type, "application/typescript");
     assert_eq!(blob.content, "const x = 1;\n\u{fffd}\n");
 }
@@ -53,7 +53,7 @@ fn nul_in_first_8k_is_binary_base64() {
     let dir = repo();
     fs::write(dir.path().join("img.png"), [0x89, b'P', 0, 1]).unwrap();
     let blob = read_blob(dir.path(), "img.png").unwrap();
-    assert_eq!(blob.encoding, BlobEncoding::Base64);
+    assert_eq!(blob.encoding, "base64");
     assert_eq!(blob.content, "iVAAAQ==");
     assert_eq!(blob.mime_type, "image/png");
 
@@ -61,7 +61,7 @@ fn nul_in_first_8k_is_binary_base64() {
     let mut late = vec![b'a'; 8192];
     late.push(0);
     fs::write(dir.path().join("late.bin"), &late).unwrap();
-    assert_eq!(read_blob(dir.path(), "late.bin").unwrap().encoding, BlobEncoding::Utf8);
+    assert_eq!(read_blob(dir.path(), "late.bin").unwrap().encoding, "utf-8");
 }
 
 #[test]

@@ -6,7 +6,9 @@
 
 use std::path::PathBuf;
 
-use coc_native_core::content_search::{search, ContentSearchOptions, SearchError};
+use coc_native_core::content_search::{
+    search, ContentSearchOptions, ContentSearchResult, SearchError,
+};
 use napi::bindgen_prelude::{AsyncTask, Error, Status};
 use napi_derive::napi;
 
@@ -42,40 +44,6 @@ pub struct SearchContentOptions {
     pub max_file_size_bytes: Option<u32>,
     /// Lines of context on each side of a match. Defaults to 1.
     pub context_lines: Option<u32>,
-}
-
-/// One matching line, with its position inside the line and its neighbours.
-#[napi(object)]
-pub struct ContentMatch {
-    /// Repo-relative path with `/` separators on every platform.
-    pub path: String,
-    /// One-based line number.
-    pub line: u32,
-    /// The matching line without its trailing newline, possibly truncated.
-    pub text: String,
-    /// UTF-16 offset of the match within `text` — the same offset a JavaScript
-    /// string index would use, so highlight and match cannot disagree.
-    pub start_column: u32,
-    /// UTF-16 offset one past the end of the match within `text`.
-    pub end_column: u32,
-    /// Present when this line is one piece of a match that crossed a line
-    /// break; every piece of that match shares the id, and it is unique within
-    /// a path. Absent for an ordinary single-line match.
-    pub group: Option<u32>,
-    /// Lines preceding `line`, in file order.
-    pub before: Vec<String>,
-    /// Lines following `line`, in file order.
-    pub after: Vec<String>,
-}
-
-/// The bounded response from one content search.
-#[napi(object)]
-pub struct ContentSearchResult {
-    /// Matches sorted by path, then by line.
-    pub matches: Vec<ContentMatch>,
-    /// True when any cap bit: the total cap, a per-file cap, or a file skipped
-    /// for exceeding `maxFileSizeBytes`.
-    pub truncated: bool,
 }
 
 fn search_options(options: Option<SearchContentOptions>) -> ContentSearchOptions {
@@ -124,24 +92,5 @@ pub fn search_content(
     options: Option<SearchContentOptions>,
 ) -> AsyncTask<Blocking<ContentSearchResult>> {
     let (root, options) = (PathBuf::from(root), search_options(options));
-    blocking(move || {
-        let result = search(&root, &query, &options).map_err(to_napi_error)?;
-        Ok(ContentSearchResult {
-            truncated: result.truncated,
-            matches: result
-                .matches
-                .into_iter()
-                .map(|hit| ContentMatch {
-                    path: hit.path,
-                    line: hit.line as u32,
-                    text: hit.text,
-                    start_column: hit.start_column,
-                    end_column: hit.end_column,
-                    group: hit.group,
-                    before: hit.before,
-                    after: hit.after,
-                })
-                .collect(),
-        })
-    })
+    blocking(move || search(&root, &query, &options).map_err(to_napi_error))
 }

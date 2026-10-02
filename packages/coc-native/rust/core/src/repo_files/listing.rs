@@ -15,15 +15,47 @@ use crate::repo_index::walk::{ignore_builder, to_posix, walk_builder};
 
 /// One row of a directory listing.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "napi",
+    napi_derive::napi(object, object_from_js = false, js_name = "RepoTreeEntry")
+)]
 pub struct TreeEntry {
     pub name: String,
-    pub is_dir: bool,
+    /// `"dir"` or `"file"`.
+    #[cfg_attr(feature = "napi", napi(js_name = "type", ts_type = "'dir' | 'file'"))]
+    pub kind: &'static str,
     /// Byte size for files (symlinks report their target); `None` for dirs.
-    pub size: Option<u64>,
+    pub size: Option<i64>,
     /// Repo-relative, `/`-separated.
     pub path: String,
     /// Populated by deep listings when the directory was not truncated.
     pub children: Option<Vec<TreeEntry>>,
+}
+
+impl TreeEntry {
+    pub fn is_dir(&self) -> bool {
+        self.kind == "dir"
+    }
+}
+
+#[derive(Debug)]
+#[cfg_attr(
+    feature = "napi",
+    napi_derive::napi(object, object_from_js = false, js_name = "RepoTreeListing")
+)]
+pub struct TreeListing {
+    pub entries: Vec<TreeEntry>,
+    pub truncated: bool,
+}
+
+#[derive(Debug)]
+#[cfg_attr(
+    feature = "napi",
+    napi_derive::napi(object, object_from_js = false, js_name = "RepoFileListing")
+)]
+pub struct FileListing {
+    pub files: Vec<String>,
+    pub truncated: bool,
 }
 
 thread_local! {
@@ -48,7 +80,7 @@ pub fn list_directory(
     depth: u32,
     include_ignored: bool,
     max_entries: usize,
-) -> Result<(Vec<TreeEntry>, bool), RepoFilesError> {
+) -> Result<TreeListing, RepoFilesError> {
     let abs = resolve_in_root(root, relative)?;
     let root = resolve_in_root(root, "")?;
     match std::fs::metadata(&abs) {
@@ -58,7 +90,8 @@ pub fn list_directory(
         }
         Ok(_) => {}
     }
-    Ok(list_level(&root, &abs, depth, include_ignored, max_entries))
+    let (entries, truncated) = list_level(&root, &abs, depth, include_ignored, max_entries);
+    Ok(TreeListing { entries, truncated })
 }
 
 fn list_level(
@@ -79,18 +112,19 @@ fn list_level(
             let meta = entry.metadata().ok()?;
             Some(TreeEntry {
                 name: entry.file_name().to_string_lossy().into_owned(),
-                is_dir: meta.is_dir(),
-                size: (!meta.is_dir()).then_some(meta.len()),
+                kind: if meta.is_dir() { "dir" } else { "file" },
+                size: (!meta.is_dir()).then_some(meta.len() as i64),
                 path: to_posix(entry.path().strip_prefix(root).ok()?),
                 children: None,
             })
         })
         .collect();
-    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| locale_compare(&a.name, &b.name)));
+    entries
+        .sort_by(|a, b| b.is_dir().cmp(&a.is_dir()).then_with(|| locale_compare(&a.name, &b.name)));
     let truncated = entries.len() > max_entries;
     entries.truncate(max_entries);
     if depth > 1 && !truncated {
-        for entry in entries.iter_mut().filter(|e| e.is_dir) {
+        for entry in entries.iter_mut().filter(|e| e.is_dir()) {
             let child = root.join(&entry.path);
             entry.children =
                 Some(list_level(root, &child, depth - 1, include_ignored, max_entries).0);
@@ -108,11 +142,11 @@ pub fn list_files(
     relative: &str,
     include_ignored: bool,
     max_entries: usize,
-) -> Result<(Vec<String>, bool), RepoFilesError> {
+) -> Result<FileListing, RepoFilesError> {
     let abs = resolve_in_root(root, relative)?;
     let root = resolve_in_root(root, "")?;
     if !abs.is_dir() {
-        return Ok((Vec::new(), false));
+        return Ok(FileListing { files: Vec::new(), truncated: false });
     }
     let mut builder = walk_builder(&abs, include_ignored);
     builder.sort_by_file_name(|a, b| locale_compare(&a.to_string_lossy(), &b.to_string_lossy()));
@@ -124,5 +158,5 @@ pub fn list_files(
         .take(max_entries)
         .collect();
     let truncated = files.len() >= max_entries;
-    Ok((files, truncated))
+    Ok(FileListing { files, truncated })
 }

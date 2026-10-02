@@ -5,7 +5,9 @@ use std::cmp::Ordering;
 use std::fs;
 use std::path::Path;
 
-use coc_native_core::repo_files::{list_directory, list_files, locale_compare, RepoFilesError};
+use coc_native_core::repo_files::{
+    list_directory, list_files, locale_compare, FileListing, RepoFilesError, TreeListing,
+};
 
 fn write(root: &Path, relative: &str) {
     let path = root.join(relative);
@@ -21,7 +23,7 @@ fn repo() -> tempfile::TempDir {
 }
 
 fn names(root: &Path, relative: &str, include_ignored: bool) -> Vec<String> {
-    let (entries, _) = list_directory(root, relative, 1, include_ignored, 5000).unwrap();
+    let entries = list_directory(root, relative, 1, include_ignored, 5000).unwrap().entries;
     entries.into_iter().map(|e| e.name).collect()
 }
 
@@ -42,10 +44,10 @@ fn dirs_first_then_locale_order_with_sizes_and_paths() {
     for file in ["src/b.ts", "src/Zeta/x", "src/alpha/x", "src/_c.ts", "src/A.ts"] {
         write(root, file);
     }
-    let (entries, truncated) = list_directory(root, "/src", 1, false, 5000).unwrap();
+    let TreeListing { entries, truncated } = list_directory(root, "/src", 1, false, 5000).unwrap();
     assert!(!truncated);
     let got: Vec<_> =
-        entries.iter().map(|e| (e.name.as_str(), e.is_dir, e.size, e.path.as_str())).collect();
+        entries.iter().map(|e| (e.name.as_str(), e.is_dir(), e.size, e.path.as_str())).collect();
     assert_eq!(
         got,
         [
@@ -81,8 +83,8 @@ fn symlinks_report_their_target_and_broken_links_are_skipped() {
     write(root, "real/f.txt");
     std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();
     std::os::unix::fs::symlink(root.join("nowhere"), root.join("broken")).unwrap();
-    let (entries, _) = list_directory(root, "", 1, true, 5000).unwrap();
-    let got: Vec<_> = entries.iter().map(|e| (e.name.as_str(), e.is_dir)).collect();
+    let entries = list_directory(root, "", 1, true, 5000).unwrap().entries;
+    let got: Vec<_> = entries.iter().map(|e| (e.name.as_str(), e.is_dir())).collect();
     assert_eq!(got, [(".git", true), ("link", true), ("real", true)]);
 }
 
@@ -93,12 +95,12 @@ fn cap_truncates_and_suppresses_children() {
     for file in ["d1/a", "d1/b", "d1/c", "d2/x", "f"] {
         write(root, file);
     }
-    let (entries, truncated) = list_directory(root, "", 3, true, 2).unwrap();
+    let TreeListing { entries, truncated } = list_directory(root, "", 3, true, 2).unwrap();
     assert!(truncated);
     assert_eq!(entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), [".git", "d1"]);
     assert!(entries.iter().all(|e| e.children.is_none()));
 
-    let (entries, truncated) = list_directory(root, "", 2, false, 4).unwrap();
+    let TreeListing { entries, truncated } = list_directory(root, "", 2, false, 4).unwrap();
     assert!(!truncated);
     let d1 = entries.iter().find(|e| e.name == "d1").unwrap();
     // Exactly the cap (4 root entries) is not truncated, so dirs get children.
@@ -130,11 +132,11 @@ fn file_walk_is_depth_first_in_locale_order_without_git() {
     for file in ["pkg/b.ts", "pkg/A/z.ts", "pkg/a.ts", "pkg/out/o.js", "pkg/sub/.git/HEAD"] {
         write(root, file);
     }
-    let (files, truncated) = list_files(root, "pkg", false, 100).unwrap();
+    let FileListing { files, truncated } = list_files(root, "pkg", false, 100).unwrap();
     assert!(!truncated);
     // Files and directories interleave by name; no dirs-first here.
     assert_eq!(files, ["pkg/A/z.ts", "pkg/a.ts", "pkg/b.ts"]);
-    let (files, _) = list_files(root, "/pkg/", true, 100).unwrap();
+    let files = list_files(root, "/pkg/", true, 100).unwrap().files;
     assert_eq!(files, ["pkg/A/z.ts", "pkg/a.ts", "pkg/b.ts", "pkg/out/o.js"]);
 }
 
@@ -145,13 +147,14 @@ fn file_walk_caps_and_tolerates_missing_starts() {
     for file in ["pkg/a", "pkg/b", "pkg/c"] {
         write(root, file);
     }
-    assert_eq!(
-        list_files(root, "pkg", false, 2).unwrap(),
-        (vec!["pkg/a".into(), "pkg/b".into()], true)
-    );
+    let walk = |rel: &str, max| {
+        let FileListing { files, truncated } = list_files(root, rel, false, max).unwrap();
+        (files, truncated)
+    };
+    assert_eq!(walk("pkg", 2), (vec!["pkg/a".into(), "pkg/b".into()], true));
     // Reaching the cap exactly still reports truncation, as the JS walk did.
-    assert!(list_files(root, "pkg", false, 3).unwrap().1);
-    assert_eq!(list_files(root, "missing", false, 3).unwrap(), (vec![], false));
-    assert_eq!(list_files(root, "pkg/a", false, 3).unwrap(), (vec![], false));
+    assert!(list_files(root, "pkg", false, 3).unwrap().truncated);
+    assert_eq!(walk("missing", 3), (vec![], false));
+    assert_eq!(walk("pkg/a", 3), (vec![], false));
     assert!(matches!(list_files(root, "../x", false, 3), Err(RepoFilesError::PathTraversal)));
 }
