@@ -499,6 +499,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 query: message,
                 followUpSuggestions: this.followUpSuggestions,
                 enqueueChat: this.runtime.getEnqueueChat?.(),
+                launchRalph: this.runtime.getLaunchRalph?.(),
                 sendMessage: this.runtime.getSendMessage?.(),
                 sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
                 scheduleWakeup: cronDeps.scheduleWakeup,

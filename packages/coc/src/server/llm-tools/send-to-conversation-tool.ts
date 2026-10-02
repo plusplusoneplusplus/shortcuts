@@ -7,6 +7,9 @@
  *     `POST /api/queue` uses (no HTTP self-call) so the conversation appears in
  *     the dashboard chat list and is picked up by the queue executor. Returns
  *     immediately with the queued conversation's identity.
+ *     With `mode: "ralph"`, create mode instead launches a Ralph session
+ *     straight into iteration 1 (no grilling) through the injected
+ *     `launchRalph` capability — the same path `POST /api/ralph-launch` uses.
  *   - `processId` provided → **post mode**: post `content` as a follow-up
  *     message into that existing conversation, wrapping the same delivery path
  *     `POST /api/processes/:id/message` uses (via the injected `sendMessage`
@@ -27,13 +30,17 @@ import type { AIProcess, CreateTaskInput, ProcessStore, StoredEffortTiersMap } f
 import { isQueueProcessId, mergeEffortTiersWithDefaults, resolveModelForProvider, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { validateAndParseTask } from '../routes/queue-shared';
 import { VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
+import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-/** Chat modes this tool may start / deliver as. `plan` and `ralph` are rejected. */
-export type SendToConversationMode = 'autopilot' | 'ask';
+/** Chat modes a conversation may be started or continued in. */
+export type SendToConversationChatMode = 'autopilot' | 'ask';
+
+/** Modes this tool accepts. `ralph` is create-only; `plan` is rejected. */
+export type SendToConversationMode = SendToConversationChatMode | 'ralph';
 
 /** Delivery modes for post mode (an existing conversation). */
 export type SendToConversationDeliveryMode = 'immediate' | 'enqueue' | 'steer';
@@ -54,7 +61,7 @@ export interface SendToConversationArgs {
     processId?: string;
     /** Create mode: target workspace/repo. Defaults to the caller's workspace. */
     workspaceId?: string;
-    /** Chat mode, restricted to `autopilot` | `ask`. Default `ask`. */
+    /** `autopilot` | `ask` (default), or create-only `ralph` (launch a Ralph session with `content` as the goal). */
     mode?: SendToConversationMode;
     /** Post mode: how the follow-up is delivered. Ignored in create mode. */
     deliveryMode?: SendToConversationDeliveryMode;
@@ -94,7 +101,7 @@ export type EnqueueChatFn = (input: CreateTaskInput) => Promise<string>;
 export type SendMessageFn = (input: {
     processId: string;
     content: string;
-    mode?: SendToConversationMode;
+    mode?: SendToConversationChatMode;
     model?: string;
     effort?: ReasoningEffort;
     deliveryMode?: SendToConversationDeliveryMode;
@@ -120,6 +127,8 @@ export interface SendToConversationToolOptions {
     enqueueChat: EnqueueChatFn;
     /** Bound in-process follow-up delivery capability (post mode). */
     sendMessage?: SendMessageFn;
+    /** Bound in-process Ralph launch (create mode with `mode: "ralph"`). */
+    launchRalph?: LaunchRalphFn;
     /** Runtime provider/tier helpers supplied by the server route layer. */
     runtime?: SendToConversationRuntimeOptions;
     /**
@@ -140,6 +149,8 @@ export interface SendToConversationSuccess {
     openLink: string;
     /** Post mode only: appended user-turn index. */
     turnIndex?: number;
+    /** Ralph mode only: the launched Ralph session id. */
+    sessionId?: string;
 }
 
 export interface SendToConversationError {
@@ -153,7 +164,7 @@ export type SendToConversationResult = SendToConversationSuccess | SendToConvers
 // ============================================================================
 
 /** Modes this tool may start — a strict subset of the queue's chat modes. */
-const ALLOWED_MODES: ReadonlySet<string> = new Set<SendToConversationMode>(['autopilot', 'ask']);
+const ALLOWED_MODES: ReadonlySet<string> = new Set<SendToConversationMode>(['autopilot', 'ask', 'ralph']);
 const DEFAULT_MODE: SendToConversationMode = 'ask';
 
 const ALLOWED_PRIORITIES: ReadonlySet<string> = new Set(['high', 'normal', 'low']);
@@ -182,7 +193,7 @@ const ALLOWED_EFFORT_TIERS: ReadonlySet<string> = new Set<SendToConversationEffo
  * @param options Tool options (store + caller workspace + enqueue/send capabilities).
  */
 export function createSendToConversationTool(options: SendToConversationToolOptions) {
-    const { store, workspaceId: callerWorkspaceId, enqueueChat, sendMessage, parentProcessId, runtime } = options;
+    const { store, workspaceId: callerWorkspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime } = options;
 
     const tool = defineTool<SendToConversationArgs>('send_to_conversation', {
         description:
@@ -191,13 +202,17 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'fire-and-forget chat with `content` as its first prompt (it does NOT continue the current chat) and ' +
             'returns `{ processId, openLink }`. `content` is required; `mode` defaults to `ask` and create mode ' +
             'defaults to the current workspace. For new conversations, provide a short, task-specific `title` ' +
-            '(optional, max 80 characters); it remains the visible custom title even after AI title generation.',
+            '(optional, max 80 characters); it remains the visible custom title even after AI title generation. ' +
+            'Create mode with `mode: "ralph"` launches an autonomous Ralph session straight into iteration 1 ' +
+            '(no clarifying questions) with `content` as a self-contained goal spec and returns ' +
+            '`{ processId, sessionId, openLink }`; use it for long, multi-step build-until-done goals that write ' +
+            'to the repo. `ralph` is rejected in post mode; `plan` is not supported.',
         parameters: {
             type: 'object',
             properties: {
                 content: {
                     type: 'string',
-                    description: 'The message (post mode) or first prompt (create mode). Required.',
+                    description: 'The message (post mode), first prompt (create mode), or goal spec (`ralph` mode). Required.',
                 },
                 processId: {
                     type: 'string',
@@ -211,8 +226,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 },
                 mode: {
                     type: 'string',
-                    enum: ['autopilot', 'ask'],
-                    description: 'Chat mode: `ask` (read-only, default) or `autopilot` (can edit/run).',
+                    enum: ['autopilot', 'ask', 'ralph'],
+                    description: 'Chat mode: `ask` (read-only, default), `autopilot` (can edit/run), or `ralph` ' +
+                        '(create mode only: launch a Ralph build loop with `content` as the goal spec).',
                 },
                 deliveryMode: {
                     type: 'string',
@@ -296,6 +312,13 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             const targetProcessId =
                 typeof args.processId === 'string' && args.processId.trim() ? args.processId.trim() : undefined;
             if (targetProcessId) {
+                if (mode === 'ralph') {
+                    return {
+                        error:
+                            "Invalid mode: 'ralph' only applies when creating a new conversation. " +
+                            'Omit `processId` to launch a Ralph session, or post with `ask` / `autopilot`.',
+                    };
+                }
                 return postToExistingConversation({
                     store,
                     sendMessage,
@@ -314,6 +337,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 store,
                 callerWorkspaceId,
                 enqueueChat,
+                launchRalph,
                 parentProcessId,
                 args,
                 content,
@@ -339,7 +363,7 @@ async function postToExistingConversation(params: {
     sendMessage?: SendMessageFn;
     processId: string;
     content: string;
-    mode: SendToConversationMode;
+    mode: SendToConversationChatMode;
     model?: string;
     effortTier?: SendToConversationEffortTier;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
@@ -404,6 +428,7 @@ async function createNewConversation(params: {
     store: ProcessStore;
     callerWorkspaceId?: string;
     enqueueChat: EnqueueChatFn;
+    launchRalph?: LaunchRalphFn;
     parentProcessId?: string;
     args: SendToConversationArgs;
     content: string;
@@ -418,6 +443,7 @@ async function createNewConversation(params: {
         store,
         callerWorkspaceId,
         enqueueChat,
+        launchRalph,
         parentProcessId,
         args,
         content,
@@ -512,6 +538,20 @@ async function createNewConversation(params: {
         }
     }
 
+    if (mode === 'ralph') {
+        return launchRalphConversation({
+            launchRalph,
+            goalSpec: content,
+            workspaceId: requestedWorkspaceId,
+            title,
+            parentProcessId,
+            provider: resolvedProvider,
+            model: resolvedModel,
+            reasoningEffort: resolvedEffort,
+            effortTier,
+        });
+    }
+
     // --- build + validate the task spec, then enqueue in-process ----------
     // Setting `payload.provider` makes the enqueue path treat the provider as
     // explicit, so inherited/selected providers suppress global default-provider
@@ -547,7 +587,7 @@ async function createNewConversation(params: {
     // Reuse the canonical enqueue validation/normalization (config shape, model
     // resolution, display-name generation). Our up-front checks above already
     // reject the cases this path would silently coerce (unknown workspace,
-    // ralph/plan mode).
+    // plan mode).
     const validation = validateAndParseTask(taskSpec);
     if (!validation.valid || !validation.input) {
         return { error: validation.error ?? 'Failed to build the new conversation task.' };
@@ -560,6 +600,58 @@ async function createNewConversation(params: {
         processId,
         openLink: `#/process/${processId}`,
     };
+}
+
+/**
+ * Launch a Ralph session through the shared launch service. The AI selection
+ * is the one create mode resolved (inherited or explicit-provider defaults);
+ * no worktree is requested and max iterations come from repo preferences.
+ */
+async function launchRalphConversation(params: {
+    launchRalph?: LaunchRalphFn;
+    goalSpec: string;
+    workspaceId: string;
+    title?: string;
+    parentProcessId?: string;
+    provider: SendToConversationProvider;
+    model?: string;
+    reasoningEffort?: string;
+    effortTier?: SendToConversationEffortTier;
+}): Promise<SendToConversationResult> {
+    const { launchRalph, goalSpec, workspaceId, title, parentProcessId, provider, model, reasoningEffort, effortTier } = params;
+    if (!launchRalph) {
+        return {
+            error: "Launching a Ralph session is not available in this context (no Ralph launch capability was wired).",
+        };
+    }
+
+    try {
+        const result = await launchRalph({
+            goalSpec: goalSpec.trim(),
+            workspaceId,
+            aiSelection: {
+                provider,
+                config: {
+                    ...(model ? { model } : {}),
+                    ...(reasoningEffort ? { reasoningEffort } : {}),
+                    ...(effortTier ? { effortTier } : {}),
+                },
+            },
+            ...(title ? { title } : {}),
+            ...(parentProcessId ? { spawnedFromProcessId: parentProcessId } : {}),
+        });
+        if (!result.ok) {
+            return { error: `Failed to launch Ralph session: ${result.error}` };
+        }
+        return {
+            processId: result.processId,
+            sessionId: result.sessionId,
+            openLink: `#/process/${result.processId}`,
+        };
+    } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        return { error: `Failed to launch Ralph session: ${reason}` };
+    }
 }
 
 async function resolvePostModeEffortTier(params: {

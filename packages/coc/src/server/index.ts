@@ -311,6 +311,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // getter passed to createQueueInfrastructure reads this once routes register.
     let sendMessageCapability: import('./llm-tools/send-to-conversation-tool').SendMessageFn | undefined;
     let sendToConversationRuntime: import('./llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined;
+    // Forward declaration — the in-process Ralph launch behind
+    // `send_to_conversation` mode "ralph", bound at the route layer.
+    let launchRalphCapability: import('./ralph/ralph-launch-service').LaunchRalphFn | undefined;
     // Forward declaration — the WhatsApp/Teams ask_user question relay, bound at
     // the route layer where the connectors are created.
     let askUserQuestionRelay: import('./messaging/ask-user-relay').AskUserQuestionRelay | undefined;
@@ -471,6 +474,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         () => turnPerformanceInfra?.turnPerformanceStore,
         () => decisionService,
         () => askUserQuestionRelay,
+        () => launchRalphCapability,
     );
 
     // Finalize any orphaned 'running' / 'cancelling' processes left behind by
@@ -849,6 +853,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         nativeCopilotSessionStateDir: options.nativeCopilotSessionStateDir,
         setEnqueueChat: (fn) => { enqueueChatCapability = fn; },
         setSendMessage: (fn) => { sendMessageCapability = fn; },
+        setLaunchRalph: (fn) => { launchRalphCapability = fn; },
         setAskUserQuestionRelay: (relay) => { askUserQuestionRelay = relay; },
         setSendToConversationRuntime: (runtime) => { sendToConversationRuntime = runtime; },
         notesSearchService,

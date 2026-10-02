@@ -3,7 +3,7 @@ name: delegate
 description: Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.
 metadata:
   author: Yiheng Tao
-  version: "0.0.4"
+  version: "0.0.5"
 ---
 
 # Delegate
@@ -37,6 +37,7 @@ Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched cas
 - An explicit provider selects that provider's own defaults, including when it matches the parent. Do not carry over the parent's model or effort.
 - Apply clear natural-language overrides such as effort through the tool's supported options.
 - Pick `mode` from what the job does. Use `ask` for read-only jobs: review, research, analysis, questions, and planning. Use `autopilot` for jobs that change files, the repo, or external state: implementing or fixing code, committing, pushing, opening PRs, and editing docs or skills. When it is unclear whether the job writes, ask one short question.
+- Use `ralph` (create mode only) for long, multi-step build-until-done goals that write to the repo. It starts an autonomous Ralph loop with no clarifying questions, so write `content` as a self-contained goal spec: goal, acceptance criteria, constraints, and references by path. It shares the autopilot queue and returns a `sessionId` with the chat link.
 - An explicit user request for a mode wins. Autopilot jobs share one execution queue and may wait, so mention that when the current chat is waiting on the result.
 - The destination defaults to the current workspace. Honor an explicit request for another registered workspace, and ask when the destination is ambiguous.
 

@@ -74,6 +74,7 @@ export function createQueueInfrastructure(
     getTurnPerformanceStore?: () => import('../executors/turn-performance-tracker').TurnPerformanceRecorder | undefined,
     getDecisionService?: () => import('../decisions/decision-service').DecisionService | undefined,
     getAskUserQuestionRelay?: () => import('../messaging/ask-user-relay').AskUserQuestionRelay | undefined,
+    getLaunchRalph?: () => import('../ralph/ralph-launch-service').LaunchRalphFn | undefined,
 ): QueueInfrastructure {
     // Obtain SQLite DB handle: reuse from SqliteProcessStore, or create in-memory for tests.
     let db: NativeDatabase;
@@ -101,6 +102,7 @@ export function createQueueInfrastructure(
         getTriggerInfra,
         getEnqueueChat,
         getSendMessage,
+        getLaunchRalph,
         getSendToConversationRuntime,
         getMcpOauthManager,
         getTurnPerformanceStore,

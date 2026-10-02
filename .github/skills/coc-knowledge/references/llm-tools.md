@@ -74,6 +74,16 @@ The tool description asks agents for short, task-specific create-mode titles. Th
 `delegate` skill requires agents to include a title in its handoff calls; the JSON schema
 keeps only `content` unconditionally required so untitled creation and post mode stay valid.
 
+Create mode with `mode: "ralph"` launches a Ralph session straight into iteration 1 (no
+grilling) through the late-bound `getLaunchRalph` runtime capability, which wraps
+`launchRalphSession` (`src/server/ralph/ralph-launch-service.ts`) over the same
+resolved-defaults bridge as `POST /api/ralph-launch`. `content` is the trimmed goal spec; the
+workspace check, title, spawn link, and provider/model/effort resolution match ordinary create
+mode. No worktree is requested and max iterations come from repo preferences. It returns
+`{ processId, sessionId, openLink }`, is allowed from Ask and Autopilot callers, and is
+rejected in post mode. `plan` stays unsupported. The custom title is the iteration-1
+`customTitle`, which the SPA Ralph session row prefers over the goal-derived title.
+
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and
 lets an explicit `model` override the tier. Create-only titles are ignored in post mode.

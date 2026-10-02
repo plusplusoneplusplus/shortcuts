@@ -120,6 +120,7 @@ import { registerRalphMaxIterationsRoutes } from './ralph-max-iterations-routes'
 import { registerRalphNewLoopRoutes } from './ralph-new-loop-routes';
 import { registerRalphPromoteRoutes } from './ralph-promote-routes';
 import { registerRalphLaunchRoutes } from './ralph-launch-routes';
+import { launchRalphSession, type LaunchRalphFn } from '../ralph/ralph-launch-service';
 import { registerRalphResumeRoutes } from './ralph-resume-routes';
 import { registerRalphInputRoutes } from './ralph-input-routes';
 import { registerRalphSubmitRoutes } from './ralph-submit-routes';
@@ -282,6 +283,12 @@ export interface RegisterRoutesOptions {
      */
     setSendMessage?: (fn: SendMessageFn) => void;
     setSendToConversationRuntime?: (runtime: SendToConversationRuntimeOptions) => void;
+    /**
+     * Publish the bound in-process Ralph launch (the `POST /api/ralph-launch`
+     * path over the resolved-defaults bridge) for `send_to_conversation`
+     * mode "ralph".
+     */
+    setLaunchRalph?: (fn: LaunchRalphFn) => void;
     /** Publish the WhatsApp/Teams ask_user question relay to the executor runtime. */
     setAskUserQuestionRelay?: (relay: AskUserQuestionRelay) => void;
     /** Shared native Notes index lifecycle, validated by the composition root. */
@@ -470,6 +477,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         await prepareEnqueueTask(input);
         return enqueueViaBridge(input, bridge, queueGlobalState, globalWorkspaceRootPath, store);
     });
+    opts.setLaunchRalph?.((input) => launchRalphSession(input, {
+        bridge: bridgeWithResolvedDefaults,
+        dataDir,
+        store,
+        getGitWorktreeExecutionEnabled,
+    }));
     opts.setSendToConversationRuntime?.({
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,

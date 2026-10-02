@@ -39,6 +39,7 @@ import type { DecisionService } from '../decisions/decision-service';
 import type { AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import type { McpOauthManager } from '../mcp-oauth';
+import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { TriggerManager } from '../triggers/trigger-manager';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
@@ -117,6 +118,12 @@ export interface ExecutorRuntimeCapabilities {
      * mode of `send_to_conversation` — posting into an existing conversation.
      */
     readonly getSendMessage?: () => SendMessageFn | undefined;
+    /**
+     * In-process Ralph launch bound at the route layer (same path as
+     * `POST /api/ralph-launch`). Powers `send_to_conversation` create mode with
+     * `mode: "ralph"`; absent → that mode reports it is unavailable.
+     */
+    readonly getLaunchRalph?: () => LaunchRalphFn | undefined;
     /** Provider/tier helpers for `send_to_conversation`. */
     readonly getSendToConversationRuntime?: () => SendToConversationRuntimeOptions | undefined;
     /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
@@ -187,6 +194,7 @@ export type ChatExecutorRuntime = Pick<
     | 'getCronInfra'
     | 'getEnqueueChat'
     | 'getSendMessage'
+    | 'getLaunchRalph'
     | 'getSendToConversationRuntime'
     | 'getDecisionService'
     | 'getMcpOauthManager'

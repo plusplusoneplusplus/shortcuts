@@ -647,6 +647,21 @@ describe('groupByRalphSession', () => {
         expect(session.title).toBe('Iteration-supplied goal');
     });
 
+    it('prefers a custom title over the goal (queued payload and persisted process)', () => {
+        const queued = makeIterationTask('sess-custom', 1, {
+            createdAt: 1000,
+            payload: { mode: 'ralph', customTitle: 'Ship search', context: { ralph: { sessionId: 'sess-custom', phase: 'executing', currentIteration: 1, originalGoal: 'Long goal spec text' } } },
+        });
+        expect((groupByRalphSession([queued])[0] as RalphSession).title).toBe('Ship search');
+
+        const persisted = makeIterationHistoryItem('sess-custom-h', 1, {
+            createdAt: 1000,
+            customTitle: 'Ship search',
+            ralph: { sessionId: 'sess-custom-h', phase: 'executing', currentIteration: 1, originalGoal: 'Long goal spec text' },
+        });
+        expect((groupByRalphSession([persisted])[0] as RalphSession).title).toBe('Ship search');
+    });
+
     it('falls back to "Ralph Session" when no goal metadata is present', () => {
         const g = makeGrillingTask('sess-nogoal', { createdAt: 1000 });
         const session = groupByRalphSession([g])[0] as RalphSession;
