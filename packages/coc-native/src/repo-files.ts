@@ -9,6 +9,9 @@ import type * as Bindings from './native-bindings';
 
 export type NativeRepoFiles = Bindings.RepoFiles;
 export type NativeRepoBlob = Bindings.RepoBlob;
+export type NativeRepoReplaceFile = Bindings.RepoReplaceFile;
+export type NativeRepoReplaceOptions = Bindings.RepoReplaceOptions;
+export type NativeRepoReplaceResult = Bindings.RepoReplaceResult;
 
 /** The slice of the addon that this capability needs. */
 export interface NativeRepoFilesAddon {
@@ -16,7 +19,7 @@ export interface NativeRepoFilesAddon {
 }
 
 /** Every `RepoFiles` method the server calls; an older binary lacks some. */
-const METHODS = ['readBlob', 'writeBlob', 'listDirectory', 'listFiles'] as const;
+const METHODS = ['readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent'] as const;
 
 /**
  * The repository-file capability. Throws {@link NativeAddonLoadError} when no

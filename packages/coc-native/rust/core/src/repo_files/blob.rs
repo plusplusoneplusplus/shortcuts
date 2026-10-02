@@ -106,12 +106,17 @@ pub fn read_blob(root: &Path, relative: &str) -> Result<Blob, RepoFilesError> {
     }
     let bytes = fs::read(&path)?;
     let mime_type = mime_type(&path);
-    if bytes.iter().take(BINARY_PROBE_SIZE).any(|&b| b == 0) {
+    if is_binary(&bytes) {
         let content = base64::engine::general_purpose::STANDARD.encode(&bytes);
         return Ok(Blob { content, encoding: BlobEncoding::Base64, mime_type });
     }
     let content = String::from_utf8_lossy(&bytes).into_owned();
     Ok(Blob { content, encoding: BlobEncoding::Utf8, mime_type })
+}
+
+/// A NUL byte in the first 8 KiB marks a file as binary.
+pub(super) fn is_binary(bytes: &[u8]) -> bool {
+    bytes.iter().take(BINARY_PROBE_SIZE).any(|&b| b == 0)
 }
 
 /// Write text to a file, creating missing parent directories. Not atomic: the

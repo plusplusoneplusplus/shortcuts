@@ -7,6 +7,7 @@
 
 mod blob;
 mod listing;
+mod replace;
 
 use std::fmt;
 use std::io;
@@ -16,6 +17,10 @@ use crate::notes_fs::resolve_lexically;
 
 pub use blob::{mime_type, read_blob, write_blob, Blob, BlobEncoding, MAX_BLOB_SIZE};
 pub use listing::{list_directory, list_files, locale_compare, TreeEntry};
+pub use replace::{
+    apply_replacements, build_matcher, preserve_case, replace_content, ReplaceFile, ReplaceOptions,
+    ReplaceSkip, ReplaceSummary, ReplaceTarget,
+};
 
 #[derive(Debug)]
 pub enum RepoFilesError {
@@ -31,6 +36,8 @@ pub enum RepoFilesError {
     NotADirectory(String),
     /// The target exceeds [`MAX_BLOB_SIZE`].
     TooLarge(String),
+    /// A bad query (empty, multi-line, or rejected by the regex engine).
+    InvalidArg(String),
     Io(io::Error),
 }
 
@@ -45,6 +52,7 @@ impl fmt::Display for RepoFilesError {
             Self::TooLarge(path) => {
                 write!(f, "File exceeds maximum size of {MAX_BLOB_SIZE} bytes: {path}")
             }
+            Self::InvalidArg(message) => f.write_str(message),
             Self::Io(error) => write!(f, "{error}"),
         }
     }

@@ -13,6 +13,9 @@ import type {
     NativeContentSearchAddon,
     NativeRepoBlob,
     NativeRepoFilesAddon,
+    NativeRepoReplaceFile,
+    NativeRepoReplaceOptions,
+    NativeRepoReplaceResult,
     NativeFileIndex,
     NativeFileIndexAddon,
     NativeRankedFileMatch,
@@ -28,13 +31,6 @@ import type {
     ContentSearchResult,
 } from './types';
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
-import { applyReplacements, buildReplaceMatcher } from './content-replace';
-import type {
-    ContentReplaceFile,
-    ContentReplaceOptions,
-    ContentReplaceResult,
-    ContentReplaceSkip,
-} from './content-replace';
 
 export interface RepoTreeServiceOptions {
     /**
@@ -93,10 +89,6 @@ interface NativeIndexEntry {
     /** In-flight background refresh, so only one runs per entry. */
     refreshing?: Promise<void>;
 }
-
-/** Replacement's read cap and NUL probe window; blob reads enforce the same in Rust. */
-const MAX_BLOB_SIZE = 1024 * 1024;
-const isBinary = (buffer: Buffer): boolean => buffer.subarray(0, 8192).includes(0);
 
 /**
  * Strips leading path separators so that absolute-looking relative paths
@@ -162,18 +154,6 @@ async function gitTrackedSymlinks(repoRoot: string): Promise<string[]> {
     });
     return stdout.split('\0').filter(entry => entry.startsWith('120000 '))
         .map(entry => entry.slice(entry.indexOf('\t') + 1).split(path.sep).join('/'));
-}
-
-/**
- * Validates that resolvedPath is inside repoRoot (path traversal guard).
- * Throws if the path escapes the repo root.
- */
-function assertInsideRepo(repoRoot: string, resolvedPath: string): void {
-    const normalizedRoot = path.resolve(repoRoot);
-    const normalizedTarget = path.resolve(resolvedPath);
-    if (normalizedTarget !== normalizedRoot && !normalizedTarget.startsWith(normalizedRoot + path.sep)) {
-        throw new Error(`Path traversal detected: path escapes repo root`);
-    }
 }
 
 export class RepoTreeService {
@@ -592,61 +572,10 @@ export class RepoTreeService {
         repoId: string,
         query: string,
         replacement: string,
-        files: readonly ContentReplaceFile[],
-        options?: ContentReplaceOptions,
-    ): Promise<ContentReplaceResult> {
-        const repoRoot = await this.resolveRepoRoot(repoId);
-        if (!repoRoot) {
-            throw new Error(`Repo not found: ${repoId}`);
-        }
-
-        // Built once, and before any file is touched: a bad regex must fail the
-        // whole request rather than write the files it happened to reach first.
-        const matcher = buildReplaceMatcher(query, options);
-
-        const skipped: ContentReplaceSkip[] = [];
-        let replacedMatches = 0;
-        let replacedFiles = 0;
-
-        for (const file of files) {
-            const absPath = path.resolve(repoRoot, stripLeadingSeparators(file.path));
-            assertInsideRepo(repoRoot, absPath);
-
-            let buffer: Buffer;
-            try {
-                const stat = await fs.promises.stat(absPath);
-                if (!stat.isFile()) {
-                    skipped.push({ path: file.path, reason: 'unreadable', message: 'Not a file' });
-                    continue;
-                }
-                if (stat.size > MAX_BLOB_SIZE) {
-                    skipped.push({ path: file.path, reason: 'unreadable', message: 'File is too large to replace in' });
-                    continue;
-                }
-                buffer = await fs.promises.readFile(absPath);
-            } catch {
-                skipped.push({ path: file.path, reason: 'missing', message: 'File no longer exists' });
-                continue;
-            }
-
-            if (isBinary(buffer)) {
-                skipped.push({ path: file.path, reason: 'unreadable', message: 'File is binary' });
-                continue;
-            }
-
-            const outcome = applyReplacements(buffer.toString('utf-8'), file.targets, matcher, replacement, options);
-            if (!outcome.ok) {
-                skipped.push({ path: file.path, reason: outcome.reason, message: outcome.message });
-                continue;
-            }
-            if (outcome.replaced === 0) continue;
-
-            await fs.promises.writeFile(absPath, outcome.content, 'utf-8');
-            replacedMatches += outcome.replaced;
-            replacedFiles++;
-        }
-
-        return { replacedMatches, replacedFiles, skipped };
+        files: NativeRepoReplaceFile[],
+        options?: NativeRepoReplaceOptions,
+    ): Promise<NativeRepoReplaceResult> {
+        return (await this.repoFiles(repoId)).replaceContent(query, replacement, files, options);
     }
 
     /**

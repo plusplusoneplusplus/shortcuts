@@ -35,7 +35,14 @@ export type {
 } from './file-index';
 
 export { loadNativeRepoFiles } from './repo-files';
-export type { NativeRepoBlob, NativeRepoFiles, NativeRepoFilesAddon } from './repo-files';
+export type {
+    NativeRepoBlob,
+    NativeRepoFiles,
+    NativeRepoFilesAddon,
+    NativeRepoReplaceFile,
+    NativeRepoReplaceOptions,
+    NativeRepoReplaceResult,
+} from './repo-files';
 
 export { loadNativeContentSearch, nativeContentSearchStatus } from './content-search';
 export type {

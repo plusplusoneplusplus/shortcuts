@@ -84,6 +84,11 @@ export declare class RepoFiles {
   readBlob(path: string): Promise<RepoBlob>
   /** Write text to a file, creating missing parent directories. */
   writeBlob(path: string, content: string): Promise<void>
+  /**
+   * Rewrite exactly the supplied spans; stale files are skipped whole and
+   * reported. A bad query rejects with `InvalidArg` before any write.
+   */
+  replaceContent(query: string, replacement: string, files: Array<RepoReplaceFile>, options?: RepoReplaceOptions | undefined | null): Promise<RepoReplaceResult>
 }
 
 /** Walk `root` in parallel and resolve with a ready-to-search index. */
@@ -1082,6 +1087,38 @@ export interface RepoListOptions {
   maxEntries: number
   /** Directory levels to list; 1 when omitted. */
   depth?: number
+}
+
+export interface RepoReplaceFile {
+  path: string
+  targets: Array<RepoReplaceTarget>
+}
+
+export interface RepoReplaceOptions {
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  regex?: boolean
+  preserveCase?: boolean
+}
+
+export interface RepoReplaceResult {
+  replacedMatches: number
+  replacedFiles: number
+  skipped: Array<RepoReplaceSkip>
+}
+
+export interface RepoReplaceSkip {
+  path: string
+  reason: 'stale' | 'missing' | 'unreadable'
+  message: string
+}
+
+/** One span to rewrite, as the search reported it (UTF-16 columns). */
+export interface RepoReplaceTarget {
+  line: number
+  text: string
+  startColumn: number
+  endColumn: number
 }
 
 /** One row of a directory listing. */

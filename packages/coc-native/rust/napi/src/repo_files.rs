@@ -4,7 +4,8 @@
 use std::path::PathBuf;
 
 use coc_native_core::repo_files::{
-    list_directory, list_files, read_blob, write_blob, BlobEncoding, RepoFilesError, TreeEntry,
+    list_directory, list_files, read_blob, replace_content, write_blob, BlobEncoding, ReplaceFile,
+    ReplaceOptions, ReplaceTarget, RepoFilesError, TreeEntry,
 };
 use napi::bindgen_prelude::{AsyncTask, Error, Status};
 use napi_derive::napi;
@@ -65,11 +66,49 @@ pub struct RepoListOptions {
     pub depth: Option<u32>,
 }
 
+/// One span to rewrite, as the search reported it (UTF-16 columns).
+#[napi(object)]
+pub struct RepoReplaceTarget {
+    pub line: f64,
+    pub text: String,
+    pub start_column: f64,
+    pub end_column: f64,
+}
+
+#[napi(object)]
+pub struct RepoReplaceFile {
+    pub path: String,
+    pub targets: Vec<RepoReplaceTarget>,
+}
+
+#[napi(object)]
+pub struct RepoReplaceOptions {
+    pub case_sensitive: Option<bool>,
+    pub whole_word: Option<bool>,
+    pub regex: Option<bool>,
+    pub preserve_case: Option<bool>,
+}
+
+#[napi(object)]
+pub struct RepoReplaceSkip {
+    pub path: String,
+    #[napi(ts_type = "'stale' | 'missing' | 'unreadable'")]
+    pub reason: String,
+    pub message: String,
+}
+
+#[napi(object)]
+pub struct RepoReplaceResult {
+    pub replaced_matches: u32,
+    pub replaced_files: u32,
+    pub skipped: Vec<RepoReplaceSkip>,
+}
+
 /// A path escaping the root is the caller's mistake (`InvalidArg`); the
 /// message is the route contract either way.
 fn to_napi_error(error: RepoFilesError) -> Error {
     let status = match error {
-        RepoFilesError::PathTraversal => Status::InvalidArg,
+        RepoFilesError::PathTraversal | RepoFilesError::InvalidArg(_) => Status::InvalidArg,
         _ => Status::GenericFailure,
     };
     Error::new(status, error.to_string())
@@ -147,5 +186,57 @@ impl RepoFiles {
     pub fn write_blob(&self, path: String, content: String) -> AsyncTask<Blocking<()>> {
         let root = self.root.clone();
         blocking(move || write_blob(&root, &path, &content).map_err(to_napi_error))
+    }
+
+    /// Rewrite exactly the supplied spans; stale files are skipped whole and
+    /// reported. A bad query rejects with `InvalidArg` before any write.
+    #[napi(ts_return_type = "Promise<RepoReplaceResult>")]
+    pub fn replace_content(
+        &self,
+        query: String,
+        replacement: String,
+        files: Vec<RepoReplaceFile>,
+        options: Option<RepoReplaceOptions>,
+    ) -> AsyncTask<Blocking<RepoReplaceResult>> {
+        let root = self.root.clone();
+        let flag = |get: fn(&RepoReplaceOptions) -> Option<bool>| {
+            options.as_ref().and_then(get).unwrap_or(false)
+        };
+        let options = ReplaceOptions {
+            case_sensitive: flag(|o| o.case_sensitive),
+            whole_word: flag(|o| o.whole_word),
+            regex: flag(|o| o.regex),
+            preserve_case: flag(|o| o.preserve_case),
+        };
+        let files: Vec<ReplaceFile> = files
+            .into_iter()
+            .map(|f| ReplaceFile {
+                path: f.path,
+                targets: f
+                    .targets
+                    .into_iter()
+                    .map(|t| ReplaceTarget {
+                        line: t.line,
+                        text: t.text,
+                        start_column: t.start_column,
+                        end_column: t.end_column,
+                    })
+                    .collect(),
+            })
+            .collect();
+        blocking(move || {
+            let summary = replace_content(&root, &query, &replacement, &files, options)
+                .map_err(to_napi_error)?;
+            let skipped = summary.skipped.into_iter().map(|s| RepoReplaceSkip {
+                path: s.path,
+                reason: s.reason.to_owned(),
+                message: s.message,
+            });
+            Ok(RepoReplaceResult {
+                replaced_matches: summary.replaced_matches,
+                replaced_files: summary.replaced_files,
+                skipped: skipped.collect(),
+            })
+        })
     }
 }

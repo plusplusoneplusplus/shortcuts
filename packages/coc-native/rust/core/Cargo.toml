@@ -41,3 +41,6 @@ parking_lot = "0.12"
 base64 = "0.22"
 # `localeCompare` order for listings: CLDR root collation, MIT, no ICU data blob.
 feruca = "0.12"
+# Replace re-finds spans with JavaScript `RegExp` semantics (non-unicode, UTF-16
+# columns, Annex B syntax); MIT/Apache, only dependency is memchr.
+regress = { version = "0.12", features = ["utf16"] }

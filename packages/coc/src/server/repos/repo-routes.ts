@@ -20,7 +20,7 @@ import type { Route } from '../types';
 import { sendJson, send400, send404, send500, readJsonBody } from '../router';
 import { RepoTreeService, TrackedContentSearchUnavailableError } from './tree-service';
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
-import type { ContentReplaceFile } from './content-replace';
+import type { NativeRepoReplaceFile } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
@@ -374,7 +374,7 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                     repoId,
                     body.query as string,
                     body.replacement ?? '',
-                    body.files as ContentReplaceFile[],
+                    body.files as NativeRepoReplaceFile[],
                     {
                         caseSensitive: body.caseSensitive === true,
                         wholeWord: body.wholeWord === true,
