@@ -34,6 +34,9 @@ export type {
     NativeRankedFileMatch,
 } from './file-index';
 
+export { loadNativeRepoFiles } from './repo-files';
+export type { NativeRepoBlob, NativeRepoFiles, NativeRepoFilesAddon } from './repo-files';
+
 export { loadNativeContentSearch, nativeContentSearchStatus } from './content-search';
 export type {
     NativeContentMatch,

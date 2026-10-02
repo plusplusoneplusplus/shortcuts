@@ -74,6 +74,14 @@ export declare class NotesIndex {
   refreshChanged(changedPaths: Array<string>): Promise<void>
 }
 
+/** The repository-file backend for one resolved root. */
+export declare class RepoFiles {
+  /** Read a file: text or base64, MIME type, 1 MiB cap. */
+  readBlob(path: string): Promise<RepoBlob>
+  /** Write text to a file, creating missing parent directories. */
+  writeBlob(path: string, content: string): Promise<void>
+}
+
 /** Walk `root` in parallel and resolve with a ready-to-search index. */
 export declare function buildFileIndex(root: string, options?: BuildOptions | undefined | null): Promise<FileIndex>
 
@@ -994,6 +1002,9 @@ export interface NotesWriteResult {
   currentContent?: string
 }
 
+/** Open the backend for an already-resolved repository root. */
+export declare function openRepoFiles(root: string): RepoFiles
+
 /**
  * Parse `--porcelain=v2 --branch` text produced somewhere else.
  *
@@ -1047,6 +1058,14 @@ export declare function readNote(root: string, path: string, options: NotesConte
  * in the parent's `.order.json` with it.
  */
 export declare function renameNotesEntry(root: string, oldPath: string, newPath: string, options: NotesEntryOptions): Promise<NotesRenameResult>
+
+/** File content as the blob route returns it. */
+export interface RepoBlob {
+  /** UTF-8 text, or base64 when the file looks binary. */
+  content: string
+  encoding: 'utf-8' | 'base64'
+  mimeType: string
+}
 
 /**
  * Resolve a client path under one selected non-default Notes root.

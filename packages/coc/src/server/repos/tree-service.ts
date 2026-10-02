@@ -8,9 +8,12 @@ import { execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplus
 import {
     loadNativeContentSearch,
     loadNativeFileIndex,
+    loadNativeRepoFiles,
 } from '@plusplusoneplusplus/coc-native';
 import type {
     NativeContentSearchAddon,
+    NativeRepoBlob,
+    NativeRepoFilesAddon,
     NativeFileIndex,
     NativeFileIndexAddon,
     NativeRankedFileMatch,
@@ -76,6 +79,9 @@ export interface RepoTreeServiceOptions {
      * binary too. Tests inject a stub here.
      */
     nativeContentSearch?: NativeContentSearchAddon;
+
+    /** The native repository-file backend, resolved on first use. Tests inject a stub here. */
+    nativeRepoFiles?: NativeRepoFilesAddon;
 }
 
 /** A native index kept warm for one repo + showIgnored combination. */
@@ -90,87 +96,9 @@ interface NativeIndexEntry {
     refreshing?: Promise<void>;
 }
 
-/** Extension → MIME type map for common file types. */
-const MIME_MAP: Record<string, string> = {
-    '.js': 'application/javascript',
-    '.mjs': 'application/javascript',
-    '.cjs': 'application/javascript',
-    '.ts': 'application/typescript',
-    '.tsx': 'application/typescript',
-    '.jsx': 'application/javascript',
-    '.json': 'application/json',
-    '.html': 'text/html',
-    '.htm': 'text/html',
-    '.css': 'text/css',
-    '.md': 'text/markdown',
-    '.markdown': 'text/markdown',
-    '.txt': 'text/plain',
-    '.xml': 'application/xml',
-    '.yaml': 'application/x-yaml',
-    '.yml': 'application/x-yaml',
-    '.toml': 'application/toml',
-    '.sh': 'application/x-sh',
-    '.bash': 'application/x-sh',
-    '.py': 'text/x-python',
-    '.rb': 'text/x-ruby',
-    '.go': 'text/x-go',
-    '.rs': 'text/x-rust',
-    '.java': 'text/x-java',
-    '.c': 'text/x-c',
-    '.cpp': 'text/x-c++',
-    '.h': 'text/x-c',
-    '.hpp': 'text/x-c++',
-    '.cs': 'text/x-csharp',
-    '.swift': 'text/x-swift',
-    '.kt': 'text/x-kotlin',
-    '.scala': 'text/x-scala',
-    '.php': 'text/x-php',
-    '.sql': 'application/sql',
-    '.graphql': 'application/graphql',
-    '.svg': 'image/svg+xml',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.ico': 'image/x-icon',
-    '.pdf': 'application/pdf',
-    '.zip': 'application/zip',
-    '.gz': 'application/gzip',
-    '.tar': 'application/x-tar',
-    '.wasm': 'application/wasm',
-    '.woff': 'font/woff',
-    '.woff2': 'font/woff2',
-    '.ttf': 'font/ttf',
-    '.eot': 'application/vnd.ms-fontobject',
-    '.env': 'text/plain',
-    '.log': 'text/plain',
-    '.csv': 'text/csv',
-    '.lock': 'text/plain',
-};
-
-/** Maximum file size for readBlob (1 MB). */
-const MAX_BLOB_SIZE = 1 * 1024 * 1024;
-
-/** Number of bytes to scan for binary detection. */
-const BINARY_PROBE_SIZE = 8192;
-
-function getMimeType(filePath: string): string {
-    const ext = path.extname(filePath).toLowerCase();
-    return MIME_MAP[ext] ?? 'application/octet-stream';
-}
-
-/**
- * Returns true if the buffer likely represents binary content
- * (contains null bytes in the first 8 KB).
- */
-function isBinary(buffer: Buffer): boolean {
-    const limit = Math.min(buffer.length, BINARY_PROBE_SIZE);
-    for (let i = 0; i < limit; i++) {
-        if (buffer[i] === 0) return true;
-    }
-    return false;
-}
+/** Replacement's read cap and NUL probe window; blob reads enforce the same in Rust. */
+const MAX_BLOB_SIZE = 1024 * 1024;
+const isBinary = (buffer: Buffer): boolean => buffer.subarray(0, 8192).includes(0);
 
 /**
  * Strips leading path separators so that absolute-looking relative paths
@@ -344,6 +272,7 @@ export class RepoTreeService {
      * fresh walk — so this holds the addon itself, not per-repo state.
      */
     private nativeContent?: NativeContentSearchAddon;
+    private nativeRepoFiles?: NativeRepoFilesAddon;
 
     private static rgAvailable: boolean | undefined;
 
@@ -427,6 +356,7 @@ export class RepoTreeService {
         this.store = store;
         this.native = options?.nativeFileIndex ?? loadNativeFileIndex();
         this.nativeContent = options?.nativeContentSearch;
+        this.nativeRepoFiles = options?.nativeRepoFiles;
     }
 
     /**
@@ -804,54 +734,22 @@ export class RepoTreeService {
         return { files: truncated ? files.slice(0, maxEntries) : files, truncated };
     }
 
-    /**
-     * Read file content.
-     * @returns content (text or base64), encoding, and mimeType.
-     * @throws if file not found, path traversal detected, or file exceeds 1 MB.
-     */
-    async readBlob(
-        repoId: string,
-        relativePath: string,
-    ): Promise<{ content: string; encoding: 'utf-8' | 'base64'; mimeType: string }> {
+    /** The native backend for a repo, or throws `Repo not found`. */
+    private async repoFiles(repoId: string) {
         const repoRoot = await this.resolveRepoRoot(repoId);
         if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
+        this.nativeRepoFiles ??= loadNativeRepoFiles();
+        return this.nativeRepoFiles.openRepoFiles(repoRoot);
+    }
 
-        const absPath = path.resolve(repoRoot, stripLeadingSeparators(relativePath));
-        assertInsideRepo(repoRoot, absPath);
-
-        let stat: fs.Stats;
-        try {
-            stat = await fs.promises.stat(absPath);
-        } catch {
-            throw new Error(`File not found: ${relativePath}`);
-        }
-
-        if (!stat.isFile()) {
-            throw new Error(`Not a file: ${relativePath}`);
-        }
-
-        if (stat.size > MAX_BLOB_SIZE) {
-            throw new Error(`File exceeds maximum size of ${MAX_BLOB_SIZE} bytes: ${relativePath}`);
-        }
-
-        const buffer = await fs.promises.readFile(absPath);
-        const mimeType = getMimeType(absPath);
-
-        if (isBinary(buffer)) {
-            return {
-                content: buffer.toString('base64'),
-                encoding: 'base64',
-                mimeType,
-            };
-        }
-
-        return {
-            content: buffer.toString('utf-8'),
-            encoding: 'utf-8',
-            mimeType,
-        };
+    /**
+     * Read file content: text or base64, encoding, and mimeType.
+     * @throws if file not found, path traversal detected, or file exceeds 1 MB.
+     */
+    async readBlob(repoId: string, relativePath: string): Promise<NativeRepoBlob> {
+        return (await this.repoFiles(repoId)).readBlob(relativePath);
     }
 
     /**
@@ -859,20 +757,7 @@ export class RepoTreeService {
      * @throws if repo not found, path traversal detected, or path is a directory.
      */
     async writeBlob(repoId: string, relativePath: string, content: string): Promise<void> {
-        const repoRoot = await this.resolveRepoRoot(repoId);
-        if (!repoRoot) {
-            throw new Error(`Repo not found: ${repoId}`);
-        }
-
-        const absPath = path.resolve(repoRoot, stripLeadingSeparators(relativePath));
-        assertInsideRepo(repoRoot, absPath);
-
-        // Ensure parent directory exists
-        const parentDir = path.dirname(absPath);
-        await fs.promises.mkdir(parentDir, { recursive: true });
-
-        await fs.promises.writeFile(absPath, content, 'utf-8');
-
+        await (await this.repoFiles(repoId)).writeBlob(relativePath, content);
         // A write may have created a file that is not in the cached listing.
         await this.invalidateFileListCacheAndWait(repoId);
     }
