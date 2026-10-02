@@ -282,6 +282,24 @@ describe('useChatSSE', () => {
         expect(setTurnsAndRef).toHaveBeenCalledWith(snapshotTurns);
     });
 
+    it('carries the approval outcome from a tool-failed event onto the timeline row', () => {
+        const setTurnsAndRef = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTurnsAndRef })));
+        act(() => {
+            MockEventSource.last._emit('tool-failed', {
+                toolCallId: 'tool-9',
+                toolName: 'send_to_conversation',
+                error: 'User denied this tool call.',
+                approvalOutcome: 'deny',
+            });
+        });
+
+        const update = setTurnsAndRef.mock.calls.at(-1)![0] as (prev: ClientConversationTurn[]) => ClientConversationTurn[];
+        const turns = update([{ role: 'user', content: 'go', timeline: [] }]);
+        const item = turns.at(-1)!.timeline!.at(-1)!;
+        expect(item.toolCall).toMatchObject({ id: 'tool-9', status: 'failed', approvalOutcome: 'deny' });
+    });
+
     // ── tool-progress ─────────────────────────────────────────────────────
     //
     // Progress must land on the existing running row: same name, args, parent,

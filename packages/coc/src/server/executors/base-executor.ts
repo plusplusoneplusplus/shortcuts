@@ -18,6 +18,7 @@ import type { ConversationTurn, GenericProcessMetadata, ProcessStore, TimelineIt
 import type { MidTurnTokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import { getLogger, LogCategory, mergeConsecutiveContentItems } from '@plusplusoneplusplus/forge';
 import { OutputFileManager } from '../processes/output-file-manager';
+import type { LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import { TurnPerformanceTracker } from './turn-performance-tracker';
 import type { TurnPerformanceRecorder, TurnSettlementContext } from './turn-performance-tracker';
 import {
@@ -411,6 +412,12 @@ export abstract class BaseExecutor {
                 return;
             }
 
+            // A gated LLM tool settles its approval before it finishes, so the
+            // outcome rides on the terminal row and its event.
+            const approvalOutcome = event.type !== 'tool-start'
+                ? this.sessions.getStreamingIfPresent(processId)?.toolApprovalOutcomes.get(event.toolCallId)
+                : undefined;
+
             // Append tool timeline item
             const timelineType = event.type === 'tool-start' ? 'tool-start'
                 : event.type === 'tool-complete' ? 'tool-complete'
@@ -430,6 +437,7 @@ export abstract class BaseExecutor {
                     result: event.result,
                     error: event.error,
                     ...(event.parentToolCallId ? { parentToolCallId: event.parentToolCallId } : {}),
+                    ...(approvalOutcome ? { approvalOutcome } : {}),
                 },
             });
             try {
@@ -441,6 +449,7 @@ export abstract class BaseExecutor {
                     parameters: event.parameters,
                     result: event.result,
                     error: event.error,
+                    ...(approvalOutcome ? { approvalOutcome } : {}),
                 });
             } catch {
                 // Non-fatal
@@ -448,6 +457,33 @@ export abstract class BaseExecutor {
             // Trigger throttled flush so tool-only sessions persist timeline
             this.checkThrottleAndFlush(processId);
         };
+    }
+
+    /**
+     * Records how the approval gate settled a gated LLM tool call. The outcome
+     * is stamped onto the call's running row now and onto its terminal row
+     * when the call finishes, so the timeline can show the badge.
+     *
+     * Copilot hands the handler the provider's tool-call id. Claude and Codex
+     * reach CoC tools through the MCP bridge, which mints its own id, so the
+     * fallback is the newest running row for the same tool not yet stamped.
+     */
+    protected recordLlmToolApproval(processId: string, record: LlmToolApprovalRecord): void {
+        const buffer = this.getTimelineBuffer(processId) ?? [];
+        let target = record.toolCallId
+            ? findLatestToolCall(buffer, tc => tc.id === record.toolCallId)
+            : undefined;
+        if (!target) {
+            target = findLatestToolCall(buffer, tc =>
+                tc.status === 'running'
+                && !tc.approvalOutcome
+                && isSameToolName(tc.name, record.toolName)
+                && !buffer.some(item => item.toolCall?.id === tc.id && item.toolCall.status !== 'running'));
+        }
+        const toolCallId = target?.id ?? record.toolCallId;
+        if (!toolCallId) { return; }
+        if (target) { target.approvalOutcome = record.outcome; }
+        this.getOrCreateStreamingState(processId).toolApprovalOutcomes.set(toolCallId, record.outcome);
     }
 
     /**
@@ -568,4 +604,20 @@ export abstract class BaseExecutor {
             // Non-fatal: don't fail the task because of output persistence
         }
     }
+}
+
+function findLatestToolCall(
+    buffer: readonly TimelineItem[],
+    match: (toolCall: NonNullable<TimelineItem['toolCall']>) => boolean,
+): TimelineItem['toolCall'] {
+    for (let i = buffer.length - 1; i >= 0; i--) {
+        const toolCall = buffer[i].toolCall;
+        if (toolCall && match(toolCall)) { return toolCall; }
+    }
+    return undefined;
+}
+
+/** `ask_user` matches `ask_user` and an MCP-qualified `mcp__coc_llm_tools__ask_user`. */
+function isSameToolName(eventName: string, toolName: string): boolean {
+    return eventName === toolName || eventName.endsWith(`__${toolName}`) || eventName.endsWith(`.${toolName}`);
 }

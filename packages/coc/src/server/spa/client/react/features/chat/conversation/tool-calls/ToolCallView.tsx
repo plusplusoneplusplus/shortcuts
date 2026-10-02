@@ -11,11 +11,13 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { cn, ImageLightbox } from '../../../../ui';
 import { ToolResultPopover } from './ToolResultPopover';
+import type { ToolCallApprovalOutcome } from '../../../../types/dashboard';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import { useRunningClock } from '../../../../hooks/ui/useRunningClock';
 import { useToolCallVariant } from './ToolCallVariant';
 import { buildToolCallRenderModel, statusIndicator } from './toolCallRenderModel';
 import { ToolCallDetailSections } from './ToolCallDetailSections';
+import { LlmToolApprovalBadge } from './LlmToolApprovalBadge';
 
 interface ToolCallData {
     id?: string;
@@ -29,6 +31,7 @@ interface ToolCallData {
     endTime?: string;
     parentToolCallId?: string;
     progressMessage?: string;
+    approvalOutcome?: ToolCallApprovalOutcome;
     children?: ToolCallData[];
 }
 
@@ -219,6 +222,7 @@ export function ToolCallView({
                         {model.rowSummary || <span className="text-[#9aa0a6] italic">{model.displayName}</span>}
                     </span>
                     {progressNote}
+                    <LlmToolApprovalBadge outcome={toolCall.approvalOutcome} />
                     {model.metric && (
                         <span
                             className="tool-call-row-metric shrink-0 font-mono text-[11.5px] text-[#6b7280] dark:text-[#9aa0a6]"
@@ -324,6 +328,7 @@ export function ToolCallView({
                     </span>
                 )}
                 {progressNote}
+                <LlmToolApprovalBadge outcome={toolCall.approvalOutcome} />
                 {!isMobile && model.startTimeLabel && (
                     <span className="text-[#848484] ml-auto shrink-0">{model.startTimeLabel}</span>
                 )}

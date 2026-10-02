@@ -511,6 +511,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 // resumed session keeps its prefix cache. A machine-triggered
                 // turn (cron / wakeup / trigger) has nobody to answer, so it
                 // short-circuits at call time instead of at registration time.
+                onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
                 askUser: this.buildAskUserWiring(processId, {
                     computeTurnIndex: () => process.conversationTurns?.length ?? 0,
                     isInteractive: () => turnSource === undefined,

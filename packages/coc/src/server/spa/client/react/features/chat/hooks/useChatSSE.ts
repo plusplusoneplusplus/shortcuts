@@ -276,6 +276,7 @@ export function useChatSSE({
                         startTime: new Date().toISOString(),
                         ...(eventType !== 'tool-start' ? { endTime: new Date().toISOString(), result: data.result, error: data.error } : {}),
                         ...(data.parentToolCallId ? { parentToolCallId: data.parentToolCallId } : {}),
+                        ...(data.approvalOutcome ? { approvalOutcome: data.approvalOutcome } : {}),
                     };
                     turns[turns.length - 1] = {
                         ...last,

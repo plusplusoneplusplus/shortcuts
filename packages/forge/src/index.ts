@@ -138,6 +138,7 @@ export {
     SerializedTimelineItem,
     ToolCall,
     ToolCallStatus,
+    ToolCallApprovalOutcome,
     ToolCallPermissionRequest,
     ToolCallPermissionResult,
     SerializedToolCall,

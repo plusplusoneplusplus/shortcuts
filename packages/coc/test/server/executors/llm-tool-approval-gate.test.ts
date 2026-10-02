@@ -201,8 +201,13 @@ describe('buildChatToolBundle approval gate wiring', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    function build(isInteractive?: () => boolean, emitQuestions = vi.fn(async () => {})) {
+    function build(
+        isInteractive?: () => boolean,
+        emitQuestions = vi.fn(async () => {}),
+        onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void,
+    ) {
         return buildChatToolBundle({
+            onLlmToolApprovalDecision,
             dataDir: tmpDir,
             store: { searchConversations: vi.fn(async () => ({ results: [], total: 0 })), getProcess: vi.fn() } as any,
             workspaceId: WS,
@@ -234,6 +239,15 @@ describe('buildChatToolBundle approval gate wiring', () => {
         const tool = bundle.tools.find(t => t.name === 'search_conversations')!;
         await tool.handler!({ query: 'x' }, { ...invocation, toolName: 'search_conversations' });
         expect(emitQuestions).not.toHaveBeenCalled();
+    });
+
+    it('reports each gated call to onLlmToolApprovalDecision', async () => {
+        writeRepoPreferences(tmpDir, WS, { disabledLlmTools: [], approvalRequiredLlmTools: ['search_conversations'] });
+        const records: LlmToolApprovalRecord[] = [];
+        const bundle = build(() => false, undefined, r => records.push(r));
+        const tool = bundle.tools.find(t => t.name === 'search_conversations')!;
+        await tool.handler!({ query: 'x' }, { ...invocation, toolName: 'search_conversations' });
+        expect(records).toEqual([{ toolName: 'search_conversations', toolCallId: 'call-1', outcome: 'auto-allowed' }]);
     });
 
     it('leaves handlers untouched when the repo list is empty', () => {

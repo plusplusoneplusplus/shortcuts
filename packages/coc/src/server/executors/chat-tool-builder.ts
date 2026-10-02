@@ -6,7 +6,7 @@ import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
 import { readApprovalRequiredLlmTools, readEffectiveDisabledLlmTools } from '../preferences-handler';
-import { applyLlmToolApprovalGate } from './llm-tool-approval-gate';
+import { applyLlmToolApprovalGate, type LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import {
     applyLlmToolPreferences,
@@ -75,6 +75,8 @@ export interface ChatToolBundleOptions {
      */
     createPullRequest?: CreatePullRequestToolDeps;
     excludeTools?: string[];
+    /** Told how each approval-gated LLM tool call was settled (timeline badge). */
+    onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void;
 }
 
 export interface ChatToolBundle {
@@ -202,6 +204,7 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         isInteractive: () => askUserDeps?.isInteractive?.() !== false,
         // No ask-user wiring (workflows, unattended paths) → nobody to ask.
         getAskApproval: () => (askUserDeps ? askUser?.askApproval : undefined),
+        onDecision: options.onLlmToolApprovalDecision,
     });
 
     return { tools, toolGuidance, askUser };

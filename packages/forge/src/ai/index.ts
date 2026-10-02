@@ -221,6 +221,7 @@ export {
     TimelineItem,
     SerializedTimelineItem,
     ToolCallStatus,
+    ToolCallApprovalOutcome,
     ToolCallPermissionRequest,
     ToolCallPermissionResult,
     ToolCall,

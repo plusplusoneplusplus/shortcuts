@@ -58,6 +58,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                 error: tc.error,
                 ...(tc.parentToolCallId ? { parentToolCallId: tc.parentToolCallId } : {}),
                 ...(tc.progressMessage ? { progressMessage: tc.progressMessage } : {}),
+                ...(tc.approvalOutcome ? { approvalOutcome: tc.approvalOutcome } : {}),
                 permissionRequest: tc.permissionRequest ? {
                     kind: tc.permissionRequest.kind,
                     timestamp: tc.permissionRequest.timestamp.toISOString(),
@@ -85,6 +86,7 @@ export function serializeProcess(process: AIProcess & Partial<TrackedProcessFiel
                     error: item.toolCall.error,
                     ...(item.toolCall.parentToolCallId ? { parentToolCallId: item.toolCall.parentToolCallId } : {}),
                     ...(item.toolCall.progressMessage ? { progressMessage: item.toolCall.progressMessage } : {}),
+                    ...(item.toolCall.approvalOutcome ? { approvalOutcome: item.toolCall.approvalOutcome } : {}),
                     permissionRequest: item.toolCall.permissionRequest ? {
                         kind: item.toolCall.permissionRequest.kind,
                         timestamp: item.toolCall.permissionRequest.timestamp.toISOString(),
@@ -178,6 +180,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                 error: tc.error,
                 parentToolCallId: tc.parentToolCallId,
                 progressMessage: tc.progressMessage,
+                approvalOutcome: tc.approvalOutcome,
                 permissionRequest: tc.permissionRequest ? {
                     kind: tc.permissionRequest.kind,
                     timestamp: new Date(tc.permissionRequest.timestamp),
@@ -205,6 +208,7 @@ export function deserializeProcess(serialized: SerializedAIProcess): AIProcess {
                     error: item.toolCall.error,
                     parentToolCallId: item.toolCall.parentToolCallId,
                     progressMessage: item.toolCall.progressMessage,
+                    approvalOutcome: item.toolCall.approvalOutcome,
                     permissionRequest: item.toolCall.permissionRequest ? {
                         kind: item.toolCall.permissionRequest.kind,
                         timestamp: new Date(item.toolCall.permissionRequest.timestamp),

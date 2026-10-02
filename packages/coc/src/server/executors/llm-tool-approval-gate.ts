@@ -11,6 +11,7 @@
  */
 
 import type { Tool, ToolInvocation, ToolResultObject } from '@plusplusoneplusplus/coc-agent-sdk';
+import type { ToolCallApprovalOutcome } from '@plusplusoneplusplus/forge';
 import type { AskUserApprovalDecision, AskUserLlmToolApproval } from '../llm-tools/ask-user-tool';
 import { LLM_TOOL_REGISTRY, isLlmToolApprovalGateable } from '../llm-tools/llm-tool-registry';
 import { DangerousCommandSessionApprovals } from './dangerous-command-session-approvals';
@@ -25,7 +26,7 @@ export const LLM_TOOL_DENIED_MESSAGE = 'User denied this tool call.';
  * How a gated call was settled. `approve-session` covers both a fresh
  * "Approve for this session" answer and a later call it let through.
  */
-export type LlmToolApprovalOutcome = 'approve-once' | 'approve-session' | 'deny' | 'auto-allowed';
+export type LlmToolApprovalOutcome = ToolCallApprovalOutcome;
 
 export interface LlmToolApprovalRecord {
     toolName: string;

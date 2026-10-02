@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../../../../ui';
 import { useBreakpoint } from '../../../../hooks/ui/useBreakpoint';
 import type { ToolGroupCategory, GroupContentItem, GroupOrderedItem } from './toolGroupUtils';
+import type { ToolCallApprovalOutcome } from '../../../../types/dashboard';
 import { getCategoryLabel, getToolGroupStatus, getShellGroupSemanticLabel } from './toolGroupUtils';
 import type { DetectedCommit } from '../commitDetection';
 import { CommitStrip } from '../CommitStrip';
@@ -22,6 +23,7 @@ export interface RenderToolCall {
     startTime?: string;
     endTime?: string;
     parentToolCallId?: string;
+    approvalOutcome?: ToolCallApprovalOutcome;
 }
 
 export interface ToolCallGroupViewProps {

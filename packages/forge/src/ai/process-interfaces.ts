@@ -379,6 +379,9 @@ export interface ToolCallPermissionResult {
     reason?: string;
 }
 
+/** How an approval-gated CoC LLM tool call was settled. */
+export type ToolCallApprovalOutcome = 'approve-once' | 'approve-session' | 'deny' | 'auto-allowed';
+
 export interface ToolCall {
     /** Unique ID for this tool call */
     id: string;
@@ -407,6 +410,11 @@ export interface ToolCall {
      * call completes or fails.
      */
     progressMessage?: string;
+    /**
+     * How an approval-gated CoC LLM tool call was settled (only set when the
+     * repo marks the tool "Require approval").
+     */
+    approvalOutcome?: ToolCallApprovalOutcome;
     /** Permission request details (if applicable) */
     permissionRequest?: ToolCallPermissionRequest;
     /** Permission decision (if applicable) */
@@ -428,6 +436,7 @@ export interface SerializedToolCall {
     parentToolCallId?: string;
     /** Latest provider progress message while the call is running. */
     progressMessage?: string;
+    approvalOutcome?: ToolCallApprovalOutcome;
     permissionRequest?: {
         kind: string;
         timestamp: string;  // ISO string

@@ -70,6 +70,9 @@ class TestExecutor extends BaseExecutor {
     public get backgroundTasksPublic() {
         return this.backgroundTasks;
     }
+    public recordLlmToolApprovalPublic(processId: string, record: any): void {
+        this.recordLlmToolApproval(processId, record);
+    }
     public buildMidTurnTokenUsageHandlerPublic(processId: string) {
         return this.buildMidTurnTokenUsageHandler(processId);
     }
@@ -491,6 +494,70 @@ describe('BaseExecutor', () => {
             expect(buffer).toHaveLength(2);
             expect(buffer[0].toolCall?.progressMessage).toBe('Reading 4 files…');
             expect(buffer[1].toolCall?.progressMessage).toBe('Compiling…');
+        });
+
+        describe('LLM tool approval outcome', () => {
+            it('stamps the outcome on the running row, the terminal row, and its event', () => {
+                const handler = executor.buildToolEventHandlerPublic('proc-appr', () => 0);
+                handler({ type: 'tool-start', toolCallId: 'tc-a', toolName: 'send_to_conversation', parameters: {} } as any);
+                executor.recordLlmToolApprovalPublic('proc-appr', { toolName: 'send_to_conversation', toolCallId: 'tc-a', outcome: 'deny' });
+                handler({ type: 'tool-failed', toolCallId: 'tc-a', toolName: 'send_to_conversation', error: 'User denied this tool call.' } as any);
+
+                const buffer = executor.getStreamingStatePublic('proc-appr').timelineBuffer;
+                expect(buffer.map(i => i.toolCall?.approvalOutcome)).toEqual(['deny', 'deny']);
+                expect(store.emitProcessEvent).toHaveBeenCalledWith('proc-appr', expect.objectContaining({
+                    type: 'tool-failed',
+                    toolCallId: 'tc-a',
+                    approvalOutcome: 'deny',
+                }));
+            });
+
+            it('falls back to the running row by tool name when the bridge mints its own id', () => {
+                const handler = executor.buildToolEventHandlerPublic('proc-appr-mcp', () => 0);
+                handler({ type: 'tool-start', toolCallId: 'old', toolName: 'mcp__coc_llm_tools__send_to_conversation', parameters: {} } as any);
+                handler({ type: 'tool-complete', toolCallId: 'old', toolName: 'mcp__coc_llm_tools__send_to_conversation', result: 'ok' } as any);
+                handler({ type: 'tool-start', toolCallId: 'other', toolName: 'bash', parameters: {} } as any);
+                handler({ type: 'tool-start', toolCallId: 'provider-id', toolName: 'mcp__coc_llm_tools__send_to_conversation', parameters: {} } as any);
+                executor.recordLlmToolApprovalPublic('proc-appr-mcp', { toolName: 'send_to_conversation', toolCallId: 'bridge-uuid', outcome: 'approve-session' });
+                handler({ type: 'tool-complete', toolCallId: 'provider-id', toolName: 'mcp__coc_llm_tools__send_to_conversation', result: 'ok' } as any);
+
+                const buffer = executor.getStreamingStatePublic('proc-appr-mcp').timelineBuffer;
+                const outcomes = buffer.map(i => [i.toolCall?.id, i.type, i.toolCall?.approvalOutcome]);
+                expect(outcomes).toEqual([
+                    ['old', 'tool-start', undefined],
+                    ['old', 'tool-complete', undefined],
+                    ['other', 'tool-start', undefined],
+                    ['provider-id', 'tool-start', 'approve-session'],
+                    ['provider-id', 'tool-complete', 'approve-session'],
+                ]);
+            });
+
+            it('adds no approval field when the gate did not run', () => {
+                const handler = executor.buildToolEventHandlerPublic('proc-appr-none', () => 0);
+                handler({ type: 'tool-start', toolCallId: 'tc-n', toolName: 'send_to_conversation', parameters: {} } as any);
+                handler({ type: 'tool-complete', toolCallId: 'tc-n', toolName: 'send_to_conversation', result: 'ok' } as any);
+
+                const buffer = executor.getStreamingStatePublic('proc-appr-none').timelineBuffer;
+                expect(buffer.every(i => !('approvalOutcome' in (i.toolCall ?? {})))).toBe(true);
+                const completeEvent = (store.emitProcessEvent as any).mock.calls
+                    .find(([id, e]: [string, any]) => id === 'proc-appr-none' && e.type === 'tool-complete')[1];
+                expect('approvalOutcome' in completeEvent).toBe(false);
+            });
+
+            it('persists the outcome through a streaming flush', async () => {
+                const processId = 'proc-appr-flush';
+                await store.addProcess(createTestProcess(processId, [
+                    { role: 'user', content: 'hi', timestamp: new Date(), turnIndex: 0, timeline: [] },
+                ]));
+                const handler = executor.buildToolEventHandlerPublic(processId, () => 0);
+                handler({ type: 'tool-start', toolCallId: 'tc-f', toolName: 'send_to_conversation', parameters: {} } as any);
+                executor.recordLlmToolApprovalPublic(processId, { toolName: 'send_to_conversation', toolCallId: 'tc-f', outcome: 'auto-allowed' });
+
+                await executor.flushConversationTurnPublic(processId, true);
+
+                const turn = store.processes.get(processId)!.conversationTurns!.at(-1)!;
+                expect(turn.timeline![0].toolCall!.approvalOutcome).toBe('auto-allowed');
+            });
         });
 
         it('ignores malformed suggest_follow_ups result without throwing', () => {

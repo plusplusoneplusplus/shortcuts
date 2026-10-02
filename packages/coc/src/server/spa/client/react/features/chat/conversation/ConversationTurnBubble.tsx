@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { cn, ImageGallery, ImageLightbox, Spinner } from '../../../ui';
-import type { ClientConversationTurn, ClientTokenUsage } from '../../../types/dashboard';
+import type { ClientConversationTurn, ClientTokenUsage, ToolCallApprovalOutcome } from '../../../types/dashboard';
 import { ContextMenu } from '../../../tasks/comments/ContextMenu';
 import type { ContextMenuItem } from '../../../tasks/comments/ContextMenu';
 import { MarkdownView } from '../../../shared/MarkdownView';
@@ -196,6 +196,7 @@ interface RenderToolCall {
     parentToolCallId?: string;
     /** Latest provider progress message (running calls only). */
     progressMessage?: string;
+    approvalOutcome?: ToolCallApprovalOutcome;
 }
 
 type RenderChunk =
@@ -646,6 +647,7 @@ function normalizeToolCall(raw: any, fallbackId: string): RenderToolCall {
         endTime: raw?.endTime,
         parentToolCallId: raw?.parentToolCallId || raw?.parent_tool_call_id,
         progressMessage: typeof raw?.progressMessage === 'string' ? raw.progressMessage : undefined,
+        approvalOutcome: typeof raw?.approvalOutcome === 'string' ? raw.approvalOutcome : undefined,
     };
 }
 
@@ -675,6 +677,7 @@ function mergeToolCall(target: RenderToolCall, incoming: RenderToolCall): void {
     }
     // Latest message wins; a settled call hides it at render time anyway.
     if (incoming.progressMessage) target.progressMessage = incoming.progressMessage;
+    if (incoming.approvalOutcome) target.approvalOutcome = incoming.approvalOutcome;
 }
 
 /**
