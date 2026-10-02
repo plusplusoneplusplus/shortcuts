@@ -3,7 +3,7 @@ name: delegate
 description: Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.
 metadata:
   author: Yiheng Tao
-  version: "0.0.3"
+  version: "0.0.4"
 ---
 
 # Delegate
@@ -16,9 +16,10 @@ Users reach this skill either through plain language ("hand this off to a new ch
 
 | Input | Outcome |
 | --- | --- |
-| `/delegate Review the plan` | Delegate the review, inheriting the provider as usual. |
+| `/delegate Review the plan` | Delegate the review in `ask` mode, inheriting the provider as usual. |
 | `/delegate claude Review the plan` | Delegate the review to Claude using its defaults. |
 | `/delegate claude Review the plan with high effort` | Delegate to Claude at its High effort tier. |
+| `/delegate Submit the outgoing commits as a PR` | Delegate in `autopilot` mode, since the job must push and open a PR. |
 
 ## Writing the handoff
 
@@ -35,7 +36,9 @@ Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched cas
 - Omit `provider` when the user did not name one, so the tool's existing parent inheritance of provider, model, and effort applies.
 - An explicit provider selects that provider's own defaults, including when it matches the parent. Do not carry over the parent's model or effort.
 - Apply clear natural-language overrides such as effort through the tool's supported options.
-- `mode` defaults to `ask` and the destination defaults to the current workspace, even when the parent runs in Autopilot. Honor an explicit request for Autopilot or another registered workspace, and ask when the destination is ambiguous. Autopilot jobs share one execution queue and may wait, so `ask` is the better choice when the job must start right away or the current chat is waiting on its result.
+- Pick `mode` from what the job does. Use `ask` for read-only jobs: review, research, analysis, questions, and planning. Use `autopilot` for jobs that change files, the repo, or external state: implementing or fixing code, committing, pushing, opening PRs, and editing docs or skills. When it is unclear whether the job writes, ask one short question.
+- An explicit user request for a mode wins. Autopilot jobs share one execution queue and may wait, so mention that when the current chat is waiting on the result.
+- The destination defaults to the current workspace. Honor an explicit request for another registered workspace, and ask when the destination is ambiguous.
 
 ## Ambiguity and failure
 

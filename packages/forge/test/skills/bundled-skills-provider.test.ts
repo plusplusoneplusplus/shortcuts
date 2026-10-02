@@ -130,7 +130,7 @@ describe('SKILL.md metadata', () => {
             description: entry!.description,
             metadata: {
                 author: 'Yiheng Tao',
-                version: '0.0.3',
+                version: '0.0.4',
             },
         });
 
@@ -151,8 +151,14 @@ describe('SKILL.md metadata', () => {
         expect(body).toContain('visible custom title across AI title generation and restarts');
         // Omitting the provider must preserve the tool's inheritance.
         expect(body).toMatch(/Omit `provider`/);
-        // Ask mode and the current workspace are the child defaults.
-        expect(body).toMatch(/`mode` defaults to `ask`/);
+        // Mode follows the job: read-only work stays in ask, writing work uses autopilot.
+        expect(body).not.toContain('even when the parent runs in Autopilot');
+        expect(body).toContain('Use `ask` for read-only jobs');
+        expect(body).toContain('Use `autopilot` for jobs that change files, the repo, or external state');
+        expect(body).toContain('opening PRs');
+        expect(body).toContain('An explicit user request for a mode wins');
+        expect(body).toContain('Autopilot jobs share one execution queue and may wait');
+        expect(body).toContain('The destination defaults to the current workspace');
 
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegate-resolve-'));
         try {
