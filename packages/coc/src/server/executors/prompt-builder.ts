@@ -25,7 +25,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 import { CONFIG_FILE_NAME, resolveConfig } from '../../config';
-import type { AskUserAnswerInput, AskUserAnswerValue, AskUserApprovalDecision, AskUserDangerousCommandApproval, AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import type { AskUserAnswerInput, AskUserAnswerValue, AskUserApprovalDecision, AskUserApprovalRequest, AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import { createAskUserTool } from '../llm-tools/ask-user-tool';
 import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
@@ -517,7 +517,7 @@ export function buildAskUserAddon(
 ): {
     tools: Tool<any>[];
     suffix: string;
-    askApproval: (request: AskUserDangerousCommandApproval) => Promise<AskUserApprovalDecision>;
+    askApproval: (request: AskUserApprovalRequest) => Promise<AskUserApprovalDecision>;
     answerQuestion: (questionId: string, answer: AskUserAnswerValue) => boolean;
     skipQuestion: (questionId: string) => boolean;
     answerQuestions: (responses: AskUserAnswerInput[]) => boolean;

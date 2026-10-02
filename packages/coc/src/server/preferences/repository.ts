@@ -179,6 +179,14 @@ export function readEffectiveDisabledLlmTools(dataDir: string, workspaceId: stri
 }
 
 /**
+ * Tools the user marked as "require approval" for this repo. Defaults to `[]`
+ * (no tool is gated) when the preference has never been saved.
+ */
+export function readApprovalRequiredLlmTools(dataDir: string, workspaceId: string): string[] {
+    return readRepoPreferences(dataDir, workspaceId).approvalRequiredLlmTools ?? [];
+}
+
+/**
  * Write per-repo preferences to disk atomically (write-then-rename).
  * Creates the parent directory if it doesn't exist.
  */

@@ -1,9 +1,9 @@
-import type { TimelineItem } from '@plusplusoneplusplus/forge';
+import type { TimelineItem, ToolCallApprovalOutcome } from '@plusplusoneplusplus/forge';
 import type {
     AskUserAnswerInput,
     AskUserAnswerValue,
     AskUserApprovalDecision,
-    AskUserDangerousCommandApproval,
+    AskUserApprovalRequest,
 } from '../llm-tools/ask-user-tool';
 import type { RalphGrillProcessState } from '../ralph/grill-planning';
 
@@ -12,6 +12,8 @@ export interface StreamingTurnState {
     timelineBuffer: TimelineItem[];
     throttleState: { chunksSinceLastFlush: number; lastFlushTime: number };
     turnFinalized: boolean;
+    /** Approval-gate outcomes for this turn's tool calls, keyed by toolCallId. */
+    toolApprovalOutcomes: Map<string, ToolCallApprovalOutcome>;
 }
 
 export interface TurnWriteState {
@@ -25,7 +27,7 @@ export interface InteractiveAskUserHandles {
      * test that constructs one) has no reason to supply it; the guard treats a
      * missing approval channel as a denial.
      */
-    askApproval?: (request: AskUserDangerousCommandApproval) => Promise<AskUserApprovalDecision>;
+    askApproval?: (request: AskUserApprovalRequest) => Promise<AskUserApprovalDecision>;
     answerQuestion: (questionId: string, answer: AskUserAnswerValue) => boolean;
     skipQuestion: (questionId: string) => boolean;
     answerQuestions: (responses: AskUserAnswerInput[]) => boolean;
@@ -59,6 +61,7 @@ function createStreamingTurnState(): StreamingTurnState {
         timelineBuffer: [],
         throttleState: { chunksSinceLastFlush: 0, lastFlushTime: 0 },
         turnFinalized: false,
+        toolApprovalOutcomes: new Map(),
     };
 }
 

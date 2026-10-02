@@ -21,6 +21,7 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 import type { SystemOneAddonDeps } from './prompt-builder';
 import { buildMemoryV2Addon } from './memory-v2-addon';
 import { buildChatToolBundle } from './chat-tool-builder';
+import type { LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { ChatToolBundle } from './chat-tool-builder';
 
 // ============================================================================
@@ -67,6 +68,8 @@ export interface ChatTurnContextInput {
     createPullRequest?: CreatePullRequestToolDeps;
     /** Additional tool names to exclude beyond workspace preferences. */
     excludeTools?: string[];
+    /** Told how each approval-gated LLM tool call was settled (timeline badge). */
+    onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void;
     /**
      * Whether to include Memory V2 tools and context in this turn.
      * Defaults to true. No chat path opts out today — autopilot used to, which
@@ -177,6 +180,7 @@ export async function buildChatTurnContext(input: ChatTurnContextInput): Promise
         systemOne: input.systemOne,
         createPullRequest: input.createPullRequest,
         excludeTools: input.excludeTools,
+        onLlmToolApprovalDecision: input.onLlmToolApprovalDecision,
     });
 
     return {

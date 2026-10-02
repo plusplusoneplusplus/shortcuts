@@ -88,7 +88,12 @@ export interface ClientToolCall {
      * call is running.
      */
     progressMessage?: string;
+    /** How an approval-gated CoC LLM tool call was settled (badge on the row). */
+    approvalOutcome?: ToolCallApprovalOutcome;
 }
+
+/** How an approval-gated CoC LLM tool call was settled. */
+export type ToolCallApprovalOutcome = 'approve-once' | 'approve-session' | 'deny' | 'auto-allowed';
 
 /** Timeline event for the SPA client (timestamps are ISO strings) */
 export interface ClientTimelineItem {

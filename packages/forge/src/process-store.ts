@@ -102,6 +102,8 @@ export interface ProcessOutputEvent {
     error?: string;
     /** Latest provider progress message (for 'tool-progress' events). */
     progressMessage?: string;
+    /** How an approval-gated LLM tool call was settled (for 'tool-complete' / 'tool-failed'). */
+    approvalOutcome?: 'approve-once' | 'approve-session' | 'deny' | 'auto-allowed';
     /** Permission request ID (for 'permission-request' events). */
     permissionId?: string;
     /** Permission kind: 'read' | 'write' | 'shell' | 'url' | 'mcp' (for 'permission-request'). */

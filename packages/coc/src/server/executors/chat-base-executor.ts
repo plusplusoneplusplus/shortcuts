@@ -878,6 +878,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             // ask mode and a mid-chat mode switch does not invalidate the
             // conversation's prefix cache. An autopilot chat open in the
             // dashboard is attended, so the question is answerable.
+            onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
             askUser: this.buildAskUserWiring(processId, {
                 computeTurnIndex: () => 1,
                 ...(isAsk ? { ralphGrillPlanningState } : { isInteractive: () => true }),

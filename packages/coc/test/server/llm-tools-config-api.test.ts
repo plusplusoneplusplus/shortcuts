@@ -402,6 +402,81 @@ describe('LLM Tools Config API endpoints', () => {
     });
 
     // ========================================================================
+    // approvalRequiredLlmTools (opt-in approval gate setting)
+    // ========================================================================
+
+    describe('approvalRequiredLlmTools', () => {
+        const url = () => `${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`;
+        const prefsPath = () => path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
+
+        it('GET defaults to an empty list and flags gateable tools', async () => {
+            const res = await request(url());
+            expect(res.status).toBe(200);
+            const data = res.json();
+            expect(data.approvalRequiredLlmTools).toEqual([]);
+            const byName = new Map(data.tools.map((t: any) => [t.name, t]));
+            expect((byName.get('send_to_conversation') as any).approvalGateable).toBe(true);
+            expect((byName.get('ask_user') as any).approvalGateable).toBe(false);
+            expect((byName.get('suggest_follow_ups') as any).approvalGateable).toBe(false);
+        });
+
+        it('PUT with only approvalRequiredLlmTools saves it and leaves disabledLlmTools untouched', async () => {
+            fs.writeFileSync(prefsPath(), JSON.stringify({ disabledLlmTools: ['tavily_web_search'] }));
+            const res = await request(url(), {
+                method: 'PUT',
+                body: JSON.stringify({ approvalRequiredLlmTools: ['send_to_conversation'] }),
+            });
+            expect(res.status).toBe(200);
+            expect(res.json().approvalRequiredLlmTools).toEqual(['send_to_conversation']);
+            expect(res.json().disabledLlmTools).toEqual(['tavily_web_search']);
+
+            const prefs = JSON.parse(fs.readFileSync(prefsPath(), 'utf-8'));
+            expect(prefs.approvalRequiredLlmTools).toEqual(['send_to_conversation']);
+            expect(prefs.disabledLlmTools).toEqual(['tavily_web_search']);
+        });
+
+        it('PUT with only disabledLlmTools leaves approvalRequiredLlmTools untouched', async () => {
+            fs.writeFileSync(prefsPath(), JSON.stringify({ approvalRequiredLlmTools: ['get_conversation'] }));
+            await request(url(), { method: 'PUT', body: JSON.stringify({ disabledLlmTools: [] }) });
+            const prefs = JSON.parse(fs.readFileSync(prefsPath(), 'utf-8'));
+            expect(prefs.approvalRequiredLlmTools).toEqual(['get_conversation']);
+        });
+
+        it('drops ask_user and suggest_follow_ups from the saved list', async () => {
+            const res = await request(url(), {
+                method: 'PUT',
+                body: JSON.stringify({ approvalRequiredLlmTools: ['ask_user', 'suggest_follow_ups', 'send_to_conversation'] }),
+            });
+            expect(res.json().approvalRequiredLlmTools).toEqual(['send_to_conversation']);
+        });
+
+        it('rejects a non-array approvalRequiredLlmTools', async () => {
+            const res = await request(url(), {
+                method: 'PUT',
+                body: JSON.stringify({ approvalRequiredLlmTools: 'send_to_conversation' }),
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('rejects non-string approvalRequiredLlmTools items', async () => {
+            const res = await request(url(), {
+                method: 'PUT',
+                body: JSON.stringify({ approvalRequiredLlmTools: [1] }),
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('keeps the setting independent per workspace', async () => {
+            await request(url(), {
+                method: 'PUT',
+                body: JSON.stringify({ approvalRequiredLlmTools: ['send_to_conversation'] }),
+            });
+            const other = await request(`${base()}/api/workspaces/${GROUP_ID}/llm-tools-config`);
+            expect(other.json().approvalRequiredLlmTools).toEqual([]);
+        });
+    });
+
+    // ========================================================================
     // AC-04: repo-group workspaces
     // ========================================================================
 

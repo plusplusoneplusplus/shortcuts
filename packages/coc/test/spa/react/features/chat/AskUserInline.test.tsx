@@ -9,7 +9,7 @@ import type { AskUserBatch, AskUserQuestion } from '../../../../../src/server/sp
 import { getAskUserDraft } from '../../../../../src/server/spa/client/react/features/chat/hooks/useAskUserDraftStore';
 // The approval options come from the server tool that emits the prompt, so a
 // rename there fails this suite instead of silently changing what the user sees.
-import { ASK_USER_APPROVAL_OPTIONS } from '../../../../../src/server/llm-tools/ask-user-tool';
+import { ASK_USER_APPROVAL_OPTIONS, ASK_USER_LLM_TOOL_APPROVAL_OPTIONS } from '../../../../../src/server/llm-tools/ask-user-tool';
 
 const mocks = vi.hoisted(() => ({
     processes: {
@@ -880,7 +880,7 @@ describe('AskUserInline', () => {
 
     describe('dangerous-command approval prompt', () => {
         // Mirrors what `askApproval()` in ask-user-tool.ts puts on the wire.
-        function makeApprovalQuestion(overrides: Partial<AskUserQuestion['approval']> = {}): AskUserQuestion {
+        function makeApprovalQuestion(overrides: Partial<Extract<AskUserQuestion['approval'], { kind: 'dangerous-command' }>> = {}): AskUserQuestion {
             const command = 'rm -rf /tmp/demo-dir';
             return makeQuestion({
                 question: `Allow this command to run?\n\n${command}`,
@@ -892,6 +892,23 @@ describe('AskUserInline', () => {
                     ruleId: 'rm-recursive-dangerous-target',
                     description: 'Recursive delete targeting the filesystem root, the home directory, or an absolute path',
                     matchedSegment: command,
+                    ...overrides,
+                },
+            });
+        }
+
+        function makeLlmToolQuestion(overrides: Partial<Extract<AskUserQuestion['approval'], { kind: 'llm-tool' }>> = {}): AskUserQuestion {
+            const argsJson = overrides.argsJson ?? '{\n  "content": "hi"\n}';
+            return makeQuestion({
+                question: `Allow the Send to Conversation tool to run?\n\n${argsJson}`,
+                options: ASK_USER_LLM_TOOL_APPROVAL_OPTIONS.map(opt => ({ ...opt })),
+                defaultValue: 'deny',
+                approval: {
+                    kind: 'llm-tool',
+                    toolName: 'send_to_conversation',
+                    label: 'Send to Conversation',
+                    argsJson,
+                    argsTruncated: false,
                     ...overrides,
                 },
             });
@@ -979,6 +996,72 @@ describe('AskUserInline', () => {
                 });
             });
             expect(onAnswered).toHaveBeenCalled();
+        });
+
+        it('does not render the dangerous-command card for an llm-tool approval', () => {
+            render(
+                <AskUserInline batch={makeBatch([makeLlmToolQuestion()])} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+            expect(screen.queryByTestId('dangerous-command-approval-card')).toBeNull();
+            expect(screen.getByTestId('ask-user-approval-headline').textContent)
+                .toBe('Allow the Send to Conversation tool to run?');
+        });
+
+        it('shows the tool label, name, and verbatim JSON args for an llm-tool approval', () => {
+            const argsJson = '{\n  "content": "*not* markdown"\n}';
+            render(
+                <AskUserInline batch={makeBatch([makeLlmToolQuestion({ argsJson })])} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+            expect(screen.getByTestId('llm-tool-approval-card')).toBeTruthy();
+            expect(screen.getByTestId('llm-tool-approval-label').textContent).toBe('Send to Conversation');
+            expect(screen.getByTestId('llm-tool-approval-name-chip').textContent).toBe('send_to_conversation');
+            const args = screen.getByTestId('llm-tool-approval-args');
+            expect(args.textContent).toBe(argsJson);
+            expect(args.querySelector('em')).toBeNull();
+            expect(screen.queryByTestId('llm-tool-approval-args-toggle')).toBeNull();
+            expect(screen.queryByTestId('llm-tool-approval-args-truncated')).toBeNull();
+            expect(screen.queryByTestId('ask-user-question-disposition')).toBeNull();
+        });
+
+        it('folds args past 20 lines and expands them on demand', () => {
+            const lines = Array.from({ length: 25 }, (_, i) => `line-${i + 1}`);
+            render(
+                <AskUserInline
+                    batch={makeBatch([makeLlmToolQuestion({ argsJson: lines.join('\n') })])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            const args = screen.getByTestId('llm-tool-approval-args');
+            expect(args.textContent).toBe(lines.slice(0, 20).join('\n'));
+            const toggle = screen.getByTestId('llm-tool-approval-args-toggle');
+            expect(toggle.textContent).toBe('Show 5 more lines');
+            fireEvent.click(toggle);
+            expect(screen.getByTestId('llm-tool-approval-args').textContent).toBe(lines.join('\n'));
+            expect(screen.getByTestId('llm-tool-approval-args-toggle').textContent).toBe('Show less');
+        });
+
+        it('notes when the server truncated the args', () => {
+            render(
+                <AskUserInline batch={makeBatch([makeLlmToolQuestion({ argsTruncated: true })])} processId="proc-1" onAnswered={vi.fn()} />,
+            );
+            expect(screen.getByTestId('llm-tool-approval-args-truncated')).toBeTruthy();
+        });
+
+        it('submits an llm-tool decision through the ask-user-response route', async () => {
+            const onAnswered = vi.fn();
+            render(
+                <AskUserInline batch={makeBatch([makeLlmToolQuestion()])} processId="proc-1" onAnswered={onAnswered} />,
+            );
+            expect((screen.getByDisplayValue('deny') as HTMLInputElement).checked).toBe(true);
+            fireEvent.click(screen.getByDisplayValue('approve-once'));
+            fireEvent.click(screen.getByTestId('ask-user-submit-all-btn'));
+            await waitFor(() => {
+                expect(mocks.processes.askUserResponse).toHaveBeenCalledWith('proc-1', {
+                    batchId: 'batch-1',
+                    answers: [{ questionId: 'q-1', answer: 'approve-once' }],
+                });
+            });
         });
 
         it('leaves an ordinary question rendering exactly as before', () => {

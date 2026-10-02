@@ -138,8 +138,8 @@ export function emitWarmStatus(store: ProcessStore, processId: string, status: W
  *   event: conversation-snapshot → { turns: ConversationTurn[], sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
  *   event: chunk              → { content: string }
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
- *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, result }
- *   event: tool-failed        → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, error }
+ *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, result, approvalOutcome? }
+ *   event: tool-failed        → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, error, approvalOutcome? }
  *   event: tool-progress      → { toolCallId, parentToolCallId?, toolName?, progressMessage }
  *   event: permission-request → { turnIndex, permissionId, kind, description }
  *   event: workflow-phase    → { phase, status, timestamp, durationMs?, error?, itemCount? }
@@ -278,6 +278,7 @@ export async function handleProcessStream(
                 toolName: event.toolName,
                 parameters: event.parameters,
                 result: event.result,
+                ...(event.approvalOutcome ? { approvalOutcome: event.approvalOutcome } : {}),
             });
         } else if (event.type === 'tool-failed') {
             writeNamedEvent(res, 'tool-failed', {
@@ -287,6 +288,7 @@ export async function handleProcessStream(
                 toolName: event.toolName,
                 parameters: event.parameters,
                 error: event.error,
+                ...(event.approvalOutcome ? { approvalOutcome: event.approvalOutcome } : {}),
             });
         } else if (event.type === 'tool-progress') {
             writeNamedEvent(res, 'tool-progress', {

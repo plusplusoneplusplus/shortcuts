@@ -114,7 +114,10 @@ export class PreferencesClient {
   updateLlmToolsConfig(workspaceId: string, config: LlmToolsConfigUpdate): Promise<LlmToolsConfig> {
     return this.transport.request<LlmToolsConfig>(workspacePath(workspaceId, '/llm-tools-config'), {
       method: 'PUT',
-      body: { disabledLlmTools: [...config.disabledLlmTools] },
+      body: {
+        ...(config.disabledLlmTools ? { disabledLlmTools: [...config.disabledLlmTools] } : {}),
+        ...(config.approvalRequiredLlmTools ? { approvalRequiredLlmTools: [...config.approvalRequiredLlmTools] } : {}),
+      },
     });
   }
 

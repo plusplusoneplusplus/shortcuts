@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { filterRemovedLlmToolNames } from '../llm-tools/llm-tool-registry';
+import { filterApprovalRequiredLlmToolNames, filterRemovedLlmToolNames } from '../llm-tools/llm-tool-registry';
 import { MAX_ADDITIONAL_NOTES_ROOTS } from '../notes/notes-root-resolver';
 
 // ============================================================================
@@ -300,6 +300,11 @@ export const PerRepoPreferencesSchema = z.object({
     activityFilters: ActivityFiltersSchema.optional(),
     disabledLlmTools: z.array(z.unknown())
         .transform(arr => filterRemovedLlmToolNames(
+            arr.filter((t): t is string => typeof t === 'string' && t.length > 0),
+        ))
+        .optional(),
+    approvalRequiredLlmTools: z.array(z.unknown())
+        .transform(arr => filterApprovalRequiredLlmToolNames(
             arr.filter((t): t is string => typeof t === 'string' && t.length > 0),
         ))
         .optional(),

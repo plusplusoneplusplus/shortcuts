@@ -5,7 +5,8 @@ import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { WakeupToolDeps, CronToolDeps } from '../llm-tools/cron-tools';
 import type { CreatePullRequestToolDeps } from '../llm-tools/create-pull-request-tool';
 import { DEFAULT_DISABLED_LLM_TOOLS } from '../llm-tools/llm-tool-registry';
-import { readEffectiveDisabledLlmTools } from '../preferences-handler';
+import { readApprovalRequiredLlmTools, readEffectiveDisabledLlmTools } from '../preferences-handler';
+import { applyLlmToolApprovalGate, type LlmToolApprovalRecord } from './llm-tool-approval-gate';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import {
     applyLlmToolPreferences,
@@ -74,6 +75,8 @@ export interface ChatToolBundleOptions {
      */
     createPullRequest?: CreatePullRequestToolDeps;
     excludeTools?: string[];
+    /** Told how each approval-gated LLM tool call was settled (timeline badge). */
+    onLlmToolApprovalDecision?: (record: LlmToolApprovalRecord) => void;
 }
 
 export interface ChatToolBundle {
@@ -188,7 +191,21 @@ export function buildChatToolBundle(options: ChatToolBundleOptions): ChatToolBun
         ? readEffectiveDisabledLlmTools(options.dataDir, options.workspaceId)
         : undefined;
     const disabledWithContextExclusions = mergeDisabledTools(disabledLlmTools, options.excludeTools);
-    const { tools, toolGuidance } = applyLlmToolPreferences(addons, disabledWithContextExclusions);
+    const { tools: enabledTools, toolGuidance } = applyLlmToolPreferences(addons, disabledWithContextExclusions);
+
+    const approvalRequired = options.dataDir && options.workspaceId
+        ? readApprovalRequiredLlmTools(options.dataDir, options.workspaceId)
+        : [];
+    const askUserDeps = options.askUser?.deps;
+    const tools = applyLlmToolApprovalGate(enabledTools, {
+        processId: options.processId,
+        approvalRequired,
+        // Same signal ask_user uses: unset means a person is watching.
+        isInteractive: () => askUserDeps?.isInteractive?.() !== false,
+        // No ask-user wiring (workflows, unattended paths) → nobody to ask.
+        getAskApproval: () => (askUserDeps ? askUser?.askApproval : undefined),
+        onDecision: options.onLlmToolApprovalDecision,
+    });
 
     return { tools, toolGuidance, askUser };
 }

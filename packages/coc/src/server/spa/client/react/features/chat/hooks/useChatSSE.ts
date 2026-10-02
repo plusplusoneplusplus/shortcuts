@@ -43,10 +43,10 @@ export interface AskUserQuestion {
     index: number;
     batchSize: number;
     /**
-     * Set only on a dangerous-command guard approval prompt. Its presence is
-     * what marks this question as the approval variant; the three options come
-     * through as an ordinary select, so a client that ignores the field still
-     * renders something answerable.
+     * Set only on an approval prompt (dangerous-command guard or a gated LLM
+     * tool). Its presence is what marks this question as the approval variant;
+     * the three options come through as an ordinary select, so a client that
+     * ignores the field still renders something answerable.
      */
     approval?: {
         kind: 'dangerous-command';
@@ -54,6 +54,12 @@ export interface AskUserQuestion {
         ruleId: string;
         description: string;
         matchedSegment: string;
+    } | {
+        kind: 'llm-tool';
+        toolName: string;
+        label: string;
+        argsJson: string;
+        argsTruncated: boolean;
     };
     ralphGrill?: {
         sources?: Array<{
@@ -270,6 +276,7 @@ export function useChatSSE({
                         startTime: new Date().toISOString(),
                         ...(eventType !== 'tool-start' ? { endTime: new Date().toISOString(), result: data.result, error: data.error } : {}),
                         ...(data.parentToolCallId ? { parentToolCallId: data.parentToolCallId } : {}),
+                        ...(data.approvalOutcome ? { approvalOutcome: data.approvalOutcome } : {}),
                     };
                     turns[turns.length - 1] = {
                         ...last,

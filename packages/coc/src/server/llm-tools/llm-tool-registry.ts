@@ -43,6 +43,11 @@ export interface LlmToolMeta {
      * the tool takes no parameters. Existing clients can ignore this field.
      */
     params?: LlmToolParam[];
+    /**
+     * Whether the user may mark this tool as "require approval" in repo
+     * settings. Set by the settings route; absent on the static registry.
+     */
+    approvalGateable?: boolean;
 }
 
 /**
@@ -197,6 +202,21 @@ export function filterRemovedLlmToolNames(toolNames: readonly string[]): string[
 /** Default disabled tool names, as a fresh copy callers may mutate. */
 export function getEffectiveDefaultDisabledTools(): string[] {
     return [...DEFAULT_DISABLED_LLM_TOOLS];
+}
+
+/**
+ * Tools that can never be gated behind user approval: `ask_user` is the
+ * approval prompt itself, and `suggest_follow_ups` only renders chips.
+ */
+export const NON_GATEABLE_LLM_TOOLS: readonly string[] = ['ask_user', 'suggest_follow_ups'];
+
+export function isLlmToolApprovalGateable(toolName: string): boolean {
+    return !NON_GATEABLE_LLM_TOOLS.includes(toolName) && !isRemovedLlmToolName(toolName);
+}
+
+/** Drop non-gateable and removed names from an approval-required list. */
+export function filterApprovalRequiredLlmToolNames(toolNames: readonly string[]): string[] {
+    return Array.from(new Set(toolNames.filter(isLlmToolApprovalGateable)));
 }
 
 /**
