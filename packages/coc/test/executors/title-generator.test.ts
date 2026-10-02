@@ -69,9 +69,9 @@ describe('title-generator idempotency', () => {
         expect(source).toContain('this.queueManager.updateTask(toTaskId(processId), { displayName: title })');
     });
 
-    it('re-syncs existing title to displayName on subsequent calls', () => {
-        // When title exists, it still updates the displayName to stay in sync
-        expect(source).toContain('this.syncQueueDisplayName(processId, existing.title)');
+    it('re-syncs the preferred existing title to displayName on subsequent calls', () => {
+        // A delegated custom title stays visible while the generated title remains searchable.
+        expect(source).toContain('this.syncQueueDisplayName(processId, existing.customTitle || existing.title)');
     });
 
     it('catches errors without throwing', () => {
