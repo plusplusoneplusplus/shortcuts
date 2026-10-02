@@ -5,6 +5,8 @@ import { McpOAuthFlowController } from '../features/skills/mcpOAuthFlowControlle
 import { SettingsCard } from './SettingsCard';
 
 interface TeamsStatus {
+    enableTrouter?: boolean;
+    notificationStatus?: { state: string; error: { code: string; message: string } | null };
     ic3Region?: 'amer' | 'emea' | 'apac' | null;
     enabled: boolean;
     status: 'disconnected' | 'connecting' | 'authenticating' | 'connected' | 'error';
@@ -117,6 +119,7 @@ export function TeamsConnectionCard() {
     const [channelName, setChannelName] = useState('');
     const [botName, setBotName] = useState('');
     const [ic3Region, setIc3Region] = useState('');
+    const [enableTrouter, setEnableTrouter] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [authorizing, setAuthorizing] = useState(false);
@@ -139,6 +142,7 @@ export function TeamsConnectionCard() {
         || channelName !== status.channelName
         || botName !== status.botName
         || ic3Region !== (status.ic3Region ?? '')
+        || enableTrouter !== (status.enableTrouter === true)
     );
     const load = useCallback(async (syncForm = false, offset = historyOffset) => {
         try {
@@ -173,6 +177,7 @@ export function TeamsConnectionCard() {
                 setChannelName(next.channelName);
                 setBotName(next.botName);
                 setIc3Region(next.ic3Region ?? '');
+                setEnableTrouter(next.enableTrouter === true);
             }
         } catch (err) {
             if (mounted.current) setError(err instanceof Error ? err.message : String(err));
@@ -252,7 +257,7 @@ export function TeamsConnectionCard() {
             <div className="ar-teams">
                 <p className="ar-teams-hint">
                     Configure a global Teams MCP endpoint, complete Microsoft sign-in, then connect.
-                    This bridge polls a team channel for inbound messages; it does not relay agent output to a self-chat.
+                    This bridge reads a team channel for inbound messages; it does not relay agent output to a self-chat.
                     A missing team or channel is created when you connect.
                     Use a different channel on each machine (including machines with the same name) to avoid duplicate replies.
                     Users can run <code>list repos</code> and <code>select repo &lt;name&gt;</code> to choose their workspace.
@@ -260,6 +265,11 @@ export function TeamsConnectionCard() {
                 <p role="status" className="ar-teams-status">
                     Connection: {status?.status ?? 'Loading…'} · OAuth: {status?.authStatus ?? 'not configured'}
                 </p>
+                {status?.enableTrouter && <p role="status" className="ar-teams-status" data-testid="teams-notification-status">
+                    Notifications: {status.notificationStatus?.state ?? 'stopped'} · 60-second fallback reads
+                </p>}
+                {status?.enableTrouter && status.notificationStatus?.error
+                    && <p role="alert" className="ar-teams-warning">{status.notificationStatus.error.message}</p>}
                 {status?.error && <p role="alert" className="ar-teams-error">{status.error}</p>}
                 {error && <p role="alert" className="ar-teams-error">{error}</p>}
                 <label className="ar-teams-field">Teams MCP server URL
@@ -293,11 +303,24 @@ export function TeamsConnectionCard() {
                     Choose your account's region; automatic discovery is not available. Save changes, then reconnect.
                 </p>
                 <div className="ar-teams-actions">
+                    <label className="ar-teams-field">
+                        <input type="checkbox" checked={enableTrouter} onChange={e => setEnableTrouter(e.target.checked)}
+                            data-testid="teams-trouter-enabled" />
+                        Experimental notification-driven inbound (Trouter)
+                    </label>
+                </div>
+                <p className="ar-teams-hint">
+                    Off by default. Uses separate IC3 credentials from the server's Azure CLI sign-in, for the same
+                    account as MCP. Notifications trigger authoritative reads with a 60-second fallback.
+                    This private protocol is best-effort, not durable catch-up. Save, then reconnect.
+                </p>
+                <div className="ar-teams-actions">
                     <Button size="sm" disabled={busy || !teamName.trim() || !channelName.trim() || !botName.trim()}
                         onClick={() => void run(async () => {
                             await request('/messaging/teams/config', {
                                 teamName: teamName.trim(), channelName: channelName.trim(), botName: botName.trim(),
                                 ic3Region: ic3Region || null,
+                                enableTrouter,
                             });
                         })}>Save channel</Button>
                     <Button size="sm" disabled={busy || authorizing || dirty || !status?.serverUrl || !status?.teamsOAuthAvailable}

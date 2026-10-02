@@ -110,6 +110,16 @@ export class Ic3CredentialStore {
 
     async get(signal: AbortSignal, requireSender = false): Promise<Credential> {
         this.requireRegion();
+        return this.read(signal, requireSender);
+    }
+
+    /** Trouter is region-independent; writes still require an explicit region. */
+    async getForNotifications(signal: AbortSignal): Promise<Credential> {
+        if (!this.expectedAccount) throw this.invalidCredential();
+        return this.read(signal, false);
+    }
+
+    private async read(signal: AbortSignal, requireSender: boolean): Promise<Credential> {
         signal.throwIfAborted();
         let credential = this.credential;
         if (!credential || credential.expiresAt <= Date.now() + IC3_CREDENTIAL_EXPIRY_MARGIN_MS) {

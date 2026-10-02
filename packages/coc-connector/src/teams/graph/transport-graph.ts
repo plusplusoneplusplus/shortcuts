@@ -6,6 +6,7 @@
  */
 
 import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from '../types';
+import type { TeamsReadHints } from '../notification-scheduler';
 import { GraphClient } from './graph-client';
 import { randomUUID } from 'node:crypto';
 import { GraphOperations } from './operations-graph';
@@ -91,13 +92,13 @@ export class GraphTransport implements TeamsTransport {
         }, 'like');
     }
 
-    async poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
+    async poll(target: string, since?: string, hints?: TeamsReadHints): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('GraphTransport not initialized');
 
         if (this._useChat) {
             return this.pollChat(since);
         }
-        return this.pollChannel(target, since);
+        return this.pollChannel(target, since, hints);
     }
 
     private async pollChat(since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
@@ -129,9 +130,13 @@ export class GraphTransport implements TeamsTransport {
         return { messages, nextSince };
     }
 
-    private async pollChannel(channelId: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
+    private async pollChannel(channelId: string, since?: string, hints?: TeamsReadHints): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         this.client!.setChannelId(channelId);
-        const rawMessages = await this.client!.listChannelMessages({ top: 50 });
+        const rawMessages = await this.client!.listChannelMessages({ top: 50,
+            ...(hints ? { pageSince: since, signal: AbortSignal.any([
+                AbortSignal.timeout(300_000), ...(hints.signal ? [hints.signal] : []),
+            ]) } : {}),
+        });
 
         // Sort oldest-first
         const sorted = [...rawMessages].sort((a, b) =>

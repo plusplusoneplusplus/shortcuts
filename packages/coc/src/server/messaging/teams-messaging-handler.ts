@@ -324,6 +324,7 @@ export function registerTeamsMessagingRoutes(
             if (typeof body.channelName === 'string') patch.channelName = body.channelName;
             if (typeof body.enabled === 'boolean') patch.enabled = body.enabled;
             if ('ic3Region' in body) patch.ic3Region = body.ic3Region;
+            if ('enableTrouter' in body) patch.enableTrouter = body.enableTrouter;
 
             try {
                 if (Object.keys(patch).length === 0) {

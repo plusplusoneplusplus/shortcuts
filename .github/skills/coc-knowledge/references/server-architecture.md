@@ -205,3 +205,31 @@ Identity-pinned credentials fail closed on mismatch.
 
 Connector contracts live in [coc-connector/AGENTS.md](../../../../packages/coc-connector/AGENTS.md);
 server settings and gates belong in [admin-config.md](admin-config.md).
+
+### Teams notification inbound
+
+Normal CoC persists experimental `enableTrouter` in `teams-messaging.json`, defaults
+it off, and passes it to `TeamsBot` on reconnect. The connector pins separately acquired
+IC3 credentials to the MCP reader account, handles private Trouter registration/renewal,
+heartbeat/ACKs and reconnect, and accepts only selected-conversation wake hints.
+Real activity source threads override synthetic streams; notifications never authorize
+dispatch. Workspace/thread bindings remain owned by the existing messaging router.
+
+`notificationStatus` exposes protocol state and sanitized typed errors independently
+of reader connectivity through the messaging status API and Connections card.
+Standalone `TrouterClient` exports credential-injected `start/getStatus/stop` lifecycle
+for protocol-only smoke tests without inbound handlers. Per-session generations ignore
+stale socket/registrar callbacks; a client is permanently disposed by stop.
+
+The bounded single-flight scheduler syncs at startup, coalesces wakes, follows wakes
+during reads and falls back 60 seconds after successful completion. Loss, disconnect
+and mailbox overflow reconcile known threads; failed reads retry after two seconds,
+retaining hints and honoring HTTP429 cooldown. Enabled MCP reply reads scope ordinary
+known-root wakes to hinted histories. Unknown/missing roots and fallback reconcile
+known threads within a cancellable bounded scan.
+
+MCP root-head pagination and Graph timestamp pagination are best-effort: retention,
+timestamp ties, unbound older threads and process restarts lack durable delta guarantees.
+DM notification readers require explicit conversation targets without autodiscovery;
+synthetic `48:notes` streams do not activate them. Ordinary sends/replies/Likes retain
+their existing routes and admission.

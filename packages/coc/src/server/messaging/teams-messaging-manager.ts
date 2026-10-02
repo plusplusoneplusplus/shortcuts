@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { BotStatus, InboundTeamsMessage, Ic3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
+import type { BotStatus, InboundTeamsMessage, Ic3DirectMessageRegion, TrouterStatus } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsBot, isIc3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
 import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
@@ -22,6 +22,7 @@ import { formatTeamsOutbound, type TeamsOutboundSource } from './teams-outbound-
 // ── Persisted Config ─────────────────────────────────────────
 
 export interface TeamsMessagingConfig {
+    enableTrouter?: boolean;
     ic3Region?: Ic3DirectMessageRegion | null;
     enabled: boolean;
     botName: string;
@@ -32,6 +33,7 @@ export interface TeamsMessagingConfig {
 }
 
 const PERSISTED_CONFIG_DEFAULTS: TeamsMessagingConfig = {
+    enableTrouter: false,
     enabled: false,
     botName: 'CoC',
     teamName: 'Coc',
@@ -56,6 +58,8 @@ export class TeamsMessageNotSentError extends Error {
 // ── Manager ──────────────────────────────────────────────────
 
 export interface TeamsMessagingStatus {
+    enableTrouter: boolean;
+    notificationStatus: TrouterStatus;
     ic3Region?: Ic3DirectMessageRegion | null;
     enabled: boolean;
     status: BotStatus;
@@ -137,6 +141,10 @@ export class TeamsMessagingManager {
     getStatus(): TeamsMessagingStatus {
         const serverUrl = this.getServerUrl();
         return {
+            enableTrouter: this.config.enableTrouter === true,
+            notificationStatus: this.bot?.getNotificationStatus?.() ?? {
+                state: this.config.enableTrouter === true ? 'stopped' : 'disabled', error: null,
+            },
             ic3Region: this.config.ic3Region ?? null,
             enabled: this.config.enabled,
             status: this._status,
@@ -155,11 +163,15 @@ export class TeamsMessagingManager {
 
     /** Update configuration fields. Disconnect on disable, target, or IC3 region changes. */
     async updateConfig(patch: Partial<TeamsMessagingConfig>): Promise<void> {
+        if (patch.enableTrouter !== undefined && typeof patch.enableTrouter !== 'boolean') {
+            throw new RangeError('enableTrouter must be a boolean');
+        }
         if (patch.ic3Region !== undefined && patch.ic3Region !== null && !isIc3DirectMessageRegion(patch.ic3Region)) {
             throw new RangeError('IC3 region must be amer, emea, apac, or null (unconfigured)');
         }
         if (patch.enabled === false || patch.teamName !== undefined || patch.channelName !== undefined || patch.botName !== undefined
-            || (patch.ic3Region !== undefined && patch.ic3Region !== (this.config.ic3Region ?? null))) {
+            || (patch.ic3Region !== undefined && patch.ic3Region !== (this.config.ic3Region ?? null))
+            || (patch.enableTrouter !== undefined && patch.enableTrouter !== (this.config.enableTrouter === true))) {
             await this.disconnect();
             this._lastError = null;
         }
@@ -279,6 +291,7 @@ export class TeamsMessagingManager {
             failureCategory = 'polling';
             const bot = new TeamsBot({
                 mode: 'mcp',
+                enableTrouter: this.config.enableTrouter === true,
                 mcpServerUrl: serverUrl,
                 teamId: resolved.teamId,
                 auth: {
@@ -469,6 +482,7 @@ export class TeamsMessagingManager {
             if (fs.existsSync(this.configPath)) {
                 const raw = fs.readFileSync(this.configPath, 'utf-8');
                 const config = { ...PERSISTED_CONFIG_DEFAULTS, ...JSON.parse(raw) };
+                config.enableTrouter = config.enableTrouter === true;
                 if (config.ic3Region != null && !isIc3DirectMessageRegion(config.ic3Region)) {
                     config.ic3Region = null;
                     this._lastError = 'Invalid saved IC3 region; configure Teams connection settings and reconnect';

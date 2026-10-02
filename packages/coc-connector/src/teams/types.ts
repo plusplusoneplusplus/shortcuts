@@ -4,6 +4,8 @@
 
 import type { Ic3DirectMessageOptions } from './ic3/ic3-direct-message-config';
 import type { RoutedTeamsOperations, TeamsOperationRoutes, TeamsMessageRef } from './operations';
+import type { TeamsTrouterOptions } from './trouter';
+import type { TeamsReadHints } from './notification-scheduler';
 
 export interface InboundTeamsMessage {
     /** Exact reader/backend identity for subsequent typed operations. */
@@ -31,6 +33,10 @@ export interface InboundTeamsMessage {
 export type TeamsTransportMode = 'graph' | 'mcp';
 
 export interface TeamsBotOptions {
+    /** Private-protocol notification wake hints, default off; reads remain authoritative.
+     * DMs require an explicit reader chat target: no discovery probe or synthetic 48:notes wakes. */
+    enableTrouter?: boolean;
+    trouterOptions?: TeamsTrouterOptions;
     /** Account-scoped connection identity; generated per instance when omitted. */
     connectionId?: string;
     /** Per-instance outbound routing. An IC3 self-send route still requires its opt-in. */
@@ -150,7 +156,9 @@ export interface TeamsTransport {
     /** Like an original channel post or its thread reply. Unsupported modes reject. */
     reactToChannelMessage(target: InboundTeamsMessage): Promise<void>;
     /** Poll for new messages since a timestamp or watermark. */
-    poll(target: string, since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }>;
+    poll(target: string, since?: string, hints?: TeamsReadHints): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }>;
+    /** Commit notification read progress only after the caller completes admission. */
+    commitNotificationRead?(target: string): void;
     /** List channels in the team. */
     listChannels(teamId: string): Promise<TeamsChannel[]>;
     /** Resolve team/channel names to IDs (create if missing). */

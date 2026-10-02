@@ -5,6 +5,7 @@
 
 import type { TeamsTransport, InboundTeamsMessage, TeamsChannel, TransportSendOptions } from '../types';
 import { McpClient } from './mcp-client';
+import type { TeamsReadHints } from '../notification-scheduler';
 import { randomUUID } from 'node:crypto';
 import type { Ic3DirectMessageOptions } from '../ic3/ic3-direct-message-config';
 import { Ic3Operations } from '../ic3/operations-ic3';
@@ -56,6 +57,8 @@ export class McpTransport implements TeamsTransport {
     private readonly nextDiscoveredRoot = new Map<string, number>();
     private readonly replyPages = new Map<string, string>();
     private readonly bufferedReplies = new Map<string, InboundTeamsMessage[]>();
+    private readonly notificationRootWatermarks = new Map<string, string>();
+    private readonly pendingNotificationHeads = new Map<string, string>();
     private static readonly TRACKED_ROOTS_PER_POLL = 5;
     debug = false;
 
@@ -125,12 +128,12 @@ export class McpTransport implements TeamsTransport {
     }
 
     /** Fetch one provider page without consuming the poller's backfill cursor. */
-    async listChannelRootPage(channelId: string, nextLink?: string): Promise<McpChannelRootPage> {
+    async listChannelRootPage(channelId: string, nextLink?: string, signal?: AbortSignal, top = 5): Promise<McpChannelRootPage> {
         if (!this.client || !this.teamId || this._useChat) throw new Error('MCP channel transport not initialized');
         const result = await this.client.callTool('ListChannelMessages', {
             teamId: this.teamId, channelId,
-            ...(nextLink ? { nextLink } : { top: 5 }),
-        });
+            ...(nextLink ? { nextLink } : { top }),
+        }, signal);
         if (result.isError) throw new Error('Teams channel messages could not be polled');
         const text = result.content?.[0]?.text ?? '[]';
         const parsed = this.parseMessages(text, channelId, true);
@@ -255,14 +258,28 @@ export class McpTransport implements TeamsTransport {
         }, 'like');
     }
 
-    async poll(channelId: string, _since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
+    async poll(channelId: string, _since?: string, hints?: TeamsReadHints): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('McpTransport not initialized');
 
+        const signal = hints ? AbortSignal.any([AbortSignal.timeout(300_000), ...(hints.signal ? [hints.signal] : [])]) : undefined;
         if (this._useChat) {
-            return this.pollChat(channelId, _since);
+            return this.pollChat(channelId, _since, signal);
         }
 
-        const roots = await this.listChannelRootPage(channelId);
+        const roots = await this.listChannelRootPage(channelId, undefined, signal, hints ? 50 : 5);
+        const newestRoot = roots.roots.at(-1)?.messageId;
+        if (hints) {
+            const watermark = this.notificationRootWatermarks.get(channelId);
+            const visited = new Set<string>();
+            let cursor = roots.nextLink;
+            while (watermark && !roots.roots.some(root => root.messageId === watermark) && cursor) {
+                if (visited.has(cursor) || visited.size >= 100) throw new Error('Teams root pagination limit');
+                visited.add(cursor);
+                const page = await this.listChannelRootPage(channelId, cursor, signal, 50);
+                roots.roots.push(...page.roots);
+                cursor = page.nextLink;
+            }
+        }
         if (!this.pollChannelReplies() || !this._availableTools.includes('ListChannelMessageReplies')) {
             this.replyPages.clear();
             this.bufferedReplies.clear();
@@ -272,6 +289,7 @@ export class McpTransport implements TeamsTransport {
             this.historicalReplies.clear();
             this.nextDiscoveredRoot.clear();
             this.notifiedRootIds.clear();
+            if (hints && newestRoot) this.pendingNotificationHeads.set(channelId, newestRoot);
             return { messages: roots.roots, nextSince: roots.nextSince };
         }
 
@@ -283,7 +301,7 @@ export class McpTransport implements TeamsTransport {
         let historicalRoots: InboundTeamsMessage[] = [];
         let followingCursor = cursor;
         if (pendingCursor) {
-            const history = await this.listChannelRootPage(channelId, pendingCursor);
+            const history = await this.listChannelRootPage(channelId, pendingCursor, signal);
             historicalRoots = history.roots;
             followingCursor = history.nextLink;
         }
@@ -320,7 +338,24 @@ export class McpTransport implements TeamsTransport {
             discoveredBatch.push(discovered[(discoveredIndex + i) % discovered.length]);
         }
         discoveredIndex = discovered.length ? (discoveredIndex + discoveredBatch.length) % discovered.length : 0;
-        for (const rootId of new Set([...roots.roots.map(root => root.messageId), ...batch, ...discoveredBatch])) {
+        const knownRoots = new Set([...tracked, ...discovered, ...roots.roots.map(root => root.messageId)]);
+        const hintedRoots = hints?.rootMessageIds ?? [];
+        const reconcile = hints?.reconcile || !hintedRoots.length || hintedRoots.some(root => !knownRoots.has(root));
+        const replyRoots = hints
+            ? reconcile ? [...hintedRoots.filter(root => knownRoots.has(root)), ...knownRoots] : hintedRoots
+            : [...roots.roots.map(root => root.messageId), ...batch, ...discoveredBatch];
+        for (const rootId of new Set(replyRoots)) {
+            signal?.throwIfAborted();
+            if (hints) {
+                const replies = await this.readNotificationReplies(channelId, rootId, signal!);
+                if (messages.length + replies.length > 10_000) throw new Error('Teams notification read limit');
+                const key = JSON.stringify([channelId, rootId]);
+                messages.push(...replies.map(reply => ({
+                    ...reply, ...(this.historicalReplies.has(key) ? { initializationReplay: true } : {}),
+                })));
+                this.historicalReplies.delete(key);
+                continue;
+            }
             const key = JSON.stringify([channelId, rootId]);
             const trackedRoot = tracked.includes(rootId) || discoveredIds.has(rootId);
             const nextLink = trackedRoot ? this.replyPages.get(key) : undefined;
@@ -355,12 +390,45 @@ export class McpTransport implements TeamsTransport {
         }
         this.rootPages.set(channelId, followingCursor ?? '');
         this.nextDiscoveredRoot.set(channelId, discoveredIndex);
+        if (hints && newestRoot) this.pendingNotificationHeads.set(channelId, newestRoot);
         messages.sort((a, b) => {
             const left = a.createdDateTime ? Date.parse(a.createdDateTime) : 0;
             const right = b.createdDateTime ? Date.parse(b.createdDateTime) : 0;
             return (Number.isFinite(left) ? left : 0) - (Number.isFinite(right) ? right : 0);
         });
         return { messages, nextSince: roots.nextSince };
+    }
+
+    commitNotificationRead(channelId: string): void {
+        const head = this.pendingNotificationHeads.get(channelId);
+        if (head) this.notificationRootWatermarks.set(channelId, head);
+        this.pendingNotificationHeads.delete(channelId);
+    }
+
+    private async readNotificationReplies(channelId: string, rootId: string, signal: AbortSignal): Promise<InboundTeamsMessage[]> {
+        const messages: InboundTeamsMessage[] = [];
+        const visited = new Set<string>();
+        let nextLink: string | undefined;
+        do {
+            signal.throwIfAborted();
+            const result = await this.client!.callTool('ListChannelMessageReplies', {
+                teamId: this.teamId, channelId, messageId: rootId, maxReplies: 50,
+                ...(nextLink ? { nextLink } : {}),
+            }, signal);
+            if (result.isError) throw new Error('Teams channel replies could not be read');
+            const response = result.content?.[0]?.text ?? '';
+            messages.push(...this.parseMessages(response, channelId, true, true).messages
+                .filter(reply => reply.messageId !== rootId)
+                .map(reply => ({ ...reply, replyToMessageId: rootId })));
+            nextLink = this.pageCursor(JSON.parse(response), 'reply');
+            if (nextLink) {
+                if (visited.has(nextLink) || visited.size >= 100 || messages.length > 5000) {
+                    throw new Error('Teams reply pagination limit');
+                }
+                visited.add(nextLink);
+            }
+        } while (nextLink);
+        return messages;
     }
 
     private pageCursor(page: unknown, kind: 'root' | 'reply'): string | undefined {
@@ -374,7 +442,7 @@ export class McpTransport implements TeamsTransport {
     }
 
     /** Poll chat messages via MCP. */
-    private async pollChat(chatId: string, _since?: string): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
+    private async pollChat(chatId: string, _since?: string, signal?: AbortSignal): Promise<{ messages: InboundTeamsMessage[]; nextSince: string }> {
         if (!this.client) throw new Error('McpTransport not initialized');
 
         // Try known tool names for listing chat messages
@@ -387,7 +455,7 @@ export class McpTransport implements TeamsTransport {
             top: 5,
         };
 
-        const result = await this.client.callTool(toolName, args);
+        const result = await this.client.callTool(toolName, args, signal);
         const responseText = result.content?.[0]?.text ?? '[]';
 
         return this.parseMessages(responseText, chatId);

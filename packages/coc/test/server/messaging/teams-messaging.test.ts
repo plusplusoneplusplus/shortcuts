@@ -31,6 +31,9 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => ({
             setChannelId: vi.fn(),
             isConnected: vi.fn().mockReturnValue(true),
             getStatus: vi.fn().mockReturnValue('connected'),
+            getNotificationStatus: vi.fn().mockReturnValue({
+                state: opts.enableTrouter ? 'registered' : 'disabled', error: null,
+            }),
         };
     }),
     GraphClient: vi.fn().mockImplementation(function () {
@@ -80,6 +83,8 @@ describe('TeamsMessagingManager', () => {
         const status = manager.getStatus();
         expect(status.enabled).toBe(false);
         expect(status.ic3Region).toBeNull();
+        expect(status.enableTrouter).toBe(false);
+        expect(status.notificationStatus).toEqual({ state: 'disabled', error: null });
         expect(status.status).toBe('disconnected');
         expect(status.botName).toBe('CoC');
         expect(status.teamName).toBe('Coc');
@@ -134,6 +139,43 @@ describe('TeamsMessagingManager', () => {
         expect(vi.mocked(TeamsBot).mock.lastCall![0].ic3DirectMessageOptions?.region)
             .toBe(ic3Region === 'apac' ? undefined : 'apac');
         await m2.disconnect();
+    });
+
+    it('persists opt-in, passes it to the consumer, and requires reconnect on changes', async () => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home') });
+        m2.setMessageHandler(async () => {});
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].enableTrouter).toBe(false);
+        await m2.updateConfig({ enableTrouter: true });
+        expect(m2.getStatus().status).toBe('disconnected');
+        expect(new TeamsMessagingManager(tmpDir).getStatus().enableTrouter).toBe(true);
+        await m2.connect();
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].enableTrouter).toBe(true);
+        expect(m2.getStatus().notificationStatus).toEqual({ state: 'registered', error: null });
+        (m2 as any).bot.getNotificationStatus.mockReturnValue({
+            state: 'retrying', error: { code: 'authentication', message: 'Trouter authentication rejected' },
+        });
+        expect(m2.getStatus()).toMatchObject({
+            status: 'connected', notificationStatus: { state: 'retrying', error: { code: 'authentication' } },
+        });
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].pollChannelReplies?.()).toBe(false);
+        await m2.updateConfig({ enableTrouter: false });
+        expect(m2.getStatus().status).toBe('disconnected');
+        expect(new TeamsMessagingManager(tmpDir).getStatus().enableTrouter).toBe(false);
+    });
+
+    it.each(['true', 1, null, {}, []])('rejects malformed notification opt-in %j atomically', async enableTrouter => {
+        await manager.updateConfig({ enableTrouter: true });
+        const before = fs.readFileSync(path.join(tmpDir, 'teams-messaging.json'), 'utf8');
+        await expect(manager.updateConfig({ enableTrouter } as any)).rejects.toThrow('must be a boolean');
+        expect(fs.readFileSync(path.join(tmpDir, 'teams-messaging.json'), 'utf8')).toBe(before);
+    });
+
+    it('malformed saved notification settings stay disabled', () => {
+        fs.writeFileSync(path.join(tmpDir, 'teams-messaging.json'), JSON.stringify({ enableTrouter: 'true' }));
+        expect(new TeamsMessagingManager(tmpDir).getStatus().enableTrouter).toBe(false);
     });
 
     it.each(['', 'AMER', 'auto', '../amer', 'https://example.test', 1, {}])(
@@ -785,6 +827,11 @@ describe('Teams messaging routes (integration)', () => {
             expect((await post('/server', { url: 'http://example.test/teams' })).status).toBe(400);
             expect((await post('/server', { url: 'https://example.test/teams' })).status).toBe(200);
             expect((await post('/config', { teamName: 'Team', channelName: 'General', enabled: true })).status).toBe(200);
+            for (const enableTrouter of [true, false]) {
+                expect((await post('/config', { enableTrouter })).status).toBe(200);
+                expect((await (await fetch(base + '/status')).json()).enableTrouter).toBe(enableTrouter);
+                expect(new TeamsMessagingManager(tmpDir).getStatus().enableTrouter).toBe(enableTrouter);
+            }
             for (const ic3Region of ['amer', 'emea', 'apac', null]) {
                 expect((await post('/config', { ic3Region })).status).toBe(200);
                 expect((await (await fetch(base + '/status')).json()).ic3Region).toBe(ic3Region);
@@ -793,6 +840,10 @@ describe('Teams messaging routes (integration)', () => {
                 expect((await (await fetch(base + '/status')).json()).ic3Region).toBe(ic3Region);
             }
             const before = fs.readFileSync(path.join(tmpDir, 'teams-messaging.json'), 'utf8');
+            for (const enableTrouter of ['true', 1, null, {}, []]) {
+                expect((await post('/config', { botName: 'Invalid patch', enableTrouter })).status).toBe(400);
+                expect(fs.readFileSync(path.join(tmpDir, 'teams-messaging.json'), 'utf8')).toBe(before);
+            }
             for (const ic3Region of ['', 'AMER', 'auto', '../amer', 'https://example.test', 1, {}, []]) {
                 const response = await post('/config', { botName: 'Invalid patch', ic3Region });
                 expect(response.status).toBe(400);

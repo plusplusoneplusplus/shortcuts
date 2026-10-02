@@ -163,6 +163,14 @@ references before editing. Paths are package-relative.
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.
   Region/account changes require reconnect.
+- Normal Teams connection settings expose experimental `enableTrouter` (off by default)
+  through the messaging config API and Connections card; changing it disconnects and
+  requires reconnect. Notifications use separate, identity-pinned Azure CLI IC3 credentials
+  without requiring a write region. Authoritative MCP reads, workspace bindings and
+  answer-relay admission stay unchanged; fallback is completion-relative 60 seconds.
+  Status exposes sanitized `notificationStatus` separately from reader connectivity;
+  the Connections card displays notification degradation while fallback remains connected.
+  Private Trouter is best-effort, not durable catch-up; container relay settings are separate.
 - Teams sends start with `AI:`/safe HTML. Receipts differ from final answers:
   relay captured terminal turns by request ID to the original thread/workspace.
   Selection changes never redirect answers. Persist accepted multipart progress;

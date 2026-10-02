@@ -28,6 +28,7 @@ export interface GraphMessage {
     body: { content: string; contentType?: string };
     from?: { user?: { displayName?: string; id?: string }; application?: { id?: string } };
     createdDateTime: string;
+    lastModifiedDateTime?: string;
     replyToId?: string;
 }
 
@@ -422,15 +423,29 @@ export class GraphClient {
      * List recent channel messages (for polling).
      * @param top Number of messages to fetch (default: 20).
      */
-    async listChannelMessages(opts?: { top?: number }): Promise<GraphMessage[]> {
+    async listChannelMessages(opts?: { top?: number; pageSince?: string; signal?: AbortSignal }): Promise<GraphMessage[]> {
         if (!this.channelId) throw new Error('No channelId configured');
         if (!this.teamId) throw new Error('No teamId configured');
         const params = new URLSearchParams();
         if (opts?.top) params.set('$top', String(opts.top));
         const qs = params.toString() ? `?${params.toString()}` : '';
         const url = `${this.graphBase}/teams/${this.teamId}/channels/${encodeURIComponent(this.channelId)}/messages${qs}`;
-        const data = await this.get<GraphListResponse>(url);
-        return data.value ?? [];
+        let next: string | undefined = url;
+        const messages: GraphMessage[] = [];
+        const visited = new Set<string>();
+        while (next) {
+            const parsed = new URL(next);
+            if (parsed.origin !== new URL(this.graphBase).origin || parsed.username || parsed.password
+                || visited.has(next) || visited.size >= 100) throw new GraphProtocolError();
+            visited.add(next);
+            const data: GraphListResponse = await this.get<GraphListResponse>(next, opts?.signal);
+            if (!Array.isArray(data.value)) throw new GraphProtocolError();
+            messages.push(...data.value);
+            if (opts?.pageSince === undefined || (data.value.length > 0 && data.value.every(message =>
+                Date.parse(message.lastModifiedDateTime ?? message.createdDateTime) <= Date.parse(opts.pageSince!)))) break;
+            next = data['@odata.nextLink'];
+        }
+        return messages;
     }
 
     /**
@@ -489,14 +504,15 @@ export class GraphClient {
         }
     }
 
-    private async get<T>(url: string): Promise<T> {
+    private async get<T>(url: string, signal?: AbortSignal): Promise<T> {
         const res = await fetch(url, {
             method: 'GET',
+            ...(signal ? { signal } : {}),
             headers: { 'Authorization': `Bearer ${this.bearerToken}` },
         });
         if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            throw new Error(`Graph API GET ${res.status}: ${text}`);
+            await res.body?.cancel();
+            throw new GraphHttpError(res.status, res.headers?.get('Retry-After'), `Graph API GET ${res.status}`);
         }
         return await res.json() as T;
     }

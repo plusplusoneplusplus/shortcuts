@@ -14,6 +14,9 @@ import type { MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { GraphTransport } from './graph/transport-graph';
 import { McpTransport } from './mcp/transport-mcp';
 import { McpHttpError } from './mcp/mcp-client';
+import { GraphHttpError } from './graph/graph-client';
+import { TrouterClient, trouterAccount, type TrouterStatus } from './trouter';
+import { TeamsNotificationScheduler, type TeamsReadHints } from './notification-scheduler';
 import { acquireTokenViaAzCli } from './auth';
 import type { Ic3DirectMessageOptions } from './ic3/ic3-direct-message-config';
 import type { TeamsDestination, TeamsMessageBody, TeamsMessageRef, TeamsOperationRoutes,
@@ -53,7 +56,11 @@ export class TeamsBot implements MessagingConnector {
     private readonly opts: Required<Pick<TeamsBotOptions, 'onMessage' | 'pollIntervalMs' | 'botName'>> & TeamsBotOptions;
     private readonly mode: TeamsTransportMode;
     /** Returns inbound activity, or undefined when polling is disabled. */
-    private readonly pollBackend: (target: string) => Promise<boolean | undefined>;
+    private readonly pollBackend: (target: string, hints?: TeamsReadHints) => Promise<boolean | undefined>;
+    private notificationScheduler?: TeamsNotificationScheduler;
+    private trouter?: TrouterClient;
+    private lifecycle = 0;
+    private notificationAccount?: { tenantId: string; objectId: string };
     private transport: TeamsTransport;
     private _status: BotStatus = 'disconnected';
     private _lastError: string | null = null;
@@ -94,6 +101,7 @@ export class TeamsBot implements MessagingConnector {
 
     /** Connect to Teams. Acquires token if needed, then initializes transport. */
     async start(): Promise<void> {
+        const lifecycle = ++this.lifecycle;
         this.setStatus('connecting');
         this._lastError = null;
         console.log(`[teams-bot] Starting in ${this.mode} mode, teamId=${this.opts.teamId ?? 'none'}`);
@@ -114,10 +122,21 @@ export class TeamsBot implements MessagingConnector {
         }
 
         try {
+            if (lifecycle !== this.lifecycle) return;
+            const account = this.opts.enableTrouter ? trouterAccount(token) : undefined;
+            if (this.opts.enableTrouter && !this.opts.teamId && !this._channelId) {
+                throw new Error('Trouter direct messages require an explicit reader chat target');
+            }
+            this.notificationAccount = account;
             await this.transport.initialize(token, {
                 teamId: this.opts.teamId,
                 channelId: this._channelId ?? undefined,
+                ...(this.opts.enableTrouter && !this.opts.teamId ? { chatId: this._channelId ?? undefined } : {}),
             });
+            if (lifecycle !== this.lifecycle) {
+                this.transport.stop();
+                return;
+            }
 
             // In chat mode (no teamId), use auto-discovered chatId as poll target
             if (this.mode === 'graph' && !this.opts.teamId && this.transport instanceof GraphTransport) {
@@ -132,8 +151,17 @@ export class TeamsBot implements MessagingConnector {
             }
 
             this.setStatus('connected');
+            if (lifecycle !== this.lifecycle) return;
             console.log(`[teams-bot] Connected via ${this.mode} transport${this._channelId ? ` (target: ${this._channelId.substring(0, 12)}...)` : ''}`);
             this.startPolling();
+            if (account && this.notificationScheduler) {
+                this.trouter = new TrouterClient({
+                    ...this.opts.trouterOptions, expectedAccount: account,
+                    target: () => this._channelId,
+                    onWake: wake => this.notificationScheduler?.wake(wake),
+                });
+                this.trouter.start();
+            }
         } catch (err: any) {
             this._lastError = err.message ?? `Failed to connect via ${this.mode}`;
             this.setStatus('error');
@@ -143,7 +171,13 @@ export class TeamsBot implements MessagingConnector {
 
     /** Gracefully disconnect. */
     async stop(): Promise<void> {
+        this.lifecycle++;
         this.stopPolling();
+        this.notificationScheduler?.stop();
+        this.notificationScheduler = undefined;
+        const trouter = this.trouter;
+        this.trouter = undefined;
+        await trouter?.stop();
         this.transport.stop();
         this._channelBatchPolling = false;
         this._channelBaselineTime = null;
@@ -228,15 +262,17 @@ export class TeamsBot implements MessagingConnector {
     /** Set the target channel for message polling. */
     setChannelId(channelId: string): void {
         if (this._channelId !== channelId) {
+            if (this.opts.enableTrouter) this._lastSeenTimestamp = null;
             this._channelBatchPolling = false;
             this._channelBaselineTime = this.mode === 'mcp' && this.opts.teamId
-                && this._status === 'connected' && this.opts.pollChannelReplies?.()
+                && this._status === 'connected' && (this.opts.enableTrouter || this.opts.pollChannelReplies?.())
                 ? Date.now() : null;
             this._lastPolledId = null;
             this._seenChannelMessageIds.clear();
         }
         this._channelId = channelId;
         this.transport.setChannelId(channelId);
+        this.notificationScheduler?.wake({ cause: 'disconnect' });
     }
 
     /** Get the target channel ID. */
@@ -257,6 +293,13 @@ export class TeamsBot implements MessagingConnector {
     /** Last error message, if any. */
     getLastError(): string | null {
         return this._lastError;
+    }
+
+    /** Notification degradation is separate from authoritative reader connectivity. */
+    getNotificationStatus(): TrouterStatus {
+        return this.trouter?.getStatus() ?? {
+            state: this.opts.enableTrouter ? 'stopped' : 'disabled', error: null,
+        };
     }
 
     /** Get the transport mode. */
@@ -282,14 +325,23 @@ export class TeamsBot implements MessagingConnector {
         }
         if (this._pollTimer) return;
         if (this.mode === 'mcp' && this.opts.teamId && this._channelId
-            && this.opts.pollChannelReplies?.()) this._channelBaselineTime = Date.now();
+            && (this.opts.enableTrouter || this.opts.pollChannelReplies?.())) this._channelBaselineTime = Date.now();
         this._lastActivityTime = Date.now();
         this._rateLimitFailures = 0;
         this._retryAt = 0;
+        if (this.opts.enableTrouter) {
+            if (this.mode === 'graph') this._lastSeenTimestamp = null;
+            this.notificationScheduler = new TeamsNotificationScheduler(async hints => ({
+                success: await this.pollMessages(hints), retryAt: this._retryAt,
+            }));
+            this.notificationScheduler.start();
+            return;
+        }
         this.schedulePoll();
     }
 
     private schedulePoll(): void {
+        if (this.opts.enableTrouter) return;
         if (this._pollTimer) return;
         const elapsed = Date.now() - this._lastActivityTime;
         const interval = elapsed >= TeamsBot.IDLE_TIMEOUT_MS
@@ -311,6 +363,7 @@ export class TeamsBot implements MessagingConnector {
 
     /** Cancel any pending slow poll and reschedule at fast interval. */
     private resetPollInterval(): void {
+        if (this.opts.enableTrouter) return;
         this._lastActivityTime = Date.now();
         if (this._pollTimer) {
             clearTimeout(this._pollTimer);
@@ -319,17 +372,20 @@ export class TeamsBot implements MessagingConnector {
         }
     }
 
-    private async pollMessages(): Promise<void> {
+    private async pollMessages(hints?: TeamsReadHints): Promise<boolean> {
+        const lifecycle = this.lifecycle;
         if (this._status !== 'connected' || !this._channelId) {
             this.schedulePoll();
-            return;
+            return true;
         }
 
         try {
-            const activity = await this.pollBackend(this._channelId);
+            const activity = await this.pollBackend(this._channelId, hints);
+            if (lifecycle !== this.lifecycle || hints?.signal?.aborted) return false;
+            if (hints && this._channelId) this.transport.commitNotificationRead?.(this._channelId);
             if (activity === undefined) {
                 this.schedulePoll();
-                return;
+                return true;
             }
 
             this.observePoll('success');
@@ -344,7 +400,8 @@ export class TeamsBot implements MessagingConnector {
             }
         } catch (err: any) {
             this.observePoll('failure');
-            if (err instanceof McpHttpError && err.status === 429) {
+            if (lifecycle !== this.lifecycle || hints?.signal?.aborted) return false;
+            if ((err instanceof McpHttpError || err instanceof GraphHttpError) && err.status === 429) {
                 this._rateLimitFailures++;
                 const cap = Math.min(TeamsBot.MAX_BACKOFF_MS,
                     this.opts.pollIntervalMs * 2 ** Math.min(this._rateLimitFailures, 20));
@@ -363,24 +420,27 @@ export class TeamsBot implements MessagingConnector {
                 this._lastError = message;
                 this.reportPollError(message);
             }
+            if (this._status === 'connected') this.schedulePoll();
+            return false;
         }
 
         // Schedule next poll (adaptive interval based on activity)
         if (this._status === 'connected') this.schedulePoll();
+        return true;
     }
 
-    private async pollGraphMessages(target: string): Promise<boolean | undefined> {
+    private async pollGraphMessages(target: string, hints?: TeamsReadHints): Promise<boolean | undefined> {
         if (!this.opts.pollGraphChannel?.()) {
             this._lastSeenTimestamp = null;
             return undefined;
         }
-        const { messages, nextSince } = await this.pollWithReferences(target, this._lastSeenTimestamp);
+        const { messages, nextSince } = await this.pollWithReferences(target, this._lastSeenTimestamp, hints);
         await this.handleGraphPoll(messages, nextSince);
         return false;
     }
 
-    private async pollMcpMessages(target: string): Promise<boolean> {
-        if (this.opts.teamId && this._channelBatchPolling && !this.opts.pollChannelReplies?.()) {
+    private async pollMcpMessages(target: string, hints?: TeamsReadHints): Promise<boolean> {
+        if (this.opts.teamId && this._channelBatchPolling && !this.opts.pollChannelReplies?.() && !this.opts.enableTrouter) {
             this._channelBatchPolling = false;
             this._channelBaselineTime = null;
             this._lastPolledId = null;
@@ -389,12 +449,16 @@ export class TeamsBot implements MessagingConnector {
         if (this.opts.teamId && this.opts.pollChannelReplies?.()) {
             this._channelBaselineTime ??= Date.now();
         }
-        const { messages, nextSince } = await this.pollWithReferences(target, this._lastPolledId);
+        const { messages, nextSince } = await this.pollWithReferences(target, this._lastPolledId, hints);
         return this.handleMcpPoll(messages, nextSince);
     }
 
-    private async pollWithReferences(target: string, since: string | null) {
-        const result = await this.transport.poll(target, since ?? undefined);
+    private async pollWithReferences(target: string, since: string | null, hints?: TeamsReadHints) {
+        const lifecycle = this.lifecycle;
+        const result = await this.transport.poll(target, since ?? undefined, hints);
+        if (lifecycle !== this.lifecycle || hints?.signal?.aborted || target !== this._channelId) {
+            throw new Error('Teams read cancelled');
+        }
         for (const message of result.messages) {
             message.reference = {
                 destination: this.opts.teamId
@@ -415,12 +479,15 @@ export class TeamsBot implements MessagingConnector {
 
     /** Channel polls process unseen IDs; DM polls retain last-message routing. */
     private async handleMcpPoll(messages: InboundTeamsMessage[], nextSince: string): Promise<boolean> {
-        if (this.opts.teamId && (this._channelBatchPolling || this.opts.pollChannelReplies?.())) {
+        const lifecycle = this.lifecycle;
+        if (this.opts.teamId && (this._channelBatchPolling || this.opts.pollChannelReplies?.() || this.opts.enableTrouter)) {
             const initial = !this._channelBatchPolling;
             let activity = false;
             this._channelBatchPolling = true;
             this._channelBaselineTime ??= Date.now();
             for (const msg of messages) {
+                if (this.opts.enableTrouter && (lifecycle !== this.lifecycle || this._status !== 'connected'
+                    || msg.channelId !== this._channelId)) return activity;
                 if (this._seenChannelMessageIds.has(msg.messageId)) continue;
                 const timestamp = msg.createdDateTime ? Date.parse(msg.createdDateTime) : NaN;
                 const notProvenPostStart = !(timestamp > this._channelBaselineTime);
@@ -455,6 +522,7 @@ export class TeamsBot implements MessagingConnector {
                     });
                     activity = true;
                 }
+                if (this.opts.enableTrouter && lifecycle !== this.lifecycle) return activity;
                 this._seenChannelMessageIds.add(msg.messageId);
                 if (this._seenChannelMessageIds.size > 1000) {
                     this._seenChannelMessageIds.delete(this._seenChannelMessageIds.values().next().value!);
@@ -539,12 +607,15 @@ export class TeamsBot implements MessagingConnector {
 
     /** Graph poll logic: process all new messages since last timestamp. */
     private async handleGraphPoll(messages: InboundTeamsMessage[], nextSince: string): Promise<void> {
+        const lifecycle = this.lifecycle;
         if (!this._lastSeenTimestamp) {
             this._lastSeenTimestamp = nextSince || new Date().toISOString();
             this.observeInbound('skipped', 'initial');
             return;
         }
         for (const msg of messages) {
+            if (this.opts.enableTrouter && (lifecycle !== this.lifecycle || this._status !== 'connected'
+                || msg.channelId !== this._channelId)) return;
             if (this._sentMessageIds.has(msg.messageId)) {
                 this._sentMessageIds.delete(msg.messageId);
                 this.observeInbound('skipped', 'own');
@@ -564,6 +635,7 @@ export class TeamsBot implements MessagingConnector {
                 console.error('[teams-bot] Error handling message:', err);
             });
         }
+        if (this.opts.enableTrouter && lifecycle !== this.lifecycle) return;
         if (nextSince) this._lastSeenTimestamp = nextSince;
     }
 
@@ -584,6 +656,13 @@ export class TeamsBot implements MessagingConnector {
         try {
             const newToken = await refreshFn();
             if (newToken) {
+                if (this.notificationAccount) {
+                    const account = trouterAccount(newToken);
+                    if (account.tenantId !== this.notificationAccount.tenantId
+                        || account.objectId !== this.notificationAccount.objectId) {
+                        throw new Error('Teams account changed; reconnect required');
+                    }
+                }
                 this.transport.setToken(newToken);
                 console.log('[teams-bot] Token refreshed successfully');
                 return true;
@@ -592,6 +671,8 @@ export class TeamsBot implements MessagingConnector {
             console.error('[teams-bot] Token refresh failed:', err.message);
             this._lastError = `Token refresh failed: ${err.message}`;
             this.setStatus('error');
+            this.notificationScheduler?.stop();
+            void this.trouter?.stop();
         } finally {
             this._refreshingToken = false;
         }

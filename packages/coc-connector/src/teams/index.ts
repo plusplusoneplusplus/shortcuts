@@ -3,6 +3,8 @@
  */
 
 export { TeamsBot, createTransport } from './bot';
+export { TrouterClient, trouterAccount } from './trouter';
+export type { TeamsTrouterOptions, TrouterWake, TrouterStatus, TrouterNotificationError, TrouterFailure } from './trouter';
 export { McpClient } from './mcp/mcp-client';
 export { GraphClient } from './graph/graph-client';
 export { GraphTransport } from './graph/transport-graph';
