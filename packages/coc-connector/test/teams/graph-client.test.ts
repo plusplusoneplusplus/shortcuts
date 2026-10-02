@@ -36,7 +36,7 @@ describe('GraphClient', () => {
             expect(msgId).toBe('msg-001');
             expect(mockFetch).toHaveBeenCalledTimes(1);
             const [url, opts] = mockFetch.mock.calls[0];
-            expect(url).toContain('/teams/team-abc/channels/');
+            expect(url).toBe('https://graph.microsoft.com/v1.0/teams/team-abc/channels/19%3Achannel%40thread.tacv2/messages');
             expect(url).toContain('/messages');
             expect(opts.method).toBe('POST');
             expect(opts.headers['Authorization']).toBe('Bearer test-token');
@@ -73,7 +73,7 @@ describe('GraphClient', () => {
 
             expect(msgId).toBe('reply-001');
             const [url] = mockFetch.mock.calls[0];
-            expect(url).toContain('/messages/parent-msg/replies');
+            expect(url).toBe('https://graph.microsoft.com/v1.0/teams/team-abc/channels/19%3Achannel%40thread.tacv2/messages/parent-msg/replies');
         });
     });
 
@@ -127,7 +127,7 @@ describe('GraphClient', () => {
 
             expect(msgId).toBe('chat-msg-001');
             const [url] = mockFetch.mock.calls[0];
-            expect(url).toContain('/chats/chat-xyz/messages');
+            expect(url).toBe('https://graph.microsoft.com/v1.0/chats/chat-xyz/messages');
         });
 
         it('should throw when no chatId configured', async () => {
@@ -156,6 +156,7 @@ describe('GraphClient', () => {
 
             const [url] = mockFetch.mock.calls[0];
             expect(url).toContain('top=10');
+            expect(new URL(url).pathname).toBe('/v1.0/teams/team-abc/channels/19%3Achannel%40thread.tacv2/messages');
             expect(url).not.toContain('filter=');
         });
     });

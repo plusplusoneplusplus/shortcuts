@@ -44,7 +44,7 @@ export interface GraphChannel {
     description?: string;
 }
 
-interface GraphListResponse {
+export interface GraphListResponse {
     value: GraphMessage[];
     '@odata.nextLink'?: string;
 }
@@ -338,6 +338,37 @@ export class GraphClient {
     }
 
     // ── Messaging ─────────────────────────────────────────────
+
+    /** A single authoritative root/reply page; cursors stay scoped to this collection. */
+    async listChannelMessagePage(teamId: string, channelId: string, rootId?: string,
+        nextLink?: string, signal?: AbortSignal, top = 50): Promise<GraphListResponse> {
+        const collection = `${this.graphBase}/teams/${encodeURIComponent(teamId)}/channels/${encodeURIComponent(channelId)}`
+            + '/messages' + (rootId ? `/${encodeURIComponent(rootId)}/replies` : '');
+        const url = new URL(nextLink ?? `${collection}?$top=${top}`);
+        const path = url.pathname.split('/');
+        const expectedPath = new URL(collection).pathname.split('/');
+        if (url.origin !== new URL(this.graphBase).origin || path.length !== expectedPath.length
+            || path.some((segment, index) => decodeURIComponent(segment) !== decodeURIComponent(expectedPath[index]))
+            || url.username || url.password || url.hash) throw new GraphProtocolError();
+        signal?.throwIfAborted();
+        let page: GraphListResponse;
+        try { page = await this.get<GraphListResponse>(url.href, signal); }
+        catch (error) {
+            if (error instanceof SyntaxError) throw new GraphProtocolError();
+            throw error;
+        }
+        signal?.throwIfAborted();
+        if (!page || !Array.isArray(page.value) || page.value.some(message =>
+            !message || typeof message.id !== 'string' || !message.id.trim()
+            || (message.createdDateTime !== undefined && typeof message.createdDateTime !== 'string')
+            || (message.body !== undefined && (typeof message.body !== 'object' || message.body === null
+                || typeof message.body.content !== 'string')))
+            || (page['@odata.nextLink'] !== undefined
+                && (typeof page['@odata.nextLink'] !== 'string' || !page['@odata.nextLink']))) {
+            throw new GraphProtocolError();
+        }
+        return page;
+    }
 
     /** Post a message to the configured channel. Returns the message ID. */
     async postChannelMessage(content: string, mentions?: Array<{ aadId: string; displayName: string }>, options?: GraphChannelWriteOptions): Promise<string> {

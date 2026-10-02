@@ -9,7 +9,7 @@ const token = `header.${Buffer.from(JSON.stringify({
     tid: '11111111-1111-4111-8111-111111111111', oid: '22222222-2222-4222-8222-222222222222',
 })).toString('base64url')}.signature`;
 
-describe('TeamsBot notification integration', () => {
+describe.each(['mcp', 'graph'] as const)('TeamsBot notification integration (%s channel reader)', channelReadBackend => {
     const bots: TeamsBot[] = [];
     beforeEach(() => {
         vi.useFakeTimers();
@@ -26,6 +26,7 @@ describe('TeamsBot notification integration', () => {
         const bot = new TeamsBot({
             mode: 'mcp', mcpServerUrl: 'https://example.test/mcp', teamId: 'team',
             enableTrouter: true, onMessage: message, auth: { bearerToken: token }, ...overrides,
+            channelReadBackend,
         });
         const transport = {
             initialize: vi.fn(async () => {}), stop: vi.fn(), setChannelId: vi.fn(), setToken: vi.fn(),
@@ -55,6 +56,43 @@ describe('TeamsBot notification integration', () => {
         expect(s.transport.poll).toHaveBeenCalledOnce();
         await vi.advanceTimersByTimeAsync(1);
         expect(s.transport.poll).toHaveBeenCalledTimes(2);
+    });
+    it.each([false, true])('disposes transports before notification shutdown without overwriting a restart (%s)', async restart => {
+        let release!: () => void;
+        vi.spyOn(TrouterClient.prototype, 'stop').mockImplementationOnce(() =>
+            new Promise<void>(resolve => { release = resolve; }));
+        const s = setup();
+        await s.bot.start();
+        const stopping = s.bot.stop();
+        expect(s.transport.stop).toHaveBeenCalledOnce();
+        if (restart) await s.bot.start();
+        release();
+        await stopping;
+        expect(s.bot.getStatus()).toBe(restart ? 'connected' : 'disconnected');
+        if (restart) {
+            await vi.advanceTimersByTimeAsync(0);
+            expect(s.transport.poll).toHaveBeenCalledOnce();
+        }
+    });
+    it.each(['resolve', 'reject'] as const)('ignores stale initialization %s after reconnect', async outcome => {
+        const s = setup();
+        let resolve!: () => void;
+        let reject!: (error: Error) => void;
+        s.transport.initialize.mockImplementationOnce(() => new Promise<void>((res, rej) => {
+            resolve = res;
+            reject = rej;
+        }));
+        const starting = s.bot.start();
+        await s.bot.stop();
+        await s.bot.start();
+        if (outcome === 'resolve') resolve();
+        else reject(new Error('stale connection failure'));
+        await starting;
+        expect(s.bot.getStatus()).toBe('connected');
+        expect(s.bot.getLastError()).toBeNull();
+        expect(s.transport.stop).toHaveBeenCalledOnce();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(s.transport.poll).toHaveBeenCalledOnce();
     });
     it('admits all authoritative post-start roots and deduplicates notification repeats', async () => {
         const s = setup();

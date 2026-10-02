@@ -6,6 +6,7 @@ import type { Ic3DirectMessageOptions } from './ic3/ic3-direct-message-config';
 import type { RoutedTeamsOperations, TeamsOperationRoutes, TeamsMessageRef } from './operations';
 import type { TeamsTrouterOptions } from './trouter';
 import type { TeamsReadHints } from './notification-scheduler';
+import type { GraphOutboundOptions } from './graph/graph-credential';
 
 export interface InboundTeamsMessage {
     /** Exact reader/backend identity for subsequent typed operations. */
@@ -41,6 +42,12 @@ export interface TeamsBotOptions {
     connectionId?: string;
     /** Per-instance outbound routing. An IC3 self-send route still requires its opt-in. */
     operationRoutes?: Partial<TeamsOperationRoutes>;
+    /** Separate, identity-pinned Graph credentials for explicit MCP channel write routes. */
+    graphOutboundOptions?: GraphOutboundOptions;
+    /** MCP discovery/operations with authoritative Graph channel reads; MCP is the standalone default. */
+    channelReadBackend?: 'mcp' | 'graph';
+    /** Read consent is validated separately from outbound consent against the same MCP account. */
+    graphReadOptions?: GraphOutboundOptions;
     /**
      * Transport mode (default: 'graph').
      * - 'graph': Uses Graph API directly. Requires teamId + bearerToken (from az login).
