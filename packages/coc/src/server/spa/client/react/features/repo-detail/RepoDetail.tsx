@@ -243,9 +243,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
 
     const visibleSubTabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode,
+        pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
         splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, nativeCliSessionsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled]);
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled]);
 
     // Redirect only after the capability set for this workspace has resolved.
     // Route memory is kept separately in AppContext, so this display fallback

@@ -33,7 +33,7 @@ spa/client/react/
 │   ├── chat/      # ChatDetail, ChatListPane, ConversationArea, ImportCopilotChatDialog (flag `nativeCliSessions`: toolbar icon next to New chat)
 │   ├── dreams/    # Workspace Dreams review panel
 │   ├── memory/    # Memory V2 route
-│   ├── native-copilot-sessions/   # Read-only CLI Sessions tab
+│   ├── native-copilot-sessions/   # Read-only CLI session view and chat importer support
 │   ├── notes/     # NoteEditor, Mermaid zoom/pan, sidebar
 │   ├── pull-requests/             # PR dashboard, BatchCommandPanel
 │   └── terminal/  # TerminalView, pin/unpin

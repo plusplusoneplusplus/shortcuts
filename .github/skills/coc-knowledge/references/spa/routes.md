@@ -221,11 +221,12 @@ conversion.
 
 `features/native-copilot-sessions/NativeCopilotSessionsPanel.tsx` (exported as
 `NativeCliSessionsPanel`) is a read-only, provider-switched view of native Copilot, Codex,
-and Claude Code CLI sessions for the active workspace. It is gated by
+and Claude Code CLI sessions for the active workspace. The dashboard tab strips do not
+expose this view; chat lists provide the Copilot import action directly. The feature is gated by
 `features.nativeCliSessions` / `nativeCliSessionsEnabled` (off by default;
 `useNativeCliSessionsEnabled()` tracks live runtime-config updates), reads through
-`coc-client`'s `nativeCliSessions` domain, and registers as the `cli-sessions` repo
-sub-tab while accepting the hidden `copilot-sessions` key.
+`coc-client`'s `nativeCliSessions` domain, and retains the `cli-sessions` and hidden
+`copilot-sessions` route keys for compatibility.
 
 **Everything here is read-only**: no input box, streaming, resume, follow-up, archive,
 pin, delete, retry, or turn actions, and stored HTML or scripts never execute. The one
