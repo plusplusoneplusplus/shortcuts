@@ -109,6 +109,26 @@ export interface AskUserDangerousCommandApproval {
     matchedSegment: string;
 }
 
+/**
+ * The LLM-tool approval gate's prompt: a CoC tool the user marked "Require
+ * approval" for this repo is being called. The args are pretty-printed JSON,
+ * already capped by the gate so a huge payload never reaches the SPA.
+ */
+export interface AskUserLlmToolApproval {
+    kind: 'llm-tool';
+    /** Registered tool name, e.g. `send_to_conversation`. */
+    toolName: string;
+    /** Human-readable label from the LLM tool registry. */
+    label: string;
+    /** Pretty-printed JSON arguments, truncated at the gate's cap. */
+    argsJson: string;
+    /** True when `argsJson` was cut at the cap. */
+    argsTruncated: boolean;
+}
+
+/** Any approval prompt carried on the `ask-user` channel. */
+export type AskUserApprovalRequest = AskUserDangerousCommandApproval | AskUserLlmToolApproval;
+
 /** How the user answered an approval prompt. */
 export type AskUserApprovalDecision = 'approve-once' | 'approve-session' | 'deny';
 
@@ -117,6 +137,13 @@ export const ASK_USER_APPROVAL_OPTIONS: AskUserOption[] = [
     { value: 'approve-once', label: 'Approve once', description: 'Run this command now. Ask again next time.' },
     { value: 'approve-session', label: 'Approve for this session', description: 'Run it, and stop asking about this rule for the rest of this chat.' },
     { value: 'deny', label: 'Deny', description: 'Block the command and tell the model why.' },
+];
+
+/** Same three values as {@link ASK_USER_APPROVAL_OPTIONS}, worded for a tool call. */
+export const ASK_USER_LLM_TOOL_APPROVAL_OPTIONS: AskUserOption[] = [
+    { value: 'approve-once', label: 'Approve once', description: 'Run this tool call now. Ask again next time.' },
+    { value: 'approve-session', label: 'Approve for this session', description: 'Run it, and stop asking about this tool for the rest of this chat.' },
+    { value: 'deny', label: 'Deny', description: 'Skip the tool call and tell the model you denied it.' },
 ];
 
 export interface AskUserSSEPayload {
@@ -131,10 +158,11 @@ export interface AskUserSSEPayload {
     batchSize: number;
     ralphGrill?: AskUserRalphGrillMetadata;
     /**
-     * Set only on a dangerous-command approval prompt. Nothing else on the
-     * `ask-user` channel carries it, so a client can branch on its presence.
+     * Set only on an approval prompt (dangerous command or gated LLM tool).
+     * Nothing else on the `ask-user` channel carries it, so a client can
+     * branch on its presence, then on `kind`.
      */
-    approval?: AskUserDangerousCommandApproval;
+    approval?: AskUserApprovalRequest;
 }
 
 export interface AskUserAnswerInput {
@@ -308,19 +336,20 @@ export function createAskUserTool(deps: AskUserToolDeps) {
     });
 
     /**
-     * Pose a dangerous-command approval prompt and wait for the answer.
+     * Pose an approval prompt (dangerous command or gated LLM tool) and wait
+     * for the answer.
      *
      * Deliberately shares this factory's `pending` map with the `ask_user`
      * tool: the answer arrives through the same
      * `POST /api/processes/:id/ask-user-response` endpoint and the same
      * `answerQuestion` handle, so nothing new has to be routed. It is *not* a
      * tool call — the model never asks for it; the guard does, on the model's
-     * behalf, while a `Bash` call is held.
+     * behalf, while a `Bash` call or a gated CoC tool call is held.
      *
      * Every non-approval outcome maps to `deny`: a skipped, cancelled (the turn
-     * was aborted), or unrecognized answer must not let the command through.
+     * was aborted), or unrecognized answer must not let the call through.
      */
-    async function askApproval(request: AskUserDangerousCommandApproval): Promise<AskUserApprovalDecision> {
+    async function askApproval(request: AskUserApprovalRequest): Promise<AskUserApprovalDecision> {
         // Belt-and-braces: the host omits the approval callback entirely on a
         // non-interactive turn, so this branch should not be reachable. If it
         // is, deny rather than block a turn nobody is watching.
@@ -332,9 +361,11 @@ export function createAskUserTool(deps: AskUserToolDeps) {
         const payload: AskUserSSEPayload = {
             batchId: randomUUID(),
             questionId: randomUUID(),
-            question: `Allow this command to run?\n\n${request.command}`,
+            question: request.kind === 'llm-tool'
+                ? `Allow the ${request.label} tool to run?\n\n${request.argsJson}`
+                : `Allow this command to run?\n\n${request.command}`,
             type: 'select',
-            options: ASK_USER_APPROVAL_OPTIONS,
+            options: request.kind === 'llm-tool' ? ASK_USER_LLM_TOOL_APPROVAL_OPTIONS : ASK_USER_APPROVAL_OPTIONS,
             defaultValue: 'deny',
             turnIndex: deps.computeTurnIndex(),
             index: 0,

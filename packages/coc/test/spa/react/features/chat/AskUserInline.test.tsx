@@ -9,7 +9,7 @@ import type { AskUserBatch, AskUserQuestion } from '../../../../../src/server/sp
 import { getAskUserDraft } from '../../../../../src/server/spa/client/react/features/chat/hooks/useAskUserDraftStore';
 // The approval options come from the server tool that emits the prompt, so a
 // rename there fails this suite instead of silently changing what the user sees.
-import { ASK_USER_APPROVAL_OPTIONS } from '../../../../../src/server/llm-tools/ask-user-tool';
+import { ASK_USER_APPROVAL_OPTIONS, ASK_USER_LLM_TOOL_APPROVAL_OPTIONS } from '../../../../../src/server/llm-tools/ask-user-tool';
 
 const mocks = vi.hoisted(() => ({
     processes: {
@@ -880,7 +880,7 @@ describe('AskUserInline', () => {
 
     describe('dangerous-command approval prompt', () => {
         // Mirrors what `askApproval()` in ask-user-tool.ts puts on the wire.
-        function makeApprovalQuestion(overrides: Partial<AskUserQuestion['approval']> = {}): AskUserQuestion {
+        function makeApprovalQuestion(overrides: Partial<Extract<AskUserQuestion['approval'], { kind: 'dangerous-command' }>> = {}): AskUserQuestion {
             const command = 'rm -rf /tmp/demo-dir';
             return makeQuestion({
                 question: `Allow this command to run?\n\n${command}`,
@@ -979,6 +979,30 @@ describe('AskUserInline', () => {
                 });
             });
             expect(onAnswered).toHaveBeenCalled();
+        });
+
+        it('does not render the dangerous-command card for an llm-tool approval', () => {
+            render(
+                <AskUserInline
+                    batch={makeBatch([makeQuestion({
+                        question: 'Allow the Send to Conversation tool to run?\n\n{\n  "content": "hi"\n}',
+                        options: ASK_USER_LLM_TOOL_APPROVAL_OPTIONS.map(opt => ({ ...opt })),
+                        defaultValue: 'deny',
+                        approval: {
+                            kind: 'llm-tool',
+                            toolName: 'send_to_conversation',
+                            label: 'Send to Conversation',
+                            argsJson: '{\n  "content": "hi"\n}',
+                            argsTruncated: false,
+                        },
+                    })])}
+                    processId="proc-1"
+                    onAnswered={vi.fn()}
+                />,
+            );
+            expect(screen.queryByTestId('dangerous-command-approval-card')).toBeNull();
+            expect(screen.getByTestId('ask-user-approval-headline').textContent)
+                .toBe('Allow the Send to Conversation tool to run?');
         });
 
         it('leaves an ordinary question rendering exactly as before', () => {

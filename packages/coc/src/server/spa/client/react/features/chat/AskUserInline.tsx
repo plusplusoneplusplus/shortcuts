@@ -364,7 +364,7 @@ export function AskUserInline({ batch, processId, onAnswered, workspaceId }: Ask
                                                         data-testid="ask-user-question-markdown"
                                                     />
                                                 )}
-                                                {question.approval && <DangerousCommandApprovalCard approval={question.approval} />}
+                                                {question.approval?.kind === 'dangerous-command' && <DangerousCommandApprovalCard approval={question.approval} />}
                                                 <QuestionProvenance question={question} />
                                             </div>
                                         </div>
