@@ -76,6 +76,10 @@ export declare class NotesIndex {
 
 /** The repository-file backend for one resolved root. */
 export declare class RepoFiles {
+  /** List a directory: dirs first, locale order, per-directory cap. */
+  listDirectory(path: string, options: RepoListOptions): Promise<RepoTreeListing>
+  /** Every file under a subdirectory, depth-first in locale order. */
+  listFiles(path: string, options: RepoListOptions): Promise<RepoFileListing>
   /** Read a file: text or base64, MIME type, 1 MiB cap. */
   readBlob(path: string): Promise<RepoBlob>
   /** Write text to a file, creating missing parent directories. */
@@ -1065,6 +1069,33 @@ export interface RepoBlob {
   content: string
   encoding: 'utf-8' | 'base64'
   mimeType: string
+}
+
+export interface RepoFileListing {
+  files: Array<string>
+  truncated: boolean
+}
+
+/** Listing options; `maxEntries` caps each directory (or the file walk). */
+export interface RepoListOptions {
+  showIgnored: boolean
+  maxEntries: number
+  /** Directory levels to list; 1 when omitted. */
+  depth?: number
+}
+
+/** One row of a directory listing. */
+export interface RepoTreeEntry {
+  name: string
+  type: 'dir' | 'file'
+  size?: number
+  path: string
+  children?: Array<RepoTreeEntry>
+}
+
+export interface RepoTreeListing {
+  entries: Array<RepoTreeEntry>
+  truncated: boolean
 }
 
 /**

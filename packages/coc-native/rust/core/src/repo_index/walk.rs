@@ -113,6 +113,20 @@ pub fn walk(root: &Path, options: &WalkOptions) -> io::Result<(Vec<String>, bool
 /// search already show — one definition of "the repo's files", not two that
 /// drift. Callers add their own sinks, overrides, and caps on top.
 pub fn walk_builder(root: &Path, include_ignored: bool) -> WalkBuilder {
+    let mut builder = ignore_builder(root, include_ignored);
+    // `.git` is never a useful quick-open or search target and walking the
+    // object database is the most expensive part of the walk, so skip it
+    // unconditionally. Note this deliberately differs from `rg --no-ignore`,
+    // which does descend into `.git`.
+    builder.filter_entry(|entry| {
+        !(entry.file_name() == ".git" && entry.file_type().is_some_and(|t| t.is_dir()))
+    });
+    builder
+}
+
+/// The ignore policy alone, without the `.git` exclusion: directory listings
+/// still show `.git` itself.
+pub fn ignore_builder(root: &Path, include_ignored: bool) -> WalkBuilder {
     let mut builder = WalkBuilder::new(root);
     builder
         // `.hidden(false)` means "do not skip hidden entries" — matches `--hidden`.
@@ -126,14 +140,6 @@ pub fn walk_builder(root: &Path, include_ignored: bool) -> WalkBuilder {
         .git_exclude(!include_ignored)
         .ignore(!include_ignored)
         .parents(!include_ignored);
-
-    // `.git` is never a useful quick-open or search target and walking the
-    // object database is the most expensive part of the walk, so skip it
-    // unconditionally. Note this deliberately differs from `rg --no-ignore`,
-    // which does descend into `.git`.
-    builder.filter_entry(|entry| {
-        !(entry.file_name() == ".git" && entry.file_type().is_some_and(|t| t.is_dir()))
-    });
     builder
 }
 

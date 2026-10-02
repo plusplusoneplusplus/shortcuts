@@ -58,7 +58,7 @@ references before editing. Paths are package-relative.
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.
   Native failures fail startup, without JavaScript persistence/index fallbacks.
-- Whole-repo search/listing requires Rust; directory listing may walk. Notes
+- Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
   complete snapshots and shutdown disposes watchers.

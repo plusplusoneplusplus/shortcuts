@@ -1,0 +1,157 @@
+//! Explorer listing contracts: dirs-first `localeCompare` order, ignore
+//! filtering, caps, deep listings, and the subtree file walk.
+
+use std::cmp::Ordering;
+use std::fs;
+use std::path::Path;
+
+use coc_native_core::repo_files::{list_directory, list_files, locale_compare, RepoFilesError};
+
+fn write(root: &Path, relative: &str) {
+    let path = root.join(relative);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, "x").unwrap();
+}
+
+/// A directory that looks like a git repo, so gitignore rules apply.
+fn repo() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write(dir.path(), ".git/HEAD");
+    dir
+}
+
+fn names(root: &Path, relative: &str, include_ignored: bool) -> Vec<String> {
+    let (entries, _) = list_directory(root, relative, 1, include_ignored, 5000).unwrap();
+    entries.into_iter().map(|e| e.name).collect()
+}
+
+#[test]
+fn locale_compare_matches_node() {
+    // Expected orders are `[...].sort((a, b) => a.localeCompare(b))` under Node 24 ICU.
+    let mut names =
+        vec!["b", "B", "a", "_a", "-a", ".a", "A", "a10", "a2", "é", "e", "Z", "1", "ä"];
+    names.sort_by(|a, b| locale_compare(a, b));
+    assert_eq!(names, ["_a", "-a", ".a", "1", "a", "A", "ä", "a10", "a2", "b", "B", "e", "é", "Z"]);
+    assert_eq!(locale_compare("README.md", "readme.md"), Ordering::Greater);
+}
+
+#[test]
+fn dirs_first_then_locale_order_with_sizes_and_paths() {
+    let dir = repo();
+    let root = dir.path();
+    for file in ["src/b.ts", "src/Zeta/x", "src/alpha/x", "src/_c.ts", "src/A.ts"] {
+        write(root, file);
+    }
+    let (entries, truncated) = list_directory(root, "/src", 1, false, 5000).unwrap();
+    assert!(!truncated);
+    let got: Vec<_> =
+        entries.iter().map(|e| (e.name.as_str(), e.is_dir, e.size, e.path.as_str())).collect();
+    assert_eq!(
+        got,
+        [
+            ("alpha", true, None, "src/alpha"),
+            ("Zeta", true, None, "src/Zeta"),
+            ("_c.ts", false, Some(1), "src/_c.ts"),
+            ("A.ts", false, Some(1), "src/A.ts"),
+            ("b.ts", false, Some(1), "src/b.ts"),
+        ]
+    );
+}
+
+#[test]
+fn ignored_files_and_dirs_are_hidden_unless_requested_and_git_is_listed() {
+    let dir = repo();
+    let root = dir.path();
+    fs::write(root.join(".gitignore"), "dist/\n*.log\n").unwrap();
+    for file in ["dist/a.js", "debug.log", "keep.ts", ".env"] {
+        write(root, file);
+    }
+    assert_eq!(names(root, "", false), [".git", ".env", ".gitignore", "keep.ts"]);
+    assert_eq!(
+        names(root, ".", true),
+        [".git", "dist", ".env", ".gitignore", "debug.log", "keep.ts"]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinks_report_their_target_and_broken_links_are_skipped() {
+    let dir = repo();
+    let root = dir.path();
+    write(root, "real/f.txt");
+    std::os::unix::fs::symlink(root.join("real"), root.join("link")).unwrap();
+    std::os::unix::fs::symlink(root.join("nowhere"), root.join("broken")).unwrap();
+    let (entries, _) = list_directory(root, "", 1, true, 5000).unwrap();
+    let got: Vec<_> = entries.iter().map(|e| (e.name.as_str(), e.is_dir)).collect();
+    assert_eq!(got, [(".git", true), ("link", true), ("real", true)]);
+}
+
+#[test]
+fn cap_truncates_and_suppresses_children() {
+    let dir = repo();
+    let root = dir.path();
+    for file in ["d1/a", "d1/b", "d1/c", "d2/x", "f"] {
+        write(root, file);
+    }
+    let (entries, truncated) = list_directory(root, "", 3, true, 2).unwrap();
+    assert!(truncated);
+    assert_eq!(entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), [".git", "d1"]);
+    assert!(entries.iter().all(|e| e.children.is_none()));
+
+    let (entries, truncated) = list_directory(root, "", 2, false, 4).unwrap();
+    assert!(!truncated);
+    let d1 = entries.iter().find(|e| e.name == "d1").unwrap();
+    // Exactly the cap (4 root entries) is not truncated, so dirs get children.
+    let child_names: Vec<_> =
+        d1.children.as_ref().unwrap().iter().map(|e| e.path.as_str()).collect();
+    assert_eq!(child_names, ["d1/a", "d1/b", "d1/c"]);
+    assert!(entries.iter().find(|e| e.name == "f").unwrap().children.is_none());
+}
+
+#[test]
+fn listing_errors_keep_route_messages() {
+    let dir = repo();
+    let root = dir.path();
+    write(root, "file.txt");
+    let message = |rel: &str| list_directory(root, rel, 1, false, 10).unwrap_err().to_string();
+    assert_eq!(message("missing"), "Path does not exist: missing");
+    assert_eq!(message("file.txt"), "Not a directory: file.txt");
+    assert!(matches!(
+        list_directory(root, "../x", 1, false, 10),
+        Err(RepoFilesError::PathTraversal)
+    ));
+}
+
+#[test]
+fn file_walk_is_depth_first_in_locale_order_without_git() {
+    let dir = repo();
+    let root = dir.path();
+    fs::write(root.join(".gitignore"), "out/\n").unwrap();
+    for file in ["pkg/b.ts", "pkg/A/z.ts", "pkg/a.ts", "pkg/out/o.js", "pkg/sub/.git/HEAD"] {
+        write(root, file);
+    }
+    let (files, truncated) = list_files(root, "pkg", false, 100).unwrap();
+    assert!(!truncated);
+    // Files and directories interleave by name; no dirs-first here.
+    assert_eq!(files, ["pkg/A/z.ts", "pkg/a.ts", "pkg/b.ts"]);
+    let (files, _) = list_files(root, "/pkg/", true, 100).unwrap();
+    assert_eq!(files, ["pkg/A/z.ts", "pkg/a.ts", "pkg/b.ts", "pkg/out/o.js"]);
+}
+
+#[test]
+fn file_walk_caps_and_tolerates_missing_starts() {
+    let dir = repo();
+    let root = dir.path();
+    for file in ["pkg/a", "pkg/b", "pkg/c"] {
+        write(root, file);
+    }
+    assert_eq!(
+        list_files(root, "pkg", false, 2).unwrap(),
+        (vec!["pkg/a".into(), "pkg/b".into()], true)
+    );
+    // Reaching the cap exactly still reports truncation, as the JS walk did.
+    assert!(list_files(root, "pkg", false, 3).unwrap().1);
+    assert_eq!(list_files(root, "missing", false, 3).unwrap(), (vec![], false));
+    assert_eq!(list_files(root, "pkg/a", false, 3).unwrap(), (vec![], false));
+    assert!(matches!(list_files(root, "../x", false, 3), Err(RepoFilesError::PathTraversal)));
+}

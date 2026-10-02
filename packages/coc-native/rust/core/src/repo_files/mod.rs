@@ -6,6 +6,7 @@
 //! branch on `Path traversal` and `not found` — so they must not be reworded.
 
 mod blob;
+mod listing;
 
 use std::fmt;
 use std::io;
@@ -14,6 +15,7 @@ use std::path::{Path, PathBuf};
 use crate::notes_fs::resolve_lexically;
 
 pub use blob::{mime_type, read_blob, write_blob, Blob, BlobEncoding, MAX_BLOB_SIZE};
+pub use listing::{list_directory, list_files, locale_compare, TreeEntry};
 
 #[derive(Debug)]
 pub enum RepoFilesError {
@@ -23,6 +25,10 @@ pub enum RepoFilesError {
     NotFound(String),
     /// The target exists but is not a regular file.
     NotAFile(String),
+    /// A listing target does not exist; carries the request path.
+    PathMissing(String),
+    /// A listing target exists but is not a directory.
+    NotADirectory(String),
     /// The target exceeds [`MAX_BLOB_SIZE`].
     TooLarge(String),
     Io(io::Error),
@@ -34,6 +40,8 @@ impl fmt::Display for RepoFilesError {
             Self::PathTraversal => f.write_str("Path traversal detected: path escapes repo root"),
             Self::NotFound(path) => write!(f, "File not found: {path}"),
             Self::NotAFile(path) => write!(f, "Not a file: {path}"),
+            Self::PathMissing(path) => write!(f, "Path does not exist: {path}"),
+            Self::NotADirectory(path) => write!(f, "Not a directory: {path}"),
             Self::TooLarge(path) => {
                 write!(f, "File exceeds maximum size of {MAX_BLOB_SIZE} bytes: {path}")
             }

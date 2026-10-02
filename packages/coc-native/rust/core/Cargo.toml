@@ -39,3 +39,5 @@ rusqlite = { version = "=0.40.2", features = ["bundled"] }
 parking_lot = "0.12"
 # Blob reads return binary files base64-encoded, as the REST contract requires.
 base64 = "0.22"
+# `localeCompare` order for listings: CLDR root collation, MIT, no ICU data blob.
+feruca = "0.12"

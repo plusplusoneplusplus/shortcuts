@@ -15,13 +15,19 @@ export interface NativeRepoFilesAddon {
     openRepoFiles: typeof Bindings.openRepoFiles;
 }
 
+/** Every `RepoFiles` method the server calls; an older binary lacks some. */
+const METHODS = ['readBlob', 'writeBlob', 'listDirectory', 'listFiles'] as const;
+
 /**
  * The repository-file capability. Throws {@link NativeAddonLoadError} when no
  * binary loaded or the loaded binary predates the capability.
  */
 export function loadNativeRepoFiles(): NativeRepoFilesAddon {
-    const addon = loadNativeAddon() as Partial<NativeRepoFilesAddon> | null;
-    if (typeof addon?.openRepoFiles === 'function') return addon as NativeRepoFilesAddon;
+    const addon = loadNativeAddon() as (Partial<NativeRepoFilesAddon> & { RepoFiles?: Function }) | null;
+    const proto = addon?.RepoFiles?.prototype;
+    if (typeof addon?.openRepoFiles === 'function' && METHODS.every((m) => typeof proto?.[m] === 'function')) {
+        return addon as NativeRepoFilesAddon;
+    }
     throw new NativeAddonLoadError(
         `@plusplusoneplusplus/coc-native: ${nativeAddonStatus().binaryPath} loaded but does not export repo files.\n` +
             'Rebuild it with `npm run build:native -w packages/coc-native`.',

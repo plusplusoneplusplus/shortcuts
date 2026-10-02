@@ -81,7 +81,7 @@ on Linux and Windows. It fixes extraction scaling at 1, 2, and 4 threads,
 performs the Linux cold-cache pass, and retains the JSON reports and exact LLVM
 commit as artifacts.
 
-**The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Its own `walkFiles` still serves *per-directory* listings, and `.git` is excluded by both regardless of `includeIgnored`/`showIgnored`.
+**The whole-repo file set comes from Rust alone.** `RepoTreeService` answers whole-repo listings and `/search` from `repo_index::walk` — there is no second walker to keep in step. Directory listings and subtree file walks come from `repo_files` (`RepoFiles.listDirectory`/`listFiles`) on the same ignore policy (`walk::ignore_builder`); subtree walks and the index exclude `.git` regardless of `includeIgnored`/`showIgnored`, while flat directory listings still show it. Listing names sort with `feruca` CLDR root collation (non-ignorable), which is what Node's `localeCompare` returns — never byte order.
 
 **Required, not optional, with no opt-out.** A binary that is missing, will not load, or lacks the capability a newer server expects is a hard failure: `loadNativeAddon()` and each `loadNative<X>()` throw `NativeAddonLoadError`, naming the expected triple, every path tried and the fix. Failing at first use beats silently serving a slower, subtly different implementation for the life of the process. No environment variable turns the addon off; `COC_NATIVE_PATH` only says *which* binary to load.
 

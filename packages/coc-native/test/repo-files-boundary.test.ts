@@ -55,3 +55,47 @@ describe('RepoFiles blobs', () => {
         await expect(files.readBlob('new')).rejects.toThrow('Not a file: new');
     });
 });
+
+describe('RepoFiles listings', () => {
+    it('orders names exactly as Node localeCompare, dirs first', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-repo-list-'));
+        try {
+            const names = ['b', 'B.md', '_a', '-a', '.a', 'a10', 'a2', 'é', 'e', 'Z', '1', 'ä', 'ß', 'ss', '中文', '😀', 'a b', 'A_B', '~t'];
+            for (const name of names) fs.writeFileSync(path.join(dir, name), 'xy');
+            fs.mkdirSync(path.join(dir, 'zdir'));
+            fs.writeFileSync(path.join(dir, 'zdir', 'f'), '');
+            const { entries, truncated } = await addon.openRepoFiles(dir).listDirectory('', {
+                showIgnored: false,
+                maxEntries: 100,
+                depth: 2,
+            });
+            expect(truncated).toBe(false);
+            expect(entries.map((e) => e.name)).toEqual(['zdir', ...[...names].sort((a, b) => a.localeCompare(b))]);
+            expect(entries[0]).toEqual({
+                name: 'zdir',
+                type: 'dir',
+                path: 'zdir',
+                children: [{ name: 'f', type: 'file', size: 0, path: 'zdir/f' }],
+            });
+            expect(entries[1]).toMatchObject({ type: 'file', size: 2 });
+        } finally {
+            removeDir(dir);
+        }
+    });
+
+    it('walks a subtree and maps listing errors', async () => {
+        fs.mkdirSync(path.join(root, 'new', 'dir'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'new', 'dir', 'c.txt'), '');
+        const files = addon.openRepoFiles(root);
+        await expect(files.listFiles('new', { showIgnored: false, maxEntries: 10 })).resolves.toEqual({
+            files: ['new/dir/c.txt'],
+            truncated: false,
+        });
+        await expect(files.listDirectory('missing', { showIgnored: false, maxEntries: 10 })).rejects.toThrow(
+            'Path does not exist: missing',
+        );
+        await expect(files.listFiles('../x', { showIgnored: false, maxEntries: 10 })).rejects.toMatchObject({
+            code: 'InvalidArg',
+        });
+    });
+});

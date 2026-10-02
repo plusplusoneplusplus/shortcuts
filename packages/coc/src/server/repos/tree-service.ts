@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as childProcess from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
@@ -22,7 +21,6 @@ import type {
 const execFileAsync = promisify(execFile);
 import type {
     RepoInfo,
-    TreeEntry,
     TreeListResult,
     FileSearchResult,
     SearchFilesResult,
@@ -178,82 +176,6 @@ function assertInsideRepo(repoRoot: string, resolvedPath: string): void {
     }
 }
 
-/**
- * Spawns `git check-ignore --stdin` asynchronously and returns stdout.
- * Resolves to empty string on error or timeout.
- */
-function spawnGitCheckIgnore(repoRoot: string, input: string): Promise<string> {
-    return new Promise<string>((resolve) => {
-        let stdout = '';
-        let settled = false;
-        const settle = () => {
-            if (!settled) {
-                settled = true;
-                clearTimeout(timer);
-                resolve(stdout);
-            }
-        };
-        const child = childProcess.spawn('git', ['check-ignore', '--stdin'], {
-            cwd: repoRoot,
-            stdio: ['pipe', 'pipe', 'pipe'],
-        });
-        child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8'); });
-        child.stdin.on('error', () => {}); // ignore broken pipe errors
-        child.stdin.write(input, 'utf-8');
-        child.stdin.end();
-        const timer = setTimeout(() => { try { child.kill(); } catch {} settle(); }, 5000);
-        child.on('close', settle);
-        child.on('error', settle);
-    });
-}
-
-/**
- * Runs `git check-ignore --stdin` asynchronously to determine which entries are gitignored.
- * Accepts entries as { name, isDir } pairs relative to `dirPath`.
- * Returns a Set of entry names that are ignored.
- * Falls back to an empty set if git is unavailable or the directory is not a git repo.
- */
-async function getGitIgnoredNames(
-    repoRoot: string,
-    dirPath: string,
-    entries: Array<{ name: string; isDir: boolean }>,
-): Promise<Set<string>> {
-    if (entries.length === 0) return new Set();
-    try {
-        // Build relative paths from repoRoot, using forward slashes.
-        // Directories get a trailing '/' so that gitignore patterns like "dist/" match.
-        const relDir = path.relative(repoRoot, dirPath).split(path.sep).join('/');
-        const lines: string[] = [];
-        const nameByLine: string[] = [];
-        for (const entry of entries) {
-            const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
-            lines.push(entry.isDir ? `${rel}/` : rel);
-            nameByLine.push(entry.name);
-        }
-        const input = lines.join('\n') + '\n';
-        const stdout = await spawnGitCheckIgnore(repoRoot, input);
-        // Parse output — each ignored line corresponds to the input path.
-        // git outputs the matched paths (with possible trailing '/').
-        const ignoredPaths = new Set<string>();
-        for (const line of stdout.split('\n')) {
-            const trimmed = line.trim();
-            if (trimmed) ignoredPaths.add(trimmed.replace(/\/$/, ''));
-        }
-        // Map back to entry names
-        const ignoredNames = new Set<string>();
-        for (let i = 0; i < lines.length; i++) {
-            const cleanLine = lines[i].replace(/\/$/, '');
-            if (ignoredPaths.has(cleanLine)) {
-                ignoredNames.add(nameByLine[i]);
-            }
-        }
-        return ignoredNames;
-    } catch {
-        // git not available, not a git repo, or empty input — treat nothing as ignored
-        return new Set();
-    }
-}
-
 export class RepoTreeService {
     private readonly maxEntries: number;
     private readonly fileListMaxEntries: number;
@@ -273,80 +195,6 @@ export class RepoTreeService {
      */
     private nativeContent?: NativeContentSearchAddon;
     private nativeRepoFiles?: NativeRepoFilesAddon;
-
-    private static rgAvailable: boolean | undefined;
-
-    private static async checkRipgrepAvailable(): Promise<boolean> {
-        if (RepoTreeService.rgAvailable !== undefined) return RepoTreeService.rgAvailable;
-        try {
-            await execFileAsync('rg', ['--version']);
-            RepoTreeService.rgAvailable = true;
-        } catch {
-            RepoTreeService.rgAvailable = false;
-        }
-        return RepoTreeService.rgAvailable;
-    }
-
-    /**
-     * Uses `rg --files --hidden --max-depth 1` to determine which file entries are gitignored.
-     * rg natively respects .gitignore, so files absent from its output are ignored.
-     * Directories are not handled here (rg --files never lists them).
-     * Returns null if rg is unavailable or encounters an error (caller should fall back).
-     */
-    private static async getIgnoredNamesViaRipgrep(
-        absPath: string,
-        entries: Array<{ name: string; isDir: boolean }>,
-    ): Promise<Set<string> | null> {
-        const available = await RepoTreeService.checkRipgrepAvailable();
-        if (!available) return null;
-        try {
-            const result = await execFileAsync('rg', ['--files', '--hidden', '--max-depth', '1', '--', absPath], {
-                encoding: 'utf-8',
-                maxBuffer: 50 * 1024 * 1024,
-            });
-            const listedFiles = new Set(
-                result.stdout.split('\n')
-                    .map((l: string) => path.basename(l.trim()))
-                    .filter(Boolean),
-            );
-            // Anything not listed by rg is a gitignored file
-            const ignoredNames = new Set<string>();
-            for (const entry of entries) {
-                if (!entry.isDir && !listedFiles.has(entry.name)) {
-                    ignoredNames.add(entry.name);
-                }
-            }
-            return ignoredNames;
-        } catch (err: any) {
-            if (err.code === 1) return new Set(); // no files found — nothing ignored
-            return null; // rg error → fall back
-        }
-    }
-
-    /**
-     * Returns the set of entry names that should be hidden from directory listings.
-     * Primary path: rg for files (non-blocking) + async git check-ignore for dirs.
-     * Fallback: async git check-ignore for all entries when rg is unavailable.
-     */
-    private static async getIgnoredNames(
-        repoRoot: string,
-        absPath: string,
-        entries: Array<{ name: string; isDir: boolean }>,
-    ): Promise<Set<string>> {
-        if (entries.length === 0) return new Set();
-        const dirEntries = entries.filter(e => e.isDir);
-
-        const rgResult = await RepoTreeService.getIgnoredNamesViaRipgrep(absPath, entries);
-        if (rgResult === null) {
-            // rg unavailable — fall back to async git check-ignore for everything
-            return getGitIgnoredNames(repoRoot, absPath, entries);
-        }
-        // rg available — handle dirs via async git check-ignore, files already covered by rg
-        const dirIgnored = dirEntries.length > 0
-            ? await getGitIgnoredNames(repoRoot, absPath, dirEntries)
-            : new Set<string>();
-        return new Set([...rgResult, ...dirIgnored]);
-    }
 
     constructor(dataDir: string, options?: RepoTreeServiceOptions, store?: ProcessStore) {
         this.dataDir = dataDir;
@@ -502,100 +350,16 @@ export class RepoTreeService {
 
 
     /**
-     * List the contents of `relativePath` inside the repo identified by `repoId`.
-     *
-     * @param repoId       Stable workspace ID.
-     * @param relativePath Path relative to repo root ('.' or '' = root).
-     * @param options      Optional listing options.
-     * @returns TreeListResult with entries (dirs-first, alpha-sorted), or throws if
-     *          path is outside repo root (traversal guard) or does not exist.
+     * List the contents of `relativePath` inside the repo identified by `repoId`:
+     * dirs first, locale order, capped at `maxEntries`.
+     * @throws if the path escapes the repo, does not exist, or is not a directory.
      */
     async listDirectory(
         repoId: string,
         relativePath: string,
         options?: { showIgnored?: boolean },
     ): Promise<TreeListResult> {
-        const repoRoot = await this.resolveRepoRoot(repoId);
-        if (!repoRoot) {
-            throw new Error(`Repo not found: ${repoId}`);
-        }
-
-        const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
-        const absPath = path.resolve(repoRoot, normalizedRel);
-        assertInsideRepo(repoRoot, absPath);
-
-        let stat: fs.Stats;
-        try {
-            stat = await fs.promises.stat(absPath);
-        } catch {
-            throw new Error(`Path does not exist: ${relativePath}`);
-        }
-        if (!stat.isDirectory()) {
-            throw new Error(`Not a directory: ${relativePath}`);
-        }
-
-        const dirents = await fs.promises.readdir(absPath, { withFileTypes: true });
-
-        // Resolve symlinks and filter out broken ones
-        const resolvedEntries: { dirent: fs.Dirent; isDir: boolean }[] = [];
-        for (const dirent of dirents) {
-            const fullPath = path.join(absPath, dirent.name);
-            if (dirent.isSymbolicLink()) {
-                try {
-                    const targetStat = await fs.promises.stat(fullPath);
-                    resolvedEntries.push({ dirent, isDir: targetStat.isDirectory() });
-                } catch {
-                    // Broken symlink — skip
-                    continue;
-                }
-            } else {
-                resolvedEntries.push({ dirent, isDir: dirent.isDirectory() });
-            }
-        }
-
-        // Gitignore filtering
-        const showIgnored = options?.showIgnored ?? false;
-        let filteredEntries = resolvedEntries;
-        if (!showIgnored) {
-            const entryInfos = resolvedEntries.map(e => ({ name: e.dirent.name, isDir: e.isDir }));
-            const ignoredNames = await RepoTreeService.getIgnoredNames(repoRoot, absPath, entryInfos);
-            if (ignoredNames.size > 0) {
-                filteredEntries = resolvedEntries.filter(e => !ignoredNames.has(e.dirent.name));
-            }
-        }
-
-        // Sort: dirs first, then alphabetical
-        filteredEntries.sort((a, b) => {
-            if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-            return a.dirent.name.localeCompare(b.dirent.name);
-        });
-
-        // Size guard
-        const truncated = filteredEntries.length > this.maxEntries;
-        const sliced = truncated ? filteredEntries.slice(0, this.maxEntries) : filteredEntries;
-
-        const entries: TreeEntry[] = [];
-        for (const { dirent, isDir } of sliced) {
-            const fullPath = path.join(absPath, dirent.name);
-            const relPath = path.relative(repoRoot, fullPath).split(path.sep).join('/');
-            let size: number | undefined;
-            if (!isDir) {
-                try {
-                    const fileStat = await fs.promises.stat(fullPath);
-                    size = fileStat.size;
-                } catch {
-                    // Broken symlink or permission error — size stays undefined
-                }
-            }
-            entries.push({
-                name: dirent.name,
-                type: isDir ? 'dir' : 'file',
-                size,
-                path: relPath,
-            });
-        }
-
-        return { entries, truncated };
+        return this.listDirectoryDeep(repoId, relativePath, 1, options);
     }
 
     /**
@@ -610,17 +374,11 @@ export class RepoTreeService {
         depth: number,
         options?: { showIgnored?: boolean },
     ): Promise<TreeListResult> {
-        const result = await this.listDirectory(repoId, relativePath, options);
-        if (depth <= 1) {
-            return result;
-        }
-        for (const entry of result.entries) {
-            if (entry.type === 'dir' && !result.truncated) {
-                const child = await this.listDirectoryDeep(repoId, entry.path, depth - 1, options);
-                entry.children = child.entries;
-            }
-        }
-        return result;
+        return (await this.repoFiles(repoId)).listDirectory(relativePath, {
+            depth: Math.max(depth, 1),
+            showIgnored: options?.showIgnored ?? false,
+            maxEntries: this.maxEntries,
+        });
     }
 
     /**
@@ -639,9 +397,6 @@ export class RepoTreeService {
         }
 
         const normalizedRel = stripLeadingSeparators(relativePath === '' || relativePath === '.' ? '.' : relativePath);
-        const absRoot = path.resolve(repoRoot, normalizedRel);
-        assertInsideRepo(repoRoot, absRoot);
-
         const showIgnored = options?.showIgnored ?? false;
 
         // Whole-repo listing: served from cache, stale-while-revalidate.
@@ -659,79 +414,7 @@ export class RepoTreeService {
             };
         }
 
-        return this.walkFiles(repoRoot, absRoot, showIgnored, this.maxEntries);
-    }
-
-    /**
-     * Depth-first walk collecting file paths relative to `repoRoot`.
-     * Respects gitignore unless `showIgnored`. Stops at `maxEntries`.
-     */
-    private async walkFiles(
-        repoRoot: string,
-        absRoot: string,
-        showIgnored: boolean,
-        maxEntries: number,
-    ): Promise<{ files: string[]; truncated: boolean }> {
-        const files: string[] = [];
-
-        const walk = async (dir: string): Promise<void> => {
-            if (files.length >= maxEntries) return;
-
-            let dirents: fs.Dirent[];
-            try {
-                dirents = await fs.promises.readdir(dir, { withFileTypes: true });
-            } catch {
-                return;
-            }
-
-            // Resolve symlinks and filter broken ones
-            const resolved: { name: string; isDir: boolean }[] = [];
-            for (const dirent of dirents) {
-                const fullPath = path.join(dir, dirent.name);
-                if (dirent.isSymbolicLink()) {
-                    try {
-                        const targetStat = await fs.promises.stat(fullPath);
-                        resolved.push({ name: dirent.name, isDir: targetStat.isDirectory() });
-                    } catch {
-                        continue;
-                    }
-                } else {
-                    resolved.push({ name: dirent.name, isDir: dirent.isDirectory() });
-                }
-            }
-
-            // `.git` is never a useful file-index entry, and its object database
-            // would crowd out real source files against maxEntries. Excluded
-            // unconditionally here, in the native walker, and in the rg path.
-            let filtered = resolved.filter(e => !(e.isDir && e.name === '.git'));
-
-            // Gitignore filtering
-            if (!showIgnored) {
-                const entryInfos = filtered.map(e => ({ name: e.name, isDir: e.isDir }));
-                const ignoredNames = await RepoTreeService.getIgnoredNames(repoRoot, dir, entryInfos);
-                if (ignoredNames.size > 0) {
-                    filtered = filtered.filter(e => !ignoredNames.has(e.name));
-                }
-            }
-
-            // Sort alphabetically for deterministic output
-            filtered.sort((a, b) => a.name.localeCompare(b.name));
-
-            for (const entry of filtered) {
-                if (files.length >= maxEntries) return;
-                const fullPath = path.join(dir, entry.name);
-                if (entry.isDir) {
-                    await walk(fullPath);
-                } else {
-                    const relPath = path.relative(repoRoot, fullPath).split(path.sep).join('/');
-                    files.push(relPath);
-                }
-            }
-        };
-
-        await walk(absRoot);
-        const truncated = files.length >= maxEntries;
-        return { files: truncated ? files.slice(0, maxEntries) : files, truncated };
+        return (await this.repoFiles(repoId)).listFiles(normalizedRel, { showIgnored, maxEntries: this.maxEntries });
     }
 
     /** The native backend for a repo, or throws `Repo not found`. */
