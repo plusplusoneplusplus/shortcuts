@@ -14,7 +14,7 @@ const nativeStatuses = vi.hoisted(() => ({
 }));
 
 vi.mock('@plusplusoneplusplus/coc-native', () => ({
-    nativeFileIndexStatus: nativeStatuses.file,
+    nativeRepoFilesStatus: nativeStatuses.file,
     nativeNotesIndexStatus: nativeStatuses.notes,
     nativeContentSearchStatus: nativeStatuses.content,
     nativeGitStatus: nativeStatuses.git,

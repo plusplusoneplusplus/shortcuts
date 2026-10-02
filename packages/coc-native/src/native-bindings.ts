@@ -12,22 +12,6 @@
  * binary the loader resolves.
  */
 
-/** An in-memory, gitignore-aware index of one repository's file paths. */
-export declare class FileIndex {
-  /** Number of indexed paths. */
-  len(): number
-  /** True when the walk hit the configured `maxEntries` cap. */
-  truncated(): boolean
-  /** A window of the raw path list, in index order. */
-  files(offset: number, limit: number): Array<string>
-  /** Score every indexed path and resolve with the best `limit` matches. */
-  search(query: string, limit: number): Promise<FileMatch[]>
-  /** Search with the complete native ordering tuple for server-side merging. */
-  searchRanked(query: string, limit: number): Promise<RankedFileMatch[]>
-  /** Re-walk the root and atomically swap in the new path list. */
-  refresh(): Promise<void>
-}
-
 export declare class NativeDatabaseHandle {
   constructor(path: string, options?: NativeDatabaseOptions | undefined | null)
   exec(sql: string): void
@@ -117,19 +101,8 @@ export declare class RepoFiles {
   replaceContent(query: string, replacement: string, files: Array<RepoReplaceFile>, options?: RepoReplaceOptions | undefined | null): Promise<RepoReplaceResult>
 }
 
-/** Walk `root` in parallel and resolve with a ready-to-search index. */
-export declare function buildFileIndex(root: string, options?: BuildOptions | undefined | null): Promise<FileIndex>
-
 /** Recursively build a complete immutable snapshot for one resolved Notes root. */
 export declare function buildNotesIndex(root: string, options?: NotesIndexBuildOptions | undefined | null): Promise<NotesIndex>
-
-/** How to build (and later refresh) an index. */
-export interface BuildOptions {
-  /** Include gitignored files — the `showIgnored` flag from the explorer. */
-  includeIgnored?: boolean
-  /** Safety cap on indexed paths. Omit for no cap. */
-  maxEntries?: number
-}
 
 /**
  * Create a notebook, section, or page. `kind` is `notebook`, `section` or
@@ -178,7 +151,7 @@ export interface FileMatch {
   indices: Array<number>
 }
 
-/** Native ordering keys for merging matches from multiple file indexes. */
+/** Native ordering keys for merging matches from multiple repositories. */
 export interface FileMatchRanking {
   /** 2 when the basename matched, 1 when only the full path matched. */
   tier: number

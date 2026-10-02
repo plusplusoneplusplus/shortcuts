@@ -99,7 +99,7 @@ describe('native Notes capability at server startup', () => {
         const addonPath = useAddon(
             'class NotesIndex { async search() { return { results: [], truncated: false }; } ' +
                 'async refresh() {} async refreshChanged() {} } ' +
-                'module.exports = { buildFileIndex: async () => ({}), NotesIndex, ' +
+                'module.exports = { openRepoFiles: () => ({}), NotesIndex, ' +
                 'buildNotesIndex: async () => new NotesIndex(), ' +
                 'searchContent: async () => ({ matches: [], truncated: false }) };',
         );
@@ -121,7 +121,7 @@ describe('native Notes capability at server startup', () => {
         const addonPath = useAddon(
             'class NotesIndex { async search() { return { results: [], truncated: false }; } ' +
                 'async refresh() {} async refreshChanged() {} } ' +
-                'module.exports = { buildFileIndex: async () => ({}), NotesIndex, ' +
+                'module.exports = { openRepoFiles: () => ({}), NotesIndex, ' +
                 'buildNotesIndex: async () => new NotesIndex() };',
         );
         const stderrWrites: string[] = [];

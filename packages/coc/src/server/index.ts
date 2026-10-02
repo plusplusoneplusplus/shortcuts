@@ -19,7 +19,7 @@ import type { Route } from './types';
 import {
     loadNativeNotesIndex,
     nativeContentSearchStatus,
-    nativeFileIndexStatus,
+    nativeRepoFilesStatus,
     nativeGitStatus,
     nativeNotesIndexStatus,
 } from '@plusplusoneplusplus/coc-native';
@@ -992,7 +992,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // were validated before composition; reporting them separately is what
     // exposes stale packaging.
     {
-        const nativeFileIndex = nativeFileIndexStatus();
+        const nativeFileIndex = nativeRepoFilesStatus();
         const nativeNotesIndex = nativeNotesIndexStatus();
         const nativeContentSearch = nativeContentSearchStatus();
         const nativeGit = nativeGitStatus();

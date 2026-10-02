@@ -53,7 +53,7 @@ it('exports the capability from the package root', () => {
 
 describe('when the capability is missing', () => {
     it('throws even though the binary itself loaded', () => {
-        const file = useAddon('module.exports = { buildFileIndex: async () => ({}) };');
+        const file = useAddon('module.exports = { openRepoFiles: () => ({}) };');
         expect(() => loadNativeNotesIndex()).toThrow(NativeAddonLoadError);
         expect(() => loadNativeNotesIndex()).toThrow('does not export a Notes content index');
         expect(nativeNotesIndexStatus()).toEqual({

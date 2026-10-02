@@ -55,8 +55,8 @@ it('exposes the capability when the addon provides it', async () => {
 
 // A binary can carry one capability and not the other, so the two accessors
 // have to disagree rather than both keying off "the addon loaded".
-it('is independent of the file-index capability', async () => {
-    const file = useAddon('module.exports = { buildFileIndex: () => 1 };');
+it('is independent of the repo-files capability', async () => {
+    const file = useAddon('module.exports = { openRepoFiles: () => 1 };');
     expect(() => loadNativeContentSearch()).toThrow(NativeAddonLoadError);
     expect(nativeContentSearchStatus()).toEqual({
         loaded: false,

@@ -76,7 +76,7 @@ async function nativeIndexOf(paths: string[]) {
             // another; whichever loses is simply not part of this run's list.
         }
     }
-    const index = await addon.buildFileIndex(root, { includeIgnored: true });
+    const index = addon.openRepoFiles(root, 3_600_000);
     return { root, index, created };
 }
 
@@ -89,7 +89,7 @@ describe('native and TypeScript scorers rank identically', () => {
         try {
             // The walker's sorted order is the list the TypeScript side must rank,
             // because tie-breaking follows input order on both sides.
-            const ordered = index.files(0, index.len());
+            const ordered = (await index.indexFiles({ showIgnored: true, maxEntries: 1_000_000 })).files;
             expect(new Set(ordered)).toEqual(new Set(created));
             expect(ordered.length).toBeGreaterThan(300);
 
@@ -98,7 +98,7 @@ describe('native and TypeScript scorers rank identically', () => {
                 const query = randomQuery(random, created);
                 const limit = 1 + Math.floor(random() * 60);
 
-                const native = await index.search(query, limit);
+                const native = await index.searchFiles(query, limit, true);
                 const reference = rankFuzzyMatches(query, ordered, limit);
 
                 expect(native.map(m => m.path)).toEqual(reference.map(m => m.path));
@@ -118,9 +118,9 @@ describe('native and TypeScript scorers rank identically', () => {
         const paths = Array.from({ length: 200 }, (_, i) => `dir${String(i).padStart(3, '0')}/x.ts`);
         const { root, index } = await nativeIndexOf(paths);
         try {
-            const ordered = index.files(0, index.len());
+            const ordered = (await index.indexFiles({ showIgnored: true, maxEntries: 1_000_000 })).files;
             for (const limit of [1, 3, 17, 200]) {
-                const native = await index.search('x', limit);
+                const native = await index.searchFiles('x', limit, true);
                 const reference = rankFuzzyMatches('x', ordered, limit);
                 expect(native.map(m => m.path)).toEqual(reference.map(m => m.path));
             }
@@ -148,13 +148,13 @@ describe('native and TypeScript scorers rank identically', () => {
         ];
         const { root, index } = await nativeIndexOf(paths);
         try {
-            const ordered = index.files(0, index.len());
+            const ordered = (await index.indexFiles({ showIgnored: true, maxEntries: 1_000_000 })).files;
             const queries = [
                 '', 'a', 'A', '/', '.', 'é', 'É', ' ', 'zzzzzzzzzzzzzzzzzzzzzzzzzz', 'srcindexts',
                 'prompt', 'PROMPT', 'prompts', 'promptbuilder', 'ai/prompt', 'p', 'pt',
             ];
             for (const query of queries) {
-                const native = await index.search(query, 50);
+                const native = await index.searchFiles(query, 50, true);
                 const reference = rankFuzzyMatches(query, ordered, 50);
                 expect(native.map(m => [m.path, m.score, m.indices])).toEqual(
                     reference.map(m => [m.path, m.score, m.indices]),

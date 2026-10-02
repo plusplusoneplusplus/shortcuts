@@ -10,10 +10,10 @@ use coc_native_core::repo_files::{
     ReplaceFile as RepoReplaceFile, ReplaceOptions, ReplaceSummary, RepoFilesError, RepoIndexes,
     TreeListing,
 };
+use coc_native_core::repo_index::{FuzzyMatcher, Hit};
 use napi::bindgen_prelude::{AsyncTask, Error, Status};
 use napi_derive::napi;
 
-use crate::file_index::{search_ranked, FileMatch, RankedFileMatch};
 use crate::task::{blocking, Blocking};
 
 // Results and replace targets are core's own types (core's `napi` feature
@@ -34,6 +34,55 @@ pub struct RepoReplaceOptions {
     pub whole_word: Option<bool>,
     pub regex: Option<bool>,
     pub preserve_case: Option<bool>,
+}
+
+/// A scored path plus the positions the client highlights.
+#[napi(object)]
+pub struct FileMatch {
+    pub path: String,
+    pub score: u32,
+    /// Matched UTF-16 offsets within `path`, ascending — the same offsets a
+    /// JavaScript string index would use.
+    pub indices: Vec<u32>,
+}
+
+/// Native ordering keys for merging matches from multiple repositories.
+#[napi(object)]
+pub struct FileMatchRanking {
+    /// 2 when the basename matched, 1 when only the full path matched.
+    pub tier: u32,
+    /// UTF-16 length of the basename for tier 2, or the full path for tier 1.
+    pub target_len: u32,
+    /// UTF-16 length of the full path.
+    pub path_len: u32,
+    /// Position in the index snapshot, used for stable within-repo ties.
+    pub snapshot_index: u32,
+}
+
+/// A file match with the complete native ordering tuple.
+#[napi(object)]
+pub struct RankedFileMatch {
+    pub path: String,
+    pub score: u32,
+    /// Matched UTF-16 offsets within `path`, ascending.
+    pub indices: Vec<u32>,
+    pub ranking: FileMatchRanking,
+}
+
+fn search_ranked(matcher: &FuzzyMatcher, query: &str, limit: usize) -> Vec<RankedFileMatch> {
+    let snapshot = matcher.snapshot();
+    let ranked = |hit: Hit| RankedFileMatch {
+        path: snapshot.path_at(hit.index).to_owned(),
+        score: hit.score,
+        indices: hit.indices,
+        ranking: FileMatchRanking {
+            tier: u32::from(hit.tier),
+            target_len: hit.target_len,
+            path_len: hit.path_len,
+            snapshot_index: hit.index,
+        },
+    };
+    matcher.search(query, limit).into_iter().map(ranked).collect()
 }
 
 /// A path escaping the root is the caller's mistake (`InvalidArg`); the

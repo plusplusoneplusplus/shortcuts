@@ -11,7 +11,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import {
     nativeContentSearchStatus,
-    nativeFileIndexStatus,
+    nativeRepoFilesStatus,
     nativeGitStatus,
     nativeNotesIndexStatus,
 } from '@plusplusoneplusplus/coc-native';
@@ -132,7 +132,7 @@ export function createRequestHandler(
                     // packaging mistake fails the release smoke test loudly.
                     // Separate statuses keep a stale binary — one that loaded
                     // but predates a capability — visible.
-                    nativeFileIndex: nativeFileIndexStatus(),
+                    nativeFileIndex: nativeRepoFilesStatus(),
                     nativeNotesIndex: nativeNotesIndexStatus(),
                     nativeContentSearch: nativeContentSearchStatus(),
                     nativeGit: nativeGitStatus(),

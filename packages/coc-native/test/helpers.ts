@@ -13,8 +13,6 @@ import * as path from 'path';
 
 import { loadNativeContentSearch } from '../src/content-search';
 import type { NativeContentSearchAddon } from '../src/content-search';
-import { loadNativeFileIndex } from '../src/file-index';
-import type { NativeFileIndexAddon } from '../src/file-index';
 import { loadNativeGit } from '../src/git';
 import type { NativeGitAddon } from '../src/git';
 import { resetNativeAddonCache } from '../src/loader';
@@ -22,13 +20,15 @@ import { loadNativeNotesFs } from '../src/notes-fs';
 import type { NativeNotesFsAddon } from '../src/notes-fs';
 import { loadNativeNotesIndex } from '../src/notes-index';
 import type { NativeNotesIndexAddon } from '../src/notes-index';
+import { loadNativeRepoFiles } from '../src/repo-files';
+import type { NativeRepoFilesAddon } from '../src/repo-files';
 
 resetNativeAddonCache();
 
-// Deliberately unguarded: loadNativeFileIndex() throws when a binary could not
+// Deliberately unguarded: loadNativeRepoFiles() throws when a binary could not
 // be loaded, and that error — naming the triple, the paths tried and the fix —
 // is exactly what the runner should print.
-export const addon: NativeFileIndexAddon = loadNativeFileIndex();
+export const addon: NativeRepoFilesAddon = loadNativeRepoFiles();
 
 /** The required content-search slice of the same compiled addon. */
 export const contentSearchAddon: NativeContentSearchAddon = loadNativeContentSearch();
