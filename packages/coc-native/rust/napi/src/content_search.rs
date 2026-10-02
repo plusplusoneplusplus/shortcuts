@@ -1,4 +1,4 @@
-//! N-API bindings for repository content search: a thin `AsyncTask` wrapper
+//! N-API bindings for repository content search: a thin worker-task wrapper
 //! around core's `content_search::search`, which owns every cap and mode.
 //!
 //! There is no index object here, unlike the file index — each query is a fresh
@@ -7,9 +7,10 @@
 use std::path::PathBuf;
 
 use coc_native_core::content_search::{search, ContentSearchOptions, SearchError};
-use napi::bindgen_prelude::{AsyncTask, Error, Result, Status, Task};
-use napi::Env;
+use napi::bindgen_prelude::{AsyncTask, Error, Status};
 use napi_derive::napi;
+
+use crate::task::{blocking, Blocking};
 
 /// Query modes, scoping and caps for one content search.
 ///
@@ -113,18 +114,18 @@ fn to_napi_error(error: SearchError) -> Error {
     Error::new(status, error.to_string())
 }
 
-pub struct SearchContentTask {
-    root: PathBuf,
+/// Walk `root` in parallel and resolve with every line matching `query`.
+///
+/// An empty query resolves with an empty result rather than every line.
+#[napi(ts_return_type = "Promise<ContentSearchResult>")]
+pub fn search_content(
+    root: String,
     query: String,
-    options: ContentSearchOptions,
-}
-
-impl Task for SearchContentTask {
-    type Output = ContentSearchResult;
-    type JsValue = ContentSearchResult;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        let result = search(&self.root, &self.query, &self.options).map_err(to_napi_error)?;
+    options: Option<SearchContentOptions>,
+) -> AsyncTask<Blocking<ContentSearchResult>> {
+    let (root, options) = (PathBuf::from(root), search_options(options));
+    blocking(move || {
+        let result = search(&root, &query, &options).map_err(to_napi_error)?;
         Ok(ContentSearchResult {
             truncated: result.truncated,
             matches: result
@@ -142,25 +143,5 @@ impl Task for SearchContentTask {
                 })
                 .collect(),
         })
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
-}
-
-/// Walk `root` in parallel and resolve with every line matching `query`.
-///
-/// An empty query resolves with an empty result rather than every line.
-#[napi(ts_return_type = "Promise<ContentSearchResult>")]
-pub fn search_content(
-    root: String,
-    query: String,
-    options: Option<SearchContentOptions>,
-) -> AsyncTask<SearchContentTask> {
-    AsyncTask::new(SearchContentTask {
-        root: PathBuf::from(root),
-        query,
-        options: search_options(options),
     })
 }

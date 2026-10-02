@@ -1,13 +1,13 @@
-//! N-API bindings for the quick-open file index: thin `AsyncTask` wrappers
+//! N-API bindings for the quick-open file index: thin worker-task wrappers
 //! around core's `repo_index::RepoIndex`, which owns the refresh/swap state.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use coc_native_core::repo_index::{FuzzyMatcher, Hit, RepoIndex, WalkOptions};
-use napi::bindgen_prelude::{AsyncTask, Error, Result, Status, Task};
-use napi::Env;
+use napi::bindgen_prelude::{AsyncTask, Error, Status};
 use napi_derive::napi;
+
+use crate::task::{blocking, Blocking};
 
 /// How to build (and later refresh) an index.
 #[napi(object)]
@@ -69,47 +69,6 @@ fn to_napi_error(root: &Path, err: std::io::Error) -> Error {
     Error::new(Status::GenericFailure, format!("failed to index {}: {err}", root.display()))
 }
 
-pub struct BuildTask {
-    root: PathBuf,
-    options: WalkOptions,
-}
-
-impl Task for BuildTask {
-    type Output = RepoIndex;
-    type JsValue = FileIndex;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        RepoIndex::build(self.root.clone(), self.options).map_err(|e| to_napi_error(&self.root, e))
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(FileIndex { index: output })
-    }
-}
-
-pub struct RefreshTask {
-    index: RepoIndex,
-}
-
-impl Task for RefreshTask {
-    type Output = ();
-    type JsValue = ();
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        self.index.refresh().map_err(|e| to_napi_error(self.index.root(), e))
-    }
-
-    fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
-        Ok(())
-    }
-}
-
-pub struct SearchTask {
-    matcher: Arc<FuzzyMatcher>,
-    query: String,
-    limit: u32,
-}
-
 fn ranked_match(snapshot: &coc_native_core::repo_index::Snapshot, hit: Hit) -> RankedFileMatch {
     RankedFileMatch {
         path: snapshot.path_at(hit.index).to_owned(),
@@ -129,45 +88,17 @@ fn search_ranked(matcher: &FuzzyMatcher, query: &str, limit: usize) -> Vec<Ranke
     matcher.search(query, limit).into_iter().map(|hit| ranked_match(snapshot, hit)).collect()
 }
 
-impl Task for SearchTask {
-    type Output = Vec<FileMatch>;
-    type JsValue = Vec<FileMatch>;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        Ok(search_ranked(&self.matcher, &self.query, self.limit as usize)
-            .into_iter()
-            .map(|hit| FileMatch { path: hit.path, score: hit.score, indices: hit.indices })
-            .collect())
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
-}
-
-pub struct SearchRankedTask {
-    matcher: Arc<FuzzyMatcher>,
-    query: String,
-    limit: u32,
-}
-
-impl Task for SearchRankedTask {
-    type Output = Vec<RankedFileMatch>;
-    type JsValue = Vec<RankedFileMatch>;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        Ok(search_ranked(&self.matcher, &self.query, self.limit as usize))
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
-}
-
 /// Walk `root` in parallel and resolve with a ready-to-search index.
 #[napi(ts_return_type = "Promise<FileIndex>")]
-pub fn build_file_index(root: String, options: Option<BuildOptions>) -> AsyncTask<BuildTask> {
-    AsyncTask::new(BuildTask { root: PathBuf::from(root), options: walk_options(options) })
+pub fn build_file_index(
+    root: String,
+    options: Option<BuildOptions>,
+) -> AsyncTask<Blocking<FileIndex>> {
+    let (root, options) = (PathBuf::from(root), walk_options(options));
+    blocking(move || {
+        let index = RepoIndex::build(root.clone(), options).map_err(|e| to_napi_error(&root, e))?;
+        Ok(FileIndex { index })
+    })
 }
 
 #[napi]
@@ -193,19 +124,31 @@ impl FileIndex {
 
     /// Score every indexed path and resolve with the best `limit` matches.
     #[napi(ts_return_type = "Promise<FileMatch[]>")]
-    pub fn search(&self, query: String, limit: u32) -> AsyncTask<SearchTask> {
-        AsyncTask::new(SearchTask { matcher: self.index.searcher(), query, limit })
+    pub fn search(&self, query: String, limit: u32) -> AsyncTask<Blocking<Vec<FileMatch>>> {
+        let matcher = self.index.searcher();
+        blocking(move || {
+            Ok(search_ranked(&matcher, &query, limit as usize)
+                .into_iter()
+                .map(|hit| FileMatch { path: hit.path, score: hit.score, indices: hit.indices })
+                .collect())
+        })
     }
 
     /// Search with the complete native ordering tuple for server-side merging.
     #[napi(ts_return_type = "Promise<RankedFileMatch[]>")]
-    pub fn search_ranked(&self, query: String, limit: u32) -> AsyncTask<SearchRankedTask> {
-        AsyncTask::new(SearchRankedTask { matcher: self.index.searcher(), query, limit })
+    pub fn search_ranked(
+        &self,
+        query: String,
+        limit: u32,
+    ) -> AsyncTask<Blocking<Vec<RankedFileMatch>>> {
+        let matcher = self.index.searcher();
+        blocking(move || Ok(search_ranked(&matcher, &query, limit as usize)))
     }
 
     /// Re-walk the root and atomically swap in the new path list.
     #[napi(ts_return_type = "Promise<void>")]
-    pub fn refresh(&self) -> AsyncTask<RefreshTask> {
-        AsyncTask::new(RefreshTask { index: self.index.clone() })
+    pub fn refresh(&self) -> AsyncTask<Blocking<()>> {
+        let index = self.index.clone();
+        blocking(move || index.refresh().map_err(|e| to_napi_error(index.root(), e)))
     }
 }

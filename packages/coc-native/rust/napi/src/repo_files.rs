@@ -6,9 +6,10 @@ use std::path::PathBuf;
 use coc_native_core::repo_files::{
     list_directory, list_files, read_blob, write_blob, BlobEncoding, RepoFilesError, TreeEntry,
 };
-use napi::bindgen_prelude::{AsyncTask, Error, Result, Status, Task};
-use napi::Env;
+use napi::bindgen_prelude::{AsyncTask, Error, Status};
 use napi_derive::napi;
+
+use crate::task::{blocking, Blocking};
 
 /// File content as the blob route returns it.
 #[napi(object)]
@@ -86,106 +87,6 @@ pub fn open_repo_files(root: String) -> RepoFiles {
     RepoFiles { root: PathBuf::from(root) }
 }
 
-pub struct ReadBlobTask {
-    root: PathBuf,
-    path: String,
-}
-
-impl Task for ReadBlobTask {
-    type Output = RepoBlob;
-    type JsValue = RepoBlob;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        let blob = read_blob(&self.root, &self.path).map_err(to_napi_error)?;
-        let encoding = match blob.encoding {
-            BlobEncoding::Utf8 => "utf-8",
-            BlobEncoding::Base64 => "base64",
-        };
-        Ok(RepoBlob {
-            content: blob.content,
-            encoding: encoding.to_owned(),
-            mime_type: blob.mime_type.to_owned(),
-        })
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
-}
-
-pub struct WriteBlobTask {
-    root: PathBuf,
-    path: String,
-    content: String,
-}
-
-impl Task for WriteBlobTask {
-    type Output = ();
-    type JsValue = ();
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        write_blob(&self.root, &self.path, &self.content).map_err(to_napi_error)
-    }
-
-    fn resolve(&mut self, _env: Env, _output: Self::Output) -> Result<Self::JsValue> {
-        Ok(())
-    }
-}
-
-pub struct ListDirectoryTask {
-    root: PathBuf,
-    path: String,
-    options: RepoListOptions,
-}
-
-impl Task for ListDirectoryTask {
-    type Output = RepoTreeListing;
-    type JsValue = RepoTreeListing;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        let o = &self.options;
-        let (entries, truncated) = list_directory(
-            &self.root,
-            &self.path,
-            o.depth.unwrap_or(1),
-            o.show_ignored,
-            o.max_entries as usize,
-        )
-        .map_err(to_napi_error)?;
-        Ok(RepoTreeListing {
-            entries: entries.into_iter().map(JsTreeEntry::from).collect(),
-            truncated,
-        })
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
-}
-
-pub struct ListFilesTask {
-    root: PathBuf,
-    path: String,
-    options: RepoListOptions,
-}
-
-impl Task for ListFilesTask {
-    type Output = RepoFileListing;
-    type JsValue = RepoFileListing;
-
-    fn compute(&mut self) -> Result<Self::Output> {
-        let o = &self.options;
-        let (files, truncated) =
-            list_files(&self.root, &self.path, o.show_ignored, o.max_entries as usize)
-                .map_err(to_napi_error)?;
-        Ok(RepoFileListing { files, truncated })
-    }
-
-    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
-        Ok(output)
-    }
-}
-
 #[napi]
 impl RepoFiles {
     /// List a directory: dirs first, locale order, per-directory cap.
@@ -194,25 +95,57 @@ impl RepoFiles {
         &self,
         path: String,
         options: RepoListOptions,
-    ) -> AsyncTask<ListDirectoryTask> {
-        AsyncTask::new(ListDirectoryTask { root: self.root.clone(), path, options })
+    ) -> AsyncTask<Blocking<RepoTreeListing>> {
+        let root = self.root.clone();
+        blocking(move || {
+            let (o, depth) = (&options, options.depth.unwrap_or(1));
+            let (entries, truncated) =
+                list_directory(&root, &path, depth, o.show_ignored, o.max_entries as usize)
+                    .map_err(to_napi_error)?;
+            let entries = entries.into_iter().map(JsTreeEntry::from).collect();
+            Ok(RepoTreeListing { entries, truncated })
+        })
     }
 
     /// Every file under a subdirectory, depth-first in locale order.
     #[napi(ts_return_type = "Promise<RepoFileListing>")]
-    pub fn list_files(&self, path: String, options: RepoListOptions) -> AsyncTask<ListFilesTask> {
-        AsyncTask::new(ListFilesTask { root: self.root.clone(), path, options })
+    pub fn list_files(
+        &self,
+        path: String,
+        options: RepoListOptions,
+    ) -> AsyncTask<Blocking<RepoFileListing>> {
+        let root = self.root.clone();
+        blocking(move || {
+            let o = &options;
+            let (files, truncated) =
+                list_files(&root, &path, o.show_ignored, o.max_entries as usize)
+                    .map_err(to_napi_error)?;
+            Ok(RepoFileListing { files, truncated })
+        })
     }
 
     /// Read a file: text or base64, MIME type, 1 MiB cap.
     #[napi(ts_return_type = "Promise<RepoBlob>")]
-    pub fn read_blob(&self, path: String) -> AsyncTask<ReadBlobTask> {
-        AsyncTask::new(ReadBlobTask { root: self.root.clone(), path })
+    pub fn read_blob(&self, path: String) -> AsyncTask<Blocking<RepoBlob>> {
+        let root = self.root.clone();
+        blocking(move || {
+            let blob = read_blob(&root, &path).map_err(to_napi_error)?;
+            let encoding = match blob.encoding {
+                BlobEncoding::Utf8 => "utf-8",
+                BlobEncoding::Base64 => "base64",
+            };
+            Ok(RepoBlob {
+                content: blob.content,
+                encoding: encoding.to_owned(),
+                mime_type: blob.mime_type.to_owned(),
+            })
+        })
     }
 
     /// Write text to a file, creating missing parent directories.
     #[napi(ts_return_type = "Promise<void>")]
-    pub fn write_blob(&self, path: String, content: String) -> AsyncTask<WriteBlobTask> {
-        AsyncTask::new(WriteBlobTask { root: self.root.clone(), path, content })
+    pub fn write_blob(&self, path: String, content: String) -> AsyncTask<Blocking<()>> {
+        let root = self.root.clone();
+        blocking(move || write_blob(&root, &path, &content).map_err(to_napi_error))
     }
 }

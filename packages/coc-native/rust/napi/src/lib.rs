@@ -21,3 +21,4 @@ mod notes_fs;
 mod notes_index;
 mod repo_files;
 mod sqlite;
+mod task;
