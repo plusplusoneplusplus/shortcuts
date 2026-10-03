@@ -336,6 +336,38 @@ describe('file-tree operations avoid the git-spawning resolver', () => {
 });
 
 describe('RepoTreeService whole-repo file list warmth', () => {
+    it('rebuilds both index variants when a workspace root changes without affecting other repos', async () => {
+        seedDefaultRepo();
+        fs.writeFileSync(path.join(repoDir, 'old.ts'), 'old');
+        const newRoot = path.join(tmpDir, 'new-root');
+        const otherRoot = path.join(tmpDir, 'other-root');
+        fs.mkdirSync(newRoot);
+        fs.mkdirSync(otherRoot);
+        fs.writeFileSync(path.join(newRoot, 'new.ts'), 'new');
+        fs.writeFileSync(path.join(otherRoot, 'other.ts'), 'other');
+        const workspaces = [
+            { id: REPO_ID, name: REPO_NAME, rootPath: repoDir },
+            { id: 'other-id', name: 'other', rootPath: otherRoot },
+        ];
+        seedWorkspacesJson(workspaces);
+        const svc = newService();
+        for (const showIgnored of [false, true]) {
+            expect((await svc.listFilesRecursive(REPO_ID, '.', { showIgnored })).files).toEqual(['old.ts']);
+            expect((await svc.listFilesRecursive('other-id', '.', { showIgnored })).files).toEqual(['other.ts']);
+        }
+
+        workspaces[0].rootPath = newRoot;
+        seedWorkspacesJson(workspaces);
+        // An unrelated repo keeps its warm snapshot while the moved repo rebuilds.
+        fs.writeFileSync(path.join(otherRoot, 'later.ts'), 'later');
+        for (const showIgnored of [false, true]) {
+            expect((await svc.listFilesRecursive(REPO_ID, '.', { showIgnored })).files).toEqual(['new.ts']);
+            expect((await svc.searchFiles(REPO_ID, 'old', { showIgnored })).results).toEqual([]);
+            expect((await svc.searchFiles(REPO_ID, 'new', { showIgnored })).results.map(r => r.path)).toEqual(['new.ts']);
+            expect((await svc.listFilesRecursive('other-id', '.', { showIgnored })).files).toEqual(['other.ts']);
+        }
+    });
+
     /** Polls until `predicate` holds, so background refreshes need no fake timers. */
     async function waitFor(predicate: () => Promise<boolean>, label: string): Promise<void> {
         for (let i = 0; i < 100; i++) {

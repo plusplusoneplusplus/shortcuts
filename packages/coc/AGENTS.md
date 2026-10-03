@@ -63,7 +63,8 @@ references before editing. Paths are package-relative.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
   complete snapshots and shutdown disposes watchers.
 - Search fresh working-tree bytes; test Git narrowing/native walks.
-  QuickOpen uses server indices; payload caps never cap search candidates.
+  QuickOpen uses server indices; reuse requires the current workspace root
+  for each `showIgnored` variant. Payload caps never cap search candidates.
 - Restore queues stopped. Activate only after
   wiring and HTTP listening, respecting auto-start policy; never substitute a delay.
 - Late-bound capabilities belong only in

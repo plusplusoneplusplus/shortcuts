@@ -48,6 +48,16 @@ const HTML_PAGE_CLOSE_CHANNEL = 'coc-desktop:html-page-close';
 const HTML_PAGE_RELOAD_CHANNEL = 'coc-desktop:html-page-reload';
 const HTML_PAGE_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:html-page-open-external';
 const HTML_PAGE_STATE_CHANNEL = 'coc-desktop:html-page-state';
+const BROWSER_VIEW_OPEN_CHANNEL = 'coc-desktop:browser-view-open';
+const BROWSER_VIEW_NAVIGATE_CHANNEL = 'coc-desktop:browser-view-navigate';
+const BROWSER_VIEW_NAV_CHANNEL = 'coc-desktop:browser-view-nav';
+const BROWSER_VIEW_SET_BOUNDS_CHANNEL = 'coc-desktop:browser-view-set-bounds';
+const BROWSER_VIEW_HIDE_CHANNEL = 'coc-desktop:browser-view-hide';
+const BROWSER_VIEW_CLOSE_CHANNEL = 'coc-desktop:browser-view-close';
+const BROWSER_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-open-external';
+const BROWSER_VIEW_STATE_CHANNEL = 'coc-desktop:browser-view-state';
+const BROWSER_VIEW_NEW_TAB_CHANNEL = 'coc-desktop:browser-view-new-tab';
+const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
@@ -102,6 +112,41 @@ interface HtmlPageRect {
     y: number;
     width: number;
     height: number;
+}
+
+/** Reply to `browser.open` / `browser.navigate` (mirrors `BrowserOpenResult` in browser-view-policy.ts). */
+type BrowserOpenResult = { ok: true } | { ok: false; reason: string };
+
+/** Live navigation snapshot of a browser tab (mirrors `BrowserViewState`). */
+interface BrowserViewState {
+    viewId: string;
+    url: string;
+    title: string;
+    canGoBack: boolean;
+    canGoForward: boolean;
+    loading: boolean;
+    error?: string;
+}
+
+/** A page asked to open a new tab (mirrors `BrowserNewTabRequest`). */
+interface BrowserNewTabRequest {
+    openerViewId: string;
+    url: string;
+}
+
+/** Download handed to the system browser (mirrors `BrowserDownloadEvent`). */
+interface BrowserDownloadEvent {
+    viewId: string;
+    url: string;
+    ok: boolean;
+    error?: string;
+}
+
+/** Subscribe `callback` to a main → SPA channel; returns the unsubscribe function. */
+function subscribe<T>(channel: string, callback: (payload: T) => void): () => void {
+    const listener = (_event: unknown, payload: T) => callback(payload);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
 }
 
 const api = {
@@ -264,6 +309,34 @@ const api = {
             ipcRenderer.on(HTML_PAGE_STATE_CHANNEL, listener);
             return () => ipcRenderer.removeListener(HTML_PAGE_STATE_CHANNEL, listener);
         },
+    },
+    /**
+     * Browser tab bridge (see browser-view-host.ts). The SPA picks an opaque
+     * `viewId` per tab and opens it with an http(s) URL and the tab's concrete
+     * owner `sessionKey` (tabs with the same key share an in-memory sign-in
+     * session). It keeps the view over its placeholder with `setBounds` (null
+     * hides it) / `hide`, drives history with `nav`, and tears it down with
+     * `close`. `onState` streams url/title/history/loading/error, `onNewTab`
+     * asks the SPA to open a new-window link as another tab, and `onDownload`
+     * reports downloads handed to the system browser.
+     */
+    browser: {
+        open: (viewId: string, url: string, sessionKey: string): Promise<BrowserOpenResult> =>
+            ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, url, sessionKey),
+        navigate: (viewId: string, url: string): Promise<BrowserOpenResult> =>
+            ipcRenderer.invoke(BROWSER_VIEW_NAVIGATE_CHANNEL, viewId, url),
+        nav: (viewId: string, action: 'back' | 'forward' | 'reload' | 'stop') =>
+            ipcRenderer.send(BROWSER_VIEW_NAV_CHANNEL, viewId, action),
+        setBounds: (viewId: string, rect: HtmlPageRect | null) =>
+            ipcRenderer.send(BROWSER_VIEW_SET_BOUNDS_CHANNEL, viewId, rect),
+        hide: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_HIDE_CHANNEL, viewId),
+        close: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_CLOSE_CHANNEL, viewId),
+        openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke(BROWSER_OPEN_EXTERNAL_CHANNEL, url),
+        onState: (callback: (state: BrowserViewState) => void) => subscribe(BROWSER_VIEW_STATE_CHANNEL, callback),
+        onNewTab: (callback: (request: BrowserNewTabRequest) => void) =>
+            subscribe(BROWSER_VIEW_NEW_TAB_CHANNEL, callback),
+        onDownload: (callback: (event: BrowserDownloadEvent) => void) =>
+            subscribe(BROWSER_VIEW_DOWNLOAD_CHANNEL, callback),
     },
 } as const;
 

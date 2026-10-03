@@ -28,9 +28,10 @@
 
 import { isRepoGroupWorkspaceId } from '../../../repos/virtualWorkspaceIds';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { hasExplicitUrlScheme, normalizeBrowserUrl } from './unifiedBrowserTabs';
 
 /** The non-search entries the menu offers. */
-export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'canvas' | 'changes';
+export type OpenMenuActionId = 'terminal' | 'explorer' | 'notes' | 'browser' | 'canvas' | 'changes';
 
 export interface OpenMenuAction {
     id: OpenMenuActionId;
@@ -90,6 +91,10 @@ export function openMenuActions(input: OpenMenuActionsInput): OpenMenuAction[] {
         actions.push({ id: 'explorer', label: 'Explorer', ...repoGate });
     }
     actions.push({ id: 'notes', label: 'Notes' });
+    // A blank browser tab. It belongs to the target's concrete workspace (its
+    // site-session identity) but loads nothing from the repo, so availability
+    // does not gate it.
+    actions.push({ id: 'browser', label: 'Browser' });
     actions.push({
         id: 'canvas',
         label: 'New Canvas',
@@ -117,8 +122,16 @@ export interface OpenMenuCanvasResult {
     title: string;
 }
 
+/**
+ * A query that names a web address: `url` when it opens, `reason` when it was
+ * written as a URL (an explicit scheme) but cannot be opened.
+ */
+export type OpenMenuUrlCandidate = { url: string } | { reason: string };
+
 export type OpenMenuItem =
     | { key: string; type: 'action'; action: OpenMenuAction }
+    | { key: string; type: 'url'; url: string }
+    | { key: string; type: 'url-error'; reason: string }
     | { key: string; type: 'file'; file: OpenMenuFileResult }
     | { key: string; type: 'canvas'; canvas: OpenMenuCanvasResult };
 
@@ -127,6 +140,17 @@ export interface BuildOpenMenuItemsInput {
     files: readonly OpenMenuFileResult[];
     canvases: readonly OpenMenuCanvasResult[];
     query: string;
+}
+
+/**
+ * What the query says about a web address. An http(s) URL or a bare domain
+ * opens; anything written with another scheme is reported as unsupported; plain
+ * text is not a URL at all (null) and stays a file search — never a web search.
+ */
+export function openMenuUrlCandidate(query: string): OpenMenuUrlCandidate | null {
+    const result = normalizeBrowserUrl(query);
+    if (result.ok) return { url: result.url };
+    return hasExplicitUrlScheme(query) ? { reason: result.reason } : null;
 }
 
 /**
@@ -152,13 +176,24 @@ export function buildOpenMenuItems(input: BuildOpenMenuItemsInput): OpenMenuItem
         ? []
         : input.files.map(file => ({ key: `file:${file.path}`, type: 'file', file }));
 
-    return query === ''
-        ? [...actionItems, ...canvasItems]
-        : [...fileItems, ...actionItems, ...canvasItems];
+    if (query === '') return [...actionItems, ...canvasItems];
+
+    // A pasted URL with its scheme is unambiguous, so its row leads and Enter
+    // opens it. A bare domain (`notes.md` is one too) follows the file hits so
+    // file search keeps the top slot.
+    const candidate = openMenuUrlCandidate(input.query);
+    const urlItems: OpenMenuItem[] = candidate === null ? []
+        : 'url' in candidate
+            ? [{ key: `url:${candidate.url}`, type: 'url', url: candidate.url }]
+            : [{ key: 'url-error', type: 'url-error', reason: candidate.reason }];
+    return hasExplicitUrlScheme(input.query)
+        ? [...urlItems, ...fileItems, ...actionItems, ...canvasItems]
+        : [...fileItems, ...urlItems, ...actionItems, ...canvasItems];
 }
 
-/** Whether the cursor may land on an item. Only actions can be disabled. */
+/** Whether the cursor may land on an item: not a disabled action or a URL error. */
 export function isOpenMenuItemEnabled(item: OpenMenuItem): boolean {
+    if (item.type === 'url-error') return false;
     return item.type !== 'action' || item.action.disabled !== true;
 }
 

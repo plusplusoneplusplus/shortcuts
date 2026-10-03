@@ -123,6 +123,13 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
             <line x1="2" y1="6" x2="14" y2="6" />
         </svg>
     ),
+    browser: (
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true" data-icon="browser-globe">
+            <circle cx="8" cy="8" r="5.8" />
+            <ellipse cx="8" cy="8" rx="2.4" ry="5.8" />
+            <line x1="2.2" y1="8" x2="13.8" y2="8" />
+        </svg>
+    ),
 };
 
 const EMPTY_TAB_IDS: ReadonlySet<string> = new Set<string>();

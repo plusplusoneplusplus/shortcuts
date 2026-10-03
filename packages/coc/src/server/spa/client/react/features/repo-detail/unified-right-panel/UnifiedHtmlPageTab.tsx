@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     desktopHtmlPageBridge,
     type HtmlPageLoadState,
 } from '../../../shared/file-path/html-page-bridge';
+import { useNativeViewPlacement } from './useNativeViewPlacement';
 
 export interface UnifiedHtmlPageTabProps {
     tabId: string;
@@ -52,49 +53,11 @@ export function UnifiedHtmlPageTab({
         };
     }, [bridge, filePath, onErrorChange, pageId, tabId]);
 
-    useEffect(() => {
-        if (!bridge) return;
-        if (!active || !visible || loadState?.status === 'failed') {
-            bridge.hide(pageId);
-            return;
-        }
-        const node = placeholder.current;
-        if (!node) return;
-        let frame = 0;
-        const update = () => {
-            frame = 0;
-            const { x, y, width, height } = node.getBoundingClientRect();
-            if (width > 0 && height > 0
-                && !document.querySelector(
-                    '[role="dialog"][aria-modal="true"], [data-testid="unified-panel-tab-menu"]',
-                )) {
-                bridge.setBounds(pageId, { x, y, width, height });
-            } else {
-                bridge.hide(pageId);
-            }
-        };
-        const schedule = () => {
-            if (!frame) frame = window.requestAnimationFrame(update);
-        };
-        update();
-        const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-        resize?.observe(node);
-        const mutations = new MutationObserver(schedule);
-        mutations.observe(document.body, {
-            subtree: true, childList: true, attributes: true,
-            attributeFilter: ['class', 'style', 'aria-hidden'],
-        });
-        window.addEventListener('resize', schedule);
-        window.addEventListener('scroll', schedule, true);
-        return () => {
-            resize?.disconnect();
-            mutations.disconnect();
-            window.removeEventListener('resize', schedule);
-            window.removeEventListener('scroll', schedule, true);
-            if (frame) window.cancelAnimationFrame(frame);
-            bridge.hide(pageId);
-        };
-    }, [active, bridge, loadState?.status, pageId, visible]);
+    const placement = useMemo(() => bridge ? {
+        setBounds: (rect: { x: number; y: number; width: number; height: number }) => bridge.setBounds(pageId, rect),
+        hide: () => bridge.hide(pageId),
+    } : null, [bridge, pageId]);
+    useNativeViewPlacement(placeholder, active && visible && loadState?.status !== 'failed', placement);
 
     const viewSource = () => {
         window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {

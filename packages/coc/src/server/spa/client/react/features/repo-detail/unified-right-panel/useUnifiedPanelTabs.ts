@@ -36,6 +36,7 @@ import {
     previewTabToReplace,
     promoteTab,
     updateNotesView,
+    updateBrowserTab,
     visibleTabIds,
     visibleTabs,
     type OpenUnifiedPreviewTabInput,
@@ -78,6 +79,8 @@ export interface UnifiedPanelTabsApi {
     move(id: string, beforeId: string | null): void;
     /** Persist the Notes tab's local selection without changing panel focus. */
     updateNotesSelection(id: string, notePath: string | null): void;
+    /** Follow a browser tab's live URL and title without changing panel focus. */
+    updateBrowser(id: string, update: { url?: string; label?: string }): void;
     /**
      * The preview tab `openPreview(input)` would evict, or null. Ask before
      * opening so an outgoing dirty buffer gets the unsaved-edits prompt first.
@@ -133,6 +136,9 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
     const updateNotesSelection = useCallback((id: string, notePath: string | null) => {
         setState(prev => updateNotesView(prev, id, notePath));
     }, [setState]);
+    const updateBrowser = useCallback((id: string, update: { url?: string; label?: string }) => {
+        setState(prev => updateBrowserTab(prev, id, update));
+    }, [setState]);
 
     const previewToReplace = useCallback(
         (input: OpenUnifiedPreviewTabInput) => previewTabToReplace(latest.current, latestChat.current, input),
@@ -149,9 +155,9 @@ export function useUnifiedPanelTabs(workspaceId: string, chatId: string | null):
 
     return useMemo(() => ({
         state, tabs, activeId, active, preview,
-        open, openPreview, promote, activate, close, move, updateNotesSelection,
+        open, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
         previewToReplace, find, visibleIds,
     }), [state, tabs, activeId, active, preview,
-        open, openPreview, promote, activate, close, move, updateNotesSelection,
+        open, openPreview, promote, activate, close, move, updateNotesSelection, updateBrowser,
         previewToReplace, find, visibleIds]);
 }

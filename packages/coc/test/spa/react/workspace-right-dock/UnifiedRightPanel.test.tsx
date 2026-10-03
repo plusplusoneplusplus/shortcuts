@@ -280,6 +280,249 @@ describe('UnifiedRightPanel', () => {
         });
     });
 
+    describe('browser tabs', () => {
+        const browserTabs = () => screen.queryAllByRole('tab').filter(tab => (tab.getAttribute('data-testid') ?? '').includes('browser'));
+
+        it('opens blank and pasted-URL tabs, keeps them across chats, and never persists them', async () => {
+            const { rerender } = renderPanel({ chatId: 'chat-1' });
+            openViaMenu('unified-panel-open-browser');
+            expect(browserTabs()).toHaveLength(1);
+            expect(browserTabs()[0].textContent).toContain('New Tab');
+            expect((screen.getByTestId('browser-address') as HTMLInputElement).value).toBe('');
+
+            fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+            fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'example.com/docs' } });
+            await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-url')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('unified-panel-open-menu-url'));
+            expect(browserTabs()).toHaveLength(2);
+            expect(browserTabs()[1].textContent).toContain('example.com');
+            expect(browserTabs()[1].getAttribute('aria-selected')).toBe('true');
+
+            rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-2" dock={dockStub()} />);
+            expect(browserTabs()).toHaveLength(2);
+            rerender(<UnifiedRightPanel workspaceId={WS} chatId={null} dock={dockStub()} />);
+            expect(browserTabs()).toHaveLength(2);
+
+            const closeId = browserTabs()[0].getAttribute('data-testid')!.replace('unified-panel-tab-', '');
+            fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${closeId}`));
+            expect(browserTabs()).toHaveLength(1);
+
+            const raw = localStorage.getItem(`unified-right-panel:${WS}:tabs`) ?? '';
+            expect(raw).not.toContain('browser');
+            expect(raw).not.toContain('example.com');
+        });
+
+        it('rejects a malformed or unsupported address inline and follows a valid one', () => {
+            renderPanel({ chatId: 'chat-1' });
+            openViaMenu('unified-panel-open-browser');
+            const address = screen.getByTestId('browser-address') as HTMLInputElement;
+
+            fireEvent.change(address, { target: { value: 'what is a monad' } });
+            fireEvent.submit(address.form!);
+            expect(screen.getByTestId('browser-address-error').textContent).toMatch(/Not a URL/);
+            expect(browserTabs()[0].textContent).toContain('New Tab');
+
+            fireEvent.change(address, { target: { value: 'javascript:alert(1)' } });
+            fireEvent.submit(address.form!);
+            expect(screen.getByTestId('browser-address-error').textContent).toMatch(/not supported/);
+
+            fireEvent.change(address, { target: { value: 'localhost:3000' } });
+            expect(screen.queryByTestId('browser-address-error')).toBeNull();
+            fireEvent.submit(address.form!);
+            expect(address.value).toBe('http://localhost:3000/');
+            expect(browserTabs()[0].textContent).toContain('localhost:3000');
+            expect(readUnifiedPanelState(WS).workspaceTabs[0].browserUrl).toBe('http://localhost:3000/');
+        });
+
+        it('offers the system browser when there is no desktop bridge', () => {
+            const open = vi.spyOn(window, 'open').mockReturnValue(null);
+            try {
+                renderPanel({ chatId: 'chat-1' });
+                openViaMenu('unified-panel-open-browser');
+                expect((screen.getByTestId('browser-open-external') as HTMLButtonElement).disabled).toBe(true);
+                const address = screen.getByTestId('browser-address') as HTMLInputElement;
+                fireEvent.change(address, { target: { value: 'https://example.com' } });
+                fireEvent.submit(address.form!);
+                fireEvent.click(screen.getByTestId('browser-open-external'));
+                expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer');
+                expect(screen.getByTestId('browser-web-fallback').textContent).toContain('desktop app');
+            } finally {
+                open.mockRestore();
+            }
+        });
+    });
+
+    describe('desktop browser tabs', () => {
+        type Listener<T> = ((payload: T) => void) | undefined;
+        let onState: Listener<{
+            viewId: string; url: string; title: string; canGoBack: boolean; canGoForward: boolean; loading: boolean; error?: string;
+        }>;
+        let onNewTab: Listener<{ openerViewId: string; url: string }>;
+        let onDownload: Listener<{ viewId: string; url: string; ok: boolean; error?: string }>;
+        const bridge = {
+            open: vi.fn(async () => ({ ok: true as const })),
+            navigate: vi.fn(async () => ({ ok: true as const })),
+            nav: vi.fn(),
+            setBounds: vi.fn(),
+            hide: vi.fn(),
+            close: vi.fn(),
+            openExternal: vi.fn(async () => true),
+            onState: vi.fn((callback: typeof onState) => { onState = callback; return () => { onState = undefined; }; }),
+            onNewTab: vi.fn((callback: typeof onNewTab) => { onNewTab = callback; return () => { onNewTab = undefined; }; }),
+            onDownload: vi.fn((callback: typeof onDownload) => { onDownload = callback; return () => { onDownload = undefined; }; }),
+        };
+        const browserTabs = () => screen.queryAllByRole('tab').filter(tab => (tab.getAttribute('data-testid') ?? '').includes('browser'));
+        const viewIdOf = (index = 0) => readUnifiedPanelState(WS).workspaceTabs.filter(tab => tab.kind === 'browser')[index].resourceId;
+        const page = (viewId: string, patch: Partial<NonNullable<Parameters<NonNullable<typeof onState>>[0]>> = {}) => ({
+            viewId, url: 'https://example.com/', title: '', canGoBack: false, canGoForward: false, loading: false, ...patch,
+        });
+        const openUrlTab = async (url: string) => {
+            fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+            fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: url } });
+            await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-url')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('unified-panel-open-menu-url'));
+            await waitFor(() => expect(bridge.open).toHaveBeenCalled());
+        };
+
+        beforeEach(() => {
+            vi.clearAllMocks();
+            onState = undefined;
+            onNewTab = undefined;
+            onDownload = undefined;
+            Object.defineProperty(window, 'cocDesktop', { value: { browser: bridge }, configurable: true });
+        });
+
+        it('opens a view only once a blank tab has a URL, then navigates the live view', async () => {
+            renderPanel({ chatId: 'chat-1' });
+            openViaMenu('unified-panel-open-browser');
+            expect(bridge.open).not.toHaveBeenCalled();
+            expect((screen.getByTestId('browser-back') as HTMLButtonElement).disabled).toBe(true);
+
+            const address = screen.getByTestId('browser-address') as HTMLInputElement;
+            fireEvent.change(address, { target: { value: 'example.com' } });
+            fireEvent.submit(address.form!);
+            const viewId = viewIdOf();
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(viewId, 'https://example.com/', WS));
+            expect(bridge.navigate).not.toHaveBeenCalled();
+
+            fireEvent.change(address, { target: { value: 'https://example.org/next' } });
+            fireEvent.submit(address.form!);
+            await waitFor(() => expect(bridge.navigate).toHaveBeenCalledWith(viewId, 'https://example.org/next'));
+            expect(bridge.open).toHaveBeenCalledTimes(1);
+        });
+
+        it('follows redirects, title and history, and drives back/forward/stop/reload', async () => {
+            renderPanel({ chatId: 'chat-1' });
+            await openUrlTab('https://example.com');
+            const viewId = viewIdOf();
+            act(() => onState?.(page(viewId, { url: 'https://example.com/login', loading: true, canGoBack: true })));
+            expect((screen.getByTestId('browser-address') as HTMLInputElement).value).toBe('https://example.com/login');
+            expect((screen.getByTestId('browser-back') as HTMLButtonElement).disabled).toBe(false);
+            expect((screen.getByTestId('browser-forward') as HTMLButtonElement).disabled).toBe(true);
+            fireEvent.click(screen.getByTestId('browser-stop'));
+            expect(bridge.nav).toHaveBeenCalledWith(viewId, 'stop');
+
+            act(() => onState?.(page(viewId, {
+                url: 'https://example.com/login', title: 'Sign in', canGoBack: true, canGoForward: true,
+            })));
+            expect(browserTabs()[0].textContent).toContain('Sign in');
+            expect(screen.getByTestId('browser-title').textContent).toBe('Sign in');
+            expect(readUnifiedPanelState(WS).workspaceTabs[0].browserUrl).toBe('https://example.com/login');
+            fireEvent.click(screen.getByTestId('browser-back'));
+            fireEvent.click(screen.getByTestId('browser-forward'));
+            fireEvent.click(screen.getByTestId('browser-reload'));
+            expect(bridge.nav.mock.calls.map(call => call[1])).toEqual(['stop', 'back', 'forward', 'reload']);
+        });
+
+        it('shows a load failure with Retry and hides the view while failed', async () => {
+            renderPanel({ chatId: 'chat-1' });
+            await openUrlTab('https://example.com');
+            const viewId = viewIdOf();
+            bridge.hide.mockClear();
+            act(() => onState?.(page(viewId, { error: 'ERR_CONNECTION_REFUSED' })));
+            expect(screen.getByTestId('browser-load-error').textContent).toContain('ERR_CONNECTION_REFUSED');
+            expect(bridge.hide).toHaveBeenCalledWith(viewId);
+            fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+            expect(bridge.nav).toHaveBeenCalledWith(viewId, 'reload');
+            act(() => onState?.(page(viewId, { title: 'Back up' })));
+            expect(screen.queryByTestId('browser-load-error')).toBeNull();
+        });
+
+        it('keeps the view across chat switches and collapse, and closes it only with the tab', async () => {
+            const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+                x: 40, y: 80, width: 320, height: 240,
+            } as DOMRect);
+            try {
+                const { rerender } = renderPanel({ chatId: 'chat-1' });
+                await openUrlTab('https://example.com');
+                const viewId = viewIdOf();
+                await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith(viewId, { x: 40, y: 80, width: 320, height: 240 }));
+                bridge.hide.mockClear();
+                fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+                expect(bridge.hide).toHaveBeenCalledWith(viewId);
+                fireEvent.keyDown(document, { key: 'Escape' });
+
+                rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-2" dock={dockStub()} />);
+                rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-2" dock={dockStub({ isOpen: false })} />);
+                expect(bridge.hide).toHaveBeenCalledWith(viewId);
+                rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />);
+                expect(bridge.close).not.toHaveBeenCalled();
+                // Any remount reopens with the same id and session, which keeps live history.
+                expect(new Set(bridge.open.mock.calls.map(call => JSON.stringify(call)))).toEqual(
+                    new Set([JSON.stringify([viewId, 'https://example.com/', WS])]),
+                );
+
+                const id = browserTabs()[0].getAttribute('data-testid')!.replace('unified-panel-tab-', '');
+                fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${id}`));
+                expect(bridge.close).toHaveBeenCalledWith(viewId);
+            } finally {
+                rect.mockRestore();
+            }
+        });
+
+        it('opens a page\'s new-window link as another tab with the opener\'s owner', async () => {
+            renderPanel({ chatId: 'chat-1' });
+            await openUrlTab('https://example.com');
+            const viewId = viewIdOf();
+            act(() => onNewTab?.({ openerViewId: 'not-a-tab', url: 'https://ignored.example/' }));
+            act(() => onNewTab?.({ openerViewId: viewId, url: 'javascript:alert(1)' }));
+            expect(browserTabs()).toHaveLength(1);
+            act(() => onNewTab?.({ openerViewId: viewId, url: 'https://docs.example.com/page' }));
+            expect(browserTabs()).toHaveLength(2);
+            expect(browserTabs()[1].getAttribute('aria-selected')).toBe('true');
+            const [opener, opened] = readUnifiedPanelState(WS).workspaceTabs;
+            expect(opened.browserUrl).toBe('https://docs.example.com/page');
+            expect(opened.ownerWorkspaceId).toBe(opener.ownerWorkspaceId);
+            expect(opened.resourceId).not.toBe(opener.resourceId);
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(opened.resourceId, 'https://docs.example.com/page', WS));
+        });
+
+        it('reports download handoff and opens the current page in the system browser via the bridge', async () => {
+            const open = vi.spyOn(window, 'open').mockReturnValue(null);
+            try {
+                renderPanel({ chatId: 'chat-1' });
+                await openUrlTab('https://example.com');
+                const viewId = viewIdOf();
+                act(() => onDownload?.({ viewId: 'other', url: 'https://example.com/x.zip', ok: true }));
+                expect(screen.queryByTestId('browser-notice')).toBeNull();
+                act(() => onDownload?.({ viewId, url: 'https://example.com/file.zip', ok: true }));
+                expect(screen.getByTestId('browser-notice').textContent).toContain('system browser');
+                act(() => onDownload?.({ viewId, url: 'https://example.com/file.zip', ok: false, error: 'no handler' }));
+                expect(screen.getByTestId('browser-notice').textContent).toContain('no handler');
+
+                act(() => onState?.(page(viewId, { url: 'https://example.com/after' })));
+                fireEvent.click(screen.getByTestId('browser-open-external'));
+                await waitFor(() => expect(bridge.openExternal).toHaveBeenCalledWith('https://example.com/after'));
+                expect(open).not.toHaveBeenCalled();
+                bridge.openExternal.mockResolvedValueOnce(false);
+                fireEvent.click(screen.getByTestId('browser-open-external'));
+                await waitFor(() => expect(screen.getByTestId('browser-notice').textContent).toContain('Could not open your system browser'));
+            } finally {
+                open.mockRestore();
+            }
+        });
+    });
+
     it('starts empty, and its empty state creates nothing on its own', () => {
         localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
         renderPanel();
@@ -607,7 +850,7 @@ describe('UnifiedRightPanel', () => {
         // Every kind this build knows now renders, so the fallback is for a
         // descriptor from a build that knows one more — it must not blank the panel.
         writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'browser' as never, ownerWorkspaceId: WS, chatId: null, resourceId: 'https://x', label: 'x',
+            kind: 'future-kind' as never, ownerWorkspaceId: WS, chatId: null, resourceId: 'x', label: 'x',
         }));
         renderPanel();
         expect(screen.getByTestId('unified-panel-unsupported')).toBeTruthy();

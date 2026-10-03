@@ -80,6 +80,8 @@ export interface RepoTreeServiceOptions {
 
 /** A native index kept warm for one repo + showIgnored combination. */
 interface NativeIndexEntry {
+    /** Workspace root used to build this index. */
+    root: string;
     /** Resolves once the initial parallel walk finishes. */
     index: Promise<NativeFileIndex>;
     /** Epoch ms of the last completed build or refresh. */
@@ -437,12 +439,13 @@ export class RepoTreeService {
      */
     private nativeIndexFor(key: string, repoRoot: string, showIgnored: boolean): NativeIndexEntry {
         const existing = this.nativeIndexes.get(key);
-        if (existing) {
+        if (existing?.root === repoRoot) {
             this.maybeRefreshNativeIndex(existing);
             return existing;
         }
 
         const entry: NativeIndexEntry = {
+            root: repoRoot,
             at: Date.now(),
             index: this.native.buildFileIndex(repoRoot, { includeIgnored: showIgnored }),
         };

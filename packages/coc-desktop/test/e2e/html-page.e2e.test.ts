@@ -89,7 +89,7 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
     it('runs the full scenario to completion', () => {
         expect(exitCode, raw).toBe(0);
         expect([...steps.keys()]).toEqual(
-            ['reject', 'open', 'reuse', 'resize', 'hide', 'navigate', 'open-external', 'failure', 'close'],
+            ['reject', 'open', 'reuse', 'resize', 'hide', 'navigate', 'open-external', 'failure', 'close', 'quit'],
         );
     });
 
@@ -154,5 +154,10 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
 
     it('destroys the views when their tabs close', () => {
         expect(steps.get('close')).toMatchObject({ viewCount: 0, pageDestroyed: true });
+    });
+
+    it('quits normally while a page tab is still open', () => {
+        expect(steps.get('quit-hung'), raw).toBeUndefined();
+        expect(steps.get('quit')).toMatchObject({ liveViews: 1 });
     });
 });

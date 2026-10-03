@@ -161,8 +161,20 @@ app.whenReady().then(async () => {
     await sleep(300);
     emit('close', { viewCount: main.contentView.children.length, pageDestroyed: pageWc.isDestroyed() });
 
+    // 10. A normal quit with a page tab still open must finish: the window
+    //     'closed' teardown runs after the window is destroyed (regression:
+    //     it read win.webContents there, threw, and app.quit() hung).
+    await spa(`window.cocDesktop.htmlPage.open('p3', ${JSON.stringify(indexPath)})`);
+    await spa(`window.__place('p3')`);
+    await sleep(500);
+    const liveViews = main.contentView.children.length;
     fs.rmSync(fixtureDir, { recursive: true, force: true });
-    app.exit(0);
+    app.on('will-quit', () => emit('quit', { liveViews }));
+    setTimeout(() => {
+        emit('quit-hung', { liveViews });
+        app.exit(2);
+    }, 10_000).unref();
+    app.quit();
 }).catch((err) => {
     console.error(err);
     app.exit(1);

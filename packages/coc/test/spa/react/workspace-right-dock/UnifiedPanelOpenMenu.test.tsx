@@ -272,8 +272,9 @@ describe('keyboard', () => {
     it('never parks the cursor on a disabled action', async () => {
         const { onOpenResource, onOpenWorkspaceResource } = renderMenu({ chatId: null });
         const input = screen.getByTestId('unified-panel-open-menu-search');
-        // terminal, explorer, notes, [canvas disabled] — arrowing past Notes
-        // must wrap to Terminal rather than land on Canvas.
+        // terminal, explorer, notes, browser, [canvas disabled] — arrowing past
+        // Browser must wrap to Terminal rather than land on Canvas.
+        fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'ArrowDown' });
         fireEvent.keyDown(input, { key: 'ArrowDown' });
@@ -291,6 +292,56 @@ describe('keyboard', () => {
     it('focuses the search box on open so typing works immediately', async () => {
         renderMenu();
         await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('unified-panel-open-menu-search')));
+    });
+});
+
+describe('browser entries', () => {
+    it('opens a blank browser tab owned by the target clone', () => {
+        const { onOpenResource, onClose } = renderMenu({
+            target: 'ws-member',
+            targetRoutingRef: 'clone:host-b:ws-member',
+            targets: [{ workspaceId: 'ws-member', label: 'member' } as never],
+        });
+        fireEvent.click(screen.getByTestId('unified-panel-open-browser'));
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'browser',
+            ownerWorkspaceId: 'ws-member',
+            ownerRoutingRef: 'clone:host-b:ws-member',
+            chatId: 'chat-1',
+            label: 'New Tab',
+            repoLabel: 'member',
+        }));
+        expect(onOpenResource.mock.calls[0][0]).not.toHaveProperty('browserUrl');
+        expect(onClose).toHaveBeenCalled();
+    });
+
+    it('opens a pasted URL directly with Enter while file search still runs', async () => {
+        const { onOpenResource } = renderMenu();
+        await search('https://example.com/a');
+        expect(searchFiles).toHaveBeenCalled();
+        expect(screen.getByTestId('unified-panel-open-menu-url').textContent).toContain('https://example.com/a');
+        fireEvent.keyDown(screen.getByTestId('unified-panel-open-menu-search'), { key: 'Enter' });
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'browser', browserUrl: 'https://example.com/a', label: 'example.com',
+        }));
+    });
+
+    it('shows an inline message for an unsupported URL and opens nothing', async () => {
+        const { onOpenResource } = renderMenu();
+        await search('file:///etc/passwd');
+        expect(screen.getByTestId('unified-panel-open-menu-url-error').textContent).toMatch(/not supported/);
+        fireEvent.keyDown(screen.getByTestId('unified-panel-open-menu-search'), { key: 'Enter' });
+        expect(onOpenResource).not.toHaveBeenCalled();
+    });
+
+    it('keeps a matching file as the Enter target for a bare-domain query', async () => {
+        searchFiles.mockResolvedValue({ results: [{ path: 'docs/readme.md' }] });
+        const { onOpenResource } = renderMenu();
+        await search('readme.md');
+        await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-file-0')).toBeTruthy());
+        expect(screen.getByTestId('unified-panel-open-menu-url')).toBeTruthy();
+        fireEvent.keyDown(screen.getByTestId('unified-panel-open-menu-search'), { key: 'Enter' });
+        expect(onOpenResource).toHaveBeenCalledWith(expect.objectContaining({ kind: 'file', resourceId: 'docs/readme.md' }));
     });
 });
 
@@ -356,6 +407,7 @@ describe('the chat\'s Changes entry', () => {
             'unified-panel-open-terminal',
             'unified-panel-open-explorer',
             'unified-panel-open-notes',
+            'unified-panel-open-browser',
             'unified-panel-open-canvas',
             'unified-panel-open-changes',
         ]);

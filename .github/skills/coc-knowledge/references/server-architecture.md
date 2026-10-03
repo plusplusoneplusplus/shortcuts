@@ -33,7 +33,7 @@ This table locates boundaries, not individual implementation classes.
 | `infrastructure/`, `routes/` | Bootstrap wiring and route registration |
 | `admin/`, `config/`, `preferences/` | Runtime settings and scoped preferences; [admin config](admin-config.md) |
 | `logging/`, `dashboard/` | Diagnostics and active-workspace state |
-| `workspaces/`, `repos/` | Workspace registry, groups, repository access and native indexes |
+| `workspaces/`, `repos/` | Workspace registry, groups, repository access and native indexes; cached file-index reuse requires the live root for each workspace/`showIgnored` pair |
 | `processes/`, `task-groups/` | Conversation lifecycle and grouping; [process store](process-store.md) |
 | `queue/`, `executors/` | Multi-repo scheduling, dispatch and turn execution |
 | `schedule/`, `cron/`, `triggers/` | Scheduled work and event-driven execution; [cron](cron.md) |

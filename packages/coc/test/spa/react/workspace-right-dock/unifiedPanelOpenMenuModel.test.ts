@@ -14,6 +14,7 @@ import {
     nextOpenMenuIndex,
     normalizeResourcePath,
     openMenuActions,
+    openMenuUrlCandidate,
     resourcePathName,
     type OpenMenuAction,
     type OpenMenuItem,
@@ -28,15 +29,15 @@ function ids(actions: readonly OpenMenuAction[]): string[] {
 }
 
 describe('openMenuActions', () => {
-    it('offers terminal, explorer, notes and canvas for a concrete repo with a chat', () => {
+    it('offers terminal, explorer, notes, browser and canvas for a concrete repo with a chat', () => {
         const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1' });
-        expect(ids(actions)).toEqual(['terminal', 'explorer', 'notes', 'canvas']);
+        expect(ids(actions)).toEqual(['terminal', 'explorer', 'notes', 'browser', 'canvas']);
         expect(actions.every(action => action.disabled !== true)).toBe(true);
     });
 
     it('omits Explorer for a repo group root, which has no single file tree', () => {
         const actions = openMenuActions({ targetWorkspaceId: GROUP, chatId: 'chat-1' });
-        expect(ids(actions)).toEqual(['terminal', 'notes', 'canvas']);
+        expect(ids(actions)).toEqual(['terminal', 'notes', 'browser', 'canvas']);
     });
 
     it('disables Canvas with a reason when no chat is selected, rather than hiding it', () => {
@@ -64,7 +65,7 @@ describe('openMenuActions', () => {
 
     it('lists Changes right after New Canvas for a chat that changed files', () => {
         const actions = openMenuActions({ targetWorkspaceId: REPO, chatId: 'chat-1', chatHasChanges: true });
-        expect(ids(actions)).toEqual(['terminal', 'explorer', 'notes', 'canvas', 'changes']);
+        expect(ids(actions)).toEqual(['terminal', 'explorer', 'notes', 'browser', 'canvas', 'changes']);
         expect(actions.find(action => action.id === 'changes')?.disabled).toBeUndefined();
     });
 
@@ -99,7 +100,7 @@ describe('buildOpenMenuItems', () => {
     it('lists actions and chat canvases and fetches nothing with an empty query', () => {
         const items = buildOpenMenuItems({ actions, files, canvases, query: '' });
         expect(items.map(item => item.key)).toEqual([
-            'action:terminal', 'action:explorer', 'action:notes', 'action:canvas', 'canvas:c1',
+            'action:terminal', 'action:explorer', 'action:notes', 'action:browser', 'action:canvas', 'canvas:c1',
         ]);
     });
 
@@ -116,6 +117,34 @@ describe('buildOpenMenuItems', () => {
     it('filters canvases by title', () => {
         const items = buildOpenMenuItems({ actions, files: [], canvases, query: 'design' });
         expect(items).toEqual([{ key: 'canvas:c1', type: 'canvas', canvas: canvases[0] }]);
+    });
+
+    it('leads with an Open URL row for a pasted URL with a scheme', () => {
+        const items = buildOpenMenuItems({ actions, files, canvases, query: ' https://example.com/docs ' });
+        expect(items[0]).toEqual({ key: 'url:https://example.com/docs', type: 'url', url: 'https://example.com/docs' });
+        expect(firstOpenMenuIndex(items)).toBe(0);
+    });
+
+    it('keeps file hits first for a bare domain, which may also be a file name', () => {
+        const items = buildOpenMenuItems({ actions, files: [{ path: 'docs/notes.md' }], canvases, query: 'notes.md' });
+        expect(items.map(item => item.type)).toEqual(['file', 'url']);
+        expect(items[1]).toMatchObject({ type: 'url', url: 'https://notes.md/' });
+    });
+
+    it('reports an unsupported scheme inline as an unselectable row', () => {
+        const items = buildOpenMenuItems({ actions, files: [], canvases, query: 'javascript:alert(1)' });
+        expect(items[0]).toMatchObject({ type: 'url-error' });
+        expect(isOpenMenuItemEnabled(items[0])).toBe(false);
+        expect(firstOpenMenuIndex(items)).toBe(-1);
+    });
+
+    it('leaves plain text to file search, never a web search', () => {
+        const items = buildOpenMenuItems({ actions, files, canvases, query: 'app' });
+        expect(items.some(item => item.type === 'url' || item.type === 'url-error')).toBe(false);
+        expect(openMenuUrlCandidate('how to fix')).toBeNull();
+        expect(openMenuUrlCandidate('todo: fix')).toBeNull();
+        expect(openMenuUrlCandidate('localhost:3000')).toEqual({ url: 'http://localhost:3000/' });
+        expect(openMenuUrlCandidate('file:///tmp/a.html')).toMatchObject({ reason: expect.stringMatching(/not supported/) });
     });
 });
 

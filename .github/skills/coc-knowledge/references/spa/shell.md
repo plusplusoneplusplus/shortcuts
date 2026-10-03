@@ -101,6 +101,30 @@ view replays its last load state to a newly mounted tab. Views have no preload, 
 sandboxed in their own partition, never outlive a full SPA reload, and follow the
 navigation policy in `html-page-policy.ts`.
 
+## Desktop browser views
+
+`window.cocDesktop.browser` hosts general web pages for right-panel browser tabs
+(`browser-view-host.ts` + pure `browser-view-policy.ts`). `open(viewId, url, sessionKey)`
+accepts only absolute http(s) URLs (`{ ok: false, reason }` otherwise); reopening a live
+`viewId` with the same key keeps its history and re-pushes state. `navigate`, `nav(viewId,
+'back'|'forward'|'reload'|'stop')`, `setBounds`/`hide`/`close` mirror the HTML page bridge;
+`onState` streams `{ url, title, canGoBack, canGoForward, loading, error? }`. Reload after a
+failed load retries the failed URL. `sessionKey` is the tab's concrete owner
+(`browserSessionKey`); it maps to a hashed, in-memory `coc-browser-*` partition, so
+same-owner tabs share sign-ins, other owners / CoC / HTML pages are isolated, and nothing
+survives a restart. Views and pop-ups have no preload and run sandboxed with normal TLS;
+the session strips `Electron/` from the UA and denies permissions except clipboard write
+and fullscreen. `window.open` with features (`new-window`) opens a sandboxed child pop-up
+in the same session (closed with its tab); other new-window links fire `onNewTab({
+openerViewId, url })`; non-web navigations are denied. Downloads are cancelled and handed to
+`shell.openExternal`, reported via `onDownload({ viewId, url, ok, error? })`.
+`openExternal(url)` (invoke → boolean) opens an http(s) URL in the system browser.
+SPA side: `UnifiedBrowserTab` + `shared/file-path/browser-bridge.ts` (see the
+unified-right-panel AGENTS.md "Browser tabs"); views are hidden on unmount and closed only
+when the tab closes.
+E2E: `test/e2e/browser-view.e2e.test.ts` (local HTTP fixtures; `xvfb-run -a` +
+`COC_DESKTOP_E2E_NO_SANDBOX=1` on headless Linux).
+
 Pop-out buttons draw the SVG `PopOutIcon` (`features/canvas/components/icons.tsx`),
 **never a text glyph**: U+29C9 `⧉` is missing from the UI font stack on common Linux
 desktops, making a glyph-only button an invisible click target. `DevToolsDialog` imports
