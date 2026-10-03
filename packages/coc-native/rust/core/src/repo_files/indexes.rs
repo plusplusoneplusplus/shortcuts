@@ -21,7 +21,7 @@ struct Variant {
     /// any scan already running, then starts its own.
     refresh: Mutex<()>,
     /// Start of the walk behind the published snapshot. A failed refresh
-    /// leaves it alone, so the next read sees the TTL expired and retries.
+    /// clears it, so the next read retries even before the TTL expires.
     walked_at: Mutex<Option<Instant>>,
     /// A TTL refresh is running in the background.
     refreshing: AtomicBool,
@@ -93,9 +93,7 @@ impl RepoIndexes {
         }
         let started = Instant::now();
         let fresh = index.refresh().is_ok();
-        if fresh {
-            *variant.walked_at.lock() = Some(started);
-        }
+        *variant.walked_at.lock() = fresh.then_some(started);
         fresh
     }
 

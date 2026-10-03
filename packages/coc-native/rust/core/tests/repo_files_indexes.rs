@@ -149,6 +149,38 @@ fn a_failed_refresh_keeps_the_snapshot_and_retries() {
 }
 
 #[test]
+fn failed_invalidation_retries_on_read_before_the_ttl_for_both_variants() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("repo");
+    write(&root, ".git/HEAD");
+    fs::write(root.join(".gitignore"), "ignored.ts\n").unwrap();
+    write(&root, "a.ts");
+    let indexes = RepoIndexes::new(root.clone(), LONG);
+    let held = [false, true].map(|ignored| indexes.index(ignored).unwrap());
+    let original = held[0].snapshot();
+
+    fs::rename(&root, dir.path().join("moved")).unwrap();
+    assert!(!indexes.invalidate());
+    for index in &held {
+        assert_eq!(index.snapshot().files(0, 10), [".gitignore", "a.ts"]);
+    }
+
+    fs::rename(dir.path().join("moved"), &root).unwrap();
+    write(&root, "b.ts");
+    write(&root, "ignored.ts");
+    // No second invalidation: reads must retry despite the hour-long TTL.
+    wait_for(|| {
+        for ignored in [false, true] {
+            indexes.index(ignored).unwrap();
+        }
+        held.iter().all(|index| index.snapshot().files(0, 10).contains(&"b.ts".to_owned()))
+    });
+    assert_eq!(held[0].snapshot().files(0, 10), [".gitignore", "a.ts", "b.ts"]);
+    assert_eq!(held[1].snapshot().files(0, 10), [".gitignore", "a.ts", "b.ts", "ignored.ts"]);
+    assert_eq!(original.files(0, 10), [".gitignore", "a.ts"], "held snapshots stay immutable");
+}
+
+#[test]
 fn invalidate_skips_variants_that_were_never_built() {
     let dir = repo();
     let indexes = RepoIndexes::new(dir.path().to_path_buf(), LONG);
