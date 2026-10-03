@@ -111,17 +111,23 @@ describe.runIf(process.platform === 'win32')('RepoFiles Windows path containment
     it('lists directories where the old guard did, with POSIX entry paths', async () => {
         for (const { input, differs } of spellings('src')) {
             const { target, accepted } = oracle(input);
-            const listing = files.listDirectory(input, options);
-            const walk = files.listFiles(input, options);
             if (accepted === differs) {
-                await expect(listing, input).rejects.toMatchObject(TRAVERSAL);
-                await expect(walk, input).rejects.toMatchObject(TRAVERSAL);
+                // Attach both rejection handlers before either native task settles.
+                await Promise.all([
+                    expect(files.listDirectory(input, options), input).rejects.toMatchObject(TRAVERSAL),
+                    expect(files.listFiles(input, options), input).rejects.toMatchObject(TRAVERSAL),
+                ]);
             } else if (fs.existsSync(target)) {
-                expect((await listing).entries.map(e => e.path), input).toEqual(['src/nested', 'src/a.txt']);
-                expect((await walk).files, input).toEqual(['src/a.txt', 'src/nested/b.txt']);
+                const [listing, walk] = await Promise.all([
+                    files.listDirectory(input, options), files.listFiles(input, options),
+                ]);
+                expect(listing.entries.map(e => e.path), input).toEqual(['src/nested', 'src/a.txt']);
+                expect(walk.files, input).toEqual(['src/a.txt', 'src/nested/b.txt']);
             } else {
-                await expect(listing, input).rejects.toThrow(`Path does not exist: ${input}`);
-                expect((await walk).files, input).toEqual([]);
+                await Promise.all([
+                    expect(files.listDirectory(input, options), input).rejects.toThrow(`Path does not exist: ${input}`),
+                    expect(files.listFiles(input, options), input).resolves.toMatchObject({ files: [] }),
+                ]);
             }
         }
         const deep = await files.listDirectory('\\', { ...options, depth: 3 });

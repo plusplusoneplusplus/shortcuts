@@ -99,6 +99,9 @@ describe('RepoFiles listings', () => {
         try {
             const names = ['b', 'B.md', '_a', '-a', '.a', 'a10', 'a2', 'é', 'e', 'Z', '1', 'ä', 'ß', 'ss', '中文', '😀', 'a b', 'A_B', '~t'];
             for (const name of names) fs.writeFileSync(path.join(dir, name), 'xy');
+            // Case-insensitive filesystems can alias Unicode names such as ß/ss.
+            // Compare the names actually on disk against Node's collation.
+            const diskNames = fs.readdirSync(dir);
             fs.mkdirSync(path.join(dir, 'zdir'));
             fs.writeFileSync(path.join(dir, 'zdir', 'f'), '');
             const { entries, truncated } = await addon.openRepoFiles(dir).listDirectory('', {
@@ -107,7 +110,7 @@ describe('RepoFiles listings', () => {
                 depth: 2,
             });
             expect(truncated).toBe(false);
-            expect(entries.map((e) => e.name)).toEqual(['zdir', ...[...names].sort((a, b) => a.localeCompare(b))]);
+            expect(entries.map((e) => e.name)).toEqual(['zdir', ...diskNames.sort((a, b) => a.localeCompare(b))]);
             expect(entries[0]).toEqual({
                 name: 'zdir',
                 type: 'dir',
@@ -199,7 +202,6 @@ describe('RepoFiles indexes', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-replace-index-'));
         const files = addon.openRepoFiles(dir, 3_600_000);
         const listed = async (showIgnored: boolean) => (await files.indexFiles({ showIgnored, maxEntries: 100 })).files;
-        const locked = path.join(dir, 'locked.txt');
         try {
             execFileSync('git', ['init', '-q', dir]);
             fs.writeFileSync(path.join(dir, '.gitignore'), 'secret.txt\n');
@@ -216,21 +218,20 @@ describe('RepoFiles indexes', () => {
             expect((await files.searchFiles('secret', 5, false)).map(hit => hit.path)).toEqual(['secret.txt']);
             expect(await listed(true)).toContain('outside.txt');
 
-            // .gitignore is committed, then writing the read-only second file fails.
-            fs.writeFileSync(locked, 'public.txt\n');
-            fs.chmodSync(locked, 0o444);
+            // A later traversal fails even as root, which bypasses chmod restrictions.
             fs.writeFileSync(path.join(dir, 'late.txt'), 'x');
             await expect(files.replaceContent('public.txt', 'secret.txt', [
                 { path: '.gitignore', targets: [target('public.txt', 'public.txt')] },
-                { path: 'locked.txt', targets: [target('public.txt', 'public.txt')] },
-            ])).rejects.not.toMatchObject({ code: 'InvalidArg' });
+                { path: '../outside.txt', targets: [target('public.txt', 'public.txt')] },
+            ])).rejects.toMatchObject({
+                code: 'InvalidArg', message: 'Path traversal detected: path escapes repo root',
+            });
             expect(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8')).toBe('secret.txt\n');
             expect(await listed(false)).not.toContain('secret.txt');
             expect(await files.searchFiles('secret', 5, false)).toEqual([]);
             expect(await listed(true)).toContain('late.txt');
         } finally {
             files.dispose();
-            if (fs.existsSync(locked)) fs.chmodSync(locked, 0o644);
             removeDir(dir);
         }
     });
