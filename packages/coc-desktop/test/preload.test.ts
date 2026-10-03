@@ -57,6 +57,18 @@ import {
     HTML_PAGE_OPEN_EXTERNAL_CHANNEL,
     HTML_PAGE_STATE_CHANNEL,
 } from '../src/html-page-policy';
+import {
+    BROWSER_VIEW_OPEN_CHANNEL,
+    BROWSER_VIEW_NAVIGATE_CHANNEL,
+    BROWSER_VIEW_NAV_CHANNEL,
+    BROWSER_VIEW_SET_BOUNDS_CHANNEL,
+    BROWSER_VIEW_HIDE_CHANNEL,
+    BROWSER_VIEW_CLOSE_CHANNEL,
+    BROWSER_OPEN_EXTERNAL_CHANNEL,
+    BROWSER_VIEW_STATE_CHANNEL,
+    BROWSER_VIEW_NEW_TAB_CHANNEL,
+    BROWSER_VIEW_DOWNLOAD_CHANNEL,
+} from '../src/browser-view-policy';
 
 const exposeInMainWorld = vi.fn();
 const send = vi.fn();
@@ -298,5 +310,42 @@ describe('preload bridge', () => {
         expect(cb).toHaveBeenCalledWith(state);
         unsubscribe();
         expect(removeListener).toHaveBeenCalledWith(HTML_PAGE_STATE_CHANNEL, expect.any(Function));
+    });
+
+    it('browser methods use the real browser-view channels', async () => {
+        const api = exposedApi();
+        invoke.mockResolvedValue({ ok: true });
+        await expect(api.browser.open('b1', 'https://example.com/', 'ws-1')).resolves.toEqual({ ok: true });
+        expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_CHANNEL, 'b1', 'https://example.com/', 'ws-1');
+        await api.browser.navigate('b1', 'https://example.org/');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_NAVIGATE_CHANNEL, 'b1', 'https://example.org/');
+        invoke.mockResolvedValue(true);
+        await expect(api.browser.openExternal('https://example.org/')).resolves.toBe(true);
+        expect(invoke).toHaveBeenCalledWith(BROWSER_OPEN_EXTERNAL_CHANNEL, 'https://example.org/');
+        for (const action of ['back', 'forward', 'reload', 'stop']) {
+            api.browser.nav('b1', action);
+            expect(send).toHaveBeenCalledWith(BROWSER_VIEW_NAV_CHANNEL, 'b1', action);
+        }
+        const rect = { x: 1, y: 2, width: 3, height: 4 };
+        api.browser.setBounds('b1', rect);
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_SET_BOUNDS_CHANNEL, 'b1', rect);
+        api.browser.hide('b1');
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_HIDE_CHANNEL, 'b1');
+        api.browser.close('b1');
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_CLOSE_CHANNEL, 'b1');
+    });
+
+    it.each([
+        ['onState', BROWSER_VIEW_STATE_CHANNEL, { viewId: 'b1', url: 'https://a.test/', title: 'A', canGoBack: false, canGoForward: false, loading: false }],
+        ['onNewTab', BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: 'b1', url: 'https://b.test/' }],
+        ['onDownload', BROWSER_VIEW_DOWNLOAD_CHANNEL, { viewId: 'b1', url: 'https://a.test/f.zip', ok: true }],
+    ])('browser.%s relays payloads on the real channel and unsubscribes', (method, channel, payload) => {
+        const cb = vi.fn();
+        const unsubscribe = exposedApi().browser[method](cb);
+        const listener = on.mock.calls.find((c) => c[0] === channel)![1];
+        listener({ sender: 'ignored' }, payload);
+        expect(cb).toHaveBeenCalledWith(payload);
+        unsubscribe();
+        expect(removeListener).toHaveBeenCalledWith(channel, listener);
     });
 });
