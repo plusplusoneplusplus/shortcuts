@@ -61,7 +61,7 @@ function git(cwd: string, ...args: string[]): void {
 function makeRepo(root: string, marker: string): void {
     fs.mkdirSync(path.join(root, 'src'), { recursive: true });
     git(root, 'init', '-q');
-    fs.writeFileSync(path.join(root, '.gitignore'), 'build/\n');
+    fs.writeFileSync(path.join(root, '.gitignore'), 'build/\nignored/\n');
     fs.writeFileSync(path.join(root, 'src', 'main.ts'), `export const ${marker} = 1;\n// alpha beta\n// gamma\n`);
     fs.writeFileSync(path.join(root, 'README.md'), `# ${marker}\r\nshared-token here\r\n`);
     fs.mkdirSync(path.join(root, 'build'));
@@ -70,6 +70,8 @@ function makeRepo(root: string, marker: string): void {
     git(root, 'add', '-f', 'build/out.js');
     git(root, 'commit', '-q', '-m', 'init');
     fs.writeFileSync(path.join(root, 'notes.txt'), `untracked_${marker} shared-token\n`);
+    fs.mkdirSync(path.join(root, 'ignored'));
+    fs.writeFileSync(path.join(root, 'ignored', 'scratch.txt'), 'ignored untracked file\n');
 }
 
 describe('repository files — functional multi-repo walk-through', () => {
@@ -122,16 +124,18 @@ describe('repository files — functional multi-repo walk-through', () => {
             const tree = await request(repo(id, '/tree?path=/&depth=2'));
             expect(tree.status).toBe(200);
             const names = tree.json.entries.map((e: { name: string }) => e.name);
-            // Dirs first; flat listings keep .git, the ignored build/ stays hidden.
-            expect(names).toEqual(['.git', 'src', '.gitignore', 'notes.txt', 'README.md']);
-            expect(tree.json.entries[1].children.map((e: { path: string }) => e.path)).toEqual(['src/main.ts']);
+            // Git keeps directories containing tracked files; ignored untracked dirs stay hidden.
+            expect(names).toEqual(['.git', 'build', 'src', '.gitignore', 'notes.txt', 'README.md']);
+            const src = tree.json.entries.find((e: { name: string }) => e.name === 'src');
+            expect(src.children.map((e: { path: string }) => e.path)).toEqual(['src/main.ts']);
             const shown = await request(repo(id, '/tree?path=.&showIgnored=true'));
-            expect(shown.json.entries.map((e: { name: string }) => e.name)).toContain('build');
+            expect(shown.json.entries.map((e: { name: string }) => e.name)).toEqual(['.git', 'build', 'ignored', 'src', '.gitignore', 'notes.txt', 'README.md']);
 
             const files = await request(repo(id, '/files?path=.'));
             expect(files.json.files.sort()).toEqual(['.gitignore', 'README.md', 'notes.txt', 'src/main.ts']);
             const all = await request(repo(id, '/files?path=.&showIgnored=true'));
             expect(all.json.files).toContain('build/out.js');
+            expect(all.json.files).toContain('ignored/scratch.txt');
             expect(all.json.files.some((f: string) => f.startsWith('.git/'))).toBe(false);
 
             const blob = await request(repo(id, '/blob?path=README.md'));
@@ -223,14 +227,22 @@ describe('repository files — functional multi-repo walk-through', () => {
     });
 
     it('never serves an old root after a root change, and rejects an unregistered repo', async () => {
-        expect(await search(B, 'main')).toEqual(['src/main.ts']);
+        for (const extra of ['', '&showIgnored=true']) {
+            expect(await search(B, 'main', extra)).toEqual(['src/main.ts']);
+        }
         const newRoot = path.join(tmp, 'charlie');
         fs.mkdirSync(newRoot);
         fs.writeFileSync(path.join(newRoot, 'only-in-charlie.txt'), 'charlie\n');
         const patched = await request(api(`/api/workspaces/${B}`), 'PATCH', { rootPath: newRoot });
         expect(patched.status).toBe(200);
-        expect(await search(B, 'main')).toEqual([]);
-        expect(await search(B, 'only-in-charlie')).toEqual(['only-in-charlie.txt']);
+        for (const extra of ['', '&showIgnored=true']) {
+            expect(await search(B, 'main', extra)).toEqual([]);
+            expect(await search(B, 'only-in-charlie', extra)).toEqual(['only-in-charlie.txt']);
+            const files = await request(repo(B, `/files?path=.${extra}`));
+            expect(files.status).toBe(200);
+            expect(files.json.files).toEqual(['only-in-charlie.txt']);
+            expect(await search(A, 'main', extra)).toEqual(['src/main.ts']);
+        }
         expect(await contentPaths(B, 'bravoMarker')).toEqual([]);
 
         expect(await search(A, 'main')).toEqual(['src/main.ts']);
