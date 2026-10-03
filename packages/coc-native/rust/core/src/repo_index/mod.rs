@@ -13,7 +13,9 @@ pub use walk::WalkOptions;
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use parking_lot::RwLock;
 
 /// A live index of one repository: the root and walk configuration plus the
 /// current searchable snapshot, replaced wholesale on refresh.
@@ -49,11 +51,7 @@ impl RepoIndex {
     /// keep reading the old snapshot safely.
     pub fn refresh(&self) -> io::Result<()> {
         let rebuilt = Arc::new(index(&self.root, &self.options)?);
-        // A poisoned lock still holds a valid snapshot — a writer could only
-        // poison it by panicking inside the swap below, which cannot panic —
-        // so recover rather than fail.
-        let mut slot = self.state.write().unwrap_or_else(|e| e.into_inner());
-        *slot = rebuilt;
+        *self.state.write() = rebuilt;
         Ok(())
     }
 
@@ -65,8 +63,7 @@ impl RepoIndex {
     /// The current snapshot's fuzzy matcher, which carries the snapshot it
     /// scores against.
     pub fn searcher(&self) -> Arc<FuzzyMatcher> {
-        // See `refresh` for why recovering from poison is sound here.
-        Arc::clone(&self.state.read().unwrap_or_else(|e| e.into_inner()))
+        Arc::clone(&self.state.read())
     }
 }
 
