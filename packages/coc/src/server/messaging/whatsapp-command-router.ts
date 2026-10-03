@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { toQueueProcessId, type ProcessStore } from '@plusplusoneplusplus/forge';
-import { isMessagingControlCommand, parseMessagingCommand } from '@plusplusoneplusplus/coc-connector';
+import { isMessagingControlCommand, parseMessagingCommand, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
@@ -11,7 +11,8 @@ export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
     bindings: WhatsAppBindings;
     groupJid: () => string | undefined;
-    enqueue: (workspaceId: string, message: string, mode: 'ask' | 'autopilot', processId: string, taskId: string) => Promise<string>;
+    /** `mode` is undefined for plain text; follow-ups then keep the chat's mode. */
+    enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string) => Promise<string>;
     send: (text: string, quotedId: string) => Promise<string>;
     react: (messageId: string) => Promise<void>;
     queued?: (binding: WhatsAppBinding) => void;

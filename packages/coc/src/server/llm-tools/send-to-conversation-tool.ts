@@ -18,7 +18,8 @@
  *   - `processId` provided → **post mode**: post `content` as a follow-up
  *     message into that existing conversation, wrapping the same delivery path
  *     `POST /api/processes/:id/message` uses (via the injected `sendMessage`
- *     capability). Returns the appended user-turn index.
+ *     capability). Returns the appended user-turn index. An omitted `mode`
+ *     keeps the conversation's current mode (create mode defaults to `ask`).
  *
  * Per-invocation factory pattern: each AI call gets its own tool instance bound
  * to the store + enqueue/send capabilities + the caller's current workspace,
@@ -221,8 +222,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'Send a message to a conversation. With `processId`, posts `content` into that EXISTING conversation and ' +
             'returns `{ processId, openLink, turnIndex }`. Without `processId`, starts a brand-new, separate ' +
             'fire-and-forget chat with `content` as its first prompt (it does NOT continue the current chat) and ' +
-            'returns `{ processId, openLink }`. `content` is required; `mode` defaults to `ask` and create mode ' +
-            'defaults to the current workspace. Create-mode `workspaceId` accepts an id from `list_workspaces` ' +
+            'returns `{ processId, openLink }`. `content` is required. In create mode `mode` defaults to `ask`; in post ' +
+            'mode omitting `mode` keeps the conversation\'s current mode. Create mode defaults to the current workspace. Create-mode `workspaceId` accepts an id from `list_workspaces` ' +
             '(including remote `remote:<serverId>:<workspaceId>` ids, which start the chat on that remote CoC ' +
             'server), or a repo name, with `name@server` to disambiguate. Post mode is local-only. For new conversations, provide a short, task-specific `title` ' +
             '(optional, max 80 characters); it remains the visible custom title even after AI title generation. ' +
@@ -251,8 +252,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 mode: {
                     type: 'string',
                     enum: ['autopilot', 'ask', 'ralph'],
-                    description: 'Chat mode: `ask` (read-only, default), `autopilot` (can edit/run), or `ralph` ' +
-                        '(create mode only: launch a Ralph build loop with `content` as the goal spec).',
+                    description: 'Chat mode: `ask` (read-only), `autopilot` (can edit/run), or `ralph` ' +
+                        '(create mode only: launch a Ralph build loop with `content` as the goal spec). ' +
+                        'Create mode defaults to `ask`; post mode keeps the conversation\'s current mode when omitted.',
                 },
                 deliveryMode: {
                     type: 'string',
@@ -294,8 +296,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             const content = args.content;
 
             // --- mode (restricted to ask|autopilot) ---------------------------
-            const mode = args.mode ?? DEFAULT_MODE;
-            if (!ALLOWED_MODES.has(mode)) {
+            if (args.mode !== undefined && !ALLOWED_MODES.has(args.mode)) {
                 return {
                     error:
                         `Invalid mode: '${String(args.mode)}'. ` +
@@ -343,7 +344,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                             'Post mode only accepts local conversation processIds.',
                     };
                 }
-                if (mode === 'ralph') {
+                if (args.mode === 'ralph') {
                     return {
                         error:
                             "Invalid mode: 'ralph' only applies when creating a new conversation. " +
@@ -355,7 +356,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     sendMessage,
                     processId: targetProcessId,
                     content,
-                    mode,
+                    // Omitted → the delivery path keeps the conversation's mode.
+                    mode: args.mode,
                     model,
                     effortTier: model ? undefined : effortTier,
                     getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
@@ -373,7 +375,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 parentProcessId,
                 args,
                 content,
-                mode,
+                mode: args.mode ?? DEFAULT_MODE,
                 model,
                 explicitProvider: provider,
                 effortTier: model ? undefined : effortTier,
@@ -395,7 +397,7 @@ async function postToExistingConversation(params: {
     sendMessage?: SendMessageFn;
     processId: string;
     content: string;
-    mode: SendToConversationChatMode;
+    mode?: SendToConversationChatMode;
     model?: string;
     effortTier?: SendToConversationEffortTier;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
@@ -436,7 +438,7 @@ async function postToExistingConversation(params: {
         const { turnIndex } = await sendMessage({
             processId,
             content,
-            mode,
+            ...(mode ? { mode } : {}),
             ...(model ? { model } : {}),
             ...tierOverride,
             ...(deliveryMode ? { deliveryMode } : {}),

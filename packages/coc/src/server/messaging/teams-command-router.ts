@@ -338,7 +338,7 @@ export class TeamsCommandRouter {
             this.deps.acknowledgeFollowUp?.(msg));
     }
 
-    private async handleChat(userKey: string, message: string, mode: MessagingChatMode, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
+    private async handleChat(userKey: string, message: string, mode: MessagingChatMode | undefined, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
         if (!message) return;
 
         const state = this.userState.get(userKey);

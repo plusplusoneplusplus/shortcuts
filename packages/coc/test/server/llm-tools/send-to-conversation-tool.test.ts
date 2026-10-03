@@ -679,8 +679,22 @@ describe('createSendToConversationTool — post mode (processId provided)', () =
         expect(sendMessage).toHaveBeenCalledWith({
             processId: 'queue_existing',
             content: 'hi',
-            mode: 'ask',
         });
+    });
+
+    it('omits mode in post mode so delivery keeps the conversation mode (no ask default)', async () => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const { tool } = makeTool({ sendMessage });
+        asSuccess(await tool.handler({ processId: 'queue_existing', content: 'go on' }, invocationStub));
+        const [input] = sendMessage.mock.calls[0] as unknown as [Record<string, unknown>];
+        expect(input).not.toHaveProperty('mode');
+    });
+
+    it.each(['ask', 'autopilot'] as const)('passes an explicit post-mode %s through', async mode => {
+        const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
+        const { tool } = makeTool({ sendMessage });
+        asSuccess(await tool.handler({ processId: 'queue_existing', content: 'go on', mode }, invocationStub));
+        expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ mode }));
     });
 
     it('errors on a blank content even in post mode', async () => {

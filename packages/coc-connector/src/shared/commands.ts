@@ -3,14 +3,17 @@
  *
  * One spec table drives both the parser and the help text, so they cannot drift.
  * Rules:
- *   - Case-insensitive; the leading `/` is optional except for `/autopilot`,
- *     whose free-text body would otherwise swallow ordinary messages.
+ *   - Case-insensitive; the leading `/` is optional except for `/autopilot` and
+ *     `/ask`, whose free-text body would otherwise swallow ordinary messages.
+ *   - Chat mode is three-state: `/autopilot <msg>` → autopilot, `/ask <msg>` →
+ *     ask, plain text → undefined (follow-ups keep the chat's current mode; new
+ *     chats default to ask).
  *   - Any other `/word` that is not a command is `invalid` (callers reply with
  *     "Unknown command" + help). Bare `list|select|create` followed by a
  *     command noun (repo/agent/topic) but malformed is also `invalid`;
  *     other bare text is chat.
  *   - `[chatid] message` targets an explicit chat; `/autopilot [chatid] message`
- *     combines both.
+ *     and `/ask [chatid] message` combine both.
  *   - `list topics <ref>` lists a remote repo's chats read-only; `<ref>` is a
  *     `n.m` number from `list remotes` or `name@server`. Bare `list topics`
  *     stays local.
@@ -25,8 +28,9 @@ export type MessagingCommand =
     | { type: 'list-topics'; args: string }
     /** `args` is optional custom instructions that focus the summary. */
     | { type: 'compact'; args: string }
-    | { type: 'chat'; args: string; mode: MessagingChatMode }
-    | { type: 'chat-explicit'; chatId: string; args: string; mode: MessagingChatMode }
+    /** `mode` is undefined for plain text: keep the chat's current mode. */
+    | { type: 'chat'; args: string; mode?: MessagingChatMode }
+    | { type: 'chat-explicit'; chatId: string; args: string; mode?: MessagingChatMode }
     | { type: 'invalid'; args: string };
 
 export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-remotes' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'select-repo' | 'select-topic' | 'compact' }>;
@@ -52,19 +56,20 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
 ];
 
 const EXPLICIT_CHAT_PATTERN = /^\[([^\]]+)\]\s*(.+)$/s;
-const AUTOPILOT_PATTERN = /^\/autopilot(?:\s+(.*))?$/is;
+const MODE_PATTERN = /^\/(autopilot|ask)(?:\s+(.*))?$/is;
 const COMMAND_LIKE_PATTERN = /^(?:list|select|create)\s+(?:repos?|agents?|remotes?|(?:chat\s+)?topics?)\b|^(?:list|select|create)$/i;
 
 export const MESSAGING_HELP_TEXT = [
     'Commands (case-insensitive, leading / optional):',
     ...MESSAGING_COMMAND_SPECS.map(spec => `${spec.usage} — ${spec.summary}`),
     '/autopilot <message> — run this one message in autopilot (/ required)',
+    '/ask <message> — run this one message in ask (read-only) mode (/ required)',
     '[chatid] <message> — send to a specific chat',
-    '<message> — chat in the selected topic, or start one',
+    '<message> — chat in the selected topic (keeps its mode), or start one in ask',
     'Any other /word replies "Unknown command".',
 ].join('\n');
 
-function parseChat(text: string, mode: MessagingChatMode): MessagingCommand {
+function parseChat(text: string, mode?: MessagingChatMode): MessagingCommand {
     const explicit = EXPLICIT_CHAT_PATTERN.exec(text);
     if (explicit) return { type: 'chat-explicit', chatId: explicit[1].trim(), args: explicit[2].trim(), mode };
     return { type: 'chat', args: text, mode };
@@ -77,13 +82,14 @@ export function parseMessagingCommand(text: string): MessagingCommand {
         const match = pattern.exec(body);
         if (match) return { type, args: (match[1] ?? '').trim() } as MessagingControlCommand;
     }
-    const autopilot = AUTOPILOT_PATTERN.exec(value);
-    if (autopilot) {
-        const message = (autopilot[1] ?? '').trim();
-        return message ? parseChat(message, 'autopilot') : { type: 'invalid', args: value };
+    const modeCommand = MODE_PATTERN.exec(value);
+    if (modeCommand) {
+        const message = (modeCommand[2] ?? '').trim();
+        const mode = modeCommand[1].toLowerCase() as MessagingChatMode;
+        return message ? parseChat(message, mode) : { type: 'invalid', args: value };
     }
     if (value.startsWith('/') || COMMAND_LIKE_PATTERN.test(body)) return { type: 'invalid', args: value };
-    return parseChat(value, 'ask');
+    return parseChat(value);
 }
 
 export function isMessagingControlCommand(command: MessagingCommand): command is MessagingControlCommand {

@@ -271,7 +271,7 @@ describe('TeamsCommandRouter', () => {
 
     it('sends message to explicit chat ID', async () => {
         await router.handle(makeMsg('[proc-111] What is the status?'));
-        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'What is the status?', 'ask');
+        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'What is the status?', undefined);
         expect(sendReplySpy.mock.calls[0][0]).toContain('Message sent');
     });
 
@@ -287,7 +287,7 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('How is it going?'));
-        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-222', 'How is it going?', 'ask');
+        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-222', 'How is it going?', undefined);
     });
 
     it('creates new topic when no active topic and repo is selected', async () => {
@@ -295,13 +295,13 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('Start something new'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Start something new', 'ask');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Start something new', undefined);
         expect(sendReplySpy.mock.calls[0][0]).toContain('New topic created');
     });
 
     it('auto-selects first repo when no repo selected', async () => {
         await router.handle(makeMsg('Hello world'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Hello world', 'ask');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Hello world', undefined);
         expect(sendReplySpy.mock.calls[0][0]).toContain('ProjectA');
     });
 
@@ -387,7 +387,7 @@ describe('TeamsCommandRouter', () => {
 
         // user-A sends a message — should enqueue in ProjectA (ws-1), not ProjectB
         await router.handle(makeMsg('Fix the bug', { senderAadId: 'user-A' }));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug', 'ask');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug', undefined);
     });
 
     describe('compact', () => {
@@ -517,7 +517,7 @@ describe('TeamsCommandRouter', () => {
             expect(deps.enqueueChat).not.toHaveBeenCalled();
             await router.handle(makeMsg('[proc-111] explicit chat', { replyToMessageId: 'root-b' }));
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
-                expect.any(Object), expect.objectContaining({ id: 'proc-b' }), '[proc-111] explicit chat', 'ask');
+                expect.any(Object), expect.objectContaining({ id: 'proc-b' }), '[proc-111] explicit chat', undefined);
             await router.handle(makeMsg('still selected', { replyToMessageId: 'unrelated-root' }));
             expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('/select repo <name>'), 'unrelated-root');
             expect(deps.admitFollowUp).toHaveBeenCalledTimes(1);
@@ -601,12 +601,27 @@ describe('TeamsCommandRouter', () => {
             sendReplySpy.mockClear();
             const reply = makeMsg('queued reply', { replyToMessageId: 'pending' });
             await router.handle(reply);
-            expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(reply, 'task-pending', 'queued reply', 'ask');
+            expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(reply, 'task-pending', 'queued reply', undefined);
             expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('Message sent'), 'pending');
             expect(deps.acknowledgeFollowUp).toHaveBeenCalledWith(reply);
             await router.handle(makeMsg('ordinary message'));
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
-                expect.any(Object), expect.objectContaining({ id: 'proc-111' }), 'ordinary message', 'ask');
+                expect.any(Object), expect.objectContaining({ id: 'proc-111' }), 'ordinary message', undefined);
+        });
+
+        it('passes the follow-up mode through as typed so plain text keeps the chat mode', async () => {
+            await router.handle(makeMsg('/select topic proc-111'));
+            const modes: Array<[string, string | undefined]> = [
+                ['keep going', undefined], ['/ask just look', 'ask'], ['/autopilot fix it', 'autopilot'],
+            ];
+            for (const [text, mode] of modes) {
+                await router.handle(makeMsg(text));
+                expect(deps.admitFollowUp).toHaveBeenLastCalledWith(
+                    expect.any(Object), expect.objectContaining({ id: 'proc-111' }), expect.any(String), mode);
+                await router.handle(makeMsg(text, { replyToMessageId: 'pending' }));
+                expect(deps.admitPendingFollowUp).toHaveBeenLastCalledWith(
+                    expect.any(Object), 'task-pending', expect.any(String), mode);
+            }
         });
 
         it('reports missing bound targets in the same thread and never falls back', async () => {

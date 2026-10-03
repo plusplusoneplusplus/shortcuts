@@ -105,7 +105,8 @@ references before editing. Paths are package-relative.
   admission on failure in `finally`.
 - Delivery decisions belong in `process-message-delivery-service.ts`. Buffer via atomic
   `appendPendingMessage`, not metadata read-modify-write; draining owns deferred turns.
-  Emit intents once; enqueue sites resolve/set mode, preserving terminal Sentinel mode.
+  Emit intents once; follow-up enqueue sites resolve mode via `resolveFollowUpMode(...)`
+  (an omitted mode keeps the chat's mode; terminal Sentinel wins) — never default it to `'ask'`.
   Use `metadataPatch` for field updates.
 - Tool-free lookups use `src/server/core/one-shot-ai.ts`: deny permissions/ambient MCP.
   Dreams analyzer/critic work uses persisted lifecycle processes, not direct SDK calls.
@@ -173,7 +174,9 @@ references before editing. Paths are package-relative.
   `MessagingSelection` adapter. `compact` targets the quoted/bound-thread answer's
   chat, else the selected topic; it calls `processes/compact-process.ts` (shared with
   the compact route), never enqueues a turn or changes selection, and maps 400/409/422
-  to fixed replies. Ask is default; `/autopilot <msg>` runs one message in Autopilot.
+  to fixed replies. `/autopilot <msg>` / `/ask <msg>` set the turn's mode; plain text keeps
+  the chat's mode (new chats run in Ask) via `src/server/messaging/messaging-chat-mode.ts`,
+  never a defaulted `'ask'`.
   `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
   `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`
   (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in

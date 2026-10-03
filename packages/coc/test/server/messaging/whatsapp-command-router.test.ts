@@ -55,7 +55,7 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('select repo 2', 'select'));
         expect(bindings.selectedRepo).toBe('ws-b');
         await router.handle(inbound('what files?', 'chat'));
-        expect(enqueue).toHaveBeenCalledWith('ws-b', 'what files?', 'ask', expect.any(String), expect.any(String));
+        expect(enqueue).toHaveBeenCalledWith('ws-b', 'what files?', undefined, expect.any(String), expect.any(String));
         expect(react).toHaveBeenCalledWith('chat');
         expect(fs.existsSync(path.join(dir, 'repos', 'ws-b', 'whatsapp-bindings.json'))).toBe(true);
         expect(fs.existsSync(path.join(dir, 'messaging', 'whatsapp', 'bindings.json'))).toBe(false);
@@ -122,8 +122,26 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('select repo 2', 'select-b'));
         await router.handle(inbound('beta question', 'beta'));
         await router.handle(inbound('follow-up', 'follow', { quotedMessageId: 'answer-a' }));
-        expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual(['ws-a', 'follow-up', 'ask', alpha.processId]);
+        expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual(['ws-a', 'follow-up', undefined, alpha.processId]);
         expect(bindings.selectedRepo).toBe('ws-b');
+    });
+
+    it('passes the follow-up mode through as typed for quote-replies and selected topics', async () => {
+        await router.handle(inbound('select repo 1', 'select-a'));
+        await router.handle(inbound('/autopilot build it', 'first'));
+        expect(enqueue.mock.calls.at(-1)?.[2]).toBe('autopilot');
+        const first = bindings.findMessage('first')!;
+        first.outboundIds.push('answer-first');
+        bindings.update(first);
+        const modes: Array<[string, string | undefined]> = [
+            ['keep going', undefined], ['/ask just look', 'ask'], ['/autopilot fix it', 'autopilot'],
+        ];
+        for (const [text, mode] of modes) {
+            await router.handle(inbound(text, `quote-${text}`, { quotedMessageId: 'answer-first' }));
+            expect(enqueue.mock.calls.at(-1)?.slice(2, 4)).toEqual([mode, first.processId]);
+            await router.handle(inbound(text, `topic-${text}`));
+            expect(enqueue.mock.calls.at(-1)?.slice(2, 4)).toEqual([mode, first.processId]);
+        }
     });
 
     it('silently drops other authors, groups and bot echoes', async () => {
@@ -177,7 +195,7 @@ describe('WhatsApp workspace command routing', () => {
     it('sends [chatid] messages to that chat in its own workspace, with or without autopilot', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('[topic-b] continue there', 'explicit'));
-        expect(enqueue).toHaveBeenLastCalledWith('ws-b', 'continue there', 'ask', 'topic-b', expect.any(String));
+        expect(enqueue).toHaveBeenLastCalledWith('ws-b', 'continue there', undefined, 'topic-b', expect.any(String));
         await router.handle(inbound('/autopilot [topic-a] go', 'explicit-auto'));
         expect(enqueue).toHaveBeenLastCalledWith('ws-a', 'go', 'autopilot', 'topic-a', expect.any(String));
         await router.handle(inbound('[missing] hello', 'missing'));

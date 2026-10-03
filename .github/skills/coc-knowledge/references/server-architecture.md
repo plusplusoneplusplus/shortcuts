@@ -200,14 +200,17 @@ remain connector-specific.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
-`compact [instructions]`, `[chatid]`, `/autopilot`; unknown `/word` → "Unknown
+`compact [instructions]`, `[chatid]`, `/autopilot`, `/ask`; unknown `/word` → "Unknown
 command" + the generated `MESSAGING_HELP_TEXT`, never sent to the AI).
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
 `AgentProvidersQuotaCache`) and compact for both routers via a `MessagingSelection`
 adapter; routers keep platform state and transport. `compact` targets the quoted
 WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
 and calls `processes/compact-process.ts` `compactProcess` (shared with
-`POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. Chats run in Ask mode unless the message starts with `/autopilot`.
+`POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. `/autopilot <msg>` and `/ask <msg>` set the
+turn's mode; plain text has none, so a follow-up keeps the chat's mode and a new chat runs in
+Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
+first turn lends its queued mode) at every Teams/WhatsApp enqueue site.
 `list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
 `list topics <n.m|name@server>` (10 most recent remote chats, read-only header) are
 answered by `messaging/remote-browse.ts` over the route-layer `WorkspaceDirectory`

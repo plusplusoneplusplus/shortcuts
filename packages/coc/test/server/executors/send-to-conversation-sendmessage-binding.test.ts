@@ -9,20 +9,15 @@
  * message into that existing conversation and returns the appended user-turn
  * index.
  *
- * Mirrors the binding built at the route layer in `registerAllRoutes`:
- *   sendMessage = (input) => {
- *     const proc = resolve(input.processId);
- *     return deliveryService.deliver(proc, buildFollowUpInput(input));
- *   }
+ * Uses the production `createSendMessageCapability` binding that
+ * `registerAllRoutes` publishes.
  */
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
-
 import { createMockProcessStore } from '../../helpers/mock-process-store';
-import { createSendToConversationTool, type SendMessageFn } from '../../../src/server/llm-tools/send-to-conversation-tool';
-import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../../../src/server/processes/process-message-delivery-service';
+import { createSendToConversationTool } from '../../../src/server/llm-tools/send-to-conversation-tool';
+import { createSendMessageCapability } from '../../../src/server/processes/send-message-capability';
 
 const WS_ID = 'ws-post';
 
@@ -36,40 +31,10 @@ function makeBridge(overrides: Record<string, unknown> = {}) {
     };
 }
 
-/**
- * Replicates the route-layer `setSendMessage` binding from `registerAllRoutes`
- * so this test exercises the same resolve → build-input → deliver path the
- * production binding runs.
- */
-function makeSendMessageBinding(store: any, bridge: any): SendMessageFn {
-    return async (input) => {
-        let proc = await store.getProcess(input.processId);
-        if (!proc && isQueueProcessId(input.processId)) {
-            proc = await store.getProcess(toTaskId(input.processId));
-        }
-        if (!proc) {
-            throw new Error(`Process '${input.processId}' not found.`);
-        }
-        const resolvedDeliveryMode: 'immediate' | 'enqueue' =
-            input.deliveryMode === 'immediate' || input.deliveryMode === 'steer' ? 'immediate' : 'enqueue';
-        const deliveryInput: FollowUpMessageInput = {
-            content: input.content,
-            displayContent: input.content,
-            deliveryMode: resolvedDeliveryMode,
-            pasteExternalized: false,
-            ...(input.mode ? { mode: input.mode } : {}),
-            ...(input.model ? { model: input.model } : {}),
-            ...(input.effort ? { effort: input.effort } : {}),
-        };
-        const result = await new ProcessMessageDeliveryService({ store, bridge }).deliver(proc, deliveryInput);
-        return { turnIndex: result.turnIndex };
-    };
-}
-
 function setup(bridgeOverrides: Record<string, unknown> = {}) {
     const store = createMockProcessStore();
     const bridge = makeBridge(bridgeOverrides);
-    const sendMessage = makeSendMessageBinding(store, bridge);
+    const sendMessage = createSendMessageCapability(store as any, bridge as any);
     // enqueueChat is required by the tool factory but must never run in post mode.
     const enqueueChat = vi.fn(async () => {
         throw new Error('enqueueChat must not be called in post mode');
@@ -108,7 +73,7 @@ describe('send_to_conversation post-mode delivery binding (real ProcessMessageDe
         const proc = await store.getProcess('queue_target') as any;
         expect(proc.conversationTurns).toHaveLength(1);
         expect(proc.conversationTurns[0].role).toBe('user');
-        expect(proc.conversationTurns[0].content).toBe('follow up please');
+        expect(proc.conversationTurns[0].content).toMatch(/follow up please$/);
     });
 
     it('resolves a queue_-prefixed processId stored under its bare task id', async () => {
@@ -160,7 +125,7 @@ describe('send_to_conversation post-mode delivery binding (real ProcessMessageDe
             steerProcess: vi.fn(async () => true),
         };
         const store = createMockProcessStore();
-        const sendMessage = makeSendMessageBinding(store, bridge);
+        const sendMessage = createSendMessageCapability(store as any, bridge as any);
         const { tool } = createSendToConversationTool({
             store: store as any,
             workspaceId: WS_ID,
@@ -190,5 +155,65 @@ describe('send_to_conversation post-mode delivery binding (real ProcessMessageDe
 
         expect(result.processId).toBeUndefined();
         expect(result.error).toMatch(/not found/i);
+    });
+
+    describe('mode', () => {
+        async function addChat(store: any, mode: string) {
+            await store.addProcess({
+                id: 'queue_target',
+                status: 'completed',
+                metadata: { type: 'chat', workspaceId: WS_ID, mode },
+                conversationTurns: [],
+            } as any);
+        }
+
+        it('keeps the conversation mode when mode is omitted (regression: autopilot was switched to ask)', async () => {
+            const { store, bridge, tool } = setup();
+            await addChat(store, 'autopilot');
+
+            const result = await tool.handler({ processId: 'queue_target', content: 'keep going' }) as any;
+
+            expect(result.error).toBeUndefined();
+            expect((bridge.enqueue as any).mock.calls[0][0].payload.mode).toBe('autopilot');
+            const proc = await store.getProcess('queue_target') as any;
+            expect(proc.conversationTurns[0].mode).toBe('autopilot');
+            expect(proc.conversationTurns[0].content).toBe('keep going');
+        });
+
+        it('buffers an omitted mode as the conversation mode while the chat is running', async () => {
+            const { store, tool } = setup();
+            await store.addProcess({
+                id: 'queue_target',
+                status: 'running',
+                metadata: { type: 'chat', workspaceId: WS_ID, mode: 'autopilot' },
+                conversationTurns: [],
+            } as any);
+
+            const result = await tool.handler({ processId: 'queue_target', content: 'next' }) as any;
+
+            expect(result.error).toBeUndefined();
+            const proc = await store.getProcess('queue_target') as any;
+            expect(proc.pendingMessages[0].mode).toBe('autopilot');
+        });
+
+        it('switches the conversation mode when mode is explicit', async () => {
+            const { store, bridge, tool } = setup();
+            await addChat(store, 'autopilot');
+
+            const result = await tool.handler({ processId: 'queue_target', content: 'just look', mode: 'ask' }) as any;
+
+            expect(result.error).toBeUndefined();
+            expect((bridge.enqueue as any).mock.calls[0][0].payload.mode).toBe('ask');
+        });
+
+        it('keeps a sentinel conversation in sentinel even when ask is requested', async () => {
+            const { store, bridge, tool } = setup();
+            await addChat(store, 'sentinel');
+
+            const result = await tool.handler({ processId: 'queue_target', content: 'hi', mode: 'ask' }) as any;
+
+            expect(result.error).toBeUndefined();
+            expect((bridge.enqueue as any).mock.calls[0][0].payload.mode).toBe('sentinel');
+        });
     });
 });

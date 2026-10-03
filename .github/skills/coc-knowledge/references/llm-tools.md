@@ -117,6 +117,9 @@ case-insensitive substring over repo and server names; results cap at 50 with `t
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and
 lets an explicit `model` override the tier. Create-only titles are ignored in post mode.
+Post mode applies no mode default: an omitted `mode` keeps the conversation's current mode and an
+explicit one switches it. The route-layer `processes/send-message-capability.ts` resolves it with
+`resolveFollowUpMode` (terminal Sentinel mode still wins) before `ProcessMessageDeliveryService`.
 
 ### Canvas tools
 

@@ -33,17 +33,20 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/CoMpAcT', { type: 'compact', args: '' }],
     ['Compact focus on the WhatsApp relay work', { type: 'compact', args: 'focus on the WhatsApp relay work' }],
     ['/compact  keep the plan\nand open TODOs ', { type: 'compact', args: 'keep the plan\nand open TODOs' }],
-    ['compacting is slow', { type: 'chat', args: 'compacting is slow', mode: 'ask' }],
+    ['compacting is slow', { type: 'chat', args: 'compacting is slow' }],
     ['  /list repos  ', { type: 'list-repos', args: '' }],
     ['/autopilot fix the build', { type: 'chat', args: 'fix the build', mode: 'autopilot' }],
     ['/AUTOPILOT [abc] go', { type: 'chat-explicit', chatId: 'abc', args: 'go', mode: 'autopilot' }],
-    ['[abc-123] Hello world', { type: 'chat-explicit', chatId: 'abc-123', args: 'Hello world', mode: 'ask' }],
-    ['[abc]\nmulti\nline', { type: 'chat-explicit', chatId: 'abc', args: 'multi\nline', mode: 'ask' }],
-    ['Hello, how are you?', { type: 'chat', args: 'Hello, how are you?', mode: 'ask' }],
-    ['List the files in src', { type: 'chat', args: 'List the files in src', mode: 'ask' }],
-    ['Create a function that adds', { type: 'chat', args: 'Create a function that adds', mode: 'ask' }],
-    ['help me debug this', { type: 'chat', args: 'help me debug this', mode: 'ask' }],
-    ['autopilot mode is broken', { type: 'chat', args: 'autopilot mode is broken', mode: 'ask' }],
+    ['/ask what changed?', { type: 'chat', args: 'what changed?', mode: 'ask' }],
+    ['/ASK [abc] look only', { type: 'chat-explicit', chatId: 'abc', args: 'look only', mode: 'ask' }],
+    ['ask me anything', { type: 'chat', args: 'ask me anything' }],
+    ['[abc-123] Hello world', { type: 'chat-explicit', chatId: 'abc-123', args: 'Hello world' }],
+    ['[abc]\nmulti\nline', { type: 'chat-explicit', chatId: 'abc', args: 'multi\nline' }],
+    ['Hello, how are you?', { type: 'chat', args: 'Hello, how are you?' }],
+    ['List the files in src', { type: 'chat', args: 'List the files in src' }],
+    ['Create a function that adds', { type: 'chat', args: 'Create a function that adds' }],
+    ['help me debug this', { type: 'chat', args: 'help me debug this' }],
+    ['autopilot mode is broken', { type: 'chat', args: 'autopilot mode is broken' }],
     ['/select repo', { type: 'invalid', args: '/select repo' }],
     ['select repo', { type: 'invalid', args: 'select repo' }],
     ['list topics please', { type: 'invalid', args: 'list topics please' }],
@@ -56,12 +59,19 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/Unknown thing', { type: 'invalid', args: '/Unknown thing' }],
     ['/autopilot', { type: 'invalid', args: '/autopilot' }],
     ['/autopilot   ', { type: 'invalid', args: '/autopilot' }],
+    ['/ask', { type: 'invalid', args: '/ask' }],
+    ['/asking for help', { type: 'invalid', args: '/asking for help' }],
     ['/help me', { type: 'invalid', args: '/help me' }],
 ];
 
 describe('parseMessagingCommand', () => {
     it.each(cases)('parses %j', (input, expected) => {
         expect(parseMessagingCommand(input)).toEqual(expected);
+    });
+
+    it('leaves plain chat mode undefined so follow-ups keep the chat mode', () => {
+        expect(parseMessagingCommand('keep going')).toHaveProperty('mode', undefined);
+        expect(parseMessagingCommand('[abc] keep going')).toHaveProperty('mode', undefined);
     });
 
     it('classifies control commands', () => {
@@ -79,6 +89,7 @@ describe('parseMessagingCommand', () => {
             expect(parseMessagingCommand(spec.usage.replace(/<[^>]+>/g, 'x')).type).toBe(spec.type);
         }
         expect(MESSAGING_HELP_TEXT).toContain('/autopilot <message>');
+        expect(MESSAGING_HELP_TEXT).toContain('/ask <message>');
         expect(MESSAGING_HELP_TEXT).toContain('[chatid] <message>');
         expect(MESSAGING_HELP_TEXT).toContain('Unknown command');
         expect(MESSAGING_HELP_TEXT).toContain('compact [instructions] — ');
