@@ -111,6 +111,7 @@ import type { RuntimeConfigService } from '../../config/runtime-config-service';
 import { TaskDefs, normalizeChatModeOrDefault, type ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
+import { createWorkspaceDirectory } from '../servers/workspace-directory';
 import { RemoteServerStore } from '../servers/remote-server-store';
 import { DevTunnelConnector } from '../servers/devtunnel-connector';
 import type { SshConnector } from '../servers/ssh-connector';
@@ -484,10 +485,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store,
         getGitWorktreeExecutionEnabled,
     }));
-    opts.setSendToConversationRuntime?.({
-        validateProvider: validateSendToConversationProvider,
-        getEffortTiersForProvider,
-    });
 
     // Publish the bound follow-up delivery capability so executors can offer the
     // post mode of `send_to_conversation` (posting into an existing
@@ -585,7 +582,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         repoTreeService,
         prepareTaskForEnqueue: prepareEnqueueTask,
     });
-    registerRemoteServerRoutes(routes, {
+    const remoteServerRuntime = registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
         sshConnector: opts.remoteServerSshConnector,
@@ -598,6 +595,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 timestamp: Date.now(),
             });
         },
+    });
+    opts.setSendToConversationRuntime?.({
+        validateProvider: validateSendToConversationProvider,
+        getEffortTiersForProvider,
+        // Local + remote repo directory behind `list_workspaces` and
+        // `send_to_conversation` name / remote clone-key targets.
+        workspaceDirectory: createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime }),
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).

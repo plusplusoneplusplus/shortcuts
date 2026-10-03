@@ -22,6 +22,7 @@ import type {
 } from '../../../src/server/llm-tools/send-to-conversation-tool';
 import type { CreateTaskInput, ProcessStore } from '@plusplusoneplusplus/forge';
 import type { LaunchRalphFn } from '../../../src/server/ralph/ralph-launch-service';
+import { createWorkspaceDirectory } from '../../../src/server/servers/workspace-directory';
 
 // Minimal invocation stub for handler calls (matches the SDK invocation arg).
 const invocationStub = {
@@ -836,5 +837,173 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
         expect(props.mode.enum).toEqual(['autopilot', 'ask', 'ralph']);
         expect(tool.description).toContain('mode: "ralph"');
         expect(tool.description).toContain('`plan` is not supported');
+    });
+});
+
+describe('createSendToConversationTool — workspace targets (names, remote clone keys)', () => {
+    const entries = [
+        { id: 'ws-1', name: 'ws-1', type: 'repo', server: 'local', serverKind: 'local', online: true },
+        { id: 'ws-api', name: 'api', type: 'repo', server: 'local', serverKind: 'local', online: true },
+        { id: 'remote:srv-1:w-api', name: 'api', type: 'repo', server: 'dev-vm', serverKind: 'devtunnel', online: true },
+        { id: 'remote:srv-1:w-web', name: 'web', type: 'repo', server: 'dev-vm', serverKind: 'devtunnel', online: true },
+        { id: 'remote:srv-2:w-old', name: 'legacy', type: 'repo', server: 'old-box', serverKind: 'url', online: false },
+    ];
+
+    function makeDirectory() {
+        return {
+            list: vi.fn().mockResolvedValue({ entries, servers: [] }),
+            startRemoteChat: vi.fn().mockResolvedValue({ processId: 'queue_remote-task' }),
+        };
+    }
+
+    function makeTargetTool(extra?: Partial<MakeToolOpts>) {
+        const directory = makeDirectory();
+        const made = makeTool({ storeWorkspaces: ['ws-1', 'ws-api'], runtime: { workspaceDirectory: directory }, ...extra });
+        return { ...made, directory };
+    }
+
+    it('resolves a unique local repo name to the local workspace', async () => {
+        const { tool, captured, directory } = makeTargetTool();
+        (directory.list as any).mockResolvedValue({ entries: entries.filter(e => e.id !== 'remote:srv-1:w-api'), servers: [] });
+
+        const result = asSuccess(await tool.handler({ content: 'hi', workspaceId: 'API' }, invocationStub));
+
+        expect(captured.input?.workspaceId ?? payloadOf(captured.input!).workspaceId).toBe('ws-api');
+        expect(result.openLink).toBe(`#/process/${result.processId}`);
+        expect(directory.startRemoteChat).not.toHaveBeenCalled();
+    });
+
+    it('resolves name@server to the remote repo and starts the chat remotely', async () => {
+        const { tool, enqueueChat, directory } = makeTargetTool();
+
+        const result = asSuccess(await tool.handler({ content: 'hi', workspaceId: 'api@Dev-VM', title: 'Remote job' }, invocationStub));
+
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(directory.startRemoteChat).toHaveBeenCalledWith(expect.objectContaining({ serverId: 'srv-1', kind: 'queue' }));
+        expect(result).toEqual({
+            processId: 'queue_remote-task',
+            openLink: `#repos/${encodeURIComponent('remote:srv-1:w-api')}/chats/queue_remote-task`,
+        });
+    });
+
+    it('rejects an ambiguous name, listing candidate ids and servers', async () => {
+        const { tool, enqueueChat } = makeTargetTool();
+
+        const result = await tool.handler({ content: 'hi', workspaceId: 'api' }, invocationStub);
+
+        expect('error' in result && result.error).toMatch(/Ambiguous workspace name 'api'/);
+        expect('error' in result && result.error).toContain('ws-api (server: local)');
+        expect('error' in result && result.error).toContain('remote:srv-1:w-api (server: dev-vm)');
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('suggests list_workspaces when nothing matches', async () => {
+        const { tool } = makeTargetTool();
+        const result = await tool.handler({ content: 'hi', workspaceId: 'nope' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/Unknown workspaceId: 'nope'.*list_workspaces/);
+    });
+
+    it('posts a clone-key target to the remote with the chat body and no inherited provider/model/effort', async () => {
+        const { tool, directory } = makeTargetTool({ parentMeta: { provider: 'claude', model: 'opus', reasoningEffort: 'high' } });
+
+        asSuccess(await tool.handler({ content: 'build it', workspaceId: 'remote:srv-1:w-web', mode: 'autopilot', title: 'T' }, invocationStub));
+
+        const request = (directory.startRemoteChat as any).mock.calls[0][0];
+        expect(request).toEqual({
+            serverId: 'srv-1',
+            kind: 'queue',
+            body: {
+                type: 'chat',
+                priority: 'normal',
+                workspaceId: 'w-web',
+                displayName: 'T',
+                payload: { kind: 'chat', mode: 'autopilot', prompt: 'build it', workspaceId: 'w-web', customTitle: 'T' },
+            },
+        });
+        // Clone-key targets skip the directory listing entirely.
+        expect(directory.list).not.toHaveBeenCalled();
+    });
+
+    it('passes an explicit provider with model/effortTier through to the remote', async () => {
+        const { tool, directory } = makeTargetTool();
+
+        asSuccess(await tool.handler({ content: 'x', workspaceId: 'remote:srv-1:w-web', provider: 'codex', effortTier: 'high' }, invocationStub));
+
+        const body = (directory.startRemoteChat as any).mock.calls[0][0].body;
+        expect(body.payload.provider).toBe('codex');
+        expect(body.config).toEqual({ effortTier: 'high' });
+    });
+
+    it('launches remote ralph through the remote Ralph launch API', async () => {
+        const { tool, directory } = makeTargetTool();
+        (directory.startRemoteChat as any).mockResolvedValue({ processId: 'queue_r1', sessionId: 'ralph-1' });
+
+        const result = asSuccess(await tool.handler({ content: ' goal ', workspaceId: 'web@dev-vm', mode: 'ralph', title: 'G' }, invocationStub));
+
+        expect((directory.startRemoteChat as any).mock.calls[0][0]).toEqual({
+            serverId: 'srv-1',
+            kind: 'ralph',
+            body: { goalSpec: 'goal', workspaceId: 'w-web', config: {}, title: 'G' },
+        });
+        expect(result.sessionId).toBe('ralph-1');
+    });
+
+    it('errors for an offline remote picked by name, with no local fallback', async () => {
+        const { tool, enqueueChat, directory } = makeTargetTool();
+        const result = await tool.handler({ content: 'x', workspaceId: 'legacy' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/Remote server "old-box" is offline/);
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(directory.startRemoteChat).not.toHaveBeenCalled();
+    });
+
+    it('surfaces an unreachable remote error from the directory, with no local fallback', async () => {
+        const { tool, enqueueChat, directory } = makeTargetTool();
+        (directory.startRemoteChat as any).mockRejectedValue(new Error('Remote server "dev-vm" is unreachable: fetch failed. The chat was not started.'));
+        const result = await tool.handler({ content: 'x', workspaceId: 'remote:srv-1:w-web' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/unreachable/);
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('rejects post mode with a remote clone-key processId as not supported yet', async () => {
+        const sendMessage = vi.fn();
+        const { tool } = makeTargetTool({ sendMessage });
+        const result = await tool.handler({ content: 'x', processId: 'remote:srv-1:queue_abc' }, invocationStub);
+        expect('error' in result && result.error).toMatch(/not supported yet/);
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+});
+
+describe('createSendToConversationTool — remote create over HTTP (real directory, mocked fetch)', () => {
+    it('POSTs the chat to the remote /api/queue at its effective URL', async () => {
+        const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ task: { id: 't-9' } }), { status: 201 })) as unknown as typeof fetch;
+        const workspaceDirectory = createWorkspaceDirectory({
+            store: makeStore([]),
+            remoteServers: { list: () => [{ id: 'srv-1', label: 'vm', kind: 'url', url: 'http://vm:4000', effectiveUrl: 'http://vm:4000', status: 'online' } as any] },
+            fetchImpl,
+        });
+        const { tool } = makeTool({ runtime: { workspaceDirectory } });
+
+        const result = asSuccess(await tool.handler({ content: 'hi', workspaceId: 'remote:srv-1:w1' }, invocationStub));
+
+        const [url, init] = (fetchImpl as any).mock.calls[0];
+        expect(url).toBe('http://vm:4000/api/queue');
+        expect(init.method).toBe('POST');
+        expect(JSON.parse(init.body)).toMatchObject({ type: 'chat', workspaceId: 'w1', payload: { prompt: 'hi', mode: 'ask' } });
+        expect(result.processId).toBe('queue_t-9');
+    });
+
+    it('reports a remote rejection without falling back locally', async () => {
+        const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: 'Unknown workspace' }), { status: 400 })) as unknown as typeof fetch;
+        const workspaceDirectory = createWorkspaceDirectory({
+            store: makeStore([]),
+            remoteServers: { list: () => [{ id: 'srv-1', label: 'vm', kind: 'url', effectiveUrl: 'http://vm:4000', status: 'online' } as any] },
+            fetchImpl,
+        });
+        const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory } });
+
+        const result = await tool.handler({ content: 'hi', workspaceId: 'remote:srv-1:w1' }, invocationStub);
+
+        expect('error' in result && result.error).toBe('Remote server "vm" rejected the request: Unknown workspace. The chat was not started.');
+        expect(enqueueChat).not.toHaveBeenCalled();
     });
 });

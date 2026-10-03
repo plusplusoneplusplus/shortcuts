@@ -124,6 +124,19 @@ describe('POST /api/ralph-launch', () => {
         expect(enqueueArg.payload.context.ralph.currentIteration).toBe(1);
     });
 
+    it('applies an optional trimmed title as the custom title (remote send_to_conversation launches)', async () => {
+        const res = await post(baseUrl, '/api/ralph-launch', {
+            goalSpec: 'Build something',
+            workspaceId: 'ws-1',
+            title: '  Remote goal  ',
+        });
+
+        expect(res.status).toBe(200);
+        const enqueueArg = mockEnqueue.mock.calls[0][0];
+        expect(enqueueArg.displayName).toBe('Remote goal');
+        expect(enqueueArg.payload.customTitle).toBe('Remote goal');
+    });
+
     it('uses default maxIterations when no per-repo preference exists', async () => {
         const res = await post(baseUrl, '/api/ralph-launch', {
             goalSpec: 'Build something',

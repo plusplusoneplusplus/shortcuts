@@ -33,6 +33,7 @@ export function registerRalphLaunchRoutes(routes: Route[], ctx: RalphLaunchRoute
                 workingDirectory: optionalString(body.workingDirectory),
                 aiSelection: body,
                 worktree: body.worktree,
+                title: optionalString(body.title)?.trim().slice(0, 80) || undefined,
             }, ctx);
             if (!result.ok) {
                 return sendError(res, 400, result.error);

@@ -92,6 +92,12 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
         },
         required: ['content'],
     },
+    list_workspaces: {
+        type: 'object',
+        properties: {
+            query: { type: 'string' },
+        },
+    },
     ask_user: {
         type: 'object',
         properties: {

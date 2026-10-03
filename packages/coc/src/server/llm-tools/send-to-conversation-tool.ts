@@ -10,6 +10,11 @@
  *     With `mode: "ralph"`, create mode instead launches a Ralph session
  *     straight into iteration 1 (no grilling) through the injected
  *     `launchRalph` capability — the same path `POST /api/ralph-launch` uses.
+ *     `workspaceId` accepts a local ID, a remote clone key
+ *     `remote:<serverId>:<workspaceId>`, or a repo name (`name@server` to
+ *     disambiguate). Remote targets are started on that server's own
+ *     `POST /api/queue` / `POST /api/ralph-launch` via the route-layer
+ *     {@link WorkspaceDirectory}, with no local fallback.
  *   - `processId` provided → **post mode**: post `content` as a follow-up
  *     message into that existing conversation, wrapping the same delivery path
  *     `POST /api/processes/:id/message` uses (via the injected `sendMessage`
@@ -31,6 +36,12 @@ import { isQueueProcessId, mergeEffortTiersWithDefaults, resolveModelForProvider
 import { validateAndParseTask } from '../routes/queue-shared';
 import { VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
+import {
+    buildChatOpenLink,
+    createWorkspaceDirectory,
+    parseRemoteCloneKey,
+    type WorkspaceDirectory,
+} from '../servers/workspace-directory';
 
 // ============================================================================
 // Types
@@ -59,7 +70,11 @@ export interface SendToConversationArgs {
      * that existing conversation.
      */
     processId?: string;
-    /** Create mode: target workspace/repo. Defaults to the caller's workspace. */
+    /**
+     * Create mode: target workspace/repo — a local ID, a remote clone key
+     * `remote:<serverId>:<workspaceId>`, or a repo name (`name@server`).
+     * Defaults to the caller's workspace.
+     */
     workspaceId?: string;
     /** `autopilot` | `ask` (default), or create-only `ralph` (launch a Ralph session with `content` as the goal). */
     mode?: SendToConversationMode;
@@ -116,6 +131,11 @@ export type GetSendToConversationEffortTiersFn = (provider: SendToConversationPr
 export interface SendToConversationRuntimeOptions {
     validateProvider?: ValidateSendToConversationProviderFn;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
+    /**
+     * Local + remote repo directory (also backs `list_workspaces`). Absent →
+     * a local-only directory over the store; remote targets are then unknown.
+     */
+    workspaceDirectory?: WorkspaceDirectory;
 }
 
 export interface SendToConversationToolOptions {
@@ -194,6 +214,7 @@ const ALLOWED_EFFORT_TIERS: ReadonlySet<string> = new Set<SendToConversationEffo
  */
 export function createSendToConversationTool(options: SendToConversationToolOptions) {
     const { store, workspaceId: callerWorkspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime } = options;
+    const directory = runtime?.workspaceDirectory ?? createWorkspaceDirectory({ store });
 
     const tool = defineTool<SendToConversationArgs>('send_to_conversation', {
         description:
@@ -201,7 +222,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'returns `{ processId, openLink, turnIndex }`. Without `processId`, starts a brand-new, separate ' +
             'fire-and-forget chat with `content` as its first prompt (it does NOT continue the current chat) and ' +
             'returns `{ processId, openLink }`. `content` is required; `mode` defaults to `ask` and create mode ' +
-            'defaults to the current workspace. For new conversations, provide a short, task-specific `title` ' +
+            'defaults to the current workspace. Create-mode `workspaceId` accepts an id from `list_workspaces` ' +
+            '(including remote `remote:<serverId>:<workspaceId>` ids, which start the chat on that remote CoC ' +
+            'server), or a repo name, with `name@server` to disambiguate. Post mode is local-only. For new conversations, provide a short, task-specific `title` ' +
             '(optional, max 80 characters); it remains the visible custom title even after AI title generation. ' +
             'Create mode with `mode: "ralph"` launches an autonomous Ralph session straight into iteration 1 ' +
             '(no clarifying questions) with `content` as a self-contained goal spec and returns ' +
@@ -222,7 +245,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 },
                 workspaceId: {
                     type: 'string',
-                    description: 'Create mode: target workspace/repo ID. Defaults to the current workspace.',
+                    description: 'Create mode: target repo — an id from `list_workspaces` (local or ' +
+                        '`remote:<serverId>:<workspaceId>`), or a repo name / `name@server`. Defaults to the current workspace.',
                 },
                 mode: {
                     type: 'string',
@@ -312,6 +336,13 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             const targetProcessId =
                 typeof args.processId === 'string' && args.processId.trim() ? args.processId.trim() : undefined;
             if (targetProcessId) {
+                if (targetProcessId.startsWith('remote:')) {
+                    return {
+                        error:
+                            'Posting into a conversation on a remote CoC server is not supported yet. ' +
+                            'Post mode only accepts local conversation processIds.',
+                    };
+                }
                 if (mode === 'ralph') {
                     return {
                         error:
@@ -335,6 +366,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             // --- create mode: start a brand-new conversation ------------------
             return createNewConversation({
                 store,
+                directory,
                 callerWorkspaceId,
                 enqueueChat,
                 launchRalph,
@@ -426,6 +458,7 @@ async function postToExistingConversation(params: {
 
 async function createNewConversation(params: {
     store: ProcessStore;
+    directory: WorkspaceDirectory;
     callerWorkspaceId?: string;
     enqueueChat: EnqueueChatFn;
     launchRalph?: LaunchRalphFn;
@@ -441,6 +474,7 @@ async function createNewConversation(params: {
 }): Promise<SendToConversationResult> {
     const {
         store,
+        directory,
         callerWorkspaceId,
         enqueueChat,
         launchRalph,
@@ -463,19 +497,15 @@ async function createNewConversation(params: {
         return { error: 'Invalid title: exceeds 80 characters.' };
     }
 
-    // --- workspace (default to caller's; must be registered) --------------
-    const requestedWorkspaceId =
-        typeof args.workspaceId === 'string' && args.workspaceId.trim()
-            ? args.workspaceId.trim()
-            : callerWorkspaceId;
-    if (!requestedWorkspaceId) {
-        return {
-            error: 'No target workspace: provide `workspaceId` or invoke this tool from a workspace context.',
-        };
-    }
-    const workspaces = await store.getWorkspaces();
-    if (!workspaces.some(ws => ws.id === requestedWorkspaceId)) {
-        return { error: `Unknown workspaceId: '${requestedWorkspaceId}' is not a registered workspace.` };
+    // --- workspace (default to caller's; local ID, clone key, or name) -----
+    const target = await resolveCreateTarget({
+        store,
+        directory,
+        requested: typeof args.workspaceId === 'string' ? args.workspaceId.trim() : undefined,
+        callerWorkspaceId,
+    });
+    if ('error' in target) {
+        return target;
     }
 
     // --- priority (default normal) ----------------------------------------
@@ -487,6 +517,21 @@ async function createNewConversation(params: {
                 `Valid priorities: ${[...ALLOWED_PRIORITIES].join(', ')}.`,
         };
     }
+
+    if (target.kind === 'remote') {
+        return createRemoteConversation({
+            directory,
+            target,
+            content,
+            mode,
+            title,
+            priority,
+            model,
+            explicitProvider,
+            effortTier,
+        });
+    }
+    const requestedWorkspaceId = target.workspaceId;
 
     // --- resolve provider/model/reasoningEffort ---------------------------
     // The tool is built per chat turn, so `parentProcessId` identifies the
@@ -558,31 +603,21 @@ async function createNewConversation(params: {
     // auto-routing. Resolved model goes onto `config.model` (with the existing
     // `payload.model` mirror), inherited effort onto `config.reasoningEffort`,
     // and an explicit tier onto `config.effortTier` for queue preparation.
-    const config: Record<string, unknown> = {
-        ...(resolvedModel ? { model: resolvedModel } : {}),
-        ...(resolvedEffort ? { reasoningEffort: resolvedEffort } : {}),
-        ...(effortTier ? { effortTier } : {}),
-    };
-    const taskSpec: Record<string, unknown> = {
-        type: 'chat',
-        priority,
+    const taskSpec = buildChatTaskSpec({
         workspaceId: requestedWorkspaceId,
-        ...(title ? { displayName: title } : {}),
-        payload: {
-            kind: 'chat',
-            mode,
-            prompt: content,
-            workspaceId: requestedWorkspaceId,
-            provider: resolvedProvider,
-            ...(title ? { customTitle: title } : {}),
-            ...(resolvedModel ? { model: resolvedModel } : {}),
-            // Spawn link: persist the calling chat's processId onto the spawned
-            // process's top-level `parentProcessId` so the chat list can nest
-            // spawned descendants under their root.
-            ...(parentProcessId ? { context: { spawnedFromProcessId: parentProcessId } } : {}),
-        },
-        ...(Object.keys(config).length > 0 ? { config } : {}),
-    };
+        mode,
+        content,
+        priority,
+        title,
+        provider: resolvedProvider,
+        model: resolvedModel,
+        reasoningEffort: resolvedEffort,
+        effortTier,
+        // Spawn link: persist the calling chat's processId onto the spawned
+        // process's top-level `parentProcessId` so the chat list can nest
+        // spawned descendants under their root.
+        spawnedFromProcessId: parentProcessId,
+    });
 
     // Reuse the canonical enqueue validation/normalization (config shape, model
     // resolution, display-name generation). Our up-front checks above already
@@ -600,6 +635,171 @@ async function createNewConversation(params: {
         processId,
         openLink: `#/process/${processId}`,
     };
+}
+
+/** The `POST /api/queue` chat task body, shared by local and remote create mode. */
+function buildChatTaskSpec(params: {
+    workspaceId: string;
+    mode: SendToConversationChatMode;
+    content: string;
+    priority: string;
+    title?: string;
+    provider?: SendToConversationProvider;
+    model?: string;
+    reasoningEffort?: string;
+    effortTier?: SendToConversationEffortTier;
+    spawnedFromProcessId?: string;
+}): Record<string, unknown> {
+    const { workspaceId, mode, content, priority, title, provider, model, reasoningEffort, effortTier, spawnedFromProcessId } = params;
+    const config: Record<string, unknown> = {
+        ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
+        ...(effortTier ? { effortTier } : {}),
+    };
+    return {
+        type: 'chat',
+        priority,
+        workspaceId,
+        ...(title ? { displayName: title } : {}),
+        payload: {
+            kind: 'chat',
+            mode,
+            prompt: content,
+            workspaceId,
+            ...(provider ? { provider } : {}),
+            ...(title ? { customTitle: title } : {}),
+            ...(model ? { model } : {}),
+            ...(spawnedFromProcessId ? { context: { spawnedFromProcessId } } : {}),
+        },
+        ...(Object.keys(config).length > 0 ? { config } : {}),
+    };
+}
+
+type CreateTarget =
+    | { kind: 'local'; workspaceId: string }
+    | { kind: 'remote'; serverId: string; workspaceId: string; cloneKey: string };
+
+/**
+ * Resolve create-mode `workspaceId`: omitted → caller workspace; a remote clone
+ * key → that remote; a registered local ID → local; otherwise a
+ * case-insensitive repo name (exact, then `name@server`) over the directory.
+ */
+async function resolveCreateTarget(params: {
+    store: ProcessStore;
+    directory: WorkspaceDirectory;
+    requested?: string;
+    callerWorkspaceId?: string;
+}): Promise<CreateTarget | SendToConversationError> {
+    const { store, directory, callerWorkspaceId } = params;
+    const requested = params.requested || callerWorkspaceId;
+    if (!requested) {
+        return {
+            error: 'No target workspace: provide `workspaceId` or invoke this tool from a workspace context.',
+        };
+    }
+
+    const clone = parseRemoteCloneKey(requested);
+    if (clone) {
+        return { kind: 'remote', ...clone, cloneKey: requested };
+    }
+
+    const workspaces = await store.getWorkspaces();
+    if (workspaces.some(ws => ws.id === requested)) {
+        return { kind: 'local', workspaceId: requested };
+    }
+
+    const { entries } = await directory.list();
+    const lower = requested.toLowerCase();
+    let candidates = entries.filter(e => e.name.toLowerCase() === lower);
+    const at = requested.lastIndexOf('@');
+    if (candidates.length === 0 && at > 0 && at < requested.length - 1) {
+        const name = lower.slice(0, at);
+        const server = lower.slice(at + 1);
+        candidates = entries.filter(e => e.name.toLowerCase() === name && e.server.toLowerCase() === server);
+    }
+
+    if (candidates.length === 0) {
+        return {
+            error:
+                `Unknown workspaceId: '${requested}' is not a registered workspace ID or a known repo name. ` +
+                'Call `list_workspaces` to find the right id.',
+        };
+    }
+    if (candidates.length > 1) {
+        return {
+            error:
+                `Ambiguous workspace name '${requested}' matches ${candidates.length} repos: ` +
+                candidates.map(c => `${c.id} (server: ${c.server})`).join(', ') +
+                '. Retry with one of these ids, or use `name@server`.',
+        };
+    }
+
+    const match = candidates[0];
+    const remote = parseRemoteCloneKey(match.id);
+    if (!remote) {
+        return { kind: 'local', workspaceId: match.id };
+    }
+    if (!match.online) {
+        return {
+            error: `Remote server "${match.server}" is offline, so '${match.name}' cannot be reached. The chat was not started.`,
+        };
+    }
+    return { kind: 'remote', ...remote, cloneKey: match.id };
+}
+
+/**
+ * Start the new conversation on a remote CoC server through its own queue (or
+ * Ralph launch) API. Only explicit provider/model/effortTier travel; parent
+ * selections are not inherited, so the remote's defaults apply. No spawn link —
+ * the parent lives on this server.
+ */
+async function createRemoteConversation(params: {
+    directory: WorkspaceDirectory;
+    target: Extract<CreateTarget, { kind: 'remote' }>;
+    content: string;
+    mode: SendToConversationMode;
+    title?: string;
+    priority: string;
+    model?: string;
+    explicitProvider?: SendToConversationProvider;
+    effortTier?: SendToConversationEffortTier;
+}): Promise<SendToConversationResult> {
+    const { directory, target, content, mode, title, priority, model, explicitProvider, effortTier } = params;
+    const body = mode === 'ralph'
+        ? {
+            goalSpec: content.trim(),
+            workspaceId: target.workspaceId,
+            ...(explicitProvider ? { provider: explicitProvider } : {}),
+            config: {
+                ...(model ? { model } : {}),
+                ...(effortTier ? { effortTier } : {}),
+            },
+            ...(title ? { title } : {}),
+        }
+        : buildChatTaskSpec({
+            workspaceId: target.workspaceId,
+            mode,
+            content,
+            priority,
+            title,
+            provider: explicitProvider,
+            model,
+            effortTier,
+        });
+    try {
+        const result = await directory.startRemoteChat({
+            serverId: target.serverId,
+            kind: mode === 'ralph' ? 'ralph' : 'queue',
+            body,
+        });
+        return {
+            processId: result.processId,
+            openLink: buildChatOpenLink(target.cloneKey, result.processId),
+            ...(result.sessionId ? { sessionId: result.sessionId } : {}),
+        };
+    } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+    }
 }
 
 /**

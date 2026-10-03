@@ -3,7 +3,7 @@ name: delegate
 description: Delegate a job from the current chat to a new conversation. Use when the user asks to delegate or hand off work.
 metadata:
   author: Yiheng Tao
-  version: "0.0.5"
+  version: "0.0.6"
 ---
 
 # Delegate
@@ -39,7 +39,8 @@ Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched cas
 - Pick `mode` from what the job does. Use `ask` for read-only jobs: review, research, analysis, questions, and planning. Use `autopilot` for jobs that change files, the repo, or external state: implementing or fixing code, committing, pushing, opening PRs, and editing docs or skills. When it is unclear whether the job writes, ask one short question.
 - Use `ralph` (create mode only) for long, multi-step build-until-done goals that write to the repo. It starts an autonomous Ralph loop with no clarifying questions, so write `content` as a self-contained goal spec: goal, acceptance criteria, constraints, and references by path. It shares the autopilot queue and returns a `sessionId` with the chat link.
 - An explicit user request for a mode wins. Autopilot jobs share one execution queue and may wait, so mention that when the current chat is waiting on the result.
-- The destination defaults to the current workspace. Honor an explicit request for another registered workspace, and ask when the destination is ambiguous.
+- The destination defaults to the current workspace. Honor an explicit request for another repo by passing its name as `workspaceId` (use `name@server` when the same name exists on several servers), or call `list_workspaces` to find its id. Ask when the destination is ambiguous.
+- Remote repos (on another registered CoC server) work in create mode: pass their `remote:<serverId>:<workspaceId>` id or `name@server`. The remote server's own provider defaults apply unless the user names a provider. Posting into an existing remote conversation is not supported.
 
 ## Ambiguity and failure
 

@@ -39,6 +39,10 @@ references before editing. Paths are package-relative.
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   Reject late responses after scope changes.
+- `list_workspaces` and `send_to_conversation` remote targets share one route-layer
+  `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
+  offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
+  local fallback; output never carries paths, URLs, or credentials.
 - Remote group selection uses a server-qualified clone key; decode the raw
   group id at the owning API. Groups are page/queue scope; Git uses a member.
   Names are not keys; refresh live membership and preserve search failure states.

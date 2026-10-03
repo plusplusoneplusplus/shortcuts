@@ -161,6 +161,20 @@ describe('mode-invariant tool block', () => {
         expect(autopilotTools).toEqual(askTools);
     });
 
+    it('registers list_workspaces with send_to_conversation in both ask and autopilot', async () => {
+        const opts = () => makeOptions({ getEnqueueChat: () => vi.fn().mockResolvedValue('task-x') });
+        const askStore = createMockProcessStore();
+        await new ChatExecutor(askStore, opts()).execute(makeChatTask('ask', 'task-lw-ask'), 'Hello');
+        const askTools = sortedToolNames(0);
+
+        const autoStore = createMockProcessStore();
+        await new AutopilotExecutor(autoStore, opts()).execute(makeChatTask('autopilot', 'task-lw-auto'), 'Hello');
+        const autopilotTools = sortedToolNames(1);
+
+        expect(askTools).toEqual(expect.arrayContaining(['list_workspaces', 'send_to_conversation']));
+        expect(autopilotTools).toEqual(askTools);
+    });
+
     it('initial turns send identical system messages for ask and autopilot', async () => {
         // The system message is serialized immediately after the tool block, so
         // a mode-dependent byte here costs the same prefix cache. Autopilot has

@@ -37,7 +37,7 @@ function sendRuntimeFailure(res: http.ServerResponse, error: unknown): void {
 export function registerRemoteServerRoutes(
     routes: Route[],
     options: RegisterRemoteServerRoutesOptions,
-): void {
+): RemoteServerRuntimeService {
     const runtime = new RemoteServerRuntimeService({
         store: options.store,
         connector: options.connector,
@@ -246,6 +246,8 @@ export function registerRemoteServerRoutes(
             sendJson(res, runtimeState);
         },
     });
+
+    return runtime;
 }
 
 export function createRemoteServerStore(dataDir: string): RemoteServerStore {
