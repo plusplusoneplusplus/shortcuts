@@ -1,4 +1,5 @@
 import { expectTypeOf, it } from 'vitest';
+import type { ExplorerSearchResponse, RepoInfo as ClientRepoInfo } from '@plusplusoneplusplus/coc-client';
 import type { RepoGroupSearchResult } from '../../src/server/workspaces/repo-group-handler';
 import type {
     GroupContentSearchService, RepoGroupContentSearchMemberResult,
@@ -6,7 +7,7 @@ import type {
 } from '../../src/server/workspaces/repo-group-content-search';
 import type {
     ContentMatch, ContentSearchOptions, ContentSearchResult,
-    FileSearchResult, SearchFilesResult, TreeEntry, TreeListResult,
+    FileSearchResult, RepoInfo, SearchFilesResult, TreeEntry, TreeListResult,
 } from '../../src/server/repos/types';
 
 it('keeps repository result contracts and HTTP options independent of native handle methods', () => {
@@ -83,4 +84,19 @@ it('keeps group search wire shapes and the native-backed service boundary', () =
     expectTypeOf<GroupContentSearchService['searchContent']>().toEqualTypeOf<
         (repoId: string, query: string, options?: ContentSearchOptions) => Promise<ContentSearchResult>
     >();
+});
+
+it('keeps shared repo metadata and HTTP search envelopes compatible with native results', () => {
+    type Metadata = {
+        id: string;
+        name: string;
+        localPath: string;
+        headSha: string;
+        clonedAt: string;
+        remoteUrl?: string;
+    };
+    expectTypeOf<RepoInfo>().toEqualTypeOf<Metadata>();
+    expectTypeOf<ClientRepoInfo>().toEqualTypeOf<Metadata>();
+    expectTypeOf<ExplorerSearchResponse['results'][number]>().toEqualTypeOf<FileSearchResult>();
+    expectTypeOf<SearchFilesResult['results'][number]>().toEqualTypeOf<FileSearchResult>();
 });
