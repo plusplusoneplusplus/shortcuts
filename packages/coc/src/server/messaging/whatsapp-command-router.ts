@@ -80,6 +80,8 @@ export class WhatsAppCommandRouter {
             const workspaces = await this.deps.store.getWorkspaces();
             let workspaceId = resolveChatWorkspace(workspaces, this.deps.bindings.selectedRepo)?.id;
             let targetId = workspaceId ? this.deps.bindings.topic(workspaceId) : null;
+            // A reply to a job notice continues that job; the dispatcher stays selected.
+            let keepSelection = false;
             if (command.type === 'chat-explicit') {
                 const process = await this.deps.store.getProcess(command.chatId);
                 const owner = process?.metadata?.workspaceId;
@@ -97,6 +99,7 @@ export class WhatsAppCommandRouter {
                     }
                     workspaceId = quoted.workspaceId;
                     targetId = quoted.processId;
+                    keepSelection = quoted.notice === true;
                 }
             }
             if (!workspaceId || !workspaces.some(ws => ws.id === workspaceId)) {
@@ -149,7 +152,7 @@ export class WhatsAppCommandRouter {
                 }
             })) return;
             admitted = true;
-            this.deps.bindings.selectTopic(workspaceId, processId);
+            if (!keepSelection) this.deps.bindings.selectTopic(workspaceId, processId);
             this.deps.queued?.(binding);
             try {
                 await this.deps.react(msg.messageId);

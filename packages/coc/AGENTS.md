@@ -215,6 +215,14 @@ references before editing. Paths are package-relative.
   `getAskUserQuestionRelay` capability. A reply (or a plain message while exactly
   one is pending) answers; unpostable questions resolve `unavailable`; turn end
   clears pending ones; approvals stay dashboard-only.
+- Chats handed off by `send_to_conversation` create mode from a WhatsApp/Teams turn
+  (origin via the ask_user relay's `locateOrigin`; local targets only, not Ralph) get
+  `metadata.messagingOrigin` and a direct notice `<repo> · <title> · ✅/❌/⏹` per
+  finished turn through `src/server/messaging/job-notices.ts` (per-repo
+  `messaging-job-notices.json`: pending → sending → done per task; interrupted sends are
+  never resent). WhatsApp binds the notice (`notice: true`) so a quote-reply follows up
+  the job; Teams posts it top-level and binds it as a thread root. Neither changes the
+  selected repo/topic; follow-up mode is kept.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

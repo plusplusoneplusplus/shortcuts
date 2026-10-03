@@ -171,7 +171,8 @@ import { WhatsAppBindings, WhatsAppBindingReleaseError } from '../messaging/what
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
-import { WhatsAppAnswerRelay, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
+import { WhatsAppAnswerRelay, createWhatsAppNoticeTransport, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
+import { MessagingJobNotices } from '../messaging/job-notices';
 import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
@@ -564,10 +565,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
     // name / remote clone-key targets, and messaging `list remotes`.
     const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
+    // Completion notices for chats a WhatsApp/Teams turn hands off; connectors
+    // register their transports below.
+    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade });
     opts.setSendToConversationRuntime?.({
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,
         workspaceDirectory,
+        trackMessagingJob: job => jobNotices.track(job),
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).
@@ -902,6 +907,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const teamsMessagingManager = registerTeamsMessagingRoutes(routes, {
         dataDir,
         questionRelay,
+        jobNotices,
         getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
         getAnswerRelayEnabled: () => ((opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay
             ?? DEFAULT_CONFIG.features.teamsAiAnswerRelay) === true,
@@ -976,6 +982,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         groupJid: () => whatsappMessagingManager.getStatus().groupJid,
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
     }));
+    jobNotices.register(createWhatsAppNoticeTransport({
+        bindings: whatsappBindings,
+        connected: () => {
+            const status = whatsappMessagingManager.getStatus();
+            return status.enabled && status.status === 'connected' && !!status.groupJid;
+        },
+        groupJid: () => whatsappMessagingManager.getStatus().groupJid,
+        send: text => whatsappMessagingManager.send(text),
+    }));
+    // Load notice ledgers, then post what a restart or disconnect left pending.
+    void jobNotices.restore().catch(error => console.error('[job-notices] Could not restore notices:', error));
     const whatsappRouter = new WhatsAppCommandRouter({
         store,
         bindings: whatsappBindings,
@@ -1014,8 +1031,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     whatsappMessagingManager.setConnectedHandler(async () => {
         await restoreWhatsAppBindings();
         await whatsappRelay.reconnected();
+        await jobNotices.reconcile('whatsapp');
     });
-    whatsappMessagingManager.setDisposeHandler(() => whatsappRelay.dispose());
+    // Server shutdown: drop both queue subscriptions.
+    whatsappMessagingManager.setDisposeHandler(() => {
+        whatsappRelay.dispose();
+        jobNotices.dispose();
+    });
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime
     // config service is available, else from the resolved config snapshot).

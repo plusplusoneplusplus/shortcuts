@@ -501,7 +501,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 enqueueChat: this.runtime.getEnqueueChat?.(),
                 launchRalph: this.runtime.getLaunchRalph?.(),
                 sendMessage: this.runtime.getSendMessage?.(),
-                sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
+                sendToConversationRuntime: this.sendToConversationRuntimeFor(processId, options?.relayRequestId),
                 scheduleWakeup: cronDeps.scheduleWakeup,
                 cronTools: cronDeps.cronTools,
                 systemOne: this.buildSystemOneDeps(processId, wsId, workingDirectory),

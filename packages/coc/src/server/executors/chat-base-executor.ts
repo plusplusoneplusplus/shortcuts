@@ -63,6 +63,7 @@ import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext, suppressesAutoFolder, suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { buildChatTurnContext } from './chat-turn-context-builder';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
@@ -683,6 +684,21 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * Mode never gates registration. Only `isInteractive` varies, and it is
      * evaluated at call time, so the schema stays byte-identical.
      */
+    /**
+     * `send_to_conversation` runtime for one turn. A turn a WhatsApp/Teams
+     * connector started (located through the ask_user relay's connector
+     * receipts) records its origin on chats it hands off, so they post
+     * completion notices back; dashboard turns locate nothing.
+     */
+    protected sendToConversationRuntimeFor(processId: string, requestId: string | undefined): SendToConversationRuntimeOptions | undefined {
+        const runtime = this.runtime.getSendToConversationRuntime?.();
+        if (!runtime || !requestId) return runtime;
+        return {
+            ...runtime,
+            messagingOrigin: () => this.runtime.getAskUserQuestionRelay?.()?.locateOrigin?.({ processId, requestId }),
+        };
+    }
+
     protected buildAskUserWiring(
         processId: string,
         opts: {
@@ -880,7 +896,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             enqueueChat: this.runtime.getEnqueueChat?.(),
             launchRalph: this.runtime.getLaunchRalph?.(),
             sendMessage: this.runtime.getSendMessage?.(),
-            sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
+            sendToConversationRuntime: this.sendToConversationRuntimeFor(processId, payload.relayRequestId ?? task.id),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),

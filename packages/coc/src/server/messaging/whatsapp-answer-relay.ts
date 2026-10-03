@@ -6,6 +6,7 @@ import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import { WhatsAppNotConnectedError } from './whatsapp-messaging-manager';
 import { onTaskTerminal } from './chat-target';
 import type { QuestionTransport } from './ask-user-relay';
+import { formatJobNotice, type JobNoticeTransport } from './job-notices';
 import { RELAY_ANSWER_TEXT, findRequestFailureText, findRequestAnswer, findRequestTurn, isTerminalStatus } from './relay-answer';
 
 export interface WhatsAppRelayDeps {
@@ -135,5 +136,29 @@ export function createWhatsAppQuestionTransport(
             return id;
         },
         isPastQuestion: messageId => deps.bindings.isQuestionMessage(messageId),
+    };
+}
+
+/** Posts job completion notices to the group and binds them, so a quote-reply continues the job. */
+export function createWhatsAppNoticeTransport(
+    deps: Pick<WhatsAppRelayDeps, 'bindings' | 'connected' | 'groupJid'> & { send: (text: string) => Promise<string> },
+): JobNoticeTransport {
+    const connected = (chatKey: string) => deps.connected() && deps.groupJid() === chatKey;
+    return {
+        platform: 'whatsapp',
+        connected,
+        post: async (chatKey, notice) => {
+            if (!connected(chatKey)) return undefined;
+            const { line, detail } = formatJobNotice(notice);
+            let id: string;
+            try {
+                id = await deps.send(detail ? `${line}\n${detail}` : line);
+            } catch (error) {
+                if (error instanceof WhatsAppNotConnectedError) return undefined;
+                throw error;
+            }
+            deps.bindings.recordNotice({ groupJid: chatKey, workspaceId: notice.workspaceId, processId: notice.processId }, id);
+            return id;
+        },
     };
 }

@@ -22,6 +22,7 @@ import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { ChatStyle, ForEachItem, MapReduceChildMode, MapReduceItem } from '@plusplusoneplusplus/coc-client';
 import type { RalphGrillSetup } from '../ralph/grill-planning';
 import type { RalphHumanInput } from '../ralph/types';
+import type { MessagingJobOrigin } from '../messaging/job-notices';
 
 // ============================================================================
 // Target Type
@@ -363,6 +364,11 @@ export interface ChatContext {
      * conversations form a parent→child tree in the chat list.
      */
     spawnedFromProcessId?: string;
+    /**
+     * WhatsApp/Teams origin of the turn that handed this chat off via
+     * `send_to_conversation`; denormalized onto `metadata.messagingOrigin`.
+     */
+    messagingOrigin?: MessagingJobOrigin;
     /** Auto provider selection details captured before execution. */
     autoProviderRouting?: {
         requested?: boolean;

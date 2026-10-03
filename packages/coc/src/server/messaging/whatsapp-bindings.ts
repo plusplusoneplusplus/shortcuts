@@ -20,6 +20,12 @@ export interface WhatsAppBinding {
     /** Relayed ask_user question message ids, so late quote-replies are recognized. */
     questionIds?: string[];
     releaseState?: 'releasing' | 'released';
+    /**
+     * A completion notice for a handed-off job (`inboundId` is the notice's own
+     * message id). A quote-reply continues the job without changing the
+     * selected repo/topic.
+     */
+    notice?: boolean;
 }
 
 interface BindingLifecycle {
@@ -94,6 +100,16 @@ export class WhatsAppBindings {
         this.recordOutbound(messageId);
         binding.questionIds = [...(binding.questionIds ?? []), messageId].slice(-50);
         this.save(binding.workspaceId);
+    }
+
+    /** Bind a posted job notice so a quote-reply to it targets that job. */
+    recordNotice(job: { groupJid: string; workspaceId: string; processId: string }, messageId: string): void {
+        if (!messageId) throw new Error('WhatsApp send did not return a message ID');
+        this.load(job.workspaceId).push({
+            ...job, taskId: `notice:${messageId}`, inboundId: messageId,
+            outboundIds: [], nextPart: 0, status: 'delivered', notice: true,
+        });
+        this.save(job.workspaceId);
     }
 
     isQuestionMessage(messageId: string): boolean {
@@ -211,6 +227,7 @@ export class WhatsAppBindings {
             || row.outboundIds.some((id: unknown) => typeof id !== 'string')
             || (row.questionIds !== undefined && (!Array.isArray(row.questionIds)
                 || row.questionIds.some((id: unknown) => typeof id !== 'string')))
+            || (row.notice !== undefined && row.notice !== true)
             || !Number.isSafeInteger(row.nextPart) || row.nextPart < 0
             || !['queued', 'sending', 'delivered'].includes(row.status)
             || (row.releaseState !== undefined && !['releasing', 'released'].includes(row.releaseState)))) {

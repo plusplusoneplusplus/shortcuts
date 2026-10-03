@@ -11,6 +11,7 @@ import { formatTeamsAnswerChunks } from './teams-answer-format';
 import { TeamsMessageNotSentError } from './teams-messaging-manager';
 import { escapeTeamsHtml, formatTeamsQuestion } from './teams-outbound-format';
 import type { QuestionTransport } from './ask-user-relay';
+import { formatJobNotice, type JobNoticeTransport } from './job-notices';
 import { onTaskTerminal } from './chat-target';
 import { RELAY_ANSWER_TEXT, findRequestFailureText, findRequestAnswer, findRequestTurn, isTerminalStatus, type RelayTerminalStatus } from './relay-answer';
 import { validateBotControlMetadata } from './bot-control-metadata';
@@ -81,7 +82,10 @@ export interface TeamsAnswerRelayDeps {
     isEnabled: () => boolean;
     isBotManagedConversationsEnabled?: () => boolean;
     target: () => { connected: boolean; teamId?: string; channelId?: string };
-    send: (text: string, rootId: string) => Promise<string>;
+    /** Reply in `rootId`'s thread, or post a new top-level message when it is omitted. */
+    send: (text: string, rootId?: string) => Promise<string>;
+    /** Called after reconnect reconciliation (e.g. to post pending job notices). */
+    onReconnected?: () => Promise<void>;
 }
 
 export function teamsQuestionChatKey(teamId: string, channelId: string): string {
@@ -303,16 +307,16 @@ export class TeamsAnswerRelay {
                 throw new Error('Teams thread chat is unavailable');
             }
         }
-        this.saveThreadSelection(msg, workspaceId, processId, undefined, msg.messageId);
+        this.saveThreadSelection(msg.channelId, msg.replyToMessageId!, workspaceId, processId, undefined, msg.messageId);
     }
 
-    private saveThreadSelection(msg: InboundTeamsMessage, workspaceId: string, processId: string | null, taskId?: string, commandId?: string): void {
+    private saveThreadSelection(channelId: string, rootId: string, workspaceId: string, processId: string | null, taskId?: string, commandId?: string): void {
         const teamId = this.deps.target().teamId!;
-        const name = bindingName(teamId, msg.channelId, msg.replyToMessageId!);
+        const name = bindingName(teamId, channelId, rootId);
         const existing = this.threadSelections.get(name);
         const file = getRepoDataPath(this.deps.dataDir, workspaceId, path.join('teams-thread-roots', name));
         const value: ThreadSelection = {
-            version: 1, teamId, channelId: msg.channelId, rootId: msg.replyToMessageId!,
+            version: 1, teamId, channelId, rootId,
             workspaceId, processId, ...(taskId ? { taskId } : {}),
             updatedAt: new Date().toISOString(),
             ...(existing?.value.commandIds || commandId
@@ -358,13 +362,13 @@ export class TeamsAnswerRelay {
             throw new Error('Teams thread is not ready for a new chat');
         }
         const taskId = `${Date.now()}-${randomUUID()}`;
-        this.saveThreadSelection(msg, workspaceId, toQueueProcessId(taskId), taskId);
+        this.saveThreadSelection(msg.channelId, msg.replyToMessageId!, workspaceId, toQueueProcessId(taskId), taskId);
         try {
             return await this.admitNew(msg, workspaceId, enqueue, taskId);
         } catch (error) {
             if (!this.hasInbound(msg)) {
                 try {
-                    this.saveThreadSelection(msg, workspaceId, null);
+                    this.saveThreadSelection(msg.channelId, msg.replyToMessageId!, workspaceId, null);
                 } catch (rollbackError) {
                     throw Object.assign(new Error('Teams thread admission rollback failed'), {
                         errors: [error, rollbackError],
@@ -932,6 +936,7 @@ export class TeamsAnswerRelay {
     async reconnected(): Promise<void> {
         await this.reconcile();
         this.scheduleRetry();
+        await this.deps.onReconnected?.();
     }
 
     async reconcileTask(taskId: string): Promise<void> {
@@ -1238,6 +1243,38 @@ export class TeamsAnswerRelay {
                     throw new TeamsMessageNotSentError();
                 }
                 return this.deps.send(formatTeamsQuestion(layout), target.threadId!);
+            },
+        };
+    }
+
+    /**
+     * Posts job completion notices as their own top-level channel posts and
+     * binds each as a thread root selecting the job: replies route by thread
+     * root, so a reply in the notice's thread continues the job, while a
+     * notice inside the dispatcher's thread would route back to the dispatcher.
+     */
+    noticeTransport(): JobNoticeTransport {
+        const connected = (chatKey: string) => {
+            const target = this.deps.target();
+            return !this.disposed && this.deps.isEnabled() && target.connected && !!target.teamId && !!target.channelId
+                && teamsQuestionChatKey(target.teamId, target.channelId) === chatKey;
+        };
+        return {
+            platform: 'teams',
+            connected,
+            post: async (chatKey, notice) => {
+                if (!connected(chatKey)) return undefined;
+                const { line, detail } = formatJobNotice(notice);
+                let id: string;
+                try {
+                    id = await this.deps.send(`<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`);
+                } catch (error) {
+                    if (error instanceof TeamsMessageNotSentError || error instanceof TeamsMcpSendRejectedError) return undefined;
+                    throw error;
+                }
+                if (!/^[A-Za-z0-9:_@.-]{1,256}$/.test(id)) throw new Error('Teams send confirmation missing');
+                this.saveThreadSelection(this.deps.target().channelId!, id, notice.workspaceId, notice.processId);
+                return id;
             },
         };
     }

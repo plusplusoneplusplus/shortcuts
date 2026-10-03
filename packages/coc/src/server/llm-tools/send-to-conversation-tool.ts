@@ -37,6 +37,7 @@ import { isQueueProcessId, mergeEffortTiersWithDefaults, resolveModelForProvider
 import { validateAndParseTask } from '../routes/queue-shared';
 import { VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
+import type { MessagingJobOrigin } from '../messaging/job-notices';
 import {
     buildChatOpenLink,
     createWorkspaceDirectory,
@@ -137,6 +138,14 @@ export interface SendToConversationRuntimeOptions {
      * a local-only directory over the store; remote targets are then unknown.
      */
     workspaceDirectory?: WorkspaceDirectory;
+    /**
+     * Per turn: the WhatsApp/Teams origin of the turn invoking the tool.
+     * Local create-mode chats record it as `metadata.messagingOrigin` and are
+     * tracked for completion notices; dashboard turns resolve undefined.
+     */
+    messagingOrigin?: () => MessagingJobOrigin | undefined;
+    /** Registers a handed-off local chat for completion notices. */
+    trackMessagingJob?: (job: { processId: string; workspaceId: string; origin: MessagingJobOrigin }) => void;
 }
 
 export interface SendToConversationToolOptions {
@@ -381,6 +390,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 effortTier: model ? undefined : effortTier,
                 validateProvider: runtime?.validateProvider,
                 getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
+                messagingOrigin: runtime?.messagingOrigin,
+                trackMessagingJob: runtime?.trackMessagingJob,
             });
         },
     });
@@ -473,6 +484,8 @@ async function createNewConversation(params: {
     effortTier?: SendToConversationEffortTier;
     validateProvider?: ValidateSendToConversationProviderFn;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
+    messagingOrigin?: SendToConversationRuntimeOptions['messagingOrigin'];
+    trackMessagingJob?: SendToConversationRuntimeOptions['trackMessagingJob'];
 }): Promise<SendToConversationResult> {
     const {
         store,
@@ -489,6 +502,8 @@ async function createNewConversation(params: {
         effortTier,
         validateProvider,
         getEffortTiersForProvider,
+        messagingOrigin,
+        trackMessagingJob,
     } = params;
 
     if (args.title !== undefined && (typeof args.title !== 'string' || !args.title.trim())) {
@@ -599,6 +614,9 @@ async function createNewConversation(params: {
         });
     }
 
+    // Remote targets returned above: completion notices are local-only.
+    const origin = trackMessagingJob ? messagingOrigin?.() : undefined;
+
     // --- build + validate the task spec, then enqueue in-process ----------
     // Setting `payload.provider` makes the enqueue path treat the provider as
     // explicit, so inherited/selected providers suppress global default-provider
@@ -619,6 +637,7 @@ async function createNewConversation(params: {
         // process's top-level `parentProcessId` so the chat list can nest
         // spawned descendants under their root.
         spawnedFromProcessId: parentProcessId,
+        messagingOrigin: origin,
     });
 
     // Reuse the canonical enqueue validation/normalization (config shape, model
@@ -632,6 +651,13 @@ async function createNewConversation(params: {
 
     const taskId = await enqueueChat(validation.input);
     const processId = toQueueProcessId(taskId);
+    if (origin) {
+        try {
+            trackMessagingJob!({ processId, workspaceId: requestedWorkspaceId, origin });
+        } catch (error) {
+            console.error('[send_to_conversation] Could not track the completion notice:', error);
+        }
+    }
 
     return {
         processId,
@@ -651,8 +677,9 @@ function buildChatTaskSpec(params: {
     reasoningEffort?: string;
     effortTier?: SendToConversationEffortTier;
     spawnedFromProcessId?: string;
+    messagingOrigin?: MessagingJobOrigin;
 }): Record<string, unknown> {
-    const { workspaceId, mode, content, priority, title, provider, model, reasoningEffort, effortTier, spawnedFromProcessId } = params;
+    const { workspaceId, mode, content, priority, title, provider, model, reasoningEffort, effortTier, spawnedFromProcessId, messagingOrigin } = params;
     const config: Record<string, unknown> = {
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
@@ -671,7 +698,12 @@ function buildChatTaskSpec(params: {
             ...(provider ? { provider } : {}),
             ...(title ? { customTitle: title } : {}),
             ...(model ? { model } : {}),
-            ...(spawnedFromProcessId ? { context: { spawnedFromProcessId } } : {}),
+            ...(spawnedFromProcessId || messagingOrigin ? {
+                context: {
+                    ...(spawnedFromProcessId ? { spawnedFromProcessId } : {}),
+                    ...(messagingOrigin ? { messagingOrigin } : {}),
+                },
+            } : {}),
         },
         ...(Object.keys(config).length > 0 ? { config } : {}),
     };

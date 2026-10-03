@@ -15,6 +15,7 @@
 
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { AskUserAnswerValue, AskUserEmitControl, AskUserSSEPayload } from '../llm-tools/ask-user-tool';
+import type { MessagingJobOrigin } from './job-notices';
 
 // ============================================================================
 // Answer parsing
@@ -152,6 +153,8 @@ export interface AskUserQuestionRelayRequest {
 export interface AskUserQuestionRelay {
     /** Returns true when a connector owns the request and is relaying it. */
     relay(request: AskUserQuestionRelayRequest): boolean;
+    /** The connector and group/channel a turn came from; undefined for dashboard turns. */
+    locateOrigin?(request: { processId: string; requestId: string }): MessagingJobOrigin | undefined;
 }
 
 interface Entry {
@@ -193,19 +196,29 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
     }
 
     relay(request: AskUserQuestionRelayRequest): boolean {
+        const located = this.locate(request);
+        if (!located) return false;
+        const { transport, target } = located;
+        void this.run(transport, target, request).catch(error =>
+            console.error(`[ask-user-relay] ${transport.platform} relay failed:`, error));
+        return true;
+    }
+
+    locateOrigin(request: { processId: string; requestId: string }): MessagingJobOrigin | undefined {
+        const located = this.locate(request);
+        return located ? { connector: located.transport.platform, chatKey: located.target.chatKey } : undefined;
+    }
+
+    private locate(request: { processId: string; requestId: string }): { transport: QuestionTransport; target: QuestionTarget } | undefined {
         for (const transport of this.transports) {
-            let target: QuestionTarget | undefined;
             try {
-                target = transport.locate(request);
+                const target = transport.locate(request);
+                if (target) return { transport, target };
             } catch (error) {
                 console.error(`[ask-user-relay] Could not locate ${transport.platform} request:`, error);
             }
-            if (!target) continue;
-            void this.run(transport, target, request).catch(error =>
-                console.error(`[ask-user-relay] ${transport.platform} relay failed:`, error));
-            return true;
         }
-        return false;
+        return undefined;
     }
 
     /** Pending questions, for tests and diagnostics. */

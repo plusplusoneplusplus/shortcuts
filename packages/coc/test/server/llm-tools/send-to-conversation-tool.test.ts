@@ -1021,3 +1021,47 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 });
+
+describe('createSendToConversationTool — messaging completion notices', () => {
+    const origin = { connector: 'whatsapp' as const, chatKey: 'group@g.us' };
+
+    it('records a connector turn origin on a local create-mode chat and tracks it', async () => {
+        const trackMessagingJob = vi.fn();
+        const { tool, captured } = makeTool({ runtime: { messagingOrigin: () => origin, trackMessagingJob } });
+
+        const result = asSuccess(await tool.handler({ content: 'build it', mode: 'autopilot' }, invocationStub));
+
+        expect(payloadOf(captured.input!).context).toEqual({ spawnedFromProcessId: DEFAULT_PARENT_ID, messagingOrigin: origin });
+        expect(trackMessagingJob).toHaveBeenCalledWith({ processId: result.processId, workspaceId: 'ws-1', origin });
+    });
+
+    it('records no origin for a dashboard turn', async () => {
+        const trackMessagingJob = vi.fn();
+        const { tool, captured } = makeTool({ runtime: { messagingOrigin: () => undefined, trackMessagingJob } });
+
+        await tool.handler({ content: 'build it', mode: 'autopilot' }, invocationStub);
+
+        expect(payloadOf(captured.input!).context).toEqual({ spawnedFromProcessId: DEFAULT_PARENT_ID });
+        expect(trackMessagingJob).not.toHaveBeenCalled();
+    });
+
+    it('skips remote targets silently and still starts them', async () => {
+        const trackMessagingJob = vi.fn();
+        const messagingOrigin = vi.fn(() => origin);
+        const directory = {
+            list: vi.fn().mockResolvedValue({
+                entries: [{ id: 'remote:srv-1:w-api', name: 'api', type: 'repo', server: 'dev-vm', serverKind: 'devtunnel', online: true }],
+                servers: [],
+            }),
+            startRemoteChat: vi.fn().mockResolvedValue({ processId: 'queue_remote-task' }),
+        };
+        const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory: directory, messagingOrigin, trackMessagingJob } });
+
+        const result = asSuccess(await tool.handler({ content: 'hi', workspaceId: 'remote:srv-1:w-api' }, invocationStub));
+
+        expect(result.processId).toBe('queue_remote-task');
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(JSON.stringify(directory.startRemoteChat.mock.calls[0][0])).not.toContain('messagingOrigin');
+        expect(trackMessagingJob).not.toHaveBeenCalled();
+    });
+});

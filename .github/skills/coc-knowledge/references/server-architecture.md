@@ -294,6 +294,26 @@ Connection initialization and shutdown guard their lifetime before publishing st
 Missing consent, account mismatch and denied channel access surface sanitized actionable
 errors. Azure CLI sign-in alone does not grant consent; failed reads never fall back to MCP.
 
+### Messaging job completion notices
+
+`messaging/job-notices.ts` (`MessagingJobNotices`) posts a direct notice (no AI turn)
+`<repo> · <title> · ✅|❌|⏹` to the originating group/channel each time a chat handed off
+by `send_to_conversation` from a connector turn ends a turn (first turn and every follow-up,
+matched by `onTaskTerminal` on the job's processId). Failures add `findRequestFailureText`
+(fixed text or a recognized usage-limit reset). The executor's per-turn
+`sendToConversationRuntimeFor(processId, relayRequestId | taskId)` resolves the origin through
+`AskUserQuestionRelayHub.locateOrigin`; the tool then calls `track`. The ledger is
+`repos/<workspaceId>/messaging-job-notices.json` (`atomicWriteJsonUnique`): terminal turns are
+`pending` before send, `sending` during it (a restart there marks it done, never resent),
+then `done` per queue task id. `restore()` at route setup also queues first turns that ended
+while the server was down; connector reconnects call `reconcile(platform)`. Transports:
+`createWhatsAppNoticeTransport` sends unquoted plain text and binds the notice as a
+`WhatsAppBinding` with `notice: true`, so a quote-reply follows up the job (mode kept by the
+follow-up resolver) without `selectTopic`; `TeamsAnswerRelay.noticeTransport()` posts a
+top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots` selection for it, so thread
+replies route to the job by root (a reply inside the dispatcher's thread would route to the
+dispatcher) and user selection is untouched.
+
 ### Teams IC3 connection contract
 
 IC3 credentials, account identity and explicit `ic3Region` (`amer`, `emea`, `apac`)

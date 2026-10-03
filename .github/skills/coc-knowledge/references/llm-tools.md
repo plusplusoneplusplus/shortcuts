@@ -96,6 +96,13 @@ selections are not inherited, so the remote's defaults apply, and no spawn link 
 result's `openLink` is the dashboard clone route `#repos/<encoded clone key>/chats/<processId>`.
 Post mode with a `remote:` processId is rejected as not supported yet.
 
+When the invoking turn came from WhatsApp/Teams, local (non-Ralph) create mode records the
+turn's origin (`{ connector, chatKey }`, from the per-turn `runtime.messagingOrigin` the
+executor binds via the ask_user relay's `locateOrigin`) as `payload.context.messagingOrigin`
+(→ `metadata.messagingOrigin`) and calls `runtime.trackMessagingJob` for completion notices
+(see server-architecture "Messaging job completion notices"). Remote targets and dashboard
+turns record nothing.
+
 ### list_workspaces
 
 Built in the same addon as `send_to_conversation` (same `enqueueChat` gate, own registry toggle,
