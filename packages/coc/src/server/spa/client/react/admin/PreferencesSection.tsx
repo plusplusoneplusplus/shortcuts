@@ -13,7 +13,6 @@ import { getSpaCocClient, getSpaCocClientErrorMessage } from '../api/cocClient';
 interface UserPreferences {
     theme?: 'light' | 'dark' | 'auto';
     reposSidebarCollapsed?: boolean;
-    uiLayoutMode?: 'classic' | 'dev-workflow';
 }
 
 interface PreferencesSectionProps {
@@ -80,21 +79,6 @@ export function PreferencesSection({ onError, onSuccess }: PreferencesSectionPro
                             <option value="auto">auto</option>
                             <option value="light">light</option>
                             <option value="dark">dark</option>
-                        </select>
-                    </div>
-
-                    {/* UI Layout Mode */}
-                    <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                        <label className={labelClass}>UI Mode</label>
-                        <select
-                            className={selectClass}
-                            value={prefs.uiLayoutMode ?? 'classic'}
-                            disabled={saving}
-                            onChange={e => patchPreference({ uiLayoutMode: e.target.value as UserPreferences['uiLayoutMode'] })}
-                            data-testid="pref-ui-layout-mode"
-                        >
-                            <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
-                            <option value="classic">Classic (Activity)</option>
                         </select>
                     </div>
 

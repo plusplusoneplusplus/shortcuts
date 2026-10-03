@@ -148,24 +148,11 @@ describe('readEffectiveDisabledLlmTools', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('uses registry defaults under a classic layout mode', () => {
-        writePreferences(tmpDir, { global: { uiLayoutMode: 'classic' } });
-
+    it('uses registry defaults without saved preferences', () => {
         expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual(getEffectiveDefaultDisabledTools());
     });
 
-    it('uses registry defaults under a dev-workflow layout mode', () => {
-        writePreferences(tmpDir, { global: { uiLayoutMode: 'dev-workflow' } });
-
-        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual(getEffectiveDefaultDisabledTools());
-    });
-
-    it('uses registry defaults when layout mode is not set', () => {
-        expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual(getEffectiveDefaultDisabledTools());
-    });
-
-    it('lets an explicit empty repo preference enable every tool in classic mode', () => {
-        writePreferences(tmpDir, { global: { uiLayoutMode: 'classic' } });
+    it('lets an explicit empty repo preference enable every tool', () => {
         writeRepoPreferences(tmpDir, wsId, { disabledLlmTools: [] });
 
         expect(readEffectiveDisabledLlmTools(tmpDir, wsId)).toEqual([]);

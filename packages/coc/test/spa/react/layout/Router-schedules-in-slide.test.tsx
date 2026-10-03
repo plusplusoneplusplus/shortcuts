@@ -125,7 +125,7 @@ describe('Router — schedules deep-links, flag ON', () => {
         const actions = dispatched();
         expect(actions).not.toContainEqual({ type: 'SET_REPO_SUB_TAB', tab: 'schedules' });
         expect(actions).toContainEqual({ type: 'SET_SELECTED_SCHEDULE', id: 'sched-1' });
-        // A chat sub-tab (activity in classic, chats in dev-workflow) is selected instead.
+        // The Workspace activity sub-tab is selected instead.
         const subTabs = actions.filter(a => a.type === 'SET_REPO_SUB_TAB').map(a => a.tab);
         expect(subTabs.some(t => t === 'activity' || t === 'chats')).toBe(true);
     });

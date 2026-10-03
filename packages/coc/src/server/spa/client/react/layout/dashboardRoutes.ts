@@ -24,7 +24,6 @@ import type {
     AdminSubTab,
     PrDetailTab,
     SettingsSection,
-    UiLayoutMode,
 } from '../types/dashboard';
 import {
     SETTINGS_SECTION_VALUES,
@@ -512,18 +511,9 @@ export function buildWorkItemCommitHash(wsId: string, itemId: string, commitHash
 
 export const VALID_REPO_SUB_TABS: Set<string> = new Set(REPO_SUB_TAB_VALUES);
 
-/**
- * Resolve the canonical chat-tab segment for the current UI layout mode.
- * Classic mode names the chat surface `'activity'`; dev-workflow names it
- * `'chats'`. Used by the keyboard-shortcut handler to ensure Alt+A produces
- * the correct sub-tab key + URL for the user's current layout mode.
- *
- * The render path in `RepoDetail` accepts both keys interchangeably so cross-
- * mode URLs work without needing to redirect or rewrite the hash (which would
- * race with the asynchronous preferences fetch).
- */
-export function resolveChatSubTab(mode: UiLayoutMode): RepoSubTab {
-    return mode === 'classic' ? 'activity' : 'chats';
+/** Canonical classic chat tab. RepoDetail also accepts the `chats` route alias. */
+export function resolveChatSubTab(): RepoSubTab {
+    return 'activity';
 }
 
 export const VALID_SETTINGS_SECTIONS: Set<string> = new Set(SETTINGS_SECTION_VALUES);
@@ -621,8 +611,8 @@ export function buildDbBrowserHash(table: string | null, page: number, sort: str
 // ── Route resolution ──────────────────────────────────────────────────────────
 
 /**
- * Ambient context a route needs to resolve. `getUiLayoutMode`/`isSchedulesInSlide`
- * are getters so they are read lazily, exactly where the imperative dispatcher
+ * Ambient context a route needs to resolve. `isSchedulesInSlide`
+ * is a getter read lazily, exactly where the imperative dispatcher
  * read them (never for routes that do not depend on them).
  */
 export interface RouteContext {
@@ -630,7 +620,6 @@ export interface RouteContext {
     selectedRepoId: string | null;
     repoRouteState: Record<string, string>;
     repoTabState: Record<string, RepoSubTab>;
-    getUiLayoutMode: () => UiLayoutMode;
     isSchedulesInSlide: () => boolean;
 }
 
@@ -698,7 +687,7 @@ function resolveReposRoute(hashIn: string, ctx: RouteContext, effects: RouteEffe
         // mounted so RepoChatTab can host the schedule detail/editor. Flag OFF ⇒
         // unchanged.
         if (parts[2] === 'schedules' && ctx.isSchedulesInSlide()) {
-            effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: resolveChatSubTab(ctx.getUiLayoutMode()) } });
+            effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: resolveChatSubTab() } });
         } else {
             effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: parts[2] as RepoSubTab } });
         }
@@ -883,7 +872,7 @@ export function resolveDashboardRoute(rawHash: string, ctx: RouteContext): Route
         const repoId = findRepoIdForProcessDeepLink(ctx.queueState, processDeepLinkId, ctx.selectedRepoId);
         effects.push({ kind: 'app', action: { type: 'SET_ACTIVE_TAB', tab: 'repos' } });
         if (repoId) {
-            const chatTab = resolveChatSubTab(ctx.getUiLayoutMode());
+            const chatTab = resolveChatSubTab();
             effects.push({ kind: 'app', action: { type: 'SET_SELECTED_REPO', id: repoId } });
             effects.push({ kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: chatTab } });
             effects.push({ kind: 'queue', action: { type: 'SELECT_QUEUE_TASK', id: processDeepLinkId, repoId } });

@@ -6,7 +6,6 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useApp } from '../../contexts/AppContext';
 import { useQueue } from '../../contexts/QueueContext';
 import { useWorkItems, loadUnseenWorkItemIds } from '../../contexts/WorkItemContext';
-import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { Button, cn } from '../../ui';
 import { getRepoDisplayName } from './RepoTabStrip';
 import { useBreakpoint } from '../../hooks/ui/useBreakpoint';
@@ -106,7 +105,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         minimized: boolean;
         targetFolder: string | undefined;
     }>({ open: false, minimized: false, targetFolder: undefined });
-    const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const ws = repo.workspace;
     const sourceSelectionId = getRepoSelectionId(repo);
     const explorerRoutingRef = parseRemoteCloneKey(sourceSelectionId) ? sourceSelectionId : null;
@@ -160,10 +158,10 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // cleared queue selection. Points the shared detail pane at chat.
     const handleSplitNewChat = useCallback(() => {
         queueDispatch({ type: 'SELECT_QUEUE_TASK', id: null, repoId: ws.id });
-        const segment = uiLayoutMode === 'dev-workflow' ? 'chats' : 'activity';
+        const segment = 'activity';
         location.hash = '#repos/' + encodeURIComponent(ws.id) + '/' + segment;
         setSplitLastClicked('chat');
-    }, [queueDispatch, ws.id, uiLayoutMode]);
+    }, [queueDispatch, ws.id]);
     // Portal host inside the split panel's "Git" section header — RepoGitTab
     // portals its compact toolbar here so it shares the 22px header row.
     const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null);
@@ -239,9 +237,9 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
 
     const visibleSubTabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
+        pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode, schedulesInScheduledSlideEnabled]);
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
 
     // Redirect only after the capability set for this workspace has resolved.
     // Route memory is kept separately in AppContext, so this display fallback
@@ -252,14 +250,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
         dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
     }, [activeSubTab, visibleSubTabs, repo.gitInfoLoading, dispatch]);
 
-    // Redirect when switching layout modes
-    useEffect(() => {
-        if (uiLayoutMode === 'classic' && activeSubTab === 'chats') {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-        } else if (uiLayoutMode === 'dev-workflow' && activeSubTab === 'activity') {
-            dispatch({ type: 'SET_REPO_SUB_TAB', tab: 'chats' });
-        }
-    }, [uiLayoutMode, activeSubTab, dispatch]);
 
     const repoWikis = useMemo(() =>
         state.wikis.filter((w: any) => w.repoPath === ws.rootPath),
@@ -607,8 +597,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 <WorkspaceDockToggle workspaceId={ws.id} />
                             )}
                             {/* Classic-mode primary visible buttons (mirror reference layout). */}
-                            {uiLayoutMode === 'classic' && (
-                                <>
+                            <>
                                     <div
                                         className={headerContextDropClass('task')}
                                         onDragEnter={handleHeaderContextDragOver('task')}
@@ -648,7 +637,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         </Button>
                                     </div>
                                 </>
-                            )}
                             {headerContextDropFeedback && (
                                 <div
                                     className={cn(
@@ -663,31 +651,16 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     {headerContextDropFeedback.message}
                                 </div>
                             )}
-                            {/*
-                              Container for "deferred" actions whose placement depends on layout
-                              mode. In classic mode this becomes the popover surface revealed by
-                              the "..." overflow toggle; in dev-workflow mode the same buttons
-                              render inline alongside the title row. Keeping them in a single JSX
-                              block ensures each data-testid appears exactly once in the DOM and
-                              that source order is preserved (Launch CLI before Run Prompt / Script).
-                            */}
+                            {/* Deferred actions share the overflow popover, preserving source order. */}
                             {(() => {
-                                const isOverflow = uiLayoutMode === 'classic';
-                                const containerCls = isOverflow
-                                    ? 'absolute top-full right-0 mt-1 z-20 flex flex-col items-stretch gap-0.5 min-w-[200px] rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg p-1.5'
-                                    : 'flex items-center gap-1';
-                                const secondaryItemCls = isOverflow
-                                    ? '!font-semibold !w-full !justify-start !min-h-[34px] !h-[34px] !px-2 !rounded-md !bg-transparent !border-transparent !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#f6f8fa] dark:hover:!bg-[#2d2d2d]'
-                                    : '!font-semibold !h-[26px] !rounded-md !px-2.5 !text-[13px] !min-h-0 !bg-[#f6f8fa] dark:!bg-[#2a2a2a] !border-[#d0d7de] dark:!border-[#3c3c3c] !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#eaeef2] dark:hover:!bg-[#333]';
-                                const primaryItemCls = isOverflow
-                                    ? secondaryItemCls
-                                    : '!font-semibold !h-[26px] !rounded-md !px-2.5 !text-[13px] !min-h-0 !bg-[#1f883d] hover:!bg-[#1a7f37] dark:!bg-[#238636] dark:hover:!bg-[#2ea043] !text-white !border-transparent !shadow-[0_1px_0_rgba(31,35,40,0.1)]';
+                                const containerCls = 'absolute top-full right-0 mt-1 z-20 flex flex-col items-stretch gap-0.5 min-w-[200px] rounded-md border border-[#d0d7de] dark:border-[#3c3c3c] bg-white dark:bg-[#252526] shadow-lg p-1.5';
+                                const secondaryItemCls = '!font-semibold !w-full !justify-start !min-h-[34px] !h-[34px] !px-2 !rounded-md !bg-transparent !border-transparent !text-[#1f2328] dark:!text-[#cccccc] hover:!bg-[#f6f8fa] dark:hover:!bg-[#2d2d2d]';
                                 return (
                                 <div
                                     className={containerCls}
-                                    style={isOverflow ? { display: overflowOpen ? 'flex' : 'none' } : undefined}
-                                    role={isOverflow ? 'menu' : undefined}
-                                    data-testid={isOverflow ? 'repo-overflow-popover' : undefined}
+                                    style={{ display: overflowOpen ? 'flex' : 'none' }}
+                                    role="menu"
+                                    data-testid="repo-overflow-popover"
                                 >
                                     <Button
                                         className={secondaryItemCls}
@@ -701,7 +674,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                         Launch CLI
                                     </Button>
                                     <Button
-                                        className={primaryItemCls}
+                                        className={secondaryItemCls}
                                         size="sm"
                                         title="Run a prompt or script in this repo"
                                         onClick={() => { setOverflowOpen(false); queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }); }}
@@ -726,8 +699,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 );
                             })()}
                             {/* Overflow toggle — only rendered in classic mode where extra actions are tucked away */}
-                            {uiLayoutMode === 'classic' && (
-                                <button
+                            <button
                                     type="button"
                                     onClick={() => setOverflowOpen(o => !o)}
                                     aria-label="More repository actions"
@@ -739,7 +711,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 >
                                     <span className="text-[15px] leading-none -mt-1" aria-hidden>…</span>
                                 </button>
-                            )}
                         </div>
                 </>
             </div>
@@ -751,16 +722,16 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     activeTab={activeSubTab}
                     onTabChange={switchSubTab}
                     tabs={visibleSubTabs}
-                    pinnedTabs={uiLayoutMode === 'classic' ? ['activity', 'tasks', 'git'] : undefined}
+                    pinnedTabs={['activity', 'tasks', 'git']}
                     taskCount={taskCount}
                     activityCount={queueRunningCount + queueQueuedCount}
                     workItemCount={unseenWorkItemCount}
                     leadingSlot={mobileLeadingSlot}
                     actions={[
-                        ...(uiLayoutMode === 'classic' ? [{ label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) }] : []),
-                        ...(uiLayoutMode === 'classic' ? [{ label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) }] : []),
+                        ...([{ label: 'Queue Task', icon: '🤖', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id }) }]),
+                        ...([{ label: 'Ask', icon: '💡', onClick: () => queueDispatch({ type: 'OPEN_DIALOG', workspaceId: ws.id, mode: 'ask' }) }]),
                         { label: 'Run Script', icon: '🛠️', onClick: () => queueDispatch({ type: 'OPEN_SCRIPT_DIALOG', workspaceId: ws.id }) },
-                        ...(uiLayoutMode === 'classic' ? [{ label: 'Generate Plan', icon: '📋', onClick: () => handleOpenGenerateDialog() }] : []),
+                        ...([{ label: 'Generate Plan', icon: '📋', onClick: () => handleOpenGenerateDialog() }]),
                         ...((activeSubTab === 'chats' || activeSubTab === 'tasks') && isRepoPaused
                             ? [{ label: 'Resume Queue', icon: '▶', onClick: handleResumeQueue }]
                             : []),
@@ -778,8 +749,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                     <WorkItemsTab key={ws.id} workspaceId={ws.id} originId={workItemOriginId} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : activeSubTab === 'tasks' ? (
                     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-                        {uiLayoutMode === 'classic' ? (
-                            <TasksPanel
+                        <TasksPanel
                                 key={ws.id}
                                 wsId={ws.id}
                                 repos={repos}
@@ -787,9 +757,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                 initialNavState={state.repoSubTabNavState?.[tasksNavStateKey]}
                                 onNavStateChange={handleTasksNavStateChange}
                             />
-                        ) : (
-                            <RepoChatTab key={`${ws.id}-tasks`} workspaceId={ws.id} sourceSelectionId={sourceSelectionId} mode="tasks" />
-                        )}
                     </div>
                 ) : (
                     <div className={cn("flex flex-col flex-1 min-h-0 min-w-0", activeSubTab === 'activity' || activeSubTab === 'chats' || activeSubTab === 'schedules' || activeSubTab === 'explorer' || activeSubTab === 'pull-requests' || activeSubTab === 'terminal' || activeSubTab === 'notes' || activeSubTab === 'dreams' || activeSubTab === 'cli-sessions' || activeSubTab === 'copilot-sessions' ? "overflow-hidden" : "overflow-y-auto")}>
@@ -807,7 +774,6 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                             key={`${ws.id}-split-chat`}
                                             workspaceId={ws.id}
                                             sourceSelectionId={sourceSelectionId}
-                                            mode={uiLayoutMode === 'dev-workflow' ? 'chats' : undefined}
                                             layout="split-workspace"
                                             detailContainer={splitDetailNode}
                                             detailActive={dockAvailable || splitLastClicked === 'chat'}

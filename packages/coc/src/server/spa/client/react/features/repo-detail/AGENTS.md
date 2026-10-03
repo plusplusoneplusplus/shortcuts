@@ -2,6 +2,10 @@
 
 TopBar repo navigation and the per-repo detail view.
 
+The dashboard uses the classic tab order and quick actions. Workspace accepts
+`activity` and `chats` route aliases; the optional plan tab is `Plans (Dep.)`.
+Layout is fixed, with no global or per-repo mode preference.
+
 ## RepoTabStrip kernel decomposition
 
 `RepoTabStrip.tsx` is the top-bar repo navigation surface (visible tabs, agent

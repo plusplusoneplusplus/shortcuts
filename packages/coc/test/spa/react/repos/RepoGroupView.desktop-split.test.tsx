@@ -243,7 +243,6 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
             selectedRepoId: GROUP_ID,
             repoRouteState: {},
             repoTabState: {},
-            getUiLayoutMode: () => 'classic',
             isSchedulesInSlide: () => false,
         };
         const { effects } = resolveDashboardRoute(hash, ctx);

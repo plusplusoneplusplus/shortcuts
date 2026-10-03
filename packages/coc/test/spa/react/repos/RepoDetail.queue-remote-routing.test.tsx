@@ -59,10 +59,6 @@ vi.mock('../../../../src/server/spa/client/react/contexts/WorkItemContext', () =
     loadUnseenWorkItemIds: () => [],
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
-    useUiLayoutMode: () => ['dev-workflow', vi.fn()],
-}));
-
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ isMobile: false, isTablet: false }),
 }));

@@ -60,8 +60,7 @@ async function openMobileWorkspace(page: Page, serverUrl: string): Promise<strin
     await page.goto(`${serverUrl}/#repos/${WS_ID}`);
     await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 15_000 });
 
-    // The Workspace tab keeps the chat tab's key — `chats` in the dev-workflow
-    // shell, `activity` in classic — so accept either.
+    // Both chat URL aliases resolve to the Workspace tab.
     const workspaceTab = page.locator(
         '[data-testid="mobile-tab-bar"] button[data-tab="chats"], [data-testid="mobile-tab-bar"] button[data-tab="activity"]',
     ).first();

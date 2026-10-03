@@ -108,7 +108,7 @@ describe('RepoDetail Dreams tab feature gating', () => {
     });
 
     it('visibleSubTabs depends on dreamsEnabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode, schedulesInScheduledSlideEnabled]');
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]');
     });
 
     it('redirects away from dreams when the feature is disabled (via the visibility guard)', () => {
@@ -130,10 +130,6 @@ describe('RepoDetail Activity tab rendering', () => {
         expect(REPO_DETAIL_SOURCE).toContain('key={`${ws.id}-split-chat`}');
     });
 
-    it('dev-workflow chat wrapper renders RepoChatTab with mode="chats"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('key={`${ws.id}-split-chat`}');
-    });
-
     /**
      * Regression: a previous unconditional Router redirect from `/activity` to
      * `/chats` set `activeSubTab='chats'` even in classic mode, which gated
@@ -143,14 +139,6 @@ describe('RepoDetail Activity tab rendering', () => {
      */
     it('classic-mode chat wrapper accepts both activity and chats keys', () => {
         // Anchor on the `RepoChatTab key=...-activity` line and inspect the preceding wrapper.
-        const anchor = REPO_DETAIL_SOURCE.indexOf('key={`${ws.id}-split-chat`}');
-        expect(anchor).toBeGreaterThan(-1);
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, anchor - 1800), anchor);
-
-        expect(block).toMatch(/activeSubTab === 'activity'.*\|\|.*activeSubTab === 'chats'/s);
-    });
-
-    it('dev-workflow chat wrapper accepts both chats and activity keys', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('key={`${ws.id}-split-chat`}');
         expect(anchor).toBeGreaterThan(-1);
         const block = REPO_DETAIL_SOURCE.substring(Math.max(0, anchor - 1800), anchor);
@@ -378,7 +366,7 @@ describe('RepoDetail Run Script button in header', () => {
     });
 
     it('Run Prompt / Script button label is rendered in the desktop header', () => {
-        // The desktop overflow popover (classic) and inline action bar (dev-workflow)
+        // The desktop overflow popover
         // both render the script-runner button using the user-facing label
         // "Run Prompt / Script" (renamed from the legacy "Prompt & Script"
         // wording, which is still used by the underlying dialog title and the
@@ -412,7 +400,7 @@ describe('RepoDetail Git tab wiring', () => {
     });
 
     it('mounts a fresh RepoChatTab on every repo switch via key containing ws.id', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}');
+        expect(REPO_DETAIL_SOURCE).toContain('key={`${ws.id}-split-chat`}');
     });
 
     it('mounts a fresh RepoSchedulesTab on every repo switch via key={ws.id}', () => {
@@ -428,8 +416,8 @@ describe('RepoDetail Git tab wiring', () => {
     });
 
     it('renders tasks tab using RepoChatTab with mode="tasks"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}-tasks`}');
-        expect(REPO_DETAIL_SOURCE).toContain('mode="tasks"');
+        expect(REPO_DETAIL_SOURCE).toContain('<TasksPanel');
+        expect(REPO_DETAIL_SOURCE).toContain('wsId={ws.id}');
     });
 
     it('no longer mounts a separate RepoInfoTab (merged into RepoSettingsTab)', () => {
@@ -700,7 +688,7 @@ describe('RepoDetail Tasks tab rendering', () => {
             l.includes("activeSubTab === 'tasks'") && l.includes('overflow-hidden')
         );
         // The overflow-hidden is on the wrapping div near the tasks ternary
-        expect(REPO_DETAIL_SOURCE).toContain('mode="tasks"');
+        expect(REPO_DETAIL_SOURCE).toContain('wsId={ws.id}');
     });
 
     it('tasks tab wrapper uses overflow-hidden layout', () => {
@@ -733,47 +721,6 @@ describe('RepoDetail PullRequestsTab always-mounted', () => {
     });
 });
 
-describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
-    it('dev-workflow branch relabels schedules to "Jobs"', () => {
-        expect(REPO_SUB_TABS_SOURCE).toContain("'schedules': 'Jobs'");
-    });
-
-    it('dev-workflow branch relabels pull-requests to "Full Requests"', () => {
-        expect(REPO_SUB_TABS_SOURCE).toContain("'pull-requests': 'Full Requests'");
-    });
-
-    it('dev-workflow branch defines the correct tab order', () => {
-        expect(REPO_SUB_TABS_SOURCE).toContain(
-            "'chats', 'work-items', 'dreams', 'schedules', 'explorer',",
-        );
-        expect(REPO_SUB_TABS_SOURCE).toContain(
-            "'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',",
-        );
-    });
-
-    it('classic branch does NOT apply dev-workflow relabels', () => {
-        // Classic branch relabels Tasks as Plans, not Jobs/Full Requests
-        const classicBlock = REPO_SUB_TABS_SOURCE.split("if (uiLayoutMode === 'classic')")[1]?.split('} else {')[0] ?? '';
-        expect(classicBlock).not.toContain("'Jobs'");
-        expect(classicBlock).not.toContain("'Full Requests'");
-    });
-
-    it('dev-workflow appends dynamic tabs after the fixed order', () => {
-        // The else branch must iterate tabMap leftovers (notes, wiki) after the ordered array
-        expect(REPO_SUB_TABS_SOURCE).toContain("// Append dynamic tabs");
-        expect(REPO_SUB_TABS_SOURCE).toContain("for (const [, tab] of tabMap)");
-    });
-
-    it('tab keys are unchanged — only labels differ', () => {
-        // devWorkflowOrder uses the same keys as SUB_TABS
-        const devOrderMatch = REPO_SUB_TABS_SOURCE.match(/devWorkflowOrder.*?=\s*\[([\s\S]*?)\]/);
-        expect(devOrderMatch).toBeTruthy();
-        const keys = devOrderMatch![1].match(/'([^']+)'/g)!.map(k => k.replace(/'/g, ''));
-        for (const key of keys) {
-            expect(SUB_TABS.find(t => t.key === key)).toBeDefined();
-        }
-    });
-});
 
 /**
  * Split "Workspace" panel integration (feature flag `splitWorkspacePanel`).

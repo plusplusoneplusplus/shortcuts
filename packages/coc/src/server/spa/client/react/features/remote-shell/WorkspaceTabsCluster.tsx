@@ -9,7 +9,6 @@ import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequest
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
 import { useSchedulesInScheduledSlideEnabled } from '../../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
-import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { isHidden as isHiddenTask, useRepoQueueStats } from '../../queue/hooks/useRepoQueueStats';
 import { useGitInfo } from '../git/hooks/useGitInfo';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
@@ -63,7 +62,6 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const dreamsEnabled = useDreamsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
-    const [uiLayoutMode] = useUiLayoutMode();
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
     // Only reflect an active sub-tab when we're actually on the repos tab. The
     // header also renders on the top-level pages (Admin / Settings / Wiki), where
@@ -75,9 +73,9 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
 
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
+        pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode, schedulesInScheduledSlideEnabled]);
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, schedulesInScheduledSlideEnabled]);
     const { clone: cloneTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
 
     const group = useMemo(() => {

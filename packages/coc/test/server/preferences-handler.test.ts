@@ -34,6 +34,7 @@ import {
     readRepoPreferencesWithStatus,
     PREFERENCES_FILE_NAME,
 } from '../../src/server/preferences-handler';
+import { getRepoDataPath } from '../../src/server/paths';
 import type { PreferencesFile } from '../../src/server/preferences-handler';
 import type { Route } from '../../src/server/types';
 import type { SyncEngine } from '../../src/server/sync/sync-engine';
@@ -110,6 +111,25 @@ describe('readPreferences / writePreferences', () => {
 
     afterEach(() => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('silently drops saved layout preferences for globals and multiple repos without rewriting files', () => {
+        const legacy = { uiLayoutMode: 'dev-workflow' };
+        const globalPath = path.join(tmpDir, PREFERENCES_FILE_NAME);
+        const globalJson = JSON.stringify({ global: { ...legacy, theme: 'dark' } });
+        fs.writeFileSync(globalPath, globalJson);
+        expect(readGlobalPreferences(tmpDir)).toMatchObject({ theme: 'dark' });
+        expect(readGlobalPreferences(tmpDir)).not.toHaveProperty('uiLayoutMode');
+        expect(fs.readFileSync(globalPath, 'utf8')).toBe(globalJson);
+        for (const workspaceId of ['repo-a', 'repo-b']) {
+            const repoPath = getRepoDataPath(tmpDir, workspaceId, PREFERENCES_FILE_NAME);
+            const repoDir = path.dirname(repoPath);
+            fs.mkdirSync(repoDir, { recursive: true });
+            const repoJson = JSON.stringify({ ...legacy, lastModel: workspaceId });
+            fs.writeFileSync(repoPath, repoJson);
+            expect(readRepoPreferences(tmpDir, workspaceId)).toEqual({ lastModel: workspaceId });
+            expect(fs.readFileSync(repoPath, 'utf8')).toBe(repoJson);
+        }
     });
 
     it('returns empty object when file does not exist', () => {
@@ -1544,26 +1564,9 @@ describe('validateGlobalPreferences', () => {
         expect(result.activityFilters).toEqual({ workspace: 'ws-2', myWorkExcludedTypes: ['ask'] });
     });
 
-    it('accepts uiLayoutMode classic', () => {
-        expect(validateGlobalPreferences({ uiLayoutMode: 'classic' })).toEqual({ uiLayoutMode: 'classic' });
-    });
-
-    it('accepts uiLayoutMode dev-workflow', () => {
-        expect(validateGlobalPreferences({ uiLayoutMode: 'dev-workflow' })).toEqual({ uiLayoutMode: 'dev-workflow' });
-    });
-
-    it('drops invalid uiLayoutMode values', () => {
-        expect(validateGlobalPreferences({ uiLayoutMode: 'unknown' })).toEqual({});
-        expect(validateGlobalPreferences({ uiLayoutMode: 42 })).toEqual({});
-        expect(validateGlobalPreferences({ uiLayoutMode: null })).toEqual({});
-        expect(validateGlobalPreferences({ uiLayoutMode: true })).toEqual({});
-        expect(validateGlobalPreferences({ uiLayoutMode: '' })).toEqual({});
-    });
-
-    it('accepts uiLayoutMode alongside other global fields', () => {
-        const result = validateGlobalPreferences({ theme: 'dark', uiLayoutMode: 'dev-workflow' });
-        expect(result.theme).toBe('dark');
-        expect(result.uiLayoutMode).toBe('dev-workflow');
+    it.each(['classic', 'dev-workflow', 'unknown', 42, null])('ignores the retired layout preference %s', value => {
+        expect(validateGlobalPreferences({ theme: 'dark', uiLayoutMode: value })).toEqual({ theme: 'dark' });
+        expect(validatePerRepoPreferences({ lastModel: 'model', uiLayoutMode: value })).toEqual({ lastModel: 'model' });
     });
 
     // -- diffEngine field --

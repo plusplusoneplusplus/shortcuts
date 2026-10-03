@@ -27,7 +27,6 @@ function makeCtx(overrides: Partial<RouteContext> = {}): RouteContext {
         selectedRepoId: null,
         repoRouteState: {},
         repoTabState: {},
-        getUiLayoutMode: () => 'dev-workflow',
         isSchedulesInSlide: () => false,
         ...overrides,
     };
@@ -199,7 +198,7 @@ describe('resolveDashboardRoute — repo sub-routes', () => {
     });
 
     it('schedules-in-slide flag mounts the chat surface instead of the schedules sub-tab', () => {
-        const ctx = makeCtx({ isSchedulesInSlide: () => true, getUiLayoutMode: () => 'classic' });
+        const ctx = makeCtx({ isSchedulesInSlide: () => true, });
         const r = resolveDashboardRoute('#repos/ws1/schedules/sched-1', ctx);
         expect(appActions({ effects: r.effects })).toEqual(
             expect.arrayContaining([{ type: 'SET_REPO_SUB_TAB', tab: 'activity' }]),
@@ -283,9 +282,9 @@ describe('resolveDashboardRoute — process deep-links', () => {
         expect(r.effects).toEqual([
             { kind: 'app', action: { type: 'SET_ACTIVE_TAB', tab: 'repos' } },
             { kind: 'app', action: { type: 'SET_SELECTED_REPO', id: 'ws2' } },
-            { kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'chats' } },
+            { kind: 'app', action: { type: 'SET_REPO_SUB_TAB', tab: 'activity' } },
             { kind: 'queue', action: { type: 'SELECT_QUEUE_TASK', id: 'proc1', repoId: 'ws2' } },
-            { kind: 'navigate', hash: '#repos/ws2/chats/proc1', mode: 'replaceState' },
+            { kind: 'navigate', hash: '#repos/ws2/activity/proc1', mode: 'replaceState' },
         ]);
     });
 

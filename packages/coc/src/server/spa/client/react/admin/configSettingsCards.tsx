@@ -10,7 +10,7 @@
 import { SettingsCard } from './SettingsCard';
 import { AdminInputSuffix, AdminRow, AdminSeg, AdminToggle, SourceBadge } from './adminControls';
 import { VALID_OUTPUT_OPTIONS, type ToolCompactness } from './useAdminConfigForm';
-import type { TaskCardDensity, Theme, UiLayoutMode } from './useAdminPreferencesForm';
+import type { TaskCardDensity, Theme } from './useAdminPreferencesForm';
 
 interface SourceProps {
     sources: Record<string, string>;
@@ -225,8 +225,7 @@ export function ChatExperienceCard({
 export interface AppearanceCardProps extends SourceProps {
     theme: Theme;
     setTheme: (v: Theme) => void;
-    uiLayoutMode: UiLayoutMode;
-    setUiLayoutMode: (v: UiLayoutMode) => void;
+
     reposSidebarCollapsed: boolean;
     setReposSidebarCollapsed: (v: boolean) => void;
     htmlEmbedEnabled: boolean;
@@ -247,7 +246,7 @@ export interface AppearanceCardProps extends SourceProps {
 
 export function AppearanceCard({
     theme, setTheme,
-    uiLayoutMode, setUiLayoutMode,
+
     reposSidebarCollapsed, setReposSidebarCollapsed,
     htmlEmbedEnabled, setHtmlEmbedEnabled,
     promptAutocompleteEnabled, setPromptAutocompleteEnabled,
@@ -277,17 +276,6 @@ export function AppearanceCard({
                     <option value="auto">auto</option>
                     <option value="light">light</option>
                     <option value="dark">dark</option>
-                </select>
-            </AdminRow>
-            <AdminRow name="UI Mode" hint="Classic shows the activity tab. Dev workflow uses chats, work items, and tasks.">
-                <select
-                    className="ar-select ar-long"
-                    value={uiLayoutMode}
-                    onChange={e => setUiLayoutMode(e.target.value as UiLayoutMode)}
-                    data-testid="pref-ui-layout-mode"
-                >
-                    <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
-                    <option value="classic">Classic (Activity)</option>
                 </select>
             </AdminRow>
             <AdminRow
