@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from '../ui';
 import { Dialog } from '../ui/Dialog';
 import { getRawApiBase } from '../utils/config';
 import { SettingsCard } from './SettingsCard';
@@ -118,19 +117,21 @@ export function WhatsAppConnectionCard() {
     };
 
     return <SettingsCard title="WhatsApp" description="Receive commands and chat messages in a selected WhatsApp group." data-testid="whatsapp-connection-card">
-        <div className="space-y-3">
-            {error && <p role="alert" className="text-xs text-red-600">{error}</p>}
+        <div className="ar-whatsapp">
+            {error && <p role="alert" className="ar-whatsapp-error">{error}</p>}
             {!status ? <div>
                 <p role="status">{error ? 'Could not load WhatsApp status.' : 'Loading WhatsApp status…'}</p>
-                <Button size="sm" onClick={() => void load()}>Refresh status</Button>
+                <button type="button" className="ar-btn ar-btn-secondary" onClick={() => void load()}>Refresh status</button>
             </div> : <>
-                <div className="flex items-center justify-between gap-2">
-                    <WhatsAppStatusIndicator status={status.error ? 'error' : status.status} />
-                    <Button size="sm" onClick={() => void load()} disabled={busy}>Refresh status</Button>
+                <div className="ar-whatsapp-overview">
+                    <div className="ar-whatsapp-status" data-state={status.error ? 'error' : status.status}>
+                        <WhatsAppStatusIndicator status={status.error ? 'error' : status.status} />
+                    </div>
+                    <button type="button" className="ar-btn ar-btn-secondary" onClick={() => void load()} disabled={busy}>Refresh status</button>
                 </div>
-                {status.error && <p role="alert" className="text-xs text-red-600">{status.error}</p>}
-                <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={status.enabled} disabled={busy}
+                {status.error && <p role="alert" className="ar-whatsapp-error">{status.error}</p>}
+                <label className="ar-whatsapp-enable">
+                    <input type="checkbox" aria-label="Enable WhatsApp" checked={status.enabled} disabled={busy}
                         onChange={event => {
                             const enabled = event.currentTarget.checked;
                             void run(async () => {
@@ -143,66 +144,73 @@ export function WhatsAppConnectionCard() {
                                 }
                             });
                         }} />
-                    Enable WhatsApp
+                    <span>Enable WhatsApp<span className="ar-whatsapp-hint">Receive commands and messages from your selected group.</span></span>
                 </label>
                 {status.enabled && <>
-                    <div className="flex flex-wrap gap-2">
-                        {status.status !== 'connected'
-                            ? <Button size="sm" onClick={() => void run(async () => {
-                                await request('/reconnect', {});
-                                openPairing();
-                            })} disabled={busy}>Setup / Pair</Button>
-                            : <Button size="sm" variant="danger" disabled={busy}
-                                onClick={() => void run(async () => {
-                                    await request('/reconnect', { repair: true });
-                                    openPairing();
-                                })}>Re-pair</Button>}
-                    </div>
-                    <label className="block text-sm" htmlFor="whatsapp-device-name">Device name</label>
-                    <div className="flex gap-2">
-                        <input id="whatsapp-device-name" type="text" value={deviceName} disabled={busy}
-                            onChange={event => setDeviceName(event.target.value)}
-                            className="flex-1 min-w-0 rounded border px-2 py-1 bg-transparent" />
-                        <Button size="sm" disabled={busy || !deviceDirty || !deviceName.trim()}
-                            onClick={() => void run(async () => {
-                                await request('/config', { deviceName: deviceName.trim() });
-                                await request('/reconnect', { repair: true });
-                                openPairing();
-                            })}>Save &amp; Re-pair</Button>
-                    </div>
-                    {deviceDirty && <p className="text-xs text-amber-600">Changing the device name requires re-pairing.</p>}
-                    {status.selfJid && <p className="text-xs text-[#616161]">Linked account: {status.selfJid}</p>}
-                    {status.status === 'connected' && <>
-                        <label className="block text-sm" htmlFor="whatsapp-group">Group</label>
-                        <div className="flex gap-2">
+                    {status.status === 'connected' && <section className="ar-whatsapp-section" aria-labelledby="whatsapp-group-heading">
+                        <h4 id="whatsapp-group-heading">Chat group</h4>
+                        <p className="ar-whatsapp-hint">Choose an existing group or create one for CoC. Messages in the saved group are sent to CoC.</p>
+                        <label className="ar-whatsapp-label" htmlFor="whatsapp-group">Group</label>
+                        <div className="ar-whatsapp-controls">
                             <select id="whatsapp-group" value={groupJid} disabled={busy}
                                 onChange={event => setGroupJid(event.target.value)}
-                                className="flex-1 min-w-0 rounded border px-2 py-1 bg-transparent">
+                                className="ar-select">
                                 <option value="">Select a group</option>
                                 {groupJid && !groups.some(group => group.jid === groupJid) &&
                                     <option value={groupJid}>{status.groupName ?? groupJid}</option>}
                                 {groups.map(group => <option key={group.jid} value={group.jid}>{group.name}</option>)}
                             </select>
-                            <Button size="sm" disabled={busy || !groupDirty || !groupJid}
+                            <button type="button" className="ar-btn ar-btn-primary" disabled={busy || !groupDirty || !groupJid}
                                 onClick={() => void run(() => request('/config', {
                                     groupJid, groupName: groups.find(group => group.jid === groupJid)?.name ?? status.groupName ?? null,
-                                }))}>Save group</Button>
+                                }))}>Save group</button>
                         </div>
-                        {groupsError && <p role="alert" className="text-xs text-red-600">Could not load groups: {groupsError}</p>}
-                        <div className="flex gap-2">
-                            <input aria-label="New group name" type="text" value={newGroupName} disabled={busy}
+                        {groupsError && <p role="alert" className="ar-whatsapp-error">Could not load groups: {groupsError}</p>}
+                        <label className="ar-whatsapp-label" htmlFor="whatsapp-new-group-name">New group name</label>
+                        <div className="ar-whatsapp-controls">
+                            <input id="whatsapp-new-group-name" type="text" value={newGroupName} disabled={busy}
                                 onChange={event => setNewGroupName(event.target.value)}
-                                placeholder="New group name" className="flex-1 min-w-0 rounded border px-2 py-1 bg-transparent" />
-                            <Button size="sm" disabled={busy || !newGroupName.trim()}
+                                placeholder="New group name" className="ar-input" />
+                            <button type="button" className="ar-btn ar-btn-secondary" disabled={busy || !newGroupName.trim()}
                                 onClick={() => void run(async () => {
                                     const group = await request<WhatsAppGroup>('/groups', { name: newGroupName.trim() });
                                     if (!group.jid) throw new Error('Group creation did not return a JID');
                                     await request('/config', { groupJid: group.jid, groupName: group.name });
                                     setNewGroupName('CoC');
                                     await loadGroups();
-                                })}>Create group</Button>
+                                })}>Create group</button>
                         </div>
-                    </>}
+                    </section>}
+                    <section className="ar-whatsapp-section" aria-labelledby="whatsapp-device-heading">
+                        <h4 id="whatsapp-device-heading">Device &amp; pairing</h4>
+                        <p className="ar-whatsapp-hint">Pair your phone to connect. Re-pairing requires scanning a new QR code.</p>
+                        <div className="ar-whatsapp-actions">
+                            {status.status !== 'connected'
+                                ? <button type="button" className="ar-btn ar-btn-secondary" onClick={() => void run(async () => {
+                                    await request('/reconnect', {});
+                                    openPairing();
+                                })} disabled={busy}>Setup / Pair</button>
+                                : <button type="button" className="ar-btn ar-btn-danger-outline" disabled={busy}
+                                    onClick={() => void run(async () => {
+                                        await request('/reconnect', { repair: true });
+                                        openPairing();
+                                    })}>Re-pair</button>}
+                        </div>
+                        <label className="ar-whatsapp-label" htmlFor="whatsapp-device-name">Device name</label>
+                        <div className="ar-whatsapp-controls">
+                            <input id="whatsapp-device-name" type="text" value={deviceName} disabled={busy}
+                                onChange={event => setDeviceName(event.target.value)}
+                                className="ar-input" />
+                            <button type="button" className="ar-btn ar-btn-secondary" disabled={busy || !deviceDirty || !deviceName.trim()}
+                                onClick={() => void run(async () => {
+                                    await request('/config', { deviceName: deviceName.trim() });
+                                    await request('/reconnect', { repair: true });
+                                    openPairing();
+                                })}>Save &amp; Re-pair</button>
+                        </div>
+                        {deviceDirty && <p className="ar-whatsapp-warning">Changing the device name requires re-pairing.</p>}
+                        {status.selfJid && <p className="ar-whatsapp-hint">Linked account: {status.selfJid}</p>}
+                    </section>
                 </>}
             </>}
         </div>

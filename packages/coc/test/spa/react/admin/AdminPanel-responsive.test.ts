@@ -141,3 +141,15 @@ describe('AdminPanel responsive layout inside the admin dialog', () => {
         }
     });
 });
+
+
+describe('WhatsApp settings responsive styling', () => {
+    it('stacks fields and actions based on the admin pane width', () => {
+        expect(adminRedesignCss).toMatch(
+            /@container ar-main \(max-width: 480px\)\s*\{[\s\S]*?\.ar-whatsapp-controls\s*\{[^}]*flex-direction: column/
+        );
+        expect(adminRedesignCss).toMatch(
+            /\.admin-redesign \.ar-whatsapp-controls \.ar-btn\s*\{[^}]*width: 100%/
+        );
+    });
+});
