@@ -55,7 +55,7 @@ export interface ComposerPrChipProps {
 }
 
 const ROW_CLASS =
-    'flex items-center gap-2 px-3 py-1.5 text-xs ' +
+    'flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 text-xs ' +
     'bg-[#f6f8fa] dark:bg-[#161b22] ' +
     'border-b border-[#d0d7de] dark:border-[#3c3c3c]';
 
@@ -162,7 +162,7 @@ function AuthorLabel({ alias }: { alias: string }) {
     if (!alias) return null;
     return (
         <span
-            className="shrink-0 text-[#57606a] dark:text-[#8b949e]"
+            className="max-w-[12rem] shrink-0 truncate text-[#57606a] dark:text-[#8b949e]"
             data-testid="composer-pr-chip-author"
             title={alias}
         >
@@ -409,7 +409,8 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
 
     // Self-measure the chip's own row width so the author label can hide when the
     // composer pane is narrow (AC-02), mirroring FollowUpInputArea's
-    // `isToolbarNarrow`. The ref is attached to the ready-branch row root below.
+    // `isToolbarNarrow`. All states attach the ref so observation starts even
+    // when PR details are still loading and survives the transition to ready.
     // The `width > 0` guard keeps the author visible until the first measurement,
     // so it never flashes hidden before ResizeObserver reports a width.
     const rowRef = React.useRef<HTMLDivElement | null>(null);
@@ -437,7 +438,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
 
     if (item.state === 'loading') {
         return (
-            <div className={ROW_CLASS} data-testid="composer-pr-chip" data-state="loading" data-pr-key={item.key}>
+            <div ref={rowRef} className={ROW_CLASS} data-testid="composer-pr-chip" data-state="loading" data-pr-key={item.key}>
                 <GitGlyph />
                 <span className="shrink-0 font-mono text-[11px] font-medium text-[#57606a] dark:text-[#8b949e]">#{number}</span>
                 <span className="h-3 min-w-0 flex-1 max-w-[12rem] animate-pulse rounded bg-[#d0d7de] dark:bg-[#30363d]" />
@@ -449,7 +450,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
 
     if (item.state === 'error') {
         return (
-            <div className={ROW_CLASS} data-testid="composer-pr-chip" data-state="error" data-pr-key={item.key} role="alert">
+            <div ref={rowRef} className={ROW_CLASS} data-testid="composer-pr-chip" data-state="error" data-pr-key={item.key} role="alert">
                 <GitGlyph />
                 <span className="shrink-0 font-mono text-[11px] font-medium text-[#57606a] dark:text-[#8b949e]">#{number}</span>
                 <span className="min-w-0 flex-1 truncate text-[#cf222e] dark:text-[#f85149]">
@@ -489,7 +490,7 @@ export function ComposerPrChip({ item, onDismiss, onRetry, onRefresh, refreshing
                 #{number}
             </a>
             <span
-                className="min-w-0 flex-1 truncate font-semibold text-[#1f2328] dark:text-[#c9d1d9]"
+                className="min-w-0 flex-[1_0_8rem] truncate font-semibold text-[#1f2328] dark:text-[#c9d1d9]"
                 data-testid="composer-pr-chip-title"
                 title={pr?.title}
             >

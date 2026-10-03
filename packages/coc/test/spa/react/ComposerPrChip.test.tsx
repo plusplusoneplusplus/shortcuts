@@ -6,8 +6,8 @@
  * the provider View link, the +adds/−dels diff display, and the ✕ dismiss +
  * Retry callbacks.
  */
-import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, fireEvent, act } from '@testing-library/react';
 import React from 'react';
 import { ComposerPrChip } from '../../../src/server/spa/client/react/features/chat/conversation/ComposerPrChip';
 import type { PrStatusCardItem } from '../../../src/server/spa/client/react/features/chat/conversation/PrStatusCard';
@@ -733,5 +733,63 @@ describe('ComposerPrChip — reviewers popover', () => {
         fireEvent.mouseDown(document.body);
         expect(queryByTestId(reviewersPopoverTestId)).toBeNull();
         expect(onDismiss).not.toHaveBeenCalled();
+    });
+});
+
+
+describe('ComposerPrChip resize observation', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+    });
+
+    it.each(['loading', 'error'] as const)('observes the %s row before details arrive and responds to resizing', initialState => {
+        vi.useFakeTimers();
+        let width = 800;
+        vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => width);
+        const observe = vi.fn();
+        const disconnect = vi.fn();
+        let resize!: ResizeObserverCallback;
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback: ResizeObserverCallback) { resize = callback; }
+            observe = observe;
+            disconnect = disconnect;
+        });
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+            callback(0);
+            return 1;
+        });
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+        const ready = readyItem();
+        ready.pr = { ...ready.pr!, author: { displayName: 'plusplusoneplusplus' } };
+        const { getByTestId, queryByTestId, rerender, unmount } = render(
+            <ComposerPrChip item={{ ...ready, state: initialState }} onDismiss={() => {}} />,
+        );
+        const row = getByTestId('composer-pr-chip');
+        expect(observe).toHaveBeenCalledWith(row);
+
+        rerender(<ComposerPrChip item={ready} onDismiss={() => {}} />);
+        expect(getByTestId('composer-pr-chip')).toBe(row);
+        expect(queryByTestId('composer-pr-chip-author')).not.toBeNull();
+        act(() => {
+            width = 420;
+            resize([], {} as ResizeObserver);
+            vi.advanceTimersByTime(100);
+        });
+        expect(queryByTestId('composer-pr-chip-author')).toBeNull();
+        expect(getByTestId(`composer-pr-chip-view-${KEY}`)).toBeTruthy();
+        expect(getByTestId(`composer-pr-chip-dismiss-${KEY}`)).toBeTruthy();
+
+        act(() => {
+            width = 800;
+            resize([], {} as ResizeObserver);
+            vi.advanceTimersByTime(100);
+        });
+        expect(queryByTestId('composer-pr-chip-author')).not.toBeNull();
+        expect(observe).toHaveBeenCalledTimes(1);
+        unmount();
+        expect(disconnect).toHaveBeenCalledOnce();
     });
 });
