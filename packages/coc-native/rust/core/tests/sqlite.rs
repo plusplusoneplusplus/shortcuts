@@ -525,8 +525,16 @@ fn process_reads_filter_and_group_turns_on_the_read_pool() {
     assert!(get_all_processes(&database, &filter).is_ok());
     assert!(get_process_summaries(&database, &filter).is_ok());
     assert!(get_process_summaries_json(&database, &filter).is_ok());
-    assert!(list_recent_processes(&database, &RecentFilter { limit: 10, ..RecentFilter::default() }).is_ok());
-    assert!(list_recent_processes_json(&database, &RecentFilter { limit: 10, ..RecentFilter::default() }).is_ok());
+    assert!(list_recent_processes(
+        &database,
+        &RecentFilter { limit: 10, ..RecentFilter::default() }
+    )
+    .is_ok());
+    assert!(list_recent_processes_json(
+        &database,
+        &RecentFilter { limit: 10, ..RecentFilter::default() }
+    )
+    .is_ok());
     database.pragma("user_version = 40").unwrap();
     assert!(matches!(get_conversation_turns(&database, "one"), Err(Error::UnsupportedVersion(40))));
     assert!(matches!(
