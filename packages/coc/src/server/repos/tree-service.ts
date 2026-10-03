@@ -65,6 +65,16 @@ function clampLimit(limit = 50): number {
     return Math.min(Math.max(limit, 1), 200);
 }
 
+/** Trimmed stdout of a short git command, or '' when it fails (not a repo, no remote, no git). */
+async function gitOutput(cwd: string, args: string[]): Promise<string> {
+    try {
+        const { stdout } = await execFileAsync('git', args, { cwd, encoding: 'utf-8', timeout: 5000 });
+        return stdout.trim();
+    } catch {
+        return '';
+    }
+}
+
 export class TrackedContentSearchUnavailableError extends Error {
     readonly code = 'TRACKED_CONTENT_SEARCH_UNAVAILABLE';
 }
@@ -390,30 +400,8 @@ export class RepoTreeService {
      * Pure mapping + git HEAD resolution.
      */
     static async toRepoInfo(workspace: WorkspaceInfo): Promise<RepoInfo> {
-        let headSha = '';
-        try {
-            const { stdout } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], {
-                cwd: workspace.rootPath,
-                encoding: 'utf-8',
-                timeout: 5000,
-            });
-            headSha = stdout.trim();
-        } catch {
-            // Not a git repo or git not available
-        }
-
-        let remoteUrl: string | undefined;
-        try {
-            const { stdout } = await execFileAsync('git', ['remote', 'get-url', 'origin'], {
-                cwd: workspace.rootPath,
-                encoding: 'utf-8',
-                timeout: 5000,
-            });
-            const url = stdout.trim();
-            if (url) remoteUrl = url;
-        } catch {
-            // No origin remote or not a git repo
-        }
+        const headSha = await gitOutput(workspace.rootPath, ['rev-parse', '--short', 'HEAD']);
+        const remoteUrl = await gitOutput(workspace.rootPath, ['remote', 'get-url', 'origin']);
 
         return {
             id: workspace.id,

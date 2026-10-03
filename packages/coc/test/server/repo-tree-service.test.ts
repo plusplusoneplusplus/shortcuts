@@ -943,6 +943,28 @@ describe('RepoTreeService.toRepoInfo', () => {
         expect(info.headSha).toMatch(/^[0-9a-f]{7,}$/);
     });
 
+    it('reads the origin remote and lets WorkspaceInfo.remoteUrl override it', async () => {
+        if (!isGitAvailable()) return;
+
+        const gitDir = path.join(tmpDir, 'git-remote');
+        fs.mkdirSync(gitDir, { recursive: true });
+        initGitRepo(gitDir);
+        childProcess.execSync('git remote add origin https://example.com/origin.git', { cwd: gitDir, stdio: 'pipe' });
+
+        const fromGit = await RepoTreeService.toRepoInfo({ id: 'r', name: 'r', rootPath: gitDir });
+        expect(fromGit.remoteUrl).toBe('https://example.com/origin.git');
+        // No commit yet: HEAD does not resolve, so headSha falls back to ''.
+        expect(fromGit.headSha).toBe('');
+
+        const overridden = await RepoTreeService.toRepoInfo({ id: 'r', name: 'r', rootPath: gitDir, remoteUrl: 'https://example.com/ws.git' });
+        expect(overridden.remoteUrl).toBe('https://example.com/ws.git');
+    });
+
+    it('omits remoteUrl when there is neither an origin nor a workspace remote', async () => {
+        const info = await RepoTreeService.toRepoInfo({ id: 'r', name: 'r', rootPath: tmpDir });
+        expect(info).not.toHaveProperty('remoteUrl');
+    });
+
     it('preserves remoteUrl from WorkspaceInfo', async () => {
         const workspace = {
             id: 'ws-remote',
