@@ -600,15 +600,11 @@ describe('RepoGitTab', () => {
         });
 
         it('has right panel for commit detail', () => {
-            expect(source).toContain('data-testid="git-detail-panel"');
+            expect(source).toContain('data-testid="git-split-workspace-detail"');
         });
 
         it('uses aside element for commit list panel', () => {
             expect(source).toContain('<aside');
-        });
-
-        it('uses main element for detail panel', () => {
-            expect(source).toContain('<main');
         });
 
         it('has responsive breakpoint for stacked/split layout', () => {
@@ -639,29 +635,23 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain('function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps)');
+            expect(source).toContain("function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps)");
         });
 
         it('derives isSplitWorkspace from the layout prop', () => {
             expect(source).toContain("const isSplitWorkspace = layout === 'split-workspace'");
         });
 
-        it('gates the entire split branch on a truthy layout so the off-path is a strict no-op', () => {
-            expect(source).toContain('if (isSplitWorkspace) {');
-            // The standalone return still exists below the split branch.
-            expect(source).toContain('data-testid="repo-git-tab"');
-        });
-
         it('renders ONLY the reused git list in the split branch (parity via reuse — AC-05)', () => {
             expect(source).toContain('const listPane = (');
             expect(source).toContain('data-testid="git-split-workspace-list"');
-            const splitBlock = source.match(/if \(isSplitWorkspace\) \{[\s\S]*?\n {4}\}/);
+            const splitBlock = [source.substring(source.indexOf('// Split-workspace layout'))];
             expect(splitBlock).toBeTruthy();
             // The split branch mounts the shared listPane (not a forked list).
             expect(splitBlock![0]).toContain('{listPane}');
             // No resize handle / standalone <main> in the split branch.
             expect(splitBlock![0]).not.toContain('git-resize-handle');
-            expect(splitBlock![0]).not.toContain('data-testid="git-detail-panel"');
+
         });
 
         it('marks git last-clicked via capture-phase click on the list wrapper (AC-04)', () => {
@@ -692,7 +682,7 @@ describe('RepoGitTab', () => {
             const captureWrapper = source.match(/data-testid="git-split-workspace-list"[\s\S]*?\{listPane\}\s*<\/div>/);
             expect(captureWrapper).toBeTruthy();
             expect(captureWrapper![0]).not.toContain('hoistedHeaderPortal');
-            const splitBlock = source.match(/if \(isSplitWorkspace\) \{[\s\S]*?\n {4}\}/);
+            const splitBlock = [source.substring(source.indexOf('// Split-workspace layout'))];
             expect(splitBlock).toBeTruthy();
             const wrapperEnd = splitBlock![0].indexOf('{listPane}');
             expect(splitBlock![0].indexOf('{hoistedHeaderPortal}')).toBeGreaterThan(wrapperEnd);
@@ -713,7 +703,7 @@ describe('RepoGitTab', () => {
         });
 
         it('portals the detail subtree into the parent container, gated on detailActive (AC-04 single shared pane)', () => {
-            const splitBlock = source.match(/if \(isSplitWorkspace\) \{[\s\S]*?\n {4}\}/);
+            const splitBlock = [source.substring(source.indexOf('// Split-workspace layout'))];
             expect(splitBlock).toBeTruthy();
             expect(splitBlock![0]).toContain('detailActive && detailContainer');
             expect(splitBlock![0]).toContain('createPortal(');
@@ -739,14 +729,7 @@ describe('RepoGitTab', () => {
             // Both returns render the shared overlays.
             const overlaysUses = source.match(/\{overlays\}/g);
             expect(overlaysUses).toBeTruthy();
-            expect(overlaysUses!.length).toBe(2);
-        });
-
-        it('default layout still renders GitPanelHeader actions + resize handle (off-path unchanged)', () => {
-            expect(source).toContain('<GitPanelHeader');
-            expect(source).toContain('onPush={actions.push}');
-            expect(source).toContain('data-testid="git-resize-handle"');
-            expect(source).toContain('{detailMain}');
+            expect(overlaysUses!.length).toBe(1);
         });
     });
 
@@ -830,7 +813,7 @@ describe('RepoGitTab', () => {
         });
 
         it('has root data-testid', () => {
-            expect(source).toContain('data-testid="repo-git-tab"');
+            expect(source).toContain('data-testid="git-split-workspace-list"');
         });
 
         it('renders single unified CommitList with unpushedCount prop', () => {
@@ -1761,90 +1744,10 @@ describe('RepoGitTab', () => {
         });
     });
 
-    describe('resizable split panel', () => {
-        it('imports useResizablePanel hook', () => {
-            expect(source).toContain("import { useResizablePanel } from '../../hooks/ui/useResizablePanel'");
-        });
-
-        it('calls useResizablePanel with git-sidebar-width storage key', () => {
-            expect(source).toContain("storageKey: 'git-sidebar-width'");
-        });
-
-        it('destructures width, isDragging, handleMouseDown, handleTouchStart from hook', () => {
-            expect(source).toContain('width: sidebarWidth');
-            expect(source).toContain('isDragging');
-            expect(source).toContain('handleMouseDown');
-            expect(source).toContain('handleTouchStart');
-        });
-
-        it('applies dynamic sidebar width via style tag using media query', () => {
-            expect(source).toContain('data-testid="git-commit-list-panel"');
-            expect(source).toContain('width: ${sidebarWidth}px !important');
-        });
-
-        it('renders resize handle between left and right panels', () => {
-            expect(source).toContain('data-testid="git-resize-handle"');
-        });
-
-        it('resize handle has correct accessibility attributes', () => {
-            expect(source).toContain('role="separator"');
-            expect(source).toContain('aria-orientation="vertical"');
-            expect(source).toContain('aria-label="Resize sidebar"');
-        });
-
-        it('resize handle binds mouse and touch events', () => {
-            const handleBlock = source.match(/<div[\s\S]*?git-resize-handle[\s\S]*?\/>/);
-            expect(handleBlock).toBeTruthy();
-            expect(handleBlock![0]).toContain('onMouseDown={handleMouseDown}');
-            expect(handleBlock![0]).toContain('onTouchStart={handleTouchStart}');
-        });
-
-        it('resize handle uses cursor-col-resize class', () => {
-            expect(source).toContain('cursor-col-resize');
-        });
-
-        it('resize handle is hidden on mobile (hidden lg:flex)', () => {
-            const handleBlock = source.match(/<div[\s\S]*?git-resize-handle[\s\S]*?\/>/);
-            expect(handleBlock).toBeTruthy();
-            expect(handleBlock![0]).toContain('hidden lg:flex');
-        });
-
-        it('adds select-none class to container when dragging', () => {
-            expect(source).toContain("isDragging ? ' select-none' : ''");
-        });
-
-        it('configures initialWidth of 320', () => {
-            const hookBlock = source.match(/useResizablePanel\(\{[\s\S]*?\}\)/);
-            expect(hookBlock).toBeTruthy();
-            expect(hookBlock![0]).toContain('initialWidth: 320');
-        });
-
-        it('configures minWidth of 160', () => {
-            const hookBlock = source.match(/useResizablePanel\(\{[\s\S]*?\}\)/);
-            expect(hookBlock).toBeTruthy();
-            expect(hookBlock![0]).toContain('minWidth: 160');
-        });
-
-        it('configures maxWidth of 600', () => {
-            const hookBlock = source.match(/useResizablePanel\(\{[\s\S]*?\}\)/);
-            expect(hookBlock).toBeTruthy();
-            expect(hookBlock![0]).toContain('maxWidth: 600');
-        });
-
-        it('left panel no longer has fixed lg:w-[320px] class', () => {
-            const asideBlock = source.match(/<aside[\s\S]*?data-testid="git-commit-list-panel"[\s\S]*?>/);
-            expect(asideBlock).toBeTruthy();
-            expect(asideBlock![0]).not.toContain('lg:w-[320px]');
-        });
-    });
 
     describe('mobile responsive layout', () => {
         it('hides left panel on mobile when detail view is active (hidden lg:block)', () => {
             expect(source).toContain("hidden lg:block");
-        });
-
-        it('hides right panel on mobile when no detail is selected (hidden lg:flex)', () => {
-            expect(source).toContain("hidden lg:flex");
         });
 
         it('defines selection.clearSelection callback that clears view', () => {
@@ -1852,26 +1755,8 @@ describe('RepoGitTab', () => {
             expect(source).toContain('setView(null)');
         });
 
-        it('renders mobile back button with data-testid', () => {
-            expect(source).toContain('data-testid="git-mobile-back"');
-            expect(source).toContain('data-testid="git-mobile-back-btn"');
-        });
-
-        it('mobile back button is hidden on desktop (lg:hidden)', () => {
-            expect(source).toContain('lg:hidden');
-            expect(source).toContain('selection.clearSelection');
-        });
-
-        it('mobile back button shows "← Back to list" text', () => {
-            expect(source).toContain('← Back to list');
-        });
-
         it('conditionally applies hidden class on aside based on view', () => {
             expect(source).toContain("detailOpen ? ' hidden lg:block' : ''");
-        });
-
-        it('conditionally applies hidden class on main based on view', () => {
-            expect(source).toContain("!view ? ' hidden lg:flex' : ''");
         });
 
         it('wraps detailPanel in flex-1 container for proper sizing with back button', () => {

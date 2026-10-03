@@ -17,7 +17,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 let mockRemoteShell = true;
-let mockSplitPanel = true;
 let mockIsMobile = false;
 let mockAppState: Record<string, unknown> = {};
 let lastStatusActionsProps: Record<string, unknown> | null = null;
@@ -27,9 +26,6 @@ vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
     useRemoteShellEnabled: () => mockRemoteShell,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanel,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: mockIsMobile ? 'mobile' : 'desktop', isMobile: mockIsMobile, isTablet: false, isDesktop: !mockIsMobile }),
@@ -45,7 +41,6 @@ import { GlobalStatusDock } from '../../../../src/server/spa/client/react/layout
 
 beforeEach(() => {
     mockRemoteShell = true;
-    mockSplitPanel = true;
     mockIsMobile = false;
     // A non-chat context by default, so the global dock renders.
     mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
@@ -223,30 +218,6 @@ describe('GlobalStatusDock', () => {
 
     it('still renders on a non-chat repo sub-tab (no left-column footer there)', () => {
         mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'terminal' };
-        render(<GlobalStatusDock />);
-        expect(screen.getByTestId('status-actions')).toBeTruthy();
-    });
-
-    it('still renders on the chat sub-tab when the split panel is disabled (no footer to defer to)', () => {
-        mockSplitPanel = false;
-        mockAppState = { activeTab: 'repos', selectedRepoId: 'ws-a', activeRepoSubTab: 'chats' };
-        render(<GlobalStatusDock />);
-        expect(screen.getByTestId('status-actions')).toBeTruthy();
-    });
-
-    it("stands down on a repo group's Workspace sub-tab even with the split panel disabled", () => {
-        // RepoGroupView always mounts RepoChatTab with its own docked footer, so
-        // the global band would double-dock regardless of the flag.
-        mockSplitPanel = false;
-        mockAppState = { activeTab: 'repos', selectedRepoId: 'group-x', activeRepoSubTab: 'chats' };
-        const { container } = render(<GlobalStatusDock />);
-        expect(screen.queryByTestId('status-actions')).toBeNull();
-        expect(container.firstChild).toBeNull();
-    });
-
-    it("still renders on a repo group's non-chat sub-tab handling (notes stand-down is separate)", () => {
-        mockSplitPanel = false;
-        mockAppState = { activeTab: 'repos', selectedRepoId: 'group-x', activeRepoSubTab: 'terminal' };
         render(<GlobalStatusDock />);
         expect(screen.getByTestId('status-actions')).toBeTruthy();
     });

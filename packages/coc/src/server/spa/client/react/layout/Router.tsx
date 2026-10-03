@@ -15,7 +15,7 @@ import { useQueue } from '../contexts/QueueContext';
 import { ReposView } from '../repos';
 import { WikiView } from '../wiki/WikiView';
 import { SHOW_WIKI_TAB } from './TopBar';
-import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled, isSplitWorkspacePanelEnabled } from '../utils/config';
+import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled } from '../utils/config';
 import { splitWorkspaceLeftCollapsedStorageKey, toggleLeftCollapsed } from '../features/repo-detail/WorkspaceLeftCollapse';
 import { toggleWorkspaceDockOpen } from '../features/repo-detail/WorkspaceDockToggle';
 import { getUiLayoutMode } from '../hooks/preferences/useUiLayoutMode';
@@ -125,7 +125,7 @@ export function Router() {
             // split layout. Input-guarded + repo-scoped (both above); only wired
             // when the split panel is on screen (AC-04).
             if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'b' || e.key === 'B')) {
-                if (!isSplitWorkspacePanelEnabled()) return;
+
                 e.preventDefault();
                 const wsId = getWorkspaceIdFromSelectionId(state.selectedRepoId);
                 toggleLeftCollapsed(splitWorkspaceLeftCollapsedStorageKey(wsId));
@@ -135,7 +135,6 @@ export function Router() {
             // Cmd/Ctrl+\ → show/hide the workspace right panel. Matches the physical
             // key so layouts without a direct backslash (e.g. German) still work.
             if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === 'Backslash') {
-                if (!isSplitWorkspacePanelEnabled()) return;
                 e.preventDefault();
                 toggleWorkspaceDockOpen(getWorkspaceIdFromSelectionId(state.selectedRepoId));
                 return;

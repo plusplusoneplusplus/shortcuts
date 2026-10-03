@@ -32,15 +32,6 @@ const CHAT_PREVIEW = 'Mobile workspace chat';
 test.use({ viewport: PHONE, hasTouch: true });
 
 /** Turn the split Workspace panel back on for this server instance. */
-async function enableSplitWorkspacePanel(serverUrl: string): Promise<void> {
-    const res = await request(`${serverUrl}/api/admin/config`, {
-        method: 'PUT',
-        body: JSON.stringify({ 'features.splitWorkspacePanel': true }),
-    });
-    if (res.status !== 200) {
-        throw new Error(`Failed to enable splitWorkspacePanel: ${res.status} ${res.body}`);
-    }
-}
 
 /**
  * Seed a git-backed workspace plus one chat, open its Workspace tab on a phone
@@ -51,7 +42,6 @@ async function openMobileWorkspace(page: Page, serverUrl: string): Promise<strin
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-mobile-ws-'));
     const repoDir = createMultiCommitRepo(tmpDir);
 
-    await enableSplitWorkspacePanel(serverUrl);
     await seedWorkspace(serverUrl, WS_ID, WS_NAME, repoDir);
     await seedProcess(serverUrl, 'proc-mobile-ws-1', {
         workspaceId: WS_ID,

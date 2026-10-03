@@ -189,15 +189,15 @@ timeout: 300
             fs.writeFileSync(configPath, [
                 'features:',
                 '  unifiedRightPanel: false',
-                '  splitWorkspacePanel: true',
+                '  gitCrossCloneCherryPick: true',
             ].join('\n') + '\n');
 
             const result = loadConfigFile(configPath);
             expect(result).toBeDefined();
-            expect(result!.features!.splitWorkspacePanel).toBe(true);
+            expect(result!.features!.gitCrossCloneCherryPick).toBe(true);
 
             const resolved = getResolvedConfigWithSource(configPath);
-            expect(resolved.resolved.features.splitWorkspacePanel).toBe(true);
+            expect(resolved.resolved.features.gitCrossCloneCherryPick).toBe(true);
             expect(resolved.resolved.features).not.toHaveProperty('unifiedRightPanel');
             expect(Object.keys(resolved.sources)).not.toContain('features.unifiedRightPanel');
         });
@@ -1178,7 +1178,6 @@ timeout: 300
                 '  remoteShell: true',
                 '  scopeSwitcher: true',
                 '  pinnedScopes: true',
-                '  splitWorkspacePanel: true',
                 '  schedulesInScheduledSlide: true',
                 '  chatFolders: true',
                 '  composerWordHint: false',
@@ -1479,7 +1478,6 @@ timeout: 300
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
                     "sessionContextAttachments": true,
-                    "splitWorkspacePanel": true,
                     "teamsAiAnswerRelay": true,
                     "teamsBridgeObservability": false,
                     "teamsMessageReaction": true,
@@ -1687,7 +1685,6 @@ timeout: 300
                   "features.schedulesInScheduledSlide": "default",
                   "features.scopeSwitcher": "default",
                   "features.sessionContextAttachments": "default",
-                  "features.splitWorkspacePanel": "default",
                   "features.teamsAiAnswerRelay": "file",
                   "features.teamsBridgeObservability": "file",
                   "features.teamsMessageReaction": "file",

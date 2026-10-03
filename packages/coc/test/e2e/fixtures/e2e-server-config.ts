@@ -7,16 +7,8 @@
  *
  * - `showPlanDepTab: true` — many specs navigate the deprecated Plans/Tasks
  *   sub-tab, which is gated off by default.
- * - `features.remoteShell` / `features.splitWorkspacePanel` ship default-on in
- *   production, but they replace the whole repo shell (splitWorkspacePanel hides
- *   the standalone Git sub-tab and folds Activity into a split "Workspace" pane;
- *   remoteShell swaps the repo tab strip for the remote-first header and moves
- *   the status cluster into the sidebar footer). The existing E2E suite is
- *   written against the classic shell, so a resolved config with these on makes
- *   shared helpers (e.g. navigateToGitTab clicking
- *   `.repo-sub-tab[data-subtab="git"]`, or waiting on `ws-status-indicator`)
- *   hang until the test times out. Pin both off so the suite exercises the
- *   layout it targets.
+ * - `features.remoteShell: false` keeps the per-clone desktop header for
+ *   suites that exercise it. The Workspace split is always present.
  * - `features.scopeSwitcher` also ships default-on; it swaps the My Work / My
  *   Life toggles and the workspace identity chip for a sliding segmented switcher
  *   in the remote-first header. Pin it off so the header stays what the specs target.
@@ -35,4 +27,4 @@
  *   Pin it off so the suite exercises the model-picker UI it targets.
  */
 export const E2E_SERVER_CONFIG_YAML =
-    'showPlanDepTab: true\nfeatures:\n  remoteShell: false\n  scopeSwitcher: false\n  splitWorkspacePanel: false\n  commitChatLens: false\neffortLevels:\n  enabled: false\n';
+    'showPlanDepTab: true\nfeatures:\n  remoteShell: false\n  scopeSwitcher: false\n  commitChatLens: false\neffortLevels:\n  enabled: false\n';

@@ -27,7 +27,6 @@ import { VirtualWorkspaceShellHeader } from '../features/remote-shell/VirtualWor
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useScopeSwitcherEnabled } from '../hooks/feature-flags/useScopeSwitcherEnabled';
 import { useScopeNavigation } from '../hooks/useScopeNavigation';
-import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { MY_WORK_WORKSPACE_ID, getMyWorkHeaderConfig } from '../repos/MyWorkView';
 import { MY_LIFE_WORKSPACE_ID, MY_LIFE_HEADER_CONFIG } from '../repos/MyLifeView';
 import { getRepoGroupHeaderConfig } from '../repos/RepoGroupView';
@@ -72,7 +71,6 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const isMobile = breakpoint === 'mobile';
     const remoteShell = useRemoteShellEnabled();
     const scopeSwitcherEnabled = useScopeSwitcherEnabled();
-    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
     const brandLabel = hostname ? `CoC @ ${hostname}` : 'CoC';
@@ -165,9 +163,8 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         return getRepoGroupHeaderConfig(
             id,
             resolveRepoGroupDisplayName(id, state.workspaces, remoteGroupWorkspaces),
-            splitWorkspacePanelEnabled,
         );
-    }, [isOnReposTab, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces, splitWorkspacePanelEnabled]);
+    }, [isOnReposTab, state.selectedRepoId, state.workspaces, remoteGroupWorkspaces]);
 
     // Virtual workspaces (My Work / My Life / repo groups) have no real repo, so
     // they never hit `showRemoteHeader`. Give them the same single-row shell via
@@ -309,10 +306,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                     </button>
                 )}
                 {/* The shared right panel owns its Search / Explorer controls. */}
-                {showRemoteHeader && !!selectedRepo && splitWorkspacePanelEnabled && (
+                {showRemoteHeader && !!selectedRepo && (
                     <WorkspaceDockToggle workspaceId={String(selectedRepo.workspace.id)} />
                 )}
-                {showVirtualHeader && splitWorkspacePanelEnabled && isRepoGroupWorkspaceId(state.selectedRepoId) && (
+                {showVirtualHeader && isRepoGroupWorkspaceId(state.selectedRepoId) && (
                     <WorkspaceDockToggle workspaceId={String(state.selectedRepoId)} />
                 )}
                 {/* Status cluster — hidden here when it lives in the global

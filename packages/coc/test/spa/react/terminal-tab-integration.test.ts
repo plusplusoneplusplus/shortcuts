@@ -99,7 +99,7 @@ describe('RepoDetail terminal visibility gating', () => {
         // the entire dependency array verbatim (which drifts every time an
         // unrelated flag — e.g. schedulesInScheduledSlideEnabled — is added).
         expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled,');
-        expect(REPO_DETAIL_SOURCE).toContain('uiLayoutMode, splitWorkspacePanelEnabled');
+        expect(REPO_DETAIL_SOURCE).toContain('uiLayoutMode');
     });
 });
 

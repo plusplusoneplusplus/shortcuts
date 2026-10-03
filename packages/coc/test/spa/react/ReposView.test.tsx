@@ -756,7 +756,7 @@ describe('RepoDetail', () => {
         const tabLabels = Array.from(buttons).map(b => b.textContent?.trim());
         expect(tabLabels).toContain('Settings');
         expect(tabLabels).toContain('Workflows');
-        expect(tabLabels).toContain('Activity');
+        expect(tabLabels).toContain('Workspace');
     });
 
     it('does not render Edit and Remove buttons (removed from header)', () => {

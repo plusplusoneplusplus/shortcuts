@@ -128,7 +128,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isWorkflowsEnabled: () => false,
     isPullRequestsEnabled: () => false,
     isNativeCliSessionsEnabled: () => false,
-    isSplitWorkspacePanelEnabled: () => false,
+
     isSchedulesInScheduledSlideEnabled: () => false,
     getScratchpadLayout: () => 'horizontal',
     isFeatureEnabled: () => false,

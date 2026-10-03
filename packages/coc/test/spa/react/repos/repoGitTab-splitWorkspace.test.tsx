@@ -128,7 +128,7 @@ import {
 /** Wait past the initial load so the tab renders its panes rather than the spinner. */
 async function renderTab(props: Record<string, unknown>) {
     const result = render(<RepoGitTab workspaceId="ws-1" {...props} />);
-    await waitFor(() => expect(screen.queryByTestId('git-tab-loading')).toBeNull());
+    await waitFor(() => expect(screen.getByTestId('git-split-workspace-list')).toBeTruthy());
     return result;
 }
 
@@ -143,7 +143,7 @@ beforeEach(() => {
     localStorage.clear();
 });
 
-describe('RepoGitTab — standalone layout (flag off)', () => {
+describe('RepoGitTab — member selector', () => {
     it('passes the repository selector into the Git toolbar', async () => {
         await renderTab({ repositorySelector: <select aria-label="Member repository"><option>repo-a</option></select> });
         expect(screen.getByTestId('stub-git-header').contains(screen.getByRole('combobox'))).toBe(true);
@@ -173,21 +173,6 @@ describe('RepoGitTab — standalone layout (flag off)', () => {
         await waitFor(() => expect(screen.getByTestId('git-tab-error')).toBeTruthy());
         fireEvent.change(screen.getByRole('combobox'), { target: { value: 'repo-b' } });
         expect(onChange).toHaveBeenCalledTimes(1);
-    });
-
-    it('renders its own list and detail panes in place', async () => {
-        await renderTab({});
-        expect(screen.getByTestId('repo-git-tab')).toBeTruthy();
-        expect(screen.getByTestId('git-commit-list-panel')).toBeTruthy();
-        expect(screen.getByTestId('git-detail-panel')).toBeTruthy();
-        // No split-workspace scaffolding leaks onto the default path.
-        expect(screen.queryByTestId('git-split-workspace-list')).toBeNull();
-        expect(screen.queryByTestId('git-split-workspace-detail')).toBeNull();
-    });
-
-    it('keeps its own resize handle', async () => {
-        await renderTab({});
-        expect(screen.getByTestId('git-resize-handle')).toBeTruthy();
     });
 });
 
@@ -382,7 +367,7 @@ describe('RepoGitTab — split-workspace layout', () => {
         expect(screen.getByTestId('git-split-workspace-list')).toBeTruthy();
         unmount();
         await renderTab({});
-        expect(screen.getByTestId('repo-git-tab')).toBeTruthy();
+        expect(screen.getByTestId('git-split-workspace-list')).toBeTruthy();
     });
 });
 
@@ -406,7 +391,7 @@ describe('RepoGitTab — mobile Workspace detail push', () => {
 
     async function renderHarness() {
         const result = render(<Harness />);
-        await waitFor(() => expect(screen.queryByTestId('git-tab-loading')).toBeNull());
+        await waitFor(() => expect(screen.getByTestId('git-split-workspace-list')).toBeTruthy());
         return result;
     }
 

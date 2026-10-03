@@ -276,11 +276,9 @@ that same registry.
 recognized by id **prefix** (unlike My Work / My Life's id-equality checks) with no
 feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Notes (`NotesView`,
 notes root = the group's own workspace dir), and Settings
-(`repos/RepoGroupSettingsTab.tsx`, `Alt+C`). With `splitWorkspacePanel` off it
-also exposes a standalone Git tab (`RepoGroupGitTab`); with the flag on the
-group's Chats tab hosts the member git list in `SplitWorkspacePanel` and hides
-the Git header tab on desktop and mobile. Its desktop split header and collapsed
-rail start group chats, the rail counts the group's running and queued tasks,
+(`repos/RepoGroupSettingsTab.tsx`, `Alt+C`). The group's Workspace tab hosts
+the member Git list in `SplitWorkspacePanel` on desktop and mobile. Its desktop
+split header and collapsed rail start group chats, the rail counts the group's running and queued tasks,
 and the remote-first shell pins status actions below the left column. Once
 membership loads, groups without a healthy member show chats across the full
 left column with no Git section.
@@ -351,10 +349,10 @@ delegates to `buildRepoSubTabSuffix`. Every navigator that knows its target id c
 `resolveWorkspaceRouteSuffix`). `GlobalStatusDock` exempts groups from its settings
 stand-down because the group shell has no docked sidebar footer.
 Members come from `useRepoGroupMembers(workspaceId, baseUrl, enabled)`
-(`repos/useRepoGroupMembers.ts`), enabled when Settings, Git, or the right dock
-needs membership.
+(`repos/useRepoGroupMembers.ts`). The Workspace view loads members immediately
+for its Git list and dock target picker; Settings reads member descriptions separately.
 
-**Right dock.** On desktop with `splitWorkspacePanel` on, `RepoGroupView` also renders
+**Right dock.** On desktop, `RepoGroupView` also renders
 `features/repo-detail/WorkspaceRightDock` as the outermost-right column (same gate as
 `RepoDetail`). The dock's open/view/width/target state scopes to the **group**, while a
 `workspace-dock-target-picker` in its header row chooses which workspace its Terminal and
@@ -466,6 +464,6 @@ through `useShellNavigation`.
 the heavily-mocked `featureFlags.ts` so partial test mocks of it do not break on a
 missing export.
 
-With `features.splitWorkspacePanel` on, `RepoDetail` and `WorkspaceTabsCluster` pass the
-flag into `computeVisibleSubTabs`, hiding the clone-scoped standalone Git tab and
-relabeling the chat tab Workspace; Git stays available inside `SplitWorkspacePanel`.
+`computeVisibleSubTabs` always hides standalone Git, Terminal and Explorer tabs
+and labels the chat tab Workspace. Git lives inside `SplitWorkspacePanel`;
+Terminal and Explorer live in the desktop right panel.

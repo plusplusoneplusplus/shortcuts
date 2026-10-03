@@ -15,11 +15,10 @@ import { splitWorkspaceLeftCollapsedStorageKey } from '../../../../src/server/sp
 import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 import type { DashboardTab } from '../../../../src/server/spa/client/react/types/dashboard';
 
-const { flag } = vi.hoisted(() => ({ flag: { split: true } }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
-    return { ...actual, isSplitWorkspacePanelEnabled: () => flag.split };
+    return { ...actual,  };
 });
 
 const mockDispatch = vi.fn();
@@ -99,7 +98,6 @@ beforeEach(() => {
     };
     mockDispatch.mockReset();
     mockQueueDispatch.mockReset();
-    flag.split = true;
     localStorage.clear();
     window.location.hash = '';
 });
@@ -154,13 +152,6 @@ describe('Router — Cmd/Ctrl+\\ toggles the right panel', () => {
         press({ metaKey: true }, input);
         expect(localStorage.getItem(KEY)).toBeNull();
         input.remove();
-    });
-
-    it('does nothing when the split-workspace panel is disabled', () => {
-        flag.split = false;
-        render(<Router />);
-        press({ metaKey: true });
-        expect(localStorage.getItem(KEY)).toBeNull();
     });
 
     it('does nothing when no workspace is selected', () => {

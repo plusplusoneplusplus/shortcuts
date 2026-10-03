@@ -1012,7 +1012,7 @@ test.describe('Explorer language support – Python', () => {
         try {
             const repoDir = createPythonRepoFixture(tmpDir, 'python-panel-repo');
             await seedWorkspace(serverUrl, PANEL_WORKSPACE_ID, 'Python Panel Repo', repoDir);
-            await enableSplitWorkspacePanel(serverUrl);
+
             await enableLanguageServers(serverUrl, PANEL_WORKSPACE_ID, 'python');
 
             await page.goto(serverUrl);
@@ -1137,7 +1137,7 @@ test.describe('Explorer language support – Rust', () => {
         try {
             const repoDir = createRustRepoFixture(tmpDir, 'rust-panel-repo');
             await seedWorkspace(serverUrl, PANEL_WORKSPACE_ID, 'Rust Panel Repo', repoDir);
-            await enableSplitWorkspacePanel(serverUrl);
+
             await enableLanguageServers(serverUrl, PANEL_WORKSPACE_ID, 'rust');
 
             await page.goto(serverUrl);
@@ -1259,15 +1259,6 @@ async function paneText(page: Page, panel: string): Promise<string> {
 const UNIFIED_PANEL = '[data-testid="unified-right-panel"]';
 const UNIFIED_ACTIVE_FILE = `${UNIFIED_PANEL} [data-testid^="unified-panel-view-"]:not([style*="display: none"])`;
 
-async function enableSplitWorkspacePanel(serverUrl: string): Promise<void> {
-    const response = await request(`${serverUrl}/api/admin/config`, {
-        method: 'PUT',
-        body: JSON.stringify({ 'features.splitWorkspacePanel': true }),
-    });
-    if (response.status !== 200) {
-        throw new Error(`Failed to enable splitWorkspacePanel: ${response.status} ${response.body}`);
-    }
-}
 
 async function openUnifiedSourceFile(page: Page, name: string): Promise<void> {
     const panelToggle = page.locator('[data-testid="workspace-dock-toggle"]').first();
@@ -1441,7 +1432,6 @@ test.describe('Explorer language support – direct remote clone', () => {
             initGitCheckout(decoyDir, 'https://github.com/acme/decoy-panel-lsp.git');
             await seedWorkspace(serverUrl, PANEL_WORKSPACE_ID, 'Decoy Panel Repo', decoyDir);
 
-            await enableSplitWorkspacePanel(serverUrl);
             await enableLanguageServers(secondary.url, PANEL_WORKSPACE_ID);
             remoteServerId = (
                 await registerRemoteServer(serverUrl, 'Remote Panel Host', secondary.url)

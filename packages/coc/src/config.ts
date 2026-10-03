@@ -320,8 +320,6 @@ export interface CLIConfig {
         scopeSwitcher?: boolean;
         /** Pinned repos / repo groups as their own segments inside the scope slide switcher. Disabled by default. */
         pinnedScopes?: boolean;
-        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
-        splitWorkspacePanel?: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide?: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
@@ -702,8 +700,6 @@ export interface ResolvedCLIConfig {
         scopeSwitcher: boolean;
         /** Pinned repos / repo groups as their own segments inside the scope slide switcher. Disabled by default. */
         pinnedScopes: boolean;
-        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
-        splitWorkspacePanel: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
@@ -1004,7 +1000,6 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         remoteShell: true,
         scopeSwitcher: true,
         pinnedScopes: true,
-        splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
         chatFolders: false,
         composerWordHint: true,

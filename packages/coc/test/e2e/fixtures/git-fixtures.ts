@@ -202,6 +202,5 @@ export async function navigateToGitTab(
     await page.locator('[data-testid="repo-tab"]').first().click();
     await expect(page.locator('#repo-detail-content')).toBeVisible();
 
-    await page.click('.repo-sub-tab[data-subtab="git"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="git"]')).toHaveClass(/active/);
+    await expect(page.locator('[data-testid="git-split-workspace-list"]')).toBeVisible();
 }

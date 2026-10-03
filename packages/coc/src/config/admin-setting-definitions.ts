@@ -900,14 +900,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.splitWorkspacePanel', default: true, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
-        ui: {
-            tab: 'appearance', group: 'dashboard', order: 67, label: 'Split Workspace panel',
-            hint: 'Replaces the Activity tab with a split "Workspace" view (chat list on top, git on the bottom) that feeds one shared detail pane, and hides the standalone Git tab. Enabled by default.',
-            testId: 'toggle-split-workspace-panel-enabled',
-        },
-    }),
-    bool({
         key: 'features.schedulesInScheduledSlide', default: true, runtime: 'live', runtimeFlag: 'schedulesInScheduledSlideEnabled',
         ui: {
             group: 'dashboard', order: 68, label: 'Schedules in Scheduled slide', badge: 'experimental',
