@@ -45,13 +45,6 @@ function addTrackedSearchFile(repoDir: string, marker: string): void {
 }
 
 async function enableTrackedSearchShell(serverUrl: string): Promise<void> {
-    const response = await request(`${serverUrl}/api/admin/config`, {
-        method: 'PUT',
-        body: JSON.stringify({ 'features.splitWorkspacePanel': true }),
-    });
-    if (response.status !== 200) {
-        throw new Error(`Failed to enable splitWorkspacePanel: ${response.status} ${response.body}`);
-    }
 }
 
 async function pressContentSearchShortcut(page: Page): Promise<void> {

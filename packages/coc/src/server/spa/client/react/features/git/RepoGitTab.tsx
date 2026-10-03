@@ -82,8 +82,7 @@ interface RepoGitTabProps {
      * working tree + branch changes, including the header stage/commit/push
      * actions) in place and portals its detail pane into `detailContainer`
      * (gated on `detailActive`), so chat + git can feed ONE shared detail region
-     * — see `SplitWorkspacePanel`. Absent ⇒ the tab renders its own list + detail
-     * exactly as before (strict no-op, no regression on the flag-off path).
+     * — see `SplitWorkspacePanel`. This is the default layout.
      */
     layout?: 'split-workspace';
     /** Portal target for the detail pane when `layout === 'split-workspace'`. */
@@ -141,7 +140,7 @@ export function RepoGitTab(props: RepoGitTabProps) {
     return <RepoGitTabView key={baseUrl ?? 'local'} {...props} />;
 }
 
-function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout, detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps) {
+function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -151,7 +150,7 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
     const cloneClient = useCocClient(workspaceId);
     const { state } = useApp();
     const { markPoppedOut } = useGitReviewPopOut();
-    const { width: sidebarWidth, isDragging, handleMouseDown, handleTouchStart } = useResizablePanel({
+    const { width: sidebarWidth } = useResizablePanel({
         initialWidth: 320,
         minWidth: 160,
         maxWidth: 600,
@@ -745,32 +744,7 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
         />
     );
 
-    // Right panel — detail for the selected commit / file / working-tree entry.
-    // In split-workspace mode this same subtree is portaled into the shared
-    // detail region instead (AC-04) so chat + git never show two detail panes.
-    const detailMain = (
-        <main className={`flex-1 min-w-0 min-h-0 overflow-hidden bg-white dark:bg-[#1e1e1e] flex flex-col${!view ? ' hidden lg:flex' : ''}`} data-testid="git-detail-panel">
-            {/* Mobile back button */}
-            {view && (
-                <div className="lg:hidden shrink-0 px-3 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="git-mobile-back">
-                    <button
-                        onClick={selection.clearSelection}
-                        className="text-xs text-[#0078d4] dark:text-[#3794ff] flex items-center gap-1 hover:underline"
-                        data-testid="git-mobile-back-btn"
-                    >
-                        ← Back to list
-                    </button>
-                </div>
-            )}
-            <div className="flex-1 min-h-0 overflow-hidden">
-                {detailPanel}
-            </div>
-        </main>
-    );
-
-    // Modals / toasts / context menus — overlays that must render in BOTH the
-    // standalone and split-workspace layouts (portals/fixed positioning, so they
-    // are layout-agnostic).
+    // Modals, toasts and context menus render alongside the list and portal.
     const overlays = (
         <RepoGitOverlays
             workspaceId={workspaceId}
@@ -807,7 +781,7 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
         />
     );
 
-    // Split-workspace layout (behind the `splitWorkspacePanel` flag): render ONLY
+    // Split-workspace layout : render ONLY
     // the git list in place and portal the detail pane into a parent-provided
     // container, so chat + git share ONE detail region. Only the last-clicked tab
     // (`detailActive`) portals, so the shared region never shows two panes
@@ -816,8 +790,7 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
     // of the already-selected file/commit. The shell (`SplitWorkspacePanel`) owns
     // the width/height dividers and the narrow-width fallback, so this branch
     // keeps no resize handle or mobile split of its own.
-    if (isSplitWorkspace) {
-        return (
+    return (
             <>
                 <div
                     className="flex flex-col h-full min-h-0 overflow-hidden"
@@ -852,29 +825,5 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
                     : null}
                 {overlays}
             </>
-        );
-    }
-
-    return (
-        <>
-        <div className={`repo-git-tab flex flex-col lg:flex-row h-full overflow-hidden${isDragging ? ' select-none' : ''}`} data-testid="repo-git-tab">
-            {/* Left panel — commit list (hidden on mobile when detail is active) */}
-            {listPane}
-            {/* Resize handle — desktop only */}
-            <div
-                className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 transition-colors flex-shrink-0"
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-                data-testid="git-resize-handle"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize sidebar"
-                tabIndex={0}
-            />
-            {/* Right panel — commit detail (hidden on mobile when no detail selected) */}
-            {detailMain}
-        </div>
-        {overlays}
-        </>
     );
 }

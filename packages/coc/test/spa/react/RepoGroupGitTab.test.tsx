@@ -360,33 +360,17 @@ describe('RepoGroupGitTab panel isolation across members (AC-03)', () => {
     });
 });
 
-/**
- * Feature-flag degradation.
- *
- * `splitWorkspacePanel` is on by default: for a single repo it hides the
- * standalone Git sub-tab and folds git into the split "Workspace" view, where
- * `RepoGitTab` renders only its list and portals the detail pane into a
- * container `SplitWorkspacePanel` provides. A group has no such host — its
- * Workspace tab is the group chat — which is the whole reason this Git tab
- * exists, so the group must keep mounting the FULL standalone panel whatever
- * the flag says. These pin that: a later "harmonize the group with the flag"
- * change that passes `layout="split-workspace"` here would leave the group tab
- * with a list and no detail pane (nothing portals it), and hiding the tab on
- * the flag would take git away from groups entirely.
- */
-describe('RepoGroupGitTab — split-workspace flag independence', () => {
-    it('mounts the panel in the standalone layout, with no split-workspace props', () => {
-        render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a')]} />);
-
+describe('RepoGroupGitTab — Workspace host', () => {
+    it('passes the split layout and shared detail host to the selected member', () => {
+        const detailContainer = document.createElement('div');
+        render(<RepoGroupGitTab workspaceId={GROUP_ID} members={[member('repo-a')]}
+            layout="split-workspace" detailContainer={detailContainer} detailActive />);
         expect(panelProps.length).toBeGreaterThan(0);
         for (const props of panelProps) {
             expect(props.workspaceId).toBe('repo-a');
-            // No `layout`, so RepoGitTab takes its self-contained list+detail
-            // branch; the split props only make sense with a parent shell.
-            expect(props.layout).toBeUndefined();
-            expect(props.detailContainer).toBeUndefined();
-            expect(props.headerToolbarContainer).toBeUndefined();
-            expect(props.onActivateDetail).toBeUndefined();
+            expect(props.layout).toBe('split-workspace');
+            expect(props.detailContainer).toBe(detailContainer);
+            expect(props.detailActive).toBe(true);
         }
     });
 });

@@ -36,7 +36,7 @@ const REPO_DETAIL_SOURCE = fs.readFileSync(
 
 describe('Workspace dock — flag gating (AC-01)', () => {
     it('derives dock availability from the split flag and desktop breakpoint (chromeless included)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('const dockAvailable = splitWorkspacePanelEnabled && !isMobile;');
+        expect(REPO_DETAIL_SOURCE).toContain('const dockAvailable = !isMobile;');
     });
 
     it('derives the header controls only for the chrome header (non-chromeless)', () => {
@@ -84,7 +84,7 @@ describe('Workspace dock — remote-shell reachability (chromeless)', () => {
         // once the Terminal sub-tab is hidden by the split-workspace flag. The body is
         // now gated on `dockAvailable` (no `!chromeless`); the remote shell's toggle
         // lives in the global TopBar (see WorkspaceTabsCluster/TopBar tests).
-        expect(REPO_DETAIL_SOURCE).not.toContain('splitWorkspacePanelEnabled && !isMobile && !chromeless');
+        expect(REPO_DETAIL_SOURCE).toContain('const dockAvailable = !isMobile;');
         expect(REPO_DETAIL_SOURCE).not.toContain('const showDock');
     });
 });

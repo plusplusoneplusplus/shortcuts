@@ -496,7 +496,6 @@ describe('Features card UI metadata', () => {
     // on default — what its "Enabled by default" hint promises.
     it.each([
         { key: 'features.remoteShell', flag: 'remoteShellEnabled', label: 'Remote-first shell', absentFallback: false, absentValue: false },
-        { key: 'features.splitWorkspacePanel', flag: 'splitWorkspacePanelEnabled', label: 'Split Workspace panel', absentFallback: undefined, absentValue: true },
     ])('exposes $label as a default-on Features toggle with no experimental badge', ({ key, flag, label, absentFallback, absentValue }) => {
         const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key);
         expect(def, `${key} must be an admin setting`).toBeDefined();
@@ -517,21 +516,7 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({})[flag]).toBe(absentValue);
     });
 
-    // Regression: the Split Workspace panel's hint says "Enabled by default", so
-    // a fresh install whose config.yaml has no `features.splitWorkspacePanel`
-    // key must get the split view — an `absentFallback: false` here silently
-    // shipped the flag off everywhere it was not explicitly set.
-    it('resolves features.splitWorkspacePanel to true when the key is absent from config', () => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === 'features.splitWorkspacePanel')!;
-        expect(readAdminSettingValue(def, {})).toBe(true);
-        expect(readAdminSettingValue(def, { features: {} })).toBe(true);
-        // An invalid stored value falls back to the same on default.
-        expect(readAdminSettingValue(def, { features: { splitWorkspacePanel: 'yes' } })).toBe(true);
-        // An explicit opt-out still wins (per-machine override).
-        expect(readAdminSettingValue(def, { features: { splitWorkspacePanel: false } })).toBe(false);
-        expect(buildRuntimeFeatureFlags({}).splitWorkspacePanelEnabled).toBe(true);
-        expect(buildRuntimeFeatureFlags({ features: { splitWorkspacePanel: false } }).splitWorkspacePanelEnabled).toBe(false);
-    });
+
 
     // The chat Style selector ships on: it defaults to true so a fresh install
     // gets the chip, but keeps the `experimental` badge and stays
@@ -656,7 +641,6 @@ describe('feature toggle settings-tab placement', () => {
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
         'features.pinnedScopes': 'appearance',
-        'features.splitWorkspacePanel': 'appearance',
         'features.remoteShell': 'appearance',
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',

@@ -42,7 +42,6 @@ import { StatusActions } from './StatusActions';
 import { useApp } from '../contexts/AppContext';
 import { useVisibleDashboardTab } from './useVisibleDashboardTab';
 import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
-import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 
@@ -57,7 +56,6 @@ export interface GlobalStatusDockProps {
 export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     const { state } = useApp();
     const remoteShell = useRemoteShellEnabled();
-    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const { isMobile } = useBreakpoint();
     // The page behind the admin dialog, which is what the dock sits under.
     const visibleTab = useVisibleDashboardTab();
@@ -71,12 +69,8 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
         visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         (state.activeRepoSubTab === 'chats' || state.activeRepoSubTab === 'activity');
-    // Repo groups render `RepoChatTab` with its own docked footer regardless of
-    // the split-panel flag, so they stand down unconditionally; a regular
-    // workspace only has a footer to defer to when the split panel is on.
-    const inPanelFooter =
-        inChatSubTab &&
-        (isRepoGroupWorkspaceId(state.selectedRepoId) || splitWorkspacePanelEnabled);
+    // The Workspace split owns the status footer for repos and groups.
+    const inPanelFooter = inChatSubTab;
     if (inPanelFooter) return null;
 
     // The notes sub-tab hosts the cluster in `NotesView`'s own left-column
