@@ -17,6 +17,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { AIProcess, MarkdownComment, ProcessCompactionState } from '@plusplusoneplusplus/forge';
 import { getServerLogger } from '../logging/server-logger';
 import { isLoopbackOrigin } from '../shared/cors';
+import type { BotControlPresentation } from '@plusplusoneplusplus/coc-client';
+import { projectBotControl } from '../processes/bot-control-read-model';
 
 // ============================================================================
 // Types
@@ -50,6 +52,7 @@ export interface MarkdownCommentSummary {
 
 /** Lightweight process summary for WebSocket messages. */
 export interface ProcessSummary {
+    botControl?: BotControlPresentation;
     id: string;
     promptPreview: string;
     status: string;
@@ -82,6 +85,7 @@ export interface ProcessSummary {
 
 /** Lightweight queue task summary for WebSocket messages. */
 export interface QueueTaskSummary {
+    botControl?: BotControlPresentation;
     id: string;
     type: string;
     priority: string;
@@ -497,8 +501,9 @@ export class ProcessWebSocketServer {
  * Convert an AIProcess to a lightweight ProcessSummary for WebSocket messages.
  * Strips large fields (fullPrompt, result, structuredResult) to keep messages small.
  */
-export function toProcessSummary(process: AIProcess): ProcessSummary {
+export function toProcessSummary(process: AIProcess, botManagedConversationsEnabled = false): ProcessSummary {
     const askUserCount = Array.isArray(process.pendingAskUser) ? process.pendingAskUser.length : 0;
+    const botControl = projectBotControl(process.metadata?.botControl, botManagedConversationsEnabled);
     return {
         id: process.id,
         promptPreview: process.promptPreview,
@@ -516,6 +521,7 @@ export function toProcessSummary(process: AIProcess): ProcessSummary {
         lastEventAt: process.lastEventAt instanceof Date ? process.lastEventAt.toISOString() : (process.lastEventAt ? String(process.lastEventAt) : undefined),
         pendingAskUserCount: askUserCount > 0 ? askUserCount : 0,
         compaction: process.metadata?.compaction,
+        ...(botControl ? { botControl } : {}),
     };
 }
 

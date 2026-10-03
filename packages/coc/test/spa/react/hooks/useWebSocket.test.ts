@@ -66,6 +66,23 @@ Object.defineProperty(globalThis, 'location', {
 });
 
 describe('useWebSocket', () => {
+    it('rebroadcasts local process snapshots only from the designated owner socket', () => {
+        const listener = vi.fn();
+        window.addEventListener('coc-local-ws-message', listener);
+        const { result } = renderHook(() => useWebSocket({ onMessage: vi.fn(), broadcastProcessUpdates: true }));
+        act(() => result.current.connect());
+        const message = { type: 'process-updated', process: { id: 'queue_chat' } };
+        act(() => MockWebSocket.last._message(message));
+        expect(listener.mock.calls[0][0].detail).toEqual(message);
+        act(() => MockWebSocket.last._message({ type: 'git-changed' }));
+        expect(listener).toHaveBeenCalledOnce();
+        const secondary = renderHook(() => useWebSocket({ onMessage: vi.fn() }));
+        act(() => secondary.result.current.connect());
+        act(() => MockWebSocket.last._message(message));
+        expect(listener).toHaveBeenCalledOnce();
+        window.removeEventListener('coc-local-ws-message', listener);
+    });
+
     beforeEach(() => {
         MockWebSocket.reset();
         vi.stubGlobal('WebSocket', MockWebSocket);

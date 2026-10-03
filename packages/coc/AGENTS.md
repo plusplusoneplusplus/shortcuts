@@ -155,6 +155,13 @@ references before editing. Paths are package-relative.
 
 ## Messaging and Secrets
 
+- `features.botManagedConversations` is live and default-off. Only trusted messaging
+  admission writes persistent integration ownership; provider selection and human
+  composers stay independent. Public REST/realtime projections expose safe gated
+  provenance, never private control metadata. Release serializes with admission;
+  releasing/released receipt tombstones retain deduplication but cannot relay answers
+  or questions. Fork provenance never authorizes source-queue mutations.
+
 - Separate normal messaging from container relays. Config is global; chat receipts
   are workspace-scoped. Admit eligible human/paired-account posts via explicit bindings;
   suppress own/history replay. Dispose polling/reconnect loops/listeners.

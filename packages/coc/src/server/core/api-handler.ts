@@ -13,7 +13,6 @@ import * as http from 'http';
 import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { ChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore, ProcessFilter, AIProcessStatus, AIProcessType, TurnSource } from '@plusplusoneplusplus/forge';
 import { GitOpsStore, SqliteProcessStore, initializeDatabase, execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { loadNativeGit, NativeDatabase } from '@plusplusoneplusplus/coc-native';
@@ -233,7 +232,7 @@ export function registerApiRoutes(
     routes: Route[], store: ProcessStore, bridge?: QueueExecutorBridge,
     dataDir?: string, getWsServer?: () => ProcessWebSocketServer | undefined,
     db?: NativeDatabase, cronEnabled?: boolean,
-    getLiveFeatureFlags?: () => { excalidrawEnabled: boolean; canvasEnabled: boolean; kustoEnabled: boolean; llmToolSystemOneEnabled?: boolean; chatStyleSelectorEnabled: boolean; chatProviderSwitchingEnabled: boolean; defaultChatStyle: ChatStyle },
+    getLiveFeatureFlags?: ApiRouteContext['getLiveFeatureFlags'],
     activeWorkspaceTracker?: ActiveWorkspaceTracker,
 ): void {
     // Wrap routes.push to automatically log API mutations (POST/PATCH/DELETE).

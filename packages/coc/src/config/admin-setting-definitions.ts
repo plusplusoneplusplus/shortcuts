@@ -860,6 +860,14 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
+        key: 'features.botManagedConversations', default: false, runtime: 'live', runtimeFlag: 'botManagedConversationsEnabled',
+        ui: {
+            tab: 'integrations', group: 'dashboard', order: 61.9, label: 'Bot-managed conversations', badge: 'experimental',
+            hint: 'Identify conversations controlled by the Teams or WhatsApp bridge, independently of their AI provider. Disabled by default.',
+            testId: 'toggle-bot-managed-conversations-enabled',
+        },
+    }),
+    bool({
         key: 'features.quickAskSidenotes', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'quickAskSidenotesEnabled',
         ui: {
             tab: 'chat', group: 'dashboard', order: 62, label: 'Quick Ask side-notes', badge: 'experimental',

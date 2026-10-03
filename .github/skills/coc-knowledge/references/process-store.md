@@ -11,10 +11,10 @@ const store = createProcessStore(dataDir, backend?); // always SqliteProcessStor
 
 ## SqliteProcessStore
 
-Single `processes.db` at `~/.coc/processes.db`. Schema version 38.
+Single `processes.db` at `~/.coc/processes.db`. Schema version 39.
 
 `SqliteProcessStore` opens the file through `NativeDatabase` from `coc-native`.
-The schema definition and v1→v38 migration ladder stay in TypeScript and run
+The schema definition and v1→v39 migration ladder stay in TypeScript and run
 through that synchronous handle. Startup treats a missing or stale native addon
 as a hard failure; the process store has no JavaScript SQLite fallback.
 The process writer runs in WAL mode with `synchronous=NORMAL`, including when
@@ -40,12 +40,12 @@ retain the ProcessStore interface. The TypeScript wrapper maps native rows to
 `getConversationTurns`, `getAllProcesses`, `getProcessSummaries`, and
 `listRecentProcesses` use typed Rust read-pool tasks with the same schema check.
 Forge maps returned SQLite rows into the existing date- and JSON-rich
-ProcessStore shapes, including optional conversation/tool-call exclusions and
-chat-folder membership on summary entries. `getConversationTurns` serializes
+ProcessStore shapes, including optional conversation/tool-call exclusions,
+chat-folder membership, and internal bot control on summary entries. `getConversationTurns` serializes
 ordered turn rows into JSON; `getAllProcesses` serializes process and turn rows
 in bounded process-ID batches, appending each process's turns into one grouped
 JSON buffer while preserving turn order. `getProcessSummaries`
-serializes its count and page with chat-folder membership in one read snapshot; `listRecentProcesses`
+serializes its count and page with chat-folder membership and control JSON in one read snapshot; `listRecentProcesses`
 serializes its filtered page. The native TypeScript wrapper restores BLOB
 buffers and non-finite REAL values in these JSON paths before exposing the
 standard row shapes.
@@ -122,6 +122,62 @@ Absent for every other chat kind.
 The commit, PR, and Work Item fresh-chat routes archive the bound process and clear only that
 target's binding — nothing is forked and no turns are copied, so the next lens send creates an
 empty chat. See [rest-api.md](rest-api.md).
+
+### External bot control contract
+
+Forge's `GenericProcessMetadata.botControl` stores
+`{ state: 'active', source: 'teams' | 'whatsapp', controllerKey, controllerLabel,
+externalThreadUrl? }`, independently of provider/turn source. Trusted bridges use
+fixed integration identities from `server/messaging/bot-control-metadata.ts`;
+validation rejects extra fields and unsafe URLs. Links additionally require
+owning-binding authorization. `features.botManagedConversations` is live and
+default-off. Forks preserve transcript/provider/source provenance but remove
+ownership before persistence and process-added events.
+
+### Trusted admission and release
+
+Initial admissions carry URL-free `QueuedTask.botControl` outside public payloads,
+persisted in schema-39 `queue_tasks.bot_control`. Queue restore/requeue preserves
+trusted control; lifecycle registration rereads it under process mutation admission
+before execution. Native readers accept schemas 38/39. Existing-topic adoption in
+`server/messaging/bot-control-admission.ts` verifies workspace/controller, persists
+a claim before enqueue, and compensates only that exact new claim on rejection.
+Observers are reconciled against exact accepted task/workspace/process/request/prompt
+identity before compensation. Follow-ups cannot replace existing ownership.
+
+Teams/WhatsApp binding owners serialize admission with removal. Removing the last
+live binding persists a `releasing` intent, clears process/owning-queue control,
+then saves a `released` tombstone; remaining live bindings retain control.
+`releaseBotControlledConversation` shares admission with registration and validates
+canonical initial-task authority. A fork's inherited `queueTaskId` is provenance,
+not permission to read or mutate its source queue. Queue changes use failure-atomic
+`replaceBotControl` compare-and-set. Failed removal compensates exact control/links;
+durable intents reconcile on startup/inbound/reconnect independently of gates.
+
+### Receipt routing authority
+
+Receipts are repo-scoped. Pending targets require matching queued/running origin
+tasks, preserving initial provenance across gate changes. Teams relay-off managed
+admissions retain `admissionOnly` receipts for routing/deduplication but never
+deliver answers or questions, including after relay enablement. Released/releasing
+tombstones deduplicate but cannot route quotes, answers or `ask_user` questions.
+Question transports recheck authority before posting, and the question hub
+rechecks before accepting replies. WhatsApp persists/validates `questionIds`.
+Selection, reconnect and receipt compaction do not claim/release ownership.
+Malformed receipts fail restoration; typed release failures allow unrelated work.
+
+### Public control projections
+
+`server/processes/bot-control-read-model.ts` strips private control and projects
+coc-client's safe top-level `BotControlPresentation` under the owning server's live
+gate across process REST, summaries/pinned, queue/history and realtime surfaces.
+Summaries extract control without process hydration. Queue follow-ups read current
+ownership; only pending initial chats may use trusted queued control. Cancelled
+origins/orphaned follow-ups cannot revive it; lookup failures propagate.
+Public writes reject claims/releases and preserve ownership/workspace on full
+metadata replacement under mutation admission. Explicit workspace reads verify
+persisted identity. Malformed control is omitted with content-free diagnostics;
+unauthorized links are omitted without discarding valid provenance.
 
 ### Key Features
 
@@ -273,6 +329,17 @@ under `~/.coc/repos/<workspaceId>/processes/` and has a 500-process cap.
 Production accepts a configured `store.backend: file` value for existing config
 files, warns at store creation, and uses native SQLite.
 
+## Queue Persistence
+
+`server/queue/sqlite-queue-persistence.ts` persists each synchronous queue-change
+event in one native SQLite transaction, including the repo-path mapping and all
+affected task/order rows. The repo-path cache advances only after commit. Forge's
+`TaskQueueManager.enqueue` removes a rejected pre-execution admission and any
+newly activated repo gate, emitting compensating removal/gate events before
+`taskAdded`. Existing gates and unrelated tasks remain intact; admission and
+compensation errors propagate together. Trusted bot adoption can then roll back
+its new process claim without leaving executable rejected work in the queue.
+
 ## Process Lifecycle
 
 States: `queued → running → completed | failed | cancelled`.
@@ -281,6 +348,14 @@ States: `queued → running → completed | failed | cancelled`.
 composition root activates queue processing only after routes, late-bound executor capabilities,
 WebSocket infrastructure, and the listening HTTP server are ready. `restartPickupDelayMs` then
 applies to those startup executors; repo executors created after activation start immediately.
+
+Chat requeue retains the task ID, process ID, request correlation and trusted control,
+keeping Teams/WhatsApp receipts authoritative. Registered origins require exact persisted
+workspace/admission identity and resume through the follow-up path at their first user turn,
+preserving transcript/provider/control. Cancellation is honored. Recovery admission is
+transactional: rejected persistence retains the running row for retry; exact accepted
+observer failures retain queued admission. Other task kinds receive replacement IDs.
+
 `sweepOrphanedRunningProcesses` runs after `restore()`, finalizing processes left by an
 unclean shutdown (`running → failed`, `cancelling → cancelled`). Exception: a `running` process whose ID a
 re-enqueued chat follow-up points back at via `payload.processId` is revived to `queued` to

@@ -37,6 +37,7 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
 
 import { MultiRepoQueueRouter } from '../../src/server/queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../../src/server/queue/sqlite-queue-persistence';
+import { createBotControlMetadata } from '../../src/server/messaging/bot-control-metadata';
 
 // ============================================================================
 // Helpers
@@ -158,6 +159,92 @@ describe('SqliteQueuePersistence', () => {
             const rows = store.getQueueTasks(rId);
             expect(rows).toHaveLength(1);
             expect(rows[0].id).toBe(taskId);
+        });
+
+        it('rolls back all admission writes when persisting queue order fails, then permits retry', () => {
+            const botControl = createBotControlMetadata('teams');
+            qm.enqueue({
+                id: 'existing', type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId,
+            });
+            const before = store.getQueueTasks(rId);
+            const taskAdded = vi.fn();
+            qm.on('taskAdded', taskAdded);
+            // The initial upsert succeeds; rewriting the same row's position fails.
+            db.exec(`
+                CREATE TRIGGER reject_queue_order BEFORE INSERT ON queue_tasks
+                WHEN NEW.id = 'rejected' AND EXISTS (SELECT 1 FROM queue_tasks WHERE id = NEW.id)
+                BEGIN SELECT RAISE(ABORT, 'queue order failed'); END;
+            `);
+            expect(() => qm.enqueue({
+                id: 'rejected', type: 'custom', priority: 'high', payload: {}, repoId: rId, botControl,
+                config: { prGate: { chainId: 'chain-a', autoMerge: true } },
+            })).toThrow('queue order failed');
+            expect(qm.getTask('rejected')).toBeUndefined();
+            expect(qm.getRepoGate(rId)).toBeUndefined();
+            expect(store.getQueueTasks(rId)).toEqual(before);
+            expect(store.getQueueRepoState(rId)?.prGate).toBeUndefined();
+            expect(taskAdded).not.toHaveBeenCalled();
+            db.exec('DROP TRIGGER reject_queue_order');
+            qm.enqueue({
+                id: 'rejected', type: 'custom', priority: 'high', payload: {}, config: {}, repoId: rId, botControl,
+            });
+            expect(store.getQueueTasks(rId).map(task => task.id)).toEqual(['rejected', 'existing']);
+            expect(store.getQueueTasks(rId)[0].botControl).toEqual(botControl);
+            expect(store.getQueueTasks(rId)[1]).not.toHaveProperty('botControl');
+            expect(taskAdded).toHaveBeenCalledTimes(1);
+        });
+
+        it('cleans durable admission when a later observer rejects it', () => {
+            const taskAdded = vi.fn();
+            qm.on('taskAdded', taskAdded);
+            const reject = (event: QueueChangeEvent) => {
+                if (event.type === 'added') throw new Error('observer failed');
+            };
+            bridge.on('queueChange', reject);
+            expect(() => qm.enqueue({
+                id: 'observer-rejected', type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId,
+            })).toThrow('observer failed');
+            expect(store.getQueueTasks(rId)).toEqual([]);
+            expect(qm.getQueued()).toEqual([]);
+            expect(taskAdded).not.toHaveBeenCalled();
+            bridge.off('queueChange', reject);
+            persistence.dispose();
+            const restoredRegistry = new RepoQueueRegistry();
+            const restoredBridge = new MultiRepoQueueRouter(restoredRegistry, createMockProcessStore(), { autoStart: false });
+            persistence = new SqliteQueuePersistence(restoredBridge, db);
+            persistence.restore();
+            expect(restoredRegistry.getQueueForRepo(rootPath)!.getQueued()).toEqual([]);
+            restoredBridge.dispose();
+        });
+
+        it('does not cache a failed repo mapping write and surfaces failed compensation', () => {
+            db.exec(`
+                CREATE TRIGGER reject_repo_mapping BEFORE INSERT ON queue_repo_paths
+                BEGIN SELECT RAISE(ABORT, 'repo mapping failed'); END;
+            `);
+            let thrown: unknown;
+            try {
+                qm.enqueue({
+                    id: 'mapping-rejected', type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).toMatchObject({
+                errors: [
+                    expect.objectContaining({ message: expect.stringContaining('repo mapping failed') }),
+                    expect.objectContaining({ message: expect.stringContaining('repo mapping failed') }),
+                ],
+            });
+            expect(qm.getQueued()).toEqual([]);
+            expect(store.getQueueTasks(rId)).toEqual([]);
+            expect(db.prepare('SELECT * FROM queue_repo_paths').all()).toEqual([]);
+            db.exec('DROP TRIGGER reject_repo_mapping');
+            qm.enqueue({
+                id: 'mapping-rejected', type: 'custom', priority: 'normal', payload: {}, config: {}, repoId: rId,
+            });
+            expect(db.prepare('SELECT repo_id FROM queue_repo_paths').all()).toEqual([{ repo_id: rId }]);
+            expect(store.getQueueTasks(rId)).toHaveLength(1);
         });
 
         it('two rapid adds produce two immediate writes', () => {
@@ -686,6 +773,44 @@ describe('SqliteQueuePersistence', () => {
     // ========================================================================
 
     describe('round-trip', () => {
+        it.each([
+            ['teams', 'queued'], ['teams', 'running'],
+            ['whatsapp', 'queued'], ['whatsapp', 'running'],
+        ] as const)('restores %s provenance for %s work without leaking to another workspace', (source, status) => {
+            const rootPath = path.join(os.tmpdir(), 'bot-queue-managed');
+            const otherRoot = path.join(os.tmpdir(), 'bot-queue-ordinary');
+            const rId = 'ws-managed';
+            const otherId = 'ws-ordinary';
+            persistence = new SqliteQueuePersistence(bridge, db, { restartPolicy: 'requeue' });
+            bridge.registerRepoId(rId, rootPath);
+            bridge.registerRepoId(otherId, otherRoot);
+            bridge.getOrCreateBridge(rootPath);
+            bridge.getOrCreateBridge(otherRoot);
+            const qm = registry.getQueueForRepo(rootPath)!;
+            const botControl = createBotControlMetadata(source);
+            const taskId = qm.enqueue({
+                type: 'chat', repoId: rId, priority: 'normal', config: {}, botControl,
+                payload: { kind: 'chat', prompt: 'request', workspaceId: rId, provider: 'codex' },
+            });
+            registry.getQueueForRepo(otherRoot)!.enqueue({
+                type: 'chat', repoId: otherId, priority: 'normal', config: {},
+                payload: { kind: 'chat', prompt: 'ordinary', workspaceId: otherId },
+            });
+            if (status === 'running') qm.markStarted(taskId);
+            expect(store.getQueueTasks(rId)[0].botControl).toEqual(botControl);
+            persistence.dispose();
+
+            registry = new RepoQueueRegistry({ maxQueueSize: 0 });
+            bridge = new MultiRepoQueueRouter(registry, createMockProcessStore(), { autoStart: false });
+            persistence = new SqliteQueuePersistence(bridge, db, { restartPolicy: 'requeue' });
+            persistence.restore();
+            const restoredTask = registry.getQueueForRepo(rootPath)!.getQueued()[0];
+            expect(restoredTask).toMatchObject({ repoId: rId, botControl, payload: { workspaceId: rId, provider: 'codex' } });
+            expect(store.getQueueTasks(rId)[0].botControl).toEqual(botControl);
+            expect(registry.getQueueForRepo(otherRoot)!.getQueued()[0]).not.toHaveProperty('botControl');
+            expect(store.getQueueTasks(otherId)[0]).not.toHaveProperty('botControl');
+        });
+
         it('restores an active repo gate and keeps non-chain work held', () => {
             const rootPath = '/repo/gated-roundtrip';
             const rId = repoId(rootPath);

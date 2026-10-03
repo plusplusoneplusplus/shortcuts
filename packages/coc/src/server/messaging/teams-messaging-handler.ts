@@ -14,7 +14,7 @@
 import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
-import type { ProcessStore, AIProcess } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
 import type { McpOauthManager } from '../mcp-oauth/mcp-oauth-manager';
 import { TeamsMessagingManager } from './teams-messaging-manager';
 import { TeamsCommandRouter } from './teams-command-router';
@@ -23,11 +23,14 @@ import type { MessagingCompactor, MessagingQuotaSource } from './messaging-comma
 import type { MessagingRemoteDirectory } from './remote-browse';
 import { TeamsOAuthFlow } from './teams-oauth-flow';
 import type { TeamsAttempt } from './teams-attempt-store';
-import { TeamsAnswerRelay, teamsQuestionChatKey } from './teams-answer-relay';
+import { TeamsAnswerRelay, TeamsBindingReleaseError, teamsQuestionChatKey, type TeamsAnswerRelayDeps } from './teams-answer-relay';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
-import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { DEFAULT_CONFIG } from '../../config';
 import { TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
+import { randomUUID } from 'node:crypto';
+import type { BotControlMetadata } from '@plusplusoneplusplus/forge/ai';
+import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
+import { admitBotControlledFollowUp } from './bot-control-admission';
 
 function attemptSummary(attempt: TeamsAttempt) {
     return {
@@ -54,12 +57,13 @@ export interface TeamsMessagingRoutesOptions {
     /** ProcessStore for querying workspaces and processes. */
     store?: ProcessStore;
     /** Enqueue a new chat task. Returns the task ID. */
-    enqueueChat?: (workspaceId: string, message: string, mode?: MessagingChatMode) => Promise<string>;
-    enqueueRelayChat?: (workspaceId: string, message: string, taskId: string, mode?: MessagingChatMode) => Promise<string>;
-    admitRelayFollowUp?: (process: AIProcess, message: string, requestId: string, mode?: MessagingChatMode) => Promise<{ taskId?: string }>;
-    enqueuePendingRelayFollowUp?: (workspaceId: string, processId: string, message: string, requestId: string, mode?: MessagingChatMode) => Promise<string>;
-    relayQueue?: ScheduleQueueEventBus;
+    enqueueChat?: (workspaceId: string, message: string, mode?: MessagingChatMode, taskId?: string, botControl?: BotControlMetadata) => Promise<string>;
+    enqueueRelayChat?: (workspaceId: string, message: string, taskId: string, mode?: MessagingChatMode, botControl?: BotControlMetadata) => Promise<string>;
+    admitRelayFollowUp?: (process: AIProcess, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string) => Promise<{ taskId?: string }>;
+    enqueuePendingRelayFollowUp?: (workspaceId: string, processId: string, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string) => Promise<string>;
+    relayQueue?: TeamsAnswerRelayDeps['queue'];
     getAnswerRelayEnabled?: () => boolean;
+    getBotManagedConversationsEnabled?: () => boolean;
     getMessageReactionEnabled?: () => boolean;
     onAnswerRelayConfigChanged?: (callback: () => void) => () => void;
     /** Send a follow-up message to an existing process. */
@@ -89,12 +93,40 @@ export function registerTeamsMessagingRoutes(
 
     // Wire the command router if store + queue deps are provided
     if (opts.store && opts.enqueueChat && opts.executeFollowUp) {
-        const relay = opts.relayQueue && opts.enqueueRelayChat
+        const initialControl = () => opts.getBotManagedConversationsEnabled?.() === true
+            ? createBotControlMetadata('teams') : undefined;
+        const enqueueOrdinaryChat = async (workspaceId: string, message: string, mode?: MessagingChatMode): Promise<string> => {
+            const botControl = initialControl();
+            if (!botControl) return opts.enqueueChat!(workspaceId, message, mode);
+            const taskId = `${Date.now()}-${randomUUID()}`;
+            try {
+                const admittedId = await opts.enqueueChat!(workspaceId, message, mode, taskId, botControl);
+                if (admittedId !== taskId) throw new Error('Queue returned a different task ID');
+                return taskId;
+            } catch (error) {
+                const task = opts.relayQueue?.getTask(taskId);
+                if (task?.id === taskId && task.repoId === workspaceId
+                    && task.processId === toQueueProcessId(taskId)
+                    && task.type === 'chat' && task.payload?.workspaceId === workspaceId
+                    && task.payload.kind === 'chat' && task.payload.prompt === message
+                    && !task.payload.processId
+                    && validateBotControlMetadata(task.botControl).source === 'teams') {
+                    console.error('[teams-messaging] Queued request observer failed; admission retained');
+                    return taskId;
+                }
+                throw error;
+            }
+        };
+        const enqueueRelayChat = (workspaceId: string, message: string, taskId: string, mode?: MessagingChatMode) =>
+            opts.enqueueRelayChat!(workspaceId, message, taskId, mode, initialControl());
+        const relay = opts.relayQueue && (opts.enqueueRelayChat
+            || opts.getBotManagedConversationsEnabled)
             ? new TeamsAnswerRelay({
                 dataDir: opts.dataDir,
                 store: opts.store,
                 queue: opts.relayQueue,
                 isEnabled: getAnswerRelayEnabled,
+                isBotManagedConversationsEnabled: opts.getBotManagedConversationsEnabled,
                 target: () => {
                     const status = manager.getStatus();
                     return { connected: status.enabled && status.status === 'connected', teamId: status.teamId, channelId: status.channelId };
@@ -102,12 +134,20 @@ export function registerTeamsMessagingRoutes(
                 send: (text, rootId) => manager.sendMessage(text, rootId, 'html'),
             })
             : undefined;
-        const ready = relay?.restore();
+        const reconcileRelease = async (operation: () => Promise<void>) => {
+            try {
+                await operation();
+            } catch (error) {
+                if (!(error instanceof TeamsBindingReleaseError)) throw error;
+                console.error('[teams-answer-relay] Binding release reconciliation failed');
+            }
+        };
+        const ready = relay ? reconcileRelease(() => relay.restore()) : undefined;
         ready?.catch(() => console.error('[teams-answer-relay] Failed to restore bindings'));
         if (relay) {
             const unsubscribe = opts.onAnswerRelayConfigChanged?.(() => {
                 if (getAnswerRelayEnabled()) {
-                    void ready?.then(() => relay.reconnected())
+                    void ready?.then(() => reconcileRelease(() => relay.reconnected()))
                         .catch(() => console.error('[teams-answer-relay] Config reconciliation failed'));
                 }
             });
@@ -116,7 +156,7 @@ export function registerTeamsMessagingRoutes(
         }
         const router = new TeamsCommandRouter({
             store: opts.store,
-            enqueueChat: opts.enqueueChat,
+            enqueueChat: enqueueOrdinaryChat,
             isAnswerRelayEnabled: () => !!relay && getAnswerRelayEnabled(),
             ...(relay ? { resolveThreadReply: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
                 relay.resolveThread(msg),
@@ -128,33 +168,68 @@ export function registerTeamsMessagingRoutes(
                     relay.recordCommand(msg),
                 selectThreadTarget: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, processId: string | null) =>
                     relay.selectThreadTarget(msg, workspaceId, processId) } : {}),
-            ...(relay && opts.enqueueRelayChat ? {
-                admitThreadNew: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) =>
-                    relay.admitThreadNew(msg, workspaceId, taskId => opts.enqueueRelayChat!(workspaceId, message, taskId, mode)),
+            ...(relay ? {
+                ...(opts.enqueueRelayChat ? {
+                    admitThreadNew: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) =>
+                        relay.admitThreadNew(msg, workspaceId, taskId => enqueueRelayChat(workspaceId, message, taskId, mode)),
+                } : {}),
                 admitNewChat: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) =>
-                    getAnswerRelayEnabled()
-                        ? relay.admitNew(msg, workspaceId, taskId => opts.enqueueRelayChat!(workspaceId, message, taskId, mode))
-                        : opts.enqueueChat!(workspaceId, message, mode).then(taskId => ({ taskId, duplicate: false })),
-                acknowledgeNewChat: (taskId: string) => getAnswerRelayEnabled()
-                    ? relay.acknowledged(taskId) : Promise.resolve(),
+                    opts.enqueueRelayChat && getAnswerRelayEnabled()
+                        ? relay.admitNew(msg, workspaceId, taskId => enqueueRelayChat(workspaceId, message, taskId, mode))
+                        : opts.getBotManagedConversationsEnabled?.() === true
+                            ? relay.admitNew(msg, workspaceId, taskId =>
+                                opts.enqueueChat!(workspaceId, message, mode, taskId, createBotControlMetadata('teams')),
+                            undefined, { admissionOnly: true, prompt: message })
+                            : enqueueOrdinaryChat(workspaceId, message, mode).then(taskId => ({ taskId, duplicate: false })),
+                acknowledgeNewChat: (taskId: string) => relay.acknowledged(taskId),
             } : {}),
-            ...(relay && opts.admitRelayFollowUp ? {
+            ...(opts.admitRelayFollowUp ? {
                 admitFollowUp: async (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, proc: AIProcess, message: string, mode?: MessagingChatMode) => {
-                    if (!getAnswerRelayEnabled()) {
+                    const controlled = opts.getBotManagedConversationsEnabled?.() === true;
+                    const relayEnabled = !!relay && getAnswerRelayEnabled();
+                    if (!controlled && !relayEnabled) {
                         await opts.executeFollowUp!(proc.id, message, mode);
                         return { duplicate: false };
                     }
-                    return relay.admitFollowUp(msg, proc, requestId => opts.admitRelayFollowUp!(proc, message, requestId, mode));
+                    const workspaceId = proc.metadata?.workspaceId;
+                    if (typeof workspaceId !== 'string' || !workspaceId) {
+                        throw new Error('Teams conversation workspace is unavailable');
+                    }
+                    const taskId = randomUUID();
+                    const admit = (requestId: string) => {
+                        const enqueue = async () => {
+                            try {
+                                const result = await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId);
+                                if (result.taskId !== taskId) throw new Error('Queue returned a different task ID');
+                                return result;
+                            } catch (error) {
+                                const task = opts.relayQueue?.getTask(taskId);
+                                if (task?.id !== taskId || task.repoId !== workspaceId
+                                    || task.processId !== proc.id || task.type !== 'chat'
+                                    || task.payload?.kind !== 'chat' || task.payload.workspaceId !== workspaceId
+                                    || task.payload.processId !== proc.id || task.payload.prompt !== message
+                                    || task.payload.relayRequestId !== requestId) throw error;
+                                console.error('[teams-messaging] Follow-up observer failed; admission retained');
+                                return { taskId };
+                            }
+                        };
+                        // Reconcile queue observers before adoption can compensate a newly persisted claim.
+                        return controlled
+                            ? admitBotControlledFollowUp(opts.store!, workspaceId, proc.id, 'teams', enqueue)
+                            : enqueue();
+                    };
+                    return relay
+                        ? relay.admitFollowUp(msg, proc, admit, taskId, !relayEnabled)
+                        : admit(randomUUID()).then(() => ({ duplicate: false }));
                 },
                 acknowledgeFollowUp: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) => getAnswerRelayEnabled()
-                    ? relay.acknowledgedMessage(msg) : Promise.resolve(),
+                    ? relay?.acknowledgedMessage(msg) ?? Promise.resolve() : Promise.resolve(),
             } : {}),
             ...(relay && opts.enqueuePendingRelayFollowUp ? {
                 admitPendingFollowUp: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, taskId: string, message: string, mode?: MessagingChatMode) =>
-                    getAnswerRelayEnabled()
-                        ? relay.admitPendingFollowUp(msg, taskId, (workspaceId, processId, requestId) =>
-                            opts.enqueuePendingRelayFollowUp!(workspaceId, processId, message, requestId, mode))
-                        : Promise.resolve(null),
+                    relay.admitPendingFollowUp(msg, taskId, (workspaceId, processId, requestId, followUpTaskId) =>
+                        opts.enqueuePendingRelayFollowUp!(workspaceId, processId, message, requestId, mode, followUpTaskId),
+                    message, !getAnswerRelayEnabled()),
             } : {}),
             executeFollowUp: opts.executeFollowUp,
             getQuota: opts.getQuota,
@@ -173,7 +248,8 @@ export function registerTeamsMessagingRoutes(
 
         manager.setMessageHandler(async (msg, observe) => {
             await ready;
-            if (getAnswerRelayEnabled() && relay?.hasInbound(msg)) return;
+            if (relay) await reconcileRelease(() => relay.reconcileReleases());
+            if (relay?.hasInbound(msg, getAnswerRelayEnabled())) return;
             const boundReply = !!msg.replyToMessageId && getAnswerRelayEnabled()
                 && !!relay?.threadRoots(manager.getStatus().teamId ?? '', msg.channelId).includes(msg.replyToMessageId);
             if (opts.getMessageReactionEnabled?.() === true && msg.text.trim() && !msg.botAuthored

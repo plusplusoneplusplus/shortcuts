@@ -110,7 +110,7 @@ describe('sqlite-schema', () => {
     it('getSchemaVersion returns SCHEMA_VERSION after initialization', () => {
         initializeDatabase(db);
         expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-        expect(SCHEMA_VERSION).toBe(38);
+        expect(SCHEMA_VERSION).toBe(39);
     });
 
     it('creates context-window breakdown columns on processes', () => {
@@ -1192,7 +1192,7 @@ describe('sqlite-schema', () => {
 
             // Version stamped to current.
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(38);
+            expect(SCHEMA_VERSION).toBe(39);
 
             // crons exists, loops is gone.
             const tables = db
@@ -1419,7 +1419,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(38);
+            expect(SCHEMA_VERSION).toBe(39);
 
             const cols = db.prepare("PRAGMA table_info(task_groups)").all() as Array<{ name: string }>;
             expect(cols.map(c => c.name)).toContain('parent_group_id');
@@ -1620,7 +1620,7 @@ describe('sqlite-schema', () => {
             initializeDatabase(db);
 
             expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
-            expect(SCHEMA_VERSION).toBe(38);
+            expect(SCHEMA_VERSION).toBe(39);
             const columns = db.prepare('PRAGMA table_info(queue_repo_state)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
                 'task_delay_minutes',
@@ -1824,6 +1824,34 @@ describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
         db = new Database(':memory:');
     });
 
+    describe('V38 -> V39 migration (trusted queue control)', () => {
+        it('adds nullable control without attributing existing queued or running work', () => {
+            const database = new Database(':memory:');
+            try {
+                initializeDatabase(database);
+                database.exec('ALTER TABLE queue_tasks DROP COLUMN bot_control');
+                database.prepare('INSERT INTO queue_tasks (id, repo_id, type, status, created_at) VALUES (?, ?, ?, ?, ?)')
+                    .run('queued', 'ws-a', 'chat', 'queued', 1);
+                database.prepare('INSERT INTO queue_tasks (id, repo_id, type, status, created_at) VALUES (?, ?, ?, ?, ?)')
+                    .run('running', 'ws-b', 'chat', 'running', 2);
+                database.pragma('user_version = 38');
+
+                initializeDatabase(database);
+                initializeDatabase(database);
+                expect(getSchemaVersion(database)).toBe(39);
+                expect(database.prepare('SELECT id, repo_id, status, bot_control FROM queue_tasks ORDER BY id').all())
+                    .toEqual([
+                        { id: 'queued', repo_id: 'ws-a', status: 'queued', bot_control: null },
+                        { id: 'running', repo_id: 'ws-b', status: 'running', bot_control: null },
+                    ]);
+                const columns = database.prepare('PRAGMA table_info(queue_tasks)').all() as Array<{ name: string }>;
+                expect(columns.filter(column => column.name === 'bot_control')).toHaveLength(1);
+            } finally {
+                database.close();
+            }
+        });
+    });
+
     describe('V37 -> V38 migration (Teams request correlation)', () => {
         let db: NativeDatabase;
 
@@ -1844,7 +1872,7 @@ describe('V36 -> V37 migration (per-turn provider segment attribution)', () => {
 
         it('adds the nullable request ID without inventing provenance for older turns', () => {
             initializeDatabase(db);
-            expect(getSchemaVersion(db)).toBe(38);
+            expect(getSchemaVersion(db)).toBe(SCHEMA_VERSION);
             const columns = db.prepare('PRAGMA table_info(conversation_turns)').all() as Array<{ name: string }>;
             expect(columns.map(column => column.name)).toContain('relay_request_id');
             expect(db.prepare('SELECT relay_request_id FROM conversation_turns WHERE process_id = ?').get('old-process'))

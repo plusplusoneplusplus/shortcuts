@@ -1,7 +1,7 @@
 /**
  * Canonical type definitions for all React code.
  */
-import type { ChatProviderId } from '@plusplusoneplusplus/coc-client';
+import type { BotControlPresentation, ChatProviderId } from '@plusplusoneplusplus/coc-client';
 
 /** Token usage data for a single conversation turn (client-side representation) */
 export interface ClientTokenUsage {
@@ -188,6 +188,7 @@ export interface ChatSessionItem {
 
 /** Process-native history item returned by GET /api/workspaces/:id/history. */
 export interface ProcessHistoryItem {
+    botControl?: BotControlPresentation;
     id: string;
     type: string;
     status: string;

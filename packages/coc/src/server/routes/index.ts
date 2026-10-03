@@ -167,7 +167,7 @@ import { registerTeamsMessagingRoutes } from '../messaging/teams-messaging-handl
 import { TeamsMessagingManager } from '../messaging/teams-messaging-manager';
 import { registerWhatsAppMessagingRoutes } from '../messaging/whatsapp-messaging-handler';
 import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-manager';
-import { WhatsAppBindings } from '../messaging/whatsapp-bindings';
+import { WhatsAppBindings, WhatsAppBindingReleaseError } from '../messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
@@ -501,6 +501,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             llmToolSystemOneEnabled: opts.runtimeConfigService!.config.LLMToolSystemOne?.enabled ?? false,
             chatStyleSelectorEnabled: opts.runtimeConfigService!.config.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.runtimeConfigService!.config.features?.chatProviderSwitching === true,
+            botManagedConversationsEnabled: opts.runtimeConfigService!.config.features?.botManagedConversations === true,
             defaultChatStyle: coerceChatStyle(opts.runtimeConfigService!.config.features?.defaultChatStyle),
         })
         : () => ({
@@ -510,6 +511,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             llmToolSystemOneEnabled: opts.resolvedConfig?.LLMToolSystemOne?.enabled ?? false,
             chatStyleSelectorEnabled: opts.resolvedConfig?.features?.chatStyleSelector === true,
             chatProviderSwitchingEnabled: opts.resolvedConfig?.features?.chatProviderSwitching === true,
+            botManagedConversationsEnabled: opts.resolvedConfig?.features?.botManagedConversations === true,
             defaultChatStyle: coerceChatStyle(opts.resolvedConfig?.features?.defaultChatStyle),
         });
     const isKustoEnabled = (): boolean => getLiveFeatureFlags().kustoEnabled;
@@ -591,6 +593,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         cancelSentinelCron: opts.cancelSentinelCron,
         validateProvider: validateSendToConversationProvider,
         state: queueGlobalState,
+        botManagedConversationsEnabled: () => getLiveFeatureFlags().botManagedConversationsEnabled === true,
     });
     registerTaskRoutes(routes, store, dataDir, (workspaceId) => {
         getWsServer().broadcastProcessEvent({
@@ -665,14 +668,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             });
         }
     });
-    registerPinArchiveRoutes(routes, store as any);
+    registerPinArchiveRoutes(routes, store as any, () => getLiveFeatureFlags().botManagedConversationsEnabled === true);
     registerPinOrderRoutes(routes, store, dataDir);
     const chatFolderStore = taskGroupService.getChatFolderStore();
     const groupFolderStore = new GroupFolderStore(dataDir);
     registerChatFolderRoutes(routes, store, chatFolderStore, groupFolderStore);
     registerGroupFolderRoutes(routes, store, chatFolderStore, groupFolderStore);
     registerTurnActionRoutes(routes, store as any, getWsServer);
-    registerProcessHistoryRoutes(routes, store as any);
+    registerProcessHistoryRoutes(routes, store as any, () => getLiveFeatureFlags().botManagedConversationsEnabled === true);
     registerWorkspaceHistoryRoutes(routes, store, bridge);
     registerTaskCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
     registerDiffCommentsRoutes(routes, dataDir, bridge, store, getWsServer);
@@ -855,8 +858,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) =>
         bridge.enqueue(messagingChatInput(workspaceId, message, taskId));
-    const enqueueTeamsChat = (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode) =>
-        enqueueWithResolvedDefaults(messagingChatInput(workspaceId, message, taskId, true, mode));
+    const enqueueTeamsChat = (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl']) =>
+        enqueueWithResolvedDefaults({ ...messagingChatInput(workspaceId, message, taskId, true, mode), botControl });
     const resolveMessagingChatMode = createMessagingChatModeResolver(store, queueFacade);
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
@@ -901,16 +904,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
         getAnswerRelayEnabled: () => ((opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay
             ?? DEFAULT_CONFIG.features.teamsAiAnswerRelay) === true,
+        getBotManagedConversationsEnabled: () =>
+            (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.botManagedConversations === true,
         getMessageReactionEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsMessageReaction === true,
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
         enqueueRelayChat: enqueueTeamsChat,
-        admitRelayFollowUp: async (proc, message, requestId, mode) => {
+        admitRelayFollowUp: async (proc, message, requestId, mode, taskId) => {
             const workspaceId = proc.metadata?.workspaceId;
             if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Teams conversation workspace is unavailable');
             return {
                 taskId: await bridge.enqueue({
-                    type: 'chat', repoId: workspaceId, processId: proc.id, priority: 'normal',
+                    id: taskId, type: 'chat', repoId: workspaceId, processId: proc.id, priority: 'normal',
                     payload: {
                         kind: 'chat', mode: await resolveMessagingChatMode(proc.id, mode), processId: proc.id, prompt: message,
                         workspaceId, relayRequestId: requestId,
@@ -919,8 +924,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 }),
             };
         },
-        enqueuePendingRelayFollowUp: async (workspaceId, processId, message, requestId, mode) => bridge.enqueue({
-            type: 'chat', repoId: workspaceId, processId, priority: 'normal',
+        enqueuePendingRelayFollowUp: async (workspaceId, processId, message, requestId, mode, taskId) => bridge.enqueue({
+            id: taskId, type: 'chat', repoId: workspaceId, processId, priority: 'normal',
             payload: {
                 kind: 'chat', mode: await resolveMessagingChatMode(processId, mode), processId, prompt: message,
                 workspaceId, relayRequestId: requestId,
@@ -930,7 +935,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,
-        enqueueChat: (workspaceId, message, mode) => enqueueTeamsChat(workspaceId, message, undefined, mode),
+        enqueueChat: (workspaceId, message, mode, taskId, botControl) =>
+            enqueueTeamsChat(workspaceId, message, taskId, mode, botControl),
         executeFollowUp: async (processId, message, mode) =>
             bridge.executeFollowUp(processId, message, undefined, await resolveMessagingChatMode(processId, mode)),
         getQuota: getMessagingQuota,
@@ -938,7 +944,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         remotes: workspaceDirectory,
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
-    const whatsappBindings = new WhatsAppBindings(dataDir);
+    const whatsappBindings = new WhatsAppBindings(dataDir, { store, queue: queueFacade });
+    const restoreWhatsAppBindings = async () => {
+        try {
+            await whatsappBindings.restore(store);
+        } catch (error) {
+            if (!(error instanceof WhatsAppBindingReleaseError)) throw error;
+            console.error('[whatsapp-messaging] Binding release reconciliation failed');
+        }
+    };
+    void restoreWhatsAppBindings().catch(() =>
+        console.error('[whatsapp-messaging] Failed to restore binding lifecycle'));
     const whatsappRelay = new WhatsAppAnswerRelay({
         bindings: whatsappBindings,
         store,
@@ -962,6 +978,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const whatsappRouter = new WhatsAppCommandRouter({
         store,
         bindings: whatsappBindings,
+        getBotManagedConversationsEnabled: () =>
+            (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.botManagedConversations === true,
         groupJid: () => whatsappMessagingManager.getStatus().groupJid ?? undefined,
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
         react: messageId => whatsappMessagingManager.react(messageId),
@@ -969,10 +987,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         compact: (proc, instructions) => compactProcess(store, proc, instructions),
         remotes: workspaceDirectory,
         questions: questionRelay,
-        enqueue: async (workspaceId, message, mode, processId, taskId) => {
+        getTask: taskId => queueFacade.getTask(taskId),
+        enqueue: async (workspaceId, message, mode, processId, taskId, botControl) => {
             const followUp = processId !== toQueueProcessId(taskId);
             return enqueueWithResolvedDefaults({
                 ...messagingChatInput(workspaceId, message, taskId, true),
+                botControl,
                 processId,
                 payload: {
                     kind: 'chat',
@@ -987,11 +1007,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             console.error('[whatsapp-answer-relay] Could not reconcile queued request:', error)); },
     });
     whatsappMessagingManager.setMessageHandler(async message => {
-        await whatsappBindings.restore(store);
+        await restoreWhatsAppBindings();
         await whatsappRouter.handle(message);
     });
     whatsappMessagingManager.setConnectedHandler(async () => {
-        await whatsappBindings.restore(store);
+        await restoreWhatsAppBindings();
         await whatsappRelay.reconnected();
     });
     whatsappMessagingManager.setDisposeHandler(() => whatsappRelay.dispose());

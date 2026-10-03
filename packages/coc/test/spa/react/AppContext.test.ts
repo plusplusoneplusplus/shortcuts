@@ -73,6 +73,15 @@ function makeState(overrides: Partial<AppContextState> = {}): AppContextState {
 }
 
 describe('AppContext reducer', () => {
+    it('clears bot presentation on authoritative process-summary omission without losing other detail', () => {
+        const control = { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' };
+        const state = makeState({ processes: [{ id: 'p1', botControl: control, metadata: { model: 'example-model' } }] });
+        const result = appReducer(state, { type: 'PROCESS_UPDATED', process: { id: 'p1', status: 'completed' } });
+        expect(result.processes[0]).not.toHaveProperty('botControl');
+        expect(result.processes[0].metadata).toEqual({ model: 'example-model' });
+        expect(state.processes[0].botControl).toEqual(control);
+    });
+
     // ── PROCESS_ADDED ──────────────────────────────────────────────
     describe('PROCESS_ADDED', () => {
         it('appends a new process', () => {

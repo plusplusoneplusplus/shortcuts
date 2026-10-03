@@ -4,7 +4,7 @@
  */
 
 import { AIProcess, AIProcessStatus, AIProcessType, ProcessEvent, ConversationTurn, TimelineItem } from './ai/process-types';
-import type { PendingMessage, ProcessCompactionState } from './ai/process-interfaces';
+import type { BotControlMetadata, PendingMessage, ProcessCompactionState } from './ai/process-interfaces';
 import type { PipelinePhaseEvent, PipelineProgressEvent, ItemProcessEventData } from './pipeline-types';
 import type { TokenUsage } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { ConversationCostEstimate } from './ai/conversation-cost-estimate';
@@ -329,6 +329,8 @@ export interface ProcessIndexEntry {
      * when the process never ran `/compact`.
      */
     compaction?: ProcessCompactionState;
+    /** Authoritative internal control; public readers must project safe presentation. */
+    botControl?: BotControlMetadata;
 }
 
 export type ProcessChangeCallback = (event: ProcessEvent) => void;
@@ -347,8 +349,8 @@ export interface ProcessStore {
     clearProcesses(filter?: ProcessFilter): Promise<number>;
 
     /**
-     * Return lightweight index entries without loading full process files.
-     * Optional — only file-backed stores support this.
+     * Return lightweight index entries without hydrating full process records.
+     * Optional — implemented by both persistent stores.
      */
     getProcessSummaries?(filter?: ProcessFilter): Promise<{ entries: ProcessIndexEntry[]; total: number }>;
 
@@ -656,6 +658,7 @@ export interface ProcessStore {
      * Fork a process by creating a new process with copied conversation turns.
      * The new process is independent (no cascade-delete relationship with source).
      * Source linkage is stored in `metadata.forkSourceId`.
+     * Current external bot control is not inherited; the source keeps its control.
      *
      * @param sourceId - ID of the process to fork from.
      * @param newId - ID for the new forked process.

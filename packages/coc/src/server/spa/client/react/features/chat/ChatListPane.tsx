@@ -15,7 +15,11 @@ import { useQueueTouchDragDrop } from '../../queue/hooks/useQueueTouchDragDrop';
 import { ContextMenu, type ContextMenuItem } from '../../tasks/comments/ContextMenu';
 import { RenameDialog } from '../../ui/RenameDialog';
 import { useCocClient } from '../../repos/cloneRouting';
-import type { QueueFreezeDurationHours, QueueRepoGate } from '@plusplusoneplusplus/coc-client';
+import { lookupCloneBaseUrl } from '../../repos/cloneRegistry';
+import { BotManagementBadge } from './BotManagementBadge';
+import { useBotControlUpdates } from './hooks/useBotControlUpdates';
+import { useContainerWidth } from './hooks/useContainerWidth';
+import type { BotControlPresentation, QueueFreezeDurationHours, QueueRepoGate } from '@plusplusoneplusplus/coc-client';
 import { useWorkflowProgress } from '../workflow/hooks/useWorkflowProgress';
 import { ScheduledSlideSchedules } from '../schedules/ScheduledSlideSchedules';
 import { getDraft } from './hooks/useDraftStore';
@@ -799,7 +803,7 @@ export interface ChatListPaneProps {
     isMobile: boolean;
     now: number;
     workspaceId?: string;
-    /** Clone-qualified owner used for provider quota routing. */
+    /** Clone-qualified owner used for provider quota and provenance routing. */
     quotaRoutingTarget?: string;
     /** Set of process IDs with unseen activity (bold + dot indicator). */
     unseenProcessIds?: Set<string>;
@@ -1507,6 +1511,33 @@ export function ChatListPane({
     }, [selectedTaskId]);
 
     const { state: appState } = useApp();
+    const botControlBaseUrl = lookupCloneBaseUrl(quotaRoutingTarget ?? workspaceId);
+    const botControlScope = `${botControlBaseUrl ?? ''}|${workspaceId ?? ''}`;
+    const [botControlSnapshots, setBotControlSnapshots] = useState<{
+        scope: string;
+        controls: Map<string, { original: unknown; current?: BotControlPresentation }>;
+    }>({ scope: botControlScope, controls: new Map() });
+    useBotControlUpdates(botControlBaseUrl, workspaceId, update => {
+        const row = [...running, ...queued, ...history].find(
+            item => (item.processId ?? ensureQueueProcessId(item.id)) === update.processId || item.id === update.processId,
+        );
+        if (!row) return;
+        setBotControlSnapshots(prev => {
+            const controls = new Map(prev.scope === botControlScope ? prev.controls : []);
+            controls.set(row.id, { original: row.botControl, current: update.control });
+            return { scope: botControlScope, controls };
+        });
+    });
+    useEffect(() => {
+        const rows = [...running, ...queued, ...history];
+        setBotControlSnapshots(prev => {
+            if (prev.scope !== botControlScope) return { scope: botControlScope, controls: new Map() };
+            const controls = new Map([...prev.controls].filter(([id, snapshot]) => (
+                rows.some(row => row.id === id && row.botControl === snapshot.original)
+            )));
+            return controls.size === prev.controls.size ? prev : { ...prev, controls };
+        });
+    }, [running, queued, history, botControlScope]);
     /**
      * The activity tab no longer renders a type-filter dropdown — chats and
      * automations are surfaced through the scope segmented control instead.
@@ -1849,6 +1880,7 @@ export function ChatListPane({
     const [searchVisible, setSearchVisible] = useState(false);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const { isWide: showFullBotBadge } = useContainerWidth(containerRef, { wideThreshold: 360, mediumThreshold: 280 });
     const pauseMenuRef = useRef<HTMLDivElement>(null);
 
     // ── Folder drag and drop (AC-07) ───────────────────────────────────────
@@ -3610,6 +3642,12 @@ export function ChatListPane({
             : undefined;
         const forEachGenerationPreview = getForEachGenerationPreview(task);
         const mapReduceGenerationPreview = getMapReduceGenerationPreview(task);
+        const controlSnapshot = botControlSnapshots.scope === botControlScope
+            ? botControlSnapshots.controls.get(task.id)
+            : undefined;
+        const botControl = controlSnapshot && controlSnapshot.original === task.botControl
+            ? controlSnapshot.current
+            : task.botControl;
 
         const modeKey = getTaskModeKey(task);
         const modeLabel = getTaskModeLabel(task);
@@ -3782,6 +3820,7 @@ export function ChatListPane({
                         >
                             {titleText}
                         </span>
+                        <BotManagementBadge control={botControl} compact={isMobile || !showFullBotBadge} />
                         {forEachGenerationPreview && (
                             <>
                                 <span
@@ -3955,6 +3994,9 @@ export function ChatListPane({
         onSelectTask,
         historyLongPress,
         workspaceId,
+        botControlSnapshots,
+        botControlScope,
+        showFullBotBadge,
     ]);
 
     const getGroupedChildTaskStatus = useCallback((task: any): 'running' | 'queued' | 'completed' => {

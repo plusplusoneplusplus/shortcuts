@@ -35,6 +35,24 @@ export type AIProcessType = 'clarification' | 'code-review' | 'discovery' | 'cod
  */
 export type SessionCategory = 'generating-code' | 'resolve-plan-comments' | 'resolve-commit-comments';
 
+/** External messaging integrations, independent of the AI provider and turn source. */
+export type BotControlSource = 'teams' | 'whatsapp';
+
+/**
+ * Current external control, written only by an authoritative integration binding.
+ * Absence means unattributed; release removes this value rather than inferring human control.
+ */
+export interface BotControlMetadata {
+    state: 'active';
+    source: BotControlSource;
+    /** Stable non-personal integration identity, never a transport/account routing identifier. */
+    controllerKey: string;
+    /** Presentation-safe integration label, never a sender's name or account details. */
+    controllerLabel: string;
+    /** Optional thread URL validated and authorized by the owning integration. */
+    externalThreadUrl?: string;
+}
+
 /**
  * Persisted lifecycle of a `/compact` action, stored on the process metadata
  * (`GenericProcessMetadata.compaction`).
@@ -91,6 +109,8 @@ export interface GenericProcessMetadata {
      * and restore terminal status across reloads and other tabs.
      */
     compaction?: ProcessCompactionState;
+    /** Explicit current external integration control; not model/provider or automated-turn attribution. */
+    botControl?: BotControlMetadata;
     /** Feature-specific data stored as key-value pairs */
     [key: string]: unknown;
 }

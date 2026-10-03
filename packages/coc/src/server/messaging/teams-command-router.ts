@@ -353,7 +353,7 @@ export class TeamsCommandRouter {
         if (targetId) {
             // Verify the process still exists
             targetProcess = await this.deps.store.getProcess(targetId)
-                ?? (this.deps.isAnswerRelayEnabled?.() === true && !targetId.startsWith('queue_')
+                ?? (!targetId.startsWith('queue_')
                     ? await this.deps.store.getProcess(toQueueProcessId(targetId)) : undefined);
             if (targetProcess) {
                 targetId = targetProcess.id;

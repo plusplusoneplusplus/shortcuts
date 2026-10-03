@@ -2,6 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { buildMetadataProcess } from '../../../../src/server/spa/client/react/utils/chatUtils';
 
 describe('buildMetadataProcess', () => {
+    const control = { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' };
+
+    it('shows only trusted queued presentation before process details arrive', () => {
+        expect(buildMetadataProcess({ id: 'task', botControl: control }, null, null).botControl).toEqual(control);
+        expect(buildMetadataProcess({ id: 'task', payload: { botControl: control }, metadata: { botControl: control } }, null, null).botControl).toBeUndefined();
+    });
+
+    it.each([undefined, null, { ...control, state: 'released' }])('process detail absence clears stale queued control: %j', botControl => {
+        expect(buildMetadataProcess({ id: 'task', botControl: control }, { id: 'queue_task', botControl }, 'queue_task').botControl).toBeUndefined();
+    });
+
     it('returns null when task is null', () => {
         expect(buildMetadataProcess(null, null, null)).toBeNull();
     });

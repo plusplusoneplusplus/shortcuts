@@ -9,6 +9,7 @@ import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-binding
 import { WhatsAppCommandRouter } from '../../../src/server/messaging/whatsapp-command-router';
 import { WhatsAppAnswerRelay } from '../../../src/server/messaging/whatsapp-answer-relay';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import { createBotControlMetadata } from '../../../src/server/messaging/bot-control-metadata';
 
 async function until(predicate: () => boolean | Promise<boolean>): Promise<void> {
     for (let i = 0; i < 200; i++) {
@@ -63,8 +64,11 @@ describe('WhatsApp answer relay through real multi-repo queues', () => {
         });
         const router = new WhatsAppCommandRouter({
             store, bindings, groupJid: () => 'bound@g.us',
-            enqueue: (workspaceId, prompt, mode, processId, id) => queue.enqueue({
+            getTask: id => facade.getTask(id),
+            getBotManagedConversationsEnabled: () => true,
+            enqueue: (workspaceId, prompt, mode, processId, id, botControl) => queue.enqueue({
                 id, processId, type: 'chat', repoId: workspaceId, priority: 'normal',
+                botControl,
                 payload: { kind: 'chat', mode, workspaceId, prompt, relayRequestId: id,
                     ...(processId !== toQueueProcessId(id) ? { processId } : {}) },
                 config: {},
@@ -84,11 +88,21 @@ describe('WhatsApp answer relay through real multi-repo queues', () => {
         const beta = bindings.findMessage('question-b')!;
         expect(alpha.workspaceId).toBe('ws-a');
         expect(beta.workspaceId).toBe('ws-b');
+        expect(facade.getTask(alpha.taskId)?.botControl).toEqual(createBotControlMetadata('whatsapp'));
+        expect(facade.getTask(beta.taskId)?.botControl).toEqual(createBotControlMetadata('whatsapp'));
+        await router.handle(inbound('pending-a', 'pending question', 'question-a'));
+        expect(bindings.findMessage('pending-a')).toMatchObject({
+            workspaceId: 'ws-a', processId: alpha.processId,
+        });
+        expect(facade.getTask(bindings.findMessage('pending-a')!.taskId)?.botControl).toBeUndefined();
         queue.activateQueueProcessing();
         await until(() => bindings.findMessage('question-a')?.status === 'delivered'
-            && bindings.findMessage('question-b')?.status === 'delivered');
+            && bindings.findMessage('question-b')?.status === 'delivered'
+            && bindings.findMessage('pending-a')?.status === 'delivered');
         expect(sends.find(row => row.quotedId === 'question-a')?.text).toContain('Answer for alpha prompt');
         expect(sends.find(row => row.quotedId === 'question-b')?.text).toContain('Answer for beta prompt');
+        expect(sends.find(row => row.quotedId === 'pending-a')?.text).toContain('Answer for pending question');
+        const originalProvider = (await store.getProcess(alpha.processId))?.metadata?.provider;
         const answerA = alpha.outboundIds[0];
         await router.handle(inbound('follow-a', 'one more', answerA));
         await until(() => bindings.findMessage('follow-a')?.status === 'delivered');
@@ -96,8 +110,12 @@ describe('WhatsApp answer relay through real multi-repo queues', () => {
         expect(sends.find(row => row.quotedId === 'follow-a')?.text).toContain('Answer for one more');
         expect(bindings.selectedRepo).toBe('ws-b');
         expect((await store.getProcess(alpha.processId, 'ws-a'))?.conversationTurns
-            ?.filter(turn => turn.role === 'user').length).toBe(2);
+            ?.filter(turn => turn.role === 'user').length).toBe(3);
         await relay.reconnected();
         expect(sends.filter(row => row.quotedId === 'follow-a')).toHaveLength(1);
+        expect((await store.getProcess(alpha.processId))?.metadata).toMatchObject({
+            botControl: createBotControlMetadata('whatsapp'), workspaceId: 'ws-a', provider: originalProvider,
+        });
+        expect((await store.getProcess(beta.processId))?.metadata?.botControl).toEqual(createBotControlMetadata('whatsapp'));
     });
 });

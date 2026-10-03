@@ -3,7 +3,7 @@ import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 export { NativeDatabase as Database };
 export type DatabaseType = NativeDatabase;
 
-export const SCHEMA_VERSION = 38;
+export const SCHEMA_VERSION = 39;
 
 /**
  * Read the current schema version from the database.
@@ -159,6 +159,7 @@ export function initializeDatabase(db: NativeDatabase): void {
                 queue_position    INTEGER,
                 duration_hours    INTEGER,
                 scope             TEXT,
+                bot_control       TEXT,
                 payload           TEXT NOT NULL DEFAULT '{}',
                 config            TEXT NOT NULL DEFAULT '{}',
                 result            TEXT
@@ -169,6 +170,7 @@ export function initializeDatabase(db: NativeDatabase): void {
         ensureColumn(db, 'queue_tasks', 'duration_hours', 'INTEGER');
         ensureColumn(db, 'queue_tasks', 'scope', 'TEXT');
         ensureColumn(db, 'queue_tasks', 'frozen_until', 'INTEGER');
+        ensureColumn(db, 'queue_tasks', 'bot_control', 'TEXT');
 
         // ── queue_repo_state ────────────────────────────────────────
         db.exec(`
@@ -565,6 +567,9 @@ export function initializeDatabase(db: NativeDatabase): void {
         }
         if (versionBefore < 38) {
             migrateV37toV38(db);
+        }
+        if (versionBefore < 39) {
+            migrateV38toV39(db);
         }
 
         db.pragma(`user_version = ${SCHEMA_VERSION}`);
@@ -1024,6 +1029,10 @@ function migrateV36toV37(db: NativeDatabase): void {
 
 function migrateV37toV38(db: NativeDatabase): void {
     ensureColumn(db, 'conversation_turns', 'relay_request_id', 'TEXT');
+}
+
+function migrateV38toV39(db: NativeDatabase): void {
+    ensureColumn(db, 'queue_tasks', 'bot_control', 'TEXT');
 }
 
 /**

@@ -12,6 +12,7 @@ import { useMemo } from 'react';
 import { ChatHeaderOverflowMenu, type OverflowMenuItem } from '../../chat/ChatHeaderOverflowMenu';
 import { ChatMetadataButton, type ChatHeaderMetadata } from '../../chat/conversation/ChatMetadataButton';
 import type { ChatScope } from '../hooks/useNotesChat';
+import { BotManagementBadge } from '../../chat/BotManagementBadge';
 
 /** Where the Notes Chat surface is currently presented. Drives which window actions are available. */
 export type NotesChatWindowMode = 'lens' | 'side-panel' | 'embedded';
@@ -149,6 +150,7 @@ export function NotesChatHeader({
                 >
                     {contextLabel}
                 </span>
+                <BotManagementBadge control={chatMetadata?.metadataProcess?.botControl} compact />
             </div>
             <NotesChatScopeToggle
                 scope={scope}

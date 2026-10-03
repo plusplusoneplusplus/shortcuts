@@ -15,6 +15,22 @@ import { isRunScriptPayload, isRunWorkflowPayload, isChatPayload, isDreamRunPayl
 // run-script
 // ============================================================================
 
+describe('validateAndParseTask - trusted control boundary', () => {
+    it('does not accept top-level, config, payload, or context control as trusted authority', () => {
+        const botControl = {
+            state: 'active', source: 'teams', controllerKey: 'teams-bridge', controllerLabel: 'Teams bridge',
+        };
+        const result = validateAndParseTask({
+            type: 'chat', botControl, repoId: 'ws-a', config: { botControl },
+            payload: { kind: 'chat', prompt: 'Bot-managed Teams', workspaceId: 'ws-a', botControl,
+                context: { botControl } },
+        });
+        expect(result.valid).toBe(true);
+        expect(result.input).not.toHaveProperty('botControl');
+        expect(result.input?.config).not.toHaveProperty('botControl');
+    });
+});
+
 describe('validateAndParseTask – run-script kind injection', () => {
     it('injects kind: run-script when payload has no kind', () => {
         const result = validateAndParseTask({

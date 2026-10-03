@@ -1,3 +1,5 @@
+import { readBotControl } from './botControl';
+
 /** A server-confirmed queued follow-up waiting for execution. */
 export interface QueuedMessage {
     id: string;           // server-assigned UUID — used as React key and identifier
@@ -16,6 +18,7 @@ export function buildMetadataProcess(task: any, processDetails: any, processId: 
     return {
         ...task,
         ...(processDetails || {}),
+        botControl: readBotControl(processDetails ? processDetails.botControl : task.botControl),
         id: processId ?? task.id,
         metadata: {
             queueTaskId: task.id,

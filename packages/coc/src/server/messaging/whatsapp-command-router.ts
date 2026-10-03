@@ -1,18 +1,22 @@
 import { randomUUID } from 'node:crypto';
-import { toQueueProcessId, type ProcessStore } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
+import type { BotControlMetadata } from '@plusplusoneplusplus/forge/ai';
 import { isMessagingControlCommand, parseMessagingCommand, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
 import { handleMessagingCommand, invalidCommandReply, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
 import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
+import { admitBotControlledFollowUp } from './bot-control-admission';
+import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
 
 export interface WhatsAppRouterDeps {
-    store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
+    store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess' | 'updateProcess'>;
     bindings: WhatsAppBindings;
     groupJid: () => string | undefined;
     /** `mode` is undefined for plain text; follow-ups then keep the chat's mode. */
-    enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string) => Promise<string>;
+    enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string, botControl?: BotControlMetadata) => Promise<string>;
+    getTask: (taskId: string) => QueuedTask | undefined;
     send: (text: string, quotedId: string) => Promise<string>;
     react: (messageId: string) => Promise<void>;
     queued?: (binding: WhatsAppBinding) => void;
@@ -22,6 +26,15 @@ export interface WhatsAppRouterDeps {
     remotes?: MessagingRemoteDirectory;
     /** Relayed ask_user questions; a matching reply is an answer, not a request. */
     questions?: Pick<AskUserQuestionRelayHub, 'tryAnswer'>;
+    getBotManagedConversationsEnabled?: () => boolean;
+}
+
+function matchesBinding(task: QueuedTask | undefined, binding: WhatsAppBinding): task is QueuedTask {
+    return !!task && task.id === binding.taskId && task.type === 'chat'
+        && task.repoId === binding.workspaceId && task.processId === binding.processId
+        && task.payload.kind === 'chat' && task.payload.workspaceId === binding.workspaceId
+        && task.payload.relayRequestId === binding.taskId
+        && (task.payload.processId === undefined || task.payload.processId === binding.processId);
 }
 
 export class WhatsAppCommandRouter {
@@ -37,6 +50,7 @@ export class WhatsAppCommandRouter {
             const id = await this.deps.send(text, msg.messageId);
             this.deps.bindings.recordOutbound(id);
         };
+        let admitted = false;
         try {
             if (await this.deps.questions?.tryAnswer('whatsapp', {
                 chatKey: msg.chatJid, messageId: msg.messageId, replyToId: msg.quotedMessageId, text: msg.text,
@@ -77,6 +91,10 @@ export class WhatsAppCommandRouter {
             } else if (msg.quotedMessageId) {
                 const quoted = this.deps.bindings.findMessage(msg.quotedMessageId);
                 if (quoted) {
+                    if (quoted.releaseState !== undefined) {
+                        await reply('Quoted topic binding is unavailable. Select a topic or create a new one.');
+                        return;
+                    }
                     workspaceId = quoted.workspaceId;
                     targetId = quoted.processId;
                 }
@@ -86,11 +104,22 @@ export class WhatsAppCommandRouter {
                 return;
             }
             if (!command.args) { await reply('Send a message to start a chat.'); return; }
+            const targetProcess = targetId ? await this.deps.store.getProcess(targetId, workspaceId) : undefined;
+            const enabled = this.deps.getBotManagedConversationsEnabled?.() === true;
             if (targetId) {
-                const process = await this.deps.store.getProcess(targetId, workspaceId);
-                if (process?.metadata?.workspaceId !== workspaceId
-                    && !this.deps.bindings.entries().some(row => row.processId === targetId && row.workspaceId === workspaceId)) {
+                const pending = !targetProcess && this.deps.bindings.entries().find(row => {
+                    if (row.releaseState !== undefined || row.processId !== targetId || row.workspaceId !== workspaceId) return false;
+                    const task = this.deps.getTask(row.taskId);
+                    return matchesBinding(task, row) && ['queued', 'running'].includes(task.status);
+                });
+                if (targetProcess ? targetProcess.metadata?.workspaceId !== workspaceId : !pending) {
                     await reply('Selected topic is unavailable. Run `list topics` or `create topic`.'); return;
+                }
+                if (pending && enabled) {
+                    const control = this.deps.getTask(pending.taskId)?.botControl;
+                    if (control !== undefined && validateBotControlMetadata(control).source !== 'whatsapp') {
+                        throw new Error('Conversation is already controlled by another integration');
+                    }
                 }
             }
             const taskId = randomUUID();
@@ -99,13 +128,27 @@ export class WhatsAppCommandRouter {
                 groupJid: msg.chatJid, workspaceId, processId, taskId, inboundId: msg.messageId,
                 outboundIds: [], nextPart: 0, status: 'queued',
             };
-            if (!this.deps.bindings.add(binding)) return;
-            try {
-                await this.deps.enqueue(workspaceId, command.args, command.mode, processId, taskId);
-            } catch (error) {
-                this.deps.bindings.remove(binding);
-                throw error;
-            }
+            if (!await this.deps.bindings.admit(binding, async () => {
+                const enqueue = async () => {
+                    try {
+                        return await this.deps.enqueue(
+                            workspaceId, command.args, command.mode, processId, taskId,
+                            !targetId && enabled ? createBotControlMetadata('whatsapp') : undefined,
+                        );
+                    } catch (error) {
+                        // taskAdded observers run after durable admission; keep accepted work and its receipt.
+                        if (!matchesBinding(this.deps.getTask(taskId), binding)) throw error;
+                        console.error('[whatsapp-messaging] Request admitted but queue notification failed:', error);
+                        return taskId;
+                    }
+                };
+                if (targetProcess && enabled) {
+                    await admitBotControlledFollowUp(this.deps.store, workspaceId, processId, 'whatsapp', enqueue);
+                } else {
+                    await enqueue();
+                }
+            })) return;
+            admitted = true;
             this.deps.bindings.selectTopic(workspaceId, processId);
             this.deps.queued?.(binding);
             try {
@@ -115,7 +158,9 @@ export class WhatsAppCommandRouter {
             }
         } catch (error) {
             console.error('[whatsapp-messaging] Unable to handle inbound message:', error);
-            await reply('Could not queue the request. Please try again.');
+            await reply(admitted
+                ? 'Request was queued, but its confirmation could not be completed.'
+                : 'Could not queue the request. Please try again.');
         }
     }
 }

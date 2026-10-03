@@ -17,7 +17,7 @@ import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
 import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult, type TeamsEventType, type TeamsSkipReason } from './teams-attempt-store';
-import type { TeamsAnswerRelay } from './teams-answer-relay';
+import { TeamsBindingReleaseError, type TeamsAnswerRelay } from './teams-answer-relay';
 import { escapeTeamsHtml, formatTeamsOutbound, type TeamsOutboundSource } from './teams-outbound-format';
 import { DEFAULT_CONFIG } from '../../config';
 
@@ -393,7 +393,12 @@ export class TeamsMessagingManager {
                 throw new Error('Teams connection cancelled');
             }
             if (!bot.isConnected()) throw new Error(this._lastError ?? 'Teams bot did not connect');
-            await this.answerRelay?.reconnected();
+            try {
+                await this.answerRelay?.reconnected();
+            } catch (error) {
+                if (!(error instanceof TeamsBindingReleaseError)) throw error;
+                console.error('[teams-answer-relay] Binding release reconciliation failed');
+            }
         } catch (err: any) {
             if (generation === this.generation) {
                 this._lastError = err.message ?? 'Failed to connect';

@@ -61,12 +61,14 @@ describe('Teams channel Like admission', () => {
                     events.push('enqueue');
                     tasks.set(taskId, {
                         id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
+                        type: 'chat', payload: { kind: 'chat', workspaceId },
                     } as QueuedTask);
                     return taskId;
                 },
-                enqueuePendingRelayFollowUp: async (_ws: string, _process: string, _text: string, _request: string) => {
+                enqueuePendingRelayFollowUp: async (_ws: string, _process: string, _text: string, _request: string, _mode: unknown, taskId?: string) => {
                     events.push('enqueue-follow-up');
-                    return 'follow-up-task';
+                    if (!taskId) throw new Error('Expected reserved pending task ID');
+                    return taskId;
                 },
             } : {}),
         });

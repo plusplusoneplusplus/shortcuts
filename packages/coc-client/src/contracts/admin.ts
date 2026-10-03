@@ -129,6 +129,7 @@ export interface AdminResolvedConfig {
     teamsBridgeObservability?: boolean;
     teamsAiAnswerRelay?: boolean;
     teamsMessageReaction?: boolean;
+    botManagedConversations?: boolean;
     quickAskSidenotes?: boolean;
     arxivPaperIngest?: boolean;
     gitWorktreeExecution?: boolean;
@@ -282,6 +283,7 @@ export interface RuntimeDashboardConfig {
     teamsBridgeObservabilityEnabled: boolean;
     teamsAiAnswerRelayEnabled: boolean;
     teamsMessageReactionEnabled: boolean;
+    botManagedConversationsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;
     arxivPaperIngestEnabled: boolean;
     remoteShellEnabled: boolean;

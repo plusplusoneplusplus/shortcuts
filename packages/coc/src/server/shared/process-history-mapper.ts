@@ -9,6 +9,8 @@
 import type { AIProcess, QueuedTask } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { readCommitChatContext } from '../tasks/task-types';
+import type { BotControlPresentation } from '@plusplusoneplusplus/coc-client';
+import { projectBotControl } from '../processes/bot-control-read-model';
 
 export interface HistorySummary {
     id: string;
@@ -30,6 +32,7 @@ export interface HistorySummary {
     title?: string;
     /** AI provider that handled this process. */
     provider?: 'copilot' | 'codex' | 'claude' | 'opencode';
+    botControl?: BotControlPresentation;
 }
 
 interface DreamProcessLinks {
@@ -94,7 +97,7 @@ function buildDreamPayload(proc: AIProcess): Record<string, unknown> | undefined
     };
 }
 
-export function processToHistorySummary(proc: AIProcess): HistorySummary {
+export function processToHistorySummary(proc: AIProcess, botControlEnabled = false): HistorySummary {
     const completedAt = proc.endTime
         ? new Date(proc.endTime).getTime()
         : null;
@@ -104,6 +107,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         || proc.promptPreview
         || proc.id;
     const dreamPayload = buildDreamPayload(proc);
+    const botControl = projectBotControl(proc.metadata?.botControl, botControlEnabled);
 
     return {
         id: isQueueProcessId(proc.id) ? toTaskId(proc.id) : proc.id,
@@ -111,6 +115,7 @@ export function processToHistorySummary(proc: AIProcess): HistorySummary {
         status: proc.status,
         type: proc.type,
         displayName,
+        ...(botControl ? { botControl } : {}),
         completedAt,
         error: proc.error,
         repoId: proc.metadata?.workspaceId ?? '',

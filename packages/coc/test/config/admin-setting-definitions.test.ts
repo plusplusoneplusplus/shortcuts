@@ -191,6 +191,18 @@ describe('admin validate/apply round-trip', () => {
 // ── resolved config merge ─────────────────────────────────────────────────────
 
 describe('resolved config merge honors file overrides', () => {
+    it('keeps bot identification disabled independently of Teams relay features', () => {
+        expect(DEFAULT_CONFIG.features.botManagedConversations).toBe(false);
+        expect(buildRuntimeFeatureFlags({}).botManagedConversationsEnabled).toBe(false);
+        expect(mergeConfig(DEFAULT_CONFIG, {
+            features: { teamsAiAnswerRelay: true, teamsBridgeObservability: true, teamsMessageReaction: true },
+        }).features.botManagedConversations).toBe(false);
+        const enabled = mergeConfig(DEFAULT_CONFIG, { features: { botManagedConversations: true } });
+        expect(enabled.features.botManagedConversations).toBe(true);
+        expect(buildRuntimeFeatures(enabled).botManagedConversationsEnabled).toBe(true);
+        expect(enabled.features.teamsAiAnswerRelay).toBe(true);
+    });
+
     it('defaults Teams answer relay on while preserving the explicit opt-out independently of other features', () => {
         expect(DEFAULT_CONFIG.features.teamsAiAnswerRelay).toBe(true);
         expect(mergeConfig(DEFAULT_CONFIG, {
@@ -654,6 +666,7 @@ describe('feature toggle settings-tab placement', () => {
         'features.teamsBridgeObservability': 'integrations',
         'features.teamsAiAnswerRelay': 'integrations',
         'features.teamsMessageReaction': 'integrations',
+        'features.botManagedConversations': 'integrations',
         'mcpOauth.enabled': 'integrations',
         'mcpOauth.autoRefresh.enabled': 'integrations',
         'kusto.enabled': 'integrations',

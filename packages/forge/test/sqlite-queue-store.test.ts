@@ -61,6 +61,27 @@ describe('Schema', () => {
 // ============================================================================
 
 describe('upsertQueueTask', () => {
+    it.each(['teams', 'whatsapp'] as const)('persists explicit %s control independently of payload and provider', source => {
+        const botControl = {
+            state: 'active' as const, source, controllerKey: `${source}-bridge`,
+            controllerLabel: source === 'teams' ? 'Teams bridge' : 'WhatsApp bridge',
+        };
+        const task = makeTask('managed', {
+            type: 'chat', repoId: 'ws-managed', botControl,
+            payload: { kind: 'chat', prompt: 'request', workspaceId: 'ws-managed', provider: 'codex' },
+        });
+        store.upsertQueueTask(task);
+        store.upsertQueueTask(makeTask('ordinary', { repoId: 'ws-other' }));
+        expect(store.getQueueTasks('ws-managed')).toEqual([task]);
+        expect(store.getQueueItems('ws-managed')[0]).toEqual(task);
+        expect(store.getQueueTasks('ws-other')[0]).not.toHaveProperty('botControl');
+
+        store.upsertQueueTask({ ...task, status: 'running' });
+        expect(store.getQueueTasks('ws-managed')[0].botControl).toEqual(botControl);
+        store.upsertQueueTask({ ...task, botControl: undefined });
+        expect(store.getQueueTasks('ws-managed')[0]).not.toHaveProperty('botControl');
+    });
+
     it('inserts and round-trips all fields', () => {
         const task = makeTask('t1', {
             repoId: 'repo-a',

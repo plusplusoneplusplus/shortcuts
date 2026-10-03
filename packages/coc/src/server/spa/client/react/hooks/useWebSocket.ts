@@ -12,9 +12,10 @@ export type WsStatus = ConnectionStatus;
 interface UseWebSocketOptions {
     onMessage: (msg: any) => void;
     onConnect?: () => void;
+    broadcastProcessUpdates?: boolean;
 }
 
-export function useWebSocket({ onMessage, onConnect }: UseWebSocketOptions) {
+export function useWebSocket({ onMessage, onConnect, broadcastProcessUpdates = false }: UseWebSocketOptions) {
     const [status, setStatus] = useState<WsStatus>('closed');
     const connectionRef = useRef<ProcessWebSocketConnection | null>(null);
     const onMessageRef = useRef(onMessage);
@@ -31,11 +32,16 @@ export function useWebSocket({ onMessage, onConnect }: UseWebSocketOptions) {
     const doConnect = useCallback(() => {
         connectionRef.current?.close();
         connectionRef.current = getSpaCocClient().events.connect({
-            onMessage: msg => onMessageRef.current(msg),
+            onMessage: msg => {
+                if (broadcastProcessUpdates && (msg.type === 'process-added' || msg.type === 'process-updated')) {
+                    window.dispatchEvent(new CustomEvent('coc-local-ws-message', { detail: msg }));
+                }
+                onMessageRef.current(msg);
+            },
             onOpen: () => onConnectRef.current?.(),
             onStatusChange: setStatus,
         });
-    }, []);
+    }, [broadcastProcessUpdates]);
 
     const connect = useCallback(() => {
         doConnect();

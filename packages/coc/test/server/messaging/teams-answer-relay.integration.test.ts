@@ -9,6 +9,7 @@ import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
+import { createBotControlMetadata } from '../../../src/server/messaging/bot-control-metadata';
 
 const teamId = 'test-team';
 const channelId = 'test-channel';
@@ -141,22 +142,25 @@ describe('Teams answer relay through the real multi-repo queues', () => {
             executeFollowUp: async () => { throw new Error('Expected correlated follow-up admission'); },
             manager,
             relayQueue: queue.createAggregateQueueFacade(),
-            enqueueRelayChat: (wsId, prompt, id) => queue.enqueue({
+            getAnswerRelayEnabled: () => true,
+            getBotManagedConversationsEnabled: () => true,
+            enqueueRelayChat: (wsId, prompt, id, _mode, botControl) => queue.enqueue({
                 id, processId: toQueueProcessId(id), type: 'chat', repoId: wsId,
+                botControl,
                 payload: { kind: 'chat', mode: 'ask', prompt, workspaceId: wsId },
                 config: {}, priority: 'normal',
             }),
-            admitRelayFollowUp: async (process, text, requestId) => {
+            admitRelayFollowUp: async (process, text, requestId, _mode, id) => {
                 return { taskId: await queue.enqueue({
-                    type: 'chat', repoId: process.metadata.workspaceId as string,
+                    id, type: 'chat', repoId: process.metadata.workspaceId as string,
                     processId: process.id, priority: 'normal',
                     payload: { kind: 'chat', mode: 'ask', processId: process.id,
                         prompt: text, workspaceId: process.metadata.workspaceId, relayRequestId: requestId },
                     config: {},
                 }) };
             },
-            enqueuePendingRelayFollowUp: (wsId, processId, text, requestId) => queue.enqueue({
-                    type: 'chat', repoId: wsId, processId, priority: 'normal',
+            enqueuePendingRelayFollowUp: (wsId, processId, text, requestId, _mode, id) => queue.enqueue({
+                    id, type: 'chat', repoId: wsId, processId, priority: 'normal',
                     payload: { kind: 'chat', mode: 'ask', processId, prompt: text,
                         workspaceId: wsId, relayRequestId: requestId },
                     config: {},
@@ -171,6 +175,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         await handle(inbound('root-a', 'alpha prompt'));
         const taskA = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll()[0];
         expect(taskA.repoId).toBe('ws-a');
+        expect(taskA.botControl).toEqual(createBotControlMetadata('teams'));
         expect(repliesFor('root-a')).toEqual([expect.stringContaining('New topic created')]);
         expect(repliesFor('root-a')[0]).toContain('New topic created');
 
@@ -179,6 +184,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         await handle(inbound('root-b', 'beta prompt'));
         const taskB = registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll()[0];
         expect(taskB.repoId).toBe('ws-b');
+        expect(taskB.botControl).toEqual(createBotControlMetadata('teams'));
         expect(repliesFor('root-b')).toHaveLength(1);
         await handle(inbound('queued-follow', 'queued follow-up'));
         expect(repliesFor('queued-follow')).toEqual([expect.stringContaining('Message sent')]);
@@ -196,6 +202,10 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         expect(repliesFor('root-b')[1]).toContain('Answer for beta prompt');
         expect((await store.getProcess(toQueueProcessId(taskA.id)))?.metadata?.workspaceId).toBe('ws-a');
         expect((await store.getProcess(toQueueProcessId(taskB.id)))?.metadata?.workspaceId).toBe('ws-b');
+        expect((await store.getProcess(toQueueProcessId(taskA.id)))?.metadata?.botControl)
+            .toEqual(createBotControlMetadata('teams'));
+        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.metadata?.botControl)
+            .toEqual(createBotControlMetadata('teams'));
         await until(() => entered.includes('queued follow-up'));
         gates.get('queued follow-up')!.resolve();
         await until(() => repliesFor('queued-follow').length === 2);
@@ -205,8 +215,18 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         expect(repliesFor('queued-follow')[1]).toContain('Answer for queued follow-up');
         expect(repliesFor('running-follow')[1]).toContain('Answer for running follow-up');
 
+        // An existing unmarked conversation is adopted by authoritative follow-up admission.
+        const existing = (await store.getProcess(toQueueProcessId(taskB.id)))!;
+        const metadata = { ...existing.metadata };
+        delete metadata.botControl;
+        await store.updateProcess(existing.id, { metadata });
+        expect((await store.getProcess(existing.id))?.metadata?.botControl).toBeUndefined();
+
         // An explicit chat ID and then the selected last-active topic address the same conversation.
         await handle(inbound('follow-b-1', `[${toQueueProcessId(taskB.id)}] first follow-up`));
+        expect((await store.getProcess(existing.id))?.metadata).toMatchObject({
+            botControl: createBotControlMetadata('teams'), provider: existing.metadata.provider,
+        });
         await handle(inbound('follow-b-2', 'second follow-up'));
         await until(() => entered.includes('first follow-up'));
         expect(repliesFor('follow-b-1')).toEqual([expect.stringContaining('Message sent')]);

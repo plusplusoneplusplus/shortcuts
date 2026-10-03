@@ -5,12 +5,31 @@ export type ChatProviderId = 'copilot' | 'codex' | 'claude' | 'opencode';
 
 export type AIProcessStatus = 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
+/** Server-validated presentation of external control, without private controller identity. */
+export interface BotControlPresentation {
+  state: 'active';
+  source: 'teams' | 'whatsapp';
+  controllerLabel: string;
+  externalThreadUrl?: string;
+}
+
 export interface ConversationTurn {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string | Date;
   turnIndex: number;
   [key: string]: unknown;
+}
+
+export interface ConversationSnapshotPayload {
+  turns: ConversationTurn[];
+  /** Null explicitly clears control; omitted when identification is disabled. */
+  botControl?: BotControlPresentation | null;
+  sessionTokenLimit?: number;
+  sessionCurrentTokens?: number;
+  sessionSystemTokens?: number;
+  sessionToolTokens?: number;
+  sessionConversationTokens?: number;
 }
 
 export interface AIProcess {
@@ -24,6 +43,7 @@ export interface AIProcess {
   error?: string;
   result?: string;
   metadata?: JsonObject;
+  botControl?: BotControlPresentation;
   conversationTurns?: ConversationTurn[];
   title?: string;
   customTitle?: string;
@@ -88,10 +108,15 @@ export interface ProcessSearchResponse {
 }
 
 export interface ProcessSummariesResponse {
-  summaries: JsonObject[];
+  summaries: ProcessIndexSummary[];
   total: number;
   limit: number;
   offset: number;
+}
+
+/** Lightweight public index entry, with server-validated control presentation. */
+export interface ProcessIndexSummary extends JsonObject {
+  botControl?: BotControlPresentation;
 }
 
 export interface ProcessDetailResponse {

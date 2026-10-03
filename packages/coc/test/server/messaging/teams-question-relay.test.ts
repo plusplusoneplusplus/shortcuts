@@ -66,9 +66,9 @@ describe('Teams ask_user question relay', () => {
                 tasks.set(id, { id, repoId: 'ws-a', processId: toQueueProcessId(id), status: 'running', payload: {} } as any);
                 return id;
             },
-            admitRelayFollowUp: async (process, _text, requestId) => {
+            admitRelayFollowUp: async (process, _text, requestId, _mode, taskId) => {
                 followUps.push({ processId: process.id, requestId });
-                return {};
+                return { taskId };
             },
         });
     });

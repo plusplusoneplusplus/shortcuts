@@ -32,6 +32,7 @@ interface QueueTaskRow {
     queue_position?: number | null;
     duration_hours?: number | null;
     scope?: string | null;
+    bot_control?: string | null;
     payload: string;
     config: string;
     result: string | null;
@@ -109,6 +110,7 @@ function taskToRow(task: QueuedTask, queuePosition?: number): QueueTaskRow {
         queue_position: queuePosition ?? null,
         duration_hours: null,
         scope: null,
+        bot_control: task.botControl === undefined ? null : JSON.stringify(task.botControl),
         payload: JSON.stringify(task.payload),
         config: JSON.stringify(task.config),
         result: task.result !== undefined ? JSON.stringify(task.result) : null,
@@ -138,6 +140,7 @@ function pauseMarkerToRow(marker: PauseMarker, repoId: string, queuePosition?: n
         queue_position: queuePosition ?? null,
         duration_hours: marker.durationHours ?? null,
         scope: marker.scope ?? null,
+        bot_control: null,
         payload: '{}',
         config: '{}',
         result: null,
@@ -168,6 +171,7 @@ function rowToTask(row: QueueTaskRow): QueuedTask {
     if (row.frozen === 1) task.frozen = true;
     if (row.frozen_until !== null && row.frozen_until !== undefined) task.frozenUntil = row.frozen_until;
     if (row.admitted === 1) task.admitted = true;
+    if (row.bot_control != null) task.botControl = JSON.parse(row.bot_control);
 
     return task;
 }
@@ -230,13 +234,13 @@ export class SqliteQueueStore {
                  created_at, started_at, completed_at, display_name,
                  process_id, error, retry_count, concurrency_mode,
                  frozen, frozen_until, admitted, kind, queue_position, duration_hours, scope,
-                 payload, config, result)
+                 payload, config, result, bot_control)
             VALUES
                 (@id, @repo_id, @folder_path, @type, @priority, @status,
                  @created_at, @started_at, @completed_at, @display_name,
                  @process_id, @error, @retry_count, @concurrency_mode,
                  @frozen, @frozen_until, @admitted, @kind, @queue_position, @duration_hours, @scope,
-                 @payload, @config, @result)
+                 @payload, @config, @result, @bot_control)
         `);
         stmt.run(row);
     }
@@ -251,13 +255,13 @@ export class SqliteQueueStore {
                      created_at, started_at, completed_at, display_name,
                      process_id, error, retry_count, concurrency_mode,
                      frozen, frozen_until, admitted, kind, queue_position, duration_hours, scope,
-                     payload, config, result)
+                     payload, config, result, bot_control)
                 VALUES
                     (@id, @repo_id, @folder_path, @type, @priority, @status,
                      @created_at, @started_at, @completed_at, @display_name,
                      @process_id, @error, @retry_count, @concurrency_mode,
                      @frozen, @frozen_until, @admitted, @kind, @queue_position, @duration_hours, @scope,
-                     @payload, @config, @result)
+                     @payload, @config, @result, @bot_control)
             `);
             stmt.run(row);
             return;

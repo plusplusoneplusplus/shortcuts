@@ -84,6 +84,25 @@ function makeOptions(overrides: Partial<UseChatSSEOptions> = {}): UseChatSSEOpti
 }
 
 describe('useChatSSE', () => {
+    it('applies bot control snapshots to task and metadata details, including explicit release', () => {
+        const setTask = vi.fn();
+        const setProcessDetails = vi.fn();
+        renderHook(() => useChatSSE(makeOptions({ setTask, setProcessDetails })));
+        const control = { state: 'active', source: 'whatsapp', controllerLabel: 'WhatsApp bridge' };
+        act(() => MockEventSource.last._emit('conversation-snapshot', { turns: [], botControl: control }));
+        expect(setTask.mock.calls[0][0]({ id: 'task' }).botControl).toEqual(control);
+        expect(setProcessDetails.mock.calls[0][0]({ id: 'queue_task' }).botControl).toEqual(control);
+        expect(setProcessDetails.mock.calls[0][0](null)).toBeNull();
+        act(() => MockEventSource.last._emit('conversation-snapshot', { turns: [], botControl: null }));
+        expect(setTask.mock.calls[1][0]({ botControl: control }).botControl).toBeUndefined();
+        expect(setProcessDetails.mock.calls[1][0]({ botControl: control }).botControl).toBeUndefined();
+        act(() => MockEventSource.last._emit('conversation-snapshot', { turns: [] }));
+        expect(setTask).toHaveBeenCalledTimes(2);
+        expect(setProcessDetails).toHaveBeenCalledTimes(2);
+        act(() => MockEventSource.last._emit('conversation-snapshot', { turns: [], botControl: { ...control, controllerKey: 'whatsapp-bridge' } }));
+        expect(setProcessDetails.mock.calls[2][0]({ botControl: control }).botControl).toBeUndefined();
+    });
+
     beforeEach(() => {
         MockEventSource.reset();
         vi.stubGlobal('EventSource', MockEventSource);

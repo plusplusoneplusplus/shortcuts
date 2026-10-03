@@ -1863,6 +1863,27 @@ components:
           type: string
           nullable: true
           description: Chat folder this process is filed into (null/absent = unfiled)
+        botControl:
+          $ref: '#/components/schemas/BotControlPresentation'
+
+    BotControlPresentation:
+      type: object
+      additionalProperties: false
+      required: [state, source, controllerLabel]
+      description: Server-validated external control, present only when identification is enabled.
+      properties:
+        state:
+          type: string
+          enum: [active]
+        source:
+          type: string
+          enum: [teams, whatsapp]
+        controllerLabel:
+          type: string
+        externalThreadUrl:
+          type: string
+          format: uri
+          description: Validated HTTPS thread link, included only with owning-binding authorization.
 
     ChatFolderColor:
       type: string

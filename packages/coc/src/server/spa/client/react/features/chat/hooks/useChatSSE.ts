@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { cloneApiBase } from '../../../repos/cloneRegistry';
 import type { ClientConversationTurn } from '../../../types/dashboard';
 import type { QueuedMessage } from '../../../utils/chatUtils';
+import { readBotControl } from '../../../utils/botControl';
 
 type SetTurnsAndRef = (next: ClientConversationTurn[] | ((prev: ClientConversationTurn[]) => ClientConversationTurn[])) => void;
 type SetPendingQueue = (updater: ((prev: QueuedMessage[]) => QueuedMessage[]) | QueuedMessage[]) => void;
@@ -229,6 +230,11 @@ export function useChatSSE({
             try {
                 const data = JSON.parse((event as MessageEvent).data);
                 if (data.turns) setTurnsAndRef(data.turns);
+                if (Object.prototype.hasOwnProperty.call(data, 'botControl')) {
+                    const botControl = readBotControl(data.botControl);
+                    setTask(prev => prev ? { ...prev, botControl } : prev);
+                    setProcessDetails?.(prev => prev ? { ...prev, botControl } : prev);
+                }
                 if (typeof data.sessionTokenLimit === 'number') setSessionTokenLimit(data.sessionTokenLimit);
                 if (typeof data.sessionCurrentTokens === 'number') setSessionCurrentTokens(data.sessionCurrentTokens);
                 if (typeof data.sessionSystemTokens === 'number') setSessionSystemTokens(data.sessionSystemTokens);

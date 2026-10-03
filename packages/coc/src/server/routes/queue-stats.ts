@@ -14,7 +14,7 @@ import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { Route } from '../types';
 import * as url from 'url';
 import * as fs from 'fs';
-import type { QueueStats, ProcessFilter } from '@plusplusoneplusplus/forge';
+import type { QueueStats, ProcessFilter, QueuedTask, PauseMarker } from '@plusplusoneplusplus/forge';
 import {
     serializeTask,
     serializeTaskSummary,
@@ -26,9 +26,20 @@ import {
     type QueueRouteContext,
 } from './queue-shared';
 import { processToHistorySummary, processToTaskDetail } from '../shared/process-history-mapper';
+import { projectBotControl, projectQueueTaskBotControl } from '../processes/bot-control-read-model';
 
 export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext): void {
     const { bridge, store, state } = ctx;
+    async function serializeReadTask(task: QueuedTask, enabled: boolean, detail = false): Promise<Record<string, unknown>> {
+        const serialized = detail ? serializeTask(task) : serializeTaskSummary(task);
+        const botControl = await projectQueueTaskBotControl(task, store, enabled);
+        return botControl ? { ...serialized, botControl } : serialized;
+    }
+    function serializeReadItem(item: QueuedTask | PauseMarker, enabled: boolean): Promise<Record<string, unknown>> {
+        return 'kind' in item
+            ? Promise.resolve(serializeQueueItemSummary(item))
+            : serializeReadTask(item, enabled);
+    }
 
     // ------------------------------------------------------------------
     // GET /api/queue — List all queued tasks
@@ -39,6 +50,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
         handler: async (req, res) => {
             const parsed = url.parse(req.url || '/', true);
             const repoId = getRepoIdentifierFromQuery(parsed.query);
+            const botControlEnabled = ctx.botManagedConversationsEnabled?.() === true;
             const typeFilter = typeof parsed.query.type === 'string' && parsed.query.type
                 ? parsed.query.type
                 : undefined;
@@ -54,8 +66,8 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
                 if (mgr) {
-                    queued = mgr.getQueueItems().map(serializeQueueItemSummary);
-                    running = mgr.getRunning().map(serializeTaskSummary);
+                    queued = await Promise.all(mgr.getQueueItems().map(item => serializeReadItem(item, botControlEnabled)));
+                    running = await Promise.all(mgr.getRunning().map(task => serializeReadTask(task, botControlEnabled)));
                     stats = mgr.getStats();
                     const repoGate = mgr.getRepoGate(repoId);
                     if (repoGate) {
@@ -70,8 +82,8 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                 queued = [];
                 running = [];
                 for (const manager of bridge.registry.getAllQueues().values()) {
-                    queued.push(...manager.getQueueItems().map(serializeQueueItemSummary));
-                    running.push(...manager.getRunning().map(serializeTaskSummary));
+                    queued.push(...await Promise.all(manager.getQueueItems().map(item => serializeReadItem(item, botControlEnabled))));
+                    running.push(...await Promise.all(manager.getRunning().map(task => serializeReadTask(task, botControlEnabled))));
                 }
                 stats = getAggregateStats(bridge, state);
             }
@@ -163,6 +175,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             const typeFilter = typeof parsed.query.type === 'string' && parsed.query.type
                 ? parsed.query.type
                 : undefined;
+            const botControlEnabled = ctx.botManagedConversationsEnabled?.() === true;
 
             if (typeFilter && !VALID_TASK_TYPES.has(typeFilter)) {
                 return sendError(res, 400, `Invalid type filter: ${typeFilter}. Valid types: ${Array.from(VALID_TASK_TYPES).join(', ')}`);
@@ -173,12 +186,12 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             if (repoId) {
                 const mgr = await getManagerByRepoIdentifier(repoId, bridge, store);
                 inMemoryHistory = mgr
-                    ? mgr.getHistory().map(serializeTaskSummary)
+                    ? await Promise.all(mgr.getHistory().map(task => serializeReadTask(task, botControlEnabled)))
                     : [];
             } else {
                 inMemoryHistory = [];
                 for (const m of bridge.registry.getAllQueues().values()) {
-                    inMemoryHistory.push(...m.getHistory().map(serializeTaskSummary));
+                    inMemoryHistory.push(...await Promise.all(m.getHistory().map(task => serializeReadTask(task, botControlEnabled))));
                 }
             }
 
@@ -203,7 +216,7 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
 
                 const processes = await store.getAllProcesses(filter);
                 for (const proc of processes) {
-                    const summary = processToHistorySummary(proc);
+                    const summary = processToHistorySummary(proc, botControlEnabled);
                     if (!seenIds.has(summary.id)) {
                         seenIds.add(summary.id);
                         history.push(summary as unknown as Record<string, unknown>);
@@ -347,8 +360,9 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
             }
 
             const task = bridge.findManagerForTask(id)?.getTask(id);
+            const botControlEnabled = ctx.botManagedConversationsEnabled?.() === true;
             if (task) {
-                return sendJSON(res, 200, { task: serializeTask(task) });
+                return sendJSON(res, 200, { task: await serializeReadTask(task, botControlEnabled, true) });
             }
 
             // Fallback: check process store for completed/historical tasks
@@ -357,7 +371,9 @@ export function registerQueueStatsRoutes(routes: Route[], ctx: QueueRouteContext
                 const proc = await store.getProcess(processId) ?? await store.getProcess(id);
                 if (proc) {
                     const reconstructed = processToTaskDetail(proc);
-                    return sendJSON(res, 200, { task: serializeTask(reconstructed as import('@plusplusoneplusplus/forge').QueuedTask) });
+                    const serialized = serializeTask(reconstructed as QueuedTask);
+                    const botControl = projectBotControl(proc.metadata?.botControl, botControlEnabled);
+                    return sendJSON(res, 200, { task: botControl ? { ...serialized, botControl } : serialized });
                 }
             }
 

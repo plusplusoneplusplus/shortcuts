@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CocClient } from '../../src';
+import { CocClient, type ConversationSnapshotPayload } from '../../src';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
@@ -92,5 +92,26 @@ describe('ProcessSseClient', () => {
     stream.close();
 
     expect(FakeEventSource.instances[0].closed).toBe(true);
+  });
+
+  it('dispatches safe control and explicit release on a clone-qualified conversation snapshot', () => {
+    FakeEventSource.instances = [];
+    const received: unknown[] = [];
+    const client = new CocClient({ baseUrl: 'https://clone.example.test', EventSource: FakeEventSource });
+    const stream = client.processes.stream('topic', {
+      workspaceId: 'ws-remote', onEvent: vi.fn(),
+      onTypedEvent: (type, event) => { if (type === 'conversation-snapshot') received.push(event); },
+    });
+    const source = FakeEventSource.instances[0];
+    const snapshot: ConversationSnapshotPayload = {
+      turns: [],
+      botControl: { state: 'active', source: 'whatsapp', controllerLabel: 'WhatsApp bridge' },
+    };
+    for (const payload of [snapshot, { turns: [], botControl: null }, { turns: [] }]) {
+      source.listeners.get('conversation-snapshot')!({ data: JSON.stringify(payload) } as MessageEvent);
+    }
+    expect(source.url).toBe('https://clone.example.test/api/processes/topic/stream?workspace=ws-remote');
+    expect(received).toEqual([snapshot, { turns: [], botControl: null }, { turns: [] }]);
+    stream.close();
   });
 });

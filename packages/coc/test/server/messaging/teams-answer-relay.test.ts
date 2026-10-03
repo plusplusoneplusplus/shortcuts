@@ -11,6 +11,7 @@ import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-
 import { TeamsMessageNotSentError } from '../../../src/server/messaging/teams-messaging-manager';
 import { getRepoDataPath } from '../../../src/server/paths';
 import { TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
+import { createBotControlMetadata } from '../../../src/server/messaging/bot-control-metadata';
 
 describe('TeamsAnswerRelay new topics', () => {
     let dataDir: string;
@@ -367,19 +368,94 @@ describe('TeamsAnswerRelay new topics', () => {
         const first = { ...message('first'), replyToMessageId: 'command-root' };
         await relay.selectThreadTarget(first, 'workspace-a', null);
         const admitted = await relay.admitThreadNew(first, 'workspace-a', async id => {
-            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued',
+                type: 'chat', payload: { kind: 'chat', workspaceId: 'workspace-a' } } as QueuedTask);
             return id;
         });
         const second = { ...message('second'), replyToMessageId: 'command-root' };
-        const enqueue = vi.fn(async (workspaceId: string, processId: string, requestId: string) => {
+        const enqueue = vi.fn(async (workspaceId: string, processId: string, requestId: string, taskId: string) => {
             expect(workspaceId).toBe('workspace-a');
             expect(processId).toBe(toQueueProcessId(admitted.taskId));
             expect(requestId).toBeTruthy();
-            return 'followup-task';
+            return taskId;
         });
         expect(await relay.admitPendingFollowUp(second, admitted.taskId, enqueue)).toEqual({ duplicate: false });
         expect(await relay.admitPendingFollowUp(second, admitted.taskId, enqueue)).toEqual({ duplicate: true });
         expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    async function pendingOrigin(messageId = 'pending-root', workspaceId = 'workspace-a') {
+        return relay.admitNew(message(messageId), workspaceId, async id => {
+            tasks.set(id, {
+                id, repoId: workspaceId, processId: toQueueProcessId(id), status: 'queued',
+                type: 'chat', payload: { kind: 'chat', workspaceId },
+                botControl: createBotControlMetadata('teams'),
+            } as QueuedTask);
+            return id;
+        });
+    }
+
+    it('deduplicates concurrent pending follow-ups without changing origin control', async () => {
+        const parent = await pendingOrigin();
+        tasks.get(parent.taskId)!.status = 'running';
+        const enqueue = vi.fn(async (_ws: string, _process: string, _request: string, id: string) => id);
+        const results = await Promise.all([
+            relay.admitPendingFollowUp(message('pending-question'), parent.taskId, enqueue),
+            relay.admitPendingFollowUp(message('pending-question'), toQueueProcessId(parent.taskId), enqueue),
+        ]);
+        expect(results).toEqual([{ duplicate: false }, { duplicate: true }]);
+        expect(enqueue).toHaveBeenCalledOnce();
+        expect(tasks.get(parent.taskId)!.botControl).toEqual(createBotControlMetadata('teams'));
+    });
+
+    it.each(['workspace', 'id', 'failed', 'cancelled', 'competing', 'malformed'])(
+        'rejects a process with %s drift appearing during pending admission',
+        async mismatch => {
+            const parent = await pendingOrigin();
+            const processId = toQueueProcessId(parent.taskId);
+            processes.set(processId, {
+                id: mismatch === 'id' ? 'wrong-process' : processId,
+                status: mismatch === 'failed' || mismatch === 'cancelled' ? mismatch : 'running',
+                metadata: {
+                    workspaceId: mismatch === 'workspace' ? 'workspace-b' : 'workspace-a',
+                    botControl: mismatch === 'competing' ? createBotControlMetadata('whatsapp')
+                        : mismatch === 'malformed' ? { source: 'teams' } : createBotControlMetadata('teams'),
+                },
+            });
+            const enqueue = vi.fn();
+            await expect(relay.admitPendingFollowUp(message('pending-question'), parent.taskId, enqueue)).rejects.toThrow();
+            expect(enqueue).not.toHaveBeenCalled();
+        },
+    );
+
+    it('rejects reuse of a pending receipt for another conversation and workspace', async () => {
+        const first = await pendingOrigin('root-a');
+        const second = await pendingOrigin('root-b', 'workspace-b');
+        const enqueue = vi.fn(async (_ws: string, _process: string, _request: string, id: string) => id);
+        await relay.admitPendingFollowUp(message('shared-delivery'), first.taskId, enqueue);
+        await expect(relay.admitPendingFollowUp(message('shared-delivery'), second.taskId, enqueue))
+            .rejects.toThrow('binding identity mismatch');
+        expect(enqueue).toHaveBeenCalledOnce();
+    });
+
+    it('rejects an inbound channel outside the live target', async () => {
+        const parent = await pendingOrigin();
+        const enqueue = vi.fn();
+        await expect(relay.admitPendingFollowUp(
+            { ...message('pending-question'), channelId: 'other-channel' }, parent.taskId, enqueue,
+        )).rejects.toThrow('Teams topic is unavailable');
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('removes a rejected reserved pending receipt when a callback returns an unrelated ID', async () => {
+        const parent = await pendingOrigin();
+        await expect(relay.admitPendingFollowUp(message('pending-question'), parent.taskId, async () => 'wrong-task'))
+            .rejects.toThrow('different task ID');
+        expect(relay.hasInbound(message('pending-question'))).toBe(false);
+        expect(relay.hasInbound(message('pending-root'))).toBe(true);
+        const enqueue = vi.fn(async (_ws: string, _process: string, _request: string, id: string) => id);
+        await expect(relay.admitPendingFollowUp(message('pending-question'), parent.taskId, enqueue))
+            .resolves.toEqual({ duplicate: false });
     });
 
     it('acknowledges before sending the saved assistant turn and deduplicates inbound polling', async () => {
@@ -513,14 +589,15 @@ describe('TeamsAnswerRelay new topics', () => {
 
     it('retains a per-root reply cursor after a follow-up receipt is compacted', async () => {
         const root = await relay.admitNew(message('root-cursor'), 'workspace-a', async id => {
-            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued',
+                type: 'chat', payload: { kind: 'chat', workspaceId: 'workspace-a' } } as QueuedTask);
             return id;
         });
         const reply = {
             ...message('reply-cursor'), replyToMessageId: 'root-cursor',
             createdDateTime: '2026-01-01T00:00:00Z',
         };
-        await relay.admitPendingFollowUp(reply, root.taskId, async () => 'followup-task');
+        await relay.admitPendingFollowUp(reply, root.taskId, async (_ws, _process, _request, id) => id);
         relay.recordSeenReply('team-1', reply);
         expect(relay.hasSeenReply('team-1', reply)).toBe(true);
         expect(relay.hasSeenReply('team-1', {
@@ -795,7 +872,7 @@ describe('TeamsAnswerRelay new topics', () => {
         restored.dispose();
     });
 
-    it('quarantines a corrupt receipt without sending or rerouting its answer', async () => {
+    it('propagates a corrupt receipt without sending or rerouting its answer', async () => {
         const id = (await relay.admitNew(message('corrupt-receipt'), 'workspace-a', async taskId => {
             tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
             return taskId;
@@ -808,7 +885,7 @@ describe('TeamsAnswerRelay new topics', () => {
             dataDir, store, queue, isEnabled: () => enabled,
             target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
         });
-        await restored.restore();
+        await expect(restored.restore()).rejects.toThrow('Invalid Teams answer binding');
         expect(send).not.toHaveBeenCalled();
         restored.dispose();
     });

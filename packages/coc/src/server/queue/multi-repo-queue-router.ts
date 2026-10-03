@@ -721,6 +721,11 @@ export class MultiRepoQueueRouter extends EventEmitter {
                 return undefined;
             },
             updateTask: (id: string, updates: any): boolean => findManagerForTask(id)?.updateTask(id, updates) ?? false,
+            replaceBotControl: (...args: Parameters<TaskQueueManager['replaceBotControl']>): void => {
+                const manager = findManagerForTask(args[0]);
+                if (!manager) throw new Error('Bot control queue task is unavailable');
+                manager.replaceBotControl(...args);
+            },
             getStats: aggregateStats,
             cancelTask: (id: string): boolean => {
                 // Route through QueueExecutor so both cancelledTasks sets are updated

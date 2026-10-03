@@ -16,6 +16,7 @@ import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/se
 import { getRepoDataPath } from '../../../src/server/paths';
 import { acquireMcpOAuthToken, McpClient, TeamsBot, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
+import { TeamsBindingReleaseError, type TeamsAnswerRelay } from '../../../src/server/messaging/teams-answer-relay';
 
 // Mock the teams-bot package
 vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => ({
@@ -358,6 +359,33 @@ describe('TeamsMessagingManager', () => {
         expect(m2.getStatus().error).toBe('Polling unavailable');
         botOptions?.onStatusChange?.('connected');
         expect(m2.getStatus().error).toBeNull();
+    });
+
+    it.each([true, false])('keeps a connected bot only for typed binding reconciliation failures (%s)', async typed => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'release-home') });
+        m2.setMessageHandler(async () => {});
+        const error = typed ? new TeamsBindingReleaseError([
+            { workspaceId: 'ws-a', processId: 'queue_origin', error: new Error('release persistence rejected') },
+        ]) : new Error('Invalid Teams answer binding');
+        m2.setAnswerRelay({
+            reconnected: vi.fn().mockRejectedValue(error), dispose: vi.fn(),
+        } as unknown as TeamsAnswerRelay);
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            await m2.configureServer('https://example.test/teams');
+            await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+            if (typed) {
+                await expect(m2.connect()).resolves.toBeUndefined();
+                expect(m2.getStatus().status).toBe('connected');
+                expect(log).toHaveBeenCalledWith('[teams-answer-relay] Binding release reconciliation failed');
+            } else {
+                await expect(m2.connect()).rejects.toBe(error);
+                expect(m2.getStatus().status).toBe('error');
+            }
+        } finally {
+            m2.dispose();
+            log.mockRestore();
+        }
     });
 
     it('prefixes command, status, error, and every formatted relay part at the channel send boundary', async () => {
@@ -934,7 +962,7 @@ describe('Teams messaging routes (integration)', () => {
             getWorkspaces: vi.fn().mockResolvedValue([{ id: 'workspace-a', name: 'A', rootPath: dir }]),
             getProcess: vi.fn().mockResolvedValue(undefined),
         } as unknown as ProcessStore;
-        const enqueueFollowUp = vi.fn().mockResolvedValue('follow-up-task');
+        const enqueueFollowUp = vi.fn(async (_ws, _process, _text, _request, _mode, taskId) => taskId);
         const questionRelay = {
             register: vi.fn(),
             tryAnswer: vi.fn().mockResolvedValue(false),
@@ -948,6 +976,7 @@ describe('Teams messaging routes (integration)', () => {
                 enqueueRelayChat: async (workspaceId, _text, taskId) => {
                     tasks.set(taskId, {
                         id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
+                        type: 'chat', payload: { kind: 'chat', workspaceId },
                     } as QueuedTask);
                     return taskId;
                 },

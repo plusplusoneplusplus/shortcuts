@@ -504,6 +504,40 @@ afterEach(() => {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe('ChatDetail', () => {
+    it('keeps remote bot presentation on its exact owner despite colliding local process IDs', async () => {
+        const baseUrl = 'https://clone.example.test';
+        registerCloneBaseUrls([{ workspaceId: 'ws-remote', baseUrl }]);
+        const botControl = { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' };
+        setupStandardFetch(makeTask(), makeProcess({ botControl }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-remote" /></Wrap>);
+        await waitFor(() => expect(screen.getByRole('img', { name: 'Bot-managed \u00b7 Teams' })).toBeTruthy());
+        const message = { type: 'process-updated', process: { id: 'proc-1', workspaceId: 'ws-remote' } };
+        act(() => window.dispatchEvent(new CustomEvent('coc-local-ws-message', { detail: message })));
+        act(() => window.dispatchEvent(new CustomEvent('coc-remote-ws-message', {
+            detail: { baseUrl: 'https://other.example.test', message },
+        })));
+        expect(screen.getByTestId('bot-management-badge')).toBeTruthy();
+        act(() => window.dispatchEvent(new CustomEvent('coc-remote-ws-message', { detail: { baseUrl, message } })));
+        expect(screen.queryByTestId('bot-management-badge')).toBeNull();
+        expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith(`${baseUrl}/api/processes/`))).toBe(true);
+    });
+
+    it.each(['teams', 'whatsapp'] as const)('shows persisted %s management and clears a live release without a reload', async source => {
+        const sourceLabel = source === 'teams' ? 'Teams' : 'WhatsApp';
+        const botControl = { state: 'active', source, controllerLabel: `${sourceLabel} bridge` };
+        setupStandardFetch(makeTask(), makeProcess({ botControl }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+        await waitFor(() => expect(screen.getByRole('img', { name: `Bot-managed \u00b7 ${sourceLabel}` })).toBeTruthy());
+        act(() => window.dispatchEvent(new CustomEvent('coc-local-ws-message', {
+            detail: { type: 'process-updated', process: { id: 'proc-1', workspaceId: 'ws-other' } },
+        })));
+        expect(screen.getByTestId('bot-management-badge')).toBeTruthy();
+        act(() => window.dispatchEvent(new CustomEvent('coc-local-ws-message', {
+            detail: { type: 'process-updated', process: { id: 'proc-1', workspaceId: 'ws-1' } },
+        })));
+        expect(screen.queryByTestId('bot-management-badge')).toBeNull();
+    });
+
     // ── Rendering ──────────────────────────────────────────────────────────
 
     describe('rendering', () => {

@@ -493,6 +493,7 @@ export function ReposProvider({ children }: { children: ReactNode }) {
     // WebSocket: update process state in memory; reserve repository discovery for
     // topology changes and reconnect recovery. Git mutations refresh one workspace.
     const { connect, disconnect } = useWebSocket({
+        broadcastProcessUpdates: true,
         onMessage: useCallback((msg: any) => {
             if (msg.type === 'workflows-changed' && msg.workspaceId) {
                 refreshPipelinesForWorkspace(msg.workspaceId);

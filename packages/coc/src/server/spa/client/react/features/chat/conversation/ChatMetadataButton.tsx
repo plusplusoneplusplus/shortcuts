@@ -9,6 +9,7 @@
 
 import { useBreakpoint } from '../../../hooks/ui/useBreakpoint';
 import { ConversationMetadataPopover, type MetaRow } from './ConversationMetadataPopover';
+import { readBotControl } from '../../../utils/botControl';
 
 /**
  * Everything the "i" button needs about a conversation. `ChatDetail` owns the
@@ -56,10 +57,7 @@ export function ChatMetadataButton({
 }: ChatMetadataButtonProps) {
     const { isMobile } = useBreakpoint();
 
-    // Nothing to show before the conversation exists: a queued chat has no
-    // process record worth reading, and without a merged process there are no
-    // rows at all.
-    if (isPending || !metadataProcess) return null;
+    if (!metadataProcess || (isPending && !readBotControl(metadataProcess.botControl))) return null;
 
     return (
         <ConversationMetadataPopover

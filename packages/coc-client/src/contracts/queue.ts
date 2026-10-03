@@ -1,4 +1,5 @@
 import type { JsonObject, ReasoningEffort } from './common';
+import type { BotControlPresentation } from './processes';
 
 export type TaskPriority = 'low' | 'normal' | 'high' | string;
 export type QueueStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | string;
@@ -58,6 +59,7 @@ export interface QueuedTask {
   frozen?: boolean;
   /** Epoch ms when a timed freeze lapses. Absent on an indefinite freeze. */
   frozenUntil?: number;
+  botControl?: BotControlPresentation;
   [key: string]: unknown;
 }
 

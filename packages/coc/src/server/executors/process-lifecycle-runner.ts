@@ -86,6 +86,8 @@ import { EMPTY_EXECUTOR_RUNTIME } from './executor-runtime-contracts';
 import type { LifecycleRuntime } from './executor-runtime-contracts';
 import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/for-each-generation-metadata';
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
+import { validateBotControlMetadata } from '../messaging/bot-control-metadata';
+import { processOperationAdmission } from '../processes/process-operation-admission';
 
 // ============================================================================
 // Constants
@@ -621,6 +623,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
 
         // New task: create a process entry
         const processId = toQueueProcessId(task.id);
+        const botControl = task.botControl === undefined ? undefined : validateBotControlMetadata(task.botControl);
+        if (botControl && (!isChatPayload(task.payload) || !task.repoId
+            || task.payload.workspaceId !== task.repoId)) {
+            throw new Error('Bot-controlled task requires a matching chat workspace');
+        }
         const rawPrompt = applySkillContent(extractPrompt(task), task);
         const payload = task.payload as any;
         // Style selected for this brand-new conversation. `undefined` means the
@@ -718,6 +725,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             metadata: {
                 type: task.type,
                 queueTaskId: task.id,
+                ...(botControl ? { botControl } : {}),
                 priority: task.priority,
                 model: processModel,
                 reasoningEffort: task.config.reasoningEffort,
@@ -829,13 +837,25 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             process.conversationTurns = initialTurns;
         }
 
-        try {
-            await this.store.addProcess(process);
-        } catch (err) {
-            logger.warn(LogCategory.AI, `[QueueExecutor] Failed to register process ${processId} in store: ${err instanceof Error ? err.message : String(err)}`);
-        }
-
-        task.processId = processId;
+        await processOperationAdmission.runExclusive(processId, async () => {
+            // A binding can release queued authority while prompt preparation is in flight.
+            const currentControl = task.botControl === undefined ? undefined : validateBotControlMetadata(task.botControl);
+            if (currentControl && (!isChatPayload(task.payload) || !task.repoId
+                || task.payload.workspaceId !== task.repoId)) {
+                throw new Error('Bot-controlled task requires a matching chat workspace');
+            }
+            if (process.metadata) {
+                delete process.metadata.botControl;
+                if (currentControl) process.metadata.botControl = currentControl;
+            }
+            try {
+                await this.store.addProcess(process);
+            } catch (err) {
+                logger.warn(LogCategory.AI, `[QueueExecutor] Failed to register process ${processId} in store: ${err instanceof Error ? err.message : String(err)}`);
+                if (botControl || currentControl) throw err;
+            }
+            task.processId = processId;
+        });
 
         // Tracks whether the assistant conversation turn has been persisted
         // (either via the success path or the error/timeout recovery path).

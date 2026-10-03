@@ -32,6 +32,7 @@ export function registerQueueRoutes(
         dataDir?: string;
         cancelSentinelCron?: (processId: string) => void;
         validateProvider?: (provider: ChatProvider) => Promise<void>;
+        botManagedConversationsEnabled?: () => boolean;
         /**
          * Shared global queue state. When supplied (by the route layer), the HTTP
          * enqueue path and any in-process enqueue capability (e.g. the
@@ -60,6 +61,7 @@ export function registerQueueRoutes(
         getEffortTiersForProvider: options.getEffortTiersForProvider,
         cancelSentinelCron: options.cancelSentinelCron,
         validateProvider: options.validateProvider,
+        botManagedConversationsEnabled: options.botManagedConversationsEnabled,
     };
     registerQueueEnqueueRoutes(routes, ctx);
     registerQueueStatsRoutes(routes, ctx);

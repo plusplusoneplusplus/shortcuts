@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CocClient } from '../../src';
+import { CocClient, type ProcessEvent } from '../../src';
 
 class FakeWebSocket {
   static CONNECTING = 0;
@@ -82,6 +82,26 @@ describe('EventsClient WebSocket', () => {
     vi.advanceTimersByTime(10_000);
 
     expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it('retains safe bot control on remote process and queue events, including release', () => {
+    const received: ProcessEvent[] = [];
+    const client = new CocClient({ baseUrl: 'https://clone.example.test', WebSocket: FakeWebSocket });
+    const conn = client.events.connect({ workspaceId: 'ws-remote', onMessage: event => received.push(event) });
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    const botControl = { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' } as const;
+    socket.message({ type: 'process-added', process: { id: 'topic', botControl } });
+    socket.message({ type: 'queue-updated', queue: {
+      queued: [{ id: 'origin', botControl }], running: [],
+      stats: { queued: 1, running: 0, total: 1, isPaused: false, isDraining: false },
+    } });
+    socket.message({ type: 'process-updated', process: { id: 'topic' } });
+    expect(socket.url).toBe('wss://clone.example.test/ws?workspaceId=ws-remote');
+    expect(received[0].process?.botControl).toEqual(botControl);
+    expect(received[1].queue?.queued[0].botControl).toEqual(botControl);
+    expect(received[2].process).not.toHaveProperty('botControl');
+    conn.close();
   });
 
   it('reconnects with increasing delay and pings only while open', () => {

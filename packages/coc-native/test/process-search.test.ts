@@ -40,7 +40,9 @@ describe('typed async process search', () => {
                 }],
             });
             db.pragma('user_version = 39');
-            await expect(db.searchConversations('native')).rejects.toThrow('unsupported process database user_version: 39');
+            expect((await db.searchConversations('native')).total).toBe(1);
+            db.pragma('user_version = 40');
+            await expect(db.searchConversations('native')).rejects.toThrow('unsupported process database user_version: 40');
         } finally {
             db.close();
         }

@@ -17,6 +17,7 @@ import type { ClientConversationTurn } from '../../types/dashboard';
 import { CronBadge } from './CronBadge';
 import { ProviderBadge, getTaskProviderBadgeProvider } from './ProviderBadge';
 import { isCronEnabled } from '../../utils/config';
+import { BotManagementBadge } from './BotManagementBadge';
 
 /**
  * Shared icon-button class for the right-side chat header actions.
@@ -547,6 +548,7 @@ export function ChatHeader({
                 {providerBadgeProvider && (
                     <ProviderBadge provider={providerBadgeProvider} />
                 )}
+                <BotManagementBadge control={metadataProcess?.botControl} compact={!isWide} />
                 {/* References — only in wide tier (live ctx + duration moved into pill / composer) */}
                 {isWide && (
                     <ReferencesDropdown planPath={planPath} files={createdFiles} wsId={wsId} />

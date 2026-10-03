@@ -6,6 +6,8 @@
  */
 
 import type { AIProcess } from '@plusplusoneplusplus/forge';
+import type { BotControlPresentation } from '@plusplusoneplusplus/coc-client';
+import { projectBotControl } from '../processes/bot-control-read-model';
 import { isTaskGroupRef, type ForEachContext, type MapReduceContext, type TaskGroupRef } from '../tasks/task-types';
 
 export interface ProcessHistoryItem {
@@ -70,11 +72,13 @@ export interface ProcessHistoryItem {
     mapReduce?: MapReduceContext;
     /** Generic task-group membership tag forwarded from proc.metadata.taskGroup. */
     taskGroup?: TaskGroupRef;
+    botControl?: BotControlPresentation;
 }
 
 export function toProcessHistoryItem(
     proc: AIProcess,
     seenAt?: string,
+    botControlEnabled = false,
 ): ProcessHistoryItem {
     const startTime = new Date(proc.startTime).getTime();
     const endTime = proc.endTime ? new Date(proc.endTime).getTime() : undefined;
@@ -91,9 +95,11 @@ export function toProcessHistoryItem(
         ? new Date(lastTurn.timestamp).getTime()
         : undefined;
     const lastActivityAt = lastTurnMs ?? lastEventMs ?? endTime;
+    const botControl = projectBotControl(proc.metadata?.botControl, botControlEnabled);
 
     return {
         id: proc.id,
+        ...(botControl ? { botControl } : {}),
         type: proc.type,
         status: proc.status,
         title: proc.title || proc.promptPreview || proc.id,

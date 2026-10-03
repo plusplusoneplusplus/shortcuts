@@ -214,6 +214,32 @@ describe('RuntimeConfigService', () => {
             expect(runtimeFlag()).toBe(true);
         });
 
+        it('persists the default-off bot identification gate and exposes live owning-server state', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.botManagedConversationsEnabled;
+            expect(runtimeFlag()).toBe(false);
+            expect(svc.sources['features.botManagedConversations']).toBe('default');
+
+            const enabled = await svc.updateConfig({ 'features.botManagedConversations': true });
+            expect(enabled.effects).toEqual([{
+                field: 'features.botManagedConversations', runtime: 'live', requiresRestart: false,
+            }]);
+            expect(runtimeFlag()).toBe(true);
+            expect(enabled.sources['features.botManagedConversations']).toBe('file');
+            expect(new RuntimeConfigService({ configPath }).config.features.botManagedConversations).toBe(true);
+            expect(new RuntimeConfigService({ fileConfig: {} }).config.features.botManagedConversations).toBe(false);
+
+            const saved = fs.readFileSync(configPath, 'utf-8');
+            await expect(svc.updateConfig({ 'features.botManagedConversations': 'yes' })).rejects.toThrow();
+            expect(fs.readFileSync(configPath, 'utf-8')).toBe(saved);
+            expect(svc.revision).toBe(1);
+            expect(runtimeFlag()).toBe(true);
+
+            await svc.updateConfig({ 'features.botManagedConversations': false });
+            expect(runtimeFlag()).toBe(false);
+            expect(new RuntimeConfigService({ configPath }).config.features.botManagedConversations).toBe(false);
+        });
+
         it('applies Teams message reaction updates to the live runtime snapshot', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.teamsMessageReactionEnabled;
