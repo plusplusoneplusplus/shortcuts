@@ -60,20 +60,6 @@ export interface VisibleSubTabOptions {
     showPlanDepTab: boolean;
     uiLayoutMode: 'classic' | 'dev-workflow';
     /**
-     * When true (feature flag `splitWorkspacePanel`, default on), the split
-     * "Workspace" view takes over the chat slot: the standalone `git`,
-     * `terminal`, and `explorer` sub-tabs are hidden — git's diff/stage/commit
-     * functionality now lives inside the split panel, and Terminal/Explorer move
-     * into the workspace right dock (segmented Terminal|Explorer) — and the chat
-     * tab is relabeled "Workspace". The tab *key* (`activity`/`chats`) is
-     * unchanged so mount/selection logic is unaffected — only the label and the
-     * git/terminal/explorer visibility change. Optional — and defaulted to
-     * false below — so the remote-shell callers, which don't host the split
-     * panel or dock, keep today's behavior; real callers pass the flag, which
-     * is on by default.
-     */
-    splitWorkspacePanelEnabled?: boolean;
-    /**
      * When true (feature flag `schedulesInScheduledSlide`, default off), the
      * standalone `schedules` sub-tab is hidden. Schedule management moves into
      * the chat-list "Scheduled" slide + main pane (AC-01/02/03), so keeping the
@@ -100,7 +86,6 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     const {
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
         pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
-        splitWorkspacePanelEnabled = false,
         schedulesInScheduledSlideEnabled = false,
     } = opts;
 
@@ -149,18 +134,11 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
         tabs = ordered;
     }
 
-    // Split "Workspace" panel (feature flag). Applied last so it overrides the
-    // per-layout labeling in either mode. Hide the standalone `git`, `terminal`,
-    // and `explorer` sub-tabs — git's functionality moves into the split panel,
-    // and Terminal/Explorer move into the workspace right dock — and relabel the
-    // chat tab (key `activity` in classic, `chats` in dev-workflow) to
-    // "Workspace". The key is left untouched so mount/selection/pinned-tab logic
-    // is unaffected.
-    if (splitWorkspacePanelEnabled) {
-        tabs = tabs
-            .filter(t => t.key !== 'git' && t.key !== 'terminal' && t.key !== 'explorer')
-            .map(t => (t.key === 'activity' || t.key === 'chats') ? { ...t, label: 'Workspace' } : t);
-    }
+    // Workspace owns Git; the desktop right panel owns Terminal and Explorer.
+    // Preserve the chat aliases while giving the shared surface one label.
+    tabs = tabs
+        .filter(t => t.key !== 'git' && t.key !== 'terminal' && t.key !== 'explorer')
+        .map(t => (t.key === 'activity' || t.key === 'chats') ? { ...t, label: 'Workspace' } : t);
 
     return tabs;
 }

@@ -13,7 +13,6 @@ let mockQueueState: any = { repoQueueMap: {} };
 let mockQueueStats: any = { running: 0, queued: 0 };
 let mockGitInfo: any = { ahead: 0, behind: 0 };
 let mockUnseenCounts: Record<string, number> = {};
-let mockSplitWorkspacePanelEnabled = false;
 let mockSchedulesInScheduledSlideEnabled = false;
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -34,7 +33,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/usePullRequ
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEnabled', () => ({ useDreamsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useNativeCliSessionsEnabled', () => ({ useNativeCliSessionsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({ useShowPlanDepTab: () => true }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({ useSplitWorkspacePanelEnabled: () => mockSplitWorkspacePanelEnabled }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({ useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled }));
 vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({ useUiLayoutMode: () => ['dev-workflow', vi.fn()] }));
 vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({ useRepoQueueStats: () => mockQueueStats, isHidden: () => false }));
@@ -65,7 +63,7 @@ beforeEach(() => {
     mockQueueStats = { running: 0, queued: 0 };
     mockGitInfo = { ahead: 0, behind: 0 };
     mockUnseenCounts = {};
-    mockSplitWorkspacePanelEnabled = false;
+
     mockSchedulesInScheduledSlideEnabled = false;
 });
 
@@ -75,8 +73,8 @@ describe('WorkspaceTabsCluster', () => {
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
         const cloneTabs = screen.getAllByTestId('clone-scope-tab').map(el => el.getAttribute('data-subtab'));
-        expect(cloneTabs).toContain('git');
-        expect(cloneTabs).toContain('terminal');
+        expect(cloneTabs).not.toContain('git');
+        expect(cloneTabs).not.toContain('terminal');
         expect(cloneTabs).not.toContain('work-items');
         expect(cloneTabs).not.toContain('pull-requests');
     });
@@ -96,9 +94,9 @@ describe('WorkspaceTabsCluster', () => {
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
-        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'git')!;
+        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'notes')!;
         fireEvent.click(git);
-        expect(mockSwitchSubTab).toHaveBeenCalledWith('git');
+        expect(mockSwitchSubTab).toHaveBeenCalledWith('notes');
     });
 
     it('keeps a remote clone key when switching its sub-tab', () => {
@@ -113,26 +111,26 @@ describe('WorkspaceTabsCluster', () => {
         render(<WorkspaceTabsCluster repo={remote as any} repos={[remote] as any} />);
 
         const explorer = screen.getAllByTestId('clone-scope-tab')
-            .find(el => el.getAttribute('data-subtab') === 'explorer')!;
+            .find(el => el.getAttribute('data-subtab') === 'settings')!;
         fireEvent.click(explorer);
 
-        expect(mockSelectClone).toHaveBeenCalledWith('remote:server-1:shared', 'explorer');
+        expect(mockSelectClone).toHaveBeenCalledWith('remote:server-1:shared', 'settings');
         expect(mockSwitchSubTab).not.toHaveBeenCalled();
     });
 
     it('highlights the active clone sub-tab on the repos tab', () => {
-        mockAppState = { activeTab: 'repos', activeRepoSubTab: 'git' };
+        mockAppState = { activeTab: 'repos', activeRepoSubTab: 'notes' };
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
-        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'git')!;
+        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'notes')!;
         expect(git.getAttribute('data-active')).toBe('true');
     });
 
     it('does not highlight any sub-tab off the repos tab (e.g. Admin)', () => {
         // The header still renders on the top-level pages, but no workspace sub-tab
         // is being viewed there — so none should show as active.
-        mockAppState = { activeTab: 'admin', activeRepoSubTab: 'git' };
+        mockAppState = { activeTab: 'admin', activeRepoSubTab: 'notes' };
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
@@ -158,7 +156,6 @@ describe('WorkspaceTabsCluster', () => {
     });
 
     it('hides the standalone git tab when split workspace panel is enabled', () => {
-        mockSplitWorkspacePanelEnabled = true;
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 

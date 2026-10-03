@@ -28,7 +28,6 @@ let mockRepos: any[] = [];
 let mockRemoteShell = true;
 let mockMyWorkEnabled = false;
 let mockMyLifeEnabled = false;
-let mockSplitPanel = false;
 let mockIsMobile = false;
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -72,9 +71,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEn
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
     useMyLifeEnabled: () => mockMyLifeEnabled,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanel,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
         breakpoint: mockIsMobile ? 'mobile' : 'desktop',
@@ -97,7 +93,7 @@ beforeEach(() => {
     mockRemoteShell = true;
     mockMyWorkEnabled = false;
     mockMyLifeEnabled = false;
-    mockSplitPanel = false;
+
     mockIsMobile = false;
     localStorage.clear();
     mockAppState = {
@@ -244,7 +240,6 @@ describe('TopBar remote-shell header', () => {
 
 describe('TopBar remote-shell — workspace dock toggle', () => {
     it('renders one right-panel toggle immediately after + New when splitWorkspacePanel is on', () => {
-        mockSplitPanel = true;
         render(<TopBar />);
 
         const actions = screen.getByTestId('topbar-actions');
@@ -257,7 +252,6 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
     });
 
     it('opens and closes the panel for the active clone', () => {
-        mockSplitPanel = true;
         render(<TopBar />);
 
         fireEvent.click(screen.getByRole('button', { name: 'Show right panel' }));
@@ -268,15 +262,7 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
         expect(localStorage.getItem('split-workspace:a:dock-open')).toBe('0');
     });
 
-    it('hides the dock toggle when splitWorkspacePanel is off', () => {
-        mockSplitPanel = false;
-        render(<TopBar />);
-        expect(screen.getByTestId('header-new-btn')).toBeTruthy();
-        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
-    });
-
     it('hides the dock toggle outside the remote-first shell', () => {
-        mockSplitPanel = true;
         mockRemoteShell = false;
         render(<TopBar />);
         // No remote header → no + New and no dock toggle in the TopBar (the classic

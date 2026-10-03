@@ -24,7 +24,6 @@ const mockQueueDispatch = vi.fn();
 let mockAppState: any = {};
 let mockQueueMap: Record<string, { running: any[]; queued: any[] }> = {};
 let mockRemoteShellEnabled = false;
-let mockSplitPanelEnabled = true;
 const mockGetRepoGroup = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -47,9 +46,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteSh
 }));
 vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
     StatusActions: ({ variant }: { variant: string }) => <div data-testid="stub-status-actions" data-variant={variant} />,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanelEnabled,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
@@ -147,7 +143,6 @@ beforeEach(() => {
         name: 'AI Repos',
         members: [{ workspaceId: 'r1', stale: false, name: 'shortcuts', rootPath: '/r/r1' }],
     });
-    mockSplitPanelEnabled = true;
     mockAppState = {
         activeRepoSubTab: 'chats',
         selectedNotePath: null,
@@ -313,13 +308,5 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         click('stub-chat-row');
         expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
         expect(screen.getByTestId('unified-git-tab').querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
-    });
-
-    it('keeps the plain chat tab when the flag is off', () => {
-        mockSplitPanelEnabled = false;
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('split-workspace-panel')).toBeNull();
-        expect(screen.getByTestId('stub-chat-tab').dataset.layout).toBe('');
-        expect(screen.getByTestId('repo-group-tab-git')).toBeTruthy();
     });
 });

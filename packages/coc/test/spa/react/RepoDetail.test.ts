@@ -108,7 +108,7 @@ describe('RepoDetail Dreams tab feature gating', () => {
     });
 
     it('visibleSubTabs depends on dreamsEnabled', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode, splitWorkspacePanelEnabled, schedulesInScheduledSlideEnabled]');
+        expect(REPO_DETAIL_SOURCE).toContain('[isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode, schedulesInScheduledSlideEnabled]');
     });
 
     it('redirects away from dreams when the feature is disabled (via the visibility guard)', () => {
@@ -127,11 +127,11 @@ describe('RepoDetail Dreams tab feature gating', () => {
 
 describe('RepoDetail Activity tab rendering', () => {
     it('classic-mode chat wrapper renders RepoChatTab keyed for activity', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}-activity`}');
+        expect(REPO_DETAIL_SOURCE).toContain('key={`${ws.id}-split-chat`}');
     });
 
     it('dev-workflow chat wrapper renders RepoChatTab with mode="chats"', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}-chats`}');
+        expect(REPO_DETAIL_SOURCE).toContain('key={`${ws.id}-split-chat`}');
     });
 
     /**
@@ -143,19 +143,19 @@ describe('RepoDetail Activity tab rendering', () => {
      */
     it('classic-mode chat wrapper accepts both activity and chats keys', () => {
         // Anchor on the `RepoChatTab key=...-activity` line and inspect the preceding wrapper.
-        const anchor = REPO_DETAIL_SOURCE.indexOf('<RepoChatTab key={`${ws.id}-activity`}');
+        const anchor = REPO_DETAIL_SOURCE.indexOf('key={`${ws.id}-split-chat`}');
         expect(anchor).toBeGreaterThan(-1);
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, anchor - 600), anchor);
-        expect(block).toContain("uiLayoutMode === 'classic'");
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, anchor - 1800), anchor);
+
         expect(block).toMatch(/activeSubTab === 'activity'.*\|\|.*activeSubTab === 'chats'/s);
     });
 
     it('dev-workflow chat wrapper accepts both chats and activity keys', () => {
-        const anchor = REPO_DETAIL_SOURCE.indexOf('<RepoChatTab key={`${ws.id}-chats`}');
+        const anchor = REPO_DETAIL_SOURCE.indexOf('key={`${ws.id}-split-chat`}');
         expect(anchor).toBeGreaterThan(-1);
-        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, anchor - 600), anchor);
-        expect(block).toContain("uiLayoutMode === 'dev-workflow'");
-        expect(block).toMatch(/activeSubTab === 'chats'.*\|\|.*activeSubTab === 'activity'/s);
+        const block = REPO_DETAIL_SOURCE.substring(Math.max(0, anchor - 1800), anchor);
+
+        expect(block).toMatch(/activeSubTab === 'activity'.*\|\|.*activeSubTab === 'chats'/s);
     });
 
     it('activity sub-tab uses overflow-hidden layout', () => {
@@ -399,7 +399,7 @@ describe('RepoDetail Git tab wiring', () => {
     });
 
     it('renders RepoGitTab when activeSubTab is git', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("activeSubTab === 'git'");
+        expect(REPO_DETAIL_SOURCE).toContain("gitList={isGitRepo ? (");
         expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab');
     });
 
@@ -408,7 +408,7 @@ describe('RepoDetail Git tab wiring', () => {
     });
 
     it('mounts a fresh RepoGitTab on every repo switch via key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
+        expect(REPO_DETAIL_SOURCE).toContain('key={`${ws.id}-split-git`}');
     });
 
     it('mounts a fresh RepoChatTab on every repo switch via key containing ws.id', () => {
@@ -785,14 +785,6 @@ describe('RepoDetail dev-workflow tab relabeling and reorder', () => {
 describe('RepoDetail split-workspace panel wiring', () => {
     it('imports SplitWorkspacePanel and the flag hook', () => {
         expect(REPO_DETAIL_SOURCE).toContain("import { SplitWorkspacePanel } from './SplitWorkspacePanel'");
-        expect(REPO_DETAIL_SOURCE).toContain("import { useSplitWorkspacePanelEnabled } from '../../hooks/feature-flags/useSplitWorkspacePanelEnabled'");
-    });
-
-    it('reads the flag via the hook and feeds it into computeVisibleSubTabs (AC-02)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();');
-        // Passed as an opt so git is hidden + chat relabeled "Workspace" when on.
-        const memoCall = REPO_DETAIL_SOURCE.split('computeVisibleSubTabs({')[1]?.split('})')[0] ?? '';
-        expect(memoCall).toContain('splitWorkspacePanelEnabled');
     });
 
     it('owns last-clicked state (default chat) and a state-backed detail node (AC-04)', () => {
@@ -802,7 +794,7 @@ describe('RepoDetail split-workspace panel wiring', () => {
     });
 
     it('mounts SplitWorkspacePanel only when the flag is on (AC-02 mount half)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('{splitWorkspacePanelEnabled && (');
+        expect(REPO_DETAIL_SOURCE).not.toContain('splitWorkspacePanelEnabled');
         expect(REPO_DETAIL_SOURCE).toContain('<SplitWorkspacePanel');
     });
 
@@ -867,14 +859,9 @@ describe('RepoDetail split-workspace panel wiring', () => {
         expect(block).toContain('restoreView={splitGitPanel.restoreView}');
     });
 
-    it('off-path is a strict no-op: standalone chat blocks are gated by !flag (AC-01)', () => {
-        expect(REPO_DETAIL_SOURCE).toContain("!splitWorkspacePanelEnabled && uiLayoutMode === 'classic'");
-        expect(REPO_DETAIL_SOURCE).toContain("!splitWorkspacePanelEnabled && uiLayoutMode === 'dev-workflow'");
-    });
-
     it('suppresses the standalone git block when the flag is on (AC-02/05)', () => {
         // The always-mounted standalone git tab is gated on !flag so git is not
         // double-mounted (it now lives inside the split panel).
-        expect(REPO_DETAIL_SOURCE).toContain('{!splitWorkspacePanelEnabled && isGitRepo && <div');
+        expect(REPO_DETAIL_SOURCE).not.toContain("wasVisited('git')");
     });
 });

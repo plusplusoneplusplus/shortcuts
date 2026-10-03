@@ -396,7 +396,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(9);
+        expect([...tabs].map(tab => tab.getAttribute('data-subtab'))).not.toEqual(expect.arrayContaining(['git', 'terminal', 'explorer']));
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');

@@ -1,20 +1,4 @@
-/**
- * Regression guard for the E2E server's boot config.
- *
- * The Playwright suite is written against the classic repo shell. When
- * `features.remoteShell` / `features.splitWorkspacePanel` graduated to
- * default-on, the E2E server — which resolves its config through the normal
- * merge-with-DEFAULT_CONFIG path — started booting the SPA into the new shell,
- * hiding the standalone Git sub-tab, moving the status cluster, and reshaping
- * navigation. Shared helpers (navigateToGitTab, the ws-status-indicator wait,
- * etc.) then hung until every affected test timed out, blowing past the
- * 15-minute job budget.
- *
- * The fixtures now pin both flags off via E2E_SERVER_CONFIG_YAML. This test
- * resolves that exact YAML through the real config path and asserts the runtime
- * flags the SPA would receive, so a future defaults change (or an accidental
- * removal of the pin) can't silently reshape the E2E layout again.
- */
+/** Verifies the E2E boot config preserves its unrelated UI overrides. */
 
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
@@ -34,11 +18,9 @@ describe('E2E server boot config', () => {
             const resolved = resolveConfig(configPath);
             const runtime = buildRuntimeFeatures(resolved);
 
-            // Shell-reshaping flags must stay off so navigateToGitTab & friends
-            // find the classic sub-tabs the specs click, and the status cluster
-            // stays where the ws-status-indicator specs expect it.
+            // The per-clone header remains selected; Workspace always uses the split.
             expect(runtime.remoteShellEnabled).toBe(false);
-            expect(runtime.splitWorkspacePanelEnabled).toBe(false);
+            expect(runtime).not.toHaveProperty('splitWorkspacePanelEnabled');
 
             // The scope slide switcher replaces the My Work / My Life toggles and
             // the workspace identity chip in the remote-first header. It graduated

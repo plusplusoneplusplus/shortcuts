@@ -17,7 +17,6 @@ import { cleanup, render, screen, act, fireEvent, waitFor } from '@testing-libra
 const mockDispatch = vi.fn();
 let mockAppState: any = {};
 let mockBreakpoint = 'mobile';
-let mockSplitPanelEnabled = true;
 const mockGetRepoGroup = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -40,9 +39,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedule
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
     useRemoteShellEnabled: () => false,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanelEnabled,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
@@ -119,7 +115,6 @@ beforeEach(() => {
         members: [{ workspaceId: 'r1', stale: false, name: 'shortcuts', rootPath: '/r/r1' }],
     });
     mockBreakpoint = 'mobile';
-    mockSplitPanelEnabled = true;
     mockAppState = {
         activeRepoSubTab: 'chats',
         selectedNotePath: null,
@@ -211,12 +206,5 @@ describe('RepoGroupView — mobile Workspace panel (AC-06)', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         // Desktop uses the same shell in its two-column (non-narrow) form.
         expect(screen.getByTestId('split-workspace-panel').dataset.narrow).not.toBe('true');
-    });
-
-    it('falls back to the plain chat tab when the split flag is off', () => {
-        mockSplitPanelEnabled = false;
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('split-workspace-panel')).toBeNull();
-        expect(screen.getByTestId('stub-chat-tab')).toBeTruthy();
     });
 });

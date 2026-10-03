@@ -16,6 +16,7 @@ import { cleanup, render } from '@testing-library/react';
 import { Router } from '../../../../src/server/spa/client/react/layout/Router';
 import type { DashboardTab } from '../../../../src/server/spa/client/react/types/dashboard';
 
+
 const { flag } = vi.hoisted(() => ({ flag: { enabled: false } }));
 
 vi.mock('../../../../src/server/spa/client/react/utils/config', async (importOriginal) => {

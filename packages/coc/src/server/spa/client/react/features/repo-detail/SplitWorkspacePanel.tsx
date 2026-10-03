@@ -28,8 +28,7 @@ import { DOCK_MIN_CHAT_WIDTH, DOCK_MIN_WIDTH, RESIZE_HANDLE_TOTAL } from './Work
 export { splitWorkspaceWidthStorageKey } from './WorkspaceLeftWidth';
 
 /**
- * Layout shell for the split "Workspace" view (behind the `splitWorkspacePanel`
- * flag). It arranges three content slots — the chat list (top-left), the git
+ * Layout shell for the split "Workspace" view. It arranges three content slots — the chat list (top-left), the git
  * list (bottom-left) and ONE shared detail pane (right) — and owns nothing but
  * the layout: a horizontal divider that rebalances the two left halves and a
  * vertical divider that resizes the whole left column. Both sizes persist

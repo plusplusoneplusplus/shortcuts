@@ -77,9 +77,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEn
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
     useMyLifeEnabled: () => mockMyLifeEnabled,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => false,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
         breakpoint: mockIsMobile ? 'mobile' : 'desktop',

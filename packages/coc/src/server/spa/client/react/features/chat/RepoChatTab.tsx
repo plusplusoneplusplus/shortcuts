@@ -1275,7 +1275,7 @@ export function RepoChatTab({ workspaceId, sourceSelectionId, mode, layout, deta
         />
     );
 
-    // Split-workspace layout (behind the `splitWorkspacePanel` flag): render only
+    // Split-workspace layout : render only
     // the conversation LIST in place and portal the detail pane into a
     // parent-provided container, so chat + git share ONE detail region. Only the
     // last-clicked tab (`detailActive`) portals, so the shared region never shows
