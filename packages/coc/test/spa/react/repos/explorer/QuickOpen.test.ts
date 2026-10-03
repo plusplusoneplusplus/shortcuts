@@ -23,7 +23,7 @@ describe('QuickOpen component', () => {
         });
 
         it('does not redefine a local fuzzy scorer', () => {
-            // Scoring is shared with the server via shared/fuzzy-file-score.
+            // The server returns native scores and highlight indices.
             expect(source).not.toContain('export function fuzzyMatch');
         });
 

@@ -18,78 +18,29 @@
  *    rather than failing the query; the members that did answer stay visible.
  */
 
+import type {
+    ExplorerRepoGroupContentSearchMember,
+    ExplorerRepoGroupContentSearchFailure,
+    ExplorerRepoGroupContentSearchResponse,
+} from '@plusplusoneplusplus/coc-client';
+import type { RepoTreeService } from '../repos/tree-service';
 import { CONTENT_SEARCH_MAX_RESULTS } from '../repos/types';
 import type { ContentMatch, ContentSearchOptions } from '../repos/types';
 import { TrackedContentSearchUnavailableError } from '../repos/tree-service';
 import type { RepoGroupMember } from './repo-group-workspace';
+import { GROUP_SEARCH_CONCURRENCY, groupSearchSummary, mapBounded, partitionGroupMembers } from './repo-group-search';
 
 /** Cap on matches one group query may return, shared with single-repo search. */
 export const REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS = CONTENT_SEARCH_MAX_RESULTS;
 
 /** How many members may be searched at once. */
-export const REPO_GROUP_CONTENT_SEARCH_CONCURRENCY = 4;
+export const REPO_GROUP_CONTENT_SEARCH_CONCURRENCY = GROUP_SEARCH_CONCURRENCY;
 
-/** The one method of `RepoTreeService` this module needs. */
-export interface GroupContentSearchService {
-    searchContent(
-        repoId: string,
-        query: string,
-        options?: ContentSearchOptions,
-    ): Promise<{ matches: ContentMatch[]; truncated: boolean }>;
-}
-
-/** One member's slice of the group answer. */
-export interface RepoGroupContentSearchMemberResult {
-    /** Member workspace ID — the routing identity the browser opens with. */
-    workspaceId: string;
-    /** Registry display name, for the repository group header. */
-    repoName: string;
-    /** Repo-relative matches, in the order the member's own search returned. */
-    matches: ContentMatch[];
-    /** Matches this member found before the group cap was applied. */
-    totalMatches: number;
-    /** True when this member's own caps hit, or the group cap dropped rows. */
-    truncated: boolean;
-}
-
-/** A member that could not contribute to this answer. */
-export interface RepoGroupContentSearchFailure {
-    workspaceId: string;
-    /** Registry display name; absent when the workspace itself is gone. */
-    repoName?: string;
-    /**
-     * `stale` — removed from the registry or its root vanished.
-     * `unavailable` — present but not a usable Git repository.
-     * `error` — the search itself failed.
-     */
-    reason: 'stale' | 'unavailable' | 'error';
-    message: string;
-}
-
-/** The aggregate answer for one group query. */
-export interface RepoGroupContentSearchResult {
-    /**
-     * `complete` — every member answered. `partial` — some did not.
-     * `failed` — none of the live members answered.
-     * `no-searchable-members` — the group has no live member to search.
-     */
-    status: 'complete' | 'partial' | 'failed' | 'no-searchable-members';
-    /** Members with at least one returned match, in group-membership order. */
-    members: RepoGroupContentSearchMemberResult[];
-    /** Members that were not searched successfully, in membership order. */
-    failures: RepoGroupContentSearchFailure[];
-    /** True when the group cap or any member's own cap dropped matches. */
-    truncated: boolean;
-    /** Matches actually returned across all members. */
-    totalMatches: number;
-    /** The cap this answer was apportioned against. */
-    limit: number;
-    memberCount: number;
-    searchableMemberCount: number;
-    searchedMemberCount: number;
-    unavailableMemberCount: number;
-    failedMemberCount: number;
-}
+/** The native-backed service method and shared HTTP response contracts. */
+export type GroupContentSearchService = Pick<RepoTreeService, 'searchContent'>;
+export type RepoGroupContentSearchMemberResult = ExplorerRepoGroupContentSearchMember;
+export type RepoGroupContentSearchFailure = ExplorerRepoGroupContentSearchFailure;
+export type RepoGroupContentSearchResult = ExplorerRepoGroupContentSearchResponse;
 
 /** Raised when the caller aborted before the fan-out finished. */
 export class RepoGroupContentSearchAbortedError extends Error {
@@ -134,23 +85,6 @@ export function apportionMatchQuota(counts: readonly number[], cap: number): num
     return allocated;
 }
 
-async function mapBounded<T, R>(
-    items: readonly T[],
-    concurrency: number,
-    fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-    const results = new Array<R>(items.length);
-    let nextIndex = 0;
-    const worker = async (): Promise<void> => {
-        while (nextIndex < items.length) {
-            const index = nextIndex++;
-            results[index] = await fn(items[index], index);
-        }
-    };
-    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-    return results;
-}
-
 function staleMessage(member: RepoGroupMember): string {
     return member.staleReason === 'path-missing'
         ? 'Repository folder is missing'
@@ -174,8 +108,6 @@ function sanitizeMemberMessage(message: string, member: RepoGroupMember): string
 }
 
 interface MemberSearch {
-    workspaceId: string;
-    repoName: string;
     matches: ContentMatch[];
     /** The member's own search hit a cap before the group cap was applied. */
     selfTruncated: boolean;
@@ -206,59 +138,26 @@ export async function searchRepoGroupContent(input: {
     );
     const concurrency = input.concurrency ?? REPO_GROUP_CONTENT_SEARCH_CONCURRENCY;
 
-    const live: RepoGroupMember[] = [];
-    const staleFailures: RepoGroupContentSearchFailure[] = [];
-    for (const member of members) {
-        if (member.stale || member.name === undefined) {
-            staleFailures.push({
-                workspaceId: member.workspaceId,
-                ...(member.name !== undefined ? { repoName: member.name } : {}),
-                reason: 'stale',
-                message: staleMessage(member),
-            });
-        } else {
-            live.push(member);
-        }
-    }
+    const { live, stale } = partitionGroupMembers(members);
+    const staleFailures = stale.map((member): RepoGroupContentSearchFailure => ({
+        workspaceId: member.workspaceId,
+        ...(member.name !== undefined ? { repoName: member.name } : {}),
+        reason: 'stale',
+        message: staleMessage(member),
+    }));
 
-    const base = {
-        memberCount: members.length,
-        searchableMemberCount: live.length,
-        unavailableMemberCount: staleFailures.length,
-        limit,
-    };
+    if (live.length > 0 && signal?.aborted) throw new RepoGroupContentSearchAbortedError();
 
-    if (live.length === 0) {
-        return {
-            ...base,
-            status: 'no-searchable-members',
-            members: [],
-            failures: staleFailures,
-            truncated: false,
-            totalMatches: 0,
-            searchedMemberCount: 0,
-            failedMemberCount: 0,
-        };
-    }
-
-    if (signal?.aborted) throw new RepoGroupContentSearchAbortedError();
-
-    const searches = await mapBounded(live, concurrency, async (member): Promise<MemberSearch> => {
-        const repoName = member.name!;
+    const searches = await mapBounded(live, concurrency, async ({ member }): Promise<MemberSearch> => {
         if (signal?.aborted) {
             // Not a failure to report — the whole answer is discarded below.
-            return { workspaceId: member.workspaceId, repoName, matches: [], selfTruncated: false };
+            return { matches: [], selfTruncated: false };
         }
         try {
             // Every member may offer up to the whole cap; the apportionment
             // below, not the member, decides how much of it is kept.
             const result = await service.searchContent(member.workspaceId, query, { ...options, limit });
-            return {
-                workspaceId: member.workspaceId,
-                repoName,
-                matches: result.matches,
-                selfTruncated: result.truncated,
-            };
+            return { matches: result.matches, selfTruncated: result.truncated };
         } catch (error) {
             // A bad regex or glob is bad for every member, not a member
             // failure — let it out so the route can answer 400 once.
@@ -268,13 +167,11 @@ export async function searchRepoGroupContent(input: {
                 member,
             );
             return {
-                workspaceId: member.workspaceId,
-                repoName,
                 matches: [],
                 selfTruncated: false,
                 failure: {
                     workspaceId: member.workspaceId,
-                    repoName,
+                    repoName: member.name,
                     reason: error instanceof TrackedContentSearchUnavailableError ? 'unavailable' : 'error',
                     message,
                 },
@@ -282,7 +179,7 @@ export async function searchRepoGroupContent(input: {
         }
     });
 
-    if (signal?.aborted) throw new RepoGroupContentSearchAbortedError();
+    if (live.length > 0 && signal?.aborted) throw new RepoGroupContentSearchAbortedError();
 
     const quota = apportionMatchQuota(searches.map(search => search.matches.length), limit);
     const memberResults: RepoGroupContentSearchMemberResult[] = [];
@@ -300,31 +197,21 @@ export async function searchRepoGroupContent(input: {
         totalMatches += kept.length;
         if (kept.length === 0 && !memberTruncated) return;
         memberResults.push({
-            workspaceId: search.workspaceId,
-            repoName: search.repoName,
+            workspaceId: live[index].member.workspaceId,
+            repoName: live[index].member.name,
             matches: kept,
             totalMatches: search.matches.length,
             truncated: memberTruncated,
         });
     });
 
-    const failedMemberCount = searchFailures.length;
-    const searchedMemberCount = live.length - failedMemberCount;
-    const status: RepoGroupContentSearchResult['status'] = searchedMemberCount === 0
-        ? 'failed'
-        : failedMemberCount > 0 || staleFailures.length > 0
-            ? 'partial'
-            : 'complete';
-
     return {
-        ...base,
-        status,
+        ...groupSearchSummary(members.length, live.length, searchFailures.length),
+        limit,
         members: memberResults,
         // Membership order first, then the members that failed mid-search.
         failures: [...staleFailures, ...searchFailures],
         truncated,
         totalMatches,
-        searchedMemberCount,
-        failedMemberCount,
     };
 }

@@ -58,11 +58,20 @@ references before editing. Paths are package-relative.
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.
   Native failures fail startup, without JavaScript persistence/index fallbacks.
-- Whole-repo search/listing requires Rust; directory listing may walk. Notes
+- Whole-repo search/listing requires Rust; directory listings and subtree walks use native `RepoFiles`. Notes
   search validates capability at composition and authorizes roots before search.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
-  complete snapshots and shutdown disposes watchers.
-- Search fresh working-tree bytes; test Git narrowing/native walks.
+  complete snapshots and shutdown disposes watchers. One `RepoFiles` handle per
+  workspace owns its file indexes/refresh; dispose it on root change, removal, or shutdown.
+  Health `nativeFileIndex`/`nativeContentSearch` both report the full `RepoFiles` capability.
+  `src/server/repos/types.ts` aliases native tree/search result types and coc-client
+  contracts for metadata, HTTP options and the file-search envelope.
+- Content search reads fresh bytes via `RepoFiles`; WSL runs Rust-prepared argv via forge.
+  Test Git narrowing/native walks.
+  Repo-group file/content search shares controls and ordered dispatch in
+  `src/server/workspaces/repo-group-search.ts`.
+  Repository metadata reads use forge’s `execGitAsync` for host/WSL routing.
+  The fuzzy scorer reference lives in `test/support/fuzzy-file-score.ts` for native parity tests.
   QuickOpen uses server indices; reuse requires the current workspace root
   for each `showIgnored` variant. Payload caps never cap search candidates.
 - Restore queues stopped. Activate only after

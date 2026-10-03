@@ -1,10 +1,7 @@
-/**
- * Tests for the fuzzy file-path scorer shared by the /search endpoint and the
- * SPA file-finder dialogs.
- */
+/** Tests for the TypeScript reference scorer used by native ranking parity tests. */
 
 import { describe, it, expect } from 'vitest';
-import { fuzzyFileMatch, fuzzyFileScore, rankFuzzyMatches } from '../../src/server/shared/fuzzy-file-score';
+import { fuzzyFileMatch, fuzzyFileScore, rankFuzzyMatches } from '../support/fuzzy-file-score';
 
 describe('fuzzyFileScore', () => {
     it('matches an exact substring', () => {

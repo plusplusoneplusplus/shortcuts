@@ -243,45 +243,33 @@ describe('GET /api/repos/:repoId/tree depth param', () => {
     });
 });
 
-describe('file-index walkers always skip .git', () => {
-    function walkFilesOf(svc: RepoTreeService) {
-        return (svc as any).walkFiles.bind(svc) as (
-            repoRoot: string,
-            absRoot: string,
-            showIgnored: boolean,
-            maxEntries: number,
-        ) => Promise<{ files: string[]; truncated: boolean }>;
-    }
-
-    function seedRepoWithGitDir() {
+describe('subdirectory file walks always skip .git', () => {
+    function seedRepoWithGitDirs() {
         seedDefaultRepo();
         fs.writeFileSync(path.join(repoDir, '.gitignore'), 'build/\n');
-        fs.mkdirSync(path.join(repoDir, '.git', 'objects', 'ab'), { recursive: true });
+        fs.mkdirSync(path.join(repoDir, '.git'), { recursive: true });
         fs.writeFileSync(path.join(repoDir, '.git', 'HEAD'), 'ref: refs/heads/main\n');
-        fs.writeFileSync(path.join(repoDir, '.git', 'config'), '[core]\n');
-        fs.writeFileSync(path.join(repoDir, '.git', 'objects', 'ab', '1f3c'), 'x');
-        fs.mkdirSync(path.join(repoDir, 'build'), { recursive: true });
-        fs.writeFileSync(path.join(repoDir, 'build', 'out.js'), 'x');
-        fs.mkdirSync(path.join(repoDir, 'src'), { recursive: true });
-        fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), 'export {}');
+        // A nested checkout's object database must not crowd out real files.
+        fs.mkdirSync(path.join(repoDir, 'pkg', 'vendor', '.git', 'objects', 'ab'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'pkg', 'vendor', '.git', 'objects', 'ab', '1f3c'), 'x');
+        fs.writeFileSync(path.join(repoDir, 'pkg', 'vendor', 'lib.ts'), 'x');
+        fs.mkdirSync(path.join(repoDir, 'pkg', 'build'), { recursive: true });
+        fs.writeFileSync(path.join(repoDir, 'pkg', 'build', 'out.js'), 'x');
+        fs.writeFileSync(path.join(repoDir, 'pkg', 'index.ts'), 'export {}');
     }
 
-    it('walkFiles omits .git with showIgnored=false', async () => {
-        seedRepoWithGitDir();
+    it('omits .git and ignored files with showIgnored=false', async () => {
+        seedRepoWithGitDirs();
         const svc = new RepoTreeService(dataDir);
-        const { files } = await walkFilesOf(svc)(repoDir, repoDir, false, 5000);
-        expect(files.every(f => !f.startsWith('.git/'))).toBe(true);
-        expect(files).toContain('src/index.ts');
+        const { files } = await svc.listFilesRecursive(REPO_ID, 'pkg');
+        expect(files).toEqual(['pkg/index.ts', 'pkg/vendor/lib.ts']);
     });
 
-    it('walkFiles omits .git with showIgnored=true but still lists ignored files', async () => {
-        seedRepoWithGitDir();
+    it('omits .git with showIgnored=true but still lists ignored files', async () => {
+        seedRepoWithGitDirs();
         const svc = new RepoTreeService(dataDir);
-        const { files } = await walkFilesOf(svc)(repoDir, repoDir, true, 5000);
-        expect(files).toContain('src/index.ts');
-        // showIgnored means "show gitignored files"...
-        expect(files).toContain('build/out.js');
-        // ...not "show git's internal object database".
-        expect(files.filter(f => f.startsWith('.git/'))).toEqual([]);
+        const { files } = await svc.listFilesRecursive(REPO_ID, 'pkg', { showIgnored: true });
+        // showIgnored means "show gitignored files", not git's object database.
+        expect(files).toEqual(['pkg/build/out.js', 'pkg/index.ts', 'pkg/vendor/lib.ts']);
     });
 });

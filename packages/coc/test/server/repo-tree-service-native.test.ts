@@ -14,13 +14,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { loadNativeFileIndex } from '@plusplusoneplusplus/coc-native';
+import { loadNativeRepoFiles, type NativeRepoFiles } from '@plusplusoneplusplus/coc-native';
 import { RepoTreeService } from '../../src/server/repos/tree-service';
 
 // Unguarded on purpose: this throws when the binary could not be loaded, and
 // that message — naming the triple, the paths tried and the fix — is what the
 // runner should print.
-const NATIVE = loadNativeFileIndex();
+loadNativeRepoFiles();
 
 const GIT = (() => {
     try {
@@ -74,7 +74,6 @@ suiteIfGit('RepoTreeService — native file index', () => {
     function newService(options?: { fileListCacheTtlMs?: number; fileListMaxEntries?: number }) {
         return new RepoTreeService(dataDir, {
             fileListCacheTtlMs: 60_000,
-            nativeFileIndex: NATIVE,
             ...options,
         });
     }
@@ -228,7 +227,7 @@ suiteIfGit('RepoTreeService — native index vs. the capped response', () => {
         write('src/index.ts');
         write('ignored.ts');
         write('docs/日本語.md');
-        const svc = new RepoTreeService(dataDir, { fileListCacheTtlMs: 60_000, nativeFileIndex: NATIVE });
+        const svc = new RepoTreeService(dataDir, { fileListCacheTtlMs: 60_000 });
 
         const { files } = await svc.listFilesRecursive(REPO_ID, '.');
         expect(new Set(files)).toEqual(new Set(['.gitignore', 'src/index.ts', 'docs/日本語.md']));
@@ -239,7 +238,6 @@ suiteIfGit('RepoTreeService — native index vs. the capped response', () => {
         for (let i = 0; i < 30; i++) write(`src/file${String(i).padStart(2, '0')}.ts`);
         const svc = new RepoTreeService(dataDir, {
             fileListMaxEntries: 5,
-            nativeFileIndex: NATIVE,
         });
 
         // The listing is capped for the response...
@@ -255,14 +253,25 @@ suiteIfGit('RepoTreeService — native index vs. the capped response', () => {
 });
 
 suiteIfGit('RepoTreeService.searchContent', () => {
-    /** Records what the service asked the addon for, and answers nothing. */
+    /** Records the handle boundary while exercising the real native backend. */
     function recordingAddon() {
         const calls: Array<{ root: string; query: string; options: unknown }> = [];
         return {
             calls,
-            searchContent: async (root: string, query: string, options: unknown) => {
-                calls.push({ root, query, options });
-                return { matches: [], truncated: false };
+            openRepoFiles(root: string, ttl?: number | null) {
+                const files = loadNativeRepoFiles().openRepoFiles(root, ttl);
+                return new Proxy(files, {
+                    get(target, key) {
+                        if (key === 'searchContent') {
+                            return (...args: Parameters<NativeRepoFiles['searchContent']>) => {
+                                calls.push({ root, query: args[0], options: args[1] });
+                                return target.searchContent(...args);
+                            };
+                        }
+                        const value = Reflect.get(target, key);
+                        return typeof value === 'function' ? value.bind(target) : value;
+                    },
+                });
             },
         };
     }
@@ -270,7 +279,7 @@ suiteIfGit('RepoTreeService.searchContent', () => {
     it('sends the documented defaults and the repo root, not the repo id', async () => {
         seedRepo();
         const addon = recordingAddon();
-        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+        const svc = new RepoTreeService(dataDir, { nativeRepoFiles: addon });
 
         await svc.searchContent(REPO_ID, 'needle');
 
@@ -283,7 +292,6 @@ suiteIfGit('RepoTreeService.searchContent', () => {
             wholeWord: false,
             regex: false,
             showIgnored: false,
-            files: undefined,
             include: undefined,
             exclude: undefined,
             maxResults: 500,
@@ -293,7 +301,7 @@ suiteIfGit('RepoTreeService.searchContent', () => {
     it('clamps the limit into 1..500 in both directions', async () => {
         seedRepo();
         const addon = recordingAddon();
-        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+        const svc = new RepoTreeService(dataDir, { nativeRepoFiles: addon });
 
         await svc.searchContent(REPO_ID, 'a', { limit: 0 });
         await svc.searchContent(REPO_ID, 'a', { limit: 100_000 });
@@ -313,7 +321,7 @@ suiteIfGit('RepoTreeService.searchContent', () => {
                 stdio: 'pipe',
             });
             childProcess.execFileSync('git', ['add', '-f', 'ignored/tracked.txt'], { cwd: repoDir, stdio: 'pipe' });
-            const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE });
+            const svc = new RepoTreeService(dataDir);
             const options = { fileScope: 'tracked' as const };
 
             const first = await svc.searchContent(REPO_ID, 'Fixture-Search-Token', options);
@@ -330,7 +338,7 @@ suiteIfGit('RepoTreeService.searchContent', () => {
             seedRepo();
             write('letters.txt', 'Kelvin Fixture-Search-Token\nfixture-search-tokens\n');
             childProcess.execFileSync('git', ['add', 'letters.txt'], { cwd: repoDir, stdio: 'pipe' });
-            const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE });
+            const svc = new RepoTreeService(dataDir);
             const options = { fileScope: 'tracked' as const, wholeWord: true };
 
             const result = await svc.searchContent(REPO_ID, 'Fixture-Search-Token', options);
@@ -349,7 +357,7 @@ suiteIfGit('RepoTreeService.searchContent', () => {
             write('tracked.txt', 'alpha\nbeta\n');
             write('untracked.txt', 'alpha\nbeta\n');
             childProcess.execFileSync('git', ['add', 'tracked.txt'], { cwd: repoDir, stdio: 'pipe' });
-            const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE });
+            const svc = new RepoTreeService(dataDir);
 
             for (const [query, extra] of [
                 ['alpha\\nbeta', { regex: true }],
@@ -374,7 +382,7 @@ suiteIfGit('RepoTreeService.searchContent', () => {
                 throw error;
             }
             childProcess.execFileSync('git', ['add', 'linked.txt'], { cwd: repoDir, stdio: 'pipe' });
-            const result = await new RepoTreeService(dataDir, { nativeFileIndex: NATIVE })
+            const result = await new RepoTreeService(dataDir)
                 .searchContent(REPO_ID, 'needle', { fileScope: 'tracked' });
             expect(result.matches.map(match => match.path)).toEqual(['linked.txt']);
         });
@@ -382,31 +390,18 @@ suiteIfGit('RepoTreeService.searchContent', () => {
 
     it('strips the "." and leading-slash spellings of the repo root from the scope', async () => {
         seedRepo();
-        const addon = recordingAddon();
-        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
-
-        // '.' is how the routes spell the root; passing it through would prefix
-        // every returned path with './'.
+        write('src/a.txt', 'needle');
+        const svc = new RepoTreeService(dataDir);
         for (const scope of ['.', '', './src', '/src', 'src']) {
-            await svc.searchContent(REPO_ID, 'a', { path: scope });
+            const result = await svc.searchContent(REPO_ID, 'needle', { path: scope });
+            expect(result.matches.map(match => match.path)).toEqual(['src/a.txt']);
         }
-
-        expect(addon.calls.map(c => (c.options as { path?: string }).path))
-            .toEqual([undefined, undefined, 'src', 'src', 'src']);
     });
 
     it('passes a multi-line query and its match groups straight through', async () => {
         seedRepo();
-        const addon = {
-            searchContent: async () => ({
-                matches: [
-                    { path: 'a.ts', line: 1, text: 'alpha', startColumn: 0, endColumn: 5, group: 0, before: [], after: [] },
-                    { path: 'a.ts', line: 2, text: 'beta', startColumn: 0, endColumn: 4, group: 0, before: [], after: [] },
-                ],
-                truncated: false,
-            }),
-        };
-        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+        write('a.ts', 'alpha\nbeta');
+        const svc = new RepoTreeService(dataDir);
 
         // The group id is what tells a client "one match over two lines" from
         // "two matches", so the service must not drop it on the way out.
@@ -415,16 +410,16 @@ suiteIfGit('RepoTreeService.searchContent', () => {
         expect(result.matches.map(m => m.group)).toEqual([0, 0]);
     });
 
-    it('rejects an unregistered repo and a root that vanished, without touching the addon', async () => {
+    it('rejects an unregistered repo and a root that vanished', async () => {
         seedRepo();
         const addon = recordingAddon();
-        const svc = new RepoTreeService(dataDir, { nativeFileIndex: NATIVE, nativeContentSearch: addon });
+        const svc = new RepoTreeService(dataDir, { nativeRepoFiles: addon });
 
         await expect(svc.searchContent('no-such-repo', 'a')).rejects.toThrow(/not found/i);
 
         fs.rmSync(repoDir, { recursive: true, force: true });
         await expect(svc.searchContent(REPO_ID, 'a')).rejects.toThrow(/not found/i);
 
-        expect(addon.calls).toHaveLength(0);
+        expect(addon.calls).toHaveLength(1);
     });
 });

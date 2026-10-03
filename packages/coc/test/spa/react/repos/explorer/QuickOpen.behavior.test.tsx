@@ -28,7 +28,7 @@ import {
     splitFileNameForDisplay,
     splitIndices,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/QuickOpen';
-import { rankFuzzyMatches } from '../../../../../src/server/shared/fuzzy-file-score';
+import { rankFuzzyMatches } from '../../../../support/fuzzy-file-score';
 
 const FILES = [
     'src/index.ts',

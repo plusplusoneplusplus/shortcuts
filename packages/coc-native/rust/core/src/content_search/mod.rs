@@ -35,11 +35,12 @@ use sink::MatchSink;
 
 /// One matching line, with its position inside the line and its neighbours.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
 pub struct ContentMatch {
     /// Repo-relative path with `/` separators on every platform.
     pub path: String,
     /// One-based line number.
-    pub line: u64,
+    pub line: u32,
     /// The matching line without its trailing newline, possibly truncated.
     pub text: String,
     /// UTF-16 offset of the match within `text` — a JavaScript string index,
@@ -64,6 +65,7 @@ type FileMatches = Vec<(String, Vec<ContentMatch>)>;
 
 /// The bounded response from one content search.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "napi", napi_derive::napi(object, object_from_js = false))]
 pub struct ContentSearchResult {
     /// Matches sorted by path, then by line — deterministic across platforms
     /// and across runs, which the parallel walk's own order is not.

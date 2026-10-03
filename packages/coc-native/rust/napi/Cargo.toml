@@ -10,7 +10,7 @@ description = "N-API addon exposing CoC's native capabilities to Node, one modul
 crate-type = ["cdylib"]
 
 [dependencies]
-coc-native-core = { path = "../core" }
+coc-native-core = { path = "../core", features = ["napi"] }
 napi = { version = "3", default-features = false, features = ["napi4"] }
 napi-derive = "3"
 

@@ -1,5 +1,5 @@
 /**
- * Capability-layer tests: the file index is one capability of the addon, so it
+ * Capability-layer tests: repo files is one capability of the addon, so it
  * has to fail on its own terms when the addon is missing *or* when a loaded
  * binary predates the capability — without the loader knowing it exists.
  *
@@ -12,7 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { loadNativeFileIndex, nativeFileIndexStatus } from '../src/file-index';
+import { loadNativeRepoFiles, nativeRepoFilesStatus } from '../src/repo-files';
 import { NativeAddonLoadError, resetNativeAddonCache } from '../src/loader';
 
 const ENV_KEYS = ['COC_NATIVE', 'COC_NATIVE_PATH'] as const;
@@ -35,6 +35,17 @@ afterEach(() => {
     resetNativeAddonCache();
 });
 
+/** A stand-in exposing the whole capability; `drop` omits one method. */
+function stubSource(drop?: string): string {
+    const methods = ['readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent',
+        'indexFiles', 'searchFiles', 'searchFilesRanked', 'searchContent', 'prepareContentCandidates', 'invalidate', 'dispose']
+        .filter(m => m !== drop)
+        .map(m => `${m}() { return 7; }`)
+        .join(' ');
+    return `class RepoFiles { ${methods} }\n` +
+        'module.exports = { RepoFiles, openRepoFiles: () => new RepoFiles() };';
+}
+
 /** Point the loader at a JavaScript stand-in for the addon. */
 function useAddon(source: string): string {
     const file = path.join(dir, 'stub.js');
@@ -43,24 +54,29 @@ function useAddon(source: string): string {
     return file;
 }
 
-it('exposes the capability when the addon provides it', async () => {
-    useAddon('module.exports = { buildFileIndex: async () => ({ len: () => 7 }) };');
-    const api = loadNativeFileIndex();
-    expect(api).not.toBeNull();
-    expect((await api!.buildFileIndex('/repo')).len()).toBe(7);
-    expect(nativeFileIndexStatus().loaded).toBe(true);
+it('exposes the capability when the addon provides it', () => {
+    useAddon(stubSource());
+    const api = loadNativeRepoFiles();
+    expect(api.openRepoFiles('/repo').dispose()).toBe(7);
+    expect(nativeRepoFilesStatus().loaded).toBe(true);
+});
+
+it('rejects a standalone content matcher without repository handles', () => {
+    useAddon('module.exports = { searchContent: async () => ({ matches: [], truncated: false }) };');
+    expect(() => loadNativeRepoFiles()).toThrow(NativeAddonLoadError);
+    expect(nativeRepoFilesStatus().loaded).toBe(false);
 });
 
 describe('when the capability is missing', () => {
     it('throws even though the binary itself loaded', () => {
         const file = useAddon('module.exports = { someOtherCapability: () => 1 };');
-        expect(() => loadNativeFileIndex()).toThrow(NativeAddonLoadError);
-        expect(() => loadNativeFileIndex()).toThrow('does not export a file index');
+        expect(() => loadNativeRepoFiles()).toThrow(NativeAddonLoadError);
+        expect(() => loadNativeRepoFiles()).toThrow('does not export repo files');
         // The status accessor still describes it, rather than throwing too.
-        expect(nativeFileIndexStatus()).toEqual({
+        expect(nativeRepoFilesStatus()).toEqual({
             loaded: false,
             binaryPath: file,
-            reason: `${file} does not export a file index`,
+            reason: `${file} does not export repo files`,
         });
     });
 
@@ -68,7 +84,7 @@ describe('when the capability is missing', () => {
         const file = useAddon('module.exports = { someOtherCapability: () => 1 };');
         let message = '';
         try {
-            loadNativeFileIndex();
+            loadNativeRepoFiles();
         } catch (err) {
             message = (err as Error).message;
         }
@@ -79,21 +95,35 @@ describe('when the capability is missing', () => {
     });
 
     it('is not fooled by a non-callable export of the right name', () => {
-        useAddon('module.exports = { buildFileIndex: "nope" };');
-        expect(() => loadNativeFileIndex()).toThrow(NativeAddonLoadError);
-        expect(nativeFileIndexStatus().loaded).toBe(false);
+        useAddon('module.exports = { openRepoFiles: "nope" };');
+        expect(() => loadNativeRepoFiles()).toThrow(NativeAddonLoadError);
+        expect(nativeRepoFilesStatus().loaded).toBe(false);
     });
+
+    it.each(['readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent',
+        'indexFiles', 'searchFiles', 'searchFilesRanked', 'searchContent', 'prepareContentCandidates', 'invalidate', 'dispose'])('rejects a binary missing %s', (method) => {
+        useAddon(stubSource(method));
+        expect(() => loadNativeRepoFiles()).toThrow('does not export repo files');
+        expect(nativeRepoFilesStatus().loaded).toBe(false);
+    });
+});
+
+it('rejects a non-callable content-search method even when standalone search exists', () => {
+    useAddon(stubSource('searchContent') +
+        '\nmodule.exports.RepoFiles.prototype.searchContent = \"nope\"; module.exports.searchContent = () => 1;');
+    expect(() => loadNativeRepoFiles()).toThrow(NativeAddonLoadError);
+    expect(nativeRepoFilesStatus().loaded).toBe(false);
 });
 
 describe('when no binary loaded', () => {
     it('propagates the loader failure rather than degrading', () => {
         process.env.COC_NATIVE_PATH = path.join(dir, 'absent.node');
-        expect(() => loadNativeFileIndex()).toThrow(NativeAddonLoadError);
+        expect(() => loadNativeRepoFiles()).toThrow(NativeAddonLoadError);
     });
 
     it('still reports a status, so /api/health keeps working', () => {
         process.env.COC_NATIVE_PATH = path.join(dir, 'absent.node');
-        const status = nativeFileIndexStatus();
+        const status = nativeRepoFilesStatus();
         expect(status.loaded).toBe(false);
         expect(typeof status.reason).toBe('string');
     });
@@ -103,7 +133,7 @@ describe('when no binary loaded', () => {
 // is what let RepoTreeService silently serve a different implementation.
 it('never returns null — COC_NATIVE=0 is not an opt-out', () => {
     process.env.COC_NATIVE = '0';
-    const file = useAddon('module.exports = { buildFileIndex: () => 1 };');
-    expect(loadNativeFileIndex()).not.toBeNull();
-    expect(nativeFileIndexStatus()).toEqual({ loaded: true, binaryPath: file });
+    const file = useAddon(stubSource());
+    expect(loadNativeRepoFiles()).not.toBeNull();
+    expect(nativeRepoFilesStatus()).toEqual({ loaded: true, binaryPath: file });
 });

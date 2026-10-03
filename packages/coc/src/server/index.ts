@@ -18,8 +18,7 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import {
     loadNativeNotesIndex,
-    nativeContentSearchStatus,
-    nativeFileIndexStatus,
+    nativeRepoFilesStatus,
     nativeGitStatus,
     nativeNotesIndexStatus,
 } from '@plusplusoneplusplus/coc-native';
@@ -130,6 +129,7 @@ interface CloseHandlerDeps {
     workItemAzureBoardsPullPoller?: { dispose(): void };
     activeWorkspaceBackgroundRefresher?: { dispose(): void };
     dreamIdleScheduler?: { dispose(): void };
+    repoTreeService?: { dispose(): void };
     agentProvidersQuotaCache?: { dispose(): void };
     quotaPauseWatcher?: { dispose(): void };
     containerLink?: { stop(): void };
@@ -170,6 +170,7 @@ function buildCloseHandler(deps: CloseHandlerDeps): (opts?: ServerCloseOptions) 
         deps.workItemAzureBoardsPullPoller?.dispose();
         deps.activeWorkspaceBackgroundRefresher?.dispose();
         deps.dreamIdleScheduler?.dispose();
+        deps.repoTreeService?.dispose();
         deps.agentProvidersQuotaCache?.dispose();
         deps.quotaPauseWatcher?.dispose();
         deps.containerLink?.stop();
@@ -805,7 +806,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     let localBaseUrl = formatLocalBaseUrl(host, port);
     const routes: Route[] = [];
-    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler } = registerAllRoutes(routes, {
+    const { wikiManager, teamsMessagingManager, whatsappMessagingManager, workItemGitHubPullPoller, workItemAzureBoardsPullPoller, autoPullManager, agentProvidersQuotaCache, quotaPauseWatcher, activeWorkspaceBackgroundRefresher, dreamIdleScheduler, repoTreeService } = registerAllRoutes(routes, {
         store, bridge, queueFacade, scheduleManager,
         notesGitTimerManager,
         dataDir, configPath: options.configPath,
@@ -990,9 +991,9 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // were validated before composition; reporting them separately is what
     // exposes stale packaging.
     {
-        const nativeFileIndex = nativeFileIndexStatus();
+        const nativeFileIndex = nativeRepoFilesStatus();
         const nativeNotesIndex = nativeNotesIndexStatus();
-        const nativeContentSearch = nativeContentSearchStatus();
+        const nativeContentSearch = nativeFileIndex;
         const nativeGit = nativeGitStatus();
         process.stderr.write(
             nativeFileIndex.loaded
@@ -1109,6 +1110,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             workItemAzureBoardsPullPoller,
             activeWorkspaceBackgroundRefresher,
             dreamIdleScheduler,
+            repoTreeService,
             agentProvidersQuotaCache,
             quotaPauseWatcher,
             containerLink,

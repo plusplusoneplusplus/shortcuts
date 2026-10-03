@@ -16,11 +16,12 @@
 import * as url from 'url';
 import * as path from 'path';
 import * as child_process from 'child_process';
+import type { ServerResponse } from 'http';
 import type { Route } from '../types';
 import { sendJson, send400, send404, send500, readJsonBody } from '../router';
 import { RepoTreeService, TrackedContentSearchUnavailableError } from './tree-service';
 import { CONTENT_SEARCH_MAX_RESULTS } from './types';
-import type { ContentReplaceFile } from './content-replace';
+import type { NativeRepoReplaceFile } from '@plusplusoneplusplus/coc-native';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 
 // ============================================================================
@@ -37,7 +38,7 @@ interface ParsedRepoRequest {
  * Returns undefined and sends an error response if validation fails.
  */
 function parseRepoRequest(
-    res: import('http').ServerResponse,
+    res: ServerResponse,
     match: RegExpMatchArray | undefined,
     query: url.UrlWithParsedQuery['query'],
     options: { pathRequired: boolean; pathDefault?: string },
@@ -59,6 +60,22 @@ function parseRepoRequest(
     }
 
     return { repoId, path: resolvedPath };
+}
+
+/** The repo's live root, or undefined once a 404 has been sent for an unregistered repo. */
+async function knownRepoRoot(svc: RepoTreeService, res: ServerResponse, repoId: string): Promise<string | undefined> {
+    const repoRoot = await svc.resolveRepoRoot(repoId);
+    if (!repoRoot) send404(res, `Unknown repo: ${repoId}`);
+    return repoRoot;
+}
+
+/** A missing listing target is a 404; anything else is a server failure. */
+function sendListingError(res: ServerResponse, err: unknown): void {
+    if (err instanceof Error && (err.message.includes('does not exist') || err.message.includes('not found'))) {
+        send404(res, `Path not found: ${err.message}`);
+    } else {
+        send500(res, err instanceof Error ? err.message : String(err));
+    }
 }
 
 /** The JSON body of a replace request, before validation. */
@@ -182,25 +199,15 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 });
                 if (!parsed) return;
 
-                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
-                if (!repoRoot) {
-                    send404(res, `Unknown repo: ${parsed.repoId}`);
-                    return;
-                }
+                if (!await knownRepoRoot(svc, res, parsed.repoId)) return;
 
                 const showIgnored = parsedUrl.query.showIgnored === 'true';
                 const rawDepth = parseInt(String(parsedUrl.query.depth ?? '1'), 10);
                 const depth = Math.min(Math.max(isNaN(rawDepth) ? 1 : rawDepth, 1), 5);
-                const result = depth > 1
-                    ? await svc.listDirectoryDeep(parsed.repoId, parsed.path, depth, { showIgnored })
-                    : await svc.listDirectory(parsed.repoId, parsed.path, { showIgnored });
+                const result = await svc.listDirectoryDeep(parsed.repoId, parsed.path, depth, { showIgnored });
                 sendJson(res, result);
             } catch (err) {
-                if (err instanceof Error && (err.message.includes('does not exist') || err.message.includes('not found'))) {
-                    send404(res, `Path not found: ${err.message}`);
-                } else {
-                    send500(res, err instanceof Error ? err.message : String(err));
-                }
+                sendListingError(res, err);
             }
         },
     });
@@ -219,21 +226,13 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 });
                 if (!parsed) return;
 
-                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
-                if (!repoRoot) {
-                    send404(res, `Unknown repo: ${parsed.repoId}`);
-                    return;
-                }
+                if (!await knownRepoRoot(svc, res, parsed.repoId)) return;
 
                 const showIgnored = parsedUrl.query.showIgnored === 'true';
                 const result = await svc.listFilesRecursive(parsed.repoId, parsed.path, { showIgnored });
                 sendJson(res, result);
             } catch (err) {
-                if (err instanceof Error && (err.message.includes('does not exist') || err.message.includes('not found'))) {
-                    send404(res, `Path not found: ${err.message}`);
-                } else {
-                    send500(res, err instanceof Error ? err.message : String(err));
-                }
+                sendListingError(res, err);
             }
         },
     });
@@ -258,11 +257,7 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 const limit = isNaN(rawLimit) ? 50 : Math.min(Math.max(rawLimit, 1), 200);
                 const showIgnored = parsedUrl.query.showIgnored === 'true';
 
-                const repoRoot = await svc.resolveRepoRoot(repoId);
-                if (!repoRoot) {
-                    send404(res, `Unknown repo: ${repoId}`);
-                    return;
-                }
+                if (!await knownRepoRoot(svc, res, repoId)) return;
 
                 const result = await svc.searchFiles(repoId, q, { limit, showIgnored });
                 sendJson(res, result);
@@ -292,11 +287,7 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                     return;
                 }
 
-                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
-                if (!repoRoot) {
-                    send404(res, `Unknown repo: ${parsed.repoId}`);
-                    return;
-                }
+                if (!await knownRepoRoot(svc, res, parsed.repoId)) return;
 
                 const rawLimit = parseInt(String(parsedUrl.query.limit ?? CONTENT_SEARCH_MAX_RESULTS), 10);
                 const limit = isNaN(rawLimit)
@@ -364,17 +355,13 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                     return;
                 }
 
-                const repoRoot = await svc.resolveRepoRoot(repoId);
-                if (!repoRoot) {
-                    send404(res, `Unknown repo: ${repoId}`);
-                    return;
-                }
+                if (!await knownRepoRoot(svc, res, repoId)) return;
 
                 const result = await svc.replaceContent(
                     repoId,
                     body.query as string,
                     body.replacement ?? '',
-                    body.files as ContentReplaceFile[],
+                    body.files as NativeRepoReplaceFile[],
                     {
                         caseSensitive: body.caseSensitive === true,
                         wholeWord: body.wholeWord === true,
@@ -410,11 +397,7 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 });
                 if (!parsed) return;
 
-                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
-                if (!repoRoot) {
-                    send404(res, `Unknown repo: ${parsed.repoId}`);
-                    return;
-                }
+                if (!await knownRepoRoot(svc, res, parsed.repoId)) return;
 
                 const blob = await svc.readBlob(parsed.repoId, parsed.path);
 
@@ -461,11 +444,7 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                     return;
                 }
 
-                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
-                if (!repoRoot) {
-                    send404(res, `Unknown repo: ${parsed.repoId}`);
-                    return;
-                }
+                if (!await knownRepoRoot(svc, res, parsed.repoId)) return;
 
                 await svc.writeBlob(parsed.repoId, parsed.path, body.content);
                 sendJson(res, { success: true });
@@ -492,11 +471,8 @@ export function registerRepoRoutes(routes: Route[], dataDir: string, service?: R
                 });
                 if (!parsed) return;
 
-                const repoRoot = await svc.resolveRepoRoot(parsed.repoId);
-                if (!repoRoot) {
-                    send404(res, `Unknown repo: ${parsed.repoId}`);
-                    return;
-                }
+                const repoRoot = await knownRepoRoot(svc, res, parsed.repoId);
+                if (!repoRoot) return;
 
                 const absPath = path.resolve(repoRoot, parsed.path);
                 const normalizedRepo = path.resolve(repoRoot);

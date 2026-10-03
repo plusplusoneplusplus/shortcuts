@@ -12,9 +12,6 @@ import { createRouter } from '../../src/server/shared/router';
 import { registerRepoRoutes } from '../../src/server/repos/repo-routes';
 import { RepoTreeService } from '../../src/server/repos/tree-service';
 import type { Route } from '../../src/server/types';
-import type {
-    NativeFileIndexAddon,
-} from '@plusplusoneplusplus/coc-native';
 import { safeRmSync } from '../helpers/safe-rm';
 
 // Partially mock child_process: intercept only OS reveal commands (explorer.exe,
@@ -60,19 +57,6 @@ async function replaceServer(service: RepoTreeService): Promise<void> {
     server = makeServer(dataDir, service);
     await startServer();
 }
-
-const unusedFileIndex: NativeFileIndexAddon = {
-    async buildFileIndex() {
-        return {
-            len: () => 0,
-            truncated: () => false,
-            files: () => [],
-            search: async () => [],
-            searchRanked: async () => [],
-            refresh: async () => {},
-        };
-    },
-};
 
 async function startServer(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -1077,4 +1061,32 @@ describe('POST /api/repos/:repoId/search/replace', () => {
         });
         expect(res.status).toBe(404);
     });
+});
+
+describe('unknown repo handling across repo routes', () => {
+    const json = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
+    const replaceBody = { query: 'a', files: [{ path: 'a.txt', targets: [{ line: 1, text: 'a', startColumn: 0, endColumn: 1 }] }] };
+    const cases: Array<{ name: string; path: string; init?: RequestInit; invalid: { path: string; init?: RequestInit } }> = [
+        { name: 'tree', path: 'tree', invalid: { path: 'tree?path=../x' } },
+        { name: 'files', path: 'files', invalid: { path: 'files?path=../x' } },
+        { name: 'search', path: 'search?q=a', invalid: { path: 'search' } },
+        { name: 'content search', path: 'search/content?q=a', invalid: { path: 'search/content' } },
+        { name: 'replace', path: 'search/replace', init: json(replaceBody), invalid: { path: 'search/replace', init: json({ files: [] }) } },
+        { name: 'read blob', path: 'blob?path=a.txt', invalid: { path: 'blob' } },
+        { name: 'write blob', path: 'blob?path=a.txt', init: { ...json({ content: 'x' }), method: 'PUT' }, invalid: { path: 'blob?path=a.txt', init: { ...json({}), method: 'PUT' } } },
+        { name: 'reveal', path: 'reveal?path=a.txt', invalid: { path: 'reveal' } },
+    ];
+
+    for (const c of cases) {
+        it(`${c.name}: 404 names the repo once the request is valid`, async () => {
+            const res = await fetch(`${baseUrl}/api/repos/missing-repo/${c.path}`, c.init);
+            expect(res.status).toBe(404);
+            expect(((await res.json()) as any).error).toBe('Unknown repo: missing-repo');
+        });
+
+        it(`${c.name}: request validation still answers 400 before the repo lookup`, async () => {
+            const res = await fetch(`${baseUrl}/api/repos/missing-repo/${c.invalid.path}`, c.invalid.init);
+            expect(res.status).toBe(400);
+        });
+    }
 });

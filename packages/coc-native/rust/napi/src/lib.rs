@@ -13,10 +13,10 @@
 // where the N-API proc macro's exported entry points look unused to rustc.
 #![cfg_attr(test, allow(dead_code))]
 
-mod content_search;
 mod dangerous_command;
-mod file_index;
 mod git;
 mod notes_fs;
 mod notes_index;
+mod repo_files;
 mod sqlite;
+mod task;

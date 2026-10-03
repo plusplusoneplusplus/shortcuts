@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Barrier;
 
 use coc_native_core::repo_index::{RepoIndex, WalkOptions};
 
@@ -171,5 +172,63 @@ fn readers_never_see_a_torn_snapshot_during_refreshes() {
             index.refresh().unwrap();
         }
         done.store(true, Ordering::Relaxed);
+    });
+}
+
+#[test]
+fn readers_hold_each_generation_while_cloned_handles_publish_refreshes() {
+    let dir = repo();
+    let generations = ["alpha", "beta"];
+    let populate = |name: &str| {
+        for other in generations.iter().filter(|g| **g != name) {
+            for i in 0..8 {
+                let _ = fs::remove_file(dir.path().join(format!("{other}{i}.ts")));
+            }
+        }
+        for i in 0..8 {
+            write(dir.path(), &format!("{name}{i}.ts"), "");
+        }
+    };
+    populate("alpha");
+    let index = build(dir.path());
+    let phase = Barrier::new(3);
+    let check = |matcher: &coc_native_core::repo_index::FuzzyMatcher, generation: &str| {
+        let expected: Vec<_> = (0..8).map(|i| format!("{generation}{i}.ts")).collect();
+        assert_eq!(matcher.snapshot().files(0, 100), expected);
+        let hits = matcher.search("ts", 100);
+        assert_eq!(hits.len(), 8);
+        for hit in hits {
+            assert!(expected.iter().any(|path| path == matcher.snapshot().path_at(hit.index)));
+        }
+    };
+
+    std::thread::scope(|scope| {
+        for _ in 0..2 {
+            scope.spawn(|| {
+                let mut observed = Vec::new();
+                for _ in 0..10 {
+                    let held = index.searcher();
+                    // Both readers hold the old generation before the writer starts.
+                    phase.wait();
+                    phase.wait();
+                    observed.push((held, index.searcher()));
+                    // Capture the published matcher before the next generation.
+                    phase.wait();
+                }
+                // Assert after synchronization so a failure cannot strand a barrier.
+                for (round, (held, current)) in observed.iter().enumerate() {
+                    check(held, generations[round % 2]);
+                    check(current, generations[(round + 1) % 2]);
+                }
+            });
+        }
+
+        for round in 0..10 {
+            phase.wait();
+            populate(generations[(round + 1) % 2]);
+            index.clone().refresh().unwrap();
+            phase.wait();
+            phase.wait();
+        }
     });
 }

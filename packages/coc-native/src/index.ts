@@ -11,7 +11,7 @@
  * surface.
  *
  * Loading is capability-agnostic — a new capability adds a module beside
- * `file-index` and nothing else.
+ * `repo-files` and nothing else.
  */
 
 export {
@@ -25,22 +25,23 @@ export {
 } from './loader';
 export type { NativeAddon, NativeAddonStatus } from './types';
 
-export { loadNativeFileIndex, nativeFileIndexStatus } from './file-index';
-export type {
-    NativeBuildOptions,
-    NativeFileIndex,
-    NativeFileIndexAddon,
-    NativeFileMatch,
-    NativeRankedFileMatch,
-} from './file-index';
-
-export { loadNativeContentSearch, nativeContentSearchStatus } from './content-search';
+export { loadNativeRepoFiles, nativeRepoFilesStatus } from './repo-files';
 export type {
     NativeContentMatch,
-    NativeContentSearchAddon,
     NativeContentSearchOptions,
     NativeContentSearchResult,
-} from './content-search';
+    NativeFileMatch,
+    NativeRankedFileMatch,
+    NativeRepoBlob,
+    NativeRepoFiles,
+    NativeRepoFilesAddon,
+    NativeRepoReplaceFile,
+    NativeRepoReplaceOptions,
+    NativeRepoReplaceResult,
+    NativeRepoTreeEntry,
+    NativeRepoTreeListing,
+} from './repo-files';
+
 
 export {
     loadSymbolsLspBinary,

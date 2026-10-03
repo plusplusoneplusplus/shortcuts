@@ -15,10 +15,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { contentSearchAddon as addon } from './helpers';
-import type { NativeContentSearchResult } from '../src/content-search';
+import { addon } from './helpers';
+import { loadNativeAddon } from '../src/loader';
+import type { NativeContentSearchResult, NativeRepoFiles } from '../src/repo-files';
 
 let root: string;
+let files: NativeRepoFiles;
 
 function write(relative: string, contents = ''): void {
     const target = path.join(root, relative);
@@ -44,15 +46,22 @@ beforeAll(() => {
     write('dist/bundle.js', 'needle\n');
     write('docs/日本語/ファイル.md', 'ここに needle があります\n');
     write('docs/a file with spaces.md', 'needle\n');
+    files = addon.openRepoFiles(root);
 });
 
 afterAll(() => {
+    files?.dispose();
     if (root) fs.rmSync(root, { recursive: true, force: true });
 });
 
 describe('marshalling', () => {
+    it('exposes content search only through repository handles', () => {
+        expect(loadNativeAddon()).not.toHaveProperty('searchContent');
+        expect(typeof files.searchContent).toBe('function');
+    });
+
     it('returns repo-relative POSIX paths, gitignored entries excluded', async () => {
-        const result = await addon.searchContent(root, 'needle');
+        const result = await files.searchContent('needle');
 
         expect(locations(result)).toEqual([
             'docs/a file with spaces.md:1',
@@ -65,13 +74,13 @@ describe('marshalling', () => {
     });
 
     it('accepts an omitted options argument', async () => {
-        await expect(addon.searchContent(root, 'no match at all')).resolves.toMatchObject({
+        await expect(files.searchContent('no match at all')).resolves.toMatchObject({
             matches: [{ path: 'README.md', line: 1 }],
         });
     });
 
     it('reports columns as JavaScript string indices into the returned text', async () => {
-        const result = await addon.searchContent(root, 'needle');
+        const result = await files.searchContent('needle');
 
         for (const match of result.matches) {
             expect(match.text.slice(match.startColumn, match.endColumn).toLowerCase()).toBe(
@@ -81,7 +90,7 @@ describe('marshalling', () => {
     });
 
     it('keeps columns correct for a line with non-ASCII characters before the match', async () => {
-        const result = await addon.searchContent(root, 'needle', {
+        const result = await files.searchContent('needle', {
             path: 'docs/日本語',
         });
 
@@ -93,63 +102,63 @@ describe('marshalling', () => {
     });
 
     it('carries context lines across as arrays of strings', async () => {
-        const result = await addon.searchContent(root, 'NEEDLE in here');
+        const result = await files.searchContent('NEEDLE in here');
 
         expect(result.matches[0].before).toEqual(['before']);
         expect(result.matches[0].after).toEqual(['after']);
     });
 
     it('passes every camelCase option through to the engine', async () => {
-        const sensitive = await addon.searchContent(root, 'NEEDLE', { caseSensitive: true });
+        const sensitive = await files.searchContent('NEEDLE', { caseSensitive: true });
         expect(locations(sensitive)).toEqual(['src/nested/deep.ts:2']);
 
-        const scoped = await addon.searchContent(root, 'needle', { path: 'src/nested' });
+        const scoped = await files.searchContent('needle', { path: 'src/nested' });
         expect(locations(scoped)).toEqual(['src/nested/deep.ts:2']);
 
-        const ignored = await addon.searchContent(root, 'needle', { showIgnored: true });
+        const ignored = await files.searchContent('needle', { showIgnored: true });
         expect(locations(ignored)).toContain('ignored.txt:1');
 
-        const files = await addon.searchContent(root, 'needle', {
+        const selected = await files.searchContent('needle', {
             files: ['ignored.txt', 'src/index.ts'],
         });
-        expect(locations(files)).toEqual([
+        expect(locations(selected)).toEqual([
             'ignored.txt:1',
             'src/index.ts:1',
             'src/index.ts:2',
         ]);
 
-        const worded = await addon.searchContent(root, 'needl', { wholeWord: true });
+        const worded = await files.searchContent('needl', { wholeWord: true });
         expect(worded.matches).toEqual([]);
 
-        const regex = await addon.searchContent(root, 'ne+dle', { regex: true });
+        const regex = await files.searchContent('ne+dle', { regex: true });
         expect(locations(regex)).toContain('src/index.ts:1');
 
-        const included = await addon.searchContent(root, 'needle', { include: ['*.md'] });
+        const included = await files.searchContent('needle', { include: ['*.md'] });
         expect(locations(included)).toEqual([
             'docs/a file with spaces.md:1',
             'docs/日本語/ファイル.md:1',
         ]);
 
-        const excluded = await addon.searchContent(root, 'needle', { exclude: ['*.ts'] });
+        const excluded = await files.searchContent('needle', { exclude: ['*.ts'] });
         expect(locations(excluded)).toEqual([
             'docs/a file with spaces.md:1',
             'docs/日本語/ファイル.md:1',
         ]);
 
-        const bare = await addon.searchContent(root, 'needle', { contextLines: 0 });
+        const bare = await files.searchContent('needle', { contextLines: 0 });
         expect(bare.matches.every(match => match.before.length + match.after.length === 0)).toBe(
             true,
         );
 
-        const capped = await addon.searchContent(root, 'needle', { maxResults: 2 });
+        const capped = await files.searchContent('needle', { maxResults: 2 });
         expect(capped.matches).toHaveLength(2);
         expect(capped.truncated).toBe(true);
 
-        const perFile = await addon.searchContent(root, 'needle', { maxPerFile: 1 });
+        const perFile = await files.searchContent('needle', { maxPerFile: 1 });
         expect(locations(perFile)).not.toContain('src/index.ts:2');
         expect(perFile.truncated).toBe(true);
 
-        const tiny = await addon.searchContent(root, 'needle', { maxFileSizeBytes: 1 });
+        const tiny = await files.searchContent('needle', { maxFileSizeBytes: 1 });
         expect(tiny.matches).toEqual([]);
         expect(tiny.truncated).toBe(true);
     });
@@ -158,7 +167,7 @@ describe('marshalling', () => {
 describe('async contract', () => {
     it('returns a promise and does not resolve in the same microtask', async () => {
         let settled = false;
-        const pending = addon.searchContent(root, 'needle');
+        const pending = files.searchContent('needle');
         expect(pending).toBeInstanceOf(Promise);
 
         void pending.then(() => {
@@ -173,7 +182,7 @@ describe('async contract', () => {
 
     it('does not block the event loop while the walk runs', async () => {
         const ticks: string[] = [];
-        const search = addon.searchContent(root, 'needle').then(() => ticks.push('search'));
+        const search = files.searchContent('needle').then(() => ticks.push('search'));
         const timer = new Promise<void>(resolve =>
             setTimeout(() => {
                 ticks.push('timer');
@@ -188,14 +197,14 @@ describe('async contract', () => {
 
 describe('error propagation', () => {
     it('rejects an invalid regex rather than throwing synchronously', async () => {
-        const pending = addon.searchContent(root, '(unclosed', { regex: true });
+        const pending = files.searchContent('(unclosed', { regex: true });
 
         await expect(pending).rejects.toThrow(/invalid regular expression/);
     });
 
     it('tags a caller mistake with the InvalidArg status', async () => {
-        const error = await addon
-            .searchContent(root, '(unclosed', { regex: true })
+        const error = await files
+            .searchContent('(unclosed', { regex: true })
             .then(() => null)
             .catch((e: NodeJS.ErrnoException) => e);
 
@@ -203,32 +212,35 @@ describe('error propagation', () => {
     });
 
     it('rejects a path that escapes the root', async () => {
-        await expect(addon.searchContent(root, 'needle', { path: '../..' })).rejects.toThrow(
+        await expect(files.searchContent('needle', { path: '../..' })).rejects.toThrow(
             /invalid search path/,
         );
     });
 
     it('rejects a path that does not exist', async () => {
-        await expect(addon.searchContent(root, 'needle', { path: 'nope' })).rejects.toThrow(
+        await expect(files.searchContent('needle', { path: 'nope' })).rejects.toThrow(
             /no such directory/,
         );
     });
 
     it('rejects a root that does not exist', async () => {
-        await expect(
-            addon.searchContent(path.join(root, 'absent'), 'needle'),
-        ).rejects.toThrow();
+        const absent = addon.openRepoFiles(path.join(root, 'absent'));
+        try {
+            await expect(absent.searchContent('needle')).rejects.toThrow();
+        } finally {
+            absent.dispose();
+        }
     });
 
     it('resolves empty for an empty query rather than matching every line', async () => {
-        await expect(addon.searchContent(root, '')).resolves.toEqual({
+        await expect(files.searchContent('')).resolves.toEqual({
             matches: [],
             truncated: false,
         });
     });
 
     it('treats a regex metacharacter as a literal unless regex is set', async () => {
-        await expect(addon.searchContent(root, '(unclosed')).resolves.toMatchObject({
+        await expect(files.searchContent('(unclosed')).resolves.toMatchObject({
             matches: [],
         });
     });
@@ -238,7 +250,7 @@ describe('concurrency', () => {
     it('runs overlapping searches without interfering', async () => {
         const queries = ['needle', 'NEEDLE in here', 'no match at all', 'needle', 'nothing here'];
 
-        const results = await Promise.all(queries.map(query => addon.searchContent(root, query)));
+        const results = await Promise.all(queries.map(query => files.searchContent(query)));
 
         expect(locations(results[0])).toEqual(locations(results[3]));
         expect(locations(results[1])).toEqual(['src/nested/deep.ts:2']);
@@ -248,8 +260,8 @@ describe('concurrency', () => {
 
     it('keeps per-call options independent across concurrent calls', async () => {
         const [sensitive, insensitive] = await Promise.all([
-            addon.searchContent(root, 'NEEDLE', { caseSensitive: true }),
-            addon.searchContent(root, 'NEEDLE', { caseSensitive: false }),
+            files.searchContent('NEEDLE', { caseSensitive: true }),
+            files.searchContent('NEEDLE', { caseSensitive: false }),
         ]);
 
         expect(locations(sensitive)).toEqual(['src/nested/deep.ts:2']);

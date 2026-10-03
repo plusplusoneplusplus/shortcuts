@@ -1,5 +1,5 @@
 //! Fuzzy path scorer, ported line-for-line from
-//! `packages/coc/src/server/shared/fuzzy-file-score.ts`.
+//! `packages/coc/test/support/fuzzy-file-score.ts`.
 //!
 //! Ranking parity with the TypeScript scorer is a hard requirement. Nothing
 //! ranks with the TS scorer any more — `tree-service.ts` makes this addon

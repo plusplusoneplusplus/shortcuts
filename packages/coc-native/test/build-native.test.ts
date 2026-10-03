@@ -99,17 +99,18 @@ describe('the committed bindings', () => {
     });
 
     it('is a .ts, not a .d.ts, so tsc emits it into dist for consumers', () => {
-        // A .d.ts under src would leave dist/file-index.d.ts importing a module
+        // A .d.ts under src would leave dist/repo-files.d.ts importing a module
         // that was never emitted, breaking every downstream package's types.
         expect(BINDINGS_FILE.endsWith('.d.ts')).toBe(false);
         expect(BINDINGS_FILE.endsWith('.ts')).toBe(true);
     });
 
-    it('declares the whole file-index surface the capability re-exports', () => {
-        expect(source).toContain('export interface BuildOptions');
+    it('declares the whole repo-files surface the capability re-exports', () => {
         expect(source).toContain('export interface FileMatch');
-        expect(source).toContain('export declare class FileIndex');
-        expect(source).toContain('export declare function buildFileIndex');
+        expect(source).toContain('export interface RankedFileMatch');
+        expect(source).toContain('export declare class RepoFiles');
+        expect(source).toContain('export declare function openRepoFiles');
+        expect(source).not.toContain('export declare class FileIndex');
     });
 
     it('does not expose the symbol store through the Node addon', () => {

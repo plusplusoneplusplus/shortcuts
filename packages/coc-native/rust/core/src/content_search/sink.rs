@@ -130,7 +130,7 @@ impl<'a> MatchSink<'a> {
 
         self.matches.push(ContentMatch {
             path: self.path.to_owned(),
-            line,
+            line: line as u32,
             // Never cut into the match itself: the columns have to stay valid
             // indices into whatever text ends up on the wire.
             text: truncate_utf16(&text, MAX_LINE_UTF16.max(end_column)),

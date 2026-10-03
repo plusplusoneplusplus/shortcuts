@@ -12,22 +12,6 @@
  * binary the loader resolves.
  */
 
-/** An in-memory, gitignore-aware index of one repository's file paths. */
-export declare class FileIndex {
-  /** Number of indexed paths. */
-  len(): number
-  /** True when the walk hit the configured `maxEntries` cap. */
-  truncated(): boolean
-  /** A window of the raw path list, in index order. */
-  files(offset: number, limit: number): Array<string>
-  /** Score every indexed path and resolve with the best `limit` matches. */
-  search(query: string, limit: number): Promise<FileMatch[]>
-  /** Search with the complete native ordering tuple for server-side merging. */
-  searchRanked(query: string, limit: number): Promise<RankedFileMatch[]>
-  /** Re-walk the root and atomically swap in the new path list. */
-  refresh(): Promise<void>
-}
-
 export declare class NativeDatabaseHandle {
   constructor(path: string, options?: NativeDatabaseOptions | undefined | null)
   exec(sql: string): void
@@ -74,57 +58,63 @@ export declare class NotesIndex {
   refreshChanged(changedPaths: Array<string>): Promise<void>
 }
 
-/** Walk `root` in parallel and resolve with a ready-to-search index. */
-export declare function buildFileIndex(root: string, options?: BuildOptions | undefined | null): Promise<FileIndex>
+/**
+ * The repository-file backend for one resolved root. It owns that root's
+ * file indexes until `dispose`; Node opens one per workspace root.
+ */
+export declare class RepoFiles {
+  /**
+   * Git argv and limits for Node's WSL execution adapter. Checks disposal;
+   * validates the root on a worker before the adapter executes Git.
+   */
+  prepareContentCandidates(includeUntracked: boolean): Promise<ContentCandidateCommand>
+  /**
+   * Fresh content search with native Git eligibility. For WSL, pass the
+   * prepared ls-files stdout (including an empty string); host Git is then
+   * suppressed. Tracked enumeration errors carry the internal prefix
+   * [repo-files:tracked-unavailable] for the REST adapter to map and strip.
+   */
+  searchContent(query: string, options?: SearchContentOptions | undefined | null, tracked?: boolean | undefined | null, includeUntracked?: boolean | undefined | null, wslOutput?: string | undefined | null): Promise<ContentSearchResult>
+  /** List a directory: dirs first, locale order, per-directory cap. */
+  listDirectory(path: string, options: RepoListOptions): Promise<RepoTreeListing>
+  /** Every file under a subdirectory, depth-first in locale order. */
+  listFiles(path: string, options: RepoListOptions): Promise<RepoFileListing>
+  /**
+   * The first `maxEntries` paths of the whole-root index, in index order.
+   * The index itself is uncapped, so search still reaches every file.
+   */
+  indexFiles(options: RepoListOptions): Promise<RepoFileListing>
+  /** Fuzzy-search the whole-root index; the best `limit` matches first. */
+  searchFiles(query: string, limit: number, showIgnored: boolean): Promise<FileMatch[]>
+  /** `searchFiles` plus the native ordering tuple for server-side merging. */
+  searchFilesRanked(query: string, limit: number, showIgnored: boolean): Promise<RankedFileMatch[]>
+  /**
+   * Re-walk the built indexes after an outside change, queued behind any
+   * scan in flight. Resolves `false` when a walk failed and the previous
+   * snapshot was kept.
+   */
+  invalidate(): Promise<boolean>
+  /** Close the handle: later calls reject, background work publishes nothing. */
+  dispose(): void
+  /** Read a file: text or base64, MIME type, 1 MiB cap. */
+  readBlob(path: string): Promise<RepoBlob>
+  /**
+   * Write text to a file, creating missing parent directories, then
+   * refresh the indexes so search sees it. A failed refresh keeps the old
+   * snapshot but does not fail the committed write.
+   */
+  writeBlob(path: string, content: string): Promise<void>
+  /**
+   * Rewrite exactly the supplied spans; stale files are skipped whole and
+   * reported. A bad query rejects with `InvalidArg` before any write.
+   * Indexes are refreshed whenever a file may have been written, including
+   * a request that failed part way through.
+   */
+  replaceContent(query: string, replacement: string, files: Array<RepoReplaceFile>, options?: RepoReplaceOptions | undefined | null): Promise<RepoReplaceResult>
+}
 
 /** Recursively build a complete immutable snapshot for one resolved Notes root. */
 export declare function buildNotesIndex(root: string, options?: NotesIndexBuildOptions | undefined | null): Promise<NotesIndex>
-
-/** How to build (and later refresh) an index. */
-export interface BuildOptions {
-  /** Include gitignored files — the `showIgnored` flag from the explorer. */
-  includeIgnored?: boolean
-  /** Safety cap on indexed paths. Omit for no cap. */
-  maxEntries?: number
-}
-
-/** One matching line, with its position inside the line and its neighbours. */
-export interface ContentMatch {
-  /** Repo-relative path with `/` separators on every platform. */
-  path: string
-  /** One-based line number. */
-  line: number
-  /** The matching line without its trailing newline, possibly truncated. */
-  text: string
-  /**
-   * UTF-16 offset of the match within `text` — the same offset a JavaScript
-   * string index would use, so highlight and match cannot disagree.
-   */
-  startColumn: number
-  /** UTF-16 offset one past the end of the match within `text`. */
-  endColumn: number
-  /**
-   * Present when this line is one piece of a match that crossed a line
-   * break; every piece of that match shares the id, and it is unique within
-   * a path. Absent for an ordinary single-line match.
-   */
-  group?: number
-  /** Lines preceding `line`, in file order. */
-  before: Array<string>
-  /** Lines following `line`, in file order. */
-  after: Array<string>
-}
-
-/** The bounded response from one content search. */
-export interface ContentSearchResult {
-  /** Matches sorted by path, then by line. */
-  matches: Array<ContentMatch>
-  /**
-   * True when any cap bit: the total cap, a per-file cap, or a file skipped
-   * for exceeding `maxFileSizeBytes`.
-   */
-  truncated: boolean
-}
 
 /**
  * Create a notebook, section, or page. `kind` is `notebook`, `section` or
@@ -173,7 +163,7 @@ export interface FileMatch {
   indices: Array<number>
 }
 
-/** Native ordering keys for merging matches from multiple file indexes. */
+/** Native ordering keys for merging matches from multiple repositories. */
 export interface FileMatchRanking {
   /** 2 when the basename matched, 1 when only the full path matched. */
   tier: number
@@ -995,6 +985,12 @@ export interface NotesWriteResult {
 }
 
 /**
+ * Open the backend for an already-resolved repository root. Indexes older
+ * than `ttlMs` (default 10 s) are re-walked in the background on next use.
+ */
+export declare function openRepoFiles(root: string, ttlMs?: number | undefined | null): RepoFiles
+
+/**
  * Parse `--porcelain=v2 --branch` text produced somewhere else.
  *
  * The WSL twin of {@link git_repository_status}: those repositories run git
@@ -1048,6 +1044,21 @@ export declare function readNote(root: string, path: string, options: NotesConte
  */
 export declare function renameNotesEntry(root: string, oldPath: string, newPath: string, options: NotesEntryOptions): Promise<NotesRenameResult>
 
+/** Listing options; `maxEntries` caps each directory (or the file walk). */
+export interface RepoListOptions {
+  showIgnored: boolean
+  maxEntries: number
+  /** Directory levels to list; 1 when omitted. */
+  depth?: number
+}
+
+export interface RepoReplaceOptions {
+  caseSensitive?: boolean
+  wholeWord?: boolean
+  regex?: boolean
+  preserveCase?: boolean
+}
+
 /**
  * Resolve a client path under one selected non-default Notes root.
  *
@@ -1056,13 +1067,6 @@ export declare function renameNotesEntry(root: string, oldPath: string, newPath:
  * the result.
  */
 export declare function resolveSafeNotesPath(root: string, path: string, options?: NotesSafePathOptions | undefined | null): Promise<NotesSafePathResult>
-
-/**
- * Walk `root` in parallel and resolve with every line matching `query`.
- *
- * An empty query resolves with an empty result rather than every line.
- */
-export declare function searchContent(root: string, query: string, options?: SearchContentOptions | undefined | null): Promise<ContentSearchResult>
 
 /**
  * Query modes, scoping and caps for one content search.
@@ -1109,3 +1113,117 @@ export declare function writeNote(root: string, path: string, content: string, e
  * the root itself.
  */
 export declare function writeNotesOrder(root: string, parentPath: string, order: Array<string>, options: NotesEntryOptions): Promise<void>
+/** The command and resource limits the workspace execution adapter needs. */
+export interface ContentCandidateCommand {
+  args: Array<string>
+  timeoutMs: number
+  maxBuffer: number
+}
+
+/** One matching line, with its position inside the line and its neighbours. */
+export interface ContentMatch {
+  /** Repo-relative path with `/` separators on every platform. */
+  path: string
+  /** One-based line number. */
+  line: number
+  /** The matching line without its trailing newline, possibly truncated. */
+  text: string
+  /**
+   * UTF-16 offset of the match within `text` — a JavaScript string index,
+   * so the client's highlight cannot disagree with what matched.
+   */
+  startColumn: number
+  /** UTF-16 offset one past the end of the match within `text`. */
+  endColumn: number
+  /**
+   * Set when this line is one piece of a match that spanned a line break;
+   * every piece of that match carries the same id. Unique within a path,
+   * which is the only scope a client ever compares two pieces in. `None`
+   * for an ordinary single-line match.
+   */
+  group?: number
+  /** Up to `context_lines` lines preceding `line`, in file order. */
+  before: Array<string>
+  /** Up to `context_lines` lines following `line`, in file order. */
+  after: Array<string>
+}
+
+/** The bounded response from one content search. */
+export interface ContentSearchResult {
+  /**
+   * Matches sorted by path, then by line — deterministic across platforms
+   * and across runs, which the parallel walk's own order is not.
+   */
+  matches: Array<ContentMatch>
+  /**
+   * True when any cap bit: the total cap, a per-file cap, or a file skipped
+   * for being larger than `max_file_size_bytes`.
+   */
+  truncated: boolean
+}
+
+/** File content as the blob route returns it. */
+export interface RepoBlob {
+  /** UTF-8 text, or base64 when the file looks binary. */
+  content: string
+  encoding: 'utf-8' | 'base64'
+  mimeType: string
+}
+
+export interface RepoFileListing {
+  files: Array<string>
+  truncated: boolean
+}
+
+export interface RepoReplaceFile {
+  /** Repo-relative path. */
+  path: string
+  targets: Array<RepoReplaceTarget>
+}
+
+export interface RepoReplaceResult {
+  replacedMatches: number
+  replacedFiles: number
+  skipped: Array<RepoReplaceSkip>
+}
+
+/** Why one file was left alone: `stale`, `missing` or `unreadable`. */
+export interface RepoReplaceSkip {
+  path: string
+  reason: 'stale' | 'missing' | 'unreadable'
+  /** Human-readable detail, safe to show in the UI. */
+  message: string
+}
+
+/**
+ * One matched span to rewrite. Numbers are JSON numbers, kept as `f64` so a
+ * fractional or out-of-range value reads as stale, as it always has.
+ */
+export interface RepoReplaceTarget {
+  /** One-based line number. */
+  line: number
+  /** The line's full text at search time, without its terminator. */
+  text: string
+  /** UTF-16 offset of the match within `text`. */
+  startColumn: number
+  /** UTF-16 offset one past the end of the match. */
+  endColumn: number
+}
+
+/** One row of a directory listing. */
+export interface RepoTreeEntry {
+  name: string
+  /** `"dir"` or `"file"`. */
+  type: 'dir' | 'file'
+  /** Byte size for files (symlinks report their target); `None` for dirs. */
+  size?: number
+  /** Repo-relative, `/`-separated. */
+  path: string
+  /** Populated by deep listings when the directory was not truncated. */
+  children?: Array<RepoTreeEntry>
+}
+
+export interface RepoTreeListing {
+  entries: Array<RepoTreeEntry>
+  truncated: boolean
+}

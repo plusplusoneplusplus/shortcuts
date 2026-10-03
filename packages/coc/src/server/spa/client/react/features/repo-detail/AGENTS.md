@@ -215,13 +215,12 @@ once because the earlier answer was computed against an empty server set.
 ### File search
 
 Repo scope asks `/api/repos/:repoId/search`; group scope calls
-Repo scope asks `/api/repos/:repoId/search`; group scope calls
 `repoGroupService.searchRepoGroupFiles` with the group owner's base URL. Both
 debounce keystrokes, cancel superseded requests, reject stale responses, and
-highlight only the returned `indices`. Ranking happens in the Rust scorer only;
-`server/shared/fuzzy-file-score.ts` is its reference implementation, not a
-second runtime path. Results stay rendered while the query changes; only the
-first load shows `Searching files…`.
+highlight only the returned `indices`. The Rust scorer ranks results;
+`packages/coc/test/support/fuzzy-file-score.ts` supplies its test reference.
+Results stay rendered while the query changes; only the first load shows
+`Searching files…`.
 
 Group rows remain one flat server-ranked list. Their identity includes
 `workspaceId`, their visible/accessibility label includes `repoName`, and the
