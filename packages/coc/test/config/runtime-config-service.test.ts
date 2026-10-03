@@ -194,6 +194,52 @@ describe('RuntimeConfigService', () => {
     // ── updateConfig ─────────────────────────────────────────────────────
 
     describe('updateConfig', () => {
+        it('defaults Teams answer relay on and persists a live opt-out without requiring restart', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.teamsAiAnswerRelayEnabled;
+            expect(runtimeFlag()).toBe(true);
+            expect(svc.sources['features.teamsAiAnswerRelay']).toBe('default');
+            const changed = vi.fn();
+            svc.onChange(changed);
+            const disabled = await svc.updateConfig({ 'features.teamsAiAnswerRelay': false });
+            expect(disabled.effects).toEqual([{
+                field: 'features.teamsAiAnswerRelay', runtime: 'live', requiresRestart: false,
+            }]);
+            expect(runtimeFlag()).toBe(false);
+            expect(changed).toHaveBeenCalledOnce();
+            const restored = new RuntimeConfigService({ configPath });
+            expect(restored.config.features.teamsAiAnswerRelay).toBe(false);
+            expect(restored.sources['features.teamsAiAnswerRelay']).toBe('file');
+            await svc.updateConfig({ 'features.teamsAiAnswerRelay': true });
+            expect(runtimeFlag()).toBe(true);
+        });
+
+        it('persists the default-off bot identification gate and exposes live owning-server state', async () => {
+            const svc = new RuntimeConfigService({ configPath });
+            const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.botManagedConversationsEnabled;
+            expect(runtimeFlag()).toBe(false);
+            expect(svc.sources['features.botManagedConversations']).toBe('default');
+
+            const enabled = await svc.updateConfig({ 'features.botManagedConversations': true });
+            expect(enabled.effects).toEqual([{
+                field: 'features.botManagedConversations', runtime: 'live', requiresRestart: false,
+            }]);
+            expect(runtimeFlag()).toBe(true);
+            expect(enabled.sources['features.botManagedConversations']).toBe('file');
+            expect(new RuntimeConfigService({ configPath }).config.features.botManagedConversations).toBe(true);
+            expect(new RuntimeConfigService({ fileConfig: {} }).config.features.botManagedConversations).toBe(false);
+
+            const saved = fs.readFileSync(configPath, 'utf-8');
+            await expect(svc.updateConfig({ 'features.botManagedConversations': 'yes' })).rejects.toThrow();
+            expect(fs.readFileSync(configPath, 'utf-8')).toBe(saved);
+            expect(svc.revision).toBe(1);
+            expect(runtimeFlag()).toBe(true);
+
+            await svc.updateConfig({ 'features.botManagedConversations': false });
+            expect(runtimeFlag()).toBe(false);
+            expect(new RuntimeConfigService({ configPath }).config.features.botManagedConversations).toBe(false);
+        });
+
         it('applies Teams message reaction updates to the live runtime snapshot', async () => {
             const svc = new RuntimeConfigService({ configPath });
             const runtimeFlag = () => buildRuntimeDashboardConfig(svc, 'host', '127.0.0.1').features.teamsMessageReactionEnabled;
@@ -205,7 +251,7 @@ describe('RuntimeConfigService', () => {
             }]);
             expect(enabled.sources['features.teamsMessageReaction']).toBe('file');
             expect(runtimeFlag()).toBe(true);
-            expect(svc.config.features.teamsAiAnswerRelay).toBe(false);
+            expect(svc.config.features.teamsAiAnswerRelay).toBe(true);
             expect(svc.config.features.teamsBridgeObservability).toBe(false);
             expect((yaml.load(fs.readFileSync(configPath, 'utf-8')) as CLIConfig).features?.teamsMessageReaction).toBe(true);
 

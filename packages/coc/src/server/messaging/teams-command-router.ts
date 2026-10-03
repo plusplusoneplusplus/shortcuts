@@ -157,12 +157,15 @@ export class TeamsCommandRouter {
                     return;
                 }
                 observe?.(newChat ? 'dispatch-queued' : 'dispatch-follow-up');
-                await this.sendAcceptance(!newChat
-                    ? '💬 Message sent to thread'
-                    : '💬 New chat started in the selected repo. Your next question continues it.',
-                    msg, () => newChat && admission.taskId
-                        ? this.deps.acknowledgeNewChat?.(admission.taskId)
-                        : this.deps.acknowledgeFollowUp?.(msg));
+                if (newChat) {
+                    await this.sendAcceptance(
+                        '💬 New chat started in the selected repo. Your next question continues it.',
+                        msg, () => admission.taskId
+                            ? this.deps.acknowledgeNewChat?.(admission.taskId)
+                            : this.deps.acknowledgeFollowUp?.(msg));
+                } else {
+                    await this.deps.acknowledgeFollowUp?.(msg);
+                }
                 return;
             }
 
@@ -350,7 +353,7 @@ export class TeamsCommandRouter {
         if (targetId) {
             // Verify the process still exists
             targetProcess = await this.deps.store.getProcess(targetId)
-                ?? (this.deps.isAnswerRelayEnabled?.() === true && !targetId.startsWith('queue_')
+                ?? (!targetId.startsWith('queue_')
                     ? await this.deps.store.getProcess(toQueueProcessId(targetId)) : undefined);
             if (targetProcess) {
                 targetId = targetProcess.id;

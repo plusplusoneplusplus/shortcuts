@@ -963,6 +963,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         server, store, bridge, registry, scheduleManager,
         terminalInfra?.terminalWsServer,
         languageServerInfra.languageServerWsServer,
+        () => runtimeConfigService.config.features.botManagedConversations === true,
     );
     const { taskWatcher, pipelineWatcher, templateWatcher, notesWatcher } =
         await createWatcherInfrastructure(store, dataDir, wsServer, bridge, notesSearchService);

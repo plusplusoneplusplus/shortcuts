@@ -7,6 +7,7 @@ import { sendJSON } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { ProcessIndexEntry } from '@plusplusoneplusplus/forge';
+import { projectProcessIndexBotControl } from './bot-control-read-model';
 
 // ============================================================================
 // Types
@@ -27,7 +28,9 @@ export interface PinArchiveStore {
 // Route registration
 // ============================================================================
 
-export function registerPinArchiveRoutes(routes: Route[], store: PinArchiveStore): void {
+export function registerPinArchiveRoutes(
+    routes: Route[], store: PinArchiveStore, getBotManagedConversationsEnabled?: () => boolean,
+): void {
     // PATCH /api/processes/:id/pin — toggle or set pinned_at
     routes.push({
         method: 'PATCH',
@@ -114,7 +117,8 @@ export function registerPinArchiveRoutes(routes: Route[], store: PinArchiveStore
         handler: async (_req, res, match) => {
             const workspaceId = decodeURIComponent(match![1]);
             const entries = store.getPinnedProcesses(workspaceId);
-            sendJSON(res, 200, { entries });
+            const enabled = getBotManagedConversationsEnabled?.() === true;
+            sendJSON(res, 200, { entries: entries.map(entry => projectProcessIndexBotControl(entry, enabled)) });
         },
     });
 }

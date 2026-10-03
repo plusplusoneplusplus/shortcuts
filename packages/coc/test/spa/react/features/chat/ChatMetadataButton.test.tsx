@@ -48,6 +48,13 @@ beforeEach(() => {
 });
 
 describe('ChatMetadataButton', () => {
+    it('allows safe bot provenance inspection while an initial chat is queued', () => {
+        const botControl = { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' };
+        renderButton({ isPending: true, metadataProcess: { id: 'queue_task', botControl } });
+        expect(screen.getByTestId('metadata-popover')).toBeTruthy();
+        expect(popoverProps[0].process.botControl).toEqual(botControl);
+    });
+
     it('renders the popover with the metadata bundle', () => {
         renderButton();
         expect(screen.getByTestId('metadata-popover')).toBeTruthy();

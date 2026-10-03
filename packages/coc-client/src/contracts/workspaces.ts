@@ -3,6 +3,7 @@ import type { ForEachChildMode, ForEachItem } from './for-each';
 import type { MapReduceProcessContext } from './map-reduce';
 import type { EffortTierKey } from './queue';
 import type { WorktreeMetadata } from './worktree';
+import type { BotControlPresentation } from './processes';
 
 /**
  * Marker set by the server on a workspace whose checkout lives inside WSL.
@@ -254,6 +255,7 @@ export interface WorkspaceHistoryQuery {
 }
 
 export interface ProcessHistoryItem {
+  botControl?: BotControlPresentation;
   id: string;
   type: string;
   status: string;

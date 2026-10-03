@@ -85,6 +85,14 @@ Multiple repositories and multiple clones of a single remote — without Git wor
 
 Zero dependency on an editor. CoC runs as a standalone server with a mobile-responsive dashboard. Monitor queues, review diffs, and orchestrate agents from anywhere.
 
+### Teams Messaging
+
+Connect Teams through the dashboard's Connections settings. The explicit
+direct-message API sends to verified existing one-on-one chats through IC3,
+with account/region pinning and no automatic replay. See
+[Teams Direct Messages](packages/coc/README.md#teams-direct-messages) for setup,
+request fields, delivery outcomes, and limitations.
+
 ## Prerequisites & Setup
 
 ### Requirements

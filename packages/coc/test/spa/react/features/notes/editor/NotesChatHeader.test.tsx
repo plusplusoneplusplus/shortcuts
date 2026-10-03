@@ -26,6 +26,16 @@ describe('NotesChatHeader', () => {
         return { ...utils, props };
     }
 
+    it('shares compact bot identification when the built-in conversation header is hidden', () => {
+        renderHeader({ chatMetadata: {
+            metadataProcess: { id: 'queue_chat', botControl: { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' } },
+            turnsCount: 0, isPending: true, resumeSessionId: null, resumeLaunching: false,
+            onLaunchInteractiveResume: vi.fn(),
+        } });
+        expect(screen.getByRole('img', { name: 'Bot-managed \u00b7 Teams' }).querySelector('.sr-only')).toBeTruthy();
+        expect(screen.getByRole('button', { name: /conversation metadata/i })).toBeTruthy();
+    });
+
     describe('header composition', () => {
         it('renders exactly one header row with context label and scope control', () => {
             renderHeader({ contextLabel: 'roadmap' });

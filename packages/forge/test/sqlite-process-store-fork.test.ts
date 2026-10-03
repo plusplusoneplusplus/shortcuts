@@ -13,6 +13,7 @@ import {
     AIProcess,
     AIProcessStatus,
     ConversationTurn,
+    type BotControlMetadata,
 } from '../src/index';
 
 let tmpDir: string;
@@ -81,6 +82,7 @@ describe('SqliteProcessStore.forkProcess', () => {
         expect(forked.metadata?.workspaceId).toBe('ws-test');
         expect(forked.metadata?.stoppedChatResume).toBeUndefined();
         expect(forked.metadata?.rewindHistory).toBeUndefined();
+        expect(forked.metadata).not.toHaveProperty('botControl');
         expect(forked.workingDirectory).toBe('/tmp/test');
         expect(forked.conversationTurns).toHaveLength(4);
     });
@@ -209,6 +211,127 @@ describe('SqliteProcessStore.forkProcess', () => {
 
         expect(forked.title).toBe('[Fork] my prompt');
     });
+});
+
+describe('SqliteProcessStore.forkProcess - bot control isolation', () => {
+    const cases = [
+        { source: 'teams', workspaceId: 'ws-a', provider: 'copilot', upToTurnIndex: undefined },
+        { source: 'teams', workspaceId: 'ws-b', provider: 'codex', upToTurnIndex: 1 },
+        { source: 'whatsapp', workspaceId: 'ws-a', provider: 'codex', upToTurnIndex: undefined },
+        { source: 'whatsapp', workspaceId: 'ws-b', provider: 'copilot', upToTurnIndex: 1 },
+    ] as const;
+
+    function botControl(source: BotControlMetadata['source']): BotControlMetadata {
+        return {
+            state: 'active',
+            source,
+            controllerKey: `${source}-bridge`,
+            controllerLabel: source === 'teams' ? 'Teams bridge' : 'WhatsApp bridge',
+            externalThreadUrl: source === 'teams'
+                ? 'https://teams.microsoft.com/l/message/test-thread'
+                : 'https://web.whatsapp.com/test-thread',
+        };
+    }
+
+    it.each(cases)(
+        'does not inherit $source control in $workspaceId with provider $provider',
+        async ({ source, workspaceId, provider, upToTurnIndex }) => {
+            const metadata = {
+                type: 'chat',
+                workspaceId,
+                provider,
+                model: 'test-model',
+                botControl: botControl(source),
+                commitChat: { commitHash: 'test-commit' },
+            };
+            await store.addProcess(makeProcess('managed', {
+                metadata,
+                conversationTurns: [makeTurn(0), makeTurn(1), makeTurn(2), makeTurn(3)],
+            }));
+            const sourceBefore = await store.getProcess('managed');
+            const changeSpy = vi.fn();
+            store.onProcessChange = changeSpy;
+
+            const forked = await store.forkProcess('managed', 'fork', upToTurnIndex);
+
+            expect(forked.metadata).toEqual({
+                type: 'chat',
+                workspaceId,
+                provider,
+                model: 'test-model',
+                commitChat: { commitHash: 'test-commit' },
+                forkSourceId: 'managed',
+            });
+            expect(forked.conversationTurns).toHaveLength(upToTurnIndex === undefined ? 4 : 2);
+            expect(changeSpy).toHaveBeenCalledExactlyOnceWith({
+                type: 'process-added',
+                process: forked,
+            });
+            expect(changeSpy.mock.calls[0][0].process.metadata).not.toHaveProperty('botControl');
+            expect(await store.getProcess('managed')).toEqual(sourceBefore);
+
+            store.close();
+            store = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'test.db') });
+            expect((await store.getProcess('fork', workspaceId))?.metadata).toEqual(forked.metadata);
+            expect((await store.getProcess('managed', workspaceId))?.metadata).toEqual(metadata);
+            const listed = await store.getAllProcesses({ workspaceId, exclude: ['conversation'] });
+            expect(listed.find(process => process.id === 'fork')?.metadata).not.toHaveProperty('botControl');
+            expect(listed.find(process => process.id === 'managed')?.metadata?.botControl).toEqual(metadata.botControl);
+            expect(await store.getAllProcesses({ workspaceId: 'ws-other' })).toEqual([]);
+
+            const secondFork = await store.forkProcess('fork', 'second-fork');
+            expect(secondFork.metadata).not.toHaveProperty('botControl');
+            expect(secondFork.metadata?.forkSourceId).toBe('fork');
+            expect((await store.getProcess('managed'))?.metadata?.botControl).toEqual(metadata.botControl);
+        },
+    );
+
+    it('drops malformed control without validating or copying it into the fork', async () => {
+        await store.addProcess(makeProcess('malformed'));
+        store.getDatabase().prepare('UPDATE processes SET metadata = ? WHERE id = ?').run(
+            JSON.stringify({ type: 'chat', workspaceId: 'ws-test', botControl: { state: 'invalid' } }),
+            'malformed',
+        );
+
+        const forked = await store.forkProcess('malformed', 'fork');
+
+        expect(forked.metadata).not.toHaveProperty('botControl');
+        expect((await store.getProcess('fork'))?.metadata).not.toHaveProperty('botControl');
+        expect((await store.getProcess('malformed'))?.metadata?.botControl).toEqual({ state: 'invalid' });
+    });
+
+    it.each(['teams', 'whatsapp'] as const)(
+        'preserves %s control and rolls back a failed fork before retry',
+        async source => {
+            await store.addProcess(makeProcess('managed', {
+                metadata: { type: 'chat', workspaceId: 'ws-test', botControl: botControl(source) },
+                conversationTurns: [makeTurn(0), makeTurn(1)],
+            }));
+            const sourceBefore = await store.getProcess('managed');
+            const changeSpy = vi.fn();
+            store.onProcessChange = changeSpy;
+            const db = store.getDatabase();
+            db.exec(`
+                CREATE TRIGGER reject_fork_turn BEFORE INSERT ON conversation_turns
+                WHEN NEW.process_id = 'fork'
+                BEGIN SELECT RAISE(ABORT, 'fork turn persistence failed'); END;
+            `);
+
+            await expect(store.forkProcess('managed', 'fork')).rejects.toThrow('fork turn persistence failed');
+
+            expect(await store.getProcess('fork')).toBeUndefined();
+            expect(await store.getConversationTurns('fork')).toEqual([]);
+            expect(await store.getProcess('managed')).toEqual(sourceBefore);
+            expect(changeSpy).not.toHaveBeenCalled();
+            db.exec('DROP TRIGGER reject_fork_turn');
+
+            const forked = await store.forkProcess('managed', 'fork');
+            expect(forked.metadata).not.toHaveProperty('botControl');
+            expect(forked.conversationTurns).toHaveLength(2);
+            expect(await store.getProcess('managed')).toEqual(sourceBefore);
+            expect(changeSpy).toHaveBeenCalledTimes(1);
+        },
+    );
 });
 
 describe('SqliteProcessStore.forkProcess — commit-chat association', () => {

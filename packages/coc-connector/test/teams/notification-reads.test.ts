@@ -21,9 +21,10 @@ describe('notification-authoritative MCP reads', () => {
             ? { messages: [root('visible')] }
             : { replies: args.messageId === 'tracked-9' ? [root('reply')] : [] }));
         const read = await s.transport.poll('channel', undefined, { ...hints, rootMessageIds: ['tracked-9'] });
-        expect(s.callTool.mock.calls[0][1].top).toBe(50);
-        expect(s.callTool.mock.calls[1][1].messageId).toBe('tracked-9');
-        expect(s.callTool).toHaveBeenCalledTimes(2);
+        expect(s.callTool.mock.calls[0]).toEqual(['ListChannelMessageReplies',
+            { teamId: 'team', channelId: 'channel', messageId: 'tracked-9', maxReplies: 50 },
+            expect.any(AbortSignal)]);
+        expect(s.callTool).toHaveBeenCalledOnce();
         expect(read.messages.find(msg => msg.messageId === 'reply')?.replyToMessageId).toBe('tracked-9');
     });
     it('known-root wakes read only hinted histories despite many visible and tracked roots', async () => {
@@ -38,9 +39,92 @@ describe('notification-authoritative MCP reads', () => {
             ? { messages: visible } : { replies: [] }));
         await s.transport.poll('channel', undefined, { ...hints, rootMessageIds: ['tracked-99', 'tracked-98', 'tracked-99'] });
         const replyCalls = s.callTool.mock.calls.filter(([name]) => name === 'ListChannelMessageReplies');
-        expect(s.callTool).toHaveBeenCalledTimes(3);
+        expect(s.callTool).toHaveBeenCalledTimes(2);
         expect(replyCalls.map(([, args]) => args.messageId)).toEqual(['tracked-99', 'tracked-98']);
+        expect(discovered).toEqual([]);
+        await s.transport.poll('channel', undefined, { ...hints, reconcile: true });
         expect(discovered).toEqual(visible.map(message => message.id));
+    });
+    it('known-thread reads bypass slow channel scans, finish reply pagination and retain root backfill', async () => {
+        const s = setup(['tracked']);
+        Object.assign(s.transport, { rootPages: new Map([['channel', 'older-roots']]) });
+        s.callTool.mockImplementation(async (name, args) => {
+            if (name === 'ListChannelMessages') throw new Error('Channel scan must not gate a known-thread wake');
+            return result(args.nextLink ? { replies: [root('reply-two', '2026-01-01T00:00:02Z')] }
+                : { replies: [root('reply-one')], hasMoreResults: true, nextLink: 'next-replies' });
+        });
+        const read = await s.transport.poll('channel', 'previous-head', { ...hints, rootMessageIds: ['tracked'] });
+        expect(read.messages.map(msg => msg.messageId)).toEqual(['reply-one', 'reply-two']);
+        expect(read.nextSince).toBe('previous-head');
+        expect(s.callTool).toHaveBeenCalledTimes(2);
+        expect(s.callTool.mock.calls.every(([name]) => name === 'ListChannelMessageReplies')).toBe(true);
+        s.transport.commitNotificationRead('channel');
+        s.callTool.mockClear();
+        s.callTool.mockImplementation(async name => result(name === 'ListChannelMessages'
+            ? { messages: [root('visible')] } : { replies: [] }));
+        await s.transport.poll('channel', undefined, { ...hints, reconcile: true });
+        expect(s.callTool.mock.calls.some(([name, args]) => name === 'ListChannelMessages'
+            && args.nextLink === 'older-roots')).toBe(true);
+    });
+    it('only treats discovered roots as known in their own channel', async () => {
+        const s = setup([]);
+        s.callTool.mockImplementation(async (name, args) => result(name === 'ListChannelMessages'
+            ? args.nextLink ? { messages: [root('archived')] }
+                : { messages: [root('visible')], hasMoreResults: true, nextLink: 'older-roots' }
+            : { replies: [] }));
+        await s.transport.poll('channel', undefined, { ...hints, reconcile: true });
+        s.transport.commitNotificationRead('channel');
+        s.callTool.mockClear();
+        await s.transport.poll('channel', undefined, { ...hints, rootMessageIds: ['archived'] });
+        expect(s.callTool).toHaveBeenCalledOnce();
+        expect(s.callTool.mock.calls[0][0]).toBe('ListChannelMessageReplies');
+        s.callTool.mockClear();
+        await s.transport.poll('another-channel', undefined, { ...hints, rootMessageIds: ['archived'] });
+        expect(s.callTool.mock.calls[0][0]).toBe('ListChannelMessages');
+    });
+    it.each([false, true])('requires both enabled thread reads and advertised reply support (enabled=%s)', async enabled => {
+        const s = setup(['tracked']);
+        Object.assign(s.transport, {
+            pollChannelReplies: () => enabled,
+            _availableTools: enabled ? [] : ['ListChannelMessageReplies'],
+        });
+        await s.transport.poll('channel', undefined, { ...hints, rootMessageIds: ['tracked'] });
+        expect(s.callTool).toHaveBeenCalledOnce();
+        expect(s.callTool.mock.calls[0][0]).toBe('ListChannelMessages');
+    });
+    it('targeted reply failures and cancellation do not fabricate messages or run a root scan', async () => {
+        const s = setup(['tracked']);
+        s.callTool.mockRejectedValueOnce(new McpHttpError(429, 'limited', 90_000));
+        await expect(s.transport.poll('channel', undefined, { ...hints, rootMessageIds: ['tracked'] }))
+            .rejects.toMatchObject({ status: 429, retryAfterMs: 90_000 });
+        expect(s.callTool).toHaveBeenCalledOnce();
+        s.callTool.mockClear();
+        const controller = new AbortController();
+        controller.abort();
+        await expect(s.transport.poll('channel', undefined, {
+            ...hints, rootMessageIds: ['tracked'], signal: controller.signal,
+        })).rejects.toThrow();
+        expect(s.callTool).not.toHaveBeenCalled();
+    });
+    it.each(['read', 'admission'])('retries the full scan after incomplete %s, even when the next hint is known', async failure => {
+        const s = setup(['tracked']);
+        if (failure === 'read') {
+            s.callTool.mockRejectedValueOnce(new Error('Reader temporarily unavailable'));
+            await expect(s.transport.poll('channel', undefined, { ...hints, reconcile: true })).rejects.toThrow();
+        } else {
+            await s.transport.poll('channel', undefined, { ...hints, reconcile: true });
+        }
+        s.callTool.mockClear();
+        const retried = await s.transport.poll('channel', undefined, { ...hints, rootMessageIds: ['tracked'] });
+        expect(s.callTool.mock.calls[0][0]).toBe('ListChannelMessages');
+        expect(s.callTool.mock.calls.filter(([name]) => name === 'ListChannelMessageReplies')
+            .map(([, args]) => args.messageId)).toEqual(['tracked', 'visible']);
+        expect(retried.messages.some(msg => msg.messageId === 'visible')).toBe(true);
+        s.transport.commitNotificationRead('channel');
+        s.callTool.mockClear();
+        await s.transport.poll('channel', undefined, { ...hints, rootMessageIds: ['tracked'] });
+        expect(s.callTool).toHaveBeenCalledOnce();
+        expect(s.callTool.mock.calls[0][0]).toBe('ListChannelMessageReplies');
     });
     it.each([
         { rootMessageIds: [], reconcile: true },

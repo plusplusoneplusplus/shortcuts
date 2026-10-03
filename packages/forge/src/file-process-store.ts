@@ -1252,6 +1252,7 @@ export class FileProcessStore implements ProcessStore {
             activityAt: entry.process.lastEventAt ?? entry.process.startTime,
             pendingAskUserCount: askUserCount > 0 ? askUserCount : undefined,
             compaction: entry.process.metadata?.compaction,
+            botControl: entry.process.metadata?.botControl,
         };
     }
 

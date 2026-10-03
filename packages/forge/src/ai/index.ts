@@ -197,6 +197,8 @@ export {
     AIProcessStatus,
     AIProcessType,
     SessionCategory,
+    BotControlSource,
+    BotControlMetadata,
     ProcessCompactionState,
     GenericProcessMetadata,
     GenericGroupMetadata,

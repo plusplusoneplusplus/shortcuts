@@ -29,7 +29,7 @@ function token(overrides: Record<string, unknown> = {}): string {
 function setup(options: Partial<ConstructorParameters<typeof Ic3Operations>[0]> = {}) {
     const acquire = vi.fn(async () => token());
     const operations = new Ic3Operations({
-        region: 'amer', connectionId: 'connection-one', enableSelfSend: true, acquireToken: acquire, ...options,
+        region: 'amer', connectionId: 'connection-one', acquireToken: acquire, ...options,
     });
     return { acquire, operations };
 }
@@ -74,19 +74,18 @@ describe('IC3 operations', () => {
         for (const { acquire } of instances) expect(acquire).toHaveBeenCalledOnce();
     });
 
-    it('defaults self send off and needs no credentials or network for support checks', async () => {
-        const { acquire, operations } = setup({ enableSelfSend: undefined });
+    it('allows self sends without a flag and needs no credentials or network for support checks', async () => {
+        const { acquire, operations } = setup();
         expect(operations.support({ kind: 'send', destination: self, body: text }))
-            .toEqual({ supported: false, reason: 'disabled' });
-        await expect(operations.send(self, text)).rejects.toMatchObject({
-            backend: 'ic3', code: 'unavailable', outcome: 'not-attempted',
-        });
+            .toEqual({ supported: true });
         expect(acquire).not.toHaveBeenCalled();
         expect(fetchMock).not.toHaveBeenCalled();
+        fetchMock.mockResolvedValue(Response.json({ OriginalArrivalTime: '123' }));
+        await expect(operations.send(self, text)).resolves.toMatchObject({ outcome: 'accepted' });
     });
 
     it('sends independently of MCP and returns backend-bound exact message identity', async () => {
-        const operations = new Ic3Operations({ region: 'amer', connectionId: 'standalone', enableSelfSend: true });
+        const operations = new Ic3Operations({ region: 'amer', connectionId: 'standalone' });
         fetchMock.mockResolvedValue(Response.json({ OriginalArrivalTime: '1234567890' }, { status: 201 }));
         await expect(operations.send(self, text)).resolves.toEqual({
             outcome: 'accepted', message: {

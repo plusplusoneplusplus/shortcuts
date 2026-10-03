@@ -226,7 +226,9 @@ describe('registerAllRoutes', () => {
             inbound = handler;
         });
         const send = vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
-        registerAllRoutes([], makeOpts({ store, bridge, dataDir: tmpDir }));
+        const opts = makeOpts({ store, bridge, dataDir: tmpDir });
+        opts.runtimeConfigService!.config.features.teamsAiAnswerRelay = false;
+        registerAllRoutes([], opts);
         expect(inbound).toBeDefined();
 
         const message = (text: string, senderAadId: string, messageId: string): InboundTeamsMessage =>
@@ -266,7 +268,7 @@ describe('registerAllRoutes', () => {
         expect(send).toHaveBeenCalledTimes(3);
     });
 
-    it('resolves the configured Medium tier for relay-created Teams chats', async () => {
+    it.each([undefined, true, false])('resolves Teams relay admission from partial live config (%s)', async relayEnabled => {
         const store = makeStore();
         vi.mocked(store.getWorkspaces).mockResolvedValue([
             { id: 'ws-a', name: 'Alpha', rootPath: path.join(tmpDir, 'a') },
@@ -278,7 +280,7 @@ describe('registerAllRoutes', () => {
         Object.assign(opts.runtimeConfigService!.config, {
             defaultProvider: 'codex',
             codex: { enabled: true },
-            features: { teamsAiAnswerRelay: true },
+            features: relayEnabled === undefined ? {} : { teamsAiAnswerRelay: relayEnabled },
             models: { providers: { codex: {
                 effortTiers: { medium: { model: 'custom-medium', reasoningEffort: 'high' } },
             } } },
@@ -302,12 +304,24 @@ describe('registerAllRoutes', () => {
         expect(bridge.enqueue).toHaveBeenCalledTimes(1);
         const input = bridge.enqueue.mock.calls[0][0] as CreateTaskInput;
         expect(input).toMatchObject({
-            id: expect.any(String),
-            processId: toQueueProcessId(input.id!),
             type: 'chat', repoId: 'ws-a',
             payload: { kind: 'chat', mode: 'ask', prompt: 'relay question', workspaceId: 'ws-a' },
             config: { afterEffortTier: 'medium', model: 'custom-medium', reasoningEffort: 'high' },
         });
+        if (relayEnabled === false) {
+            expect(input.id).toBeUndefined();
+            expect(input.processId).toBeUndefined();
+            await expect(fs.access(path.join(tmpDir, 'repos', 'ws-a', 'teams-answer-relay'))).rejects.toThrow();
+        } else {
+            expect(input.id).toEqual(expect.any(String));
+            expect(input.processId).toBe(toQueueProcessId(input.id!));
+            const receipts = await fs.readdir(path.join(tmpDir, 'repos', 'ws-a', 'teams-answer-relay'));
+            expect(receipts).toHaveLength(1);
+            await inbound!({
+                text: 'relay question', senderAadId: 'sender-a', messageId: 'message-1', channelId: 'channel-1',
+            }, () => {});
+            expect(bridge.enqueue).toHaveBeenCalledOnce();
+        }
         expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
     });
 

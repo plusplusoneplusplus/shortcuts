@@ -13,13 +13,13 @@ afterEach(() => {
 });
 
 describe('batched process reads', () => {
-    it('preserves SQLite value types, turn order, empty conversations, and workspace filtering', async () => {
+    it.each([38, 39])('preserves SQLite values and workspace filtering with schema %s', async version => {
         const directory = fs.mkdtempSync(path.join(process.cwd(), '.native-process-reads-'));
         directories.push(directory);
         const database = new NativeDatabase(path.join(directory, 'processes.db'));
         databases.push(database);
         database.exec(`
-            PRAGMA journal_mode=WAL; PRAGMA user_version=38;
+            PRAGMA journal_mode=WAL; PRAGMA user_version=${version};
             CREATE TABLE processes (
                 id TEXT PRIMARY KEY, workspace_id TEXT, last_event_at TEXT,
                 result BLOB, token_limit INTEGER, metadata TEXT, current_tokens REAL

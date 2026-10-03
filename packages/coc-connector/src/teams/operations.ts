@@ -3,7 +3,8 @@ export type TeamsBackend = 'mcp' | 'ic3' | 'graph';
 
 export type TeamsDestination =
     | { kind: 'self' }
-    | { kind: 'chat'; chatId: string }
+    /** IC3 requires the intended recipient's object ID and current connection ID, plus fresh provider verification. */
+    | { kind: 'chat'; chatId: string; recipientId?: string; connectionId?: string }
     | { kind: 'channel'; teamId: string; channelId: string };
 
 export interface TeamsMessageRef {
@@ -84,7 +85,9 @@ export function validateAction(action: TeamsAction, backend: TeamsBackend, conne
     const destination = actionDestination(action);
     const validId = (id: string) => typeof id === 'string' && id.trim().length > 0;
     if (!validId(connectionId) || !['self', 'chat', 'channel'].includes(destination.kind)
-        || (destination.kind === 'chat' && (!validId(destination.chatId) || destination.chatId === '48:notes'))
+        || (destination.kind === 'self' && 'chatId' in destination)
+        || (destination.kind === 'chat' && (!validId(destination.chatId) || destination.chatId === '48:notes'
+            || (destination.connectionId !== undefined && destination.connectionId !== connectionId)))
         || (destination.kind === 'channel' && (!validId(destination.teamId) || !validId(destination.channelId)))) {
         throw new TeamsOperationError('Invalid Teams destination', backend, 'invalid-target', 'not-attempted');
     }

@@ -533,7 +533,7 @@ describe('TeamsCommandRouter', () => {
             await router.handle(msg('/quota'));
             await router.handle(msg('/nope'));
             await router.handle(msg('/autopilot ship it'));
-            expect(sendReplySpy.mock.calls.map(([, root]) => root)).toEqual(['root-a', 'root-a', 'root-a', 'root-a']);
+            expect(sendReplySpy.mock.calls.map(([, root]) => root)).toEqual(['root-a', 'root-a', 'root-a']);
             expect(sendReplySpy.mock.calls[0][0]).toContain('Commands (case-insensitive');
             expect(sendReplySpy.mock.calls[1][0]).toBe('copilot: no quota data');
             expect(sendReplySpy.mock.calls[2][0]).toContain('Unknown command');
@@ -541,6 +541,7 @@ describe('TeamsCommandRouter', () => {
             expect(deps.admitFollowUp).toHaveBeenCalledTimes(1);
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
                 expect.any(Object), expect.objectContaining({ id: 'proc-a' }), 'ship it', 'autopilot');
+            expect(deps.acknowledgeFollowUp).toHaveBeenCalledWith(expect.objectContaining({ text: '/autopilot ship it' }));
         });
 
         it('rejects cross-workspace and missing topics without changing the thread', async () => {
@@ -602,7 +603,7 @@ describe('TeamsCommandRouter', () => {
             const reply = makeMsg('queued reply', { replyToMessageId: 'pending' });
             await router.handle(reply);
             expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(reply, 'task-pending', 'queued reply', undefined);
-            expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('Message sent'), 'pending');
+            expect(sendReplySpy).not.toHaveBeenCalled();
             expect(deps.acknowledgeFollowUp).toHaveBeenCalledWith(reply);
             await router.handle(makeMsg('ordinary message'));
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
@@ -622,6 +623,62 @@ describe('TeamsCommandRouter', () => {
                 expect(deps.admitPendingFollowUp).toHaveBeenLastCalledWith(
                     expect.any(Object), 'task-pending', expect.any(String), mode);
             }
+        });
+
+        it.each([
+            ['root-a', 'proc-a', 'ws-1'],
+            ['root-b', 'proc-b', 'ws-2'],
+        ])('silently acknowledges an accepted follow-up in %s', async (root, processId, workspaceId) => {
+            const reply = makeMsg('Continue', { replyToMessageId: root });
+            const observe = vi.fn();
+            await router.handle(reply, observe);
+            expect(deps.admitFollowUp).toHaveBeenCalledExactlyOnceWith(
+                reply, expect.objectContaining({ id: processId, metadata: { workspaceId } }), 'Continue', undefined);
+            expect(deps.acknowledgeFollowUp).toHaveBeenCalledExactlyOnceWith(reply);
+            expect(observe).toHaveBeenCalledExactlyOnceWith('dispatch-follow-up');
+            expect(sendReplySpy).not.toHaveBeenCalled();
+        });
+
+        it('preserves new-chat confirmations and acknowledges even if the confirmation fails', async () => {
+            deps.resolveThreadReply = vi.fn().mockResolvedValue({ workspaceId: 'ws-2' });
+            deps.admitThreadNew = vi.fn().mockResolvedValue({ taskId: 'thread-new', duplicate: false });
+            deps.acknowledgeNewChat = vi.fn().mockResolvedValue(undefined);
+            const reply = makeMsg('Start a chat', { replyToMessageId: 'root-b' });
+            await router.handle(reply);
+            expect(deps.admitThreadNew).toHaveBeenCalledExactlyOnceWith(reply, 'ws-2', 'Start a chat', undefined);
+            expect(sendReplySpy).toHaveBeenCalledExactlyOnceWith(
+                expect.stringContaining('New chat started in the selected repo'), 'root-b');
+            expect(deps.acknowledgeNewChat).toHaveBeenCalledExactlyOnceWith('thread-new');
+            expect(deps.acknowledgeFollowUp).not.toHaveBeenCalled();
+
+            sendReplySpy.mockRejectedValueOnce(new Error('confirmation failed'));
+            await router.handle(makeMsg('Another chat', { replyToMessageId: 'root-b' }));
+            expect(deps.acknowledgeNewChat).toHaveBeenCalledTimes(2);
+            expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('unavailable'), 'root-b');
+        });
+
+        it('reports follow-up admission and acknowledgment failures in the thread', async () => {
+            vi.mocked(deps.admitFollowUp!).mockRejectedValueOnce(new Error('private admission failure'));
+            await router.handle(makeMsg('Continue', { replyToMessageId: 'root-a' }));
+            expect(deps.acknowledgeFollowUp).not.toHaveBeenCalled();
+            expect(sendReplySpy).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('unavailable'), 'root-a');
+
+            sendReplySpy.mockClear();
+            vi.mocked(deps.acknowledgeFollowUp!).mockRejectedValueOnce(new Error('private persistence failure'));
+            await router.handle(makeMsg('Continue again', { replyToMessageId: 'root-b' }));
+            expect(deps.acknowledgeFollowUp).toHaveBeenCalledOnce();
+            expect(sendReplySpy).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('unavailable'), 'root-b');
+            expect(sendReplySpy.mock.lastCall?.[0]).not.toContain('private');
+        });
+
+        it('ignores historical questions without admission, acknowledgment or confirmation', async () => {
+            await router.handle({
+                ...makeMsg('Old question', { replyToMessageId: 'root-a' }),
+                historicalSelectionReplay: true,
+            });
+            expect(deps.admitFollowUp).not.toHaveBeenCalled();
+            expect(deps.acknowledgeFollowUp).not.toHaveBeenCalled();
+            expect(sendReplySpy).not.toHaveBeenCalled();
         });
 
         it('reports missing bound targets in the same thread and never falls back', async () => {
@@ -646,9 +703,14 @@ describe('TeamsCommandRouter', () => {
             expect(sendReplySpy).not.toHaveBeenCalled();
             expect(deps.acknowledgeFollowUp).not.toHaveBeenCalled();
 
+            vi.mocked(deps.admitPendingFollowUp!).mockResolvedValueOnce({ duplicate: true });
+            await router.handle(makeMsg('duplicate pending', { replyToMessageId: 'pending' }));
+            expect(sendReplySpy).not.toHaveBeenCalled();
+            expect(deps.acknowledgeFollowUp).not.toHaveBeenCalled();
+
             deps.isAnswerRelayEnabled = () => false;
             await router.handle(makeMsg('new topic', { replyToMessageId: 'root-a' }));
-            expect(deps.resolveThreadReply).toHaveBeenCalledTimes(1);
+            expect(deps.resolveThreadReply).toHaveBeenCalledTimes(2);
             expect(deps.enqueueChat).not.toHaveBeenCalled();
             expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('unavailable'), 'root-a');
         });

@@ -5,6 +5,7 @@
  */
 
 import { EventEmitter } from 'events';
+import type { BotControlMetadata } from '../ai/process-interfaces';
 import {
     QueuedTask,
     PauseMarker,
@@ -113,11 +114,33 @@ export class TaskQueueManager extends EventEmitter {
             retryCount: 0,
         };
 
+        const repoId = this.resolveTaskRepoId(task);
+        const hadGate = repoId !== undefined && this.repoGates.has(repoId);
         this.insertTask(task);
-
-        this.activateGateFromTask(task);
-
-        this.emitChange('added', task);
+        try {
+            this.activateGateFromTask(task);
+            this.emitChange('added', task);
+        } catch (admissionError) {
+            // Reject persistence before publishing successful admission.
+            this.queue = this.queue.filter(item => item !== task);
+            const releasedGate = repoId !== undefined && !hadGate
+                && this.repoGates.get(repoId)?.implementTaskId === task.id;
+            if (releasedGate) this.repoGates.delete(repoId);
+            const errors: unknown[] = [admissionError];
+            const rollbackEvents: QueueChangeType[] = ['removed'];
+            if (releasedGate) rollbackEvents.push('repo-gate-released');
+            for (const type of rollbackEvents) {
+                try {
+                    this.emitChange(type, type === 'removed' ? task : undefined);
+                } catch (rollbackError) {
+                    errors.push(rollbackError);
+                }
+            }
+            if (errors.length > 1) {
+                throw Object.assign(new Error('Queue admission failed and could not be fully rolled back'), { errors });
+            }
+            throw admissionError;
+        }
         this.emit('taskAdded', task);
 
         return task.id;
@@ -379,6 +402,37 @@ export class TaskQueueManager extends EventEmitter {
         }
 
         return false;
+    }
+
+    /** Trusted lifecycle compare-and-set; public task updates cannot change control. */
+    replaceBotControl(
+        id: string,
+        expected: BotControlMetadata | undefined,
+        replacement: BotControlMetadata | undefined,
+    ): void {
+        const task = this.getTask(id);
+        if (!task) throw new Error('Bot control queue task is unavailable');
+        if (task.botControl !== expected) throw new Error('Bot control queue authority changed');
+        if (expected === replacement) return;
+        const apply = (control: BotControlMetadata | undefined) => {
+            if (control === undefined) delete task.botControl;
+            else task.botControl = control;
+        };
+        apply(replacement);
+        try {
+            this.emitChange('updated', task);
+            this.emit('taskUpdated', task, {});
+        } catch (error) {
+            apply(expected);
+            try {
+                this.emitChange('updated', task);
+            } catch (rollbackError) {
+                throw Object.assign(new Error('Bot control queue update could not be rolled back'), {
+                    errors: [error, rollbackError],
+                });
+            }
+            throw error;
+        }
     }
 
     /**

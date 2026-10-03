@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { McpClient, McpHttpError } from '../../src/teams/mcp/mcp-client';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('McpClient streamable HTTP', () => {
     it('acknowledges initialization and forwards the negotiated version and session id to tools/list', async () => {
@@ -51,9 +51,10 @@ describe('McpClient streamable HTTP', () => {
 
     it.each([
         ['seconds', '8', 8_000],
-        ['HTTP date', new Date(Date.now() + 60_000).toUTCString(), 60_000],
+        ['HTTP date', 'Thu, 01 Jan 2026 00:01:00 GMT', 60_000],
         ['invalid value', 'not-a-delay', undefined],
     ])('surfaces Retry-After %s on an HTTP 429 without exposing request headers', async (_label, header, expected) => {
+        vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-01-01T00:00:00Z'));
         const fetch = vi.fn().mockResolvedValue(new Response(null, {
             status: 429, statusText: 'Too Many Requests', headers: { 'Retry-After': header },
         }));
@@ -65,12 +66,7 @@ describe('McpClient streamable HTTP', () => {
         } catch (error) {
             expect(error).toBeInstanceOf(McpHttpError);
             expect(error).toMatchObject({ status: 429 });
-            if (_label === 'HTTP date') {
-                expect((error as McpHttpError).retryAfterMs).toBeGreaterThanOrEqual(59_000);
-                expect((error as McpHttpError).retryAfterMs).toBeLessThanOrEqual(60_000);
-            } else {
-                expect((error as McpHttpError).retryAfterMs).toBe(expected);
-            }
+            expect((error as McpHttpError).retryAfterMs).toBe(expected);
             expect(String(error)).not.toContain('test-token');
         }
         expect(fetch).toHaveBeenCalledTimes(1);

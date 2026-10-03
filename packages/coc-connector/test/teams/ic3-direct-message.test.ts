@@ -148,7 +148,7 @@ describe('IC3 verified self-DM send', () => {
             expect(() => new Ic3DirectMessageClient(options)).toThrow('region must be');
             expect(() => new TeamsBot({
                 mode: 'mcp', mcpServerUrl: 'https://mcp.example.test',
-                enableIc3DirectMessages: true, ic3DirectMessageOptions: options,
+                operationRoutes: { selfSend: 'ic3' }, ic3DirectMessageOptions: options,
                 onMessage: async () => {},
             })).toThrow('region must be');
             expect(acquire).not.toHaveBeenCalled();
@@ -303,7 +303,7 @@ function mockMcp(): void {
     });
 }
 
-describe('IC3 transport and bot opt-in', () => {
+describe('IC3 transport and bot routing', () => {
     it('keeps MCP polling, channel sends, replies, and self sends working without an IC3 region', async () => {
         mockMcp();
         const transport = createTransport('mcp', { mcpServerUrl: 'https://mcp.example.test' });
@@ -324,7 +324,7 @@ describe('IC3 transport and bot opt-in', () => {
     it('keeps an opted-in unconfigured IC3 self send offline without disconnecting MCP', async () => {
         mockMcp();
         const transport = createTransport('mcp', {
-            mcpServerUrl: 'https://mcp.example.test', enableIc3DirectMessages: true,
+            mcpServerUrl: 'https://mcp.example.test', operationRoutes: { selfSend: 'ic3' },
         });
         await transport.initialize(mcpToken(), {});
         fetchMock.mockClear();
@@ -362,7 +362,7 @@ describe('IC3 transport and bot opt-in', () => {
         const acquire = vi.fn(async () => value);
         const bot = new TeamsBot({
             mode: 'mcp', mcpServerUrl: 'https://mcp.example.test',
-            enableIc3DirectMessages: true,
+            operationRoutes: { selfSend: 'ic3' },
             ic3DirectMessageOptions: { region: account.region, acquireToken: acquire },
             auth: { bearerToken: mcpToken(account.oid) }, onMessage: async () => {},
         });
@@ -392,10 +392,10 @@ describe('IC3 transport and bot opt-in', () => {
         }
     });
 
-    it('opts in through TeamsBot, skips discovery writes/polling, and isolates the MCP token', async () => {
+    it('routes through TeamsBot without a send flag, skips discovery writes/polling, and isolates the MCP token', async () => {
         mockMcp();
         const bot = new TeamsBot({
-            mode: 'mcp', mcpServerUrl: 'https://mcp.example.test', enableIc3DirectMessages: true,
+            mode: 'mcp', mcpServerUrl: 'https://mcp.example.test', operationRoutes: { selfSend: 'ic3' },
             ic3DirectMessageOptions: { region: 'amer' },
             auth: { bearerToken: mcpToken() }, onMessage: async () => {},
         });
@@ -419,7 +419,7 @@ describe('IC3 transport and bot opt-in', () => {
         mockMcp();
         const refresh = vi.fn(async () => 'refreshed-mcp-token');
         const bot = new TeamsBot({
-            mode: 'mcp', mcpServerUrl: 'https://mcp.example.test', enableIc3DirectMessages: true,
+            mode: 'mcp', mcpServerUrl: 'https://mcp.example.test', operationRoutes: { selfSend: 'ic3' },
             ic3DirectMessageOptions: { region: 'amer' },
             auth: { bearerToken: mcpToken(), onTokenRefresh: refresh }, onMessage: async () => {},
         });
@@ -440,7 +440,7 @@ describe('IC3 transport and bot opt-in', () => {
     it('rejects channel/group/reply sends in opted-in DM mode without auth or network', async () => {
         mockMcp();
         const transport = createTransport('mcp', {
-            mcpServerUrl: 'https://mcp.example.test', enableIc3DirectMessages: true,
+            mcpServerUrl: 'https://mcp.example.test', operationRoutes: { selfSend: 'ic3' },
         });
         await transport.initialize('mcp-token', {});
         fetchMock.mockClear();
@@ -456,7 +456,8 @@ describe('IC3 transport and bot opt-in', () => {
 
     it('keeps explicit MCP polling IDs separate from the IC3 send destination', async () => {
         mockMcp();
-        const transport = new McpTransport('https://mcp.example.test', undefined, undefined, undefined, true, { region: 'amer' });
+        const transport = new McpTransport('https://mcp.example.test', undefined, undefined, undefined, { region: 'amer' },
+            { routes: { selfSend: 'ic3' } });
         await transport.initialize(mcpToken(), { chatId: '19:self@thread.v2' });
         expect(transport.getChatId()).toBe('19:self@thread.v2');
         fetchMock.mockClear();
@@ -470,8 +471,8 @@ describe('IC3 transport and bot opt-in', () => {
     it('keeps channel posts and replies on MCP even when opted in', async () => {
         mockMcp();
         const acquire = vi.fn(async () => token());
-        const transport = new McpTransport('https://mcp.example.test', undefined, undefined, undefined, true,
-            { region: 'apac', acquireToken: acquire });
+        const transport = new McpTransport('https://mcp.example.test', undefined, undefined, undefined,
+            { region: 'apac', acquireToken: acquire }, { routes: { selfSend: 'ic3' } });
         await transport.initialize(mcpToken(), { teamId: 'team' });
         fetchMock.mockClear();
         await transport.send('19:channel@thread.tacv2', 'test');
@@ -486,7 +487,7 @@ describe('IC3 transport and bot opt-in', () => {
     it('bot rejects empty reply targets and does not retry wrapped IC3 errors', async () => {
         mockMcp();
         const bot = new TeamsBot({
-            mode: 'mcp', mcpServerUrl: 'https://mcp.example.test', enableIc3DirectMessages: true,
+            mode: 'mcp', mcpServerUrl: 'https://mcp.example.test', operationRoutes: { selfSend: 'ic3' },
             auth: { bearerToken: 'mcp-token', onTokenRefresh: vi.fn(async () => 'refreshed-token') },
             onMessage: async () => {},
         });
@@ -511,7 +512,7 @@ describe('IC3 transport and bot opt-in', () => {
     it('clears IC3 credentials on stop/reinitialize and never reuses DM routing for channels', async () => {
         mockMcp();
         const transport = createTransport('mcp', {
-            mcpServerUrl: 'https://mcp.example.test', enableIc3DirectMessages: true,
+            mcpServerUrl: 'https://mcp.example.test', operationRoutes: { selfSend: 'ic3' },
             ic3DirectMessageOptions: { region: 'amer' },
         });
         await transport.initialize(mcpToken(), {});
@@ -530,15 +531,15 @@ describe('IC3 transport and bot opt-in', () => {
         transport.stop();
     });
 
-    it('requires MCP mode for the opt-in', () => {
-        expect(() => createTransport('graph', { enableIc3DirectMessages: true })).toThrow('require MCP mode');
+    it('requires MCP mode for the IC3 self route', () => {
+        expect(() => createTransport('graph', { operationRoutes: { selfSend: 'ic3' } })).toThrow('require MCP mode');
     });
 
     it.each(['opaque-token', mcpToken('00000000-0000-0000-0000-000000000099')])(
         'does not send to a different or unestablished hybrid account', async bearerToken => {
             mockMcp();
             const bot = new TeamsBot({
-                mode: 'mcp', mcpServerUrl: 'https://mcp.example.test', enableIc3DirectMessages: true,
+                mode: 'mcp', mcpServerUrl: 'https://mcp.example.test', operationRoutes: { selfSend: 'ic3' },
                 ic3DirectMessageOptions: { region: 'amer' },
                 auth: { bearerToken }, onMessage: async () => {},
             });
@@ -556,7 +557,8 @@ describe('IC3 transport and bot opt-in', () => {
 
     it('rejects account changes during refresh without changing the existing hybrid binding', async () => {
         mockMcp();
-        const transport = new McpTransport('https://mcp.example.test', undefined, undefined, undefined, true, { region: 'amer' });
+        const transport = new McpTransport('https://mcp.example.test', undefined, undefined, undefined, { region: 'amer' },
+            { routes: { selfSend: 'ic3' } });
         await transport.initialize(mcpToken(), {});
         fetchMock.mockClear();
         expect(() => transport.setToken(mcpToken('00000000-0000-0000-0000-000000000099')))
@@ -571,7 +573,8 @@ describe('IC3 transport and bot opt-in', () => {
 
     it.each(['mcp', 'ic3'])('renews a polling token without cancelling an in-flight %s send', async backend => {
         mockMcp();
-        const transport = new McpTransport('https://mcp.example.test', undefined, undefined, undefined, true, { region: 'amer' });
+        const transport = new McpTransport('https://mcp.example.test', undefined, undefined, undefined, { region: 'amer' },
+            { routes: { selfSend: 'ic3' } });
         await transport.initialize(mcpToken(), backend === 'mcp' ? { teamId: 'team' } : {});
         fetchMock.mockClear();
         let resolve!: (value: Response) => void;

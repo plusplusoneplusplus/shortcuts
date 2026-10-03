@@ -9,6 +9,7 @@ export interface GraphOperationsOptions {
     connectionId: string;
     client: GraphClient;
     onTokenRefresh?: (signal?: AbortSignal) => Promise<string | null>;
+    acquireToken?: (signal: AbortSignal) => Promise<string>;
     timeoutMs?: number;
 }
 
@@ -18,6 +19,7 @@ export class GraphOperations implements TeamsOperations {
     readonly connectionId: string;
     private readonly client: GraphClient;
     private readonly onTokenRefresh?: GraphOperationsOptions['onTokenRefresh'];
+    private readonly acquireToken?: GraphOperationsOptions['acquireToken'];
     private readonly timeoutMs: number;
     private readonly lifetime = new AbortController();
 
@@ -25,6 +27,7 @@ export class GraphOperations implements TeamsOperations {
         this.connectionId = options.connectionId;
         this.client = options.client;
         this.onTokenRefresh = options.onTokenRefresh;
+        this.acquireToken = options.acquireToken;
         this.timeoutMs = options.timeoutMs ?? 10_000;
         if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0 || this.timeoutMs > 2_147_483_647) {
             throw new RangeError('Graph operation timeout must be a positive bounded duration');
@@ -117,6 +120,11 @@ export class GraphOperations implements TeamsOperations {
             signal.addEventListener('abort', onAbort, { once: true });
         });
         const attempt = async () => {
+            if (this.acquireToken) {
+                const token = await this.acquireToken(signal);
+                if (signal.aborted) throw cancellation();
+                this.client.setBearerToken(token);
+            }
             if (signal.aborted) throw cancellation();
             outcome = 'unknown';
             return write(signal);
@@ -131,7 +139,8 @@ export class GraphOperations implements TeamsOperations {
                 let token: string | null;
                 try {
                     token = await this.onTokenRefresh(signal);
-                } catch {
+                } catch (refreshError) {
+                    if (refreshError instanceof TeamsOperationError) throw refreshError;
                     throw new TeamsOperationError('Graph token refresh failed', this.backend, 'authentication', 'rejected');
                 }
                 if (signal.aborted) throw cancellation();

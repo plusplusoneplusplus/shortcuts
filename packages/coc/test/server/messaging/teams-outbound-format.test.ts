@@ -8,7 +8,7 @@ describe('formatTeamsOutbound', () => {
             'markdown',
         );
         expect(html).toBe(
-            'AI: <p><strong>Agents / Repos</strong> (2):</p>' +
+            '<p>CoC · <strong>Agents / Repos</strong> (2):</p>' +
             '<ol><li><strong>Alpha</strong> — <code>C:\\repo\\alpha</code></li>' +
             '<li><strong>Beta</strong> — <code>/repo/beta</code></li></ol>',
         );
@@ -19,10 +19,38 @@ describe('formatTeamsOutbound', () => {
             'First line\nsecond *line*\n\n- item\n- **another**\n\n```ts\nconst value = "<tag> &";\n```',
             'markdown',
         );
-        expect(html).toContain('<p>First line<br>second <em>line</em></p>');
+        expect(html).toContain('<p>CoC · First line<br>second <em>line</em></p>');
         expect(html).toContain('<ul><li>item</li><li><strong>another</strong></li></ul>');
         expect(html).toContain('<pre><code>const value = &quot;&lt;tag&gt; &amp;&quot;;</code></pre>');
         expect(html).not.toContain('<tag>');
+    });
+
+    it('renders safe GFM tables with aligned headers, escaped pipes, and inline formatting', () => {
+        const html = formatTeamsOutbound(
+            '| **Name** | Value | Link |\n|:---|:---:|---:|\n' +
+            '| A\\|B | `<tag>` & <img src=x> | [docs](https://example.org/?a=1&b=2) |\n' +
+            '| C | *text* | [unsafe](javascript:bad) |',
+            'markdown',
+        );
+        expect(html).toContain('<p>CoC · AI-generated response</p><table border="1" cellpadding="6" cellspacing="0">');
+        expect(html).toContain('<th scope="col" align="left"><strong>Name</strong></th>');
+        expect(html).toContain('<th scope="col" align="center">Value</th>');
+        expect(html).toContain('<th scope="col" align="right">Link</th>');
+        expect(html).toContain('<td align="left">A|B</td>');
+        expect(html).toContain('<code>&lt;tag&gt;</code> &amp; &lt;img src=x&gt;');
+        expect(html).toContain('<a href="https://example.org/?a=1&amp;b=2">docs</a>');
+        expect(html).toContain('<td align="center"><em>text</em></td>');
+        expect(html).not.toMatch(/<img|href="javascript:/);
+        expect(html).not.toContain('|:---');
+        expect(html.match(/CoC · /g)).toHaveLength(1);
+    });
+
+    it('renders header-only tables and normalizes missing cells', () => {
+        const headerOnly = formatTeamsOutbound('| A | B |\n|---|---|', 'markdown');
+        expect(headerOnly).toContain('<th scope="col">A</th><th scope="col">B</th>');
+        expect(headerOnly).toContain('<tbody></tbody></table>');
+        const missing = formatTeamsOutbound('| A | B |\n|---|---|\n| one |', 'markdown');
+        expect(missing).toContain('<tr><td>one</td><td></td></tr>');
     });
 
     it('escapes hostile names, paths, inline HTML, and attribute contents', () => {
@@ -68,8 +96,48 @@ describe('formatTeamsOutbound', () => {
             .toContain('<a href="https://example.org/a?x=1&amp;y=2">docs</a>');
         expect(formatTeamsOutbound('[email](mailto:help@example.org)', 'markdown'))
             .toContain('<a href="mailto:help@example.org">email</a>');
-        expect(formatTeamsOutbound('A &amp; B', 'markdown')).toBe('AI: <p>A &amp; B</p>');
+        expect(formatTeamsOutbound('A &amp; B', 'markdown')).toBe('<p>CoC · A &amp; B</p>');
         const relay = '<p><strong>Request opaque · Part 1/1</strong></p><p>A &amp; B</p>';
-        expect(formatTeamsOutbound(relay, 'html')).toBe(`AI: ${relay}`);
+        expect(formatTeamsOutbound(relay, 'html')).toBe(
+            '<p>CoC · <strong>Request opaque · Part 1/1</strong></p><p>A &amp; B</p>',
+        );
+    });
+
+    it.each(['markdown', 'html'] as const)('keeps short %s answers and attribution on one line', source => {
+        const answer = '6 outgoing commits — up 1 since your last check';
+        const html = formatTeamsOutbound(source === 'html' ? `<p>${answer}</p>` : answer, source);
+        expect(html).toBe(`<p>CoC · ${answer}</p>`);
+        expect(html.match(/CoC · /g)).toHaveLength(1);
+    });
+
+    it.each([
+        ['# Summary', '<p>CoC · <strong>Summary</strong></p>'],
+        ['- first\n- second', '<ul><li>CoC · first</li><li>second</li></ul>'],
+        ['2. first\n3. second', '<ol start="2"><li>CoC · first</li><li>second</li></ol>'],
+        ['> quoted', '<p>CoC · quoted</p>'],
+        ['```ts\nx < y\n```', '<p>CoC · AI-generated response</p><pre><code>x &lt; y</code></pre>'],
+        ['', '<p>CoC · (No answer provided.)</p>'],
+        [' \n ', '<p>CoC · (No answer provided.)</p>'],
+    ])('attributes Markdown block %j without corrupting its shape', (text, expected) => {
+        expect(formatTeamsOutbound(text, 'markdown')).toBe(expected);
+    });
+
+    it.each([
+        ['<h2>Summary</h2>', '<h2>CoC · Summary</h2>'],
+        ['<ul><li><p>First</p></li><li>Second</li></ul>',
+            '<ul><li><p>CoC · First</p></li><li>Second</li></ul>'],
+        ['<div><blockquote><p>A &amp; B</p></blockquote></div>',
+            '<div><blockquote><p>CoC · A &amp; B</p></blockquote></div>'],
+        ['\n<br><p></p><p>Short</p>', '<p>CoC · Short</p>'],
+        ['<pre><code>&lt;x&gt;</code></pre>',
+            '<p>CoC · AI-generated response</p><pre><code>&lt;x&gt;</code></pre>'],
+        ['<div><pre><code>x</code></pre></div>',
+            '<p>CoC · AI-generated response</p><div><pre><code>x</code></pre></div>'],
+        ['<strong>Short</strong>', '<p>CoC · <strong>Short</strong></p>'],
+        ['', '<p>CoC · (No answer provided.)</p>'],
+    ])('preserves HTML block %j with exactly one attribution', (text, expected) => {
+        const html = formatTeamsOutbound(text, 'html');
+        expect(html).toBe(expected);
+        expect(html.match(/CoC · /g)).toHaveLength(1);
     });
 });

@@ -15,12 +15,14 @@ const MAX_LIMIT = 200;
 export function registerProcessHistoryRoutes(
     routes: Route[],
     store: ProcessStore & { getSeenMap?: (workspaceId: string) => Record<string, string> },
+    botManagedConversationsEnabled?: () => boolean,
 ): void {
     routes.push({
         method: 'GET',
         pattern: /^\/api\/workspaces\/([^/]+)\/history$/,
         handler: async (req, res, match) => {
             const workspaceId = decodeURIComponent(match![1]);
+            const botControlEnabled = botManagedConversationsEnabled?.() === true;
 
             // Parse query parameters
             const url = new URL(req.url!, `http://${req.headers.host ?? 'localhost'}`);
@@ -59,7 +61,7 @@ export function registerProcessHistoryRoutes(
             const page = processes.slice(0, limit);
 
             const seenMap = store.getSeenMap?.(workspaceId) ?? {};
-            const history = page.map(proc => toProcessHistoryItem(proc, seenMap[proc.id]));
+            const history = page.map(proc => toProcessHistoryItem(proc, seenMap[proc.id], botControlEnabled));
 
             sendJSON(res, 200, { history, hasMore, offset: parsedOffset, limit });
         },

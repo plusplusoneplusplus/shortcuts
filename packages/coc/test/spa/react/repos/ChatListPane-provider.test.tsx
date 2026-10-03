@@ -1,5 +1,5 @@
 /**
- * Tests for provider rendering in ChatListPane.
+ * Tests for provider and bot-management rendering in ChatListPane.
  * - Provider badges are NOT rendered for history items (any provider).
  *   Provider identity for history items is conveyed via the running-task dot
  *   color (getProviderDotClasses) rather than a badge pill.
@@ -10,9 +10,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, cleanup as testingCleanup } from '@testing-library/react';
 
 // --- Mocks (same as ChatListPane-crons pattern) ---
+const presentation = vi.hoisted(() => ({ baseUrl: undefined as string | undefined, isWide: true }));
+
+vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/repos/cloneRegistry')>(),
+    lookupCloneBaseUrl: () => presentation.baseUrl,
+}));
+vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useContainerWidth', () => ({
+    useContainerWidth: () => ({ isWide: presentation.isWide }),
+}));
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
+        crons: { listAll: vi.fn().mockResolvedValue([]) },
+    }),
+    getCocClientFor: () => ({
         crons: { listAll: vi.fn().mockResolvedValue([]) },
     }),
 }));
@@ -163,6 +175,11 @@ vi.mock('../../../../src/server/spa/client/react/tasks/comments/ContextMenu', ()
 import { ChatListPane } from '../../../../src/server/spa/client/react/features/chat/ChatListPane';
 import { getProviderDotClasses } from '../../../../src/server/spa/client/react/features/chat/ProviderBadge';
 
+beforeEach(() => {
+    presentation.baseUrl = undefined;
+    presentation.isWide = true;
+});
+
 function makeTask(overrides: Record<string, any> = {}) {
     return {
         id: 'task-1',
@@ -192,6 +209,69 @@ const defaultProps = {
     onOpenDialog: vi.fn(),
     fetchQueue: vi.fn().mockResolvedValue(undefined),
 };
+
+describe('ChatListPane bot management', () => {
+    const control = { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' };
+    const label = 'Bot-managed \u00b7 Teams';
+    const task = makeTask({ id: 'queue_managed', title: 'Test Chat', workspaceId: 'ws-test', botControl: control });
+    const emit = (detail: unknown, name = 'coc-local-ws-message') => {
+        act(() => window.dispatchEvent(new CustomEvent(name, { detail })));
+    };
+
+    it.each(['history', 'running', 'queued'] as const)('shows current safe control in %s rows', async bucket => {
+        await act(async () => render(<ChatListPane {...defaultProps} {...{ [bucket]: [{ ...task, status: bucket === 'history' ? 'completed' : bucket }] }} />));
+        expect(screen.getByRole('img', { name: label }).textContent).toContain(label);
+        expect(screen.getByText('Test Chat')).toBeTruthy();
+    });
+
+    it('shows WhatsApp control and does not confuse cron/provider automation with control', async () => {
+        await act(async () => render(<ChatListPane {...defaultProps} history={[
+            makeTask({ id: 'queue_wa', botControl: { state: 'active', source: 'whatsapp', controllerLabel: 'WhatsApp bridge' } }),
+            makeTask({ id: 'queue_cron', metadata: { cronId: 'example-cron', provider: 'copilot' } }),
+            makeTask({ id: 'queue_private', botControl: { ...control, controllerKey: 'teams-bridge' } }),
+            makeTask({ id: 'queue_disabled' }),
+        ]} />));
+        expect(screen.getAllByTestId('bot-management-badge')).toHaveLength(1);
+        expect(screen.getByRole('img', { name: 'Bot-managed \u00b7 WhatsApp' })).toBeTruthy();
+    });
+
+    it('compacts identity in a narrow desktop list without removing accessible source or title', async () => {
+        presentation.isWide = false;
+        await act(async () => render(<ChatListPane {...defaultProps} history={[task]} />));
+        expect(screen.getByRole('img', { name: label }).querySelector('.sr-only')).toBeTruthy();
+        expect(screen.getByText('Test Chat').className).toContain('truncate');
+    });
+
+    it('clears and reclaims control immediately from authoritative local snapshots', async () => {
+        await act(async () => render(<ChatListPane {...defaultProps} history={[task]} />));
+        emit({ type: 'process-updated', process: { id: task.id, workspaceId: 'ws-test' } });
+        expect(screen.queryByTestId('bot-management-badge')).toBeNull();
+        emit({ type: 'process-updated', process: { id: task.id, workspaceId: 'ws-test', botControl: control } });
+        expect(screen.getByRole('img', { name: label })).toBeTruthy();
+    });
+
+    it('uses the remote owner projection independently of local flags and colliding IDs', async () => {
+        presentation.baseUrl = 'https://clone.example.test';
+        await act(async () => render(<ChatListPane {...defaultProps} history={[task]} />));
+        const release = { type: 'process-updated', process: { id: task.id, workspaceId: 'ws-test' } };
+        emit(release);
+        emit({ baseUrl: 'https://other.example.test', message: release }, 'coc-remote-ws-message');
+        expect(screen.getByRole('img', { name: label })).toBeTruthy();
+        emit({ baseUrl: presentation.baseUrl, message: release }, 'coc-remote-ws-message');
+        expect(screen.queryByTestId('bot-management-badge')).toBeNull();
+    });
+
+    it('does not retain an old snapshot when fresh row data or the owning workspace changes', async () => {
+        const view = render(<ChatListPane {...defaultProps} history={[task]} />);
+        emit({ type: 'process-updated', process: { id: task.id, workspaceId: 'ws-test' } });
+        expect(screen.queryByTestId('bot-management-badge')).toBeNull();
+        await act(async () => view.rerender(<ChatListPane {...defaultProps} history={[{ ...task, botControl: { ...control } }]} />));
+        expect(screen.getByRole('img', { name: label })).toBeTruthy();
+        emit({ type: 'process-updated', process: { id: task.id, workspaceId: 'ws-test' } });
+        await act(async () => view.rerender(<ChatListPane {...defaultProps} workspaceId="ws-other" history={[task]} />));
+        expect(screen.getByRole('img', { name: label })).toBeTruthy();
+    });
+});
 
 describe('ChatListPane provider badge', () => {
     beforeEach(() => {

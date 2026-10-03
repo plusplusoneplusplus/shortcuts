@@ -1,5 +1,5 @@
 /**
- * Teams connector — Microsoft Teams via Graph API (primary) or MCP server (fallback).
+ * Teams connector — explicitly routed Graph, MCP and IC3 operations; writes never fail over.
  */
 
 export { TeamsBot, createTransport } from './bot';
@@ -22,7 +22,9 @@ export type {
     Ic3DirectMessageOptions,
     Ic3DirectMessageRegion,
     Ic3TokenProvider,
+    Ic3ChatVerifier,
 } from './ic3/ic3-direct-message-config';
 export type { McpChannelRootPage } from './mcp/transport-mcp';
 export { extractTenantId, acquireTokenViaAzCli, acquireMcpOAuthToken, acquireTokenWithDeviceCode, acquireTokenViaBrowser, getOAuthConfig, exchangeCodeForToken, saveMcpOAuthTokens } from './auth';
 export type { InboundTeamsMessage, TeamsBotOptions, BotStatus, TeamsChannel, McpToolResult, McpToolsListResult, TeamsAuthConfig, TeamsTransportMode, DeviceCodeInfo, TeamsTransport, TransportSendOptions } from './types';
+export type { GraphOutboundOptions } from './graph/graph-credential';

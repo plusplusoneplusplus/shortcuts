@@ -5,6 +5,8 @@ import { McpOAuthFlowController } from '../features/skills/mcpOAuthFlowControlle
 import { SettingsCard } from './SettingsCard';
 
 interface TeamsStatus {
+    channelReadBackend?: 'graph';
+    outboundBackend?: 'mcp' | 'graph';
     enableTrouter?: boolean;
     notificationStatus?: { state: string; error: { code: string; message: string } | null };
     ic3Region?: 'amer' | 'emea' | 'apac' | null;
@@ -81,7 +83,7 @@ function timeline(detail: AttemptDetail): Array<{ at: string; label: string }> {
         ...detail.phases.map(phase => ({ at: phase.at, label: stageLabels[phase.stage] })),
         ...detail.events.map(event => ({
             at: event.at,
-            label: `${event.type === 'reply-accepted' ? 'MCP accepted reply' : event.type.replace(/-/g, ' ')}${event.category ? ` · ${event.category}` : ''}`,
+            label: `${event.type === 'reply-accepted' ? 'Teams accepted reply' : event.type.replace(/-/g, ' ')}${event.category ? ` · ${event.category}` : ''}`,
         })),
         ...(detail.endedAt && detail.result
             ? [{ at: detail.endedAt, label: attemptLabel(detail) }]
@@ -95,7 +97,7 @@ const guidance: Record<string, string> = {
     resolution: 'Check team and channel access.',
     polling: 'Check polling availability.',
     dispatch: 'Check command processing.',
-    send: 'Check reply delivery through MCP.',
+    send: 'Check reply delivery and outbound credentials.',
     unknown: 'Check bridge health and try reconnecting.',
 };
 
@@ -120,6 +122,7 @@ export function TeamsConnectionCard() {
     const [botName, setBotName] = useState('');
     const [ic3Region, setIc3Region] = useState('');
     const [enableTrouter, setEnableTrouter] = useState(false);
+    const [outboundBackend, setOutboundBackend] = useState<'mcp' | 'graph'>('graph');
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [authorizing, setAuthorizing] = useState(false);
@@ -143,6 +146,7 @@ export function TeamsConnectionCard() {
         || botName !== status.botName
         || ic3Region !== (status.ic3Region ?? '')
         || enableTrouter !== (status.enableTrouter === true)
+        || outboundBackend !== (status.outboundBackend ?? 'graph')
     );
     const load = useCallback(async (syncForm = false, offset = historyOffset) => {
         try {
@@ -178,6 +182,7 @@ export function TeamsConnectionCard() {
                 setBotName(next.botName);
                 setIc3Region(next.ic3Region ?? '');
                 setEnableTrouter(next.enableTrouter === true);
+                setOutboundBackend(next.outboundBackend ?? 'graph');
             }
         } catch (err) {
             if (mounted.current) setError(err instanceof Error ? err.message : String(err));
@@ -297,6 +302,12 @@ export function TeamsConnectionCard() {
                         MCP OAuth is unavailable. Enable mcpOauth and restart CoC.
                     </p>}
                     {authorizationUrl && <p className="ar-teams-warning">Open the sign-in link on the same computer as CoC; the callback uses localhost.</p>}
+                    <p className="ar-teams-hint" data-testid="teams-reader-hint">
+                        Channel messages and enabled thread replies are read through Microsoft Graph.
+                        On the server host, sign in to Azure CLI with the same account as MCP.
+                        Graph reads require delegated ChannelMessage.Read.All consent, separately from outbound ChannelMessage.Send.
+                        Azure CLI sign-in alone does not grant consent. Discovery and creation use MCP; failed reads never fall back.
+                    </p>
                 </section>
                 <section className="ar-teams-section" aria-label="Channel settings">
                     <h4><span className="ar-teams-step" aria-hidden="true">2</span> Choose a channel</h4>
@@ -319,6 +330,22 @@ export function TeamsConnectionCard() {
                     <details className="ar-teams-advanced">
                         <summary>Advanced options <span className="ar-teams-hint">Optional</span></summary>
                         <div className="ar-teams-advanced-body">
+                            <label className="ar-teams-field">Outbound backend
+                                <select className="ar-input ar-full" value={outboundBackend} disabled={busy || !status}
+                                    onChange={e => setOutboundBackend(e.target.value as 'mcp' | 'graph')}
+                                    aria-describedby="teams-outbound-hint">
+                                    <option value="graph">Microsoft Graph (default)</option>
+                                    <option value="mcp">MCP</option>
+                                </select>
+                            </label>
+                            <p id="teams-outbound-hint" className="ar-teams-hint">
+                                Graph sends and replies use separate server-side Azure CLI credentials matching the MCP
+                                reader account, with delegated ChannelMessage.Send consent (recommended for new clients).
+                                An existing delegated Group.ReadWrite.All grant is also supported; do not request it for new registrations.
+                                Azure CLI sign-in alone does not grant consent; this selector does not configure a custom client.
+                                This selector changes channel writes only; channel reads remain Graph and discovery remains MCP.
+                                Save, then reconnect. Failed writes never fall back; ambiguous receipts are not replayed.
+                            </p>
                             <label className="ar-teams-field">IC3 region
                                 <select className="ar-input ar-full" value={ic3Region} disabled={busy || !status}
                                     onChange={e => setIc3Region(e.target.value)} aria-describedby="teams-region-hint">
@@ -329,7 +356,7 @@ export function TeamsConnectionCard() {
                                 </select>
                             </label>
                             <p id="teams-region-hint" className="ar-teams-hint">
-                                Required for optional IC3 Likes and self sends only; MCP polling and ordinary sends work unconfigured.
+                                Required for optional IC3 Likes and self sends only; Graph reads and ordinary sends work unconfigured.
                                 Choose your account's region; automatic discovery is not available. Save changes, then reconnect.
                             </p>
                             <label className="ar-teams-checkbox">
@@ -340,7 +367,7 @@ export function TeamsConnectionCard() {
                             </label>
                             <p id="teams-trouter-hint" className="ar-teams-hint">
                                 Off by default. Uses separate IC3 credentials from the server's Azure CLI sign-in, for the same
-                                account as MCP. Notifications trigger authoritative reads with a 60-second fallback.
+                                account as MCP. Notifications trigger authoritative Graph reads with a 60-second fallback.
                                 This private protocol is best-effort, not durable catch-up. Save, then reconnect.
                             </p>
                         </div>
@@ -353,6 +380,7 @@ export function TeamsConnectionCard() {
                                     teamName: teamName.trim(), channelName: channelName.trim(), botName: botName.trim(),
                                     ic3Region: ic3Region || null,
                                     enableTrouter,
+                                    outboundBackend,
                                 });
                             })}>Save channel</Button>
                     </div>
@@ -380,7 +408,10 @@ export function TeamsConnectionCard() {
                     <summary>How workspace routing works</summary>
                     <p className="ar-teams-hint">
                         This bridge reads a team channel for inbound messages; it does not relay agent output to a self-chat.
-                        Users can run <code>list repos</code> and <code>select repo &lt;name&gt;</code> to choose their workspace.
+                        AI answer relay is enabled by default for a connected bridge: completed Ask answers and safe terminal
+                        notices return to the original Teams thread. Turn it off in Configure &gt; Integrations to stop
+                        answer relay and thread reply polling without restarting or reconnecting.
+                        Users can run <code>/list repos</code> and <code>/select repo &lt;name&gt;</code> to choose their workspace.
                     </p>
                 </details>
                 {status?.teamsBridgeObservabilityEnabled && (
@@ -416,8 +447,8 @@ export function TeamsConnectionCard() {
                                                     {detail.failureCategory && <p>{guidance[detail.failureCategory] ?? guidance.unknown}</p>}
                                                     {detail.events.some(event => event.type === 'reply-rejected') && <p>{guidance.send}</p>}
                                                     <p>Poll: {detail.pollDegraded ? 'Degraded' : detail.lastPollSuccessAt ? 'Healthy' : 'No successful poll yet'} · last success: {detail.lastPollSuccessAt ? localTime(detail.lastPollSuccessAt) : 'none'}</p>
-                                                    <p>Reply send: {detail.sendDegraded ? 'Degraded' : detail.lastSendSuccessAt ? 'Healthy' : 'No MCP acceptance yet'} · last MCP acceptance: {detail.lastSendSuccessAt ? localTime(detail.lastSendSuccessAt) : 'none'}</p>
-                                                    <p>MCP acceptance does not confirm Teams displayed a reply.</p>
+                                                    <p>Reply send: {detail.sendDegraded ? 'Degraded' : detail.lastSendSuccessAt ? 'Healthy' : 'No backend acceptance yet'} · last backend acceptance: {detail.lastSendSuccessAt ? localTime(detail.lastSendSuccessAt) : 'none'}</p>
+                                                    <p>Backend acceptance does not confirm Teams displayed a reply.</p>
                                                     <dl className="ar-teams-counts">
                                                         {Object.entries(detail.totals).map(([key, count]) => (
                                                             <div key={key}><dt>{key.replace(/([A-Z])/g, ' $1')}</dt><dd>{count}</dd></div>

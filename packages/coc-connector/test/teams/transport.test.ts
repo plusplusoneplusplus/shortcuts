@@ -70,6 +70,34 @@ describe('GraphTransport', () => {
             .rejects.toThrow('401');
     });
 
+    it.each([
+        { channel: true, restart: false }, { channel: true, restart: true },
+        { channel: false, restart: false }, { channel: false, restart: true },
+    ])('does not publish stale Graph operations after stop: %j', async ({ channel, restart }) => {
+        const graph = new GraphTransport();
+        let release!: (response: Response) => void;
+        mockFetch.mockImplementationOnce(() => new Promise<Response>(resolve => { release = resolve; }));
+        const starting = graph.initialize('old-token', channel ? { teamId: 'old-team' } : {});
+        const rejection = expect(starting).rejects.toThrow('cancelled');
+        graph.stop();
+        if (restart) {
+            mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'verified' })));
+            await graph.initialize('new-token', channel ? { teamId: 'new-team' } : { chatId: 'new-chat' });
+        }
+        const operations = restart ? graph.operations : undefined;
+        release(new Response(JSON.stringify({ id: 'verified' })));
+        await rejection;
+        if (restart) {
+            expect(graph.operations).toBe(operations);
+            mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'sent' })));
+            expect(await graph.send('channel', 'answer')).toBe('sent');
+            expect(mockFetch.mock.lastCall?.[0]).toContain(channel ? '/teams/new-team/' : '/chats/new-chat/');
+        } else {
+            expect(() => graph.operations).toThrow('not initialized');
+        }
+        graph.stop();
+    });
+
     it('should send a message', async () => {
         // Initialize
         mockFetch.mockResolvedValueOnce({
@@ -225,7 +253,7 @@ describe('McpTransport', () => {
     let transport: TeamsTransport;
 
     beforeEach(() => {
-        transport = new McpTransport('https://mcp.test.com/server', undefined, undefined, undefined, undefined, { region: 'amer' });
+        transport = new McpTransport('https://mcp.test.com/server', undefined, undefined, undefined, { region: 'amer' });
         mockFetch.mockReset();
         initialized.mockClear();
     });

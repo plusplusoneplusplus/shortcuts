@@ -9,6 +9,7 @@ import { getRalphContext, readCommitChatContext } from '../../../../../../tasks/
 import { useSessionTurnPerformance } from '../hooks/useSessionTurnPerformance';
 import { CHAT_STYLE_LABELS, DEFAULT_CHAT_STYLE, isChatStyle } from '@plusplusoneplusplus/coc-client';
 import type { ClientTokenUsage } from '../../../types/dashboard';
+import { botControlSourceLabel, readBotControl } from '../../../utils/botControl';
 
 const RALPH_FIELD_TRUNCATE = 200;
 
@@ -39,6 +40,7 @@ export interface MetaRow {
     breakAll?: boolean;
     mono?: boolean;
     link?: string;
+    external?: boolean;
 }
 
 const SUMMARY_ROW_LABELS = new Set([
@@ -288,6 +290,15 @@ export function buildRows(process: any, turnsCount?: number): MetaRow[] {
     push('Style', formatChatStyle(process?.metadata?.chatStyle));
     push('Session ID', sessionId, { breakAll: true, mono: true, link: sessionId ? `#logs?sessionId=${encodeURIComponent(sessionId)}` : undefined });
     push('Backend', process?.metadata?.backend);
+    const control = readBotControl(process.botControl);
+    if (control) {
+        push('Control', 'Bot-managed');
+        push('Source', botControlSourceLabel(control));
+        push('Controller', control.controllerLabel);
+        if (control.externalThreadUrl) {
+            rows.push({ label: 'External thread', value: botControlSourceLabel(control), link: control.externalThreadUrl, external: true });
+        }
+    }
     push('Started', formatTimestamp(startedAt));
     push('Ended', formatTimestamp(endedAt));
     push('Duration', duration != null ? formatDuration(duration) : null);
@@ -714,10 +725,12 @@ export function ConversationMetadataPopover({ process, turnsCount, resumeSession
                                 </span>
                                 <a
                                     href={row.link}
+                                    target={row.external ? '_blank' : undefined}
+                                    rel={row.external ? 'noopener noreferrer' : undefined}
                                     className="text-[#0078d4] dark:text-[#3794ff] hover:underline text-[10px]"
-                                    title="View logs for this session"
+                                    title={row.external ? 'Open external thread' : 'View logs for this session'}
                                 >
-                                    🔍 logs
+                                    {row.external ? 'Open thread' : '🔍 logs'}
                                 </a>
                             </div>
                         ) : (

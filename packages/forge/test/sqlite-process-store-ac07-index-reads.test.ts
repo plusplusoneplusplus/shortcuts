@@ -26,12 +26,13 @@ type IndexRow = {
     end_time: string | null; prompt_preview: string | null; error: string | null;
     parent_process_id: string | null; title: string | null; custom_title: string | null;
     last_message_preview: string | null; last_event_at: string | null; pinned_at: string | null;
-    archived: number; compaction_json: string | null; pending_ask_user_count?: number | null;
+    archived: number; compaction_json: string | null; bot_control_json?: string | null; pending_ask_user_count?: number | null;
 };
 const summarySelect = `id, workspace_id, status, type, start_time, end_time, prompt_preview, error,
     parent_process_id, title, custom_title, last_message_preview, last_event_at, pinned_at, archived,
     COALESCE(json_array_length(json_extract(metadata, '$.__pendingAskUser')), 0) AS pending_ask_user_count,
-    json_extract(metadata, '$.compaction') AS compaction_json`;
+    json_extract(metadata, '$.compaction') AS compaction_json,
+    metadata -> '$.botControl' AS bot_control_json`;
 const recentSelect = `id, workspace_id, status, type, start_time, end_time,
     prompt_preview, error, parent_process_id, title, custom_title, last_message_preview,
     last_event_at, pinned_at, archived, json_extract(metadata, '$.compaction') AS compaction_json`;
@@ -64,6 +65,7 @@ function originalEntry(row: IndexRow, summary: boolean): ProcessIndexEntry {
         common.pendingAskUserCount = count > 0 ? count : undefined;
     }
     common.compaction = row.compaction_json ? JSON.parse(row.compaction_json) : undefined;
+    if (summary) common.botControl = row.bot_control_json ? JSON.parse(row.bot_control_json) : undefined;
     return common;
 }
 
@@ -146,6 +148,8 @@ describe('AC-07 typed summary/recent reads versus original SQL', () => {
         await store.updateProcess('two', { pendingAskUser: [{ id: 'ask' }] } as Partial<AIProcess>);
         db.prepare(`UPDATE processes SET metadata = json_set(metadata, '$.compaction', json(?)) WHERE id = ?`)
             .run('{"count":2}', 'one');
+        db.prepare(`UPDATE processes SET metadata = json_set(metadata, '$.botControl', json(?)) WHERE id = ?`)
+            .run('{"state":"active","source":"teams","controllerKey":"teams-bridge","controllerLabel":"Teams bridge"}', 'one');
         const groups = new SqliteTaskGroupStore(db);
         const timestamp = '2026-01-01T00:00:00Z';
         groups.upsertGroup({ groupId: 'folder', workspaceId: 'ws-a', type: CHAT_FOLDER_GROUP_TYPE,

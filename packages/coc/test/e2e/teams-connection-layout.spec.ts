@@ -80,7 +80,7 @@ for (const width of [390, 1440]) {
             await expect(attempt).toBeVisible();
             await attempt.focus();
             await page.keyboard.press('Enter');
-            await expect(card.getByText('MCP acceptance does not confirm Teams displayed a reply.')).toBeVisible();
+            await expect(card.getByText('Backend acceptance does not confirm Teams displayed a reply.')).toBeVisible();
             expect(await card.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
             expect(pageErrors).toEqual([]);
         });

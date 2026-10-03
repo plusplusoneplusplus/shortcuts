@@ -9,6 +9,7 @@ import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
+import { createBotControlMetadata } from '../../../src/server/messaging/bot-control-metadata';
 
 const teamId = 'test-team';
 const channelId = 'test-channel';
@@ -40,7 +41,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         if (dataDir) fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
-    it('ACKs before AI finishes and correlates queued, running, explicit, and selected-topic follow-ups across workspaces', { timeout: 20_000 }, async () => {
+    it.each(['mcp', 'graph'] as const)('correlates queued, running, explicit and silent thread follow-ups across workspaces (%s reads)', { timeout: 20_000 }, async channelReadBackend => {
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-answer-relay-integration-'));
         const store = new FileProcessStore({ dataDir });
         for (const [id, name] of [['ws-a', 'Alpha'], ['ws-b', 'Beta']]) {
@@ -49,6 +50,20 @@ describe('Teams answer relay through the real multi-repo queues', () => {
 
         const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
         vi.stubGlobal('fetch', vi.fn(async (url: string | URL, init?: RequestInit) => {
+            const graphRoots = `https://graph.microsoft.com/beta/teams/${teamId}/channels/${channelId}/messages`;
+            if (channelReadBackend === 'graph' && new URL(url).origin === 'https://graph.microsoft.com') {
+                expect(init?.method).toBe('GET');
+                if (new URL(url).pathname === new URL(graphRoots).pathname) {
+                    return new Response(JSON.stringify({ value: [
+                        { id: 'root-b', body: { content: 'beta prompt' }, createdDateTime: '2026-01-01T00:00:00Z' },
+                    ] }));
+                }
+                expect(new URL(url).pathname).toBe(new URL(`${graphRoots}/root-b/replies`).pathname);
+                return new Response(JSON.stringify({ value: [
+                    { id: 'thread-follow', body: { content: 'thread follow-up' },
+                        createdDateTime: '2026-01-01T00:00:01Z', from: { user: { id: 'synthetic-user' } } },
+                ] }));
+            }
             // Every MCP call is intercepted here. A leaked external request fails the test.
             if (String(url) !== endpoint) throw new Error(`Unexpected external URL: ${String(url)}`);
             const body = JSON.parse(String(init?.body)) as {
@@ -79,8 +94,15 @@ describe('Teams answer relay through the real multi-repo queues', () => {
                 headers: { 'content-type': 'application/json' },
             });
         }));
-        const transport = new McpTransport(endpoint, () => true);
-        await transport.initialize('synthetic-token', { teamId, channelId });
+        const readerToken = 'header.' + Buffer.from(JSON.stringify({
+            tid: '11111111-1111-4111-8111-111111111111', oid: '22222222-2222-4222-8222-222222222222',
+            aud: 'https://graph.microsoft.com', scp: 'ChannelMessage.Read.All',
+            exp: Math.floor(Date.now() / 1000) + 3600,
+        })).toString('base64url') + '.signature';
+        const transport = new McpTransport(endpoint, () => true, undefined, undefined, undefined, {
+            channelReadBackend, graphReadOptions: { acquireToken: async () => readerToken },
+        });
+        await transport.initialize(readerToken, { teamId, channelId });
 
         const ai = createMockSDKService();
         const gates = new Map<string, ReturnType<typeof deferred<void>>>();
@@ -103,6 +125,8 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         }
         manager = new TeamsMessagingManager(dataDir);
         vi.spyOn(manager, 'getStatus').mockReturnValue({
+            outboundBackend: 'mcp', channelReadBackend: 'graph', enableTrouter: false,
+            notificationStatus: { state: 'disabled', error: null },
             enabled: true, status: 'connected', teamId, channelId,
             botName: 'CoC', error: null, serverUrl: null, authStatus: null,
         });
@@ -119,22 +143,24 @@ describe('Teams answer relay through the real multi-repo queues', () => {
             manager,
             relayQueue: queue.createAggregateQueueFacade(),
             getAnswerRelayEnabled: () => true,
-            enqueueRelayChat: (wsId, prompt, id) => queue.enqueue({
+            getBotManagedConversationsEnabled: () => true,
+            enqueueRelayChat: (wsId, prompt, id, _mode, botControl) => queue.enqueue({
                 id, processId: toQueueProcessId(id), type: 'chat', repoId: wsId,
+                botControl,
                 payload: { kind: 'chat', mode: 'ask', prompt, workspaceId: wsId },
                 config: {}, priority: 'normal',
             }),
-            admitRelayFollowUp: async (process, text, requestId) => {
+            admitRelayFollowUp: async (process, text, requestId, _mode, id) => {
                 return { taskId: await queue.enqueue({
-                    type: 'chat', repoId: process.metadata.workspaceId as string,
+                    id, type: 'chat', repoId: process.metadata.workspaceId as string,
                     processId: process.id, priority: 'normal',
                     payload: { kind: 'chat', mode: 'ask', processId: process.id,
                         prompt: text, workspaceId: process.metadata.workspaceId, relayRequestId: requestId },
                     config: {},
                 }) };
             },
-            enqueuePendingRelayFollowUp: (wsId, processId, text, requestId) => queue.enqueue({
-                    type: 'chat', repoId: wsId, processId, priority: 'normal',
+            enqueuePendingRelayFollowUp: (wsId, processId, text, requestId, _mode, id) => queue.enqueue({
+                    id, type: 'chat', repoId: wsId, processId, priority: 'normal',
                     payload: { kind: 'chat', mode: 'ask', processId, prompt: text,
                         workspaceId: wsId, relayRequestId: requestId },
                     config: {},
@@ -149,6 +175,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         await handle(inbound('root-a', 'alpha prompt'));
         const taskA = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll()[0];
         expect(taskA.repoId).toBe('ws-a');
+        expect(taskA.botControl).toEqual(createBotControlMetadata('teams'));
         expect(repliesFor('root-a')).toEqual([expect.stringContaining('New topic created')]);
         expect(repliesFor('root-a')[0]).toContain('New topic created');
 
@@ -157,6 +184,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         await handle(inbound('root-b', 'beta prompt'));
         const taskB = registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll()[0];
         expect(taskB.repoId).toBe('ws-b');
+        expect(taskB.botControl).toEqual(createBotControlMetadata('teams'));
         expect(repliesFor('root-b')).toHaveLength(1);
         await handle(inbound('queued-follow', 'queued follow-up'));
         expect(repliesFor('queued-follow')).toEqual([expect.stringContaining('Message sent')]);
@@ -174,6 +202,10 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         expect(repliesFor('root-b')[1]).toContain('Answer for beta prompt');
         expect((await store.getProcess(toQueueProcessId(taskA.id)))?.metadata?.workspaceId).toBe('ws-a');
         expect((await store.getProcess(toQueueProcessId(taskB.id)))?.metadata?.workspaceId).toBe('ws-b');
+        expect((await store.getProcess(toQueueProcessId(taskA.id)))?.metadata?.botControl)
+            .toEqual(createBotControlMetadata('teams'));
+        expect((await store.getProcess(toQueueProcessId(taskB.id)))?.metadata?.botControl)
+            .toEqual(createBotControlMetadata('teams'));
         await until(() => entered.includes('queued follow-up'));
         gates.get('queued follow-up')!.resolve();
         await until(() => repliesFor('queued-follow').length === 2);
@@ -183,8 +215,18 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         expect(repliesFor('queued-follow')[1]).toContain('Answer for queued follow-up');
         expect(repliesFor('running-follow')[1]).toContain('Answer for running follow-up');
 
+        // An existing unmarked conversation is adopted by authoritative follow-up admission.
+        const existing = (await store.getProcess(toQueueProcessId(taskB.id)))!;
+        const metadata = { ...existing.metadata };
+        delete metadata.botControl;
+        await store.updateProcess(existing.id, { metadata });
+        expect((await store.getProcess(existing.id))?.metadata?.botControl).toBeUndefined();
+
         // An explicit chat ID and then the selected last-active topic address the same conversation.
         await handle(inbound('follow-b-1', `[${toQueueProcessId(taskB.id)}] first follow-up`));
+        expect((await store.getProcess(existing.id))?.metadata).toMatchObject({
+            botControl: createBotControlMetadata('teams'), provider: existing.metadata.provider,
+        });
         await handle(inbound('follow-b-2', 'second follow-up'));
         await until(() => entered.includes('first follow-up'));
         expect(repliesFor('follow-b-1')).toEqual([expect.stringContaining('Message sent')]);
@@ -228,12 +270,11 @@ describe('Teams answer relay through the real multi-repo queues', () => {
                 senderAadId: 'synthetic-user' }),
         ]);
         await handle(polled.messages[1]);
-        expect(repliesFor('root-b')).toHaveLength(3);
-        expect(repliesFor('root-b')[2]).toContain('Message sent');
+        expect(repliesFor('root-b')).toHaveLength(2);
         await until(() => entered.includes('thread follow-up'));
         gates.get('thread follow-up')!.resolve();
-        await until(() => repliesFor('root-b').length === 4);
-        expect(repliesFor('root-b')[3]).toContain('Answer for thread follow-up');
+        await until(() => repliesFor('root-b').length === 3);
+        expect(repliesFor('root-b')[2]).toContain('Answer for thread follow-up');
         expect(repliesFor('thread-follow')).toHaveLength(0);
         expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
             ?.filter(turn => turn.role === 'user').at(-1)?.relayRequestId).toMatch(/^[a-f0-9-]{36}$/);
@@ -242,9 +283,9 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         await handle(inbound('thread-a-1', '/select topic ignored', 'root-a'));
         await handle(inbound('thread-b-1', 'beta threaded reply', 'root-b'));
         await handle(inbound('thread-a-2', 'alpha again', 'root-a'));
-        expect(repliesFor('root-a').at(-2)).toContain('not found in the selected repo');
-        expect(repliesFor('root-a').at(-1)).toContain('Message sent');
-        expect(repliesFor('root-b').at(-1)).toContain('Message sent');
+        expect(repliesFor('root-a').at(-1)).toContain('not found in the selected repo');
+        expect(repliesFor('root-a')).toHaveLength(3);
+        expect(repliesFor('root-b')).toHaveLength(3);
         await until(() => entered.includes('beta threaded reply'));
         gates.get('beta threaded reply')!.resolve();
         await until(() => entered.includes('alpha again'));
@@ -255,7 +296,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
             ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('alpha again');
         expect((await store.getProcess(toQueueProcessId(taskB.id)))?.conversationTurns
             ?.filter(turn => turn.role === 'user').at(-1)?.content).toBe('beta threaded reply');
-        await until(() => repliesFor('root-a').length === 5 && repliesFor('root-b').length === 6);
+        await until(() => repliesFor('root-a').length === 4 && repliesFor('root-b').length === 4);
         const taskCount = registry.getQueueForRepo(path.join(dataDir, 'ws-a')).getAll().length
             + registry.getQueueForRepo(path.join(dataDir, 'ws-b')).getAll().length;
         await handle(inbound('unknown-reply', 'must not become a new topic', 'unknown-root'));
@@ -268,7 +309,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         await handle(inbound('thread-a-3', 'another turn after the answer', 'root-a'));
         await until(() => entered.includes('another turn after the answer'));
         gates.get('another turn after the answer')!.resolve();
-        await until(() => repliesFor('root-a').length === 7);
+        await until(() => repliesFor('root-a').length === 5);
         expect(repliesFor('root-a').at(-1)).toContain('Answer for another turn after the answer');
         expect(repliesFor('thread-a-3')).toHaveLength(0);
         expect((await store.getProcess(toQueueProcessId(taskA.id)))?.conversationTurns
@@ -278,6 +319,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
             && call.arguments.teamId === teamId && call.arguments.channelId === channelId)).toBe(true);
         const terminalListeners = registry.listenerCount('taskCompleted');
         manager.dispose();
+        transport.stop();
         expect(registry.listenerCount('taskCompleted')).toBe(terminalListeners - 1);
     });
 });

@@ -126,6 +126,24 @@ server read model.
 saying `USD pricing unavailable` when there is none; Copilot premium request units are
 not rendered. `QueuedFollowUps` renders pending messages as cancellable cards.
 
+### Bot-managed conversation presentation
+
+`utils/botControl.ts` consumes only the owning server's default-off, gated public
+`BotControlPresentation`. Private metadata, payloads, provider selection and automated
+turns cannot supply presentation. `BotManagementBadge` serves `ChatHeader`,
+`ChatListPane` and the compact Notes header; narrow layouts retain full accessible
+source text. The shared metadata popover/mobile sheet exposes control, source and safe
+controller, including queued origins. An optional server-authorized thread link also
+requires matching-host HTTPS syntax and opens with `noopener noreferrer`.
+
+`buildMetadataProcess` prefers process detail even when its control is absent, clearing
+stale queued presentation. SSE applies explicit control/null without synthesizing a
+partial process. `useBotControlUpdates` observes existing local/remote socket events
+by exact owner and workspace, independently of the page-origin feature config and
+process index. List overrides apply only to unchanged source rows and expire on row
+refresh/removal or scope change. Process-summary omission clears cached control.
+Socket publication is documented in [streaming-architecture.md](../streaming-architecture.md).
+
 ## Implement-plan card (plan → autopilot handoff)
 
 `ImplementPlanCard` (`features/chat/ImplementPlanCard.tsx`) is the thread-only flow card

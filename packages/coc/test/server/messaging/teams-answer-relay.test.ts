@@ -5,10 +5,13 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import { TeamsAnswerRelay } from '../../../src/server/messaging/teams-answer-relay';
-import { TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
+import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
+import { formatTeamsOutbound } from '../../../src/server/messaging/teams-outbound-format';
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
 import { TeamsMessageNotSentError } from '../../../src/server/messaging/teams-messaging-manager';
 import { getRepoDataPath } from '../../../src/server/paths';
+import { TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
+import { createBotControlMetadata } from '../../../src/server/messaging/bot-control-metadata';
 
 describe('TeamsAnswerRelay new topics', () => {
     let dataDir: string;
@@ -62,6 +65,28 @@ describe('TeamsAnswerRelay new topics', () => {
             ],
         });
     }
+
+    it('relays an AI-job table as HTML to its original thread without Markdown pipes', async () => {
+        const root = message('table-root');
+        const admitted = await relay.admitNew(root, 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        finish(admitted.taskId, 'workspace-a',
+            '| Person | Last activity |\n|---|---|\n| Contact A | Oct 2, 4:37 PM |');
+        await relay.acknowledged(admitted.taskId);
+        expect(send).toHaveBeenCalledTimes(1);
+        const [answer, rootId] = send.mock.calls[0];
+        expect(rootId).toBe(root.messageId);
+        const html = formatTeamsOutbound(answer, 'html');
+        expect(html).toContain('<p>CoC · <strong>Request ');
+        expect(html).toContain('<th scope="col">Person</th><th scope="col">Last activity</th>');
+        expect(html).toContain('<tr><td>Contact A</td><td>Oct 2, 4:37 PM</td></tr>');
+        expect(html).not.toContain('|---');
+        expect(html).not.toContain('&lt;table');
+        await relay.reconcileTask(admitted.taskId);
+        expect(send).toHaveBeenCalledTimes(1);
+    });
 
     it('persists a shared thread selection while retaining the original answer receipt', async () => {
         const root = message('root-selection');
@@ -343,19 +368,94 @@ describe('TeamsAnswerRelay new topics', () => {
         const first = { ...message('first'), replyToMessageId: 'command-root' };
         await relay.selectThreadTarget(first, 'workspace-a', null);
         const admitted = await relay.admitThreadNew(first, 'workspace-a', async id => {
-            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued',
+                type: 'chat', payload: { kind: 'chat', workspaceId: 'workspace-a' } } as QueuedTask);
             return id;
         });
         const second = { ...message('second'), replyToMessageId: 'command-root' };
-        const enqueue = vi.fn(async (workspaceId: string, processId: string, requestId: string) => {
+        const enqueue = vi.fn(async (workspaceId: string, processId: string, requestId: string, taskId: string) => {
             expect(workspaceId).toBe('workspace-a');
             expect(processId).toBe(toQueueProcessId(admitted.taskId));
             expect(requestId).toBeTruthy();
-            return 'followup-task';
+            return taskId;
         });
         expect(await relay.admitPendingFollowUp(second, admitted.taskId, enqueue)).toEqual({ duplicate: false });
         expect(await relay.admitPendingFollowUp(second, admitted.taskId, enqueue)).toEqual({ duplicate: true });
         expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    async function pendingOrigin(messageId = 'pending-root', workspaceId = 'workspace-a') {
+        return relay.admitNew(message(messageId), workspaceId, async id => {
+            tasks.set(id, {
+                id, repoId: workspaceId, processId: toQueueProcessId(id), status: 'queued',
+                type: 'chat', payload: { kind: 'chat', workspaceId },
+                botControl: createBotControlMetadata('teams'),
+            } as QueuedTask);
+            return id;
+        });
+    }
+
+    it('deduplicates concurrent pending follow-ups without changing origin control', async () => {
+        const parent = await pendingOrigin();
+        tasks.get(parent.taskId)!.status = 'running';
+        const enqueue = vi.fn(async (_ws: string, _process: string, _request: string, id: string) => id);
+        const results = await Promise.all([
+            relay.admitPendingFollowUp(message('pending-question'), parent.taskId, enqueue),
+            relay.admitPendingFollowUp(message('pending-question'), toQueueProcessId(parent.taskId), enqueue),
+        ]);
+        expect(results).toEqual([{ duplicate: false }, { duplicate: true }]);
+        expect(enqueue).toHaveBeenCalledOnce();
+        expect(tasks.get(parent.taskId)!.botControl).toEqual(createBotControlMetadata('teams'));
+    });
+
+    it.each(['workspace', 'id', 'failed', 'cancelled', 'competing', 'malformed'])(
+        'rejects a process with %s drift appearing during pending admission',
+        async mismatch => {
+            const parent = await pendingOrigin();
+            const processId = toQueueProcessId(parent.taskId);
+            processes.set(processId, {
+                id: mismatch === 'id' ? 'wrong-process' : processId,
+                status: mismatch === 'failed' || mismatch === 'cancelled' ? mismatch : 'running',
+                metadata: {
+                    workspaceId: mismatch === 'workspace' ? 'workspace-b' : 'workspace-a',
+                    botControl: mismatch === 'competing' ? createBotControlMetadata('whatsapp')
+                        : mismatch === 'malformed' ? { source: 'teams' } : createBotControlMetadata('teams'),
+                },
+            });
+            const enqueue = vi.fn();
+            await expect(relay.admitPendingFollowUp(message('pending-question'), parent.taskId, enqueue)).rejects.toThrow();
+            expect(enqueue).not.toHaveBeenCalled();
+        },
+    );
+
+    it('rejects reuse of a pending receipt for another conversation and workspace', async () => {
+        const first = await pendingOrigin('root-a');
+        const second = await pendingOrigin('root-b', 'workspace-b');
+        const enqueue = vi.fn(async (_ws: string, _process: string, _request: string, id: string) => id);
+        await relay.admitPendingFollowUp(message('shared-delivery'), first.taskId, enqueue);
+        await expect(relay.admitPendingFollowUp(message('shared-delivery'), second.taskId, enqueue))
+            .rejects.toThrow('binding identity mismatch');
+        expect(enqueue).toHaveBeenCalledOnce();
+    });
+
+    it('rejects an inbound channel outside the live target', async () => {
+        const parent = await pendingOrigin();
+        const enqueue = vi.fn();
+        await expect(relay.admitPendingFollowUp(
+            { ...message('pending-question'), channelId: 'other-channel' }, parent.taskId, enqueue,
+        )).rejects.toThrow('Teams topic is unavailable');
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
+    it('removes a rejected reserved pending receipt when a callback returns an unrelated ID', async () => {
+        const parent = await pendingOrigin();
+        await expect(relay.admitPendingFollowUp(message('pending-question'), parent.taskId, async () => 'wrong-task'))
+            .rejects.toThrow('different task ID');
+        expect(relay.hasInbound(message('pending-question'))).toBe(false);
+        expect(relay.hasInbound(message('pending-root'))).toBe(true);
+        const enqueue = vi.fn(async (_ws: string, _process: string, _request: string, id: string) => id);
+        await expect(relay.admitPendingFollowUp(message('pending-question'), parent.taskId, enqueue))
+            .resolves.toEqual({ duplicate: false });
     });
 
     it('acknowledges before sending the saved assistant turn and deduplicates inbound polling', async () => {
@@ -489,14 +589,15 @@ describe('TeamsAnswerRelay new topics', () => {
 
     it('retains a per-root reply cursor after a follow-up receipt is compacted', async () => {
         const root = await relay.admitNew(message('root-cursor'), 'workspace-a', async id => {
-            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued',
+                type: 'chat', payload: { kind: 'chat', workspaceId: 'workspace-a' } } as QueuedTask);
             return id;
         });
         const reply = {
             ...message('reply-cursor'), replyToMessageId: 'root-cursor',
             createdDateTime: '2026-01-01T00:00:00Z',
         };
-        await relay.admitPendingFollowUp(reply, root.taskId, async () => 'followup-task');
+        await relay.admitPendingFollowUp(reply, root.taskId, async (_ws, _process, _request, id) => id);
         relay.recordSeenReply('team-1', reply);
         expect(relay.hasSeenReply('team-1', reply)).toBe(true);
         expect(relay.hasSeenReply('team-1', {
@@ -531,7 +632,7 @@ describe('TeamsAnswerRelay new topics', () => {
         await relay.acknowledged(root.taskId);
         expect(send).toHaveBeenCalledOnce();
         const outbound = { ...message('unrecorded-id'), replyToMessageId: 'root-crash',
-            text: `AI: ${send.mock.calls[0][0] as string}` };
+            text: formatTeamsOutbound(send.mock.calls[0][0] as string, 'html') };
         relay.dispose();
         const restored = new TeamsAnswerRelay({
             dataDir, store, queue, isEnabled: () => enabled,
@@ -539,6 +640,12 @@ describe('TeamsAnswerRelay new topics', () => {
         });
         await restored.restore();
         expect(restored.isOwnReply('team-1', outbound)).toBe(true);
+        const plain = outbound.text.replace(/<\/p>/g, '\n').replace(/<[^>]*>/g, '');
+        expect(restored.isOwnReply('team-1', { ...outbound, text: plain })).toBe(true);
+        expect(restored.isOwnReply('team-1', { ...outbound, text: plain.replace(/^CoC · /, 'AI: ') })).toBe(true);
+        expect(restored.isOwnReply('team-1', { ...outbound, text: 'CoC · Human question' })).toBe(false);
+        expect(restored.isOwnReply('team-2', outbound)).toBe(false);
+        expect(restored.isOwnReply('team-1', { ...outbound, channelId: 'other-channel' })).toBe(false);
         expect(restored.isOwnReply('team-1', { ...outbound, replyToMessageId: 'other-root' })).toBe(false);
         expect(send).toHaveBeenCalledTimes(1);
         restored.dispose();
@@ -765,7 +872,7 @@ describe('TeamsAnswerRelay new topics', () => {
         restored.dispose();
     });
 
-    it('quarantines a corrupt receipt without sending or rerouting its answer', async () => {
+    it('propagates a corrupt receipt without sending or rerouting its answer', async () => {
         const id = (await relay.admitNew(message('corrupt-receipt'), 'workspace-a', async taskId => {
             tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
             return taskId;
@@ -778,7 +885,7 @@ describe('TeamsAnswerRelay new topics', () => {
             dataDir, store, queue, isEnabled: () => enabled,
             target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
         });
-        await restored.restore();
+        await expect(restored.restore()).rejects.toThrow('Invalid Teams answer binding');
         expect(send).not.toHaveBeenCalled();
         restored.dispose();
     });
@@ -846,6 +953,64 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[1][0]).toContain('Part 2/');
     });
 
+    it.each(['stable', 'shifted', 'unsent'] as const)(
+        'handles %s persisted chunk boundaries safely across attribution changes', async scenario => {
+            const root = message(`attribution-${scenario}`);
+            const id = (await relay.admitNew(root, 'workspace-a', async taskId => {
+                tasks.set(taskId, { id: taskId, repoId: 'workspace-a',
+                    processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+                return taskId;
+            })).taskId;
+            const answer = scenario === 'stable' ? 'x'.repeat(12_000) + '\n' + 'y'.repeat(12_000)
+                : '&'.repeat(10_000);
+            finish(id, 'workspace-a', answer);
+            send.mockImplementationOnce(async () => {
+                enabled = false;
+                return 'confirmed-first-part';
+            });
+            await relay.acknowledged(id);
+            const folder = getRepoDataPath(dataDir, 'workspace-a', 'teams-answer-relay');
+            const receipt = path.join(folder, fs.readdirSync(folder)[0]);
+            const saved = JSON.parse(fs.readFileSync(receipt, 'utf8'));
+            const label = (send.mock.calls[0][0] as string).match(/Request ([\w-]+)/)![1];
+            const oldParts = formatTeamsAnswerChunks(answer, label, undefined, saved.sourceContext, 'legacy');
+            const newParts = formatTeamsAnswerChunks(answer, label, undefined, saved.sourceContext);
+            expect(oldParts.length).toBe(newParts.length);
+            if (scenario === 'stable') expect(oldParts).toEqual(newParts);
+            else expect(oldParts).not.toEqual(newParts);
+            delete saved.attribution;
+            saved.partCount = oldParts.length;
+            saved.nextPart = scenario === 'unsent' ? 0 : 1;
+            fs.writeFileSync(receipt, JSON.stringify(saved));
+            relay.dispose();
+            send.mockClear();
+            enabled = true;
+            const restored = new TeamsAnswerRelay({
+                dataDir, store, queue, isEnabled: () => enabled,
+                target: () => ({ connected: true, teamId: 'team-1', channelId: 'channel-1' }), send,
+            });
+            try {
+                await restored.restore();
+                const updated = JSON.parse(fs.readFileSync(receipt, 'utf8'));
+                if (scenario === 'shifted') {
+                    expect(send).not.toHaveBeenCalled();
+                    expect(updated.status).toBe('ambiguous');
+                    expect(updated.nextPart).toBe(1);
+                } else {
+                    expect(updated.status).toBe('delivered');
+                    expect(updated.attribution).toBe('compact');
+                    expect(send.mock.calls.map(([part]) => part))
+                        .toEqual(newParts.slice(scenario === 'unsent' ? 0 : 1));
+                }
+                const count = send.mock.calls.length;
+                await restored.reconcile();
+                expect(send).toHaveBeenCalledTimes(count);
+            } finally {
+                restored.dispose();
+            }
+        },
+    );
+
     it('delivers a persisted answer even when the immediate acknowledgement rejects', async () => {
         const ack = vi.fn().mockRejectedValueOnce(new Error('ACK rejected')).mockResolvedValue(undefined);
         const router = new TeamsCommandRouter({
@@ -873,6 +1038,46 @@ describe('TeamsAnswerRelay new topics', () => {
         await relay.acknowledged(id);
         await relay.reconcile();
         expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['not-attempted', 'rejected', 'unknown'] as const)(
+        'retries only definitive Graph delivery outcomes (%s)', async outcome => {
+            const id = (await relay.admitNew(message('graph-outcome'), 'workspace-a', async taskId => {
+                tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+                return taskId;
+            })).taskId;
+            finish(id, 'workspace-a', 'saved answer');
+            vi.useFakeTimers();
+            try {
+                send.mockRejectedValueOnce(new TeamsOperationError('Graph request failed', 'graph', 'authentication', outcome));
+                await relay.acknowledged(id);
+                await vi.advanceTimersByTimeAsync(1_000);
+                expect(send).toHaveBeenCalledTimes(outcome === 'unknown' ? 1 : 2);
+                await relay.reconnected();
+                expect(send).toHaveBeenCalledTimes(outcome === 'unknown' ? 1 : 2);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+    it('honors Graph rate-limit Retry-After before retrying a definite rejection', async () => {
+        const id = (await relay.admitNew(message('graph-rate-limit'), 'workspace-a', async taskId => {
+            tasks.set(taskId, { id: taskId, repoId: 'workspace-a', processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
+            return taskId;
+        })).taskId;
+        finish(id, 'workspace-a', 'saved answer');
+        vi.useFakeTimers();
+        try {
+            send.mockRejectedValueOnce(new TeamsOperationError('Graph rate limited', 'graph', 'rate-limited', 'rejected', 30_000));
+            await relay.acknowledged(id);
+            await vi.advanceTimersByTimeAsync(29_999);
+            await relay.reconcile();
+            expect(send).toHaveBeenCalledTimes(1);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(send).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('marks a send interrupted by restart ambiguous without replaying it', async () => {
@@ -1059,7 +1264,10 @@ describe('TeamsAnswerRelay new topics', () => {
                 processId: toQueueProcessId(taskId), status: 'queued' } as QueuedTask);
             return taskId;
         })).taskId;
-        finish(id, 'workspace-a', 'x'.repeat(TEAMS_ANSWER_MAX_BYTES - 65));
+        const overhead = Buffer.byteLength(formatTeamsOutbound(
+            '<p><strong>Request 0123456789 · Part 1/1</strong></p><p></p>', 'html',
+        ), 'utf8');
+        finish(id, 'workspace-a', 'x'.repeat(TEAMS_ANSWER_MAX_BYTES - overhead));
         send.mockRejectedValueOnce(new TeamsMessageNotSentError());
         await relay.acknowledged(id);
         expect(send.mock.calls[0][0]).not.toContain('Repo A');
@@ -1131,7 +1339,7 @@ describe('TeamsAnswerRelay new topics', () => {
                 expect(body).toContain(`Part ${index + 2}/${partCount}`);
                 expect(target).toBe(root.messageId);
                 expect(body).toContain('Repo A · Chat');
-                expect(Buffer.byteLength(`AI: ${body}`, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+                expect(Buffer.byteLength(formatTeamsOutbound(body, 'html'), 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
             }
             await restored.reconcile();
             expect(send).toHaveBeenCalledTimes(partCount + 1);
@@ -1160,7 +1368,7 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(send.mock.calls[0][0]).not.toContain('Repo A');
         for (const [part] of send.mock.calls.slice(1)) {
             expect(part).toContain('Repo A · Chat');
-            expect(Buffer.byteLength(`AI: ${part}`, 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+            expect(Buffer.byteLength(formatTeamsOutbound(part, 'html'), 'utf8')).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
         }
         await relay.reconcile();
         expect(send.mock.calls.length).toBe(Number((send.mock.calls[0][0] as string).match(/Part 1\/(\d+)/)?.[1]));

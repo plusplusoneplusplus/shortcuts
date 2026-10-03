@@ -41,28 +41,29 @@ export class GraphTransport implements TeamsTransport {
         this.teamId = opts.teamId ?? null;
         this.chatId = opts.chatId ?? null;
         this._useChat = !opts.teamId;
-        this.client = new GraphClient({
+        const client = new GraphClient({
             bearerToken: token,
             teamId: opts.teamId,
             channelId: opts.channelId,
             chatId: opts.chatId,
         });
+        this.client = client;
 
         // Graph mode is send-only. Just verify token works via /me endpoint.
         // Chat discovery (getOrCreateChat) requires Chat.ReadBasic which typical
         // az cli tokens don't have, so we skip it entirely.
         if (opts.teamId) {
-            await this.client.verifyConnection();
+            await client.verifyConnection();
         } else {
-            this._useChat = true;
             // Verify token is valid without needing Chat permissions
-            await this.client.getMe();
-            console.log(`[graph-transport] Token verified via /me. Send-only mode (no chat discovery).`);
+            await client.getMe();
         }
+        if (this.client !== client) throw new Error('Teams connection cancelled');
+        if (!opts.teamId) console.log(`[graph-transport] Token verified via /me. Send-only mode (no chat discovery).`);
         this.outbound = new RoutedTeamsOperations({
             selfSend: 'graph', chatSend: 'graph', channelSend: 'graph', channelReply: 'graph', channelLike: 'graph',
             ...this.operationOptions.routes,
-        }, [new GraphOperations({ client: this.client, connectionId: this.connectionId,
+        }, [new GraphOperations({ client, connectionId: this.connectionId,
             onTokenRefresh: this.operationOptions.onTokenRefresh })]);
     }
 

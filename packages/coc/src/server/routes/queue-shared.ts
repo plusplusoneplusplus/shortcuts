@@ -99,6 +99,7 @@ export interface QueueRouteContext {
     cancelSentinelCron?: (processId: string) => void;
     /** Throws when a provider is disabled or unavailable on this server. */
     validateProvider?: (provider: ChatProvider) => Promise<void>;
+    botManagedConversationsEnabled?: () => boolean;
 }
 
 export function getRepoIdentifierFromQuery(query: ParsedUrlQuery): string | undefined {

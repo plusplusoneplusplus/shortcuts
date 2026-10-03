@@ -58,7 +58,10 @@ Under HTTP/1.1 each SSE is its own TCP connection; under HTTP/2 they multiplex.
 The stream starts with a `conversation-snapshot` event carrying persisted turns. When present
 on the process record the snapshot includes `sessionTokenLimit`, `sessionCurrentTokens`,
 `sessionSystemTokens`, `sessionToolTokens`, and `sessionConversationTokens` so the dashboard
-renders the context-window indicator immediately after reconnect.
+renders the context-window indicator immediately after reconnect. `handleProcessStream`
+checks a requested workspace against the saved process before headers and after a running
+process flush. With bot identification enabled, snapshots include safe `botControl` or
+explicit null for unattributed control, including processes with empty turns.
 
 **Why per-process?** Selective subscription — a browser receives heavy token data only for the
 chat it is viewing, instead of every tab being flooded with every process's output.
@@ -112,6 +115,24 @@ status/CRUD notifications about ALL processes and system state to synchronize ev
 SSE stays separate because routing token-by-token output for all running processes over this
 channel would flood every tab.
 
+### Bot-control read projections
+
+Process summaries, scoped/aggregate queue snapshots, and SSE conversation snapshots use
+`processes/bot-control-read-model.ts` under the owning server's live default-off
+`features.botManagedConversations` gate. Public control is top-level
+`BotControlPresentation`, never private `metadata.botControl`; links require separate
+owning-binding authorization and current streaming callers omit them. Warm-only SSE
+streams carry no control. Coc-client types process/queue events and
+`ConversationSnapshotPayload`; per-clone transports preserve these safe fields.
+
+Queue projection prefers current persisted ownership over admission provenance.
+Workspace/control changes refresh affected rows; safe process-event fingerprints
+avoid rereading queues on ordinary streaming updates. Async queue snapshots use
+per-workspace and aggregate revisions to discard superseded reads and recheck the
+gate before broadcast. Read failures produce content-free diagnostics without a
+success-shaped snapshot. Disabled queue broadcasts remain synchronous and perform
+no ownership reads.
+
 ### Per-clone global sockets
 
 `useWebSocket` opens the global `/ws` to the LOCAL server only. When remote clones are shown,
@@ -121,6 +142,13 @@ global `/ws` per ONLINE remote clone (`getCocClientFor(baseUrl).events.connect`,
 `process-added/updated/removed` events reach the dashboard and remote task rows transition
 `running → completed` live. Per-process token SSE is already routed per-clone via
 `useChatSSE`/`cloneApiBase`.
+
+ReposContext designates its local socket with `broadcastProcessUpdates`; only this
+socket publishes `coc-local-ws-message` process snapshots. RemoteCloneEventBridge
+publishes the existing `coc-remote-ws-message` envelope with its exact `baseUrl`.
+The bot-presentation observer uses those owner-scoped events without adding sockets
+or joining remote ownership through the page-origin process index; see
+[spa/chat-conversation.md](spa/chat-conversation.md).
 
 ## Cross-Origin Policy (REST + WS) — loopback only
 

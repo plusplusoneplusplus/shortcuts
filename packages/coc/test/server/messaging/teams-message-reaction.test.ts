@@ -56,16 +56,19 @@ describe('Teams channel Like admission', () => {
             ...(relay ? {
                 relayQueue: queue,
                 getAnswerRelayEnabled: () => true,
+                admitRelayFollowUp: vi.fn().mockResolvedValue({}),
                 enqueueRelayChat: async (workspaceId: string, _text: string, taskId: string) => {
                     events.push('enqueue');
                     tasks.set(taskId, {
                         id: taskId, repoId: workspaceId, processId: toQueueProcessId(taskId), status: 'queued',
+                        type: 'chat', payload: { kind: 'chat', workspaceId },
                     } as QueuedTask);
                     return taskId;
                 },
-                enqueuePendingRelayFollowUp: async (_ws: string, _process: string, _text: string, _request: string) => {
+                enqueuePendingRelayFollowUp: async (_ws: string, _process: string, _text: string, _request: string, _mode: unknown, taskId?: string) => {
                     events.push('enqueue-follow-up');
-                    return 'follow-up-task';
+                    if (!taskId) throw new Error('Expected reserved pending task ID');
+                    return taskId;
                 },
             } : {}),
         });
@@ -106,9 +109,7 @@ describe('Teams channel Like admission', () => {
         expect(react).toHaveBeenCalledTimes(1);
         events.length = 0;
         await handle(message('follow', 'follow-up', 'root'));
-        expect(events).toEqual([
-            'like:follow', 'enqueue-follow-up', expect.stringContaining('reply:root:'),
-        ]);
+        expect(events).toEqual(['like:follow', 'enqueue-follow-up']);
         expect(react.mock.calls.map(([msg]) => msg.messageId)).toEqual(['root', 'follow']);
         events.length = 0;
         await handle(message('root', 'new request'));
@@ -134,7 +135,7 @@ describe('Teams channel Like admission', () => {
         events.length = 0;
         await handle({ ...message('historical', 'follow-up', 'root'), initializationReplay: true });
         expect(react).toHaveBeenCalledTimes(1);
-        expect(events).toEqual(['enqueue-follow-up', expect.stringContaining('reply:root:')]);
+        expect(events).toEqual(['enqueue-follow-up']);
     });
 
     it('logs a rejected Like and still dispatches, replies, and processes the next post', async () => {
@@ -168,6 +169,43 @@ describe('Teams channel Like admission', () => {
                 '[teams-messaging] Teams Like reaction unavailable or failed:', 'Error (HTTP 401)',
             );
             expect(errors.mock.calls.flat().join(' ')).not.toContain('private authorization response');
+        } finally {
+            errors.mockRestore();
+        }
+    });
+
+    it('dispatches and accepts subsequent messages without waiting for a slow Like', async () => {
+        const { handle, message, react, enqueue, send, setEnabled } = setup();
+        setEnabled(true);
+        let finishLike!: () => void;
+        react.mockImplementationOnce(() => new Promise<void>(resolve => { finishLike = resolve; }));
+        try {
+            await handle(message('slow-like', 'new request'));
+            expect(enqueue).toHaveBeenCalledOnce();
+            expect(send).toHaveBeenCalledOnce();
+            await handle(message('next-command', '/list repos'));
+            expect(react).toHaveBeenCalledTimes(2);
+            expect(send).toHaveBeenCalledTimes(2);
+        } finally {
+            finishLike?.();
+        }
+    });
+
+    it('logs a late Like rejection without failing admission or leaking provider details', async () => {
+        const { handle, message, react, enqueue, setEnabled } = setup();
+        setEnabled(true);
+        let rejectLike!: (error: Error) => void;
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+        react.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectLike = reject; }));
+        try {
+            await handle(message('late-like', 'new request'));
+            expect(enqueue).toHaveBeenCalledOnce();
+            rejectLike(new Error('private provider details'));
+            await Promise.resolve();
+            expect(errors).toHaveBeenCalledWith(
+                '[teams-messaging] Teams Like reaction unavailable or failed:', 'Error',
+            );
+            expect(errors.mock.calls.flat().join(' ')).not.toContain('private provider details');
         } finally {
             errors.mockRestore();
         }

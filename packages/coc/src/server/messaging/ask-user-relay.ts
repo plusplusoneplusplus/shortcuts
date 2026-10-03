@@ -155,6 +155,8 @@ export interface AskUserQuestionRelay {
 }
 
 interface Entry {
+    transport: QuestionTransport;
+    requestId: string;
     platform: QuestionTransport['platform'];
     target: QuestionTarget;
     processId: string;
@@ -237,6 +239,7 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
                 continue;
             }
             const entry: Entry = {
+                transport, requestId: request.requestId,
                 platform: transport.platform, target, processId: request.processId, question,
                 hint: layout.hint, messageId, control, state: 'pending',
             };
@@ -262,6 +265,14 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
     async tryAnswer(platform: QuestionTransport['platform'], inbound: QuestionReplyInbound): Promise<boolean> {
         const handledKey = `${platform}:${inbound.messageId}`;
         if (this.handled.has(handledKey)) return true;
+        for (const entry of this.entries) {
+            if (entry.platform !== platform || entry.target.chatKey !== inbound.chatKey) continue;
+            const target = entry.transport.locate({ processId: entry.processId, requestId: entry.requestId });
+            if (target?.chatKey === entry.target.chatKey && target.threadId === entry.target.threadId) continue;
+            this.entries.delete(entry);
+            remember(this.cleared, `${entry.platform}:${entry.messageId}`);
+            if (entry.control.resolveUnavailable(entry.question.questionId)) await this.syncPending(entry);
+        }
         const own = [...this.entries].filter(e => e.platform === platform && e.target.chatKey === inbound.chatKey);
         const replyTo = inbound.replyToId;
         const byMessage = replyTo ? own.filter(e => e.messageId === replyTo) : [];

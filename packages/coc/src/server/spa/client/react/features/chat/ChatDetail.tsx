@@ -13,6 +13,7 @@ import type { AIProcess } from '@plusplusoneplusplus/coc-client';
 import { useCocClient } from '../../repos/cloneRouting';
 import { useChatStyleSelectorEnabled } from '../../hooks/feature-flags/useChatStyleSelectorEnabled';
 import { useChatProviderSwitchingEnabled } from '../../hooks/feature-flags/useChatProviderSwitchingEnabled';
+import { useBotControlUpdates } from './hooks/useBotControlUpdates';
 import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getCocClientForWorkspace, lookupCloneBaseUrl } from '../../repos/cloneRegistry';
 import { isRemoteWorkspace } from '../../repos/remoteWorkspaceAggregation';
@@ -438,6 +439,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     } | undefined;
     const composerProvider: ConcreteChatProvider = pendingProvider ?? conversationProvider;
     const owningServerBaseUrl = sourceBaseUrl ?? (workspaceId ? lookupCloneBaseUrl(workspaceId) : undefined);
+    useBotControlUpdates(owningServerBaseUrl, effectiveWorkspaceId, update => {
+        if (update.processId !== processId) return;
+        setTask((prev: any) => prev ? { ...prev, botControl: update.control } : prev);
+        setProcessDetails((prev: any) => prev ? { ...prev, botControl: update.control } : prev);
+    });
     const { models: activeProviderModels } = useModels(conversationProvider, owningServerBaseUrl);
     const { models: availableModels } = useModels(composerProvider, owningServerBaseUrl);
     // Per-provider, per-model reasoning-effort preferences for mid-conversation model-swap re-derive.

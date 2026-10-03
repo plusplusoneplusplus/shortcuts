@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
     ConversationMetadataPopover,
@@ -28,6 +28,7 @@ vi.mock('../../../src/server/spa/client/react/api/cocClient', () => ({
 beforeEach(() => {
     vi.restoreAllMocks();
 });
+afterEach(() => vi.unstubAllGlobals());
 
 const BASE_PROCESS = {
     id: 'proc-abc-123',
@@ -46,6 +47,57 @@ function renderPopover(process: any = BASE_PROCESS, turnsCount?: number) {
 }
 
 describe('ConversationMetadataPopover', () => {
+    it.each(['teams', 'whatsapp'] as const)('shows safe %s control rows in the shared metadata popover', source => {
+        const sourceLabel = source === 'teams' ? 'Teams' : 'WhatsApp';
+        renderPopover({ ...BASE_PROCESS, botControl: { state: 'active', source, controllerLabel: `${sourceLabel} bridge` } });
+        fireEvent.click(screen.getByRole('button', { name: /conversation metadata/i }));
+        expect(screen.getByText('Control')).toBeTruthy();
+        expect(screen.getByText('Bot-managed')).toBeTruthy();
+        expect(screen.getByText('Source')).toBeTruthy();
+        expect(screen.getByText(sourceLabel)).toBeTruthy();
+        expect(screen.getByText(`${sourceLabel} bridge`)).toBeTruthy();
+        expect(screen.queryByText('External thread')).toBeNull();
+    });
+
+    it('opens only the server-authorized safe thread in a separate protected tab', () => {
+        const externalThreadUrl = 'https://teams.microsoft.com/l/message/thread/1';
+        renderPopover({ ...BASE_PROCESS, botControl: { state: 'active', source: 'teams', controllerLabel: 'Teams bridge', externalThreadUrl } });
+        fireEvent.click(screen.getByRole('button', { name: /conversation metadata/i }));
+        const link = screen.getByRole('link', { name: 'Open thread' });
+        expect(link.getAttribute('href')).toBe(externalThreadUrl);
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('shows identical bot provenance in the mobile metadata sheet', () => {
+        vi.stubGlobal('matchMedia', (query: string) => ({
+            matches: query === '(max-width: 767px)',
+            media: query, onchange: null, addListener: vi.fn(), removeListener: vi.fn(),
+            addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
+        }));
+        renderPopover({ ...BASE_PROCESS, botControl: { state: 'active', source: 'whatsapp', controllerLabel: 'WhatsApp bridge' } });
+        fireEvent.click(screen.getByRole('button', { name: /conversation metadata/i }));
+        expect(screen.getByText('Bot-managed')).toBeTruthy();
+        expect(screen.getByText('WhatsApp bridge')).toBeTruthy();
+    });
+
+    it('omits missing, disabled-server and private control rows without inferring from automation', () => {
+        const privateControl = { state: 'active', source: 'teams', controllerLabel: 'Teams bridge', controllerKey: 'teams-bridge' };
+        for (const process of [
+            { ...BASE_PROCESS, metadata: { botControl: privateControl, provider: 'copilot', cronId: 'cron-example' } },
+            { ...BASE_PROCESS, botControl: privateControl },
+            { ...BASE_PROCESS, payload: { botControl: privateControl } },
+        ]) {
+            expect(buildRows(process).some(row => ['Control', 'Source', 'Controller', 'External thread'].includes(row.label))).toBe(false);
+        }
+    });
+
+    it('omits an unsafe link while retaining valid control details', () => {
+        renderPopover({ ...BASE_PROCESS, botControl: { state: 'active', source: 'teams', controllerLabel: 'Teams bridge', externalThreadUrl: 'javascript:alert(1)' } });
+        fireEvent.click(screen.getByRole('button', { name: /conversation metadata/i }));
+        expect(screen.getByText('Teams bridge')).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Open thread' })).toBeNull();
+    });
     it('renders trigger even when process has only default model row', () => {
         const { container } = renderPopover({});
         expect(container.innerHTML).not.toBe('');

@@ -49,6 +49,7 @@ import { readActiveProviderSession } from '../processes/active-provider-session'
 import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetry';
 import { processOperationAdmission } from '../processes/process-operation-admission';
 import { compactGuardError, compactProcess } from '../processes/compact-process';
+import { projectProcessBotControl, projectProcessIndexBotControl } from '../processes/bot-control-read-model';
 
 /** Valid AIProcessStatus values for validation. */
 const VALID_STATUSES: Set<string> = new Set(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']);
@@ -151,6 +152,10 @@ function queuedTaskToProcess(task: QueuedTask): AIProcess {
             queueTaskId: task.id,
             mode: normalizeChatMode(payload?.mode),
             workspaceId: payload?.workspaceId,
+            ...(task.botControl && task.type === 'chat' && payload?.kind === 'chat'
+                && task.repoId && payload.workspaceId === task.repoId && !payload.processId
+                ? { botControl: task.botControl }
+                : {}),
             // Carried here too so the i menu names the commit while the chat is
             // still queued, instead of gaining the row only once it starts.
             commitChat: serializeCommitChatMetadata(task.payload),
@@ -177,17 +182,21 @@ async function resolveProcess(
     workspaceId?: string,
 ): Promise<AIProcess | undefined> {
     const proc = await store.getProcess(id, workspaceId);
-    if (proc) return proc;
+    if (proc) return !workspaceId || proc.metadata?.workspaceId === workspaceId ? proc : undefined;
     // Fallback: try the bare ID if the given ID has the queue_ prefix
     if (isQueueProcessId(id)) {
         const bareId = toTaskId(id);
-        return store.getProcess(bareId, workspaceId);
+        const bare = await store.getProcess(bareId, workspaceId);
+        return !workspaceId || bare?.metadata?.workspaceId === workspaceId ? bare : undefined;
     }
     return undefined;
 }
 
 export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     const { routes, store, bridge, dataDir, getWsServer } = ctx;
+    const projectProcess = (proc: AIProcess) => projectProcessBotControl(
+        proc, ctx.getLiveFeatureFlags?.().botManagedConversationsEnabled === true,
+    );
 
     // GET /api/processes/summaries — Lightweight index-only process list (no file I/O per process)
     routes.push(createRoute({
@@ -202,7 +211,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const offset = filter.offset ?? 0;
             const paginatedFilter: ProcessFilter = { ...filter, limit, offset };
             const { entries, total } = await store.getProcessSummaries(paginatedFilter);
-            return { summaries: entries, total, limit, offset };
+            const enabled = ctx.getLiveFeatureFlags?.().botManagedConversationsEnabled === true;
+            return { summaries: entries.map(entry => projectProcessIndexBotControl(entry, enabled)), total, limit, offset };
         },
     }));
 
@@ -221,7 +231,11 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 if (!match) {
                     return void handleAPIError(res, notFound('Process with sdkSessionId: ' + sdkSessionId));
                 }
-                return { process: match };
+                const workspaceId = parseQueryParams(req.url || '/').workspaceId;
+                if (workspaceId && match.metadata?.workspaceId !== workspaceId) {
+                    return void handleAPIError(res, notFound('Process'));
+                }
+                return { process: projectProcess(match) };
             }
 
             const filter = parseQueryParams(req.url || '/');
@@ -236,9 +250,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const offset = filter.offset ?? 0;
             const paginatedFilter: ProcessFilter = { ...filter, limit, offset };
             const processes = await store.getAllProcesses(paginatedFilter);
-            const responseProcesses = filter.exclude
+            const responseProcesses = (filter.exclude
                 ? processes.map(p => stripExcludedFields(p, filter.exclude))
-                : processes;
+                : processes).map(projectProcess);
             return { processes: responseProcesses, total, limit, offset };
         },
     }));
@@ -278,6 +292,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
+            if ('botControl' in body || (isRecord(body.metadata) && 'botControl' in body.metadata)) {
+                return void handleAPIError(res, badRequest('Bot control is managed by integration bindings'));
+            }
+
             if (!body.id || !body.promptPreview || !body.status || !body.startTime) {
                 return void handleAPIError(res, missingFields(['id', 'promptPreview', 'status', 'startTime']));
             }
@@ -312,7 +330,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             await store.addProcess(proc);
-            return proc;
+            return projectProcess(proc);
         },
     }));
 
@@ -358,7 +376,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             // Resolve queue_ prefix mismatch for forked processes
             const resolved = await resolveProcess(store, id);
             if (resolved) id = resolved.id;
-            return handleProcessStream(req, res, id, store);
+            return handleProcessStream(req, res, id, store, undefined, undefined,
+                () => ctx.getLiveFeatureFlags?.().botManagedConversationsEnabled === true);
         },
     });
 
@@ -415,18 +434,16 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!proc) {
                 // Synthesize a response for queued tasks that don't yet have a process record
                 if (isQueueProcessId(id) && bridge) {
-                    try {
-                        const task = bridge.getTask?.(toTaskId(id));
-                        if (task) {
-                            const synthetic = queuedTaskToProcess(task);
-                            const result = filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
-                            return { process: result, children: [], total: 0 };
-                        }
-                    } catch { /* toTaskId may throw if prefix is wrong — fall through */ }
+                    const task = bridge.getTask?.(toTaskId(id));
+                    if (task && (!filter.workspaceId || task.repoId === filter.workspaceId)) {
+                        const synthetic = queuedTaskToProcess(task);
+                        const result = filter.exclude ? stripExcludedFields(synthetic, filter.exclude) : synthetic;
+                        return { process: projectProcess(result), children: [], total: 0 };
+                    }
                 }
                 return void handleAPIError(res, notFound('Process'));
             }
-            const result = filter.exclude ? stripExcludedFields(proc, filter.exclude) : buildMetadataProcess(proc);
+            const result = projectProcess(filter.exclude ? stripExcludedFields(proc, filter.exclude) : buildMetadataProcess(proc));
 
             if (!include.has('children')) {
                 return { process: result, children: [], total: 0 };
@@ -441,9 +458,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 childFilter.exclude = ['conversation'];
             }
             const children = await store.getAllProcesses(childFilter);
-            const responseChildren = childFilter.exclude
+            const responseChildren = (childFilter.exclude
                 ? children.map(p => stripExcludedFields(p, childFilter.exclude))
-                : children;
+                : children).map(projectProcess);
 
             return { process: result, children: responseChildren, total: children.length };
         },
@@ -456,14 +473,20 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async ({ req, res, match }) => {
             const id = decodeURIComponent(match[1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const existing = await resolveProcess(store, id, wsId);
-            if (!existing) {
+            const initial = await resolveProcess(store, id, wsId);
+            if (!initial) {
                 return void handleAPIError(res, notFound('Process'));
             }
 
+            return processOperationAdmission.runExclusive(initial.id, async () => {
+            const existing = await resolveProcess(store, initial.id, wsId);
+            if (!existing) return void handleAPIError(res, notFound('Process'));
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
+            if ('botControl' in body || (isRecord(body.metadata) && 'botControl' in body.metadata)) {
+                return void handleAPIError(res, badRequest('Bot control is managed by integration bindings'));
+            }
             if (body.metadata !== undefined && body.metadataPatch !== undefined) {
                 return void handleAPIError(res, badRequest('metadata and metadataPatch cannot be provided together'));
             }
@@ -480,6 +503,9 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 if ('error' in parsed) {
                     return void handleAPIError(res, badRequest(parsed.error));
                 }
+                if ('botControl' in parsed.set || parsed.unset.includes('botControl')) {
+                    return void handleAPIError(res, badRequest('Bot control is managed by integration bindings'));
+                }
                 const nextMetadata: Record<string, unknown> = { ...(existing.metadata ?? {}) };
                 for (const [key, value] of Object.entries(parsed.set)) {
                     nextMetadata[key] = value;
@@ -488,6 +514,18 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                     delete nextMetadata[key];
                 }
                 updates.metadata = nextMetadata as AIProcess['metadata'];
+            }
+            if (updates.metadata !== undefined && existing.metadata?.botControl !== undefined) {
+                if (!isRecord(updates.metadata)
+                    || (updates.metadata.workspaceId !== undefined
+                        && updates.metadata.workspaceId !== existing.metadata.workspaceId)) {
+                    return void handleAPIError(res, badRequest('Cannot change a bot-controlled conversation workspace'));
+                }
+                updates.metadata = {
+                    ...updates.metadata,
+                    workspaceId: existing.metadata.workspaceId,
+                    botControl: existing.metadata.botControl,
+                };
             }
             if (body.sdkSessionId !== undefined) { updates.sdkSessionId = body.sdkSessionId; }
             if (body.conversationTurns !== undefined) { updates.conversationTurns = body.conversationTurns; }
@@ -512,7 +550,8 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             const updated = await store.getProcess(existing.id, wsId);
-            return { process: updated };
+            return { process: updated ? projectProcess(updated) : undefined };
+            });
         },
     }));
 
@@ -579,7 +618,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             const updated = await store.getProcess(existing.id, wsId);
-            return { process: updated };
+            return { process: updated ? projectProcess(updated) : undefined };
         },
     }));
 
@@ -618,7 +657,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                         },
                     });
                 }
-                return { process: forked };
+                return { process: projectProcess(forked) };
             } catch (err: any) {
                 return void handleAPIError(res, internalError(`Failed to fork process: ${err?.message || err}`));
             }

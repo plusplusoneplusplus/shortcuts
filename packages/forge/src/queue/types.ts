@@ -1,3 +1,5 @@
+import type { BotControlMetadata } from '../ai/process-interfaces';
+
 // ============================================================================
 // Core Types
 // ============================================================================
@@ -169,6 +171,9 @@ export interface QueuedTask {
 
     /** Task-specific payload */
     payload: Record<string, unknown>;
+
+    /** Trusted bridge control for initial process creation; never sourced from a public payload. */
+    botControl?: BotControlMetadata;
 
     /** Execution configuration */
     config: TaskExecutionConfig;

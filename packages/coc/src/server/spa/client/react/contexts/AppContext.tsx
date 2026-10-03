@@ -481,6 +481,8 @@ export function appReducer(state: AppContextState, action: AppAction): AppContex
             if (idx < 0) return state;
             const updated = [...state.processes];
             updated[idx] = { ...updated[idx], ...action.process };
+            // Process events are authoritative snapshots: omission releases presentation.
+            if (!action.process.botControl) delete updated[idx].botControl;
             return { ...state, processes: updated };
         }
         case 'PROCESS_REMOVED': {

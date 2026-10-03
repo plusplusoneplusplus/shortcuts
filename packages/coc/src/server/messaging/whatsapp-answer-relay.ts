@@ -42,7 +42,7 @@ export class WhatsAppAnswerRelay {
     async reconcileTask(taskId: string): Promise<void> {
         if (!this.deps.connected()) return;
         for (const binding of this.deps.bindings.entries()) {
-            if (binding.taskId !== taskId || binding.status !== 'queued'
+            if (binding.releaseState !== undefined || binding.taskId !== taskId || binding.status !== 'queued'
                 || binding.groupJid !== this.deps.groupJid() || this.active.has(binding.inboundId)) continue;
             this.active.add(binding.inboundId);
             try {
@@ -85,7 +85,7 @@ export class WhatsAppAnswerRelay {
         binding.header = header;
         this.deps.bindings.update(binding);
         for (let i = binding.nextPart; i < parts.length; i++) {
-            if (!this.deps.connected() || this.deps.groupJid() !== binding.groupJid) return;
+            if (binding.releaseState !== undefined || !this.deps.connected() || this.deps.groupJid() !== binding.groupJid) return;
             // A crash between the send and receipt has an unknown outcome; never blindly resend it.
             binding.status = 'sending';
             this.deps.bindings.update(binding);
@@ -117,7 +117,8 @@ export function createWhatsAppQuestionTransport(
     deps: Pick<WhatsAppRelayDeps, 'bindings' | 'connected' | 'groupJid' | 'send'>,
 ): QuestionTransport {
     const find = (request: { processId: string; requestId: string }) => deps.bindings.entries()
-        .find(binding => binding.processId === request.processId && binding.taskId === request.requestId);
+        .find(binding => binding.releaseState === undefined
+            && binding.processId === request.processId && binding.taskId === request.requestId);
     return {
         platform: 'whatsapp',
         locate: request => {

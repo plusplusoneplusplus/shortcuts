@@ -10,6 +10,7 @@ import { WhatsAppNotConnectedError } from '../../../src/server/messaging/whatsap
 import { AskUserQuestionRelayHub, QUESTION_RELAY_TEXT } from '../../../src/server/messaging/ask-user-relay';
 import { createAskUserTool, type AskUserQuestion, type AskUserResponse } from '../../../src/server/llm-tools/ask-user-tool';
 import { getRepoDataPath } from '../../../src/server/paths';
+import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 
 describe('WhatsApp ask_user question relay', () => {
     let dir: string;
@@ -49,11 +50,15 @@ describe('WhatsApp ask_user question relay', () => {
         sent = 0;
         send = vi.fn(async () => `sent-${++sent}`);
         react = vi.fn().mockResolvedValue(undefined);
-        enqueue = vi.fn().mockResolvedValue('task');
+        const queue = new TaskQueueManager();
+        enqueue = vi.fn(async (workspaceId, prompt, mode, processId, id) => queue.enqueue({
+            id, repoId: workspaceId, processId, type: 'chat', priority: 'normal', config: {},
+            payload: { kind: 'chat', workspaceId, prompt, mode: mode ?? 'ask', relayRequestId: id },
+        }).id);
         hub = makeHub();
         router = new WhatsAppCommandRouter({
             store: store as unknown as WhatsAppRouterDeps['store'], bindings, groupJid: () => 'group@g.us',
-            enqueue, send, react, questions: hub,
+            enqueue, getTask: id => queue.getTask(id), send, react, questions: hub,
         });
     });
     afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -91,6 +96,19 @@ describe('WhatsApp ask_user question relay', () => {
         expect((await result)[0].answer).toBe('lite');
         expect(react).toHaveBeenCalledWith('answer');
         expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['releasing', 'released'] as const)('does not answer a pending question after its binding is %s', async releaseState => {
+        const { result } = await askFromRequest([{ question: 'Proceed?', type: 'yes-no' }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        const binding = bindings.entries()[0];
+        binding.releaseState = releaseState;
+        bindings.update(binding);
+        await router.handle(inbound('yes', 'after-release', 'sent-1'));
+        expect((await result)[0]).toMatchObject({ skipped: true, reason: 'unavailable' });
+        expect(react).not.toHaveBeenCalledWith('after-release');
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenLastCalledWith(QUESTION_RELAY_TEXT.inactive, 'after-release');
     });
 
     it('sends a batch sequentially and accepts a plain message while exactly one question is pending', async () => {

@@ -103,6 +103,12 @@ describe('pooled native process reads', () => {
             expect(page.rows[0]).toMatchObject({
                 id: 'one', pending_ask_user_count: 1, compaction_json: '{"count":2}', folder_id: 'folder',
             });
+            const control = { state: 'active', source: 'teams', controllerKey: 'teams-bridge', controllerLabel: 'Teams bridge' };
+            db.prepare("UPDATE processes SET metadata = json_set(metadata, '$.botControl', json(?)) WHERE id = 'one'")
+                .run(JSON.stringify(control));
+            expect((await db.getProcessSummaries({ workspaceId: 'ws-a' })).rows[0].bot_control_json)
+                .toBe(JSON.stringify(control));
+            expect((await db.getProcessSummaries({ workspaceId: 'ws-b' })).rows[0].bot_control_json).toBeNull();
             expect((await db.getProcessSummaries({ workspaceId: 'ws-b' })).rows[0].folder_id).toBeNull();
             const raw = new (loadNativeSqlite().NativeDatabaseHandle)(path.join(dir, 'processes.db'));
             try {
@@ -127,6 +133,14 @@ describe('pooled native process reads', () => {
             expect((await db.getProcessSummaries({ limit: 1 })).total).toBe(2);
             expect((await db.listRecentProcesses()).map(row => row.id)).toEqual(['one']);
             expect((await db.listRecentProcesses({ limit: 0, excludeProcessId: 'one' }))).toEqual([]);
+            for (const value of ['invalid', 42, null, []]) {
+                db.prepare("UPDATE processes SET metadata = json_set(metadata, '$.botControl', json(?)) WHERE id = 'one'")
+                    .run(JSON.stringify(value));
+                expect((await db.getProcessSummaries({ workspaceId: 'ws-a' })).rows[0].bot_control_json)
+                    .toBe(JSON.stringify(value));
+            }
+            db.exec("UPDATE processes SET metadata = json_remove(metadata, '$.botControl') WHERE id = 'one'");
+            expect((await db.getProcessSummaries({ workspaceId: 'ws-a' })).rows[0].bot_control_json).toBeNull();
             db.exec(`INSERT INTO processes (id, workspace_id, status, type, start_time, last_event_at)
                 VALUES (NULL, 'ws-c', 'running', 'chat', '2026-03-01', '2026-03-02')`);
             expect(await db.getProcessSummaries({ workspaceId: 'ws-c' })).toMatchObject({

@@ -187,6 +187,28 @@ describe('ChatHeader', () => {
         (window as any).__DASHBOARD_CONFIG__ = { apiBasePath: '/api', wsPath: '/ws', cronEnabled: true };
     });
 
+    it.each(['teams', 'whatsapp'] as const)('shows %s bot management independently of the AI provider', source => {
+        const sourceLabel = source === 'teams' ? 'Teams' : 'WhatsApp';
+        render(<ChatHeader {...defaultProps({
+            task: { status: 'running', provider: 'codex' },
+            metadataProcess: { id: 'queue_chat', botControl: { state: 'active', source, controllerLabel: `${sourceLabel} bridge` } },
+        })} />);
+        expect(screen.getByRole('img', { name: `Bot-managed \u00b7 ${sourceLabel}` })).toBeTruthy();
+        expect(screen.getByTestId('provider-badge')).toBeTruthy();
+    });
+
+    it.each(['inline', 'floating'] as const)('keeps compact bot identity accessible in narrow %s headers', variant => {
+        setTier('narrow');
+        const { rerender } = render(<ChatHeader {...defaultProps({
+            variant,
+            metadataProcess: { botControl: { state: 'active', source: 'teams', controllerLabel: 'Teams bridge' } },
+        })} />);
+        expect(screen.getByRole('img', { name: 'Bot-managed \u00b7 Teams' }).querySelector('.sr-only')).toBeTruthy();
+        expect(screen.getByText('Test Chat').className).toContain('truncate');
+        rerender(<ChatHeader {...defaultProps({ variant, metadataProcess: { id: 'queue_chat' } })} />);
+        expect(screen.queryByTestId('bot-management-badge')).toBeNull();
+    });
+
     describe('wide tier (>= 960px)', () => {
         it('renders all elements', () => {
             render(<ChatHeader {...defaultProps()} />);

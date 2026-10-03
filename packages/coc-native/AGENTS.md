@@ -102,6 +102,11 @@ The `*Status()` accessors never throw, because `/api/health` reports them and ha
 
 Adding a capability means a `rust/core/src/<name>/` module, a `rust/napi/src/<name>.rs` registered in `rust/napi/src/lib.rs`, and a `src/<name>.ts` re-exported from `src/index.ts`. The loader does not change.
 
+Internal process-summary rows carry `bot_control_json` extracted from process metadata
+within the count/page snapshot. This is authoritative storage data, not a public
+presentation: Forge retains it on index entries and CoC validates, gates, and strips
+private controller identity at its HTTP read boundary.
+
 ## Generated types
 
 `src/native-bindings.ts` is derived from the `#[napi]` macros during compilation — the Rust is the single source of truth for the addon's shape. Capability modules alias those generated declarations (`NativeFileMatch = Bindings.FileMatch`, `NativeNotesSearchResponse = Bindings.NotesSearchResponse`) rather than restating them.

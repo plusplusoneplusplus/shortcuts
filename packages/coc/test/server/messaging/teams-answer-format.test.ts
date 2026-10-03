@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
-import { TEAMS_CHANNEL_PREFIX } from '../../../src/server/messaging/teams-outbound-format';
+import { formatTeamsOutbound } from '../../../src/server/messaging/teams-outbound-format';
 
 const size = (text: string) => Buffer.byteLength(text, 'utf8');
 
@@ -18,10 +18,13 @@ function expectValid(parts: string[], label: string): void {
     expect(parts.length).toBeGreaterThan(0);
     parts.forEach((part, index) => {
         expect(part.startsWith(`<p><strong>Request ${label} · Part ${index + 1}/${parts.length}</strong></p>`)).toBe(true);
-        expect(size(TEAMS_CHANNEL_PREFIX + part)).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+        const outbound = formatTeamsOutbound(part, 'html');
+        expect(size(outbound)).toBeLessThanOrEqual(TEAMS_ANSWER_MAX_BYTES);
+        expect(outbound.match(/CoC · /g)).toHaveLength(1);
+        expect(outbound).toMatch(/^<p>CoC · <strong>Request /);
         expect(part).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
         expect(part).not.toMatch(/&(?:amp|lt|gt|quot|#39)(?!;)/);
-        const tags = part.match(/<\/?(?:p|strong|em|code|pre|a|br)\b[^>]*>/g) ?? [];
+        const tags = outbound.match(/<\/?(?:p|strong|em|code|pre|a|br|table|thead|tbody|tr|th|td)\b[^>]*>/g) ?? [];
         const open: string[] = [];
         for (const tag of tags) {
             if (tag === '<br>') continue;
@@ -34,6 +37,20 @@ function expectValid(parts: string[], label: string): void {
 }
 
 describe('formatTeamsAnswerChunks', () => {
+    it('counts the complete UTF-8 attribution at the exact outbound byte boundary', () => {
+        const header = '<p><strong>Request edge · Part 1/1</strong></p>';
+        const overhead = size(formatTeamsOutbound(header + '<p></p>', 'html'));
+        const answer = 'x'.repeat(TEAMS_ANSWER_MAX_BYTES - overhead);
+        const parts = formatTeamsAnswerChunks(answer, 'edge');
+        expect(parts).toHaveLength(1);
+        expectValid(parts, 'edge');
+        expect(size(formatTeamsOutbound(parts[0], 'html'))).toBe(TEAMS_ANSWER_MAX_BYTES);
+        const overflowing = formatTeamsAnswerChunks(answer + 'x', 'edge');
+        expect(overflowing).toHaveLength(2);
+        expectValid(overflowing, 'edge');
+        expect(visible(content(overflowing))).toBe(answer + 'x');
+    });
+
     it('escapes an optional source context in the reply header', () => {
         const parts = formatTeamsAnswerChunks('Done', 'request-1', 'Repo A&B · Chat <topic>');
         expect(parts[0]).toContain('Repo A&amp;B · Chat &lt;topic&gt;');
@@ -81,6 +98,70 @@ describe('formatTeamsAnswerChunks', () => {
         expect(() => formatTeamsAnswerChunks('okay', '<img src=x>')).toThrow(TypeError);
         expect(() => formatTeamsAnswerChunks('okay', 'private prompt text')).toThrow(TypeError);
         expect(() => formatTeamsAnswerChunks('okay', '')).toThrow(TypeError);
+    });
+
+    it('renders AI-job Markdown tables as bordered HTML with headers and padded cells', () => {
+        const answer = 'Here are recent chats:\n\n| Person | Last activity |\n|---|---|\n' +
+            '| **Contact A** | Oct 2, 4:37 PM |\n| Contact B | Oct 2, 4:22 PM |\n\nEnd.';
+        const parts = formatTeamsAnswerChunks(answer, 'table');
+        expectValid(parts, 'table');
+        expect(parts).toHaveLength(1);
+        const html = content(parts);
+        expect(html).toContain('<table border="1" cellpadding="6" cellspacing="0">');
+        expect(html).toContain('<thead><tr><th scope="col">Person</th><th scope="col">Last activity</th></tr></thead>');
+        expect(html).toContain('<tr><td><strong>Contact A</strong></td><td>Oct 2, 4:37 PM</td></tr>');
+        expect(html).toContain('</tbody></table><br><p>End.</p>');
+        expect(html).not.toContain('|---');
+        expect(html).not.toContain('| Person');
+    });
+
+    it('recognizes tables without outer pipes while leaving malformed and fenced tables visible', () => {
+        const answer = 'Name | Value\n- | -\nA | B\n\n' +
+            '| Not a table | Still text |\n| invalid | separator |\n\n' +
+            '```txt\n| Code | Value |\n|---|---|\n| C | D |\n```';
+        const parts = formatTeamsAnswerChunks(answer, 'syntax');
+        expectValid(parts, 'syntax');
+        const html = content(parts);
+        expect(html.match(/<table /g)).toHaveLength(1);
+        expect(html).toContain('<tr><td>A</td><td>B</td></tr>');
+        expect(html).toContain('<p>| Not a table | Still text |</p>');
+        expect(html).toContain('<pre><code>| Code | Value |\n|---|---|\n| C | D |</code></pre>');
+    });
+
+    it('splits large tables between rows and repeats the header in each independently valid part', () => {
+        const rows = Array.from({ length: 220 }, (_, i) => `| row-${i} | ${'&👩‍💻'.repeat(24)} |`);
+        const answer = '| Key | Value |\n|---|---|\n' + rows.join('\n');
+        const parts = formatTeamsAnswerChunks(answer, 'large-table', 'Source context');
+        expect(parts.length).toBeGreaterThan(1);
+        expectValid(parts, 'large-table');
+        for (const part of parts) {
+            expect(part.match(/<table /g)).toHaveLength(1);
+            expect(part).toContain('<th scope="col">Key</th><th scope="col">Value</th>');
+        }
+        expect([...parts.join('').matchAll(/<td>row-(\d+)<\/td>/g)].map(match => Number(match[1])))
+            .toEqual(Array.from({ length: 220 }, (_, i) => i));
+        expect(parts).toEqual(formatTeamsAnswerChunks(answer, 'large-table', 'Source context'));
+    });
+
+    it('preserves oversized cells as labeled text without losing surrounding table rows', () => {
+        const value = '&👩‍💻'.repeat(4000);
+        const answer = `| Key | Value |\n|---|---|\n| before | first |\n| huge | ${value} |\n| after | last |`;
+        const parts = formatTeamsAnswerChunks(answer, 'huge-cell');
+        expectValid(parts, 'huge-cell');
+        const html = content(parts);
+        expect(html).toContain('<tr><td>before</td><td>first</td></tr>');
+        expect(html).toContain('<tr><td>after</td><td>last</td></tr>');
+        expect(visible(html)).toContain(`Key: huge\nValue: ${value}`);
+        expect(html.indexOf('before')).toBeLessThan(html.indexOf('Key: huge'));
+        expect(html.indexOf('Key: huge')).toBeLessThan(html.indexOf('after'));
+    });
+
+    it('preserves a table with oversized headers using bounded text fragments', () => {
+        const header = 'H'.repeat(21_000);
+        const answer = `| ${header} | Other |\n|---|---|\n| value | last |`;
+        const parts = formatTeamsAnswerChunks(answer, 'huge-header');
+        expectValid(parts, 'huge-header');
+        expect(visible(content(parts))).toBe(answer);
     });
 
     it('handles an empty answer and unmatched code fences visibly', () => {

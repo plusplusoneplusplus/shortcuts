@@ -127,7 +127,9 @@ export interface AdminResolvedConfig {
     ralphMultiAgentGrill?: boolean;
     nativeCliSessions?: boolean;
     teamsBridgeObservability?: boolean;
+    teamsAiAnswerRelay?: boolean;
     teamsMessageReaction?: boolean;
+    botManagedConversations?: boolean;
     quickAskSidenotes?: boolean;
     arxivPaperIngest?: boolean;
     gitWorktreeExecution?: boolean;
@@ -218,6 +220,7 @@ export interface AdminConfigUpdate {
   'features.autoAgentProviderRouting'?: boolean;
   'features.nativeCliSessions'?: boolean;
   'features.teamsBridgeObservability'?: boolean;
+  'features.teamsAiAnswerRelay'?: boolean;
   'features.teamsMessageReaction'?: boolean;
   'features.quickAskSidenotes'?: boolean;
   'features.arxivPaperIngest'?: boolean;
@@ -278,7 +281,9 @@ export interface RuntimeDashboardConfig {
     dangerousCommandGuardEnabled: boolean;
     nativeCliSessionsEnabled: boolean;
     teamsBridgeObservabilityEnabled: boolean;
+    teamsAiAnswerRelayEnabled: boolean;
     teamsMessageReactionEnabled: boolean;
+    botManagedConversationsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;
     arxivPaperIngestEnabled: boolean;
     remoteShellEnabled: boolean;

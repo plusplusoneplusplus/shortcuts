@@ -44,11 +44,20 @@ are cached. The channel input stays editable and reflects the owning server's co
 name, including its per-machine default for new settings. The card advises a unique
 channel per machine to prevent multiple bridges from processing the same messages.
 Both Teams forms expose explicit optional IC3 region configuration, saved with connection
-settings and applied on reconnect. Unconfigured leaves MCP polling/sends available;
+settings and applied on reconnect. Unconfigured leaves channel reads/sends available;
 IC3 writes require a region. The container stores it under `messaging.teams.ic3Region`
 in `config.yaml`; an absent bridge requires restart.
 The normal Teams card groups endpoint/sign-in and channel settings separately,
-with optional IC3 and notification settings in a native advanced-options disclosure.
+with optional outbound-backend, IC3 and notification settings in a native advanced-options disclosure.
+`outboundBackend` defaults to Graph, with explicit MCP available; Graph channel sends/replies require separate
+server-side Azure CLI credentials matching the MCP reader, with delegated `ChannelMessage.Send`
+(recommended for new clients) or an existing `Group.ReadWrite.All` compatibility grant.
+Saving backend changes disconnects; reconnect validates credentials before writes.
+Channel roots and enabled thread replies always use Graph, including explicit MCP
+outbound selections; MCP owns discovery/create. The card exposes read consent guidance
+outside the advanced disclosure: delegated `ChannelMessage.Read.All`, separately from
+send consent, with Azure CLI credentials matching the configured MCP account.
+Sign-in alone does not grant consent; failed reads never fall back and ambiguous sends never replay.
 Its controls use scoped admin styles; connection/OAuth and notification errors stay
 visible independently of disclosures. It exposes experimental `enableTrouter`, default off,
 saved through `/api/messaging/teams/config` and applied on reconnect. Its separate Azure CLI
@@ -56,6 +65,13 @@ IC3 sign-in must match MCP; notification wakes retain authoritative reads and a
 60-second completion-relative fallback. This private protocol is not durable catch-up.
 It displays `notificationStatus` and sanitized errors separately from connected reader
 status, making fallback degradation visible without misreporting the whole bridge offline.
+
+The Integrations setting `features.teamsAiAnswerRelay` defaults on, including omitted
+config, with explicit false as a live opt-out. The registry suppresses its experimental
+badge for this enabled default. Its hint and the Connections routing help explain
+captured-thread Ask answers and safe terminal notices, independent bridge activation,
+and disabling relay/thread polling without restart or reconnect. It does not enable
+Autopilot, connectivity, Likes or Trouter.
 
 With `features.teamsBridgeObservability` enabled, the normal Teams card loads
 server-global, newest-first connection attempts from the guarded messaging API.

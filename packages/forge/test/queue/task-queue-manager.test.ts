@@ -135,6 +135,95 @@ describe('TaskQueueManager', () => {
             expect(found).toBeDefined();
             expect(found!.id).toBe('tid-2');
         });
+
+        it('removes a rejected admission before execution notification and permits retry', () => {
+            const existing = manager.enqueue(createTestTask({ id: 'existing' }));
+            const taskAdded = vi.fn();
+            const failure = new Error('persistence failed');
+            const changes: string[] = [];
+            const listener = (event: QueueChangeEvent) => {
+                changes.push(event.type);
+                if (event.type === 'added') throw failure;
+            };
+            manager.on('taskAdded', taskAdded);
+            manager.on('change', listener);
+            expect(() => manager.enqueue(createTestTask({ id: 'retry' }))).toThrow(failure);
+            expect(manager.getQueued().map(task => task.id)).toEqual([existing]);
+            expect(manager.getHistory()).toEqual([]);
+            expect(taskAdded).not.toHaveBeenCalled();
+            expect(changes).toEqual(['added', 'removed']);
+            manager.off('change', listener);
+            expect(manager.enqueue(createTestTask({ id: 'retry' }))).toBe('retry');
+            expect(taskAdded).toHaveBeenCalledTimes(1);
+        });
+
+        it.each(['repo-gate-activated', 'added'])('releases a new gate when %s persistence fails', type => {
+            const taskAdded = vi.fn();
+            const changes: string[] = [];
+            manager.on('taskAdded', taskAdded);
+            manager.on('change', (event: QueueChangeEvent) => {
+                changes.push(event.type);
+                if (event.type === type) throw new Error('gate admission failed');
+            });
+            expect(() => manager.enqueue(createTestTask({
+                id: 'gated', repoId: 'ws-a',
+                config: { prGate: { chainId: 'chain-a', autoMerge: true } },
+            }))).toThrow('gate admission failed');
+            expect(manager.getRepoGate('ws-a')).toBeUndefined();
+            expect(manager.getTask('gated')).toBeUndefined();
+            expect(taskAdded).not.toHaveBeenCalled();
+            expect(changes.slice(-2)).toEqual(['removed', 'repo-gate-released']);
+        });
+
+        it('retains existing gates and unrelated workspaces when an admission fails', () => {
+            const first = manager.enqueue(createTestTask({
+                id: 'first', repoId: 'ws-a',
+                config: { prGate: { chainId: 'chain-a', autoMerge: true } },
+            }));
+            manager.enqueue(createTestTask({
+                id: 'other', repoId: 'ws-b',
+                config: { prGate: { chainId: 'chain-b', autoMerge: true } },
+            }));
+            manager.on('change', (event: QueueChangeEvent) => {
+                if (event.type === 'added') throw new Error('write failed');
+            });
+            expect(() => manager.enqueue(createTestTask({ id: 'rejected', repoId: 'ws-a' }))).toThrow('write failed');
+            expect(manager.getRepoGate('ws-a')?.implementTaskId).toBe(first);
+            expect(manager.getRepoGate('ws-b')?.implementTaskId).toBe('other');
+            expect(manager.getAll()).toHaveLength(2);
+        });
+
+        it('surfaces admission and compensation errors without keeping executable work', () => {
+            const admissionError = new Error('write failed');
+            const rollbackError = new Error('cleanup failed');
+            manager.on('change', (event: QueueChangeEvent) => {
+                throw event.type === 'added' ? admissionError : rollbackError;
+            });
+            let thrown: unknown;
+            try {
+                manager.enqueue(createTestTask({ id: 'failed' }));
+            } catch (error) {
+                thrown = error;
+            }
+            expect(thrown).toMatchObject({ errors: [admissionError, rollbackError] });
+            expect(manager.getTask('failed')).toBeUndefined();
+            expect(manager.peek()).toBeUndefined();
+        });
+
+        it('attempts gate compensation even when task compensation fails', () => {
+            const changes: string[] = [];
+            manager.on('change', (event: QueueChangeEvent) => {
+                changes.push(event.type);
+                throw new Error(event.type);
+            });
+            expect(() => manager.enqueue(createTestTask({
+                id: 'gated', repoId: 'ws-a',
+                config: { prGate: { chainId: 'chain-a', autoMerge: true } },
+            }))).toThrow('Queue admission failed and could not be fully rolled back');
+            expect(changes).toEqual(['repo-gate-activated', 'removed', 'repo-gate-released']);
+            expect(manager.getQueued()).toEqual([]);
+            expect(manager.getRepoGate('ws-a')).toBeUndefined();
+        });
     });
 
     // ========================================================================

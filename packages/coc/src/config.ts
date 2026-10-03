@@ -310,6 +310,7 @@ export interface CLIConfig {
         teamsBridgeObservability?: boolean;
         teamsAiAnswerRelay?: boolean;
         teamsMessageReaction?: boolean;
+        botManagedConversations?: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Disabled by default. */
         quickAskSidenotes?: boolean;
         /** Ingest and embed a local PDF when a lone arXiv link is pasted into Notes. Disabled by default. */
@@ -692,6 +693,7 @@ export interface ResolvedCLIConfig {
         teamsBridgeObservability: boolean;
         teamsAiAnswerRelay: boolean;
         teamsMessageReaction: boolean;
+        botManagedConversations: boolean;
         /** Quick Ask side-notes on assistant chat turns (select → ✨ Ask AI → 💡 bubble). Enabled by default. */
         quickAskSidenotes: boolean;
         /** Ingest and embed a local PDF when a lone arXiv link is pasted into Notes. Disabled by default. */
@@ -997,8 +999,9 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         ralphMultiAgentGrill: false,
         nativeCliSessions: false,
         teamsBridgeObservability: false,
-        teamsAiAnswerRelay: false,
+        teamsAiAnswerRelay: true,
         teamsMessageReaction: false,
+        botManagedConversations: false,
         quickAskSidenotes: true,
         arxivPaperIngest: false,
         remoteShell: true,

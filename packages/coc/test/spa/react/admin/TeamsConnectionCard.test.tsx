@@ -41,12 +41,14 @@ describe('TeamsConnectionCard', () => {
         expect(history.hasAttribute('open')).toBe(false);
         expect(screen.getByRole('button', { name: 'Enable & connect' }).className).toContain('ar-btn-primary');
         expect(screen.getByRole('button', { name: 'Save MCP endpoint' }).className).toContain('ar-btn-secondary');
+        expect(screen.getByText(/AI answer relay is enabled by default/).textContent)
+            .toContain('without restarting or reconnecting');
     });
 
     it('keeps form controls disabled until connection settings are available', () => {
         vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
         render(<TeamsConnectionCard />);
-        for (const name of ['Teams MCP server URL', 'Team', 'Channel', 'Bot name', 'IC3 region',
+        for (const name of ['Teams MCP server URL', 'Team', 'Channel', 'Bot name', 'IC3 region', 'Outbound backend',
             'Experimental notification-driven inbound (Trouter)']) {
             expect((screen.getByLabelText(name) as HTMLInputElement).disabled).toBe(true);
         }
@@ -71,10 +73,55 @@ describe('TeamsConnectionCard', () => {
             expect.stringMatching(/\/messaging\/teams\/config$/),
             expect.objectContaining({ body: JSON.stringify({
                 teamName: 'Engineering', channelName: 'General', botName: 'CoC', ic3Region: null, enableTrouter: true,
+                outboundBackend: 'graph',
             }) }),
         ));
         await waitFor(() => expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(false));
         expect(screen.getByText(/not durable catch-up/)).toBeDefined();
+    });
+    it('defaults missing backend settings to Graph without marking the form dirty and saves explicit MCP', async () => {
+        let current = { ...status };
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            if (url.endsWith('/config')) current = { ...current, ...JSON.parse(String(options?.body)) };
+            return { ok: true, json: async () => url.endsWith('/status') ? current : { ok: true } };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        const select = screen.getByLabelText('Outbound backend') as HTMLSelectElement;
+        expect(select.value).toBe('graph');
+        expect(screen.getByRole('option', { name: 'Microsoft Graph (default)' })).toBeDefined();
+        expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.change(select, { target: { value: 'mcp' } });
+        expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByText('Save channel'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/messaging\/teams\/config$/),
+            expect.objectContaining({ body: expect.stringContaining('"outboundBackend":"mcp"') })));
+        await waitFor(() => expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(false));
+        expect(select.value).toBe('mcp');
+    });
+    it('preserves explicit MCP outbound and saves Graph before reconnect without changing Graph reads', async () => {
+        let current = { ...status, outboundBackend: 'mcp' };
+        const fetch = vi.fn(async (url: string, options?: RequestInit) => {
+            if (url.endsWith('/config')) current = { ...current, ...JSON.parse(String(options?.body)) };
+            return { ok: true, json: async () => url.endsWith('/status') ? current : { ok: true } };
+        });
+        vi.stubGlobal('fetch', fetch);
+        render(<TeamsConnectionCard />);
+        await screen.findByDisplayValue(status.serverUrl);
+        const select = screen.getByLabelText('Outbound backend') as HTMLSelectElement;
+        expect(select.value).toBe('mcp');
+        fireEvent.change(select, { target: { value: 'graph' } });
+        expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByText('Save channel'));
+        await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringMatching(/\/messaging\/teams\/config$/),
+            expect.objectContaining({ body: expect.stringContaining('"outboundBackend":"graph"') })));
+        await waitFor(() => expect((screen.getByText('Enable & connect') as HTMLButtonElement).disabled).toBe(false));
+        expect(screen.getAllByText(/ChannelMessage.Send/)).toHaveLength(2);
+        expect(screen.getByText(/existing delegated Group.ReadWrite.All grant/)).toBeDefined();
+        expect(screen.getByText(/channel reads remain Graph and discovery remains MCP/)).toBeDefined();
+        expect(screen.getByTestId('teams-reader-hint').textContent).toContain('ChannelMessage.Read.All');
+        expect(screen.getByTestId('teams-reader-hint').textContent).toContain('failed reads never fall back');
     });
     it('displays notification degradation while authoritative reader connectivity remains connected', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
@@ -167,9 +214,9 @@ describe('TeamsConnectionCard', () => {
         summary.focus();
         expect(document.activeElement).toBe(summary);
         fireEvent.click(summary);
-        expect(await screen.findByText(/MCP acceptance does not confirm/)).toBeDefined();
+        expect(await screen.findByText(/Backend acceptance does not confirm/)).toBeDefined();
         expect(screen.getByText(/Reply send: Degraded/)).toBeDefined();
-        expect(screen.getByText('Check reply delivery through MCP.')).toBeDefined();
+        expect(screen.getByText('Check reply delivery and outbound credentials.')).toBeDefined();
         expect(screen.getByText('polls Succeeded')).toBeDefined();
         expect(screen.getByText(/authentication failure/)).toBeDefined();
         expect(screen.getByText(/✕ Failed/)).toBeDefined();
@@ -259,7 +306,7 @@ describe('TeamsConnectionCard', () => {
         fireEvent.click(screen.getByText('Save channel'));
         await waitFor(() => expect(fetch).toHaveBeenCalledWith(
             expect.stringMatching(/\/messaging\/teams\/config$/),
-            expect.objectContaining({ body: '{"teamName":"Engineering","channelName":"Private-Channel","botName":"CoC","ic3Region":null,"enableTrouter":false}' }),
+            expect.objectContaining({ body: '{"teamName":"Engineering","channelName":"Private-Channel","botName":"CoC","ic3Region":null,"enableTrouter":false,"outboundBackend":"graph"}' }),
         ));
     });
 
@@ -283,6 +330,7 @@ describe('TeamsConnectionCard', () => {
             expect.stringMatching(/\/messaging\/teams\/config$/),
             expect.objectContaining({ body: JSON.stringify({
                 teamName: 'Engineering', channelName: 'General', botName: 'CoC', ic3Region: region || null, enableTrouter: false,
+                outboundBackend: 'graph',
             }) }),
         ));
         await waitFor(() => expect((screen.getByText('Reconnect') as HTMLButtonElement).disabled).toBe(false));

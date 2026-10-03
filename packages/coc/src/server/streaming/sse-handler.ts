@@ -14,6 +14,7 @@ import type { RalphGrillPlanningProgress } from '../ralph/grill-planning';
 import { warmStatusBridge, type WarmStatusBridge } from './warm-status-bridge';
 import { backgroundTasksRegistry, type BackgroundTasksRegistry } from './background-tasks-registry';
 import { readActiveProviderSession } from '../processes/active-provider-session';
+import { projectBotControl } from '../processes/bot-control-read-model';
 
 // ============================================================================
 // SSE Event Payload Types
@@ -135,7 +136,7 @@ export function emitWarmStatus(store: ProcessStore, processId: string, status: W
  * Handle SSE streaming for a single process.
  *
  * Protocol:
- *   event: conversation-snapshot → { turns: ConversationTurn[], sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
+ *   event: conversation-snapshot → { turns: ConversationTurn[], botControl?, sessionTokenLimit?, sessionCurrentTokens?, sessionSystemTokens?, sessionToolTokens?, sessionConversationTokens? }
  *   event: chunk              → { content: string }
  *   event: tool-start         → { turnIndex, toolCallId, parentToolCallId?, toolName, parameters }
  *   event: tool-complete      → { turnIndex, toolCallId, parentToolCallId?, toolName?, parameters?, result, approvalOutcome? }
@@ -162,7 +163,8 @@ export async function handleProcessStream(
     processId: string,
     store: ProcessStore,
     warmBridge: WarmStatusBridge = warmStatusBridge,
-    backgroundTasks: BackgroundTasksRegistry = backgroundTasksRegistry
+    backgroundTasks: BackgroundTasksRegistry = backgroundTasksRegistry,
+    botManagedConversationsEnabled: () => boolean = () => false,
 ): Promise<void> {
     // Parse workspaceId hint from the query string for direct-path lookup
     const parsed = new URL(req.url ?? '/', 'http://x');
@@ -177,7 +179,7 @@ export async function handleProcessStream(
 
     // 1. Look up the process — 404 if not found
     let process = await store.getProcess(processId, wsId);
-    if (!process) {
+    if (!process || (wsId !== undefined && process.metadata?.workspaceId !== wsId)) {
         getServerLogger().warn({ processId }, 'SSE: process not found');
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Process not found' }));
@@ -198,11 +200,17 @@ export async function handleProcessStream(
     if ((process.status === 'running') && store.requestFlush) {
         await store.requestFlush(processId);
         const refreshed = await store.getProcess(processId, wsId);
-        if (refreshed) { process = refreshed; }
+        if (refreshed && (wsId === undefined || refreshed.metadata?.workspaceId === wsId)) {
+            process = refreshed;
+        } else {
+            getServerLogger().warn({ processId }, 'SSE: process unavailable after flush');
+            res.end();
+            return;
+        }
     }
 
     // 4. Replay persisted conversation history as a structured snapshot
-    replayConversationTurns(res, process);
+    replayConversationTurns(res, process, botManagedConversationsEnabled());
 
     // Replay pending ask-user questions whenever the process has them — regardless
     // of status. ChatBaseExecutor finishes its SDK turn with `status='completed'`
@@ -512,12 +520,15 @@ function resolveProcessWarmProvider(process: AIProcess): string {
  * Sends the full turns array so the client can reconstruct conversation state.
  * Also includes session-level token tracking data when available.
  */
-function replayConversationTurns(res: ServerResponse, process: AIProcess): void {
-    const turns = process.conversationTurns;
-    if (!turns || turns.length === 0) { return; }
+function replayConversationTurns(res: ServerResponse, process: AIProcess, botManagedConversationsEnabled: boolean): void {
+    const turns = process.conversationTurns ?? [];
+    if (turns.length === 0 && !botManagedConversationsEnabled) { return; }
 
     writeNamedEvent(res, 'conversation-snapshot', {
         turns,
+        ...(botManagedConversationsEnabled
+            ? { botControl: projectBotControl(process.metadata?.botControl, true) ?? null }
+            : {}),
         sessionTokenLimit: process.tokenLimit,
         sessionCurrentTokens: process.currentTokens,
         ...(process.systemTokens != null ? { sessionSystemTokens: process.systemTokens } : {}),

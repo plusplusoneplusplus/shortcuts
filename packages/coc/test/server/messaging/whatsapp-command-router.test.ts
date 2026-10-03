@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter, type WhatsAppRouterDeps } from '../../../src/server/messaging/whatsapp-command-router';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
+import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 
 describe('WhatsApp workspace command routing', () => {
     let dir: string;
@@ -37,11 +38,16 @@ describe('WhatsApp workspace command routing', () => {
                 processes.find(proc => proc.id === id && (!workspaceId || proc.metadata.workspaceId === workspaceId))),
         } as unknown as WhatsAppRouterDeps['store'];
         await bindings.restore(store);
-        enqueue = vi.fn().mockResolvedValue('queued');
+        const queue = new TaskQueueManager();
+        enqueue = vi.fn(async (workspaceId, prompt, mode, processId, id) => queue.enqueue({
+            id, repoId: workspaceId, processId, type: 'chat', priority: 'normal', config: {},
+            payload: { kind: 'chat', workspaceId, prompt, mode, relayRequestId: id },
+        }).id);
         send = vi.fn().mockResolvedValue('outbound');
         react = vi.fn().mockResolvedValue(undefined);
         router = new WhatsAppCommandRouter({
             store, bindings, groupJid: () => 'group@g.us', enqueue, send, react,
+            getTask: id => queue.getTask(id),
         });
     });
     afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -55,7 +61,7 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('select repo 2', 'select'));
         expect(bindings.selectedRepo).toBe('ws-b');
         await router.handle(inbound('what files?', 'chat'));
-        expect(enqueue).toHaveBeenCalledWith('ws-b', 'what files?', undefined, expect.any(String), expect.any(String));
+        expect(enqueue).toHaveBeenCalledWith('ws-b', 'what files?', undefined, expect.any(String), expect.any(String), undefined);
         expect(react).toHaveBeenCalledWith('chat');
         expect(fs.existsSync(path.join(dir, 'repos', 'ws-b', 'whatsapp-bindings.json'))).toBe(true);
         expect(fs.existsSync(path.join(dir, 'messaging', 'whatsapp', 'bindings.json'))).toBe(false);
@@ -96,7 +102,7 @@ describe('WhatsApp workspace command routing', () => {
         expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic not found'), 'bad');
         await router.handle(inbound('select topic topic-a', 'good'));
         await router.handle(inbound('/autopilot fix this', 'autopilot'));
-        expect(enqueue).toHaveBeenCalledWith('ws-a', 'fix this', 'autopilot', 'topic-a', expect.any(String));
+        expect(enqueue).toHaveBeenCalledWith('ws-a', 'fix this', 'autopilot', 'topic-a', expect.any(String), undefined);
         await router.handle(inbound('create topic', 'new'));
         await router.handle(inbound('new question', 'new-chat'));
         expect(enqueue.mock.calls.at(-1)?.[3]).not.toBe('topic-a');
@@ -195,9 +201,9 @@ describe('WhatsApp workspace command routing', () => {
     it('sends [chatid] messages to that chat in its own workspace, with or without autopilot', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('[topic-b] continue there', 'explicit'));
-        expect(enqueue).toHaveBeenLastCalledWith('ws-b', 'continue there', undefined, 'topic-b', expect.any(String));
+        expect(enqueue).toHaveBeenLastCalledWith('ws-b', 'continue there', undefined, 'topic-b', expect.any(String), undefined);
         await router.handle(inbound('/autopilot [topic-a] go', 'explicit-auto'));
-        expect(enqueue).toHaveBeenLastCalledWith('ws-a', 'go', 'autopilot', 'topic-a', expect.any(String));
+        expect(enqueue).toHaveBeenLastCalledWith('ws-a', 'go', 'autopilot', 'topic-a', expect.any(String), undefined);
         await router.handle(inbound('[missing] hello', 'missing'));
         expect(send).toHaveBeenLastCalledWith('Chat "missing" not found.', 'missing');
         expect(bindings.selectedRepo).toBe('ws-a');

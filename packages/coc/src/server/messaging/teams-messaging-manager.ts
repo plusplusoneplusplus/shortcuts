@@ -3,25 +3,28 @@
  * Persists Teams configuration (team name, channel name, resolved IDs, botName).
  * On "connect", reads the configured global Teams MCP server,
  * acquires a cached SDK OAuth token, resolves team/channel
- * IDs via MCP tools, and starts the bot in MCP mode for polling.
+ * IDs via MCP tools, and reads channel roots/replies via Graph.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { BotStatus, InboundTeamsMessage, Ic3DirectMessageRegion, TrouterStatus } from '@plusplusoneplusplus/coc-connector/teams';
-import { TeamsBot, isIc3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
+import type { BotStatus, InboundTeamsMessage, Ic3DirectMessageRegion, TrouterStatus,
+    TeamsDestination, TeamsMessageBody, OperationContext, SendReceipt } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsBot, TeamsOperationError, isIc3DirectMessageRegion, validateAction } from '@plusplusoneplusplus/coc-connector/teams';
 import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
 import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult, type TeamsEventType, type TeamsSkipReason } from './teams-attempt-store';
-import type { TeamsAnswerRelay } from './teams-answer-relay';
-import { formatTeamsOutbound, type TeamsOutboundSource } from './teams-outbound-format';
+import { TeamsBindingReleaseError, type TeamsAnswerRelay } from './teams-answer-relay';
+import { escapeTeamsHtml, formatTeamsOutbound, type TeamsOutboundSource } from './teams-outbound-format';
+import { DEFAULT_CONFIG } from '../../config';
 
 // ── Persisted Config ─────────────────────────────────────────
 
 export interface TeamsMessagingConfig {
+    outboundBackend?: 'mcp' | 'graph';
     enableTrouter?: boolean;
     ic3Region?: Ic3DirectMessageRegion | null;
     enabled: boolean;
@@ -33,6 +36,7 @@ export interface TeamsMessagingConfig {
 }
 
 const PERSISTED_CONFIG_DEFAULTS: TeamsMessagingConfig = {
+    outboundBackend: 'graph',
     enableTrouter: false,
     enabled: false,
     botName: 'CoC',
@@ -58,6 +62,9 @@ export class TeamsMessageNotSentError extends Error {
 // ── Manager ──────────────────────────────────────────────────
 
 export interface TeamsMessagingStatus {
+    connectionId: string | null;
+    channelReadBackend: 'graph';
+    outboundBackend: 'mcp' | 'graph';
     enableTrouter: boolean;
     notificationStatus: TrouterStatus;
     ic3Region?: Ic3DirectMessageRegion | null;
@@ -84,6 +91,7 @@ export class TeamsMessagingManager {
     private readonly _homeDir: string;
     private readonly customHome: boolean;
     private generation = 0;
+    private invalidOutboundBackend = false;
     private oauthFlow: TeamsOAuthFlow | null = null;
     private history: TeamsAttemptStore | null = null;
     private attemptId: string | null = null;
@@ -95,10 +103,11 @@ export class TeamsMessagingManager {
     setAnswerRelay(relay: TeamsAnswerRelay, unsubscribe?: () => void, isEnabled?: () => boolean): void {
         this.answerRelay = relay;
         this.answerRelayUnsubscribe = unsubscribe ?? null;
-        this.getAnswerRelayEnabled = isEnabled ?? (() => false);
+        this.getAnswerRelayEnabled = isEnabled ?? (() => DEFAULT_CONFIG.features.teamsAiAnswerRelay);
     }
 
     dispose(): void {
+        void this.disconnect().catch(() => console.error('[teams-messaging] Disconnect failed during disposal'));
         this.answerRelayUnsubscribe?.();
         this.answerRelay?.dispose();
     }
@@ -141,6 +150,9 @@ export class TeamsMessagingManager {
     getStatus(): TeamsMessagingStatus {
         const serverUrl = this.getServerUrl();
         return {
+            connectionId: this._status === 'connected' ? this.bot?.getConnectionId() ?? null : null,
+            channelReadBackend: 'graph',
+            outboundBackend: this.config.outboundBackend ?? 'graph',
             enableTrouter: this.config.enableTrouter === true,
             notificationStatus: this.bot?.getNotificationStatus?.() ?? {
                 state: this.config.enableTrouter === true ? 'stopped' : 'disabled', error: null,
@@ -161,8 +173,14 @@ export class TeamsMessagingManager {
         };
     }
 
-    /** Update configuration fields. Disconnect on disable, target, or IC3 region changes. */
+    /** Connection-scoped target, backend and notification changes require reconnect. */
     async updateConfig(patch: Partial<TeamsMessagingConfig>): Promise<void> {
+        if (this.invalidOutboundBackend && patch.outboundBackend === undefined) {
+            throw new RangeError('Configure a valid outboundBackend before updating Teams settings');
+        }
+        if (patch.outboundBackend !== undefined && patch.outboundBackend !== 'mcp' && patch.outboundBackend !== 'graph') {
+            throw new RangeError('outboundBackend must be mcp or graph');
+        }
         if (patch.enableTrouter !== undefined && typeof patch.enableTrouter !== 'boolean') {
             throw new RangeError('enableTrouter must be a boolean');
         }
@@ -170,8 +188,10 @@ export class TeamsMessagingManager {
             throw new RangeError('IC3 region must be amer, emea, apac, or null (unconfigured)');
         }
         if (patch.enabled === false || patch.teamName !== undefined || patch.channelName !== undefined || patch.botName !== undefined
+            || (this.invalidOutboundBackend && patch.outboundBackend !== undefined)
             || (patch.ic3Region !== undefined && patch.ic3Region !== (this.config.ic3Region ?? null))
-            || (patch.enableTrouter !== undefined && patch.enableTrouter !== (this.config.enableTrouter === true))) {
+            || (patch.enableTrouter !== undefined && patch.enableTrouter !== (this.config.enableTrouter === true))
+            || (patch.outboundBackend !== undefined && patch.outboundBackend !== (this.config.outboundBackend ?? 'graph'))) {
             await this.disconnect();
             this._lastError = null;
         }
@@ -180,10 +200,11 @@ export class TeamsMessagingManager {
             this.config.channelId = undefined;
         }
         Object.assign(this.config, patch);
+        if (patch.outboundBackend !== undefined) this.invalidOutboundBackend = false;
         this.saveConfig();
     }
 
-    /** Register the shared global MCP endpoint used by both OAuth and polling. */
+    /** Register the global MCP endpoint used by OAuth and discovery. */
     async configureServer(url: string): Promise<void> {
         const parsed = new URL(url);
         if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) {
@@ -225,11 +246,17 @@ export class TeamsMessagingManager {
      * 1. Reads the global MCP server configured in the MCP settings panel.
      * 2. Acquires a bearer token from the shared SDK OAuth cache.
      * 3. Resolves team + channel IDs via MCP tools.
-     * 4. Starts the TeamsBot in MCP mode for message polling.
+     * 4. Starts the MCP discovery/operation owner with Graph channel reads.
      */
     async connect(): Promise<void> {
         const history = this.getAttemptStore();
         const attemptId = history?.start();
+        if (this.invalidOutboundBackend) {
+            this._lastError = 'Invalid saved outbound backend; configure Teams connection settings and reconnect';
+            this._status = 'error';
+            if (attemptId) history?.finish(attemptId, 'failed', 'configuration');
+            throw new Error(this._lastError);
+        }
         if (!this.config.enabled) {
             this._lastError = 'Teams integration is disabled';
             this._status = 'disconnected';
@@ -286,11 +313,21 @@ export class TeamsMessagingManager {
             this.config.channelId = resolved.channelId;
             this.saveConfig();
 
-            // Step 4: Create bot in MCP mode for polling
+            // MCP owns discovery and IC3 routing; Graph owns authoritative channel reads.
             if (attemptId) history?.phase(attemptId, 'starting-polling');
             failureCategory = 'polling';
             const bot = new TeamsBot({
                 mode: 'mcp',
+                channelReadBackend: 'graph',
+                graphReadOptions: {},
+                operationRoutes: {
+                    chatSend: 'ic3',
+                    ...((this.config.outboundBackend ?? 'graph') === 'graph'
+                        ? { channelSend: 'graph' as const, channelReply: 'graph' as const } : {}),
+                },
+                ...((this.config.outboundBackend ?? 'graph') === 'graph' ? {
+                    graphOutboundOptions: {},
+                } : {}),
                 enableTrouter: this.config.enableTrouter === true,
                 mcpServerUrl: serverUrl,
                 teamId: resolved.teamId,
@@ -356,7 +393,12 @@ export class TeamsMessagingManager {
                 throw new Error('Teams connection cancelled');
             }
             if (!bot.isConnected()) throw new Error(this._lastError ?? 'Teams bot did not connect');
-            await this.answerRelay?.reconnected();
+            try {
+                await this.answerRelay?.reconnected();
+            } catch (error) {
+                if (!(error instanceof TeamsBindingReleaseError)) throw error;
+                console.error('[teams-answer-relay] Binding release reconciliation failed');
+            }
         } catch (err: any) {
             if (generation === this.generation) {
                 this._lastError = err.message ?? 'Failed to connect';
@@ -475,6 +517,24 @@ export class TeamsMessagingManager {
         await this.bot.reactToChannelMessage(msg);
     }
 
+    /** Explicit send-only 1:1 entry point; it never uses the channel bridge's send/retry path. */
+    async sendDirectMessage(destination: Extract<TeamsDestination, { kind: 'chat' }>,
+        body: TeamsMessageBody, context?: OperationContext): Promise<SendReceipt> {
+        if (!this.config.enabled || !this.bot || this._status !== 'connected') {
+            throw new TeamsOperationError('Teams integration is disabled or disconnected', 'ic3', 'unavailable', 'not-attempted');
+        }
+        if (!destination.connectionId || destination.connectionId !== this.bot.getConnectionId()) {
+            throw new TeamsOperationError('Teams connection changed; read status again before sending',
+                'ic3', 'invalid-target', 'not-attempted');
+        }
+        validateAction({ kind: 'send', destination, body }, 'ic3', this.bot.getConnectionId());
+        const html = body.contentType === 'html' ? body.content
+            : escapeTeamsHtml(body.content).replace(/\r\n|\r|\n/g, '<br>');
+        return this.bot.sendMessage(destination, {
+            ...body, content: formatTeamsOutbound(html, 'html'), contentType: 'html',
+        }, context);
+    }
+
     // ── Private helpers ──────────────────────────────────────
 
     private loadConfig(): TeamsMessagingConfig {
@@ -482,12 +542,23 @@ export class TeamsMessagingManager {
             if (fs.existsSync(this.configPath)) {
                 const raw = fs.readFileSync(this.configPath, 'utf-8');
                 const config = { ...PERSISTED_CONFIG_DEFAULTS, ...JSON.parse(raw) };
+                if (config.outboundBackend !== 'mcp' && config.outboundBackend !== 'graph') {
+                    this.invalidOutboundBackend = true;
+                    config.outboundBackend = 'graph';
+                    this._lastError = 'Invalid saved outbound backend; configure Teams connection settings and reconnect';
+                }
                 config.enableTrouter = config.enableTrouter === true;
                 if (config.ic3Region != null && !isIc3DirectMessageRegion(config.ic3Region)) {
                     config.ic3Region = null;
                     this._lastError = 'Invalid saved IC3 region; configure Teams connection settings and reconnect';
                 }
-                return config;
+                return {
+                    enabled: config.enabled, botName: config.botName,
+                    teamName: config.teamName, channelName: config.channelName,
+                    teamId: config.teamId, channelId: config.channelId,
+                    outboundBackend: config.outboundBackend, enableTrouter: config.enableTrouter,
+                    ic3Region: config.ic3Region,
+                };
             }
         } catch (err) {
             this._status = 'error';

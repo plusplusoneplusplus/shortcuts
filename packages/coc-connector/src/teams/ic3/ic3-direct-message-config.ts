@@ -13,7 +13,17 @@ export function isIc3DirectMessageRegion(value: unknown): value is Ic3DirectMess
 /** Returns a JWT with IC3 audience, exp, oid, and name for the current account; must honor cancellation. */
 export type Ic3TokenProvider = (signal: AbortSignal) => Promise<string>;
 
+/** Authoritative, connection-scoped read; IDs alone never establish a chat's type or membership. */
+export type Ic3ChatVerifier = (chatId: string, signal: AbortSignal) => Promise<{
+    chatId: string;
+    chatType: string;
+    memberIds: readonly string[];
+    connectionId: string;
+}>;
+
 export interface Ic3DirectMessageOptions {
+    readonly connectionId?: string;
+    readonly verifyChat?: Ic3ChatVerifier;
     /** Explicit routing only; unset disables IC3 writes until configured and reconnected. */
     readonly region?: Ic3DirectMessageRegion;
     /** IC3 audience: https://ic3.teams.office.com. Defaults to Azure CLI; injection needs no Azure CLI. */

@@ -12,7 +12,7 @@
  */
 
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
-import { SqliteQueueStore, type TaskQueueManager, type QueueChangeEvent, type QueuedTask, type QueueItem, type PauseMarker } from '@plusplusoneplusplus/forge';
+import { SqliteQueueStore, toQueueProcessId, type TaskQueueManager, type QueueChangeEvent, type QueuedTask, type QueueItem, type PauseMarker } from '@plusplusoneplusplus/forge';
 import type { MultiRepoQueueRouter } from './multi-repo-queue-router';
 
 /**
@@ -76,8 +76,11 @@ export class SqliteQueuePersistence {
 
         this.bridgeChangeListener = (event: BridgeQueueChangeEvent) => {
             const { repoPath, repoId } = event;
-            this.trackRepoPath(repoId, repoPath);
-            this.handleChange(repoId, repoPath, event);
+            this.db.transaction(() => {
+                this.trackRepoPath(repoId, repoPath);
+                this.handleChange(repoId, repoPath, event);
+            })();
+            this.repoIdToPath.set(repoId, repoPath);
         };
         this.bridge.on('queueChange', this.bridgeChangeListener);
     }
@@ -151,7 +154,6 @@ export class SqliteQueuePersistence {
         // 3. Restore queued items and running tasks
         const queuedItems = this.store.getQueueItems(undefined, ['queued']);
         const runningTasks = this.store.getQueueTasks(undefined, ['running']);
-        const oldRunningTaskIds: string[] = [];
 
         let totalRestored = 0;
         const repoItemGroups = new Map<string, QueueItem[]>();
@@ -203,15 +205,8 @@ export class SqliteQueuePersistence {
             if (!queueManager) continue;
 
             for (const task of repoTasks) {
-                oldRunningTaskIds.push(task.id);
                 totalRestored += this.restoreRunningTask(task, queueManager, repoId);
             }
-        }
-
-        // Clean up old running task rows — requeue restore creates replacement
-        // rows, and failed restore removes rows in restoreRunningTask().
-        for (const oldId of oldRunningTaskIds) {
-            this.store.removeQueueTask(oldId);
         }
 
         if (totalRestored > 0) {
@@ -256,7 +251,6 @@ export class SqliteQueuePersistence {
 
     private trackRepoPath(repoId: string, rootPath: string): void {
         if (this.repoIdToPath.get(repoId) === rootPath) return;
-        this.repoIdToPath.set(repoId, rootPath);
         this.db.prepare(
             'INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)',
         ).run(repoId, rootPath);
@@ -398,16 +392,60 @@ export class SqliteQueuePersistence {
             (policy === 'requeue-if-retriable' && (task.retryCount ?? 0) < (task.config?.retryAttempts ?? 0));
 
         if (shouldRequeue) {
-            // enqueue() assigns a new ID; the change handler persists the new task.
-            // The old task row is cleaned up by the caller after the restore loop.
-            queueManager.enqueue({
-                type: task.type,
-                priority: 'high',
-                payload: task.payload,
-                config: task.config,
-                displayName: task.displayName,
-                repoId: task.repoId,
-            });
+            const chat = task.type === 'chat' && task.payload.kind === 'chat';
+            let payload = task.payload;
+            let processId = task.processId;
+            if (chat && !payload.processId) {
+                processId = toQueueProcessId(task.id);
+                if (task.processId && task.processId !== processId) {
+                    throw new Error('Restart chat process identity mismatch');
+                }
+                const existing = this.db.prepare(
+                    "SELECT workspace_id, json_extract(metadata, '$.queueTaskId') AS queue_task_id, status FROM processes WHERE id = ?",
+                ).get(processId) as { workspace_id: string; queue_task_id: string; status: string } | undefined;
+                if (existing) {
+                    if (existing.workspace_id !== repoId || payload.workspaceId !== repoId
+                        || existing.queue_task_id !== task.id) {
+                        throw new Error('Restart chat workspace or admission identity mismatch');
+                    }
+                    if (['cancelling', 'cancelled'].includes(existing.status)) {
+                        this.store.removeQueueTask(task.id);
+                        return 0;
+                    }
+                    const firstUser = this.db.prepare(
+                        "SELECT turn_index FROM conversation_turns WHERE process_id = ? AND role = 'user' ORDER BY turn_index LIMIT 1",
+                    ).get(processId) as { turn_index: number } | undefined;
+                    if (!firstUser) throw new Error('Restart chat origin turn is unavailable');
+                    // Resume the admitted origin without inserting/replacing its process or user turn.
+                    payload = { ...payload, processId, historyCutoffTurnIndex: firstUser.turn_index };
+                }
+            }
+            const restore = () => {
+                let restoredId: string;
+                try {
+                    restoredId = queueManager.enqueue({
+                        ...(chat ? { id: task.id, processId } : {}),
+                        type: task.type,
+                        priority: 'high',
+                        payload,
+                        config: task.config,
+                        displayName: task.displayName,
+                        repoId: task.repoId,
+                        botControl: task.botControl,
+                    });
+                } catch (error) {
+                    const admitted = chat ? queueManager.getTask(task.id) : undefined;
+                    if (!admitted || admitted.status !== 'queued' || admitted.repoId !== repoId
+                        || admitted.processId !== processId || admitted.payload !== payload
+                        || admitted.botControl !== task.botControl) throw error;
+                    console.error('[SqliteQueuePersistence] Restored chat observer failed; admission retained');
+                    restoredId = task.id;
+                }
+                // Chat receipts identify a logical request, not an execution attempt.
+                if (restoredId !== task.id) this.store.removeQueueTask(task.id);
+            };
+            if (chat) this.db.transaction(restore)();
+            else restore();
             return 1;
         } else {
             // policy === 'fail' or not retriable — remove from queue
