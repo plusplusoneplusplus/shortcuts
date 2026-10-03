@@ -124,9 +124,11 @@ pub fn preserve_case(matched: &str, replacement: &str) -> String {
         (s[..first].to_owned(), s[first..].to_owned())
     };
     let (head, tail) = split(matched);
-    if head == head.to_uppercase() && tail == tail.to_lowercase() {
+    // JS slices after one UTF-16 unit. An astral head's two surrogates are
+    // individually uncased, so keep the pair intact and case only its tail.
+    if (head.len() == 4 || head == head.to_uppercase()) && tail == tail.to_lowercase() {
         let (head, tail) = split(replacement);
-        return head.to_uppercase() + &tail.to_lowercase();
+        return (if head.len() == 4 { head } else { head.to_uppercase() }) + &tail.to_lowercase();
     }
     replacement.to_owned()
 }

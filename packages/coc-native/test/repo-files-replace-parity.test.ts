@@ -67,6 +67,17 @@ function oracle(line: string, query: string, replacement: string, o: Options) {
 const regex = { regex: true };
 const CASES: [line: string, query: string, replacement: string, options: Options][] = [
     ['foo Foo FOO fOo', 'foo', 'bar', { preserveCase: true }],
+    ['𐐀abc', '𐐀abc', 'bAr', { preserveCase: true }],
+    ['𐐨abc', '𐐨abc', 'bAr', { preserveCase: true }],
+    ['𐐀Abc', '𐐀Abc', 'bAr', { preserveCase: true }],
+    ['𐐀ABC', '𐐀ABC', 'bAr', { preserveCase: true }],
+    ['Abc', 'Abc', '𐐨XYZ', { preserveCase: true }],
+    ['Abc', 'Abc', '𐐀XYZ', { preserveCase: true }],
+    ['𐐀abc', '𐐀abc', '𐐨XYZ', { preserveCase: true }],
+    ['𐐀abc', '𐐀abc', '𐐀XYZ', { preserveCase: true }],
+    ['𐐀abc', '𐐀abc', 'ßXYZ', { preserveCase: true }],
+    ['𐐀abc', '𐐀abc', '😀XYZ', { preserveCase: true }],
+    ['𐐀abc', '(𐐀)(abc)', '$1XYZ', { regex: true, preserveCase: true }],
     ['foo Foo FOO', 'foo', 'bar', { caseSensitive: true }],
     ['a.c abc a.c', 'a.c', '$&!', {}],
     ['price $5', '$5', '$$6', {}],

@@ -88,6 +88,24 @@ fn preserve_case_carries_simple_casing_only() {
 }
 
 #[test]
+fn preserve_case_splits_at_the_first_utf16_unit() {
+    for (matched, replacement, expected) in [
+        ("𐐀abc", "bAr", "Bar"),
+        ("𐐨abc", "bAr", "bar"),
+        ("𐐀Abc", "bAr", "bAr"),
+        ("𐐀ABC", "bAr", "BAR"),
+        ("Abc", "𐐨XYZ", "𐐨xyz"),
+        ("Abc", "𐐀XYZ", "𐐀xyz"),
+        ("𐐀abc", "𐐨XYZ", "𐐨xyz"),
+        ("𐐀abc", "𐐀XYZ", "𐐀xyz"),
+        ("𐐀abc", "ßXYZ", "SSxyz"),
+        ("𐐀abc", "😀XYZ", "😀xyz"),
+    ] {
+        assert_eq!(preserve_case(matched, replacement), expected, "{matched} / {replacement}");
+    }
+}
+
+#[test]
 fn regex_mode_expands_group_references() {
     let text = "user@host";
     let run = |replacement: &str, options| {
