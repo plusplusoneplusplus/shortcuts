@@ -239,7 +239,7 @@ describe('WhatsApp job notices', () => {
         };
         await router.handle(msg);
         // Plain text passes no mode; the server's follow-up resolver keeps autopilot.
-        expect(enqueue).toHaveBeenCalledWith(WS, 'also add tests', undefined, JOB, expect.any(String));
+        expect(enqueue).toHaveBeenCalledWith(WS, 'also add tests', undefined, JOB, expect.any(String), undefined);
         expect(bindings.selectedRepo).toBe('ws-d');
         expect(bindings.topic('ws-d')).toBe('dispatcher');
         expect(bindings.topic(WS)).toBeNull();
@@ -306,16 +306,19 @@ describe('Teams job notices', () => {
         await relay.noticeTransport().post(chatKey, notice);
         const admitFollowUp = vi.fn().mockResolvedValue({ duplicate: false });
         const sendReply = vi.fn().mockResolvedValue(undefined);
+        const acknowledgeFollowUp = vi.fn().mockResolvedValue(undefined);
         const router = new TeamsCommandRouter({
             store, dataDir, enqueueChat: vi.fn(), executeFollowUp: vi.fn(), sendReply,
             isAnswerRelayEnabled: () => true,
             resolveThreadReply: msg => relay.resolveThread(msg),
-            admitFollowUp,
+            admitFollowUp, acknowledgeFollowUp,
         });
         const reply = { messageId: 'reply-1', channelId: 'channel-1', text: 'also add tests', replyToMessageId: 'notice-root', senderAadId: 'u' };
         await router.handle(reply);
         expect(admitFollowUp).toHaveBeenCalledWith(reply, expect.objectContaining({ id: JOB }), 'also add tests', undefined);
-        expect(sendReply).toHaveBeenCalledWith('💬 Message sent to thread', 'notice-root');
+        // Thread follow-ups are acknowledged silently (Like), not with a reply.
+        expect(acknowledgeFollowUp).toHaveBeenCalledWith(reply);
+        expect(sendReply).not.toHaveBeenCalled();
         expect(fs.existsSync(path.join(dataDir, 'teams-user-state.json'))).toBe(false);
     });
 });

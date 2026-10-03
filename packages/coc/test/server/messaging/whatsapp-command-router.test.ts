@@ -58,7 +58,7 @@ describe('WhatsApp workspace command routing', () => {
 
     it('lists and selects across workspaces, defaulting chat to Global until a repo is selected', async () => {
         await router.handle(inbound('what files?', 'unselected'));
-        expect(enqueue).toHaveBeenCalledWith(GLOBAL, 'what files?', undefined, expect.any(String), expect.any(String));
+        expect(enqueue).toHaveBeenCalledWith(GLOBAL, 'what files?', undefined, expect.any(String), expect.any(String), undefined);
         expect(bindings.selectedRepo).toBeNull();
         await router.handle(inbound('list repos', 'list'));
         expect(send).toHaveBeenCalledWith(expect.stringMatching(/^Repos \(3\):\n1\. Alpha.*\n2\. Beta.*\n3\. Global/), 'list');

@@ -232,7 +232,7 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
         await router.handle(makeMsg('/list topics'));
         const html = formatTeamsOutbound(sendReplySpy.mock.calls[0][0] as string, 'markdown');
-        expect(html.startsWith('AI: ')).toBe(true);
+        expect(html.startsWith('<p>CoC · ')).toBe(true);
         expect(html).not.toMatch(/<ol|<li/);
         expect(html).not.toContain('<script>');
         expect(html).toContain('▶ 2. 🕒 Two &lt;script&gt;');

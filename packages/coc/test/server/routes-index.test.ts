@@ -195,7 +195,7 @@ describe('registerAllRoutes', () => {
     it('executes ordinary Teams messages as workspace-scoped chats with assistant turns', async () => {
         const store = createMockProcessStore();
         vi.mocked(store.getWorkspaces).mockResolvedValue([
-            { id: 'ws-first', name: 'First', rootPath: path.join(tmpDir, 'first') },
+            { id: 'global-workspace-00', name: 'Global', rootPath: path.join(tmpDir, 'first') },
             { id: 'ws-second', name: 'Second', rootPath: path.join(tmpDir, 'second') },
         ]);
         const sdk = createMockSDKService({
@@ -239,7 +239,7 @@ describe('registerAllRoutes', () => {
 
         expect(bridge.enqueue).toHaveBeenCalledTimes(2);
         for (const [index, workspaceId, prompt] of [
-            [0, 'ws-first', 'how many outgoing commits?'],
+            [0, 'global-workspace-00', 'how many outgoing commits?'],
             [1, 'ws-second', 'check the build'],
         ] as const) {
             const input = bridge.enqueue.mock.calls[index][0] as CreateTaskInput;
@@ -271,7 +271,7 @@ describe('registerAllRoutes', () => {
     it.each([undefined, true, false])('resolves Teams relay admission from partial live config (%s)', async relayEnabled => {
         const store = makeStore();
         vi.mocked(store.getWorkspaces).mockResolvedValue([
-            { id: 'ws-a', name: 'Alpha', rootPath: path.join(tmpDir, 'a') },
+            { id: 'global-workspace-00', name: 'Global', rootPath: path.join(tmpDir, 'a') },
             { id: 'ws-b', name: 'Beta', rootPath: path.join(tmpDir, 'b') },
         ]);
         const bridge = makeBridge();
@@ -304,18 +304,18 @@ describe('registerAllRoutes', () => {
         expect(bridge.enqueue).toHaveBeenCalledTimes(1);
         const input = bridge.enqueue.mock.calls[0][0] as CreateTaskInput;
         expect(input).toMatchObject({
-            type: 'chat', repoId: 'ws-a',
-            payload: { kind: 'chat', mode: 'ask', prompt: 'relay question', workspaceId: 'ws-a' },
+            type: 'chat', repoId: 'global-workspace-00',
+            payload: { kind: 'chat', mode: 'ask', prompt: 'relay question', workspaceId: 'global-workspace-00' },
             config: { afterEffortTier: 'medium', model: 'custom-medium', reasoningEffort: 'high' },
         });
         if (relayEnabled === false) {
             expect(input.id).toBeUndefined();
             expect(input.processId).toBeUndefined();
-            await expect(fs.access(path.join(tmpDir, 'repos', 'ws-a', 'teams-answer-relay'))).rejects.toThrow();
+            await expect(fs.access(path.join(tmpDir, 'repos', 'global-workspace-00', 'teams-answer-relay'))).rejects.toThrow();
         } else {
             expect(input.id).toEqual(expect.any(String));
             expect(input.processId).toBe(toQueueProcessId(input.id!));
-            const receipts = await fs.readdir(path.join(tmpDir, 'repos', 'ws-a', 'teams-answer-relay'));
+            const receipts = await fs.readdir(path.join(tmpDir, 'repos', 'global-workspace-00', 'teams-answer-relay'));
             expect(receipts).toHaveLength(1);
             await inbound!({
                 text: 'relay question', senderAadId: 'sender-a', messageId: 'message-1', channelId: 'channel-1',

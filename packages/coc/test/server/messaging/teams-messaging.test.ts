@@ -882,7 +882,7 @@ describe('Teams messaging routes (integration)', () => {
         const tasks = new Map<string, QueuedTask>();
         const queue = Object.assign(new EventEmitter(), { getTask: (id: string) => tasks.get(id) });
         const store = {
-            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'workspace-a', name: 'A', rootPath: dir }]),
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'global-workspace-00', name: 'A', rootPath: dir }]),
             getProcess: vi.fn().mockResolvedValue(undefined),
         } as unknown as ProcessStore;
         let enabled = false;
@@ -910,7 +910,7 @@ describe('Teams messaging routes (integration)', () => {
             await opts.onMessage(root);
             expect(enqueueChat).toHaveBeenCalledOnce();
             expect(enqueueRelayChat).not.toHaveBeenCalled();
-            expect(fs.existsSync(getRepoDataPath(dir, 'workspace-a', 'teams-answer-relay'))).toBe(false);
+            expect(fs.existsSync(getRepoDataPath(dir, 'global-workspace-00', 'teams-answer-relay'))).toBe(false);
 
             enabled = true;
             expect(opts.pollChannelReplies?.()).toBe(true);
@@ -931,7 +931,7 @@ describe('Teams messaging routes (integration)', () => {
             vi.mocked(store.getProcess).mockResolvedValue({
                 id: toQueueProcessId(taskId), type: 'chat', status: 'completed',
                 startTime: new Date(), promptPreview: 'question', fullPrompt: 'question',
-                metadata: { workspaceId: 'workspace-a' },
+                metadata: { workspaceId: 'global-workspace-00' },
                 conversationTurns: [
                     { role: 'user', content: 'question', turnIndex: 0, timestamp: new Date(), timeline: [] },
                     { role: 'assistant', content: 'Answer withheld', turnIndex: 1, timestamp: new Date(), timeline: [] },
@@ -939,7 +939,7 @@ describe('Teams messaging routes (integration)', () => {
             });
             queue.emit('taskCompleted', task);
             await vi.waitFor(() => {
-                const folder = getRepoDataPath(dir, 'workspace-a', 'teams-answer-relay');
+                const folder = getRepoDataPath(dir, 'global-workspace-00', 'teams-answer-relay');
                 const receipt = JSON.parse(fs.readFileSync(path.join(folder, fs.readdirSync(folder)[0]), 'utf8'));
                 expect(receipt.terminalStatus).toBe('completed');
             });
@@ -1011,7 +1011,7 @@ describe('Teams messaging routes (integration)', () => {
                 lastReplyAt: '2026-01-01T00:00:00.000Z', lastReplyIds: ['historical'],
             });
             expect(receipts().find(receipt => receipt.messageId === 'historical')).toMatchObject({
-                status: 'awaiting', rootId: 'root', workspaceId: 'workspace-a',
+                status: 'awaiting', rootId: 'root', workspaceId: 'global-workspace-00',
             });
             await opts.onMessage(historical);
             expect(enqueueFollowUp).toHaveBeenCalledOnce();
@@ -1026,7 +1026,7 @@ describe('Teams messaging routes (integration)', () => {
                 lastReplyAt: '2026-01-01T00:01:00.000Z', lastReplyIds: ['fresh'],
             });
             const receipt = receipts().find(receipt => receipt.messageId === 'fresh');
-            expect(receipt).toMatchObject({ status: 'awaiting', rootId: 'root', workspaceId: 'workspace-a' });
+            expect(receipt).toMatchObject({ status: 'awaiting', rootId: 'root', workspaceId: 'global-workspace-00' });
             expect(bot.send).not.toHaveBeenCalled();
 
             await opts.onMessage({
@@ -1040,7 +1040,7 @@ describe('Teams messaging routes (integration)', () => {
                 id: receipt.processId, type: 'chat', status: 'completed',
                 startTime: new Date('2026-01-01T00:01:00Z'),
                 promptPreview: 'fresh follow-up', fullPrompt: 'fresh follow-up',
-                metadata: { workspaceId: 'workspace-a' },
+                metadata: { workspaceId: 'global-workspace-00' },
                 conversationTurns: [
                     { role: 'user', content: 'fresh follow-up', turnIndex: 0, relayRequestId: receipt.requestId,
                         timestamp: new Date('2026-01-01T00:01:00Z'), timeline: [] },
@@ -1049,7 +1049,7 @@ describe('Teams messaging routes (integration)', () => {
                 ],
             });
             const completed = {
-                id: receipt.taskId, repoId: 'workspace-a', processId: receipt.processId,
+                id: receipt.taskId, repoId: 'global-workspace-00', processId: receipt.processId,
                 status: 'completed', payload: { relayRequestId: receipt.requestId },
             } as QueuedTask;
             tasks.set(completed.id, completed);

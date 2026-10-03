@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RepoQueueRegistry, SqliteProcessStore, SqliteQueueStore, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import type { BotControlMetadata } from '@plusplusoneplusplus/forge/ai';
+import { TeamsUserStateStore } from '../../../src/server/messaging/teams-user-state';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
 import { createBotControlMetadata } from '../../../src/server/messaging/bot-control-metadata';
@@ -53,6 +54,8 @@ describe('Teams trusted initial conversation admission', () => {
             fs.mkdirSync(path.join(dir, id));
             await store.registerWorkspace({ id, name: id, rootPath: path.join(dir, id) });
         }
+        // Plain messages go to the selected repo (else Global); these cases run in ws-a.
+        new TeamsUserStateStore(dir).update('synthetic-user', { selectedRepo: 'ws-a' });
         queue = new MultiRepoQueueRouter(new RepoQueueRegistry(), store, {
             aiService: createMockSDKService().service, dataDir: dir, autoStart: false,
             followUpSuggestions: { enabled: false, count: 0 },
