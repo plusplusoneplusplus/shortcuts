@@ -38,6 +38,8 @@ export type {
     NativeRepoReplaceFile,
     NativeRepoReplaceOptions,
     NativeRepoReplaceResult,
+    NativeRepoTreeEntry,
+    NativeRepoTreeListing,
 } from './repo-files';
 
 

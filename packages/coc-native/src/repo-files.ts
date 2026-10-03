@@ -16,6 +16,8 @@ export type NativeContentSearchResult = Bindings.ContentSearchResult;
 
 export type NativeRepoFiles = Bindings.RepoFiles;
 export type NativeRepoBlob = Bindings.RepoBlob;
+export type NativeRepoTreeEntry = Bindings.RepoTreeEntry;
+export type NativeRepoTreeListing = Bindings.RepoTreeListing;
 export type NativeRepoReplaceFile = Bindings.RepoReplaceFile;
 export type NativeRepoReplaceOptions = Bindings.RepoReplaceOptions;
 export type NativeRepoReplaceResult = Bindings.RepoReplaceResult;

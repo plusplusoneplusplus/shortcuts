@@ -1,3 +1,11 @@
+import type {
+    NativeContentMatch,
+    NativeContentSearchResult,
+    NativeFileMatch,
+    NativeRepoTreeEntry,
+    NativeRepoTreeListing,
+} from '@plusplusoneplusplus/coc-native';
+
 /** Metadata about a registered workspace/repo, derived from WorkspaceInfo in @plusplusoneplusplus/forge. */
 export interface RepoInfo {
     /** Stable ID — the WorkspaceInfo.id (hash of rootPath). */
@@ -14,41 +22,12 @@ export interface RepoInfo {
     remoteUrl?: string;
 }
 
-/** A single entry in a directory listing. */
-export interface TreeEntry {
-    /** File or directory name (basename only, no path separators). */
-    name: string;
-    /** Entry type. */
-    type: 'file' | 'dir';
-    /** Size in bytes (files only; undefined for directories). */
-    size?: number;
-    /** Path relative to the repo root, e.g. "src/index.ts". */
-    path: string;
-    /** Nested children, populated only for directory entries when depth > 1. */
-    children?: TreeEntry[];
-}
-
-/** Result of listing a single directory inside a repo. */
-export interface TreeListResult {
-    /** Directory entries, dirs-first then alphabetical. */
-    entries: TreeEntry[];
-    /** True when the directory has more entries than the size guard allows. */
-    truncated: boolean;
-}
-
-/** A single scored match from a fuzzy file-path search. */
-export interface FileSearchResult {
-    /** Repo-relative file path. */
-    path: string;
-    /** Higher = better match. */
-    score: number;
-    /**
-     * Positions in `path` that matched the query, ascending, as JavaScript
-     * string indices. Clients highlight exactly these characters instead of
-     * re-deriving the match, so highlight and score cannot disagree.
-     */
-    indices: number[];
-}
+/** Directory and search results use the Rust-generated wire shapes. */
+export type TreeEntry = NativeRepoTreeEntry;
+export type TreeListResult = NativeRepoTreeListing;
+export type FileSearchResult = NativeFileMatch;
+export type ContentMatch = NativeContentMatch;
+export type ContentSearchResult = NativeContentSearchResult;
 
 /** Result of a fuzzy file search across a repo. */
 export interface SearchFilesResult {
@@ -66,46 +45,6 @@ export interface SearchFilesResult {
  * honoured.
  */
 export const CONTENT_SEARCH_MAX_RESULTS = 500;
-
-/** One matching line from a content search. */
-export interface ContentMatch {
-    /** Repo-relative path with `/` separators on every platform. */
-    path: string;
-    /** One-based line number. */
-    line: number;
-    /** The matching line without its trailing newline, possibly truncated. */
-    text: string;
-    /**
-     * UTF-16 offset of the match within `text` — a JavaScript string index, so
-     * a client highlighting `text.slice(startColumn, endColumn)` highlights
-     * exactly what matched.
-     */
-    startColumn: number;
-    /** UTF-16 offset one past the end of the match within `text`. */
-    endColumn: number;
-    /**
-     * Present when this line is one piece of a match that crossed a line break
-     * — a multi-line query. Every piece of that match carries the same id, and
-     * the id is unique within a path. Absent for a single-line match.
-     */
-    group?: number;
-    /** Lines preceding `line`, in file order. */
-    before: string[];
-    /** Lines following `line`, in file order. */
-    after: string[];
-}
-
-/** Result of a content search across a repo. */
-export interface ContentSearchResult {
-    /** Matching lines, sorted by path then line. */
-    matches: ContentMatch[];
-    /**
-     * True when any cap was hit — the total cap, the per-file cap, or a file
-     * skipped for being too large. One flag for all three, because a caller
-     * can do nothing different about any of them beyond saying so.
-     */
-    truncated: boolean;
-}
 
 /** Query modes, scoping and caps for one content search. */
 export interface ContentSearchOptions {

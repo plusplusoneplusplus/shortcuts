@@ -64,6 +64,8 @@ references before editing. Paths are package-relative.
   complete snapshots and shutdown disposes watchers. One `RepoFiles` handle per
   workspace owns its file indexes/refresh; dispose it on root change, removal, or shutdown.
   Health `nativeFileIndex`/`nativeContentSearch` both report the full `RepoFiles` capability.
+  `src/server/repos/types.ts` aliases native tree/search result types; it owns metadata,
+  HTTP options and the file-search envelope.
 - Content search reads fresh bytes via `RepoFiles`; WSL runs Rust-prepared argv via forge.
   Test Git narrowing/native walks.
   QuickOpen uses server indices; reuse requires the current workspace root

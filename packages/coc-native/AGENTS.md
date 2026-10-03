@@ -111,7 +111,7 @@ private controller identity at its HTTP read boundary.
 
 ## Generated types
 
-`src/native-bindings.ts` is derived from the `#[napi]` macros during compilation — the Rust is the single source of truth for the addon's shape. Capability modules alias those generated declarations (`NativeFileMatch = Bindings.FileMatch`, `NativeNotesSearchResponse = Bindings.NotesSearchResponse`) rather than restating them.
+`src/native-bindings.ts` is derived from the `#[napi]` macros during compilation — the Rust is the single source of truth for the addon's shape. Capability modules alias those generated declarations (`NativeFileMatch = Bindings.FileMatch`, `NativeNotesSearchResponse = Bindings.NotesSearchResponse`) rather than restating them. Repository tree and search result types in the CoC server alias this public type surface; HTTP request options stay in the server.
 
 It is **committed on purpose**: `npm run build` is plain `tsc`, so the TypeScript build must never need cargo. CI regenerates it in the `coc-native` job and fails on a `git diff`, which is what removes the drift risk. After changing any `#[napi]` item, run `npm run build:native -w packages/coc-native` and commit the result.
 
