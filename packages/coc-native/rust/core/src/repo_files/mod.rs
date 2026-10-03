@@ -30,7 +30,7 @@ pub use replace::{
     apply_replacements, build_matcher, preserve_case, replace_content, ReplaceFile, ReplaceOptions,
     ReplaceSkip, ReplaceSummary, ReplaceTarget,
 };
-pub use search::search_content;
+pub use search::{search_content, validate_content_root};
 
 #[derive(Debug)]
 pub enum RepoFilesError {

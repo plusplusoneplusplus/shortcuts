@@ -19,9 +19,7 @@ pub fn search_content(
     include_untracked: bool,
     wsl_output: Option<&str>,
 ) -> Result<ContentSearchResult, RepoFilesError> {
-    if !std::fs::metadata(root).is_ok_and(|metadata| metadata.is_dir()) {
-        return Err(io::Error::other(format!("Repo not found on disk: {}", root.display())).into());
-    }
+    validate_content_root(root)?;
     options.max_results = options.max_results.clamp(1, DEFAULT_MAX_RESULTS);
     // Match the REST adapter's leading-separator and single './' treatment;
     // the shared matcher still validates traversal and subfolder existence.
@@ -38,4 +36,12 @@ pub fn search_content(
         SearchError::Io(error) => RepoFilesError::Io(error),
         other => RepoFilesError::InvalidArg(other.to_string()),
     })
+}
+
+/// Keep missing-root errors ahead of Git failures, including WSL preparation.
+pub fn validate_content_root(root: &Path) -> Result<(), RepoFilesError> {
+    if !std::fs::metadata(root).is_ok_and(|metadata| metadata.is_dir()) {
+        return Err(io::Error::other(format!("Repo not found on disk: {}", root.display())).into());
+    }
+    Ok(())
 }

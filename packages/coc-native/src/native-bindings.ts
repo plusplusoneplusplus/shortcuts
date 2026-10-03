@@ -65,9 +65,9 @@ export declare class NotesIndex {
 export declare class RepoFiles {
   /**
    * Git argv and limits for Node's WSL execution adapter. Checks disposal;
-   * this only prepares a command and never touches the filesystem.
+   * validates the root on a worker before the adapter executes Git.
    */
-  prepareContentCandidates(includeUntracked: boolean): ContentCandidateCommand
+  prepareContentCandidates(includeUntracked: boolean): Promise<ContentCandidateCommand>
   /**
    * Fresh content search with native Git eligibility. For WSL, pass the
    * prepared ls-files stdout (including an empty string); host Git is then

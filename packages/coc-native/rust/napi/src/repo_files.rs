@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use coc_native_core::repo_files::{
     list_directory, list_files, prepare_content_candidates, read_blob, replace_content,
-    search_content, write_blob, Blob, ContentCandidateCommand, FileListing,
+    search_content, validate_content_root, write_blob, Blob, ContentCandidateCommand, FileListing,
     ReplaceFile as RepoReplaceFile, ReplaceOptions, ReplaceSummary, RepoFilesError, RepoIndexes,
     TreeListing,
 };
@@ -134,14 +134,16 @@ impl RepoFiles {
 #[napi]
 impl RepoFiles {
     /// Git argv and limits for Node's WSL execution adapter. Checks disposal;
-    /// this only prepares a command and never touches the filesystem.
-    #[napi]
+    /// validates the root on a worker before the adapter executes Git.
+    #[napi(ts_return_type = "Promise<ContentCandidateCommand>")]
     pub fn prepare_content_candidates(
         &self,
         include_untracked: bool,
-    ) -> napi::Result<ContentCandidateCommand> {
-        self.indexes.root().map_err(to_napi_error)?;
-        Ok(prepare_content_candidates(include_untracked))
+    ) -> AsyncTask<Blocking<ContentCandidateCommand>> {
+        self.run(move |_, root| {
+            validate_content_root(root)?;
+            Ok(prepare_content_candidates(include_untracked))
+        })
     }
 
     /// Fresh content search with native Git eligibility. For WSL, pass the

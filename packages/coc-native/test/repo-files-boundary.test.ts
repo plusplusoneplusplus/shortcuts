@@ -169,7 +169,7 @@ describe('RepoFiles content search', () => {
     it('parses WSL output without host Git and keeps empty candidates empty', async () => {
         // Deliberately not a Git repo: any accidental host command would fail.
         const files = addon.openRepoFiles(root);
-        expect(files.prepareContentCandidates(true)).toEqual({
+        expect(await files.prepareContentCandidates(true)).toEqual({
             args: ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
             timeoutMs: 15_000,
             maxBuffer: 64 * 1024 * 1024,
@@ -177,7 +177,7 @@ describe('RepoFiles content search', () => {
         expect((await files.searchContent('héllo', { path: './' }, true, false, 'a.md\0')).matches).toHaveLength(1);
         expect((await files.searchContent('héllo', undefined, true, false, '')).matches).toEqual([]);
         files.dispose();
-        expect(() => files.prepareContentCandidates(false)).toThrow('Repo files handle disposed');
+        await expect(files.prepareContentCandidates(false)).rejects.toThrow('Repo files handle disposed');
         await expect(files.searchContent('héllo')).rejects.toMatchObject({ code: 'Closing' });
     });
 
@@ -191,6 +191,8 @@ describe('RepoFiles content search', () => {
             message: expect.stringContaining('[repo-files:tracked-unavailable] Git-tracked search is unavailable:'),
         });
         const missing = path.join(root, 'missing-root');
+        await expect(addon.openRepoFiles(missing).prepareContentCandidates(false)).rejects.toThrow(`Repo not found on disk: ${missing}`);
+        await expect(addon.openRepoFiles(path.join(root, 'a.md')).prepareContentCandidates(false)).rejects.toThrow('Repo not found on disk:');
         await expect(addon.openRepoFiles(missing).searchContent('x')).rejects.toThrow(`Repo not found on disk: ${missing}`);
         await expect(addon.openRepoFiles(path.join(root, 'a.md')).searchContent('x')).rejects.toThrow('Repo not found on disk:');
         files.dispose();

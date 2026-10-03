@@ -63,7 +63,8 @@ references before editing. Paths are package-relative.
   Indexes/watchers key by `(workspaceId, rootId)`, not paths; failed refreshes retain
   complete snapshots and shutdown disposes watchers. One `RepoFiles` handle per
   workspace owns its file indexes/refresh; dispose it on root change, removal, or shutdown.
-- Search fresh working-tree bytes; test Git narrowing/native walks.
+- Content search reads fresh bytes via `RepoFiles`; WSL runs Rust-prepared argv via forge.
+  Test Git narrowing/native walks.
   QuickOpen uses server indices; reuse requires the current workspace root
   for each `showIgnored` variant. Payload caps never cap search candidates.
 - Restore queues stopped. Activate only after

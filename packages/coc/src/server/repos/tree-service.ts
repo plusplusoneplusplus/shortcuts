@@ -4,9 +4,8 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
-import { loadNativeContentSearch, loadNativeRepoFiles } from '@plusplusoneplusplus/coc-native';
+import { loadNativeRepoFiles } from '@plusplusoneplusplus/coc-native';
 import type {
-    NativeContentSearchAddon,
     NativeRepoBlob,
     NativeRepoFiles,
     NativeRepoFilesAddon,
@@ -49,16 +48,6 @@ export interface RepoTreeServiceOptions {
      */
     fileListCacheTtlMs?: number;
 
-    /**
-     * The native content-search addon.
-     *
-     * Resolved lazily on the first content search rather than in the
-     * constructor: every other route works without it, and eagerly loading
-     * would make an unrelated test that injects a stub file index need a real
-     * binary too. Tests inject a stub here.
-     */
-    nativeContentSearch?: NativeContentSearchAddon;
-
     /** The native repository-file backend, resolved on first use. Tests inject a stub here. */
     nativeRepoFiles?: NativeRepoFilesAddon;
 }
@@ -80,60 +69,6 @@ export class TrackedContentSearchUnavailableError extends Error {
     readonly code = 'TRACKED_CONTENT_SEARCH_UNAVAILABLE';
 }
 
-const GIT_CANDIDATE_TIMEOUT_MS = 15_000;
-const GIT_CANDIDATE_MAX_BUFFER = 64 * 1024 * 1024;
-
-async function gitContentCandidates(repoRoot: string, includeUntracked: boolean): Promise<string[]> {
-    const args = ['ls-files', '-z', '--cached'];
-    if (includeUntracked) args.push('--others', '--exclude-standard');
-    try {
-        const stdout = await execGitAsync(args, repoRoot, {
-            timeout: GIT_CANDIDATE_TIMEOUT_MS,
-            maxBuffer: GIT_CANDIDATE_MAX_BUFFER,
-        });
-        return stdout
-            .split('\0')
-            .filter(Boolean)
-            .map(file => file.split(path.sep).join('/'));
-    } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        throw new TrackedContentSearchUnavailableError(
-            `Git-tracked search is unavailable: ${detail}`,
-        );
-    }
-}
-
-async function gitLiteralContentCandidates(
-    repoRoot: string,
-    query: string,
-    caseSensitive: boolean,
-): Promise<string[]> {
-    const args = ['grep', '-l', '-z', '-F'];
-    if (!caseSensitive) args.push('-i');
-    args.push('--', query);
-    try {
-        const { stdout } = await execFileAsync('git', args, {
-            cwd: repoRoot,
-            encoding: 'utf-8',
-            timeout: GIT_CANDIDATE_TIMEOUT_MS,
-            maxBuffer: GIT_CANDIDATE_MAX_BUFFER,
-        });
-        return stdout.split('\0').filter(Boolean).map(file => file.split(path.sep).join('/'));
-    } catch (error) {
-        if ((error as { code?: unknown } | null)?.code === 1) return [];
-        throw error;
-    }
-}
-
-async function gitTrackedSymlinks(repoRoot: string): Promise<string[]> {
-    const stdout = await execGitAsync(['ls-files', '--stage', '-z', '--cached'], repoRoot, {
-        timeout: GIT_CANDIDATE_TIMEOUT_MS,
-        maxBuffer: GIT_CANDIDATE_MAX_BUFFER,
-    });
-    return stdout.split('\0').filter(entry => entry.startsWith('120000 '))
-        .map(entry => entry.slice(entry.indexOf('\t') + 1).split(path.sep).join('/'));
-}
-
 export class RepoTreeService {
     private readonly maxEntries: number;
     private readonly fileListMaxEntries: number;
@@ -141,11 +76,6 @@ export class RepoTreeService {
     private readonly dataDir: string;
     private readonly store?: ProcessStore;
 
-    /**
-     * The native addon backing content search, resolved on first use.
-     * Every query is a fresh walk, so there is no per-repo state behind it.
-     */
-    private nativeContent?: NativeContentSearchAddon;
     private nativeRepoFiles?: NativeRepoFilesAddon;
     /**
      * One native handle per workspace, for the root it was opened on. The
@@ -160,7 +90,6 @@ export class RepoTreeService {
         this.fileListMaxEntries = options?.fileListMaxEntries ?? options?.maxEntries ?? 50000;
         this.fileListCacheTtlMs = options?.fileListCacheTtlMs ?? 10000;
         this.store = store;
-        this.nativeContent = options?.nativeContentSearch;
         this.nativeRepoFiles = options?.nativeRepoFiles;
     }
 
@@ -299,18 +228,23 @@ export class RepoTreeService {
      * Every request re-reads the registry, so a removed or re-rooted workspace
      * never reaches its old handle even if an eviction hook was missed.
      */
-    private async repoFiles(repoId: string): Promise<NativeRepoFiles> {
+    private async repoHandle(repoId: string): Promise<{ root: string; files: NativeRepoFiles }> {
         const repoRoot = await this.resolveRepoRoot(repoId);
         const existing = this.handles.get(repoId);
-        if (existing && existing.root === repoRoot) return existing.files;
+        if (existing && existing.root === repoRoot) return existing;
         this.evictWorkspace(repoId);
         if (!repoRoot) {
             throw new Error(`Repo not found: ${repoId}`);
         }
         this.nativeRepoFiles ??= loadNativeRepoFiles();
         const files = this.nativeRepoFiles.openRepoFiles(repoRoot, this.fileListCacheTtlMs);
-        this.handles.set(repoId, { root: repoRoot, files });
-        return files;
+        const handle = { root: repoRoot, files };
+        this.handles.set(repoId, handle);
+        return handle;
+    }
+
+    private async repoFiles(repoId: string): Promise<NativeRepoFiles> {
+        return (await this.repoHandle(repoId)).files;
     }
 
     /**
@@ -368,7 +302,7 @@ export class RepoTreeService {
      * Search eligible file contents under the repo root.
      *
      * Every query reads current working-tree contents. Tracked single-line
-     * literals use Git to narrow the fresh native walk to candidate paths;
+     * literals let Rust use Git to narrow the fresh walk to candidate paths;
      * other modes walk their full eligible file set. There is no content
      * result cache or native cancellation.
      *
@@ -386,55 +320,41 @@ export class RepoTreeService {
         query: string,
         options?: ContentSearchOptions,
     ): Promise<ContentSearchResult> {
-        const repoRoot = await this.resolveRepoRoot(repoId);
-        if (!repoRoot) {
-            throw new Error(`Repo not found: ${repoId}`);
+        const { root, files } = await this.repoHandle(repoId);
+        const tracked = options?.fileScope === 'tracked';
+        const includeUntracked = options?.includeUntracked ?? false;
+        let wslOutput: string | undefined;
+        if (tracked && resolveWorkspaceExecutionContext(root).kind === 'wsl') {
+            const command = await files.prepareContentCandidates(includeUntracked);
+            try {
+                wslOutput = await execGitAsync(command.args, root, {
+                    timeout: command.timeoutMs,
+                    maxBuffer: command.maxBuffer,
+                });
+            } catch (error) {
+                throw new TrackedContentSearchUnavailableError(
+                    `Git-tracked search is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+                );
+            }
         }
-        // A registered workspace whose folder was deleted is a missing repo,
-        // not a search failure — without this the walk just returns nothing.
         try {
-            if (!(await fs.promises.stat(repoRoot)).isDirectory()) {
-                throw new Error('not a directory');
+            return await files.searchContent(query, {
+                path: options?.path,
+                caseSensitive: options?.caseSensitive ?? false,
+                wholeWord: options?.wholeWord ?? false,
+                regex: options?.regex ?? false,
+                showIgnored: options?.showIgnored ?? false,
+                include: options?.include,
+                exclude: options?.exclude,
+                maxResults: Math.min(Math.max(options?.limit ?? CONTENT_SEARCH_MAX_RESULTS, 1), CONTENT_SEARCH_MAX_RESULTS),
+            }, tracked, includeUntracked, wslOutput);
+        } catch (error) {
+            const prefix = '[repo-files:tracked-unavailable]';
+            if (error instanceof Error && error.message.startsWith(prefix)) {
+                throw new TrackedContentSearchUnavailableError(error.message.slice(prefix.length).trimStart());
             }
-        } catch {
-            throw new Error(`Repo not found on disk: ${repoRoot}`);
+            throw error;
         }
-
-        const rawLimit = options?.limit ?? CONTENT_SEARCH_MAX_RESULTS;
-        const limit = Math.min(Math.max(rawLimit, 1), CONTENT_SEARCH_MAX_RESULTS);
-
-        // '.' is how every other repo route spells "the root", but handing it
-        // to the addon as a subfolder would prefix every result path with './'.
-        const scope = stripLeadingSeparators(options?.path ?? '').replace(/^\.(?:\/|$)/, '');
-        let files: string[] | undefined;
-        if (options?.fileScope === 'tracked') {
-            files = await gitContentCandidates(repoRoot, options.includeUntracked ?? false);
-            // Git grep reads the working tree afresh. The native matcher still
-            // owns context, offsets, globs and caps. Git grep skips symlink
-            // targets, so retain tracked symlinks in the candidate set.
-            if (query && !query.includes('\0') && !options.includeUntracked && !options.regex
-                && !query.includes('\n') && !query.includes('\r')
-                && resolveWorkspaceExecutionContext(repoRoot).kind !== 'wsl') {
-                const [matches, symlinks] = await Promise.all([
-                    gitLiteralContentCandidates(repoRoot, query, options.caseSensitive ?? false),
-                    gitTrackedSymlinks(repoRoot),
-                ]);
-                files = [...new Set([...matches, ...symlinks])];
-            }
-        }
-
-        this.nativeContent ??= loadNativeContentSearch();
-        return this.nativeContent.searchContent(repoRoot, query, {
-            path: scope || undefined,
-            caseSensitive: options?.caseSensitive ?? false,
-            wholeWord: options?.wholeWord ?? false,
-            regex: options?.regex ?? false,
-            showIgnored: options?.showIgnored ?? false,
-            files,
-            include: options?.include,
-            exclude: options?.exclude,
-            maxResults: limit,
-        });
     }
 
     /**
