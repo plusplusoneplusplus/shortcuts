@@ -102,7 +102,8 @@ import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
-import { browserLabelForUrl } from './unifiedBrowserTabs';
+import { browserLabelForUrl, browserOpenInput, browserSessionKey, normalizeBrowserUrl } from './unifiedBrowserTabs';
+import { desktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
 import { desktopHtmlPageBridge, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
@@ -582,6 +583,29 @@ export function UnifiedRightPanel({
         (id: string, url: string) => updateBrowser(id, { url, label: browserLabelForUrl(url) }),
         [updateBrowser],
     );
+    const followBrowserPage = useCallback(
+        (id: string, page: { url: string; title: string }) =>
+            updateBrowser(id, { url: page.url, label: page.title || browserLabelForUrl(page.url) }),
+        [updateBrowser],
+    );
+
+    // A page's new-window link opens as another browser tab with the opener's owner,
+    // so it shares the opener's site session even if the dock target moved since.
+    useEffect(() => {
+        const bridge = desktopBrowserBridge();
+        if (!bridge) return;
+        return bridge.onNewTab(({ openerViewId, url }) => {
+            const opener = tabsRef.current.find(tab => tab.kind === 'browser' && tab.resourceId === openerViewId);
+            const normalized = normalizeBrowserUrl(url);
+            if (!opener || !normalized.ok) return;
+            open(browserOpenInput({
+                ownerWorkspaceId: opener.ownerWorkspaceId,
+                ownerRoutingRef: opener.ownerRoutingRef,
+                chatId,
+                repoLabel: opener.repoLabel,
+            }, normalized.url));
+        });
+    }, [chatId, open]);
 
     useEffect(() => {
         const onOpenPage = (event: Event) => {
@@ -643,6 +667,8 @@ export function UnifiedRightPanel({
         const tab = tabsRef.current.find(candidate => candidate.id === id);
         if (tab?.kind === 'html-page' && tab.htmlPageId) {
             desktopHtmlPageBridge()?.close(tab.htmlPageId);
+        } else if (tab?.kind === 'browser') {
+            desktopBrowserBridge()?.close(tab.resourceId);
         }
         close(id);
         navigationControllers.current.delete(id);
@@ -1571,8 +1597,14 @@ export function UnifiedRightPanel({
                                 ) : tab.kind === 'browser' ? (
                                     <UnifiedBrowserTab
                                         tabId={tab.id}
+                                        viewId={tab.resourceId}
+                                        sessionKey={browserSessionKey(tab)}
                                         url={tab.browserUrl}
+                                        active={tab.id === activeId}
+                                        visible={isOpen && !menuOpen && !quickOpenVisible && !exactOpenVisible
+                                            && pendingClose === null && pendingDirty === null}
                                         onNavigate={navigateBrowser}
+                                        onPageState={followBrowserPage}
                                     />
                                 ) : <UnifiedTabView
                                     tab={tab}

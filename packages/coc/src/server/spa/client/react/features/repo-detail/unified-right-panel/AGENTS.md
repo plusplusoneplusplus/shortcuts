@@ -518,7 +518,18 @@ target switch never retargets it. Tabs are workspace-owned, so they stay
 across chat switches, and `browser` is an ephemeral kind: neither the tab, its
 URL, nor its selection reaches storage, so a restart starts with none.
 `updateBrowserTab` follows the page's URL and label without activating the tab.
-Without a desktop bridge the view offers Open in system browser instead of
+In the desktop app `UnifiedBrowserTab` drives `window.cocDesktop.browser`
+(`shared/file-path/browser-bridge.ts`): the tab's `resourceId` is the view id
+and `browserSessionKey(tab)` the session. A blank tab opens no view until it
+has a URL; address submits on a live view call `navigate`. The toolbar has
+Back/Forward/Reload|Stop, the page title, a load-error panel with Retry, and
+download-handoff notices. Unmounting only hides the view (chat switch, collapse
+keep live history); `closeTab` closes it. `onState` feeds `updateBrowserTab`
+(URL after redirects, title as label). `onNewTab` opens another browser tab
+with the opener's owner. Placement over the placeholder (and hiding behind
+modal dialogs / the tab menu) is shared with HTML pages via
+`useNativeViewPlacement`. Without a desktop bridge the view offers Open in
+system browser (`openUrlInSystemBrowser`, `window.open` noopener) instead of
 embedded browsing.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)

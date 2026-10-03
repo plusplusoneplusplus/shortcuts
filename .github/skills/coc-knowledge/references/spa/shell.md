@@ -119,6 +119,9 @@ in the same session (closed with its tab); other new-window links fire `onNewTab
 openerViewId, url })`; non-web navigations are denied. Downloads are cancelled and handed to
 `shell.openExternal`, reported via `onDownload({ viewId, url, ok, error? })`.
 `openExternal(url)` (invoke → boolean) opens an http(s) URL in the system browser.
+SPA side: `UnifiedBrowserTab` + `shared/file-path/browser-bridge.ts` (see the
+unified-right-panel AGENTS.md "Browser tabs"); views are hidden on unmount and closed only
+when the tab closes.
 E2E: `test/e2e/browser-view.e2e.test.ts` (local HTTP fixtures; `xvfb-run -a` +
 `COC_DESKTOP_E2E_NO_SANDBOX=1` on headless Linux).
 
