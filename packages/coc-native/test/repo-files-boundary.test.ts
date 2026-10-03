@@ -85,6 +85,45 @@ describe('RepoFiles listings', () => {
         }
     });
 
+    it('uses Git directory rules and ripgrep file rules for flat and deep listings', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-list-ignore-'));
+        const files = addon.openRepoFiles(dir);
+        try {
+            execFileSync('git', ['init', '-q', dir]);
+            fs.writeFileSync(path.join(dir, '.ignore'), 'visible/\n*.log\n!git-hidden/\n');
+            fs.writeFileSync(path.join(dir, '.gitignore'), 'git-hidden/\n');
+            fs.writeFileSync(path.join(dir, '.git', 'info', 'exclude'), 'local-hidden/\n');
+            for (const name of ['visible', 'git-hidden', 'local-hidden']) {
+                fs.mkdirSync(path.join(dir, name));
+                fs.writeFileSync(path.join(dir, name, 'keep.txt'), 'x');
+            }
+            fs.writeFileSync(path.join(dir, 'visible', '.ignore'), 'nested/\n*.tmp\n');
+            fs.mkdirSync(path.join(dir, 'visible', 'nested'));
+            fs.writeFileSync(path.join(dir, 'visible', 'debug.log'), 'x');
+            fs.writeFileSync(path.join(dir, 'visible', 'cache.tmp'), 'x');
+            const options = { showIgnored: false, maxEntries: 100 };
+            const flat = await files.listDirectory('', options);
+            const dirs = ['visible', 'git-hidden', 'local-hidden'];
+            const gitIgnored = execFileSync('git', ['-C', dir, 'check-ignore', '--stdin'], {
+                input: dirs.map(name => `${name}/`).join('\n') + '\n', encoding: 'utf8',
+            }).trim().split('\n').map(name => name.replace(/\/$/, ''));
+            expect(flat.entries.filter(e => e.type === 'dir').map(e => e.name)).toEqual([
+                '.git', ...dirs.filter(name => !gitIgnored.includes(name)),
+            ]);
+            const deep = await files.listDirectory('', { ...options, depth: 3 });
+            const visible = deep.entries.find(e => e.name === 'visible')!;
+            expect(visible.children!.map(e => e.name)).toEqual(['nested', '.ignore', 'keep.txt']);
+            expect(deep.entries.map(e => e.name)).toEqual(flat.entries.map(e => e.name));
+            expect((await files.listDirectory('', { ...options, showIgnored: true })).entries
+                .filter(e => e.type === 'dir').map(e => e.name)).toEqual(['.git', 'git-hidden', 'local-hidden', 'visible']);
+            expect((await files.indexFiles(options)).files).not.toContain('visible/keep.txt');
+            expect((await files.listFiles('visible', options)).files).toEqual(['visible/.ignore', 'visible/keep.txt']);
+        } finally {
+            files.dispose();
+            removeDir(dir);
+        }
+    });
+
     it('walks a subtree and maps listing errors', async () => {
         fs.mkdirSync(path.join(root, 'new', 'dir'), { recursive: true });
         fs.writeFileSync(path.join(root, 'new', 'dir', 'c.txt'), '');

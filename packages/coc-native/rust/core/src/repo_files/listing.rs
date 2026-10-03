@@ -1,7 +1,7 @@
 //! Explorer directory listings and subtree file walks.
 //!
-//! Both go through the same gitignore-aware walker as the file index, so a
-//! listing hides exactly what search hides. Names sort with CLDR root
+//! Listings apply Git ignore rules to directories and ripgrep rules to files.
+//! Subtree file walks use the file index policy. Names sort with CLDR root
 //! collation — the order Node's `localeCompare` gives — never byte order.
 
 use std::cell::RefCell;
@@ -94,22 +94,22 @@ pub fn list_directory(
     Ok(TreeListing { entries, truncated })
 }
 
-fn list_level(
-    root: &Path,
-    dir: &Path,
-    depth: u32,
+fn level_entries<'a>(
+    root: &'a Path,
+    dir: &'a Path,
     include_ignored: bool,
-    max_entries: usize,
-) -> (Vec<TreeEntry>, bool) {
+    directories: bool,
+) -> impl Iterator<Item = TreeEntry> + 'a {
     let mut builder = ignore_builder(dir, include_ignored);
+    builder.ignore(!include_ignored && !directories);
     builder.max_depth(Some(1));
-    let mut entries: Vec<TreeEntry> = builder
-        .build()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.depth() == 1)
-        .filter_map(|entry| {
+    builder.build().filter_map(Result::ok).filter(|entry| entry.depth() == 1).filter_map(
+        move |entry| {
             // `follow_links` makes metadata describe the symlink target.
             let meta = entry.metadata().ok()?;
+            if meta.is_dir() != directories {
+                return None;
+            }
             Some(TreeEntry {
                 name: entry.file_name().to_string_lossy().into_owned(),
                 kind: if meta.is_dir() { "dir" } else { "file" },
@@ -117,7 +117,19 @@ fn list_level(
                 path: to_posix(entry.path().strip_prefix(root).ok()?),
                 children: None,
             })
-        })
+        },
+    )
+}
+
+fn list_level(
+    root: &Path,
+    dir: &Path,
+    depth: u32,
+    include_ignored: bool,
+    max_entries: usize,
+) -> (Vec<TreeEntry>, bool) {
+    let mut entries: Vec<_> = level_entries(root, dir, include_ignored, true)
+        .chain(level_entries(root, dir, include_ignored, false))
         .collect();
     entries
         .sort_by(|a, b| b.is_dir().cmp(&a.is_dir()).then_with(|| locale_compare(&a.name, &b.name)));

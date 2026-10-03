@@ -158,3 +158,49 @@ fn file_walk_caps_and_tolerates_missing_starts() {
     assert_eq!(walk("pkg/a", 3), (vec![], false));
     assert!(matches!(list_files(root, "../x", false, 3), Err(RepoFilesError::PathTraversal)));
 }
+
+#[test]
+fn listing_uses_git_rules_for_directories_and_ignore_rules_for_files() {
+    let dir = repo();
+    let root = dir.path();
+    fs::write(root.join(".ignore"), "visible/\n*.log\n!git-hidden/\n").unwrap();
+    fs::write(root.join(".gitignore"), "git-hidden/\n").unwrap();
+    for file in ["visible/a.txt", "visible/debug.log", "git-hidden/a.txt", "debug.log"] {
+        write(root, file);
+    }
+    let entries = list_directory(root, "", 2, false, 5000).unwrap().entries;
+    assert_eq!(
+        entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+        [".git", "visible", ".gitignore", ".ignore"]
+    );
+    // Opening the directory uses its local file policy, just like rg from that directory.
+    assert_eq!(
+        entries
+            .iter()
+            .find(|e| e.name == "visible")
+            .unwrap()
+            .children
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect::<Vec<_>>(),
+        ["a.txt"]
+    );
+    assert_eq!(
+        names(root, "", true),
+        [".git", "git-hidden", "visible", ".gitignore", ".ignore", "debug.log"]
+    );
+    // The file walker keeps the complete ripgrep ignore policy.
+    assert!(!list_files(root, "", false, 100).unwrap().files.iter().any(|p| p == "visible/a.txt"));
+}
+
+#[test]
+fn non_git_directory_listing_keeps_ignore_hidden_directories() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(root.join(".ignore"), "hidden/\n*.log\n").unwrap();
+    write(root, "hidden/a.txt");
+    write(root, "debug.log");
+    assert_eq!(names(root, "", false), ["hidden", ".ignore"]);
+}
