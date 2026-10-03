@@ -22,6 +22,12 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/HELP', { type: 'help', args: '' }],
     ['quota', { type: 'quota', args: '' }],
     ['/Quota', { type: 'quota', args: '' }],
+    ['compact', { type: 'compact', args: '' }],
+    ['/compact', { type: 'compact', args: '' }],
+    ['/CoMpAcT', { type: 'compact', args: '' }],
+    ['Compact focus on the WhatsApp relay work', { type: 'compact', args: 'focus on the WhatsApp relay work' }],
+    ['/compact  keep the plan\nand open TODOs ', { type: 'compact', args: 'keep the plan\nand open TODOs' }],
+    ['compacting is slow', { type: 'chat', args: 'compacting is slow', mode: 'ask' }],
     ['  /list repos  ', { type: 'list-repos', args: '' }],
     ['/autopilot fix the build', { type: 'chat', args: 'fix the build', mode: 'autopilot' }],
     ['/AUTOPILOT [abc] go', { type: 'chat-explicit', chatId: 'abc', args: 'go', mode: 'autopilot' }],
@@ -51,6 +57,7 @@ describe('parseMessagingCommand', () => {
     it('classifies control commands', () => {
         expect(isMessagingControlCommand(parseMessagingCommand('quota'))).toBe(true);
         expect(isMessagingControlCommand(parseMessagingCommand('select topic 1'))).toBe(true);
+        expect(isMessagingControlCommand(parseMessagingCommand('/compact'))).toBe(true);
         expect(isMessagingControlCommand(parseMessagingCommand('/nope'))).toBe(false);
         expect(isMessagingControlCommand(parseMessagingCommand('hi'))).toBe(false);
         expect(isMessagingControlCommand(parseMessagingCommand('[id] hi'))).toBe(false);
@@ -64,5 +71,6 @@ describe('parseMessagingCommand', () => {
         expect(MESSAGING_HELP_TEXT).toContain('/autopilot <message>');
         expect(MESSAGING_HELP_TEXT).toContain('[chatid] <message>');
         expect(MESSAGING_HELP_TEXT).toContain('Unknown command');
+        expect(MESSAGING_HELP_TEXT).toContain('compact [instructions] — ');
     });
 });

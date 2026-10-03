@@ -199,12 +199,15 @@ Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
-grammar from `coc-connector` (slash optional, `help`, `quota`, `[chatid]`,
-`/autopilot`; unknown `/word` → "Unknown command" + the generated
-`MESSAGING_HELP_TEXT`, never sent to the AI). `messaging/messaging-commands.ts`
-answers repo/topic selection, help and quota (from `AgentProvidersQuotaCache`)
-for both routers via a `MessagingSelection` adapter; routers keep platform state
-and transport. Chats run in Ask mode unless the message starts with `/autopilot`.
+grammar from `coc-connector` (slash optional, `help`, `quota`,
+`compact [instructions]`, `[chatid]`, `/autopilot`; unknown `/word` → "Unknown
+command" + the generated `MESSAGING_HELP_TEXT`, never sent to the AI).
+`messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
+`AgentProvidersQuotaCache`) and compact for both routers via a `MessagingSelection`
+adapter; routers keep platform state and transport. `compact` targets the quoted
+WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
+and calls `processes/compact-process.ts` `compactProcess` (shared with
+`POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. Chats run in Ask mode unless the message starts with `/autopilot`.
 
 ### Messaging ask_user question relay
 

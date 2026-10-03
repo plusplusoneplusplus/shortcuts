@@ -17,7 +17,10 @@ import { TeamsUserStateStore } from './teams-user-state';
 import type { TeamsEventType } from './teams-attempt-store';
 import { escapeTeamsMarkdown, teamsCodeSpan } from './teams-outbound-format';
 import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
-import { handleMessagingCommand, invalidCommandReply, readQuotaReply, type MessagingQuotaSource } from './messaging-commands';
+import {
+    compactChatReply, handleMessagingCommand, invalidCommandReply, readQuotaReply,
+    type MessagingCompactor, type MessagingQuotaSource,
+} from './messaging-commands';
 
 // ============================================================================
 // Types
@@ -46,6 +49,8 @@ export interface TeamsCommandRouterDeps {
     executeFollowUp: (processId: string, message: string, mode?: MessagingChatMode) => Promise<void>;
     /** Provider quota for the `quota` command. */
     getQuota?: MessagingQuotaSource;
+    /** Compacts a chat's provider context for the `compact` command. */
+    compact?: MessagingCompactor;
     /** Send a reply back to Teams. */
     sendReply: (text: string, replyToId?: string) => Promise<void>;
     /** Data directory for persisting user state. */
@@ -197,6 +202,14 @@ export class TeamsCommandRouter {
             getQuota: this.deps.getQuota,
             strong: text => `**${escapeTeamsMarkdown(text)}**`,
             code: teamsCodeSpan,
+            escape: escapeTeamsMarkdown,
+            compact: this.deps.compact,
+            // Compact the chat plain messages currently continue.
+            compactTarget: () => {
+                const state = this.userState.get(userKey);
+                const processId = state.selectedTopic ?? state.lastActiveTopic;
+                return processId ? { processId } : null;
+            },
             selection: {
                 repoId: () => this.userState.get(userKey).selectedRepo,
                 selectRepo: workspaceId => this.userState.update(userKey, { selectedRepo: workspaceId }),
@@ -217,6 +230,18 @@ export class TeamsCommandRouter {
             await this.deps.sendReply(command.type === 'help' ? MESSAGING_HELP_TEXT
                 : command.type === 'quota' ? await readQuotaReply(this.deps.getQuota)
                     : await this.handleControlCommand('', command), root);
+            return;
+        }
+        if (command.type === 'compact') {
+            if (silent) return;
+            this.deps.recordThreadCommand?.(msg);
+            // A bound thread compacts its own chat.
+            const binding = await this.deps.resolveThreadReply?.(msg);
+            const processId = binding?.process?.id ?? (binding?.taskId ? toQueueProcessId(binding.taskId) : undefined);
+            await this.deps.sendReply(processId
+                ? await compactChatReply(this.deps.store, this.deps.compact,
+                    { processId, workspaceId: binding!.workspaceId }, command.args, escapeTeamsMarkdown)
+                : '❌ No topic selected in this thread. Use `/list topics`, then `/select topic <n>` here.', root);
             return;
         }
         if (!this.deps.selectThreadTarget) throw new Error('Teams thread selection is unavailable');

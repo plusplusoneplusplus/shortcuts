@@ -4,7 +4,7 @@ import { isMessagingControlCommand, parseMessagingCommand } from '@plusplusonepl
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
-import { handleMessagingCommand, invalidCommandReply, type MessagingQuotaSource } from './messaging-commands';
+import { handleMessagingCommand, invalidCommandReply, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
 
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
@@ -15,6 +15,7 @@ export interface WhatsAppRouterDeps {
     react: (messageId: string) => Promise<void>;
     queued?: (binding: WhatsAppBinding) => void;
     getQuota?: MessagingQuotaSource;
+    compact?: MessagingCompactor;
     /** Relayed ask_user questions; a matching reply is an answer, not a request. */
     questions?: Pick<AskUserQuestionRelayHub, 'tryAnswer'>;
 }
@@ -42,6 +43,9 @@ export class WhatsAppCommandRouter {
                     store: this.deps.store,
                     requireRepoForTopics: true,
                     getQuota: this.deps.getQuota,
+                    compact: this.deps.compact,
+                    // A quote-reply to an answer compacts that answer's chat.
+                    compactTarget: () => msg.quotedMessageId ? bindings.findMessage(msg.quotedMessageId) : undefined,
                     selection: {
                         repoId: () => bindings.selectedRepo,
                         selectRepo: id => bindings.selectRepo(id),

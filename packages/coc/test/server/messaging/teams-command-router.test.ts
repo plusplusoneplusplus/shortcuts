@@ -373,6 +373,82 @@ describe('TeamsCommandRouter', () => {
         expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug', 'ask');
     });
 
+    describe('compact', () => {
+        let compact: ReturnType<typeof vi.fn>;
+        const noTurnStarted = () => {
+            expect(deps.enqueueChat).not.toHaveBeenCalled();
+            expect(deps.executeFollowUp).not.toHaveBeenCalled();
+            expect(deps.admitFollowUp ?? vi.fn()).not.toHaveBeenCalled();
+            expect(deps.admitPendingFollowUp ?? vi.fn()).not.toHaveBeenCalled();
+        };
+
+        beforeEach(() => {
+            compact = vi.fn().mockResolvedValue({ result: { success: true }, tokensBefore: 82_000, tokensAfter: 14_000 });
+            deps.compact = compact;
+            router = new TeamsCommandRouter(deps);
+        });
+
+        it('asks for a topic when none is selected', async () => {
+            await router.handle(makeMsg('/compact'));
+            expect(sendReplySpy).toHaveBeenLastCalledWith('❌ No topic selected. Use `list topics`, then `select topic <n>`.', expect.any(String));
+            expect(compact).not.toHaveBeenCalled();
+        });
+
+        it('compacts the selected topic with instructions and keeps the selection', async () => {
+            await router.handle(makeMsg('/select repo ProjectA'));
+            await router.handle(makeMsg('/select topic proc-111'));
+            await router.handle(makeMsg('COMPACT keep the *plan*'));
+            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'proc-111' }), 'keep the *plan*');
+            expect(sendReplySpy).toHaveBeenLastCalledWith('🗜️ Compacted "Fix bug" — context 82k → 14k tokens', expect.any(String));
+            noTurnStarted();
+            await router.handle(makeMsg('/list topics'));
+            expect(sendReplySpy.mock.lastCall?.[0]).toMatch(/proc-111.*⬅️/);
+        });
+
+        it('maps busy, unsupported, no-session and unknown failures to short replies', async () => {
+            const { APIError } = await import('../../../src/server/errors');
+            await router.handle(makeMsg('/select topic proc-111'));
+            const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const cases: Array<[unknown, string]> = [
+                [new APIError(409, 'x', 'CONVERSATION_NOT_IDLE'), 'Chat is busy — try compact again when the current turn finishes.'],
+                [new APIError(422, 'x', 'COMPACT_UNSUPPORTED'), "This chat's provider doesn't support compaction."],
+                [new APIError(400, 'x', 'BAD_REQUEST'), 'This chat has no active session to compact yet.'],
+                [new Error('private provider detail'), 'Could not compact this chat. Please try again later.'],
+            ];
+            for (const [failure, text] of cases) {
+                compact.mockRejectedValueOnce(failure);
+                await router.handle(makeMsg('compact'));
+                expect(sendReplySpy).toHaveBeenLastCalledWith(text, expect.any(String));
+            }
+            error.mockRestore();
+            noTurnStarted();
+        });
+
+        it('compacts the bound thread chat, records the command, and never dispatches to AI', async () => {
+            deps.isAnswerRelayEnabled = () => true;
+            deps.recordThreadCommand = vi.fn();
+            deps.hasThreadCommand = vi.fn().mockReturnValue(false);
+            deps.admitFollowUp = vi.fn();
+            deps.admitPendingFollowUp = vi.fn();
+            deps.resolveThreadReply = vi.fn().mockImplementation(async (msg: InboundTeamsMessage) =>
+                msg.replyToMessageId === 'root-a'
+                    ? { process: { id: 'proc-111', metadata: { workspaceId: 'ws-1' } }, workspaceId: 'ws-1' }
+                    : msg.replyToMessageId === 'root-new' ? { workspaceId: 'ws-1' } : null);
+            router = new TeamsCommandRouter(deps);
+            // A different selected topic must not win over the thread's chat.
+            await router.handle(makeMsg('/select topic proc-222'));
+            const reply = makeMsg('/compact', { replyToMessageId: 'root-a' });
+            await router.handle(reply);
+            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'proc-111' }), undefined);
+            expect(deps.recordThreadCommand).toHaveBeenCalledWith(reply);
+            expect(sendReplySpy).toHaveBeenLastCalledWith('🗜️ Compacted "Fix bug" — context 82k → 14k tokens', 'root-a');
+            await router.handle(makeMsg('compact', { replyToMessageId: 'root-new' }));
+            expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('No topic selected in this thread'), 'root-new');
+            expect(compact).toHaveBeenCalledTimes(1);
+            noTurnStarted();
+        });
+    });
+
     describe('channel-thread replies', () => {
         beforeEach(() => {
             deps.isAnswerRelayEnabled = () => true;

@@ -18,11 +18,13 @@ export type MessagingChatMode = 'ask' | 'autopilot';
 export type MessagingCommand =
     | { type: 'list-repos' | 'list-topics' | 'create-topic' | 'help' | 'quota'; args: '' }
     | { type: 'select-repo' | 'select-topic'; args: string }
+    /** `args` is optional custom instructions that focus the summary. */
+    | { type: 'compact'; args: string }
     | { type: 'chat'; args: string; mode: MessagingChatMode }
     | { type: 'chat-explicit'; chatId: string; args: string; mode: MessagingChatMode }
     | { type: 'invalid'; args: string };
 
-export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'select-repo' | 'select-topic' }>;
+export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'select-repo' | 'select-topic' | 'compact' }>;
 
 interface CommandSpec {
     type: MessagingControlCommand['type'];
@@ -38,6 +40,7 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
     { type: 'list-topics', pattern: /^list\s+(?:chat\s+)?topics?$/i, usage: 'list topics', summary: 'list recent chats' },
     { type: 'create-topic', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'your next message starts a new chat' },
     { type: 'select-topic', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'continue an existing chat' },
+    { type: 'compact', pattern: /^compact(?:\s+(.+))?$/is, usage: 'compact [instructions]', summary: "compact the chat's context (quoted reply's chat, else selected topic)" },
     { type: 'help', pattern: /^help$/i, usage: 'help', summary: 'show this help' },
     { type: 'quota', pattern: /^quota$/i, usage: 'quota', summary: 'show AI provider quota' },
 ];

@@ -168,6 +168,84 @@ describe('WhatsApp workspace command routing', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
+    describe('compact', () => {
+        let compact: ReturnType<typeof vi.fn>;
+        beforeEach(() => {
+            compact = vi.fn().mockResolvedValue({ result: { success: true }, tokensBefore: 82_000, tokensAfter: 14_000 });
+            router = new WhatsAppCommandRouter({
+                store, bindings, groupJid: () => 'group@g.us', enqueue, send, react, compact,
+            });
+        });
+
+        it('asks for a topic when no repo or topic is selected', async () => {
+            await router.handle(inbound('compact', 'none'));
+            expect(send).toHaveBeenLastCalledWith('❌ No topic selected. Use `list topics`, then `select topic <n>`.', 'none');
+            await router.handle(inbound('select repo Alpha', 'select'));
+            await router.handle(inbound('/compact', 'repo-only'));
+            expect(send).toHaveBeenLastCalledWith(expect.stringContaining('No topic selected'), 'repo-only');
+            expect(compact).not.toHaveBeenCalled();
+        });
+
+        it('compacts the selected topic with custom instructions, without enqueueing or reselecting', async () => {
+            await router.handle(inbound('select repo Alpha', 'select'));
+            await router.handle(inbound('select topic topic-a', 'pick'));
+            send.mockResolvedValueOnce('compact-reply');
+            await router.handle(inbound('Compact focus on the WhatsApp relay work', 'compact'));
+            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-a' }), 'focus on the WhatsApp relay work');
+            expect(send).toHaveBeenLastCalledWith('🗜️ Compacted "Topic A" — context 82k → 14k tokens', 'compact');
+            expect(enqueue).not.toHaveBeenCalled();
+            expect(react).not.toHaveBeenCalled();
+            expect(bindings.topic('ws-a')).toBe('topic-a');
+            // The reply is guarded as an own message, never a new request.
+            expect(bindings.isKnownMessage('compact-reply')).toBe(true);
+            await router.handle(inbound('🗜️ Compacted "Topic A"', 'compact-reply'));
+            expect(enqueue).not.toHaveBeenCalled();
+        });
+
+        it('compacts the quoted answer\'s chat instead of the selected topic', async () => {
+            await router.handle(inbound('select repo 2', 'select-b'));
+            await router.handle(inbound('select topic topic-b', 'pick-b'));
+            const binding = { groupJid: 'group@g.us', workspaceId: 'ws-a', processId: 'topic-a', taskId: 't-a',
+                inboundId: 'q-a', outboundIds: ['answer-a'], nextPart: 1, status: 'completed' as const };
+            bindings.add(binding);
+            await router.handle(inbound('compact', 'quoted', { quotedMessageId: 'answer-a' }));
+            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-a' }), undefined);
+            expect(bindings.selectedRepo).toBe('ws-b');
+            expect(bindings.topic('ws-b')).toBe('topic-b');
+        });
+
+        it('maps service guard errors to short replies and hides other errors', async () => {
+            const { APIError } = await import('../../../src/server/errors');
+            await router.handle(inbound('select repo Alpha', 'select'));
+            await router.handle(inbound('select topic topic-a', 'pick'));
+            const cases: Array<[unknown, string]> = [
+                [new APIError(409, 'x', 'CONVERSATION_NOT_IDLE'), 'Chat is busy — try compact again when the current turn finishes.'],
+                [new APIError(422, 'x', 'COMPACT_UNSUPPORTED'), "This chat's provider doesn't support compaction."],
+                [new APIError(400, 'x', 'BAD_REQUEST'), 'This chat has no active session to compact yet.'],
+                [new Error('secret provider detail'), 'Could not compact this chat. Please try again later.'],
+            ];
+            const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+            for (const [i, [failure, text]] of cases.entries()) {
+                compact.mockRejectedValueOnce(failure);
+                await router.handle(inbound('compact', `c-${i}`));
+                expect(send).toHaveBeenLastCalledWith(text, `c-${i}`);
+            }
+            error.mockRestore();
+            compact.mockResolvedValueOnce({ result: {} });
+            await router.handle(inbound('compact', 'plain'));
+            expect(send).toHaveBeenLastCalledWith('🗜️ Compacted "Topic A"', 'plain');
+            expect(enqueue).not.toHaveBeenCalled();
+        });
+
+        it('replies not found when the selected topic is gone', async () => {
+            await router.handle(inbound('select repo Alpha', 'select'));
+            bindings.selectTopic('ws-a', 'gone');
+            await router.handle(inbound('compact', 'gone'));
+            expect(send).toHaveBeenLastCalledWith('Chat not found. Use `list topics` to pick one.', 'gone');
+            expect(compact).not.toHaveBeenCalled();
+        });
+    });
+
     it('restores workspace receipts and sticky account selection after restart', async () => {
         await router.handle(inbound('select repo Beta', 'select'));
         await router.handle(inbound('question', 'original'));

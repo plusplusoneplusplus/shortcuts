@@ -165,8 +165,11 @@ references before editing. Paths are package-relative.
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`, generated
   `MESSAGING_HELP_TEXT`); unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
-  answers selection, help and quota for both routers via a `MessagingSelection`
-  adapter. Ask is default; `/autopilot <msg>` runs one message in Autopilot.
+  answers selection, help, quota and `compact [instructions]` for both routers via a
+  `MessagingSelection` adapter. `compact` targets the quoted/bound-thread answer's
+  chat, else the selected topic; it calls `processes/compact-process.ts` (shared with
+  the compact route), never enqueues a turn or changes selection, and maps 400/409/422
+  to fixed replies. Ask is default; `/autopilot <msg>` runs one message in Autopilot.
 - Ask turns started from WhatsApp/Teams (first and connector follow-ups) relay
   `ask_user` questions one at a time to the originating group/thread through
   `src/server/messaging/ask-user-relay.ts`, wired at emit time via the late-bound

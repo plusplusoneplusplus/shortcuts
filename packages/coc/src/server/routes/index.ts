@@ -24,6 +24,7 @@ import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } f
 import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
 import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../processes/process-message-delivery-service';
+import { compactProcess } from '../processes/compact-process';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
@@ -963,6 +964,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         enqueueChat: (workspaceId, message, mode) => enqueueTeamsChat(workspaceId, message, undefined, mode),
         executeFollowUp: (processId, message, mode) => bridge.executeFollowUp(processId, message, undefined, mode),
         getQuota: getMessagingQuota,
+        compact: (proc, instructions) => compactProcess(store, proc, instructions),
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
     const whatsappBindings = new WhatsAppBindings(dataDir);
@@ -993,6 +995,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
         react: messageId => whatsappMessagingManager.react(messageId),
         getQuota: getMessagingQuota,
+        compact: (proc, instructions) => compactProcess(store, proc, instructions),
         questions: questionRelay,
         enqueue: (workspaceId, message, mode, processId, taskId) =>
             enqueueWithResolvedDefaults({
