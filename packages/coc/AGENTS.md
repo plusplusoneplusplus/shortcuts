@@ -68,6 +68,8 @@ references before editing. Paths are package-relative.
   HTTP options and the file-search envelope.
 - Content search reads fresh bytes via `RepoFiles`; WSL runs Rust-prepared argv via forge.
   Test Git narrowing/native walks.
+  Repo-group file/content search shares controls and ordered dispatch in
+  `src/server/workspaces/repo-group-search.ts`.
   QuickOpen uses server indices; reuse requires the current workspace root
   for each `showIgnored` variant. Payload caps never cap search candidates.
 - Restore queues stopped. Activate only after

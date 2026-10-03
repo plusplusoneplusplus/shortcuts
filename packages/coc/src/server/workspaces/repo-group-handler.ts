@@ -19,6 +19,7 @@ import type { RepoTreeService } from '../repos/tree-service';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { ContentSearchOptions } from '../repos/types';
+import { GROUP_SEARCH_CONCURRENCY, mapBounded, parseGroupSearchControls } from './repo-group-search';
 import {
     REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS,
     RepoGroupContentSearchAbortedError,
@@ -56,8 +57,6 @@ export interface RepoGroupRouteDeps {
     repoTreeService?: Pick<RepoTreeService, 'searchFilesRanked' | 'searchContent'>;
 }
 
-const GROUP_SEARCH_CONCURRENCY = 4;
-
 export interface RepoGroupSearchResult {
     status: 'complete' | 'partial' | 'failed' | 'no-searchable-members';
     results: Array<{
@@ -89,23 +88,6 @@ function compareGroupCandidates(a: RankedGroupCandidate, b: RankedGroupCandidate
         a.memberIndex - b.memberIndex ||
         a.ranking.snapshotIndex - b.ranking.snapshotIndex
     );
-}
-
-async function mapBounded<T, R>(
-    items: readonly T[],
-    concurrency: number,
-    fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-    const results = new Array<R>(items.length);
-    let nextIndex = 0;
-    const worker = async (): Promise<void> => {
-        while (nextIndex < items.length) {
-            const index = nextIndex++;
-            results[index] = await fn(items[index], index);
-        }
-    };
-    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-    return results;
 }
 
 async function searchRepoGroup(
@@ -176,41 +158,10 @@ async function searchRepoGroup(
     };
 }
 
-function parseGroupSearchQuery(req: Parameters<Route['handler']>[0]):
-    | { query: string; limit: number; showIgnored: boolean }
-    | { error: string } {
-    const params = new URL(req.url ?? '', 'http://localhost').searchParams;
-    const queryValues = params.getAll('q');
-    if (queryValues.length !== 1 || queryValues[0].length === 0) {
-        return { error: 'Missing required query parameter: q' };
-    }
-    let limit = 50;
-    const limitValues = params.getAll('limit');
-    if (limitValues.length > 1) {
-        return { error: 'Invalid query parameter: limit' };
-    }
-    if (limitValues.length === 1) {
-        if (!/^-?\d+$/.test(limitValues[0])) {
-            return { error: 'Invalid query parameter: limit' };
-        }
-        limit = Math.min(Math.max(Number(limitValues[0]), 1), 200);
-    }
-    const showIgnoredValues = params.getAll('showIgnored');
-    if (
-        showIgnoredValues.length > 1 ||
-        (showIgnoredValues.length === 1 &&
-            showIgnoredValues[0] !== 'true' &&
-            showIgnoredValues[0] !== 'false')
-    ) {
-        return { error: 'Invalid query parameter: showIgnored' };
-    }
-    return { query: queryValues[0], limit, showIgnored: showIgnoredValues[0] === 'true' };
-}
-
 /**
  * Parse the group content-search query string.
  *
- * Strict in the same way {@link parseGroupSearchQuery} is: a repeated or
+ * Strict in the same way {@link parseGroupSearchControls} is: a repeated or
  * malformed parameter is the caller's bug, and answering it with a silently
  * different search is worse than a 400. Globs arrive repeated or comma-joined,
  * matching what `buildQueryString` in coc-client emits.
@@ -219,27 +170,14 @@ function parseGroupContentSearchQuery(req: Parameters<Route['handler']>[0]):
     | { query: string; limit: number; options: Omit<ContentSearchOptions, 'limit'> }
     | { error: string } {
     const params = new URL(req.url ?? '', 'http://localhost').searchParams;
-    const queryValues = params.getAll('q');
-    if (queryValues.length !== 1 || queryValues[0].length === 0) {
-        return { error: 'Missing required query parameter: q' };
-    }
-
-    let limit = REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS;
-    const limitValues = params.getAll('limit');
-    if (limitValues.length > 1) return { error: 'Invalid query parameter: limit' };
-    if (limitValues.length === 1) {
-        if (!/^-?\d+$/.test(limitValues[0])) return { error: 'Invalid query parameter: limit' };
-        limit = Math.min(Math.max(Number(limitValues[0]), 1), REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS);
-    }
-
-    const flags: Record<string, boolean> = {};
-    for (const name of ['caseSensitive', 'wholeWord', 'regex', 'includeUntracked'] as const) {
-        const values = params.getAll(name);
-        if (values.length > 1 || (values.length === 1 && values[0] !== 'true' && values[0] !== 'false')) {
-            return { error: `Invalid query parameter: ${name}` };
-        }
-        flags[name] = values[0] === 'true';
-    }
+    const controls = parseGroupSearchControls(
+        params,
+        REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS,
+        REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS,
+        ['caseSensitive', 'wholeWord', 'regex', 'includeUntracked'],
+    );
+    if ('error' in controls) return controls;
+    const { query, limit, flags } = controls;
 
     const fileScopeValues = params.getAll('fileScope');
     if (fileScopeValues.length > 1 || (fileScopeValues.length === 1 && fileScopeValues[0] !== 'tracked')) {
@@ -255,7 +193,7 @@ function parseGroupContentSearchQuery(req: Parameters<Route['handler']>[0]):
     };
 
     return {
-        query: queryValues[0],
+        query,
         limit,
         options: {
             caseSensitive: flags.caseSensitive,
@@ -327,7 +265,10 @@ export function registerRepoGroupRoutes(
                 if (!readRepoGroup(dataDir, id)) {
                     return handleAPIError(res, notFound('Repo group'));
                 }
-                const parsed = parseGroupSearchQuery(req);
+                const parsed = parseGroupSearchControls(
+                    new URL(req.url ?? '', 'http://localhost').searchParams,
+                    50, 200, ['showIgnored'],
+                );
                 if ('error' in parsed) {
                     return handleAPIError(res, badRequest(parsed.error));
                 }
@@ -343,7 +284,7 @@ export function registerRepoGroupRoutes(
                         deps.repoTreeService,
                         parsed.query,
                         parsed.limit,
-                        parsed.showIgnored,
+                        parsed.flags.showIgnored,
                     ),
                 );
             } catch (err) {

@@ -308,6 +308,21 @@ describe('Repo Group Handler', () => {
                 expect(search.mock.calls.every(call => call[2]?.limit === 1)).toBe(true);
             });
 
+            it.each([
+                ['q=a&q=b&limit=bad&showIgnored=bad', 'Missing required query parameter: q'],
+                ['q=a&limit=5&limit=5&showIgnored=bad', 'Invalid query parameter: limit'],
+                ['q=a&limit=&showIgnored=bad', 'Invalid query parameter: limit'],
+                ['q=a&showIgnored=false&showIgnored=false', 'Invalid query parameter: showIgnored'],
+                ['q=a&showIgnored=', 'Invalid query parameter: showIgnored'],
+            ])('preserves file-search errors for %s', async (query, message) => {
+                const { workspace } = await createGroup();
+                const search = vi.spyOn(repoTreeService, 'searchFilesRanked');
+                const res = await request(`${baseUrl}/api/repo-groups/${workspace.id}/search?${query}`);
+                expect(res.status).toBe(400);
+                expect(JSON.parse(res.body).error).toBe(message);
+                expect(search).not.toHaveBeenCalled();
+            });
+
             it('honours showIgnored without searching a recursive file list', async () => {
                 write(repoA, '.git/HEAD');
                 write(repoA, '.gitignore');

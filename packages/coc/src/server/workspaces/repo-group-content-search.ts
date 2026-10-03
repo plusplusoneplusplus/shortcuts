@@ -22,12 +22,13 @@ import { CONTENT_SEARCH_MAX_RESULTS } from '../repos/types';
 import type { ContentMatch, ContentSearchOptions } from '../repos/types';
 import { TrackedContentSearchUnavailableError } from '../repos/tree-service';
 import type { RepoGroupMember } from './repo-group-workspace';
+import { GROUP_SEARCH_CONCURRENCY, mapBounded } from './repo-group-search';
 
 /** Cap on matches one group query may return, shared with single-repo search. */
 export const REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS = CONTENT_SEARCH_MAX_RESULTS;
 
 /** How many members may be searched at once. */
-export const REPO_GROUP_CONTENT_SEARCH_CONCURRENCY = 4;
+export const REPO_GROUP_CONTENT_SEARCH_CONCURRENCY = GROUP_SEARCH_CONCURRENCY;
 
 /** The one method of `RepoTreeService` this module needs. */
 export interface GroupContentSearchService {
@@ -132,23 +133,6 @@ export function apportionMatchQuota(counts: readonly number[], cap: number): num
         }
     }
     return allocated;
-}
-
-async function mapBounded<T, R>(
-    items: readonly T[],
-    concurrency: number,
-    fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-    const results = new Array<R>(items.length);
-    let nextIndex = 0;
-    const worker = async (): Promise<void> => {
-        while (nextIndex < items.length) {
-            const index = nextIndex++;
-            results[index] = await fn(items[index], index);
-        }
-    };
-    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-    return results;
 }
 
 function staleMessage(member: RepoGroupMember): string {

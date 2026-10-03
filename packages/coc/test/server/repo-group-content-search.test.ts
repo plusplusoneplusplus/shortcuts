@@ -529,6 +529,23 @@ suiteIfGit('GET /api/repo-groups/:id/search/content', () => {
             `${baseUrl}/api/repo-groups/${groupId}/search/content?q=x&fileScope=all`)).status).toBe(400);
     });
 
+    it.each([
+        ['q=x&q=y&limit=bad&regex=bad', 'Missing required query parameter: q'],
+        ['q=x&limit=5&limit=5&caseSensitive=bad', 'Invalid query parameter: limit'],
+        ['q=x&limit=&regex=bad', 'Invalid query parameter: limit'],
+        ['q=x&caseSensitive=false&caseSensitive=false&wholeWord=bad', 'Invalid query parameter: caseSensitive'],
+        ['q=x&wholeWord=&regex=bad', 'Invalid query parameter: wholeWord'],
+        ['q=x&regex=true&regex=true&fileScope=all', 'Invalid query parameter: regex'],
+        ['q=x&includeUntracked=false&includeUntracked=false', 'Invalid query parameter: includeUntracked'],
+        ['q=x&fileScope=tracked&fileScope=tracked', 'Invalid fileScope: expected "tracked"'],
+    ])('preserves content-search errors for %s', async (query, message) => {
+        const search = vi.spyOn(repoTreeService, 'searchContent');
+        const res = await request(`${baseUrl}/api/repo-groups/${groupId}/search/content?${query}`);
+        expect(res.status).toBe(400);
+        expect(JSON.parse(res.body).error).toBe(message);
+        expect(search).not.toHaveBeenCalled();
+    });
+
     it('rejects an invalid regex with 400 rather than a per-member failure', async () => {
         write(repoA, 'a.ts', 'needle\n');
         track(repoA);
