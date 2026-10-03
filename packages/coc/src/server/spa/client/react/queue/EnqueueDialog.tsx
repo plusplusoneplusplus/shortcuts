@@ -109,9 +109,7 @@ export function EnqueueDialog() {
     );
 
     // Workspace dropdown source: local workspaces (AppContext) plus remote-server
-    // workspaces surfaced by ReposContext. Remote rows only exist when
-    // features.remoteShell is on; otherwise `repos` holds locals only and this is
-    // a superset equal to appState.workspaces, so the classic flow is unchanged.
+    // workspaces surfaced by ReposContext.
     // Locals come from appState.workspaces (preserving the exact existing order and
     // any virtual entries); only the remote rows are appended, deduped by id.
     const allWorkspaces = useMemo<any[]>(() => {

@@ -30,10 +30,6 @@ vi.mock('../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator
 vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));
-// The virtual shell header only renders in the remote-first desktop shell.
-vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => true,
-}));
 // Pin the flags the dock toggle and the other virtual workspaces are gated on,
 // so AC-06's present/absent assertions do not depend on admin config defaults.
 vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({

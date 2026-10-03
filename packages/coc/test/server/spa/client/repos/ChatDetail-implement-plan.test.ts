@@ -99,10 +99,10 @@ describe('ChatDetail implement-plan handoff', () => {
         expect(block).toContain('repoId: targetWorkspaceId ?? workspaceId');
     });
 
-    it('builds implementTargets from the repos context, gated by remote-shell availability', () => {
+    it('builds implementTargets whenever the repos context is available', () => {
         expect(source).toContain("import { buildImplementTargets } from './implementTargets'");
         expect(source).toContain('const implementTargets = useMemo(');
-        expect(source).toMatch(/if\s*\(!isRemoteShellEnabled\(\)\s*\|\|\s*!reposCtx\)\s*return undefined/);
+        expect(source).toMatch(/if\s*\(!reposCtx\)\s*return undefined/);
     });
 
     it('resolves remote run status via the target-routed client', () => {

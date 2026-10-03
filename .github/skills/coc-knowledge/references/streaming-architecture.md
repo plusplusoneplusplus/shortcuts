@@ -167,7 +167,7 @@ layer and the WS upgrade path allow cross-origin access **from loopback origins 
   `isWebSocketOriginAllowed()` before dispatching `/ws` or `/ws/terminal`. A non-loopback
   `Origin` gets `403 Forbidden` and a destroyed socket; a missing `Origin` (non-browser client)
   is allowed.
-- Always-on for loopback origins, not gated by `features.remoteShell` (a client-side UI flag).
+- Always-on for loopback origins.
 
 ## Internal Architecture (single Node.js process)
 

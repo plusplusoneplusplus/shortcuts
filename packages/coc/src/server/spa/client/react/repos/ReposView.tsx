@@ -16,7 +16,6 @@ import { useMyWorkEnabled } from '../hooks/feature-flags/useMyWorkEnabled';
 import { useMyLifeEnabled } from '../hooks/feature-flags/useMyLifeEnabled';
 import { MobileScopeList } from './MobileScopeList';
 import { RepoDetail } from '../features/repo-detail/RepoDetail';
-import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { ContainerSessionView, CONTAINER_DEFAULT_REPO_ID } from '../features/container-session/ContainerSessionView';
 import { MyWorkView, MY_WORK_WORKSPACE_ID } from './MyWorkView';
 import { MyLifeView, MY_LIFE_WORKSPACE_ID } from './MyLifeView';
@@ -31,7 +30,6 @@ export function ReposView() {
     const { breakpoint } = useBreakpoint();
     const myWorkEnabled = useMyWorkEnabled();
     const myLifeEnabled = useMyLifeEnabled();
-    const remoteShell = useRemoteShellEnabled();
     const isMobile = breakpoint === 'mobile';
     const hasSelection = state.selectedRepoId !== null;
     const heightClass = isMobile
@@ -39,9 +37,7 @@ export function ReposView() {
             ? 'h-[calc(100dvh-40px)]'
             // 40px TopBar + 40px MobileScopeBar.
             : 'h-[calc(100dvh-40px-40px)]'
-        : remoteShell
-            ? 'h-[calc(100vh-40px)]'
-            : 'h-[calc(100vh-48px)]';
+        : 'h-[calc(100vh-40px)]';
 
     const handleBack = useCallback(() => {
         dispatch({ type: 'SET_SELECTED_REPO', id: null });
@@ -137,13 +133,9 @@ export function ReposView() {
                 // ── Tablet / Desktop: full-width content, repo selected via top-bar tabs ──
                 <main className="flex-1 min-w-0 min-h-0 flex flex-col bg-white dark:bg-[#1e1e1e] overflow-hidden">
                     {selectedRepo ? (
-                        remoteShell ? (
-                            // Remote-first shell: chromeless body — the header (remote chip +
-                            // clone tabs) lives in the global TopBar (RemoteShellHeader).
-                            <RepoDetail chromeless key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
-                        ) : (
-                            <RepoDetail key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
-                        )
+                        // Desktop uses a chromeless body because the remote chip and
+                        // clone tabs live in the global TopBar.
+                        <RepoDetail chromeless key={`${getRepoSelectionId(selectedRepo)}-${state.currentAgentId ?? ''}`} repo={selectedRepo} repos={repos} onRefresh={fetchRepos} />
                     ) : (
                         <div id="repo-detail-empty" data-testid="repo-detail-empty" className="flex-1 flex items-center justify-center text-sm text-[#848484]">
                             Select a repository to view details

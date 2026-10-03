@@ -34,9 +34,6 @@ async function startServer(): Promise<{
 }> {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-e2e-ws-'));
     const store = new FileProcessStore({ dataDir });
-    // Pin the classic shell (see e2e-server-config.ts): remoteShell moves the
-    // ws-status-indicator into the sidebar footer, so the flags must stay off
-    // for this spec's own server the same way the shared fixture does.
     const configPath = path.join(dataDir, 'config.yaml');
     fs.writeFileSync(configPath, E2E_SERVER_CONFIG_YAML);
     const server = await createExecutionServer({
@@ -527,4 +524,3 @@ test.describe('Section 10: Workspace-Scoped Events Do Not Leak', () => {
         }
     });
 });
-

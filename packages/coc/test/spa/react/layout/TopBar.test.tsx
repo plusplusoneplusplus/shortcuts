@@ -48,8 +48,14 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
     useQueue: () => ({ state: { repoQueueMap: {}, queued: [], running: [], history: [] }, dispatch: vi.fn() }),
 }));
 
+let mockIsMobile = false;
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
-    useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
+    useBreakpoint: () => ({
+        breakpoint: mockIsMobile ? 'mobile' : 'desktop',
+        isMobile: mockIsMobile,
+        isTablet: false,
+        isDesktop: !mockIsMobile,
+    }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({
@@ -71,6 +77,7 @@ describe('TopBar responsive behavior', () => {
 
     beforeEach(() => {
         mockDispatch.mockClear();
+        mockIsMobile = false;
         mockMyWorkEnabled = false;
         mockMyLifeEnabled = false;
     });
@@ -135,18 +142,21 @@ describe('TopBar responsive behavior', () => {
     });
 
     it('admin link is always present', () => {
+        mockIsMobile = true;
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
         expect(document.getElementById('admin-toggle')).toBeTruthy();
     });
 
     it('WS status indicator is always present', () => {
+        mockIsMobile = true;
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
         expect(screen.getByTestId('ws-status-indicator')).toBeTruthy();
     });
 
     it('theme toggle is always present', () => {
+        mockIsMobile = true;
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
         expect(document.getElementById('theme-toggle')).toBeTruthy();
@@ -168,6 +178,7 @@ describe('TopBar responsive behavior', () => {
     });
 
     it('admin button does NOT have hidden class (always visible)', () => {
+        mockIsMobile = true;
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
         const btn = document.getElementById('admin-toggle')!;
@@ -285,7 +296,7 @@ describe('TopBar compact header row', () => {
         mockMyLifeEnabled = true;
         viewportCleanup = mockViewport(1024);
         render(<TopBar />);
-        for (const id of ['hamburger-btn', 'admin-toggle', 'theme-toggle', 'my-work-toggle', 'my-life-toggle']) {
+        for (const id of ['hamburger-btn', 'my-work-toggle', 'my-life-toggle']) {
             const btn = document.getElementById(id)!;
             expect(btn.className, `${id} should be h-7 w-7`).toContain('h-7 w-7');
             expect(btn.className, `${id} should drop md:h-8`).not.toContain('md:h-8');
@@ -294,6 +305,7 @@ describe('TopBar compact header row', () => {
     });
 
     it('interactive icon buttons keep their touch-target class after shrinking', () => {
+        mockIsMobile = true;
         viewportCleanup = mockViewport(375);
         render(<TopBar />);
         for (const id of ['hamburger-btn', 'admin-toggle', 'theme-toggle']) {

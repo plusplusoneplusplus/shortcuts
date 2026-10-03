@@ -10,7 +10,7 @@ import { buildRuntimeFeatureFlags } from '../../src/config/admin-setting-definit
 import { E2E_SERVER_CONFIG_YAML } from '../e2e/fixtures/e2e-server-config';
 
 describe('E2E server boot config', () => {
-    it('resolves the classic-shell layout the Playwright suite targets', () => {
+    it('resolves the UI overrides the Playwright suite targets', () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-cfg-'));
         const configPath = path.join(dir, 'config.yaml');
         try {
@@ -18,8 +18,8 @@ describe('E2E server boot config', () => {
             const resolved = resolveConfig(configPath);
             const runtime = buildRuntimeFeatures(resolved);
 
-            // The per-clone header remains selected; Workspace always uses the split.
-            expect(runtime.remoteShellEnabled).toBe(false);
+            // Graduated layout settings never enter the runtime payload.
+            expect(runtime).not.toHaveProperty('remoteShellEnabled');
             expect(runtime).not.toHaveProperty('splitWorkspacePanelEnabled');
 
             // The scope slide switcher replaces the My Work / My Life toggles and

@@ -16,9 +16,6 @@
  * Removal is unregister-only: the checkout on disk is left in place, which the
  * first test asserts explicitly.
  *
- * The default E2E config pins `features.remoteShell` off (the classic shell has
- * no remotes picker at all), so these specs force the remote-first shell on by
- * overriding GET /api/config/runtime — same approach as notes-status-dock.spec.ts.
  */
 
 import * as fs from 'fs';
@@ -27,29 +24,6 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { test, expect, safeRmSync, type Page } from './fixtures/server-fixture';
 import { seedWorkspace, seedQueueTask, request } from './fixtures/seed';
-
-/**
- * Force the remote-first shell on regardless of the E2E server's pinned-off
- * config by merging `remoteShellEnabled: true` into GET /api/config/runtime.
- * The App renders only after `loadRuntimeConfig()` resolves, so the flag is in
- * effect on the very first render.
- */
-async function enableRemoteShell(page: Page): Promise<void> {
-    await page.route('**/api/config/runtime', async (route) => {
-        try {
-            const resp = await route.fetch();
-            const json = await resp.json();
-            const features = { ...(json.features ?? {}), remoteShellEnabled: true };
-            await route.fulfill({
-                status: resp.status(),
-                headers: { ...resp.headers(), 'content-type': 'application/json' },
-                body: JSON.stringify({ ...json, features }),
-            });
-        } catch {
-            await route.continue().catch(() => {});
-        }
-    });
-}
 
 /**
  * Create a git checkout with a fixed `origin` URL. The URL is never fetched —
@@ -110,7 +84,6 @@ test.describe('Remove from CoC — remotes picker row menu', () => {
             await seedWorkspace(serverUrl, 'e2e-rm-keeper', 'Keeper Repo', keepDir);
             await seedWorkspace(serverUrl, 'e2e-rm-solo', 'Solo Repo', soloDir);
 
-            await enableRemoteShell(page);
             await page.goto(serverUrl);
 
             await openDropdownFiltered(page, 'Solo Repo');
@@ -165,7 +138,6 @@ test.describe('Remove from CoC — remotes picker row menu', () => {
             await seedWorkspace(serverUrl, 'e2e-rm-shared-a', 'Shared Clone A', cloneA);
             await seedWorkspace(serverUrl, 'e2e-rm-shared-b', 'Shared Clone B', cloneB);
 
-            await enableRemoteShell(page);
             await page.goto(serverUrl);
 
             await openDropdownFiltered(page, 'Shared Clone');
@@ -217,7 +189,6 @@ test.describe('Remove from CoC — active-work warning (AC-03)', () => {
                 .poll(() => taskStatus(serverUrl, String(second.id)), { timeout: 20_000 })
                 .toBe('queued');
 
-            await enableRemoteShell(page);
             // The repo's queue lands in the SPA's repoQueueMap when its detail
             // page loads (or over the websocket), so open the repo first — this
             // is also the real flow: you remove a repo you were just working in.

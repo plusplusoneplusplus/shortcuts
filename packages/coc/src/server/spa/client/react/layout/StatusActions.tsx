@@ -17,11 +17,9 @@
  *     The bell/quota popovers open upward (`placement="up"`) since the dock
  *     sits at the bottom edge of the viewport.
  *
- * The sidebar variant uses distinct `data-testid`s and drops the `id`
- * attributes so it never collides with the topbar cluster when both happen to
- * be mounted (the topbar cluster is only rendered when the sidebar footer is
- * absent, but the split panel keeps its footer mounted-but-hidden on other
- * sub-tabs).
+ * The sidebar variant uses distinct `data-testid`s while preserving the stable
+ * Admin and Theme IDs used by navigation and automation. Breakpoint and view
+ * gates ensure only one status cluster is mounted at a time.
  */
 
 import { useState } from 'react';
@@ -97,6 +95,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
             >
                 <span className="flex items-center gap-1 flex-shrink-0">
                     <button
+                        id="admin-toggle"
                         data-tab="admin"
                         className={
                             `h-7 w-7 inline-flex items-center justify-center rounded touch-target text-base leading-none ` +
@@ -121,6 +120,7 @@ export function StatusActions({ variant = 'topbar', onAdminOpen }: StatusActions
                         &#128295;
                     </button>
                     <button
+                        id="theme-toggle"
                         className="h-7 w-7 inline-flex items-center justify-center rounded hover:bg-black/[0.05] dark:hover:bg-white/[0.08] touch-target text-base leading-none"
                         aria-label="Toggle theme"
                         data-testid="sidebar-theme-toggle"

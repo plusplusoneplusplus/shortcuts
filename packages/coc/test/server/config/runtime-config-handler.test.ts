@@ -776,12 +776,14 @@ describe('AC-08: live-classified route registration', () => {
 
 
 describe('graduated layout settings', () => {
-    it('accepts a saved split-panel false value without publishing a runtime switch', () => {
+    it('accepts saved false values without publishing retired runtime switches', () => {
         const saved = CLIConfigSchema.parse({ features: { splitWorkspacePanel: false, remoteShell: false } });
         expect(saved.features).toMatchObject({ splitWorkspacePanel: false, remoteShell: false });
         expect(buildRuntimeFeatureFlags(saved)).not.toHaveProperty('splitWorkspacePanelEnabled');
+        expect(buildRuntimeFeatureFlags(saved)).not.toHaveProperty('remoteShellEnabled');
         const svc = createMockRuntimeConfigService({ features: { ...DEFAULT_CONFIG.features, ...saved.features } });
-        expect(buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features)
-            .not.toHaveProperty('splitWorkspacePanelEnabled');
+        const runtime = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features;
+        expect(runtime).not.toHaveProperty('splitWorkspacePanelEnabled');
+        expect(runtime).not.toHaveProperty('remoteShellEnabled');
     });
 });

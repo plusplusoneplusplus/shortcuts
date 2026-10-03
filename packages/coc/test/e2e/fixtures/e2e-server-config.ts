@@ -7,8 +7,6 @@
  *
  * - `showPlanDepTab: true` — many specs navigate the deprecated Plans/Tasks
  *   sub-tab, which is gated off by default.
- * - `features.remoteShell: false` keeps the per-clone desktop header for
- *   suites that exercise it. The Workspace split is always present.
  * - `features.scopeSwitcher` also ships default-on; it swaps the My Work / My
  *   Life toggles and the workspace identity chip for a sliding segmented switcher
  *   in the remote-first header. Pin it off so the header stays what the specs target.
@@ -27,4 +25,4 @@
  *   Pin it off so the suite exercises the model-picker UI it targets.
  */
 export const E2E_SERVER_CONFIG_YAML =
-    'showPlanDepTab: true\nfeatures:\n  remoteShell: false\n  scopeSwitcher: false\n  commitChatLens: false\neffortLevels:\n  enabled: false\n';
+    'showPlanDepTab: true\nfeatures:\n  scopeSwitcher: false\n  commitChatLens: false\neffortLevels:\n  enabled: false\n';

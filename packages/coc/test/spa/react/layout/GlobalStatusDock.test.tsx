@@ -2,9 +2,8 @@
  * GlobalStatusDock — the app-wide bottom status bar for the remote-first shell.
  *
  * It renders the shared `StatusActions` sidebar variant across tabs, but only in
- * the remote-first shell on desktop, and only as wide as the left sidebar
- * column. Off (classic mode) or on mobile it renders nothing (topbar keeps the
- * cluster). It also renders nothing on views that dock the cluster in their own
+ * the desktop shell, and only as wide as the left sidebar column. On mobile it
+ * renders nothing (topbar keeps the cluster). It also renders nothing on views that dock the cluster in their own
  * left-column footer: the workspace chat/activity sub-tab, the workspace notes
  * sub-tab, the workspace settings sub-tab, and the workspace notes-git sub-tab.
  * My Work docks per-sub-tab like a regular repo, so those same sub-tab
@@ -16,16 +15,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-let mockRemoteShell = true;
 let mockIsMobile = false;
 let mockAppState: Record<string, unknown> = {};
 let lastStatusActionsProps: Record<string, unknown> | null = null;
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({ state: mockAppState, dispatch: vi.fn() }),
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShell,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: mockIsMobile ? 'mobile' : 'desktop', isMobile: mockIsMobile, isTablet: false, isDesktop: !mockIsMobile }),
@@ -40,7 +35,6 @@ vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
 import { GlobalStatusDock } from '../../../../src/server/spa/client/react/layout/GlobalStatusDock';
 
 beforeEach(() => {
-    mockRemoteShell = true;
     mockIsMobile = false;
     // A non-chat context by default, so the global dock renders.
     mockAppState = { activeTab: 'wiki', selectedRepoId: null, activeRepoSubTab: undefined };
@@ -48,7 +42,7 @@ beforeEach(() => {
 });
 
 describe('GlobalStatusDock', () => {
-    it('renders the sidebar StatusActions variant when the remote shell is on (desktop)', () => {
+    it('renders the sidebar StatusActions variant on desktop', () => {
         render(<GlobalStatusDock />);
         const dock = screen.getByTestId('status-actions');
         expect(dock).toBeTruthy();
@@ -187,13 +181,6 @@ describe('GlobalStatusDock', () => {
         const onAdminOpen = vi.fn();
         render(<GlobalStatusDock onAdminOpen={onAdminOpen} />);
         expect(lastStatusActionsProps?.onAdminOpen).toBe(onAdminOpen);
-    });
-
-    it('renders nothing when the remote shell is off (classic mode keeps the topbar cluster)', () => {
-        mockRemoteShell = false;
-        const { container } = render(<GlobalStatusDock />);
-        expect(screen.queryByTestId('status-actions')).toBeNull();
-        expect(container.firstChild).toBeNull();
     });
 
     it('renders nothing on mobile (no room for a bottom status bar)', () => {

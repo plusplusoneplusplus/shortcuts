@@ -101,15 +101,15 @@ describe('StatusActions — topbar variant', () => {
 });
 
 describe('StatusActions — sidebar variant', () => {
-    it('renders a docked footer with distinct testids that never collide with the topbar cluster', () => {
+    it('renders a docked footer with stable action IDs and distinct dock testids', () => {
         render(<StatusActions variant="sidebar" />);
         expect(screen.getByTestId('sidebar-status-actions')).toBeTruthy();
         expect(screen.getByTestId('sidebar-ws-status-indicator')).toBeTruthy();
         expect(screen.getByTestId('sidebar-ws-status-label').textContent).toBe('Connected');
-        // The sidebar footer must NOT reuse the topbar ids/testids so the two can
-        // coexist in the DOM without duplicate ids.
-        expect(document.getElementById('admin-toggle')).toBeNull();
-        expect(document.getElementById('theme-toggle')).toBeNull();
+        // Keep the stable selectors used by navigation and automation after the
+        // desktop actions move from the topbar into the dock.
+        expect(document.getElementById('admin-toggle')).toBeTruthy();
+        expect(document.getElementById('theme-toggle')).toBeTruthy();
         expect(screen.queryByTestId('ws-status-indicator')).toBeNull();
         expect(screen.getByTestId('sidebar-admin-toggle')).toBeTruthy();
         expect(screen.getByTestId('sidebar-theme-toggle')).toBeTruthy();

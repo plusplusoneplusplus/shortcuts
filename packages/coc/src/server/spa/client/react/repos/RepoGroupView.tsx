@@ -26,7 +26,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NotesView } from '../features/notes/NotesView';
 import { RepoChatTab } from '../features/chat/RepoChatTab';
 import { SplitWorkspacePanel } from '../features/repo-detail/SplitWorkspacePanel';
-import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { UnifiedRightPanel } from '../features/repo-detail/unified-right-panel/UnifiedRightPanel';
 import { ContentSearchOverlayHost } from '../features/repo-detail/content-search/ContentSearchOverlayHost';
 import type { ContentSearchOverlayMatch } from '../features/repo-detail/content-search/ContentSearchOverlay';
@@ -122,10 +121,9 @@ export function RepoGroupView({ workspaceId, selectionId = workspaceId }: RepoGr
     const { running: queueRunningCount, queued: queueQueuedCount } = useRepoQueueStats(workspaceId);
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
-    const remoteShell = useRemoteShellEnabled();
     // In the remote-first desktop shell the header lives in the global TopBar
     // (`VirtualWorkspaceShellHeader`); render the in-body header everywhere else.
-    const headerInTopBar = remoteShell && !isMobile;
+    const headerInTopBar = !isMobile;
 
     // Group name comes from the registered workspace — the local list for a local
     // group, the aggregated remote groups for one that lives on a remote server.

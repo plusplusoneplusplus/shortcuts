@@ -112,7 +112,6 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', async (importOri
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
     isCanvasEnabled: () => true,
-    isRemoteShellEnabled: () => false,
     isQuickAskSidenotesEnabled: () => false,
     isChatProviderSwitchingEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',

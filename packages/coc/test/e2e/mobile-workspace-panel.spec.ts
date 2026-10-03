@@ -9,9 +9,7 @@
  * list at a time (the other kept alive with `display:none`), and pushes the
  * shared detail full-screen with a back control.
  *
- * The E2E server pins `features.splitWorkspacePanel: false` (see
- * fixtures/e2e-server-config.ts — the rest of the suite targets the classic
- * shell), so every test here flips it back on through the live admin API.
+ * The shared E2E server uses the same always-split Workspace layout.
  */
 
 import * as fs from 'fs';

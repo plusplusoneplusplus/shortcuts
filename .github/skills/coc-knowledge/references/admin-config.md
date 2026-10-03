@@ -76,7 +76,7 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 
 **Dreams:** `dreams.enabled` is the global gate and each workspace must also opt in via `PerRepoPreferences.dreams.enabled`. Admin -> Knowledge -> Dreams renders `dreams.enabled`, the restart-required `dreams.idleCheckIntervalMs`, and idle-run defaults `dreams.provider`/`dreams.model`/`dreams.timeoutMs` (interval and timeout entered in minutes, persisted as milliseconds). Config-file-only knobs: `dreams.minIdleMs`, `dreams.confidenceThreshold`, `dreams.maxCandidates`, `dreams.conversationLimit`.
 
-**`features.*` flags.** Bootstrap-conservative `absentFallback` makes partial configs read some of the on-by-default ones (e.g. `remoteShell`, `chatStyleSelector`) as off. Flags without `absentFallback` resolve an absent key to their `default`, so a fresh install gets them on.
+**`features.*` flags.** Bootstrap-conservative `absentFallback` makes partial configs read some on-by-default flags such as `chatStyleSelector` as off. Flags without `absentFallback` resolve an absent key to their `default`, so a fresh install gets them on.
 
 | Flag | Default | Gates |
 |------|---------|-------|
@@ -85,13 +85,12 @@ Hand-written namespace descriptors remain only for genuinely structural sections
 | `quickAskSidenotes` | on | Quick Ask side-note endpoints (per-process one-shot AI lookups on assistant turns); SPA rendering also needs the compile-time `QUICK_ASK_SIDENOTES` flag |
 | `commitChatLens` | on | Desktop review-chat lens on commit and PR chat surfaces |
 | `commitChatLensDormantMode` | `'ghost'` | Enum `'ghost'` \| `'pill'` — how the lens recedes on pointer-out |
-| `remoteShell` | on | Remote-first dashboard shell (desktop-only) |
-| `scopeSwitcher` | on | Needs `remoteShell`; one segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
+| `scopeSwitcher` | on | One segmented scope switcher replacing the My Work / My Life toggles and workspace chip |
 | `pinnedScopes` | on | Needs `scopeSwitcher`; pinned repo / repo-group segments in the scope switcher, persisted as the global `pinnedScopes` preference |
 | `markdownPanelPreview` | off | Rendered Markdown preview in unified right-panel file tabs; other file viewers stay unchanged |
 | `htmlPageTab` | on | Desktop only: local `.html`/`.htm` chat links open as a rendered page tab (Electron `WebContentsView`) in the right panel; off, web SPA, remote workspaces, or missing files use the source viewer |
 | `chatFolders` | off | User-created chat folders in the chat list (tree section, drag/context-menu filing); gates UI only — the `/chat-folders` routes and the schema-29 migration ship regardless |
-| `singleRowShell` | off | Needs `remoteShell`; moves shell controls plus `+ New` into the global header |
+| `singleRowShell` | off | Moves shell controls plus `+ New` into the global header |
 | `ralphMultiAgentGrill` | off | Ralph grill question-planning card, separate grill-agent calls, dedupe/provenance metadata |
 | `nativeCliSessions` | off | Read-only CLI Sessions surface over native Copilot/Codex/Claude stores |
 | `teamsBridgeObservability` | off | Normal Teams channel-bridge connection history collection and inspection, independent of the container relay |
