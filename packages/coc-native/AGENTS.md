@@ -85,6 +85,8 @@ commit as artifacts.
 
 Core `repo_files::tracked_content_candidates` prepares bounded `ls-files` commands, parses NUL-separated paths, and narrows host literals with Git grep plus staged symlinks. Its supplied-output path parses WSL results without running host Git, including empty outputs; `rust/core/tests/repo_files_candidates.rs` covers selection against real Git and composition with the content matcher.
 
+`repo_files::resolve_in_root` strips leading `/` and `\`, folds `.`/`..` lexically and requires the root's components as a prefix. On Windows a drive prefix replaces the root, so a same-drive `C:x` is rejected where Node's `path.resolve` read it against the root; drive letters compare case-insensitively, directory names case-sensitively. `rust/core/tests/repo_files_blob.rs` (`windows_paths`) and the win32-only `test/repo-files-windows-paths.test.ts`, which diffs blob and listing calls against the old Node guard, pin this.
+
 **Required, not optional, with no opt-out.** A binary that is missing, will not load, or lacks the capability a newer server expects is a hard failure: `loadNativeAddon()` and each `loadNative<X>()` throw `NativeAddonLoadError`, naming the expected triple, every path tried and the fix. Failing at first use beats silently serving a slower, subtly different implementation for the life of the process. No environment variable turns the addon off; `COC_NATIVE_PATH` only says *which* binary to load.
 
 The `*Status()` accessors never throw, because `/api/health` reports them and has to be able to describe a failed load rather than become one.

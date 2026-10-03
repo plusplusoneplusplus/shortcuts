@@ -191,3 +191,84 @@ fn symlinks_inside_the_root_are_followed() {
     std::os::unix::fs::symlink("target.md", dir.path().join("link.md")).unwrap();
     assert_eq!(read_blob(dir.path(), "link.md").unwrap().content, "# hi");
 }
+
+/// Windows spellings, checked against what the removed TypeScript guard
+/// (`path.resolve(root, stripped)` then `startsWith(root + sep)`) returned
+/// for the same root. Containment is lexical, so the roots need not exist.
+#[cfg(windows)]
+mod windows_paths {
+    use std::path::{Path, PathBuf};
+
+    use coc_native_core::repo_files::{resolve_in_root, RepoFilesError};
+
+    const ROOT: &str = r"C:\work\repo";
+    const UNC_ROOT: &str = r"\\server\share\repo";
+
+    fn resolve(root: &str, relative: &str) -> PathBuf {
+        resolve_in_root(Path::new(root), relative).unwrap_or_else(|e| panic!("{relative}: {e}"))
+    }
+
+    fn assert_rejected(root: &str, spellings: &[&str]) {
+        for spelling in spellings {
+            let err = resolve_in_root(Path::new(root), spelling).unwrap_err();
+            assert!(matches!(err, RepoFilesError::PathTraversal), "{spelling}");
+            assert_eq!(err.to_string(), "Path traversal detected: path escapes repo root");
+        }
+    }
+
+    #[test]
+    fn drive_absolute_paths_are_contained_lexically() {
+        let a_ts = Path::new(r"C:\work\repo\src\a.ts");
+        assert_eq!(resolve(ROOT, r"C:\work\repo\src\a.ts"), a_ts);
+        assert_eq!(resolve(ROOT, "C:/work/repo/src/a.ts"), a_ts);
+        assert_eq!(resolve(ROOT, r"C:\work\repo"), Path::new(ROOT));
+        assert_rejected(
+            ROOT,
+            &[r"C:\work\other\a.ts", r"C:\work\repo-evil\a.ts", r"D:\work\repo\a.ts", "/C:/work"],
+        );
+        // Directory names compare case-sensitively, as `startsWith` did.
+        assert_rejected(ROOT, &[r"C:\WORK\REPO\src\a.ts"]);
+        // The drive letter does not: std folds `c:` to `C:`, so this spelling
+        // of the same file is accepted where `startsWith` refused it.
+        assert_eq!(resolve(ROOT, r"c:\work\repo\src\a.ts"), a_ts);
+    }
+
+    #[test]
+    fn drive_relative_paths_are_rejected() {
+        // `path.resolve` read a same-drive `C:src` against the root; std lets
+        // any drive prefix replace the root, so it lands outside. This is
+        // stricter than before, never looser.
+        assert_rejected(ROOT, &[r"C:src\a.ts", "C:", r"C:..\repo\a.ts", "D:a.ts", "D:"]);
+    }
+
+    #[test]
+    fn unc_spellings_and_unc_roots() {
+        // Leading `\\` is stripped like any separator, so a UNC-looking
+        // request names a directory inside the root.
+        let nested = Path::new(r"C:\work\repo\server\share\a.ts");
+        assert_eq!(resolve(ROOT, r"\\server\share\a.ts"), nested);
+        assert_eq!(resolve(ROOT, "//server/share/a.ts"), nested);
+
+        assert_eq!(resolve(UNC_ROOT, r"src\a.ts"), Path::new(r"\\server\share\repo\src\a.ts"));
+        assert_eq!(resolve(UNC_ROOT, r"..\repo\a.ts"), Path::new(r"\\server\share\repo\a.ts"));
+        assert_eq!(
+            resolve(UNC_ROOT, r"\\server\share\x"),
+            Path::new(r"\\server\share\repo\server\share\x")
+        );
+        // `..` stops at the share root, which is still outside the repo.
+        assert_rejected(UNC_ROOT, &[r"..\other", r"..\..\..\x", r"C:\x", "C:x"]);
+    }
+
+    #[test]
+    fn backslashes_and_mixed_separators_fold_like_path_resolve() {
+        let a_ts = Path::new(r"C:\work\repo\src\a.ts");
+        for spelling in [r"src\a.ts", r"\src\a.ts", r"src/nested\..\a.ts", r"..\repo\src\a.ts"] {
+            assert_eq!(resolve(ROOT, spelling), a_ts, "{spelling}");
+        }
+        assert_eq!(resolve(ROOT, r"src\.."), Path::new(ROOT));
+        assert_rejected(
+            ROOT,
+            &["..", r"..\x", r"src\..\..\x", r"src\../..\x", r"\..\x", r"..\repo-evil\a.ts"],
+        );
+    }
+}
