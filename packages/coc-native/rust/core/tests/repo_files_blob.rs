@@ -94,6 +94,82 @@ fn mime_follows_node_extname() {
 }
 
 #[test]
+fn every_supported_extension_keeps_its_mime() {
+    // The public blob contract, independent of the production alias grouping.
+    let expected = [
+        ("js", "application/javascript"),
+        ("mjs", "application/javascript"),
+        ("cjs", "application/javascript"),
+        ("ts", "application/typescript"),
+        ("tsx", "application/typescript"),
+        ("jsx", "application/javascript"),
+        ("json", "application/json"),
+        ("html", "text/html"),
+        ("htm", "text/html"),
+        ("css", "text/css"),
+        ("md", "text/markdown"),
+        ("markdown", "text/markdown"),
+        ("txt", "text/plain"),
+        ("xml", "application/xml"),
+        ("yaml", "application/x-yaml"),
+        ("yml", "application/x-yaml"),
+        ("toml", "application/toml"),
+        ("sh", "application/x-sh"),
+        ("bash", "application/x-sh"),
+        ("py", "text/x-python"),
+        ("rb", "text/x-ruby"),
+        ("go", "text/x-go"),
+        ("rs", "text/x-rust"),
+        ("java", "text/x-java"),
+        ("c", "text/x-c"),
+        ("cpp", "text/x-c++"),
+        ("h", "text/x-c"),
+        ("hpp", "text/x-c++"),
+        ("cs", "text/x-csharp"),
+        ("swift", "text/x-swift"),
+        ("kt", "text/x-kotlin"),
+        ("scala", "text/x-scala"),
+        ("php", "text/x-php"),
+        ("sql", "application/sql"),
+        ("graphql", "application/graphql"),
+        ("svg", "image/svg+xml"),
+        ("png", "image/png"),
+        ("jpg", "image/jpeg"),
+        ("jpeg", "image/jpeg"),
+        ("gif", "image/gif"),
+        ("webp", "image/webp"),
+        ("ico", "image/x-icon"),
+        ("pdf", "application/pdf"),
+        ("zip", "application/zip"),
+        ("gz", "application/gzip"),
+        ("tar", "application/x-tar"),
+        ("wasm", "application/wasm"),
+        ("woff", "font/woff"),
+        ("woff2", "font/woff2"),
+        ("ttf", "font/ttf"),
+        ("eot", "application/vnd.ms-fontobject"),
+        ("env", "text/plain"),
+        ("log", "text/plain"),
+        ("csv", "text/csv"),
+        ("lock", "text/plain"),
+    ];
+    for (extension, expected) in expected {
+        for spelling in [extension.to_owned(), extension.to_uppercase()] {
+            for name in [
+                format!("file.{spelling}"),
+                format!(".hidden.{spelling}"),
+                format!("file.other.{spelling}"),
+            ] {
+                assert_eq!(mime_type(Path::new(&name)), expected, "{name}");
+            }
+        }
+    }
+    for name in ["file.unknown", "file.ts.other", "file.js.", ".js", "js"] {
+        assert_eq!(mime_type(Path::new(name)), "application/octet-stream", "{name}");
+    }
+}
+
+#[test]
 fn write_creates_parents_and_overwrites() {
     let dir = repo();
     write_blob(dir.path(), "/deep/new/a.txt", "héllo").unwrap();

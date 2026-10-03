@@ -40,6 +40,41 @@ describe('RepoFiles blobs', () => {
         });
     });
 
+    it('returns the same MIME shape for extension aliases and dotfiles', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-mime-'));
+        const files = addon.openRepoFiles(dir);
+        const groups = [
+            ['application/javascript', ['js', 'mjs', 'cjs', 'jsx']],
+            ['application/typescript', ['ts', 'tsx']],
+            ['text/plain', ['txt', 'env', 'log', 'lock']],
+            ['text/csv', ['csv']],
+            ['text/html', ['html', 'htm']],
+            ['text/markdown', ['md', 'markdown']],
+            ['application/x-yaml', ['yaml', 'yml']],
+            ['application/x-sh', ['sh', 'bash']],
+            ['text/x-c', ['c', 'h']],
+            ['text/x-c++', ['cpp', 'hpp']],
+            ['image/jpeg', ['jpg', 'jpeg']],
+            ['application/octet-stream', ['unknown']],
+        ] as const;
+        try {
+            for (const [mimeType, extensions] of groups) {
+                for (const extension of extensions) {
+                    const name = `.hidden.other.${extension.toUpperCase()}`;
+                    fs.writeFileSync(path.join(dir, name), 'héllo');
+                    await expect(files.readBlob(name)).resolves.toEqual({
+                        content: 'héllo', encoding: 'utf-8', mimeType,
+                    });
+                }
+            }
+            fs.writeFileSync(path.join(dir, '.env'), 'x');
+            await expect(files.readBlob('.env')).resolves.toMatchObject({ mimeType: 'application/octet-stream' });
+        } finally {
+            files.dispose();
+            removeDir(dir);
+        }
+    });
+
     it('writes through missing parents', async () => {
         const files = addon.openRepoFiles(root);
         await files.writeBlob('new/dir/c.txt', 'x\r\ny');
