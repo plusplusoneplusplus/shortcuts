@@ -4,7 +4,7 @@
  * Shows the unified diff for the full commit (commit-overview mode).
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useId } from 'react';
 import { copyToClipboard } from '../../../utils/format';
 import { useCachedDiff } from '../hooks/useCommitDiffCache';
 import { Spinner, Button } from '../../../ui';
@@ -38,6 +38,7 @@ import { usePrReviewProgress } from '../diff/usePrReviewProgress';
 import { pickPriorityFile } from '../diff/prPopoutPriority';
 import type { ClassificationKey } from '../diff/diffSource';
 import type { HunkCategory } from '../../pull-requests/classification-types';
+import { CommitDetailIcon } from './CommitDetailIcon';
 import { HUNK_CATEGORIES, CATEGORY_LABELS } from '../../pull-requests/classification-types';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import type { AnyComment } from '../../../../comments/shared-comment-types';
@@ -90,6 +91,9 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
     const [hashCopied, setHashCopied] = useState(false);
     const [viewMode, setViewMode] = useDiffViewMode();
     const [headerCollapsed, setHeaderCollapsed] = useState(false);
+    const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+    const aiSettingsId = useId();
+    const headerId = useId();
 
     const diffUrl = hash
         ? getCocClientForWorkspace(workspaceId).git.commitDiffPath(workspaceId, hash)
@@ -255,7 +259,9 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
     // Reset collapse state on commit change
     useEffect(() => {
         setHeaderCollapsed(false);
-    }, [hash]);
+        setAiSettingsOpen(false);
+        setHashCopied(false);
+    }, [workspaceId, hash]);
 
     // Auto-collapse on scroll
     useEffect(() => {
@@ -297,83 +303,102 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
 
     return (
         <div className="commit-detail flex flex-col h-full overflow-hidden" data-testid="commit-detail">
-            {/* Commit info header */}
+            {/* Keep the title and SHA available when metadata collapses. */}
             {commit && (
                 <>
-                    {/* Summary bar — visible when collapsed */}
                     {headerCollapsed && (
-                        <div
-                            data-testid="commit-info-summary"
-                            className="flex items-center gap-2 px-4 py-1.5 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] cursor-pointer"
-                            onClick={handleToggleHeader}
-                        >
-                            <span className="text-[10px] text-[#848484]">▶</span>
-                            <span className="text-[11px] text-[#1e1e1e] dark:text-[#ccc] truncate flex-1">{commit.subject}</span>
-                            <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400">{commit.hash.slice(0, 7)}</span>
+                        <div className="flex items-center gap-2 px-4 py-2 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-white dark:bg-[#252526]">
+                            <button
+                                type="button"
+                                data-testid="commit-info-summary"
+                                className="flex flex-1 min-w-0 items-center gap-2 text-left text-xs text-[#1e1e1e] dark:text-[#ccc] rounded focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                                onClick={handleToggleHeader}
+                                aria-expanded={false}
+                                aria-controls={headerId}
+                                title="Show commit details"
+                            >
+                                <CommitDetailIcon name="down" />
+                                <span className="truncate">{commit.subject}</span>
+                                <span className="sr-only">{commit.hash.slice(0, 8)}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCopyHash}
+                                className="inline-flex shrink-0 items-center gap-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] px-2 py-1 font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                                title={hashCopied ? 'Copied!' : 'Copy commit hash'}
+                                aria-label={hashCopied ? 'Copied!' : 'Copy commit hash'}
+                                data-testid="commit-summary-copy-hash"
+                            >
+                                {commit.hash.slice(0, 8)}
+                                <CommitDetailIcon name={hashCopied ? 'check' : 'copy'} />
+                            </button>
                         </div>
                     )}
-                    {/* Full header — collapsible */}
                     <div
-                        style={{
-                            maxHeight: headerCollapsed ? 0 : 600,
-                            opacity: headerCollapsed ? 0 : 1,
-                            overflow: headerCollapsed ? 'hidden' : 'auto',
-                            transition: 'max-height 180ms ease-in-out, opacity 180ms ease-in-out',
-                        }}
+                        id={headerId}
+                        hidden={headerCollapsed}
+                        style={{ maxHeight: 600, overflow: 'auto' }}
                     >
-                        <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526] relative" data-testid="commit-info-header">
-                            <button
-                                data-testid="commit-info-collapse-btn"
-                                onClick={handleToggleHeader}
-                                className="absolute top-2 right-2 text-[10px] text-[#848484] px-1 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                                title="Collapse"
-                            >▼</button>
-                            <div className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] mb-1.5 break-words" data-testid="commit-info-subject">
-                                {commit.subject}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[#616161] dark:text-[#999]" data-testid="commit-info-meta-row">
-                                <div data-testid="commit-info-author">
-                                    <span className="font-semibold text-[#1e1e1e] dark:text-[#ccc]">{commit.author}</span>
-                                    {commit.authorEmail && <span className="ml-1">&lt;{commit.authorEmail}&gt;</span>}
+                        <div className="px-4 py-3 bg-white dark:bg-[#252526]" data-testid="commit-info-header">
+                            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2" data-testid="commit-info-title-row">
+                                <div className="min-w-0 flex-1 text-base font-semibold leading-snug text-[#1e1e1e] dark:text-[#ddd] break-words" data-testid="commit-info-subject">
+                                    {commit.subject}
                                 </div>
-                                <div className="whitespace-nowrap" data-testid="commit-info-date">{formattedDate}</div>
-                                <div className="flex items-center gap-1 whitespace-nowrap" data-testid="commit-info-hash">
-                                    <span className="font-mono text-[#0078d4] dark:text-[#3794ff]">{commit.hash.substring(0, 8)}</span>
+                                <div className="flex shrink-0 items-center gap-1">
                                     <button
+                                        type="button"
                                         onClick={handleCopyHash}
-                                        className="text-[10px] px-1.5 py-0 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-[#616161] dark:text-[#999]"
+                                        className="inline-flex items-center gap-2 rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f7f8fa] dark:bg-[#2d2d30] px-2 py-1 font-mono text-[11px] text-[#0078d4] dark:text-[#3794ff] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                                        title={hashCopied ? 'Copied!' : 'Copy commit hash'}
+                                        aria-label={hashCopied ? 'Copied!' : 'Copy commit hash'}
                                         data-testid="commit-info-copy-hash"
                                     >
-                                        {hashCopied ? 'Copied!' : 'Copy'}
+                                        <span data-testid="commit-info-hash">{commit.hash.slice(0, 8)}</span>
+                                        <CommitDetailIcon name={hashCopied ? 'check' : 'copy'} />
+                                        {hashCopied && <span role="status" className="sr-only">Copied!</span>}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-testid="commit-info-collapse-btn"
+                                        onClick={handleToggleHeader}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded text-[#616161] dark:text-[#999] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                                        title="Hide commit details"
+                                        aria-label="Hide commit details"
+                                        aria-expanded={true}
+                                        aria-controls={headerId}
+                                    >
+                                        <CommitDetailIcon name="up" />
                                     </button>
                                 </div>
-                                {commit.parentHashes.length > 0 && (
-                                    <div className="font-mono text-[10px] whitespace-nowrap" data-testid="commit-info-parents">
-                                        Parents: {commit.parentHashes.map(p => p.substring(0, 7)).join(', ')}
-                                    </div>
-                                )}
                             </div>
-                            {commit.body && (
-                                <div className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] pt-1.5 mt-1.5" data-testid="commit-info-body">
-                                    <pre className="text-[11px] text-[#1e1e1e] dark:text-[#ccc] whitespace-pre-wrap font-sans leading-relaxed m-0">{commit.body}</pre>
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#616161] dark:text-[#aaa]" data-testid="commit-info-meta-row">
+                                <span className="font-medium text-[#1e1e1e] dark:text-[#ccc]" data-testid="commit-info-author">{commit.author}</span>
+                                <span data-testid="commit-info-date">{formattedDate}</span>
+                                {fileList.length > 0 && <span data-testid="commit-info-file-count">{fileList.length} {fileList.length === 1 ? 'file' : 'files'} changed</span>}
+                            </div>
+                            {(commit.authorEmail || commit.parentHashes.length > 0 || commit.body) && (
+                                <div className="mt-3 border-t border-[#ececec] dark:border-[#3c3c3c] pt-2" data-testid="commit-info-details">
+                                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[#616161] dark:text-[#999]">
+                                        {commit.authorEmail && <span className="break-all" data-testid="commit-info-email">Author &lt;{commit.authorEmail}&gt;</span>}
+                                        {commit.parentHashes.length > 0 && (
+                                            <span data-testid="commit-info-parents">{commit.parentHashes.length === 1 ? 'Parent' : 'Parents'}: <span className="font-mono">{commit.parentHashes.map(p => p.slice(0, 7)).join(', ')}</span></span>
+                                        )}
+                                    </div>
+                                    {commit.body && (
+                                        <div className="mt-2" data-testid="commit-info-body">
+                                            <pre className="text-[11px] text-[#1e1e1e] dark:text-[#ccc] whitespace-pre-wrap break-words font-sans leading-relaxed m-0">{commit.body}</pre>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
                     </div>
                 </>
             )}
-            {/* Classification toolbar — mirrors commit popout layout. The outer div is the
-                size container; below 560px labels collapse to icons, and when one row no
-                longer fits the right group wraps to its own row as a unit. */}
-            <div className="sticky top-0 z-10 [container-type:inline-size] border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#2a2a2a]">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5" data-testid="commit-classify-bar">
+            {/* Size container: narrow panes hide labels and wrap complete control groups. */}
+            <div className="sticky top-0 z-10 [container-type:inline-size] border-y border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f7f8fa] dark:bg-[#2a2a2a]">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2" data-testid="commit-classify-bar">
                     <div className="flex flex-nowrap items-center gap-2 min-w-0" data-testid="commit-classify-left">
-                        <ClassifyDiffAiControls
-                            selection={aiSelection}
-                            disabled={classification.state.status === 'loading'}
-                            testIdPrefix="commit-classify"
-                            collapseLabels
-                        />
                         <button
                             type="button"
                             onClick={classification.classify}
@@ -381,16 +406,35 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                             className={
                                 classification.state.status === 'loading'
                                     ? 'inline-flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded border border-gray-300 bg-gray-100 px-2 text-[11px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-500 cursor-wait'
-                                    : 'inline-flex h-6 shrink-0 whitespace-nowrap items-center gap-1 rounded border border-indigo-400 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50'
+                                    : 'inline-flex h-7 shrink-0 whitespace-nowrap items-center gap-1.5 rounded border border-[#0078d4] bg-[#0078d4] px-2.5 text-[11px] font-medium text-white hover:bg-[#006cbe] focus-visible:ring-2 focus-visible:ring-[#0078d4]/50'
                             }
                             data-testid="commit-classify-button"
                         >
+                            {classification.state.status !== 'loading' && <CommitDetailIcon name="spark" />}
                             {classification.state.status === 'loading' ? (
                                 <>
                                     <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
                                     Classifying…
                                 </>
                             ) : classification.state.status === 'ready' ? 'Re-classify' : 'Classify'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAiSettingsOpen(open => !open)}
+                            className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded px-2 text-[11px] text-[#616161] dark:text-[#bbb] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                            aria-expanded={aiSettingsOpen}
+                            aria-controls={aiSettingsId}
+                            aria-label="Classification settings"
+                            title="Classification settings"
+                            data-testid="commit-classify-settings-toggle"
+                        >
+                            <span className="truncate max-w-[160px]">{aiSelection.agentProviders.find(p => p.id === aiSelection.provider)?.label ?? aiSelection.provider}</span>
+                            <span className={`truncate max-w-[160px] ${DIFF_TOOLBAR_NARROW_HIDDEN}`}>
+                                · {aiSelection.useEffortTierMode
+                                    ? aiSelection.selectedEffortTier.replace(/(^|-)([a-z])/g, (_, separator, letter) => `${separator ? ' ' : ''}${letter.toUpperCase()}`)
+                                    : aiSelection.validModelOverride || aiSelection.defaultModelLabel || 'Default model'}
+                            </span>
+                            <CommitDetailIcon name={aiSettingsOpen ? 'up' : 'down'} />
                         </button>
                         {/* Priority file navigation — available after classification */}
                         {classification.state.status === 'ready' && (
@@ -421,52 +465,79 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
                         )}
                     </div>
                     {/* Right group: reviewed count, hunk nav, view toggle, panel buttons */}
-                    <div className="flex flex-nowrap items-center gap-1 shrink-0 ml-auto" data-testid="commit-classify-right">
-                        {/* Reviewed count — session-local */}
-                        {fileList.length > 0 && (
-                            <span
-                                className="shrink-0 whitespace-nowrap text-[10px] text-[#848484] dark:text-[#666] tabular-nums"
-                                title={`${reviewProgress.state.reviewedFiles.size} of ${fileList.length} files reviewed`}
-                                data-testid="commit-reviewed-count"
-                            >
-                                {reviewProgress.state.reviewedFiles.size}/{fileList.length}<span className={DIFF_TOOLBAR_NARROW_HIDDEN}> reviewed</span>
-                            </span>
-                        )}
-                        {classification.state.error && (
-                            <span className="max-w-[240px] truncate text-[10px] text-red-600 dark:text-red-400" title={classification.state.error}>
-                                {classification.state.error}
-                            </span>
-                        )}
-                        <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
-                        <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                        <button
-                            onClick={() => setSidebarOpen(o => !o)}
-                            title="Toggle comments"
-                            className="shrink-0 whitespace-nowrap text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                            data-testid="toggle-comments-btn"
-                        >
-                            💬 {allCommitComments.length > 0 ? allCommitComments.length : ''}
-                        </button>
-                        <button
-                            onClick={toggleChat}
-                            title="Toggle AI chat"
-                            className="shrink-0 whitespace-nowrap text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                            data-testid="toggle-chat-btn"
-                        >
-                            🤖
-                        </button>
-                        {!isPopOut && hash && (
+                    <div className="flex flex-wrap items-center gap-2 min-w-0 ml-auto" data-testid="commit-classify-right">
+                        <div className="flex flex-nowrap items-center gap-2" data-testid="commit-review-controls">
+                            {/* Reviewed count — session-local */}
+                            {fileList.length > 0 && (
+                                <span
+                                    className="shrink-0 whitespace-nowrap text-[10px] text-[#616161] dark:text-[#aaa] tabular-nums"
+                                    title={`${reviewProgress.state.reviewedFiles.size} of ${fileList.length} files reviewed`}
+                                    data-testid="commit-reviewed-count"
+                                >
+                                    {reviewProgress.state.reviewedFiles.size}/{fileList.length}<span className={DIFF_TOOLBAR_NARROW_HIDDEN}> reviewed</span>
+                                </span>
+                            )}
+                            {fileList.length > 0 && (
+                                <div
+                                    role="progressbar"
+                                    aria-label="Files reviewed"
+                                    aria-valuemin={0}
+                                    aria-valuemax={fileList.length}
+                                    aria-valuenow={Math.min(reviewProgress.state.reviewedFiles.size, fileList.length)}
+                                    className={`h-1 w-10 overflow-hidden rounded bg-[#e0e0e0] dark:bg-[#444] ${DIFF_TOOLBAR_NARROW_HIDDEN}`}
+                                >
+                                    <div className="h-full bg-[#2d8d65]" style={{ width: `${Math.min(100, reviewProgress.state.reviewedFiles.size / fileList.length * 100)}%` }} />
+                                </div>
+                            )}
+                            <HunkNavButtons onPrev={() => viewerRef.current?.scrollToPrevHunk()} onNext={() => viewerRef.current?.scrollToNextHunk()} />
+                        </div>
+                        <div className="flex flex-nowrap items-center gap-1" data-testid="commit-view-controls">
+                            <DiffViewToggle mode={viewMode} onChange={setViewMode} appearance="quiet" />
+                            <span aria-hidden="true" className="mx-1 h-4 w-px bg-[#e0e0e0] dark:bg-[#444]" />
                             <button
-                                onClick={handlePopOut}
-                                title="Open in new window"
-                                className="shrink-0 whitespace-nowrap text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
-                                data-testid="commit-popout-btn"
+                                onClick={() => setSidebarOpen(o => !o)}
+                                title="Toggle comments"
+                                aria-label="Toggle comments"
+                                aria-pressed={sidebarOpen}
+                                className="inline-flex h-7 shrink-0 whitespace-nowrap items-center gap-1 text-xs px-2 rounded text-[#616161] dark:text-[#bbb] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                                data-testid="toggle-comments-btn"
                             >
-                                ↗️
+                                <CommitDetailIcon name="chat" />{allCommitComments.length > 0 && <span>{allCommitComments.length}</span>}
                             </button>
-                        )}
+                            <button
+                                onClick={toggleChat}
+                                title="Toggle AI chat"
+                                aria-label="Toggle AI chat"
+                                aria-pressed={chatOpen}
+                                className="inline-flex h-7 shrink-0 whitespace-nowrap items-center gap-1 text-xs px-2 rounded text-[#616161] dark:text-[#bbb] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                                data-testid="toggle-chat-btn"
+                            >
+                                <CommitDetailIcon name="spark" />
+                            </button>
+                            {!isPopOut && hash && (
+                                <button
+                                    onClick={handlePopOut}
+                                    title="Open in new window"
+                                    aria-label="Open in new window"
+                                    className="inline-flex h-7 shrink-0 whitespace-nowrap items-center gap-1 text-xs px-2 rounded text-[#616161] dark:text-[#bbb] hover:bg-black/[0.06] dark:hover:bg-white/[0.08] focus-visible:ring-2 focus-visible:ring-[#0078d4]"
+                                    data-testid="commit-popout-btn"
+                                >
+                                    <CommitDetailIcon name="out" />
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
+                {classification.state.error && (
+                    <div role="alert" className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-2 text-[11px] text-red-600 dark:text-red-400">
+                        {classification.state.error}
+                    </div>
+                )}
+                {aiSettingsOpen && (
+                    <div id={aiSettingsId} className="border-t border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-2" data-testid="commit-classify-settings">
+                        <ClassifyDiffAiControls selection={aiSelection} disabled={classification.state.status === 'loading'} testIdPrefix="commit-classify" />
+                    </div>
+                )}
             </div>
             {/* Classification filter bar — visible when classification results are ready */}
             {classification.state.status === 'ready' && (

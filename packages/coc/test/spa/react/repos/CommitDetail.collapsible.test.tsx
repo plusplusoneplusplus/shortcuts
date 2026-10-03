@@ -215,4 +215,13 @@ describe('CommitDetail — collapsible header', () => {
         expect(screen.queryByTestId('commit-info-summary')).toBeNull();
         expect(screen.getByTestId('commit-info-header')).toBeTruthy();
     });
+    it('changing workspace with the same hash restores the expanded header', async () => {
+        const commit = makeCommit();
+        const { rerender } = await renderDetail({ commit });
+        await act(async () => { fireEvent.click(screen.getByTestId('commit-info-collapse-btn')); });
+        await act(async () => { rerender(<CommitDetail workspaceId="ws2" hash="abc123" commit={commit} />); });
+        expect(screen.queryByTestId('commit-info-summary')).toBeNull();
+        expect(screen.getByTestId('commit-info-header').parentElement!.hidden).toBe(false);
+    });
+
 });

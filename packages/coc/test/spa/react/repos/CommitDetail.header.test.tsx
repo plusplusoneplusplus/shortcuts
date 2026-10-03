@@ -147,14 +147,12 @@ describe('CommitDetail — commit info header', () => {
 
     it('displays author email when present', async () => {
         await renderDetail({ commit: makeCommit({ author: 'Jane', authorEmail: 'jane@test.com' }) });
-        const authorEl = screen.getByTestId('commit-info-author');
-        expect(authorEl.textContent).toContain('<jane@test.com>');
+        expect(screen.getByTestId('commit-info-email').textContent).toContain('<jane@test.com>');
     });
 
     it('hides author email when absent', async () => {
         await renderDetail({ commit: makeCommit({ authorEmail: undefined }) });
-        const authorEl = screen.getByTestId('commit-info-author');
-        expect(authorEl.textContent).not.toContain('<');
+        expect(screen.queryByTestId('commit-info-email')).toBeNull();
     });
 
     it('displays formatted date', async () => {
@@ -185,14 +183,17 @@ describe('CommitDetail — commit info header', () => {
         expect(parentsEl.textContent).toContain('bbb1111');
     });
 
-    it('lays author, date, hash and parents out on a single row', async () => {
+    it('keeps the SHA beside the title and secondary metadata below the author row', async () => {
         await renderDetail({ commit: makeCommit({ parentHashes: ['aaa1111222233334444555566667777888899990'] }) });
         const row = screen.getByTestId('commit-info-meta-row');
         expect(row.className).toContain('flex-wrap');
         expect(row.className).not.toContain('flex-col');
-        for (const id of ['commit-info-author', 'commit-info-date', 'commit-info-hash', 'commit-info-parents']) {
+        for (const id of ['commit-info-author', 'commit-info-date']) {
             expect(screen.getByTestId(id).parentElement).toBe(row);
         }
+        expect(screen.getByTestId('commit-info-title-row').contains(screen.getByTestId('commit-info-copy-hash'))).toBe(true);
+        expect(screen.getByTestId('commit-info-details').contains(screen.getByTestId('commit-info-parents'))).toBe(true);
+        expect(row.contains(screen.getByTestId('commit-info-email'))).toBe(false);
     });
 
     it('hides parents section when parentHashes is empty', async () => {
@@ -226,18 +227,21 @@ describe('CommitDetail — commit info header', () => {
         expect(wrapper.style.overflow).toBe('auto');
     });
 
-    it('header collapsible wrapper uses overflow hidden when collapsed', async () => {
-        await renderDetail({ commit: makeCommit({ body: 'Line\n'.repeat(100) }) });
-        await act(async () => {
-            fireEvent.click(screen.getByTestId('commit-info-collapse-btn'));
-        });
-        // After collapse the header element is gone; verify via the summary bar being shown
+    it('collapsed metadata is hidden and copy still works without expanding it', async () => {
+        const commit = makeCommit();
+        await renderDetail({ commit });
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Hide commit details' })); });
+        const header = screen.getByTestId('commit-info-header');
+        expect(header.parentElement!.hidden).toBe(true);
+        expect(screen.queryByRole('button', { name: 'Hide commit details' })).toBeNull();
+        expect(screen.getByTestId('commit-info-summary').getAttribute('aria-expanded')).toBe('false');
+        await act(async () => { fireEvent.click(screen.getByTestId('commit-summary-copy-hash')); });
+        expect(mockCopyToClipboard).toHaveBeenCalledWith(commit.hash);
         expect(screen.getByTestId('commit-info-summary')).toBeTruthy();
-        // The wrapper is still in the DOM but with overflow hidden
-        const summaryBar = screen.getByTestId('commit-info-summary');
-        const wrapper = summaryBar.parentElement?.querySelector('[style]') as HTMLElement | null;
-        if (wrapper) {
-            expect(wrapper.style.overflow).toBe('hidden');
-        }
+    });
+
+    it('omits the secondary metadata divider when there are no details', async () => {
+        await renderDetail({ commit: makeCommit({ authorEmail: undefined, parentHashes: [], body: undefined }) });
+        expect(screen.queryByTestId('commit-info-details')).toBeNull();
     });
 });

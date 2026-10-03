@@ -144,6 +144,10 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/usePrReviewPr
 
 vi.mock('../../../../src/server/spa/client/react/shared/ModalJobAiControls', () => ({
     useModalJobAiSelection: () => ({
+        provider: 'copilot',
+        agentProviders: [{ id: 'copilot', label: 'Copilot' }],
+        useEffortTierMode: false,
+        defaultModelLabel: 'Default model',
         resolved: { provider: 'copilot' },
     }),
 }));
