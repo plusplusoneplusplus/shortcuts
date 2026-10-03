@@ -31,6 +31,8 @@ import { createCanvasTools } from '../llm-tools/canvas-tools';
 import { createKustoTools } from '../llm-tools/kusto-tools';
 import { createSystemOneTool, type SystemOneToolDeps } from '../llm-tools/system-one-tool';
 import { createSendToConversationTool, type EnqueueChatFn, type SendMessageFn, type SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
+import { createListWorkspacesTool } from '../llm-tools/list-workspaces-tool';
+import { createWorkspaceDirectory } from '../servers/workspace-directory';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import { createGetConversationTool } from '../llm-tools/get-conversation-tool';
 import { filterDisabledLlmTools } from '../llm-tools/llm-tool-registry';
@@ -455,7 +457,8 @@ export function buildSearchConversationsAddon(
 // ============================================================================
 
 /**
- * Builds the tools array for the dual-mode `send_to_conversation` tool, which
+ * Builds the tools array for the dual-mode `send_to_conversation` tool and its
+ * read-only companion `list_workspaces` (repo discovery). `send_to_conversation`
  * lets an agent either spawn a brand-new chat (fire-and-forget, through the same
  * in-process queue path `POST /api/queue` uses) or post a message into an
  * existing conversation (through the same delivery path
@@ -488,12 +491,17 @@ export function buildSendToConversationAddon(
         return { tools: [], suffix: '' };
     }
 
+    // One directory backs both tools so `list_workspaces` ids always resolve in
+    // `send_to_conversation`. Without the route-layer directory, local only.
+    const directory = runtime?.workspaceDirectory ?? createWorkspaceDirectory({ store });
+    const toolRuntime = { ...runtime, workspaceDirectory: directory };
     const { tool } = createSendToConversationTool({
-        store, workspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime,
+        store, workspaceId, enqueueChat, sendMessage, launchRalph, parentProcessId, runtime: toolRuntime,
     });
+    const { tool: listTool } = createListWorkspacesTool({ directory });
 
-    // No prose suffix — the send_to_conversation tool description carries its own guidance.
-    return { tools: [tool], suffix: '' };
+    // No prose suffix — the tool descriptions carry their own guidance.
+    return { tools: [tool, listTool], suffix: '' };
 }
 
 // ============================================================================

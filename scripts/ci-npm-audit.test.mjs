@@ -42,7 +42,7 @@ function auditJson(...ghsaIds) {
     return JSON.stringify({ vulnerabilities: { "some-pkg": { severity: "high", via } } });
 }
 
-function runAudit({ mode, ghsaIds = [], env = {} }) {
+function runAudit({ mode, ghsaIds = [], env = {}, args = [] }) {
     const dir = mkdtempSync(join(tmpdir(), "ci-npm-audit-"));
     try {
         const stub = join(dir, "npm");
@@ -63,8 +63,11 @@ function runAudit({ mode, ghsaIds = [], env = {} }) {
         };
         // An inherited allowlist would silently change what these cases assert.
         if (!("AUDIT_ALLOWLIST" in env)) delete childEnv.AUDIT_ALLOWLIST;
+        for (const key of ["NODE_ENV", "npm_config_omit", "npm_config_only", "npm_config_production"]) {
+            if (!(key in env)) delete childEnv[key];
+        }
 
-        const result = spawnSync("bash", [auditScript], { env: childEnv, encoding: "utf8" });
+        const result = spawnSync("bash", [auditScript, ...args], { env: childEnv, encoding: "utf8" });
         return { status: result.status, output: `${result.stdout || ""}${result.stderr || ""}` };
     } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -77,11 +80,34 @@ test("passes when npm audit reports nothing at or above the gate", { skip }, () 
     assert.equal(runAudit({ mode: "clean" }).status, 0);
 });
 
-// Regression guard: the allowlist ships empty, so a blocking advisory must fail
-// the build. A stale or over-broad entry would silently disable the gate.
-test("fails on a blocking advisory when the allowlist is empty", { skip }, () => {
+// Unknown advisories must still fail even when reviewed dev exceptions exist.
+test("fails on an unreviewed blocking advisory", { skip }, () => {
     const { status } = runAudit({ mode: "vuln", ghsaIds: ["GHSA-aaaa-bbbb-cccc"] });
     assert.notEqual(status, 0);
+});
+
+const reviewedAdvisories = ["GHSA-vfj7-8cjw-p6xm", "GHSA-ch52-4w7c-c8xp"];
+
+test("accepts only the reviewed development advisories by default", { skip }, () => {
+    assert.equal(runAudit({ mode: "vuln", ghsaIds: reviewedAdvisories }).status, 0);
+    assert.notEqual(runAudit({
+        mode: "vuln", ghsaIds: [...reviewedAdvisories, "GHSA-aaaa-bbbb-cccc"],
+    }).status, 0);
+    assert.notEqual(runAudit({
+        mode: "vuln", ghsaIds: reviewedAdvisories, env: { AUDIT_ALLOWLIST: "" },
+    }).status, 0);
+});
+
+test("rejects reviewed advisories in production audits", { skip }, () => {
+    for (const args of [["--omit=dev"], ["--omit=optional,dev"], ["--omit", "dev"], ["--production"], ["--only=prod"]]) {
+        const { status, output } = runAudit({ mode: "vuln", ghsaIds: reviewedAdvisories, args });
+        assert.notEqual(status, 0, args.join(" "));
+        assert.doesNotMatch(output, /reviewed allowlist/);
+    }
+    for (const env of [{ NODE_ENV: "production" }, { npm_config_omit: "dev" },
+        { npm_config_only: "production" }, { npm_config_production: "true" }]) {
+        assert.notEqual(runAudit({ mode: "vuln", ghsaIds: reviewedAdvisories, env }).status, 0);
+    }
 });
 
 test("passes only when every blocking advisory is allowlisted", { skip }, () => {

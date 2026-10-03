@@ -33,6 +33,7 @@ import {
     EMPTY_EXECUTOR_RUNTIME,
     type ExecutorRuntimeCapabilities,
 } from '../../../src/server/executors/executor-runtime-contracts';
+import type { SendToConversationRuntimeOptions } from '../../../src/server/llm-tools/send-to-conversation-tool';
 
 // ============================================================================
 // Sentinels — one distinguishable value per capability
@@ -238,6 +239,22 @@ describe('Executor runtime capability wiring', () => {
             const deps = chatExecutor.buildCronToolDeps('proc-1');
             expect(deps.scheduleWakeup).toBeDefined();
             expect(deps.cronTools).toBeDefined();
+        });
+
+        it('sees the route-layer workspace directory (list_workspaces / remote targets) bound after construction', () => {
+            let sendRuntime: SendToConversationRuntimeOptions | undefined;
+            const runtime: ExecutorRuntimeCapabilities = {
+                getSendToConversationRuntime: () => sendRuntime,
+            };
+            const { executor } = makeBridge(runtime);
+            const chatExecutor = internals(executor).chatExecutor;
+
+            // Remote servers are composed during route registration, after the graph.
+            expect(chatExecutor.runtime.getSendToConversationRuntime?.()).toBeUndefined();
+
+            const workspaceDirectory = { list: vi.fn(), startRemoteChat: vi.fn() };
+            sendRuntime = { workspaceDirectory };
+            expect(chatExecutor.runtime.getSendToConversationRuntime?.()?.workspaceDirectory).toBe(workspaceDirectory);
         });
     });
 

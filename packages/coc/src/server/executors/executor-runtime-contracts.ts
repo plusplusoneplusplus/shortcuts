@@ -124,7 +124,7 @@ export interface ExecutorRuntimeCapabilities {
      * `mode: "ralph"`; absent → that mode reports it is unavailable.
      */
     readonly getLaunchRalph?: () => LaunchRalphFn | undefined;
-    /** Provider/tier helpers for `send_to_conversation`. */
+    /** Provider/tier helpers and the local + remote workspace directory for `send_to_conversation` / `list_workspaces`. */
     readonly getSendToConversationRuntime?: () => SendToConversationRuntimeOptions | undefined;
     /** Shared decision service; powers the `system_one` tool. Absent → the tool is not offered. */
     readonly getDecisionService?: () => DecisionService | undefined;

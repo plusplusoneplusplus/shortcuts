@@ -52,7 +52,8 @@
   "overrides": {
     "@github/copilot": "1.0.78",
     "@excalidraw/excalidraw": {
-      "nanoid@3": "3.3.18"
+      "nanoid@3": "3.3.18",
+      "sass": "1.105.1"
     },
     "@excalidraw/mermaid-to-excalidraw": {
       "@mermaid-js/parser@<=0.6.3": "1.2.0",

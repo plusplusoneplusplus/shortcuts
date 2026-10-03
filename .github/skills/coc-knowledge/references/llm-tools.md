@@ -44,6 +44,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `save-classification-tool.ts` | `saveClassification` | Persists per-hunk diff classifications for PR/commit/branch-range review. Categories: `logic`, `mechanical`, `test`, `simple`, `generated`. New `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`; critical metadata is validated rather than dropped. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversations. Requires a SQLite-backed `ProcessStore`. |
 | `send-to-conversation-tool.ts` | `send_to_conversation` | Dual-mode dispatch — see below. |
+| `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
 | `kusto-tools.ts` | `kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
 | `system-one-tool.ts` | `system_one` | Quick yes/no, choice, or score judgments over refs to earlier tool results, files, or short text — see below. |
@@ -84,9 +85,41 @@ mode. No worktree is requested and max iterations come from repo preferences. It
 rejected in post mode. `plan` stays unsupported. The custom title is the iteration-1
 `customTitle`, which the SPA Ralph session row prefers over the goal-derived title.
 
+Create-mode `workspaceId` accepts a local ID, a remote clone key `remote:<serverId>:<workspaceId>`,
+or a repo name matched case-insensitively over the workspace directory (exact name first, then
+`name@server` against the server display name). An ambiguous name errors with every candidate
+`id (server)`; no match errors and points at `list_workspaces`. A remote target is started on
+that server's own `POST /api/queue` (Ralph: `POST /api/ralph-launch`, which accepts `title`) at its
+effective URL via `WorkspaceDirectory.startRemoteChat`, with no local fallback for offline or
+unreachable servers. Only an explicit `provider`, `model`, or `effortTier` travels; parent
+selections are not inherited, so the remote's defaults apply, and no spawn link is set. The
+result's `openLink` is the dashboard clone route `#repos/<encoded clone key>/chats/<processId>`.
+Post mode with a `remote:` processId is rejected as not supported yet.
+
+### list_workspaces
+
+Built in the same addon as `send_to_conversation` (same `enqueueChat` gate, own registry toggle,
+enabled by default), registered for every chat mode, and backed by the same
+`WorkspaceDirectory` (`src/server/servers/workspace-directory.ts`) so its ids always resolve in
+`send_to_conversation`. The route layer builds the directory over the store, `dataDir`, and the
+`RemoteServerRuntimeService` returned by `registerRemoteServerRoutes`, and publishes it as
+`SendToConversationRuntimeOptions.workspaceDirectory` through the late-bound
+`getSendToConversationRuntime` capability; without it the addon falls back to a local-only
+directory. Each remote's `/api/workspaces` (plus `/api/repo-groups/:id` for group members) is
+fetched at its effective URL with a 4s per-request timeout; a failure never fails the call —
+the server reports its last-known entries (module-level `createCache` namespace) with
+`online: false`, or zero entries when none are cached. Entries carry only `id`, `name`,
+`type` (`repo` | `group` with `members: [{ id, name }]`), `server` (`local` for this server),
+`serverKind`, and `online`; a `servers` array lists every consulted server. Optional `query` is a
+case-insensitive substring over repo and server names; results cap at 50 with `total` and
+`truncated`. The repo list never enters the system prompt.
+
 Post mode supplies `processId`, ignores any `provider` argument so native session continuity
 stays on the existing conversation's provider, expands `effortTier` against that provider, and
 lets an explicit `model` override the tier. Create-only titles are ignored in post mode.
+Post mode applies no mode default: an omitted `mode` keeps the conversation's current mode and an
+explicit one switches it. The route-layer `processes/send-message-capability.ts` resolves it with
+`resolveFollowUpMode` (terminal Sentinel mode still wins) before `ProcessMessageDeliveryService`.
 
 ### Canvas tools
 

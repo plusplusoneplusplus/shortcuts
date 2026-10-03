@@ -13,10 +13,9 @@
 # Beyond transient endpoint retries, it keeps the security gate strict: a real
 # vulnerability at/above --audit-level fails the build. The ONE exception is a
 # small, hand-reviewed allowlist of advisory GHSA IDs (see AUDIT_ALLOWLIST
-# below) for which no fixed version is reachable yet. Those entries are dev-only,
-# and the production audit (`--omit=dev`, run separately in CI) passes on its own
-# and therefore never reaches the allowlist branch — so production stays fully
-# strict. If npm reports any blocking advisory that is NOT allowlisted, the build
+# below) for which no fixed version is reachable yet. Those entries are dev-only;
+# production audits (`--omit=dev`, run separately in CI) cannot use the allowlist.
+# If npm reports any blocking advisory that is NOT allowlisted, the build
 # still fails.
 #
 # Usage: ci-npm-audit.sh [extra npm-audit args...]   (e.g. --omit=dev)
@@ -39,19 +38,33 @@ endpoint_error_re='audit endpoint returned an error|Service Unavailable|Internal
 # ---------------------------------------------------------------------------
 # GHSA IDs we have reviewed and temporarily accept because no fixed version is
 # reachable yet. Every entry MUST be dev-only — the production audit
-# (`--omit=dev`) passes on its own and never consults this list. Remove an entry
+# (`--omit=dev`) never consults this list. Remove an entry
 # the moment the upstream parent ships a release that pulls the patched version.
 #
-# The list is currently EMPTY, so the gate is fully strict: any blocking (>=high)
-# advisory fails the build. The previous entry, GHSA-mh99-v99m-4gvg
-# (brace-expansion DoS), was dropped once `npm audit fix` could bump every copy
-# — including the nested dev ones under electron-builder and jake — in place.
-AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-}"
+# Reviewed 2026-10-03; neither advisory has a patched npm release:
+# - GHSA-vfj7-8cjw-p6xm (braces): dev glob tooling consumes repository patterns,
+#   not untrusted runtime requests. Excalidraw uses a Sass override that removes
+#   braces from the production graph.
+# - GHSA-ch52-4w7c-c8xp (http-cache-semantics): electron-builder's download client
+#   is dev-only and does not serve a shared cache of user responses.
+# Advisory details: https://github.com/advisories/<GHSA-ID>.
+AUDIT_ALLOWLIST="${AUDIT_ALLOWLIST-GHSA-vfj7-8cjw-p6xm GHSA-ch52-4w7c-c8xp}"
 
 # Exit 0 iff `npm audit` reports at least one blocking (>= high) advisory AND
 # every blocking advisory is in AUDIT_ALLOWLIST. Any non-allowlisted blocking
 # advisory — or a parse failure — yields non-zero, so the real gate still fires.
 blocking_advisories_all_allowlisted() {
+    # Honor npm flags and environment defaults; fail closed for omit/only flags.
+    case "${npm_config_omit:-} ${npm_config_only:-} ${NODE_ENV:-}" in
+        *dev*|*prod*) return 1 ;;
+    esac
+    [ "${npm_config_production:-false}" != "true" ] || return 1
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --omit=*dev*|--omit|--prod|--production|--production=true|--only|--only=prod|--only=production) return 1 ;;
+        esac
+    done
     local json
     json="$(npm audit --json --audit-level=high "$@" 2>/dev/null)" || true
     [ -n "$json" ] || return 1

@@ -50,6 +50,11 @@ The root test chain excludes `coc-connector` and `coccontainer`; test them expli
 with `npm run test:run -w packages/<name>`. Native integration tests require binaries.
 Root lint/coverage covers selected packages; `package.json` is authoritative.
 
+CI audits production, full npm, SkillOpt and Rust dependency graphs.
+`scripts/ci-npm-audit.sh` retries npm advisory endpoint failures and permits only
+reviewed development advisories without patched releases; production audits
+cannot use its allowlist. Regression tests live in `scripts/ci-npm-audit.test.mjs`.
+
 ### Dependency order
 
 Root `build:packages` runs:

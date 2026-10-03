@@ -174,6 +174,7 @@ Core connector classes and types live in `@plusplusoneplusplus/forge/connectors`
 - `packages/coc/src/server/servers/remote-server-runtime-service.ts` — runtime decoration,
   direct-URL health caching, connector lifecycle, health checks, restart proxying.
 - `packages/coc/src/server/servers/cherry-pick-transfer-service.ts` — cross-server transfer orchestration.
+- `packages/coc/src/server/servers/workspace-directory.ts` — local + remote repo listing, remote chat start, and remote recent-chat listing (`listRemoteChats`) for the `list_workspaces` / `send_to_conversation` LLM tools (see [llm-tools.md](llm-tools.md)) and messaging `list remotes` / `list topics <n.m|name@server>`.
 - `packages/coc/src/server/servers/remote-server-routes.ts` — thin HTTP adapter over those services.
 - `packages/coc-client/src/domains/servers.ts` — typed client methods.
 - `packages/coc/src/server/spa/client/react/features/servers/` — dashboard UI.

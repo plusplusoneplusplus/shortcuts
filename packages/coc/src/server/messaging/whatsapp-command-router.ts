@@ -1,25 +1,32 @@
 import { randomUUID } from 'node:crypto';
 import { toQueueProcessId, type ProcessStore } from '@plusplusoneplusplus/forge';
-import { isMessagingControlCommand, parseMessagingCommand } from '@plusplusoneplusplus/coc-connector';
+import { isMessagingControlCommand, parseMessagingCommand, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
-import { handleMessagingCommand, invalidCommandReply, type MessagingQuotaSource } from './messaging-commands';
+import { handleMessagingCommand, invalidCommandReply, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
+import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
     bindings: WhatsAppBindings;
     groupJid: () => string | undefined;
-    enqueue: (workspaceId: string, message: string, mode: 'ask' | 'autopilot', processId: string, taskId: string) => Promise<string>;
+    /** `mode` is undefined for plain text; follow-ups then keep the chat's mode. */
+    enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string) => Promise<string>;
     send: (text: string, quotedId: string) => Promise<string>;
     react: (messageId: string) => Promise<void>;
     queued?: (binding: WhatsAppBinding) => void;
     getQuota?: MessagingQuotaSource;
+    compact?: MessagingCompactor;
+    /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
+    remotes?: MessagingRemoteDirectory;
     /** Relayed ask_user questions; a matching reply is an answer, not a request. */
     questions?: Pick<AskUserQuestionRelayHub, 'tryAnswer'>;
 }
 
 export class WhatsAppCommandRouter {
+    private readonly remoteRefs = new RemoteRefMemory();
+
     constructor(private readonly deps: WhatsAppRouterDeps) {}
 
     async handle(msg: InboundWAMessage): Promise<void> {
@@ -42,6 +49,11 @@ export class WhatsAppCommandRouter {
                     store: this.deps.store,
                     requireRepoForTopics: true,
                     getQuota: this.deps.getQuota,
+                    compact: this.deps.compact,
+                    remotes: this.deps.remotes,
+                    remoteRefs: this.remoteRefs.slot(msg.chatJid),
+                    // A quote-reply to an answer compacts that answer's chat.
+                    compactTarget: () => msg.quotedMessageId ? bindings.findMessage(msg.quotedMessageId) : undefined,
                     selection: {
                         repoId: () => bindings.selectedRepo,
                         selectRepo: id => bindings.selectRepo(id),

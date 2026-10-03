@@ -130,7 +130,7 @@ describe('SKILL.md metadata', () => {
             description: entry!.description,
             metadata: {
                 author: 'Yiheng Tao',
-                version: '0.0.5',
+                version: '0.0.6',
             },
         });
 
@@ -161,6 +161,9 @@ describe('SKILL.md metadata', () => {
         expect(body).toContain('An explicit user request for a mode wins');
         expect(body).toContain('Autopilot jobs share one execution queue and may wait');
         expect(body).toContain('The destination defaults to the current workspace');
+        expect(body).toContain('list_workspaces');
+        expect(body).toContain('`name@server`');
+        expect(body).toContain('Remote repos (on another registered CoC server) work in create mode');
 
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'delegate-resolve-'));
         try {

@@ -1,6 +1,7 @@
 /**
  * Platform-independent messaging command handling shared by the Teams and
- * WhatsApp routers: repo/topic selection, help and quota. Each router supplies
+ * WhatsApp routers: repo/topic selection, help, quota, compact and read-only
+ * remote browsing. Each router supplies
  * its own selection state and text styling; transport, threads, quote-reply
  * bindings and enqueue wiring stay in the router.
  */
@@ -8,10 +9,23 @@
 import type { AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
 import { getQuotaPercent, getTightestFiniteQuotaType, getUnlimitedQuotaTypes } from '@plusplusoneplusplus/coc-client';
 import { MESSAGING_HELP_TEXT, type MessagingControlCommand } from '@plusplusoneplusplus/coc-connector';
-import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { APIError } from '../errors';
+import type { CompactProcessOutcome } from '../processes/compact-process';
 import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
+import { formatTopicLine, listRemotesReply, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
 
 export type MessagingQuotaSource = () => Promise<AgentProvidersQuotaResponse | null | undefined>;
+/** Compacts a chat's provider session; throws `APIError` on guard failures. */
+export type MessagingCompactor = (process: AIProcess, customInstructions?: string) => Promise<CompactProcessOutcome>;
+
+/** The chat a `compact` command acts on. */
+export interface MessagingCompactTarget {
+    processId: string;
+    /** When set, the chat must belong to this repo. */
+    workspaceId?: string;
+}
 
 export interface MessagingSelection {
     /** Selected repo (workspace id), if any. */
@@ -32,6 +46,18 @@ export interface MessagingCommandContext {
     /** When false, topic commands without a selected repo span every repo. */
     requireRepoForTopics: boolean;
     getQuota?: MessagingQuotaSource;
+    compact?: MessagingCompactor;
+    /**
+     * Chat that `compact` acts on before the selected topic, e.g. the quoted
+     * answer's chat. Returning nothing falls back to the selected topic.
+     */
+    compactTarget?: () => Promise<MessagingCompactTarget | null | undefined> | MessagingCompactTarget | null | undefined;
+    /** Escapes plain text such as chat titles; identity by default. */
+    escape?: (text: string) => string;
+    /** Local + remote repo directory for `list remotes` / `list topics <ref>`. */
+    remotes?: MessagingRemoteDirectory;
+    /** This chat's last `list remotes` numbering, so `n.m` refs resolve. */
+    remoteRefs?: RemoteRefSlot;
 }
 
 const plain = (text: string) => text;
@@ -66,14 +92,66 @@ export function invalidCommandReply(): string {
     return `Unknown command or invalid argument.\n\n${MESSAGING_HELP_TEXT}`;
 }
 
+function formatTokens(value: number): string {
+    return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
+}
+
+export const COMPACT_NO_TARGET_REPLY = '❌ No topic selected. Use `list topics`, then `select topic <n>`.';
+
+/** Compacts `target` and returns the reply text. Never enqueues a turn or changes the selection. */
+export async function compactChatReply(
+    store: Pick<ProcessStore, 'getProcess'>,
+    compact: MessagingCompactor | undefined,
+    target: MessagingCompactTarget,
+    customInstructions: string,
+    escape: (text: string) => string = plain,
+): Promise<string> {
+    if (!compact) return 'Compaction is unavailable.';
+    const { processId: id, workspaceId } = target;
+    try {
+        const process = await store.getProcess(id, workspaceId)
+            ?? await store.getProcess(isQueueProcessId(id) ? toTaskId(id) : toQueueProcessId(id), workspaceId);
+        if (!process || (workspaceId && process.metadata?.workspaceId !== workspaceId)) {
+            return 'Chat not found. Use `list topics` to pick one.';
+        }
+        const outcome = await compact(process, customInstructions || undefined);
+        const title = process.title ?? process.customTitle ?? process.id;
+        const tokens = outcome.tokensBefore != null && outcome.tokensAfter != null
+            ? ` — context ${formatTokens(outcome.tokensBefore)} → ${formatTokens(outcome.tokensAfter)} tokens` : '';
+        return `🗜️ Compacted "${escape(title)}"${tokens}`;
+    } catch (error) {
+        if (error instanceof APIError) {
+            if (error.statusCode === 409) return 'Chat is busy — try compact again when the current turn finishes.';
+            if (error.statusCode === 422) return "This chat's provider doesn't support compaction.";
+            if (error.statusCode === 400) return 'This chat has no active session to compact yet.';
+        }
+        console.error('[messaging] Compact failed:', error);
+        return 'Could not compact this chat. Please try again later.';
+    }
+}
+
 /** Handles a control command and returns the reply text. */
 export async function handleMessagingCommand(command: MessagingControlCommand, ctx: MessagingCommandContext): Promise<string> {
     const strong = ctx.strong ?? plain;
     const code = ctx.code ?? plain;
     if (command.type === 'help') return MESSAGING_HELP_TEXT;
     if (command.type === 'quota') return readQuotaReply(ctx.getQuota);
+    // Remote browsing is read-only and independent of the selected repo.
+    const format = { strong, code, escape: ctx.escape ?? plain };
+    if (command.type === 'list-remotes') return listRemotesReply(ctx.remotes, ctx.remoteRefs, format);
+    if (command.type === 'list-topics' && command.args) return listRemoteTopicsReply(ctx.remotes, ctx.remoteRefs, command.args, format);
 
     const workspaces = await ctx.store.getWorkspaces();
+    if (command.type === 'compact') {
+        let target = await ctx.compactTarget?.();
+        if (!target) {
+            const repo = workspaces.find(ws => ws.id === ctx.selection.repoId());
+            const processId = repo || !ctx.requireRepoForTopics ? ctx.selection.topicId(repo?.id) : null;
+            if (!processId) return COMPACT_NO_TARGET_REPLY;
+            target = { processId, workspaceId: repo?.id };
+        }
+        return compactChatReply(ctx.store, ctx.compact, target, command.args, ctx.escape);
+    }
     if (command.type === 'list-repos') {
         return workspaces.length
             ? `Repos (${workspaces.length}):\n${workspaces.map((ws, i) =>
@@ -100,8 +178,7 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
         if (!topics.length) return 'No chat topics found.';
         const current = ctx.selection.topicId(workspaceId);
         return `Chat topics (${scope}):\n${topics.map((topic, i) =>
-            `${i + 1}. ${code(topic.id)} [${topic.status ?? 'unknown'}] ${topic.title ?? topic.customTitle ?? topic.promptPreview?.slice(0, 60) ?? ''}`.trimEnd()
-            + (topic.id === current ? ' ⬅️' : '')).join('\n')}`;
+            formatTopicLine(topic, i, code) + (topic.id === current ? ' ⬅️' : '')).join('\n')}`;
     }
     if (command.type === 'create-topic') {
         ctx.selection.selectTopic(workspaceId, null);

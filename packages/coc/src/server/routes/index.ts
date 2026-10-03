@@ -8,7 +8,7 @@ import * as path from 'path';
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { Route } from '../types';
 import type { ProcessStore, TaskQueueManager, ISDKService, AIInvoker, CreateTaskInput } from '@plusplusoneplusplus/forge';
-import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, isQueueProcessId, toTaskId, toQueueProcessId } from '@plusplusoneplusplus/forge';
+import { modelMetadataStore, sdkServiceRegistry, CopilotSDKService, CodexSDKService, ClaudeSDKService, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_CODEX, SDK_PROVIDER_OPENCODE, getLogger, LogCategory, toQueueProcessId } from '@plusplusoneplusplus/forge';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
 import type { MultiRepoQueueRouter } from '../queue/multi-repo-queue-router';
 import type { SqliteQueuePersistence } from '../queue/sqlite-queue-persistence';
@@ -22,8 +22,8 @@ import { serializeTask, enqueueViaBridge } from './queue-shared';
 import type { QueueGlobalState } from './queue-shared';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
-import { buildFollowUpChatModeDisplayBlock, prependChatModeDirective } from '../executors/chat-mode-directive';
-import { ProcessMessageDeliveryService, type FollowUpMessageInput } from '../processes/process-message-delivery-service';
+import { createSendMessageCapability } from '../processes/send-message-capability';
+import { compactProcess } from '../processes/compact-process';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
 import { registerPromptRoutes } from '../prompts/prompt-handler';
@@ -107,9 +107,10 @@ import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCom
 import { getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
-import { TaskDefs, normalizeChatModeOrDefault, type ChatProvider } from '../tasks/task-types';
+import { TaskDefs, type ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
+import { createWorkspaceDirectory } from '../servers/workspace-directory';
 import { RemoteServerStore } from '../servers/remote-server-store';
 import { DevTunnelConnector } from '../servers/devtunnel-connector';
 import type { SshConnector } from '../servers/ssh-connector';
@@ -169,6 +170,7 @@ import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-m
 import { WhatsAppBindings } from '../messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
+import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
 import { WhatsAppAnswerRelay, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
 import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
@@ -483,52 +485,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         store,
         getGitWorktreeExecutionEnabled,
     }));
-    opts.setSendToConversationRuntime?.({
-        validateProvider: validateSendToConversationProvider,
-        getEffortTiersForProvider,
-    });
 
     // Publish the bound follow-up delivery capability so executors can offer the
-    // post mode of `send_to_conversation` (posting into an existing
-    // conversation). Wraps the exact `ProcessMessageDeliveryService.deliver`
-    // path `POST /api/processes/:id/message` uses, resolving the target process
-    // (with the same queue_-prefix fallback) and returning the appended
-    // user-turn index. The tool's `'steer'` delivery mode maps onto the
-    // service's `'immediate'` mode — the service auto-steers a running process.
-    opts.setSendMessage?.(async (input): Promise<{ turnIndex: number }> => {
-        const { processId, content, mode, model, effort, deliveryMode } = input;
-        let proc = await store.getProcess(processId);
-        if (!proc && isQueueProcessId(processId)) {
-            proc = await store.getProcess(toTaskId(processId));
-        }
-        if (!proc) {
-            throw new Error(`Process '${processId}' not found.`);
-        }
-        const resolvedDeliveryMode: 'immediate' | 'enqueue' =
-            deliveryMode === 'immediate' || deliveryMode === 'steer' ? 'immediate' : 'enqueue';
-        const previousMode = normalizeChatModeOrDefault(proc.metadata?.mode);
-        const deliveryInput: FollowUpMessageInput = {
-            content,
-            // Mirrors the decision FollowUpExecutor makes for this turn, so the
-            // stored turn discloses the directive exactly when the turn carries
-            // one — same as the POST /message route.
-            displayContent: prependChatModeDirective(
-                content,
-                buildFollowUpChatModeDisplayBlock({
-                    mode: normalizeChatModeOrDefault(mode, previousMode),
-                    previousMode,
-                    process: proc,
-                }),
-            ),
-            deliveryMode: resolvedDeliveryMode,
-            pasteExternalized: false,
-            ...(mode ? { mode } : {}),
-            ...(model ? { model } : {}),
-            ...(effort ? { effort } : {}),
-        };
-        const result = await new ProcessMessageDeliveryService({ store, bridge }).deliver(proc, deliveryInput);
-        return { turnIndex: result.turnIndex };
-    });
+    // post mode of `send_to_conversation` (posting into an existing conversation).
+    opts.setSendMessage?.(createSendMessageCapability(store, bridge));
 
     // excalidrawEnabled uses a live getter via runtimeConfigService so admin
     // changes take effect without restart. cronEnabled stays startup-captured
@@ -584,7 +544,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         repoTreeService,
         prepareTaskForEnqueue: prepareEnqueueTask,
     });
-    registerRemoteServerRoutes(routes, {
+    const remoteServerRuntime = registerRemoteServerRoutes(routes, {
         store: opts.remoteServerStore ?? new RemoteServerStore(dataDir),
         connector: opts.remoteServerConnector ?? new DevTunnelConnector(),
         sshConnector: opts.remoteServerSshConnector,
@@ -597,6 +557,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                 timestamp: Date.now(),
             });
         },
+    });
+    // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
+    // name / remote clone-key targets, and messaging `list remotes`.
+    const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
+    opts.setSendToConversationRuntime?.({
+        validateProvider: validateSendToConversationProvider,
+        getEffortTiersForProvider,
+        workspaceDirectory,
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).
@@ -889,6 +857,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         bridge.enqueue(messagingChatInput(workspaceId, message, taskId));
     const enqueueTeamsChat = (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode) =>
         enqueueWithResolvedDefaults(messagingChatInput(workspaceId, message, taskId, true, mode));
+    const resolveMessagingChatMode = createMessagingChatModeResolver(store, queueFacade);
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
     // Container default agent session routes (feature-flagged)
@@ -935,24 +904,24 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
         enqueueRelayChat: enqueueTeamsChat,
-        admitRelayFollowUp: async (proc, message, requestId, mode = 'ask') => {
+        admitRelayFollowUp: async (proc, message, requestId, mode) => {
             const workspaceId = proc.metadata?.workspaceId;
             if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Teams conversation workspace is unavailable');
             return {
                 taskId: await bridge.enqueue({
                     type: 'chat', repoId: workspaceId, processId: proc.id, priority: 'normal',
                     payload: {
-                        kind: 'chat', mode, processId: proc.id, prompt: message,
+                        kind: 'chat', mode: await resolveMessagingChatMode(proc.id, mode), processId: proc.id, prompt: message,
                         workspaceId, relayRequestId: requestId,
                     },
                     config: {},
                 }),
             };
         },
-        enqueuePendingRelayFollowUp: (workspaceId, processId, message, requestId, mode = 'ask') => bridge.enqueue({
+        enqueuePendingRelayFollowUp: async (workspaceId, processId, message, requestId, mode) => bridge.enqueue({
             type: 'chat', repoId: workspaceId, processId, priority: 'normal',
             payload: {
-                kind: 'chat', mode, processId, prompt: message,
+                kind: 'chat', mode: await resolveMessagingChatMode(processId, mode), processId, prompt: message,
                 workspaceId, relayRequestId: requestId,
             },
             config: {},
@@ -961,8 +930,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,
         enqueueChat: (workspaceId, message, mode) => enqueueTeamsChat(workspaceId, message, undefined, mode),
-        executeFollowUp: (processId, message, mode) => bridge.executeFollowUp(processId, message, undefined, mode),
+        executeFollowUp: async (processId, message, mode) =>
+            bridge.executeFollowUp(processId, message, undefined, await resolveMessagingChatMode(processId, mode)),
         getQuota: getMessagingQuota,
+        compact: (proc, instructions) => compactProcess(store, proc, instructions),
+        remotes: workspaceDirectory,
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
     const whatsappBindings = new WhatsAppBindings(dataDir);
@@ -993,17 +965,23 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
         react: messageId => whatsappMessagingManager.react(messageId),
         getQuota: getMessagingQuota,
+        compact: (proc, instructions) => compactProcess(store, proc, instructions),
+        remotes: workspaceDirectory,
         questions: questionRelay,
-        enqueue: (workspaceId, message, mode, processId, taskId) =>
-            enqueueWithResolvedDefaults({
+        enqueue: async (workspaceId, message, mode, processId, taskId) => {
+            const followUp = processId !== toQueueProcessId(taskId);
+            return enqueueWithResolvedDefaults({
                 ...messagingChatInput(workspaceId, message, taskId, true),
                 processId,
                 payload: {
-                    kind: 'chat', mode, prompt: message, workspaceId,
-                    ...(processId !== toQueueProcessId(taskId) ? { processId } : {}),
+                    kind: 'chat',
+                    mode: await resolveMessagingChatMode(followUp ? processId : undefined, mode),
+                    prompt: message, workspaceId,
+                    ...(followUp ? { processId } : {}),
                     relayRequestId: taskId,
                 },
-            }),
+            });
+        },
         queued: binding => { void whatsappRelay.reconcileTask(binding.taskId).catch(error =>
             console.error('[whatsapp-answer-relay] Could not reconcile queued request:', error)); },
     });

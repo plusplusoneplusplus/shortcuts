@@ -32,9 +32,23 @@ describe('buildSendToConversationAddon', () => {
         expect(addon.tools).toEqual([]);
     });
 
-    it('builds the send_to_conversation tool when store + enqueue capability are present', () => {
+    it('builds send_to_conversation and list_workspaces when store + enqueue capability are present', () => {
         const addon = buildSendToConversationAddon(makeStore(), WS_ID, vi.fn());
-        expect(addon.tools.map(t => t.name)).toEqual(['send_to_conversation']);
+        expect(addon.tools.map(t => t.name)).toEqual(['send_to_conversation', 'list_workspaces']);
+    });
+
+    it('backs list_workspaces with the runtime workspace directory', async () => {
+        const directory = {
+            list: vi.fn().mockResolvedValue({
+                entries: [{ id: 'remote:s1:w1', name: 'api', type: 'repo', server: 'vm', serverKind: 'url', online: true }],
+                servers: [],
+            }),
+            startRemoteChat: vi.fn(),
+        };
+        const addon = buildSendToConversationAddon(makeStore(), WS_ID, vi.fn(), undefined, undefined, { workspaceDirectory: directory });
+        const listTool = addon.tools.find(t => t.name === 'list_workspaces')!;
+        const result = await listTool.handler({}, {} as any) as any;
+        expect(result.workspaces.map((w: any) => w.id)).toEqual(['remote:s1:w1']);
     });
 });
 

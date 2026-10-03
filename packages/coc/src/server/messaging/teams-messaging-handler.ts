@@ -19,7 +19,8 @@ import type { McpOauthManager } from '../mcp-oauth/mcp-oauth-manager';
 import { TeamsMessagingManager } from './teams-messaging-manager';
 import { TeamsCommandRouter } from './teams-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
-import type { MessagingQuotaSource } from './messaging-commands';
+import type { MessagingCompactor, MessagingQuotaSource } from './messaging-commands';
+import type { MessagingRemoteDirectory } from './remote-browse';
 import { TeamsOAuthFlow } from './teams-oauth-flow';
 import type { TeamsAttempt } from './teams-attempt-store';
 import { TeamsAnswerRelay, teamsQuestionChatKey } from './teams-answer-relay';
@@ -63,6 +64,10 @@ export interface TeamsMessagingRoutesOptions {
     executeFollowUp?: (processId: string, message: string, mode?: MessagingChatMode) => Promise<void>;
     /** Provider quota for the `quota` command. */
     getQuota?: MessagingQuotaSource;
+    /** Compacts a chat's provider context for the `compact` command. */
+    compact?: MessagingCompactor;
+    /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
+    remotes?: MessagingRemoteDirectory;
     /** Existing manager, shared with the server lifecycle. */
     manager?: TeamsMessagingManager;
     oauthAvailable?: boolean;
@@ -150,6 +155,8 @@ export function registerTeamsMessagingRoutes(
             } : {}),
             executeFollowUp: opts.executeFollowUp,
             getQuota: opts.getQuota,
+            compact: opts.compact,
+            remotes: opts.remotes,
             sendReply: async (text, replyToId) => {
                 manager.recordEvent('reply-attempt');
                 try {

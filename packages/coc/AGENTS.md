@@ -39,6 +39,10 @@ references before editing. Paths are package-relative.
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   Reject late responses after scope changes.
+- `list_workspaces`, `send_to_conversation` remote targets and messaging `list remotes` share one route-layer
+  `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
+  offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
+  local fallback; output never carries paths, URLs, or credentials.
 - Remote group selection uses a server-qualified clone key; decode the raw
   group id at the owning API. Groups are page/queue scope; Git uses a member.
   Names are not keys; refresh live membership and preserve search failure states.
@@ -101,7 +105,8 @@ references before editing. Paths are package-relative.
   admission on failure in `finally`.
 - Delivery decisions belong in `process-message-delivery-service.ts`. Buffer via atomic
   `appendPendingMessage`, not metadata read-modify-write; draining owns deferred turns.
-  Emit intents once; enqueue sites resolve/set mode, preserving terminal Sentinel mode.
+  Emit intents once; follow-up enqueue sites resolve mode via `resolveFollowUpMode(...)`
+  (an omitted mode keeps the chat's mode; terminal Sentinel wins) — never default it to `'ask'`.
   Use `metadataPatch` for field updates.
 - Tool-free lookups use `src/server/core/one-shot-ai.ts`: deny permissions/ambient MCP.
   Dreams analyzer/critic work uses persisted lifecycle processes, not direct SDK calls.
@@ -165,8 +170,19 @@ references before editing. Paths are package-relative.
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`, generated
   `MESSAGING_HELP_TEXT`); unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
-  answers selection, help and quota for both routers via a `MessagingSelection`
-  adapter. Ask is default; `/autopilot <msg>` runs one message in Autopilot.
+  answers selection, help, quota and `compact [instructions]` for both routers via a
+  `MessagingSelection` adapter. `compact` targets the quoted/bound-thread answer's
+  chat, else the selected topic; it calls `processes/compact-process.ts` (shared with
+  the compact route), never enqueues a turn or changes selection, and maps 400/409/422
+  to fixed replies. `/autopilot <msg>` / `/ask <msg>` set the turn's mode; plain text keeps
+  the chat's mode (new chats run in Ask) via `src/server/messaging/messaging-chat-mode.ts`,
+  never a defaulted `'ask'`.
+  `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
+  `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`
+  (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in
+  memory per WhatsApp group / Teams thread; remote repos are never selectable, and
+  replies carry only server/repo names (failures logged server-side). Bare `list topics`
+  stays local.
 - Ask turns started from WhatsApp/Teams (first and connector follow-ups) relay
   `ask_user` questions one at a time to the originating group/thread through
   `src/server/messaging/ask-user-relay.ts`, wired at emit time via the late-bound

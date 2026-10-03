@@ -228,7 +228,7 @@ All launch/continue/resume bodies take [Provider overrides](#provider-overrides)
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/processes/:id/ralph-start` | Start after grilling; optional worktree created before queue admission, reused for iterations/resume/final-check |
-| POST | `/api/ralph-launch` | Direct launch; optional goal `folderPath`, execution `workingDirectory` (defaults via `workspaceId`), target-server worktree opt-in |
+| POST | `/api/ralph-launch` | Direct launch; optional goal `folderPath`, execution `workingDirectory` (defaults via `workspaceId`), custom `title` (trimmed, 80 chars), target-server worktree opt-in |
 | GET | `/api/workspaces/:wsId/ralph-sessions/attention` | Awaiting-input count, independent of seen-state |
 | GET | `/api/workspaces/:wsId/ralph-sessions/:sessionId` | Journal, progress, files and recovered resume defaults |
 | POST | `/api/workspaces/:wsId/ralph-sessions/:sessionId/continue` | Extend a completed session (CAP_REACHED or NO_SIGNAL) by N iterations, preserving the prior concrete provider/model when recoverable |

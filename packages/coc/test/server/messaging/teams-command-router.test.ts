@@ -125,6 +125,23 @@ describe('TeamsCommandRouter', () => {
         expect(reply).toContain('2');
     });
 
+    it('lists remote servers and a remote repo\'s topics read-only (shared grammar smoke)', async () => {
+        const remotes = {
+            list: vi.fn().mockResolvedValue({
+                entries: [{ id: 'remote:srv-1:w1', name: 'shortcuts', type: 'repo', server: 'devbox', serverKind: 'ssh', online: true }],
+                servers: [{ serverId: 'srv-1', server: 'devbox', serverKind: 'ssh', online: true }],
+            }),
+            listRemoteChats: vi.fn().mockResolvedValue([{ id: 'r-chat', status: 'completed', title: 'Remote chat' }]),
+        };
+        router = new TeamsCommandRouter({ ...deps, remotes });
+        await router.handle(makeMsg('/list remotes'));
+        expect(sendReplySpy.mock.calls[0][0]).toContain('1.1 shortcuts');
+        await router.handle(makeMsg('/list topics 1.1'));
+        expect(remotes.listRemoteChats).toHaveBeenCalledWith('srv-1', 'w1', 10);
+        expect(sendReplySpy.mock.calls[1][0]).toContain('(read-only)');
+        expect(sendReplySpy.mock.calls[1][0]).toContain('r-chat');
+    });
+
     it('reports safe command, queue, follow-up and dispatch failure categories', async () => {
         const observe = vi.fn();
         await router.handle(makeMsg('/list agents'), observe);
@@ -254,7 +271,7 @@ describe('TeamsCommandRouter', () => {
 
     it('sends message to explicit chat ID', async () => {
         await router.handle(makeMsg('[proc-111] What is the status?'));
-        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'What is the status?', 'ask');
+        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'What is the status?', undefined);
         expect(sendReplySpy.mock.calls[0][0]).toContain('Message sent');
     });
 
@@ -270,7 +287,7 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('How is it going?'));
-        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-222', 'How is it going?', 'ask');
+        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-222', 'How is it going?', undefined);
     });
 
     it('creates new topic when no active topic and repo is selected', async () => {
@@ -278,13 +295,13 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
 
         await router.handle(makeMsg('Start something new'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Start something new', 'ask');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Start something new', undefined);
         expect(sendReplySpy.mock.calls[0][0]).toContain('New topic created');
     });
 
     it('auto-selects first repo when no repo selected', async () => {
         await router.handle(makeMsg('Hello world'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Hello world', 'ask');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Hello world', undefined);
         expect(sendReplySpy.mock.calls[0][0]).toContain('ProjectA');
     });
 
@@ -370,7 +387,83 @@ describe('TeamsCommandRouter', () => {
 
         // user-A sends a message — should enqueue in ProjectA (ws-1), not ProjectB
         await router.handle(makeMsg('Fix the bug', { senderAadId: 'user-A' }));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug', 'ask');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Fix the bug', undefined);
+    });
+
+    describe('compact', () => {
+        let compact: ReturnType<typeof vi.fn>;
+        const noTurnStarted = () => {
+            expect(deps.enqueueChat).not.toHaveBeenCalled();
+            expect(deps.executeFollowUp).not.toHaveBeenCalled();
+            expect(deps.admitFollowUp ?? vi.fn()).not.toHaveBeenCalled();
+            expect(deps.admitPendingFollowUp ?? vi.fn()).not.toHaveBeenCalled();
+        };
+
+        beforeEach(() => {
+            compact = vi.fn().mockResolvedValue({ result: { success: true }, tokensBefore: 82_000, tokensAfter: 14_000 });
+            deps.compact = compact;
+            router = new TeamsCommandRouter(deps);
+        });
+
+        it('asks for a topic when none is selected', async () => {
+            await router.handle(makeMsg('/compact'));
+            expect(sendReplySpy).toHaveBeenLastCalledWith('❌ No topic selected. Use `list topics`, then `select topic <n>`.', expect.any(String));
+            expect(compact).not.toHaveBeenCalled();
+        });
+
+        it('compacts the selected topic with instructions and keeps the selection', async () => {
+            await router.handle(makeMsg('/select repo ProjectA'));
+            await router.handle(makeMsg('/select topic proc-111'));
+            await router.handle(makeMsg('COMPACT keep the *plan*'));
+            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'proc-111' }), 'keep the *plan*');
+            expect(sendReplySpy).toHaveBeenLastCalledWith('🗜️ Compacted "Fix bug" — context 82k → 14k tokens', expect.any(String));
+            noTurnStarted();
+            await router.handle(makeMsg('/list topics'));
+            expect(sendReplySpy.mock.lastCall?.[0]).toMatch(/proc-111.*⬅️/);
+        });
+
+        it('maps busy, unsupported, no-session and unknown failures to short replies', async () => {
+            const { APIError } = await import('../../../src/server/errors');
+            await router.handle(makeMsg('/select topic proc-111'));
+            const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const cases: Array<[unknown, string]> = [
+                [new APIError(409, 'x', 'CONVERSATION_NOT_IDLE'), 'Chat is busy — try compact again when the current turn finishes.'],
+                [new APIError(422, 'x', 'COMPACT_UNSUPPORTED'), "This chat's provider doesn't support compaction."],
+                [new APIError(400, 'x', 'BAD_REQUEST'), 'This chat has no active session to compact yet.'],
+                [new Error('private provider detail'), 'Could not compact this chat. Please try again later.'],
+            ];
+            for (const [failure, text] of cases) {
+                compact.mockRejectedValueOnce(failure);
+                await router.handle(makeMsg('compact'));
+                expect(sendReplySpy).toHaveBeenLastCalledWith(text, expect.any(String));
+            }
+            error.mockRestore();
+            noTurnStarted();
+        });
+
+        it('compacts the bound thread chat, records the command, and never dispatches to AI', async () => {
+            deps.isAnswerRelayEnabled = () => true;
+            deps.recordThreadCommand = vi.fn();
+            deps.hasThreadCommand = vi.fn().mockReturnValue(false);
+            deps.admitFollowUp = vi.fn();
+            deps.admitPendingFollowUp = vi.fn();
+            deps.resolveThreadReply = vi.fn().mockImplementation(async (msg: InboundTeamsMessage) =>
+                msg.replyToMessageId === 'root-a'
+                    ? { process: { id: 'proc-111', metadata: { workspaceId: 'ws-1' } }, workspaceId: 'ws-1' }
+                    : msg.replyToMessageId === 'root-new' ? { workspaceId: 'ws-1' } : null);
+            router = new TeamsCommandRouter(deps);
+            // A different selected topic must not win over the thread's chat.
+            await router.handle(makeMsg('/select topic proc-222'));
+            const reply = makeMsg('/compact', { replyToMessageId: 'root-a' });
+            await router.handle(reply);
+            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'proc-111' }), undefined);
+            expect(deps.recordThreadCommand).toHaveBeenCalledWith(reply);
+            expect(sendReplySpy).toHaveBeenLastCalledWith('🗜️ Compacted "Fix bug" — context 82k → 14k tokens', 'root-a');
+            await router.handle(makeMsg('compact', { replyToMessageId: 'root-new' }));
+            expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('No topic selected in this thread'), 'root-new');
+            expect(compact).toHaveBeenCalledTimes(1);
+            noTurnStarted();
+        });
     });
 
     describe('channel-thread replies', () => {
@@ -424,7 +517,7 @@ describe('TeamsCommandRouter', () => {
             expect(deps.enqueueChat).not.toHaveBeenCalled();
             await router.handle(makeMsg('[proc-111] explicit chat', { replyToMessageId: 'root-b' }));
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
-                expect.any(Object), expect.objectContaining({ id: 'proc-b' }), '[proc-111] explicit chat', 'ask');
+                expect.any(Object), expect.objectContaining({ id: 'proc-b' }), '[proc-111] explicit chat', undefined);
             await router.handle(makeMsg('still selected', { replyToMessageId: 'unrelated-root' }));
             expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('/select repo <name>'), 'unrelated-root');
             expect(deps.admitFollowUp).toHaveBeenCalledTimes(1);
@@ -508,12 +601,27 @@ describe('TeamsCommandRouter', () => {
             sendReplySpy.mockClear();
             const reply = makeMsg('queued reply', { replyToMessageId: 'pending' });
             await router.handle(reply);
-            expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(reply, 'task-pending', 'queued reply', 'ask');
+            expect(deps.admitPendingFollowUp).toHaveBeenCalledWith(reply, 'task-pending', 'queued reply', undefined);
             expect(sendReplySpy).toHaveBeenCalledWith(expect.stringContaining('Message sent'), 'pending');
             expect(deps.acknowledgeFollowUp).toHaveBeenCalledWith(reply);
             await router.handle(makeMsg('ordinary message'));
             expect(deps.admitFollowUp).toHaveBeenCalledWith(
-                expect.any(Object), expect.objectContaining({ id: 'proc-111' }), 'ordinary message', 'ask');
+                expect.any(Object), expect.objectContaining({ id: 'proc-111' }), 'ordinary message', undefined);
+        });
+
+        it('passes the follow-up mode through as typed so plain text keeps the chat mode', async () => {
+            await router.handle(makeMsg('/select topic proc-111'));
+            const modes: Array<[string, string | undefined]> = [
+                ['keep going', undefined], ['/ask just look', 'ask'], ['/autopilot fix it', 'autopilot'],
+            ];
+            for (const [text, mode] of modes) {
+                await router.handle(makeMsg(text));
+                expect(deps.admitFollowUp).toHaveBeenLastCalledWith(
+                    expect.any(Object), expect.objectContaining({ id: 'proc-111' }), expect.any(String), mode);
+                await router.handle(makeMsg(text, { replyToMessageId: 'pending' }));
+                expect(deps.admitPendingFollowUp).toHaveBeenLastCalledWith(
+                    expect.any(Object), 'task-pending', expect.any(String), mode);
+            }
         });
 
         it('reports missing bound targets in the same thread and never falls back', async () => {

@@ -80,6 +80,12 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
         enabledByDefault: true,
     },
     {
+        name: 'list_workspaces',
+        label: 'List Workspaces',
+        description: 'Lists local and remote repos (and repo groups) with their IDs, for targeting Send to Conversation.',
+        enabledByDefault: true,
+    },
+    {
         name: 'ask_user',
         label: 'Ask User',
         description: 'Poses interactive questions to the user during execution.',

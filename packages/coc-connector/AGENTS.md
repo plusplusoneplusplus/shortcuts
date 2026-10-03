@@ -32,7 +32,8 @@ Consolidated messaging connectors behind one `MessagingConnector` contract. No C
 - Baileys + qrcode-terminal are `optionalDependencies` — installed but only loaded by WhatsApp use.
 - The WhatsApp connection factory receives an abort signal from `WhatsAppBot`; stop cancels pending reconnect timers and prevents late callbacks from reviving the bot.
 - WhatsApp inbound messages expose the chat JID, optional group participant JID, and paired-account `fromMe` flag; `senderJid` remains the chat JID for container consumers. `WhatsAppBot.react()` sends a Baileys reaction with a five-second rejection timeout.
-- `whatsapp/message-utils.ts` contains CoC-independent outbound formatting, lossless WhatsApp text chunking, command parsing (`list/select/create`, chat, `/autopilot`), and the container bridge's `[global]` prefix parser. The container bridge uses the helpers without changing its short-message formatting or routing.
+- `shared/commands.ts` is the one Teams/WhatsApp command grammar (`parseMessagingCommand` + generated help). Chat mode is three-state: `/autopilot <msg>`, `/ask <msg>`, or undefined for plain text (callers keep the chat's mode).
+- `whatsapp/message-utils.ts` contains CoC-independent outbound formatting, lossless WhatsApp text chunking, and the container bridge's `[global]` prefix parser. The container bridge uses the helpers without changing its short-message formatting or routing.
 
 ## Build / test
 
