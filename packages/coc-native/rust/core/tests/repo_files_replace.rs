@@ -3,8 +3,8 @@
 use std::fs;
 
 use coc_native_core::repo_files::{
-    apply_replacements, build_matcher, preserve_case, replace_content, ReplaceFile, ReplaceOptions,
-    ReplaceTarget, RepoFilesError,
+    apply_replacements, build_matcher, preserve_case as preserve_case_units, replace_content,
+    ReplaceFile, ReplaceOptions, ReplaceTarget, RepoFilesError,
 };
 
 const REGEX: ReplaceOptions =
@@ -41,6 +41,14 @@ fn plain(
     replacement: &str,
 ) -> Result<(String, u32), String> {
     apply(content, targets, query, replacement, ReplaceOptions::default())
+}
+
+fn preserve_case(matched: &str, replacement: &str) -> String {
+    String::from_utf16(&preserve_case_units(
+        &matched.encode_utf16().collect::<Vec<_>>(),
+        &replacement.encode_utf16().collect::<Vec<_>>(),
+    ))
+    .unwrap()
 }
 
 #[test]
@@ -165,6 +173,31 @@ fn preserve_case_applies_after_expansion() {
         options,
     );
     assert_eq!(out.unwrap().0, "call BAR[1]\n");
+}
+
+#[test]
+fn preserve_case_keeps_expanded_surrogates_until_splicing() {
+    for (text, query, replacement, start, end, expected) in [
+        ("😀a", r"\uD83D", "$&", 0.0, 1.0, "😀a"),
+        ("😀a", r"\uDE00", "$0", 1.0, 2.0, "😀a"),
+        ("a😀", r"(a)(\uD83D)", "$1$2", 0.0, 2.0, "a😀"),
+        ("A😀", r"(A)(\uD83D)", "$1$2", 0.0, 2.0, "A😀"),
+        ("Ab😀", r"(Ab)(\uD83D)", "$1$2", 0.0, 3.0, "Ab😀"),
+        ("aB😀", r"(aB)(\uD83D)", "$1$2", 0.0, 3.0, "aB😀"),
+        ("😀Ab", r"(\uDE00)(Ab)", "$1$2", 1.0, 4.0, "😀Ab"),
+        ("a😀", r"(a)(\uD83D)", "ΟΣ$2", 0.0, 2.0, "ος😀"),
+        ("Ab😀", r"(Ab)(\uD83D)", "xΟΣ$2", 0.0, 3.0, "Xος😀"),
+        ("😀a", r"(\uD83D)(\uDE00)a", "$1x$2", 0.0, 3.0, "�x�"),
+    ] {
+        let t =
+            ReplaceTarget { line: 1.0, text: text.into(), start_column: start, end_column: end };
+        let options = ReplaceOptions { preserve_case: true, ..REGEX };
+        assert_eq!(
+            apply(text, &[t], query, replacement, options),
+            Ok((expected.into(), 1)),
+            "{query} / {replacement}"
+        );
+    }
 }
 
 #[test]

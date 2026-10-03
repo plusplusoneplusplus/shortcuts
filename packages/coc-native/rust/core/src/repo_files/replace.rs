@@ -103,34 +103,50 @@ pub fn build_matcher(query: &str, options: ReplaceOptions) -> Result<Regex, Repo
         .or_else(|e| invalid(format!("Invalid regular expression: {e}")))
 }
 
+/// Case valid scalar runs together (including contextual lowercase), keeping
+/// lone UTF-16 surrogates unchanged so later splices can join them into pairs.
+fn case_units(units: &[u16], upper: bool) -> Vec<u16> {
+    let case = |s: &str| if upper { s.to_uppercase() } else { s.to_lowercase() };
+    let mut out = Vec::new();
+    let mut run = String::new();
+    for decoded in char::decode_utf16(units.iter().copied()) {
+        match decoded {
+            Ok(c) => run.push(c),
+            Err(e) => {
+                out.extend(case(&run).encode_utf16());
+                run.clear();
+                out.push(e.unpaired_surrogate());
+            }
+        }
+    }
+    out.extend(case(&run).encode_utf16());
+    out
+}
+
 /// VS Code's "preserve case": `FOO` → upper, `foo` → lower, `Foo` → capitalized;
-/// mixed casing is left exactly as typed.
-pub fn preserve_case(matched: &str, replacement: &str) -> String {
+/// mixed casing is left exactly as typed. JavaScript slices at one UTF-16 unit.
+pub fn preserve_case(matched: &[u16], replacement: &[u16]) -> Vec<u16> {
     if matched.is_empty()
         || replacement.is_empty()
-        || !matched.chars().any(|c| c.is_ascii_alphabetic())
+        || !matched.iter().any(|&u| u <= 127 && (u as u8).is_ascii_alphabetic())
     {
-        return replacement.to_owned();
+        return replacement.to_vec();
     }
-    let lower = matched.to_lowercase();
-    if matched == matched.to_uppercase() && matched != lower {
-        return replacement.to_uppercase();
+    let lower = case_units(matched, false);
+    if matched == case_units(matched, true) && matched != lower {
+        return case_units(replacement, true);
     }
     if matched == lower {
-        return replacement.to_lowercase();
+        return case_units(replacement, false);
     }
-    let split = |s: &str| {
-        let first = s.chars().next().map_or(0, char::len_utf8);
-        (s[..first].to_owned(), s[first..].to_owned())
-    };
-    let (head, tail) = split(matched);
-    // JS slices after one UTF-16 unit. An astral head's two surrogates are
-    // individually uncased, so keep the pair intact and case only its tail.
-    if (head.len() == 4 || head == head.to_uppercase()) && tail == tail.to_lowercase() {
-        let (head, tail) = split(replacement);
-        return (if head.len() == 4 { head } else { head.to_uppercase() }) + &tail.to_lowercase();
+    if matched[..1] == case_units(&matched[..1], true)
+        && matched[1..] == case_units(&matched[1..], false)
+    {
+        let mut out = case_units(&replacement[..1], true);
+        out.extend(case_units(&replacement[1..], false));
+        return out;
     }
-    replacement.to_owned()
+    replacement.to_vec()
 }
 
 /// Expand `$$`, `$&` and `$n`/`$nn` against `found` within `line`. An unknown
@@ -232,10 +248,7 @@ pub fn apply_replacements(
             };
             let mut cased = expand(replacement, &found, &original, options.regex);
             if options.preserve_case {
-                let matched = String::from_utf16_lossy(&original[found.range()]);
-                cased = preserve_case(&matched, &String::from_utf16_lossy(&cased))
-                    .encode_utf16()
-                    .collect();
+                cased = preserve_case(&original[found.range()], &cased);
             }
             let (start, end) = (target.start_column as usize, target.end_column as usize);
             text.splice(start..end, cased);
