@@ -20,7 +20,13 @@ import type { RepoTreeService } from '../repos/tree-service';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
 import type { ContentSearchOptions } from '../repos/types';
-import { GROUP_SEARCH_CONCURRENCY, mapBounded, parseGroupSearchControls } from './repo-group-search';
+import {
+    GROUP_SEARCH_CONCURRENCY,
+    groupSearchSummary,
+    mapBounded,
+    parseGroupSearchControls,
+    partitionGroupMembers,
+} from './repo-group-search';
 import {
     REPO_GROUP_CONTENT_SEARCH_MAX_RESULTS,
     RepoGroupContentSearchAbortedError,
@@ -84,47 +90,22 @@ async function searchRepoGroup(
     limit: number,
     showIgnored: boolean,
 ): Promise<RepoGroupSearchResult> {
-    const searchable = members
-        .map((member, memberIndex) => ({ member, memberIndex }))
-        .filter(({ member }) => !member.stale && member.name !== undefined);
-    const unavailableMemberCount = members.length - searchable.length;
-    if (searchable.length === 0) {
-        return {
-            status: 'no-searchable-members',
-            results: [],
-            memberCount: members.length,
-            searchableMemberCount: 0,
-            searchedMemberCount: 0,
-            unavailableMemberCount,
-            failedMemberCount: 0,
-        };
-    }
-
-    const searches = await mapBounded(searchable, GROUP_SEARCH_CONCURRENCY, async ({ member, memberIndex }) => {
+    const { live } = partitionGroupMembers(members);
+    const searches = await mapBounded(live, GROUP_SEARCH_CONCURRENCY, async ({ member, memberIndex }) => {
         try {
             const matches = await service.searchFilesRanked(member.workspaceId, query, { limit, showIgnored });
-            return {
-                matches: matches.map((match): RankedGroupCandidate => ({
-                    ...match,
-                    workspaceId: member.workspaceId,
-                    repoName: member.name!,
-                    memberIndex,
-                })),
-                failed: false,
-            };
+            return matches.map((match): RankedGroupCandidate => ({
+                ...match,
+                workspaceId: member.workspaceId,
+                repoName: member.name,
+                memberIndex,
+            }));
         } catch {
-            return { matches: [] as RankedGroupCandidate[], failed: true };
+            return undefined;
         }
     });
-    const failedMemberCount = searches.filter(search => search.failed).length;
-    const searchedMemberCount = searchable.length - failedMemberCount;
-    const status = searchedMemberCount === 0
-        ? 'failed'
-        : failedMemberCount > 0 || unavailableMemberCount > 0
-            ? 'partial'
-            : 'complete';
     const results = searches
-        .flatMap(search => search.matches)
+        .flatMap(matches => matches ?? [])
         .sort(compareGroupCandidates)
         .slice(0, limit)
         .map(({ workspaceId, repoName, path, score, indices }) => ({
@@ -134,15 +115,8 @@ async function searchRepoGroup(
             score,
             indices,
         }));
-    return {
-        status,
-        results,
-        memberCount: members.length,
-        searchableMemberCount: searchable.length,
-        searchedMemberCount,
-        unavailableMemberCount,
-        failedMemberCount,
-    };
+    const failed = searches.filter(matches => matches === undefined).length;
+    return { ...groupSearchSummary(members.length, live.length, failed), results };
 }
 
 /**

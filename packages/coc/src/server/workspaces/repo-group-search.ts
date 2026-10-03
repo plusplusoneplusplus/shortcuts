@@ -1,5 +1,35 @@
-/** Shared request controls and ordered fan-out for repository-group searches. */
+/** Shared request controls, membership split, ordered fan-out and status for repository-group searches. */
+import type { RepoGroupMember } from './repo-group-workspace';
+
 export const GROUP_SEARCH_CONCURRENCY = 4;
+
+export type LiveGroupMember = RepoGroupMember & { name: string };
+
+/** Split members into live ones (with membership index) and stale ones, in membership order. */
+export function partitionGroupMembers(members: readonly RepoGroupMember[]): {
+    live: { member: LiveGroupMember; memberIndex: number }[];
+    stale: RepoGroupMember[];
+} {
+    const live: { member: LiveGroupMember; memberIndex: number }[] = [];
+    const stale: RepoGroupMember[] = [];
+    members.forEach((member, memberIndex) => {
+        if (member.stale || member.name === undefined) stale.push(member);
+        else live.push({ member: member as LiveGroupMember, memberIndex });
+    });
+    return { live, stale };
+}
+
+/** Member counters and the status they imply, shared by file and content group search. */
+export function groupSearchSummary(memberCount: number, searchableMemberCount: number, failedMemberCount: number) {
+    const searchedMemberCount = searchableMemberCount - failedMemberCount;
+    const unavailableMemberCount = memberCount - searchableMemberCount;
+    const status = searchableMemberCount === 0
+        ? 'no-searchable-members' as const
+        : searchedMemberCount === 0
+            ? 'failed' as const
+            : failedMemberCount > 0 || unavailableMemberCount > 0 ? 'partial' as const : 'complete' as const;
+    return { status, memberCount, searchableMemberCount, searchedMemberCount, unavailableMemberCount, failedMemberCount };
+}
 
 /** Validate controls in wire-error precedence: query, limit, then flags. */
 export function parseGroupSearchControls(
