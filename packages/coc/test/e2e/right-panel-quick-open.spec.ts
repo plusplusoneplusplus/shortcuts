@@ -10,9 +10,7 @@
  * column collapsed, press Ctrl+P, pick a nested file, and check that it lands as
  * a right-panel tab with the tree column revealed on it.
  *
- * The E2E server pins `features.splitWorkspacePanel: false` (see
- * fixtures/e2e-server-config.ts — the rest of the suite targets the classic
- * shell), so each test flips it back on through the live admin API.
+ * The shared E2E server uses the same always-split Workspace layout.
  */
 
 import * as fs from 'fs';

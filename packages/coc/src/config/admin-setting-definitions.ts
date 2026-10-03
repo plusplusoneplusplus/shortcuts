@@ -884,14 +884,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.remoteShell', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'remoteShellEnabled',
-        ui: {
-            tab: 'appearance', group: 'dashboard', order: 65, label: 'Remote-first shell',
-            hint: 'Replace per-clone repo tabs with a remote-first shell: one entry per git remote, a clone switcher, and remote/clone-scoped sub-tabs. Desktop only. Enabled by default.',
-            testId: 'toggle-remote-shell-enabled',
-        },
-    }),
-    bool({
         key: 'features.scopeSwitcher', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'scopeSwitcherEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 66, label: 'Scope slide switcher', badge: 'experimental',

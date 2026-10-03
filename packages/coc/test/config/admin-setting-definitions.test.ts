@@ -488,36 +488,6 @@ describe('Features card UI metadata', () => {
         expect(buildRuntimeFeatureFlags({}).showPlanDepTab).toBe(false);
     });
 
-    // Remote-first shell and Split Workspace panel graduated out of experimental:
-    // they now default ON (resolved default true) with no `experimental` badge.
-    // `remoteShell` stays bootstrap-conservative (absentFallback false) so a
-    // legacy partial config that predates the flag reads off; the Split
-    // Workspace panel has no absentFallback, so an absent key resolves to the
-    // on default — what its "Enabled by default" hint promises.
-    it.each([
-        { key: 'features.remoteShell', flag: 'remoteShellEnabled', label: 'Remote-first shell', absentFallback: false, absentValue: false },
-    ])('exposes $label as a default-on Features toggle with no experimental badge', ({ key, flag, label, absentFallback, absentValue }) => {
-        const def = ADMIN_SETTING_DEFINITIONS.find(d => d.key === key);
-        expect(def, `${key} must be an admin setting`).toBeDefined();
-        expect(def!.value).toEqual({ kind: 'boolean' });
-        expect(def!.default, `${key} must default on`).toBe(true);
-        expect(def!.absentFallback, `${key} absentFallback`).toBe(absentFallback);
-        expect(def!.runtime).toBe('live');
-        expect(def!.runtimeFlag).toBe(flag);
-        expect(def!.ui, `${key} must appear on the Features card`).toBeDefined();
-        expect(def!.ui!.group).toBe('dashboard');
-        expect(def!.ui!.label).toBe(label);
-        expect(def!.ui!.badge, `${key} must no longer be flagged experimental`).toBeUndefined();
-        expect(def!.ui!.hint).toMatch(/enabled by default/i);
-        expect(getFeatureCardSettings('dashboard').some(d => d.key === key)).toBe(true);
-        // Resolved config (all fields present) reads the on default.
-        expect((buildRuntimeFeatures(DEFAULT_CONFIG) as Record<string, unknown>)[flag]).toBe(true);
-        // A partial config that lacks the key resolves via `absentFallback ?? default`.
-        expect(buildRuntimeFeatureFlags({})[flag]).toBe(absentValue);
-    });
-
-
-
     // The chat Style selector ships on: it defaults to true so a fresh install
     // gets the chip, but keeps the `experimental` badge and stays
     // bootstrap-conservative (absentFallback false) so a legacy partial config
@@ -641,7 +611,6 @@ describe('feature toggle settings-tab placement', () => {
         'vimNavigation.enabled': 'appearance',
         'features.scopeSwitcher': 'appearance',
         'features.pinnedScopes': 'appearance',
-        'features.remoteShell': 'appearance',
         'features.explorerEditorTabs': 'appearance',
         'features.markdownPanelPreview': 'appearance',
         'features.htmlPageTab': 'appearance',

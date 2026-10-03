@@ -31,12 +31,6 @@ vi.mock('../../../../src/server/spa/client/react/admin/AdminPanel', () => ({
     AdminPanel: () => <div id="view-admin">admin</div>,
 }));
 
-// The status dock only exists in the remote-first shell; turn it on so the
-// AC-03 "exactly one dock" assertion has something to count.
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => true,
-}));
-
 // The cluster itself needs the full app-shell provider tree; this test is about
 // how many docks are on screen, not what they contain.
 vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({

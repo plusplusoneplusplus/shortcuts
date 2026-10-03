@@ -45,7 +45,6 @@ vi.mock('../../../src/server/spa/client/react/utils/config', () => ({
     getActiveProvider: () => 'copilot' as const,
     isSessionContextAttachmentsEnabled: () => false,
     isCanvasEnabled: () => false,
-    isRemoteShellEnabled: () => false,
     isQuickAskSidenotesEnabled: () => false,
     isChatProviderSwitchingEnabled: () => false,
     DASHBOARD_CONFIG_UPDATED_EVENT: 'coc-dashboard-config-updated',

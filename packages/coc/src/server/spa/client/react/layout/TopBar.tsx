@@ -19,12 +19,10 @@ import { useApp } from '../contexts/AppContext';
 import { useQueue } from '../contexts/QueueContext';
 import { useRepos } from '../contexts/ReposContext';
 import { StatusActions } from './StatusActions';
-import { RepoTabStrip } from '../features/repo-detail/RepoTabStrip';
 import { WorkspaceDockToggle } from '../features/repo-detail/WorkspaceDockToggle';
 import { RemoteShellHeader } from '../features/remote-shell/RemoteShellHeader';
 import { ScopeSlideSwitcher } from '../features/remote-shell/ScopeSlideSwitcher';
 import { VirtualWorkspaceShellHeader } from '../features/remote-shell/VirtualWorkspaceShellHeader';
-import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useScopeSwitcherEnabled } from '../hooks/feature-flags/useScopeSwitcherEnabled';
 import { useScopeNavigation } from '../hooks/useScopeNavigation';
 import { MY_WORK_WORKSPACE_ID, getMyWorkHeaderConfig } from '../repos/MyWorkView';
@@ -64,12 +62,10 @@ export interface TopBarProps {
 export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     const { state, dispatch } = useApp();
     const { dispatch: queueDispatch } = useQueue();
-    const { repos, badgeCounts, unseenCounts: processUnseenCounts, fetchRepos, remoteGroupWorkspaces } = useRepos();
-    const unseenCounts = badgeCounts ?? processUnseenCounts;
+    const { repos, fetchRepos, remoteGroupWorkspaces } = useRepos();
     const { navigateToWorkspace } = useWorkspaceNavigation();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
-    const remoteShell = useRemoteShellEnabled();
     const scopeSwitcherEnabled = useScopeSwitcherEnabled();
     const [popoverOpen, setPopoverOpen] = useState(false);
     const hostname = getHostname();
@@ -114,10 +110,6 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         setPopoverOpen(prev => !prev);
     }, [state.activeTab]);
 
-    const selectRepo = useCallback((id: string) => {
-        navigateToWorkspace(id);
-    }, [navigateToWorkspace]);
-
     const isOnReposTab = state.activeTab === 'repos';
     const selectedRepo = useMemo(() => {
         const scopedRepos = repos.filter(r => !state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId);
@@ -135,12 +127,12 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
         const scopedRepos = repos.filter(r => !state.currentAgentId || !r.workspace.agentId || r.workspace.agentId === state.currentAgentId);
         return findRepoBySelectionId(scopedRepos, rememberedId) || findRepoBySelectionId(repos, rememberedId) || undefined;
     }, [selectedRepo, state.lastWorkspaceRepoId, state.currentAgentId, repos]);
-    // Remote-shell visual gate: enabled on any desktop page when the remote-first
-    // shell is on, regardless of whether a concrete repository is selected. The
+    // The remote-first header is used on every desktop page, regardless of
+    // whether a concrete repository is selected. The
     // header design stays stable across cold loads and the Admin page; repository
     // selection controls what is rendered *inside* the header (full clusters vs.
     // the unselected picker), not which header system is shown.
-    const showRemoteHeader = remoteShell && !isMobile;
+    const showRemoteHeader = !isMobile;
 
     // Scope slide switcher (features.scopeSwitcher): one sliding segmented
     // control (My Work · My Life · active workspace) that replaces the
@@ -176,7 +168,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
             : myLifeEnabled && isOnReposTab && state.selectedRepoId === MY_LIFE_WORKSPACE_ID
                 ? MY_LIFE_HEADER_CONFIG
                 : groupHeaderConfig;
-    const showVirtualHeader = remoteShell && !isMobile && !!virtualHeaderConfig;
+    const showVirtualHeader = !isMobile && !!virtualHeaderConfig;
 
     // In the remote-first shell the status cluster (connection / notifications /
     // quota / admin / theme) moves to a global bottom status bar
@@ -184,7 +176,7 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
     // cluster exactly when that dock is on screen so the two never both show —
     // and, on mobile / classic mode where the dock is absent, keep it here so
     // the controls never vanish. Must match GlobalStatusDock's own gate.
-    const statusInDock = remoteShell && !isMobile;
+    const statusInDock = !isMobile;
 
     return (
         <>
@@ -256,22 +248,10 @@ export function TopBar({ onAdminOpen }: TopBarProps = {}) {
                 )}
                 {!isMobile && (showVirtualHeader && virtualHeaderConfig ? (
                     <VirtualWorkspaceShellHeader config={virtualHeaderConfig} repos={repos} onSelectRepo={navigateToWorkspace} hideIdentity={hideScopeIdentity} />
-                ) : showRemoteHeader ? (
+                ) : (
                     // Remote-first shell: always rendered; repo may be undefined
                     // (unselected state shows a "Select repository" picker).
                     <RemoteShellHeader repo={selectedRepo} repos={repos} hideIdentity={hideScopeIdentity} />
-                ) : isWindowLocked ? (
-                    // Classic shell, locked window: the repo tab strip IS the
-                    // cross-scope switcher, so it is omitted entirely.
-                    null
-                ) : (
-                    <RepoTabStrip
-                        repos={repos}
-                        selectedRepoId={state.selectedRepoId}
-                        onSelect={selectRepo}
-                        unseenCounts={unseenCounts}
-                        onRefresh={fetchRepos}
-                    />
                 ))}
                 {TABS.length > 0 && (
                     <nav className="hidden md:flex items-center gap-1 min-w-0 flex-shrink-0" id="tab-bar">

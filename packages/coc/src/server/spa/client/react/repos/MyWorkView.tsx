@@ -17,7 +17,6 @@ import { RepoSettingsTab } from '../features/repo-settings/RepoSettingsTab';
 import { MyWorkTodayTab } from '../features/my-work/MyWorkTodayTab';
 import { useSchedulesInScheduledSlideEnabled } from '../hooks/feature-flags/useSchedulesInScheduledSlideEnabled';
 import { useMyWorkTodayViewEnabled } from '../hooks/feature-flags/useMyWorkTodayViewEnabled';
-import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { useApp } from '../contexts/AppContext';
 import type { RepoData } from './repoGrouping';
@@ -107,10 +106,9 @@ export function MyWorkView() {
     const { state } = useApp();
     const { breakpoint } = useBreakpoint();
     const isMobile = breakpoint === 'mobile';
-    const remoteShell = useRemoteShellEnabled();
     // In the remote-first desktop shell the header lives in the global TopBar
     // (`VirtualWorkspaceShellHeader`); render the in-body header everywhere else.
-    const headerInTopBar = remoteShell && !isMobile;
+    const headerInTopBar = !isMobile;
 
     // Hide the standalone Schedules tab when schedule management has moved into
     // the chat-list "Scheduled" slide (feature flag). The Activity tab reuses

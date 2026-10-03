@@ -35,11 +35,7 @@ import {
     disableLanguageServers,
     enableLanguageServers,
 } from './fixtures/language-server-seed';
-import {
-    enableRemoteShell,
-    registerRemoteServer,
-    startSecondaryServer,
-} from './fixtures/secondary-server';
+import { registerRemoteServer, startSecondaryServer } from './fixtures/secondary-server';
 import { execFileSync, spawnSync } from 'child_process';
 import { runMonacoMenuItem } from './helpers/monaco-menu';
 import type { Locator, Page } from '@playwright/test';
@@ -1325,7 +1321,6 @@ test.describe('Explorer language support – direct remote clone', () => {
             await enableLanguageServers(secondary.url, WORKSPACE_ID, 'python');
             remoteServerId = (await registerRemoteServer(serverUrl, 'Remote Host', secondary.url)).id;
 
-            await enableRemoteShell(page);
             await page.goto(serverUrl);
             await selectRepoNamed(page, 'Remote Python Repo');
             await openSubTab(page, 'explorer');
@@ -1437,7 +1432,6 @@ test.describe('Explorer language support – direct remote clone', () => {
                 await registerRemoteServer(serverUrl, 'Remote Panel Host', secondary.url)
             ).id;
 
-            await enableRemoteShell(page);
             await page.goto(serverUrl);
             await selectRepoNamed(page, 'Remote Panel LSP Repo');
             await openUnifiedSourceFile(page, 'app.ts');

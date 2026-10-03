@@ -46,7 +46,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
-    useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
+    useBreakpoint: () => ({ breakpoint: 'mobile', isMobile: true, isTablet: false, isDesktop: false }),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/useApi', () => ({

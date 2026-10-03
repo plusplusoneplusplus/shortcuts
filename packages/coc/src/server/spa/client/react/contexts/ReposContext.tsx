@@ -199,10 +199,8 @@ export function ReposProvider({ children }: { children: ReactNode }) {
 
     const fetchRepos = useCallback(async (trigger: GitInfoBatchTrigger = 'manual-refresh') => {
         try {
-            // Fetch workspaces, process summaries, and (when features.remoteShell
-            // is ON) remote-server workspaces in parallel. aggregateRemoteWorkspaces
-            // returns an empty result when the flag is OFF, so the classic flow is
-            // unchanged and incurs no remote fetch.
+            // Fetch local workspaces, process summaries, and remote-server
+            // workspaces in parallel.
             const [workspaces, processRes, remoteAggregate] = await Promise.all([
                 listWorkspaces(),
                 listProcessSummaries(5000).catch(() => null),
@@ -262,9 +260,9 @@ export function ReposProvider({ children }: { children: ReactNode }) {
                 })
             );
 
-            // Merge in remote-server workspaces (features.remoteShell only; empty
-            // otherwise). Remote rows already carry git-info from the per-server
-            // batch, so they render fully resolved alongside the local cards.
+            // Merge in remote-server workspaces. Remote rows already carry git-info
+            // from the per-server batch, so they render fully resolved alongside
+            // the local cards.
             const remoteRepos = remoteAggregate ? buildRemoteRepoData(remoteAggregate) : [];
             const combined = remoteRepos.length > 0 ? [...enriched, ...remoteRepos] : enriched;
 

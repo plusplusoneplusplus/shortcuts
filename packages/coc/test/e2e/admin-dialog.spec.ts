@@ -42,28 +42,6 @@ const dialog = (page: Page) => page.locator('#admin-dialog');
 const adminShell = (page: Page) => page.locator('#view-admin');
 const mainPane = (page: Page) => page.locator('#admin-dialog .ar-main');
 
-/**
- * Force the remote-first shell on. The E2E server config pins
- * `features.remoteShell` off, and the docked status cluster (which owns the
- * sidebar gear) only exists in that shell.
- */
-async function enableRemoteShell(page: Page): Promise<void> {
-    await page.route('**/api/config/runtime', async (route) => {
-        try {
-            const resp = await route.fetch();
-            const json = await resp.json();
-            const features = { ...(json.features ?? {}), remoteShellEnabled: true };
-            await route.fulfill({
-                status: resp.status(),
-                headers: { ...resp.headers(), 'content-type': 'application/json' },
-                body: JSON.stringify({ ...json, features }),
-            });
-        } catch {
-            await route.continue().catch(() => {});
-        }
-    });
-}
-
 /** Land on the default (non-admin) route and wait for it to render. */
 async function gotoDashboard(page: Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
@@ -139,7 +117,6 @@ test.describe('AC-01 — gear opens the admin dialog over the current page', () 
     });
 
     test('the sidebar gear opens the same dialog', async ({ page, serverUrl }) => {
-        await enableRemoteShell(page);
         await gotoDashboard(page, serverUrl);
 
         const sidebarGear = page.locator('[data-testid="sidebar-admin-toggle"]').first();
@@ -204,7 +181,6 @@ test.describe('AC-03 — status dock', () => {
     test.use({ viewport: ADMIN_VIEWPORTS.desktop });
 
     test('exactly one status dock is painted while the dialog is open', async ({ page, serverUrl }) => {
-        await enableRemoteShell(page);
         await gotoDashboard(page, serverUrl);
         await expect(page.locator('[data-testid="global-status-dock"]')).toHaveCount(1);
 

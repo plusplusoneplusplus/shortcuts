@@ -39,9 +39,6 @@ vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
     useSchedulesInScheduledSlideEnabled: () => false,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => false,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
         breakpoint: mockBreakpoint,
@@ -49,6 +46,9 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
         isTablet: false,
         isDesktop: mockBreakpoint === 'desktop',
     }),
+}));
+vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
+    StatusActions: () => <div data-testid="stub-status-actions" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
     getRepoGroup: (...args: unknown[]) => mockGetRepoGroup(...args),

@@ -12,11 +12,7 @@
  * the notes API itself is served entirely from an in-memory mock — no real note
  * files on disk. See fixtures/notes-fixtures.ts.
  *
- * Shell note: the Notes page renders under the pinned classic shell (the E2E
- * config pins features.remoteShell off) with no /api/config/runtime override —
- * NotesView has no remoteShell gate and the notes sub-tab is registered plainly.
- * Hash routing (#repos/{id}/notes) selects the repo and the notes sub-tab
- * regardless of shell.
+ * Hash routing (#repos/{id}/notes) selects the repo and the notes sub-tab.
  */
 
 import * as fs from 'fs';

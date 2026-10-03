@@ -4,18 +4,15 @@
  * In the remote-first shell on desktop the status cluster (connection /
  * notifications / quota / admin / theme) moves to a global bottom status bar
  * (`GlobalStatusDock`) spanning every tab, so the topbar hides its own cluster
- * on EVERY tab and sub-tab — not just the chat/activity view. In classic
- * (non-remote) mode or on mobile the dock is absent, so the cluster must stay
- * in the topbar (otherwise the controls would vanish entirely — regression
- * guard). This must mirror `GlobalStatusDock`'s own `remoteShell && !isMobile`
- * gate so the two never both show and never both hide.
+ * on EVERY tab and sub-tab — not just the chat/activity view. On mobile the
+ * dock is absent, so the cluster must stay in the topbar. This must mirror
+ * `GlobalStatusDock`'s breakpoint gate so the two never both show or hide.
  *
  * @vitest-environment jsdom
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-let mockRemoteShell = true;
 let mockAppState: any = {
     activeTab: 'repos',
     activeRepoSubTab: 'chats',
@@ -55,9 +52,6 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoTabStr
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/RemoteShellHeader', () => ({
     RemoteShellHeader: () => <div data-testid="remote-shell-header" />,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShell,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
     useMyWorkEnabled: () => false,
 }));
@@ -83,7 +77,6 @@ function clusterPresent(): boolean {
 }
 
 beforeEach(() => {
-    mockRemoteShell = true;
     mockIsMobile = false;
     mockRepos = [repo('a', 'shortcuts')];
     mockAppState = {
@@ -123,12 +116,6 @@ describe('TopBar status cluster placement', () => {
         mockAppState = { ...mockAppState, activeRepoSubTab: 'activity' };
         render(<TopBar />);
         expect(clusterPresent()).toBe(false);
-    });
-
-    it('keeps the topbar cluster when the remote shell is off (classic mode)', () => {
-        mockRemoteShell = false;
-        render(<TopBar />);
-        expect(clusterPresent()).toBe(true);
     });
 
     it('keeps the topbar cluster on mobile (no room for a bottom status bar)', () => {
