@@ -1,6 +1,6 @@
 /**
  * Types that describe the addon itself, independent of what it can do.
- * Capability-specific types live beside their capability (see `file-index.ts`).
+ * Capability-specific types live beside their capability (see `repo-files.ts`).
  */
 
 /**
