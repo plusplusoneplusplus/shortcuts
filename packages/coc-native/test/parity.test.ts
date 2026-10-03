@@ -6,7 +6,7 @@
  * port honest — a CI gate on every platform that builds a binary, not a
  * nice-to-have.
  *
- * The TypeScript scorer is imported straight from the coc package source so
+ * The TypeScript scorer is imported straight from the coc test support so
  * there is exactly one reference implementation to drift from.
  */
 
@@ -15,7 +15,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { rankFuzzyMatches } from '../../coc/src/server/shared/fuzzy-file-score';
+import { rankFuzzyMatches } from '../../coc/test/support/fuzzy-file-score';
 import { addon, makeRandom } from './helpers';
 
 const SEGMENTS = [

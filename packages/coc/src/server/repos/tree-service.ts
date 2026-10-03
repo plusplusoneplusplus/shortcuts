@@ -1,7 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import type { WorkspaceInfo, ProcessStore } from '@plusplusoneplusplus/forge';
 import { execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { loadNativeRepoFiles } from '@plusplusoneplusplus/coc-native';
@@ -15,7 +13,6 @@ import type {
     NativeRankedFileMatch,
 } from '@plusplusoneplusplus/coc-native';
 
-const execFileAsync = promisify(execFile);
 import type {
     RepoInfo,
     TreeListResult,
@@ -68,8 +65,7 @@ function clampLimit(limit = 50): number {
 /** Trimmed stdout of a short git command, or '' when it fails (not a repo, no remote, no git). */
 async function gitOutput(cwd: string, args: string[]): Promise<string> {
     try {
-        const { stdout } = await execFileAsync('git', args, { cwd, encoding: 'utf-8', timeout: 5000 });
-        return stdout.trim();
+        return (await execGitAsync(args, cwd, { timeout: 5000 })).trim();
     } catch {
         return '';
     }

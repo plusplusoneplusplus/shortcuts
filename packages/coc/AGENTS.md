@@ -70,6 +70,8 @@ references before editing. Paths are package-relative.
   Test Git narrowing/native walks.
   Repo-group file/content search shares controls and ordered dispatch in
   `src/server/workspaces/repo-group-search.ts`.
+  Repository metadata reads use forge’s `execGitAsync` for host/WSL routing.
+  The fuzzy scorer reference lives in `test/support/fuzzy-file-score.ts` for native parity tests.
   QuickOpen uses server indices; reuse requires the current workspace root
   for each `showIgnored` variant. Payload caps never cap search candidates.
 - Restore queues stopped. Activate only after

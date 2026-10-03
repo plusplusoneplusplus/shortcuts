@@ -57,6 +57,31 @@ afterEach(() => {
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+describe('repository metadata workspace adapter', () => {
+    it('reads metadata through forge for each workspace root', async () => {
+        execution.wsl = true;
+        execution.git.mockImplementation(async (args: string[], root: string) =>
+            args[0] === 'rev-parse' ? `abc123${roots.indexOf(root)}\n` : `https://example.com/repo-${roots.indexOf(root)}.git\n`,
+        );
+        for (const [i, rootPath] of roots.entries()) {
+            const info = await RepoTreeService.toRepoInfo({ id: `repo-${i}`, name: `Repo ${i}`, rootPath });
+            expect(info).toMatchObject({ headSha: `abc123${i}`, remoteUrl: `https://example.com/repo-${i}.git` });
+            expect(execution.git).toHaveBeenNthCalledWith(i * 2 + 1, ['rev-parse', '--short', 'HEAD'], rootPath, { timeout: 5000 });
+            expect(execution.git).toHaveBeenNthCalledWith(i * 2 + 2, ['remote', 'get-url', 'origin'], rootPath, { timeout: 5000 });
+        }
+    });
+
+    it('keeps workspace metadata when Git fails', async () => {
+        execution.git.mockRejectedValue(new Error('distro unavailable'));
+        const workspace = { id: 'repo-0', name: 'Repo', rootPath: roots[0] };
+        const info = await RepoTreeService.toRepoInfo(workspace);
+        expect(info.headSha).toBe('');
+        expect(info).not.toHaveProperty('remoteUrl');
+        expect(await RepoTreeService.toRepoInfo({ ...workspace, remoteUrl: 'https://example.com/workspace.git' }))
+            .toMatchObject({ headSha: '', remoteUrl: 'https://example.com/workspace.git' });
+    });
+});
+
 describe('content search workspace adapter', () => {
     it('executes Rust-prepared WSL argv and searches only supplied candidates', async () => {
         execution.wsl = true;

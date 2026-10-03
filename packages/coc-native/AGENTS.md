@@ -161,7 +161,7 @@ N-API binaries are ABI-stable, so one binary per platform works under both Node 
 
 ## Scorer parity
 
-The Rust scorer (`repo_index::score`) is a line-for-line port of `packages/coc/src/server/shared/fuzzy-file-score.ts`. Nothing ranks with the TypeScript one any more — it is kept as the readable reference for what the Rust scorer must do, and `test/parity.test.ts` is the CI gate holding the two together over random paths and queries. Native order is lexicographic: basename tier, descending fuzzy score, scored-target length, full-path length, then snapshot index. `searchRanked()` exposes those keys under `ranking`; `search()` omits them so the existing single-repo REST shape stays stable.
+The Rust scorer (`repo_index::score`) is checked against the TypeScript reference in `packages/coc/test/support/fuzzy-file-score.ts`. The reference stays outside production source and emission; `test/parity.test.ts` checks both scorers over random paths and queries. Native order is lexicographic: basename tier, descending fuzzy score, scored-target length, full-path length, then snapshot index. `searchRanked()` exposes those keys under `ranking`; `search()` omits them so the existing single-repo REST shape stays stable.
 
 Two deliberate deviations from plain JavaScript semantics, matched on both sides:
 

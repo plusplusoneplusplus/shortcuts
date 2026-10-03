@@ -502,8 +502,7 @@ describe('RepoTreeService whole-repo file list warmth', () => {
         fs.writeFileSync(path.join(repoDir, 'kept.ts'), 'x');
         const svc = newService();
 
-        // ripgrep excludes .git even under --hidden, so the fallback walk must
-        // too, or the listing depends on whether rg happens to be installed.
+        // The native index excludes .git, regardless of the ignore setting.
         const { files } = await svc.listFilesRecursive(REPO_ID, '.', { showIgnored: false });
         expect(files).toContain('kept.ts');
         expect(files.some(f => f.startsWith('.git/'))).toBe(false);
@@ -890,8 +889,8 @@ describe('RepoTreeService.listDirectory — gitignore integration', () => {
     });
 });
 
-describe('RepoTreeService.listFilesRecursive — gitignore walk fallback', () => {
-    it('filters gitignored files in walk fallback (subdirectory path)', async () => {
+describe('RepoTreeService.listFilesRecursive — native subtree ignore policy', () => {
+    it('filters gitignored files in a native subtree walk', async () => {
         if (!isGitAvailable()) return;
 
         seedDefaultRepo();
@@ -901,7 +900,7 @@ describe('RepoTreeService.listFilesRecursive — gitignore walk fallback', () =>
         fs.writeFileSync(path.join(repoDir, 'src', 'index.ts'), '');
         fs.writeFileSync(path.join(repoDir, 'src', 'debug.log'), 'log');
 
-        // Scoped to subdirectory so rg fast-path is skipped and walk is used
+        // A subdirectory listing uses the native subtree walker.
         const result = await service.listFilesRecursive(REPO_ID, 'src');
         expect(result.files).toContain('src/index.ts');
         expect(result.files).not.toContain('src/debug.log');

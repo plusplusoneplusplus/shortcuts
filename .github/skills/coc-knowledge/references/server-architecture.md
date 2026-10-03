@@ -33,7 +33,7 @@ This table locates boundaries, not individual implementation classes.
 | `infrastructure/`, `routes/` | Bootstrap wiring and route registration |
 | `admin/`, `config/`, `preferences/` | Runtime settings and scoped preferences; [admin config](admin-config.md) |
 | `logging/`, `dashboard/` | Diagnostics and active-workspace state |
-| `workspaces/`, `repos/` | Workspace registry, groups, repository access and per-workspace Rust `RepoFiles` handles (listings, blobs, replace, file indexes, fresh content search); a handle is reused only for the live root |
+| `workspaces/`, `repos/` | Workspace registry, groups, repository access and per-workspace Rust `RepoFiles` handles (listings, blobs, replace, file indexes, fresh content search); a handle is reused only for the live root; metadata Git reads use forge’s host/WSL adapter |
 | `processes/`, `task-groups/` | Conversation lifecycle and grouping; [process store](process-store.md) |
 | `queue/`, `executors/` | Multi-repo scheduling, dispatch and turn execution |
 | `schedule/`, `cron/`, `triggers/` | Scheduled work and event-driven execution; [cron](cron.md) |
