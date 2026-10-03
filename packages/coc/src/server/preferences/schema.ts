@@ -454,8 +454,6 @@ export const GlobalPreferencesSchema = z.object({
      * statusFilter and typeFilter have moved to PerRepoPreferences.activityFilters.
      */
     activityFilters: GlobalActivityFiltersSchema.optional().catch(undefined),
-    /** Persisted UI layout mode ('classic' | 'dev-workflow'). */
-    uiLayoutMode: z.enum(['classic', 'dev-workflow']).optional().catch(undefined),
     /** Engine for the working-tree file diff ('legacy' | 'monaco'). Absent means 'monaco'. */
     diffEngine: z.enum(['legacy', 'monaco']).optional().catch(undefined),
     /**

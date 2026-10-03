@@ -464,6 +464,8 @@ through `useShellNavigation`.
 the heavily-mocked `featureFlags.ts` so partial test mocks of it do not break on a
 missing export.
 
-`computeVisibleSubTabs` always hides standalone Git, Terminal and Explorer tabs
-and labels the chat tab Workspace. Git lives inside `SplitWorkspacePanel`;
+`computeVisibleSubTabs` uses classic ordering and labels, hides standalone Git,
+Terminal and Explorer tabs, and labels the chat tab Workspace. Both `activity`
+and `chats` remain route aliases. Desktop quick actions include Queue Task, Ask
+and Generate Plan; deprecated plans use the "Plans (Dep.)" label. Git lives inside `SplitWorkspacePanel`;
 Terminal and Explorer live in the desktop right panel.

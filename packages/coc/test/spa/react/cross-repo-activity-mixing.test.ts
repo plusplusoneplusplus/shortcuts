@@ -71,7 +71,6 @@ function resolveQueueActions(hash: string) {
         selectedRepoId: null,
         repoRouteState: {},
         repoTabState: {},
-        getUiLayoutMode: () => 'dev-workflow',
         isSchedulesInSlide: () => false,
     };
     return resolveDashboardRoute(hash, context).effects
@@ -85,7 +84,7 @@ function resolveQueueActions(hash: string) {
 
 describe('Fix 1: repo-scoped keys on workspace-dependent tab components', () => {
     it('RepoChatTab has key containing ws.id', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoChatTab key={`${ws.id}');
+        expect(REPO_DETAIL_SOURCE).toContain('key={`${ws.id}-split-chat`}');
     });
 
     it('RepoSchedulesTab has key={ws.id}', () => {

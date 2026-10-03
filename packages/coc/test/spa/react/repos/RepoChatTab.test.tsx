@@ -641,9 +641,7 @@ describe('RepoChatTab: task selection', () => {
     });
 
     it('clicking a task in mode="chats" writes /chats/ path (not legacy /activity/) to avoid redirect blink', async () => {
-        // Regression: writing /activity/ in dev-workflow mode triggers the Router's
-        // legacy redirect (location.replace to /chats/), firing a second hashchange
-        // and an extra render cycle visible as a one-frame blink.
+        // Chat mode retains its URL alias when selecting a task.
         const r1 = makeRunningTask('r1');
         setupFetchMock({ running: [r1] });
         await renderTab('ws-1', 'chats');

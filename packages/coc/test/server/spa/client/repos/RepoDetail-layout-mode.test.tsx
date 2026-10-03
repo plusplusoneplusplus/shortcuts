@@ -1,10 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Regression test: in classic mode, only the Activity RepoChatTab should mount;
- * in dev-workflow mode, only the Chats RepoChatTab should mount.
- * Previously the Chats instance was always mounted (via display:none) regardless
- * of layout mode, causing duplicate API calls and WebSocket listeners.
+ * Workspace aliases mount one chat list, avoiding duplicate subscriptions.
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
@@ -20,7 +17,6 @@ beforeAll(() => {
 
 const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'chats';
-let mockUiLayoutMode = 'dev-workflow';
 let mockDreamsEnabled = false;
 let mockIsMobile = false;
 
@@ -62,10 +58,6 @@ vi.mock('../../../../../src/server/spa/client/react/contexts/WorkItemContext', (
         dispatch: vi.fn(),
     }),
     loadUnseenWorkItemIds: () => [],
-}));
-
-vi.mock('../../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
-    useUiLayoutMode: () => [mockUiLayoutMode, vi.fn()],
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
@@ -303,7 +295,7 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
     });
 
     it('classic mode: mounts Activity RepoChatTab, does NOT mount Chats RepoChatTab', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'activity';
         renderDetail();
 
@@ -311,27 +303,8 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         expect(screen.queryByTestId('repo-chat-tab-chats')).toBeNull();
     });
 
-    it('dev-workflow mode: mounts Chats RepoChatTab, does NOT mount Activity RepoChatTab', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        expect(screen.getByTestId('repo-chat-tab-chats')).toBeTruthy();
-        expect(screen.queryByTestId('repo-chat-tab-activity')).toBeNull();
-    });
-
-    it('dev-workflow mode: Tasks tab mounts its own RepoChatTab with mode="tasks"', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'tasks';
-        renderDetail();
-
-        expect(screen.getByTestId('repo-chat-tab-tasks')).toBeTruthy();
-        expect(screen.queryByTestId('repo-chat-tab-activity')).toBeNull();
-        expect(screen.queryByTestId('repo-chat-tab-chats')).toBeNull();
-    });
-
     it('classic mode with non-activity sub-tab still mounts Activity (display:none pattern)', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'settings';
         renderDetail();
 
@@ -345,23 +318,8 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
         expect(screen.queryByTestId('repo-chat-tab-chats')).toBeNull();
     });
 
-    it('dev-workflow mode with non-chats sub-tab still mounts Chats (display:none pattern)', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'settings';
-        renderDetail();
-
-        // Chats should be mounted (kept alive via display:none)
-        const chatsEl = screen.getByTestId('repo-chat-tab-chats');
-        expect(chatsEl).toBeTruthy();
-        const container = chatsEl.closest('[style*="display: none"]') as HTMLElement;
-        expect(container.style.display).toBe('none');
-
-        // Activity should NOT be mounted at all
-        expect(screen.queryByTestId('repo-chat-tab-activity')).toBeNull();
-    });
-
     it('classic mode: Tasks (Plans) tab renders TasksPanel (miller columns), not RepoChatTab', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'tasks';
         renderDetail();
 
@@ -371,7 +329,7 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
     });
 
     it('classic mode: switching to classic does NOT redirect away from tasks sub-tab', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'tasks';
         renderDetail();
 
@@ -383,7 +341,7 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
     });
 
     it('classic mode: switching to classic does NOT redirect away from work-items', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'work-items';
         renderDetail();
 
@@ -395,60 +353,12 @@ describe('RepoDetail — layout mode chat tab mounting', () => {
     });
 
     it('classic mode: Work Items tab button is present in the tab strip', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'activity';
         const { container } = renderDetail();
 
         const workItemsTab = container.querySelector('[data-subtab="work-items"]');
         expect(workItemsTab).toBeTruthy();
-    });
-
-    it('dev-workflow mode: Work Items tab button is present in the tab strip', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        const { container } = renderDetail();
-
-        const workItemsTab = container.querySelector('[data-subtab="work-items"]');
-        expect(workItemsTab).toBeTruthy();
-    });
-
-    it('hides the Dreams tab when the feature is disabled', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        mockDreamsEnabled = false;
-        const { container } = renderDetail();
-
-        expect(container.querySelector('[data-subtab="dreams"]')).toBeNull();
-        expect(screen.queryByTestId('dreams-panel')).toBeNull();
-    });
-
-    it('shows the Dreams tab when the feature is enabled', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        mockDreamsEnabled = true;
-        const { container } = renderDetail();
-
-        expect(container.querySelector('[data-subtab="dreams"]')).toBeTruthy();
-    });
-
-    it('does not mount DreamsPanel when the feature is disabled and dreams is active', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'dreams';
-        mockDreamsEnabled = false;
-        const { container } = renderDetail();
-
-        expect(container.querySelector('[data-subtab="dreams"]')).toBeNull();
-        expect(screen.queryByTestId('dreams-panel')).toBeNull();
-    });
-
-    it('mounts DreamsPanel when the feature is enabled and dreams is active', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'dreams';
-        mockDreamsEnabled = true;
-        const { container } = renderDetail();
-
-        expect(container.querySelector('[data-subtab="dreams"]')).toBeTruthy();
-        expect(screen.getByTestId('dreams-panel')).toBeTruthy();
     });
 });
 
@@ -457,7 +367,7 @@ describe('RepoDetail — git tab redirect does not clobber a remembered git tab 
         mockDispatch.mockClear();
         mockQueueDispatch.mockClear();
         mockDreamsEnabled = false;
-        mockUiLayoutMode = 'dev-workflow';
+
         location.hash = '';
     });
 
@@ -554,7 +464,7 @@ describe('RepoDetail — header action buttons by layout mode', () => {
     });
 
     it('classic mode: Queue Task and Ask buttons are rendered; Generate Plan is not', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'chats';
         renderDetail();
 
@@ -563,27 +473,8 @@ describe('RepoDetail — header action buttons by layout mode', () => {
         expect(screen.queryByTestId('repo-generate-btn')).toBeNull();
     });
 
-    it('dev-workflow mode: Queue Task and Ask buttons are NOT rendered', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        expect(screen.queryByTestId('repo-queue-task-btn')).toBeNull();
-        expect(screen.queryByTestId('repo-ask-btn')).toBeNull();
-        expect(screen.queryByTestId('repo-generate-btn')).toBeNull();
-    });
-
-    it('dev-workflow mode: Run Script and Launch CLI buttons remain visible', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        expect(screen.getByTestId('repo-run-script-btn')).toBeTruthy();
-        expect(screen.getByTestId('repo-launch-cli-btn')).toBeTruthy();
-    });
-
     it('classic mode: Ask button background matches ask-mode yellow', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'chats';
         renderDetail();
 
@@ -600,7 +491,7 @@ describe('RepoDetail — header action buttons by layout mode', () => {
     });
 
     it('classic mode: Queue Task button keeps the success (green) variant — no ask-mode overrides', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'chats';
         renderDetail();
 
@@ -626,211 +517,12 @@ describe('RepoDetail — split workspace panel', () => {
         location.hash = '';
     });
 
-    it('flag ON: replaces the chat slot with the split panel (AC-02/03)', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        // The split panel shell mounts, with both left halves and the detail slot.
-        expect(screen.getByTestId('split-workspace-panel')).toBeTruthy();
-        expect(screen.getByTestId('split-workspace-chat')).toBeTruthy();
-        expect(screen.getByTestId('split-workspace-git')).toBeTruthy();
-    });
-
-    it('flag ON: exactly ONE shared detail region, fed by the RepoDetail host (AC-04)', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        // Single shared detail pane — never two.
-        expect(screen.getAllByTestId('split-workspace-detail')).toHaveLength(1);
-        // The RepoDetail-owned host div (the portal target) lives inside it.
-        const detail = screen.getByTestId('split-workspace-detail');
-        expect(detail.querySelector('[data-testid="split-workspace-detail-host"]')).toBeTruthy();
-    });
-
-    it('flag ON: the chat list is mounted inside the panel (dev-workflow → mode="chats")', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        const chatSlot = screen.getByTestId('split-workspace-chat');
-        expect(chatSlot.querySelector('[data-testid="repo-chat-tab-chats"]')).toBeTruthy();
-    });
-
     it('flag ON in classic mode: the chat list mounts as the activity variant', () => {
-        mockUiLayoutMode = 'classic';
+
         mockActiveRepoSubTab = 'activity';
         renderDetail();
 
         const chatSlot = screen.getByTestId('split-workspace-chat');
         expect(chatSlot.querySelector('[data-testid="repo-chat-tab-activity"]')).toBeTruthy();
-    });
-
-    it('flag ON: the standalone git sub-tab button is hidden from the strip (AC-02)', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        const { container } = renderDetail();
-
-        // Git tab is filtered from visibleSubTabs — its functionality now lives in
-        // the split panel — so no top-level git button remains.
-        expect(container.querySelector('[data-subtab="git"]')).toBeNull();
-    });
-
-    it('flag ON: the chat/git divider renders for the draggable split (AC-03)', () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        expect(screen.getByTestId('split-workspace-divider')).toBeTruthy();
-        expect(screen.getByTestId('split-workspace-width-divider')).toBeTruthy();
-    });
-
-    // Desktop: git detail never takes the middle pane — it lands in the right
-    // panel's one Git tab, and the chat stays where it was.
-    it('flag ON (desktop): a git click keeps the chat in the middle and opens the Git tab', async () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        localStorage.clear();
-        renderDetail();
-
-        const host = screen.getByTestId('split-workspace-detail-host');
-        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
-
-        fireEvent.click(screen.getByTestId('split-git-list-item'));
-
-        const gitTab = await screen.findByTestId('unified-git-tab');
-        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')).toBeTruthy());
-        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
-        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
-        expect(screen.getAllByRole('tab').filter(tab => tab.getAttribute('data-kind') === 'git')).toHaveLength(1);
-    });
-
-    // AC-04: a collapsed right panel is revealed by a git click, with the Git
-    // tab focused over whatever tab held focus before.
-    it('flag ON (desktop): a git click with the panel collapsed opens it on the Git tab', async () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        localStorage.clear();
-        openUnifiedPanelTab('ws-1', { kind: 'notes', ownerWorkspaceId: 'ws-1', chatId: null, resourceId: 'notes', label: 'Notes' });
-        renderDetail();
-        // The user collapses the panel (mount reconciles it open for the Notes tab).
-        act(() => setWorkspaceDockOpen('ws-1', false));
-
-        const panel = screen.getByTestId('unified-right-panel');
-        expect(panel.getAttribute('data-open')).toBe('false');
-
-        fireEvent.click(screen.getByTestId('split-git-commit-a'));
-
-        await waitFor(() => expect(panel.getAttribute('data-open')).toBe('true'));
-        expect(activeTab(readUnifiedPanelState('ws-1'), null)?.kind).toBe('git');
-        const gitTab = await screen.findByTestId('unified-git-tab');
-        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')?.getAttribute('data-view')).toBe('aaa'));
-        expect(screen.getByTestId('split-workspace-detail-host').querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
-    });
-
-    // AC-02: the Git tab is reused — a second commit click replaces the first's
-    // content instead of stacking another tab.
-    it('flag ON (desktop): two commit clicks reuse ONE Git tab showing the second commit', async () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        localStorage.clear();
-        renderDetail();
-
-        fireEvent.click(screen.getByTestId('split-git-commit-a'));
-        const gitTab = await screen.findByTestId('unified-git-tab');
-        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')?.getAttribute('data-view')).toBe('aaa'));
-
-        fireEvent.click(screen.getByTestId('split-git-commit-b'));
-        await waitFor(() => expect(gitTab.querySelector('[data-testid="git-detail-marker"]')?.getAttribute('data-view')).toBe('bbb'));
-        expect(screen.getAllByRole('tab').filter(tab => tab.getAttribute('data-kind') === 'git')).toHaveLength(1);
-    });
-
-    // AC-02: closing the Git tab tells RepoGitTab the detail is gone, so it
-    // drops the list highlight.
-    it('flag ON (desktop): closing the Git tab reports the detail closed to RepoGitTab', async () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        localStorage.clear();
-        renderDetail();
-
-        const gitList = screen.getByTestId('repo-git-tab-split');
-        expect(gitList.getAttribute('data-detail-open')).toBe('false');
-        fireEvent.click(screen.getByTestId('split-git-commit-a'));
-        await waitFor(() => expect(gitList.getAttribute('data-detail-open')).toBe('true'));
-
-        const tab = screen.getAllByRole('tab').find(t => t.getAttribute('data-kind') === 'git')!;
-        const tabId = tab.getAttribute('data-testid')!.replace('unified-panel-tab-', '');
-        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
-        await waitFor(() => expect(gitList.getAttribute('data-detail-open')).toBe('false'));
-        expect(screen.queryAllByRole('tab').filter(t => t.getAttribute('data-kind') === 'git')).toHaveLength(0);
-    });
-
-    // AC-03: the Git tab persists the view it shows (hash only) and hands it
-    // back to RepoGitTab after a reload; restoring it does not steal focus.
-    it('flag ON (desktop): the Git tab persists its view and restores it after a reload', async () => {
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        localStorage.clear();
-        const first = renderDetail();
-
-        fireEvent.click(screen.getByTestId('split-git-commit-a'));
-        fireEvent.click(screen.getByTestId('split-git-commit-b'));
-        await screen.findByTestId('unified-git-tab');
-        const gitTab = () => readUnifiedPanelState('ws-1').workspaceTabs.find(tab => tab.kind === 'git');
-        await waitFor(() => expect(gitTab()?.gitView).toEqual({ type: 'commit', hash: 'bbb' }));
-        const stored = localStorage.getItem(Object.keys(localStorage).find(key => localStorage.getItem(key)?.includes('"gitView"'))!)!;
-        expect(stored).toContain('"gitView":{"type":"commit","hash":"bbb"}');
-        expect(stored).not.toContain('"commit":{');
-        first.unmount();
-
-        // Another tab holds focus when the page comes back.
-        openUnifiedPanelTab('ws-1', { kind: 'notes', ownerWorkspaceId: 'ws-1', chatId: null, resourceId: 'notes', label: 'Notes' });
-        renderDetail();
-        const gitList = screen.getByTestId('repo-git-tab-split');
-        expect(JSON.parse(gitList.getAttribute('data-restore-view')!)).toEqual({ type: 'commit', hash: 'bbb' });
-        expect(gitList.getAttribute('data-detail-open')).toBe('true');
-
-        fireEvent.click(screen.getByTestId('split-git-restore'));
-        await new Promise(resolve => setTimeout(resolve, 0));
-        const state = readUnifiedPanelState('ws-1');
-        expect(activeTab(state, null)?.kind).toBe('notes');
-        expect(findTab(state, gitTab()!.id)?.gitView).toEqual({ type: 'commit', hash: 'bbb' });
-    });
-
-    it('flag ON (mobile): RepoGitTab gets no detailOpen signal (the shared pane owns git)', () => {
-        mockIsMobile = true;
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-        expect(screen.getByTestId('repo-git-tab-split').getAttribute('data-detail-open')).toBe('undefined');
-    });
-
-    // End-to-end AC-04 (mobile, where the shared pane still holds git): clicking a list item in one half routes THAT half's detail
-    // into the single shared pane and evicts the other's — driven by RepoDetail's own
-    // `splitLastClicked` state and the mirrored detailActive/onActivateDetail wiring.
-    // Both tabs point at the SAME detail host, so the pane never shows chat + git at once.
-    it('flag ON (mobile): last-selection-wins routes the clicked half into the ONE shared detail (AC-04)', () => {
-        mockIsMobile = true;
-        mockUiLayoutMode = 'dev-workflow';
-        mockActiveRepoSubTab = 'chats';
-        renderDetail();
-
-        const host = screen.getByTestId('split-workspace-detail-host');
-
-        // Default selection is 'chat' → the chat detail occupies the shared pane.
-        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
-        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
-
-        // Click a git list item → git detail takes over the shared pane; chat is evicted.
-        fireEvent.click(screen.getByTestId('split-git-list-item'));
-        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeTruthy();
-        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeNull();
-
-        // Click a chat list item → chat detail returns; git is evicted (last-selection-wins).
-        fireEvent.click(screen.getByTestId('split-chat-list-item'));
-        expect(host.querySelector('[data-testid="chat-detail-marker"]')).toBeTruthy();
-        expect(host.querySelector('[data-testid="git-detail-marker"]')).toBeNull();
-
     });
 });

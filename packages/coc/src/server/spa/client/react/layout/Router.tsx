@@ -18,7 +18,6 @@ import { SHOW_WIKI_TAB } from './TopBar';
 import { isTerminalEnabled, isNotesEnabled, isDreamsEnabled, isSchedulesInScheduledSlideEnabled } from '../utils/config';
 import { splitWorkspaceLeftCollapsedStorageKey, toggleLeftCollapsed } from '../features/repo-detail/WorkspaceLeftCollapse';
 import { toggleWorkspaceDockOpen } from '../features/repo-detail/WorkspaceDockToggle';
-import { getUiLayoutMode } from '../hooks/preferences/useUiLayoutMode';
 import type { DashboardTab, RepoSubTab } from '../types/dashboard';
 import { getWorkspaceIdFromSelectionId } from '../repos/cloneIdentity';
 import {
@@ -101,7 +100,7 @@ export function Router() {
                 selectedRepoId: deepLinkContext.selectedRepoId,
                 repoRouteState: repoRouteStateRef.current,
                 repoTabState: repoTabStateRef.current,
-                getUiLayoutMode,
+
                 isSchedulesInSlide: isSchedulesInScheduledSlideEnabled,
             };
             const { effects } = resolveDashboardRoute(location.hash, ctx);
@@ -154,7 +153,7 @@ export function Router() {
                     if (rawTab === 'dreams' && !isDreamsEnabled()) return;
                     // The 'chats' shortcut maps to the chat surface, whose canonical
                     // sub-tab key differs by layout mode (`'activity'` in classic).
-                    const tab: RepoSubTab = rawTab === 'chats' ? resolveChatSubTab(getUiLayoutMode()) : rawTab;
+                    const tab: RepoSubTab = rawTab === 'chats' ? resolveChatSubTab() : rawTab;
                     e.preventDefault();
                     dispatch({ type: 'SET_REPO_SUB_TAB', tab });
                     const selectedTaskId = queueState.selectedTaskIdByRepo?.[state.selectedRepoId] ?? queueState.selectedTaskId;

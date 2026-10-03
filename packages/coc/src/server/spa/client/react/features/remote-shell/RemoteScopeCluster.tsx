@@ -7,7 +7,6 @@ import { useWorkflowsEnabled } from '../../hooks/feature-flags/useWorkflowsEnabl
 import { usePullRequestsEnabled } from '../../hooks/feature-flags/usePullRequestsEnabled';
 import { useDreamsEnabled } from '../../hooks/feature-flags/useDreamsEnabled';
 import { useShowPlanDepTab } from '../../hooks/feature-flags/useShowPlanDepTab';
-import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { computeVisibleSubTabs, type SubTabDef } from '../repo-detail/repoSubTabs';
 import type { RepoData } from '../../repos/repoGrouping';
 import { resolveRepoWorkItemOriginScope } from '../work-items/workItemOriginScope';
@@ -38,7 +37,6 @@ export function RemoteScopeCluster({ repo, repos, hideIdentity }: RemoteScopeClu
     const pullRequestsEnabled = usePullRequestsEnabled();
     const dreamsEnabled = useDreamsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
-    const [uiLayoutMode] = useUiLayoutMode();
     const isGitRepo = !!repo?.gitInfo?.isGitRepo;
     // Only reflect an active sub-tab when we're actually on the repos tab. The
     // header also renders on the top-level pages (Admin / Settings / Wiki), where
@@ -47,8 +45,8 @@ export function RemoteScopeCluster({ repo, repos, hideIdentity }: RemoteScopeClu
 
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
-    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode]);
+        pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
+    }), [isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled, pullRequestsEnabled, dreamsEnabled, showPlanDepTab]);
     const { remote: remoteTabs } = useMemo(() => partitionShellTabs(tabs), [tabs]);
     const workItemOriginId = useMemo(() => repo ? resolveRepoWorkItemOriginScope(repo).originId : '', [repo]);
     const unseenWorkItemCount = repo ? (workItemState.unseenByRepo[workItemOriginId] || []).length : 0;

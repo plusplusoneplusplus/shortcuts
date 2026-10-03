@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { usePreferences, type SkillMode, type ModelMode } from '../../hooks/preferences/usePreferences';
 import { useModels, type ModelInfo } from '../../hooks/useModels';
 import { useFilesViewMode } from '../git/hooks/useFilesViewMode';
-import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { useGlobalToast } from '../../contexts/ToastContext';
 import { useRepos } from '../../contexts/ReposContext';
 import { SkillPicker, type SkillOption } from '../../queue/SkillPicker';
@@ -36,7 +35,6 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
     const prefs = usePreferences(workspaceId);
     const { models: availableModels, loading: modelsLoading } = useModels();
     const { mode: filesViewMode, setMode: setFilesViewMode } = useFilesViewMode(workspaceId);
-    const [uiLayoutMode, setUiLayoutMode] = useUiLayoutMode();
     const { repos } = useRepos();
 
     // Available skills
@@ -285,18 +283,6 @@ export function RepoPreferencesSection({ workspaceId }: RepoPreferencesSectionPr
                     >
                         <option value="tree">tree</option>
                         <option value="flat">flat</option>
-                    </select>
-                </div>
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-1 md:gap-2">
-                    <label className={labelClass}>UI Mode</label>
-                    <select
-                        className={selectClass}
-                        value={uiLayoutMode}
-                        onChange={e => setUiLayoutMode(e.target.value as 'classic' | 'dev-workflow')}
-                        data-testid="pref-ui-layout-mode"
-                    >
-                        <option value="dev-workflow">Dev Workflow (Chats + Work Items + Tasks)</option>
-                        <option value="classic">Classic (Activity)</option>
                     </select>
                 </div>
                 <RalphMaxIterationsRow

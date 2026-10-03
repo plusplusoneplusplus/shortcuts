@@ -147,6 +147,9 @@ Adding a `skills.*` field touches FOUR hand-written spots: the optional and requ
 
 See [rest-api.md](rest-api.md) for the endpoints and [spa/top-bar-and-admin.md](spa/top-bar-and-admin.md) for the Skills Config panel UI.
 
+The dashboard uses the classic Workspace layout. Appearance settings include
+no layout-mode picker; preference reads strip retired layout-mode keys silently.
+
 ## Admin UI Styling
 
 The admin route uses a self-contained design system in `packages/coc/src/server/spa/client/react/admin/admin-redesign.css`, imported once at the top of `AdminPanel.tsx` so esbuild bundles it into the SPA CSS. Every selector is scoped under the `.admin-redesign` root class wrapping the admin page, so styles never leak to other dashboard surfaces; light/dark themes ride the existing `<html data-theme="…">` attribute. Do not use Tailwind utilities or inline `bg-*`/`text-*` classes for admin-only UI — extend `admin-redesign.css`.

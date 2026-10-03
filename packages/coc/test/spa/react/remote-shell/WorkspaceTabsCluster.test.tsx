@@ -34,7 +34,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEn
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useNativeCliSessionsEnabled', () => ({ useNativeCliSessionsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({ useShowPlanDepTab: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({ useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled }));
-vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({ useUiLayoutMode: () => ['dev-workflow', vi.fn()] }));
 vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({ useRepoQueueStats: () => mockQueueStats, isHidden: () => false }));
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({ useGitInfo: () => mockGitInfo }));
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
@@ -161,7 +160,7 @@ describe('WorkspaceTabsCluster', () => {
 
         const cloneTabs = screen.getAllByTestId('clone-scope-tab');
         expect(cloneTabs.map(el => el.getAttribute('data-subtab'))).not.toContain('git');
-        const chatTab = cloneTabs.find(el => el.getAttribute('data-subtab') === 'chats');
+        const chatTab = cloneTabs.find(el => el.getAttribute('data-subtab') === 'activity');
         expect(chatTab?.textContent).toContain('Workspace');
     });
 });

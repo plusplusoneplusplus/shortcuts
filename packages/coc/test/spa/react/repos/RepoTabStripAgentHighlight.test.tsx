@@ -64,10 +64,6 @@ vi.mock('../../../../src/server/spa/client/react/tasks/GenerateTaskDialog', () =
     GenerateTaskDialog: () => null,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
-    useUiLayoutMode: () => ['default'],
-}));
-
 vi.mock('../../../../src/server/spa/client/react/contexts/ContainerAgentContext', () => ({
     useContainerAgents: () => ({
         agents: [

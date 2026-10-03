@@ -633,8 +633,7 @@ export function AdminPanel() {
                                                     <AppearanceCard
                                                         theme={prefsCtl.theme}
                                                         setTheme={prefsCtl.setTheme}
-                                                        uiLayoutMode={prefsCtl.uiLayoutMode}
-                                                        setUiLayoutMode={prefsCtl.setUiLayoutMode}
+
                                                         reposSidebarCollapsed={prefsCtl.reposSidebarCollapsed}
                                                         setReposSidebarCollapsed={prefsCtl.setReposSidebarCollapsed}
                                                         htmlEmbedEnabled={prefsCtl.htmlEmbedEnabled}
