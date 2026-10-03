@@ -61,6 +61,12 @@ it('exposes the capability when the addon provides it', () => {
     expect(nativeRepoFilesStatus().loaded).toBe(true);
 });
 
+it('rejects a standalone content matcher without repository handles', () => {
+    useAddon('module.exports = { searchContent: async () => ({ matches: [], truncated: false }) };');
+    expect(() => loadNativeRepoFiles()).toThrow(NativeAddonLoadError);
+    expect(nativeRepoFilesStatus().loaded).toBe(false);
+});
+
 describe('when the capability is missing', () => {
     it('throws even though the binary itself loaded', () => {
         const file = useAddon('module.exports = { someOtherCapability: () => 1 };');
@@ -94,11 +100,19 @@ describe('when the capability is missing', () => {
         expect(nativeRepoFilesStatus().loaded).toBe(false);
     });
 
-    it.each(['searchFilesRanked', 'searchContent', 'prepareContentCandidates'])('rejects a binary missing %s', (method) => {
+    it.each(['readBlob', 'writeBlob', 'listDirectory', 'listFiles', 'replaceContent',
+        'indexFiles', 'searchFiles', 'searchFilesRanked', 'searchContent', 'prepareContentCandidates', 'invalidate', 'dispose'])('rejects a binary missing %s', (method) => {
         useAddon(stubSource(method));
         expect(() => loadNativeRepoFiles()).toThrow('does not export repo files');
         expect(nativeRepoFilesStatus().loaded).toBe(false);
     });
+});
+
+it('rejects a non-callable content-search method even when standalone search exists', () => {
+    useAddon(stubSource('searchContent') +
+        '\nmodule.exports.RepoFiles.prototype.searchContent = \"nope\"; module.exports.searchContent = () => 1;');
+    expect(() => loadNativeRepoFiles()).toThrow(NativeAddonLoadError);
+    expect(nativeRepoFilesStatus().loaded).toBe(false);
 });
 
 describe('when no binary loaded', () => {

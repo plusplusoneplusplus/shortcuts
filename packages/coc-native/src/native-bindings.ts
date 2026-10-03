@@ -1069,13 +1069,6 @@ export interface RepoReplaceOptions {
 export declare function resolveSafeNotesPath(root: string, path: string, options?: NotesSafePathOptions | undefined | null): Promise<NotesSafePathResult>
 
 /**
- * Walk `root` in parallel and resolve with every line matching `query`.
- *
- * An empty query resolves with an empty result rather than every line.
- */
-export declare function searchContent(root: string, query: string, options?: SearchContentOptions | undefined | null): Promise<ContentSearchResult>
-
-/**
  * Query modes, scoping and caps for one content search.
  *
  * Every field is optional; omitting all of them searches the whole repo for a

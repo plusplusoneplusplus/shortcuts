@@ -18,7 +18,6 @@ import type { ExecutionServerOptions, ExecutionServer, ServerCloseOptions } from
 import type { Route } from './types';
 import {
     loadNativeNotesIndex,
-    nativeContentSearchStatus,
     nativeRepoFilesStatus,
     nativeGitStatus,
     nativeNotesIndexStatus,
@@ -994,7 +993,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     {
         const nativeFileIndex = nativeRepoFilesStatus();
         const nativeNotesIndex = nativeNotesIndexStatus();
-        const nativeContentSearch = nativeContentSearchStatus();
+        const nativeContentSearch = nativeFileIndex;
         const nativeGit = nativeGitStatus();
         process.stderr.write(
             nativeFileIndex.loaded

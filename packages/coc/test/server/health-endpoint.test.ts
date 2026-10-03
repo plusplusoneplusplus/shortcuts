@@ -9,14 +9,12 @@ import * as http from 'http';
 const nativeStatuses = vi.hoisted(() => ({
     file: vi.fn(() => ({ loaded: true, binaryPath: '/native/current.node' })),
     notes: vi.fn(() => ({ loaded: false, binaryPath: '/native/stale.node', reason: 'missing Notes capability' })),
-    content: vi.fn(() => ({ loaded: true, binaryPath: '/native/current.node' })),
     git: vi.fn(() => ({ loaded: true, binaryPath: '/native/current.node' })),
 }));
 
 vi.mock('@plusplusoneplusplus/coc-native', () => ({
     nativeRepoFilesStatus: nativeStatuses.file,
     nativeNotesIndexStatus: nativeStatuses.notes,
-    nativeContentSearchStatus: nativeStatuses.content,
     nativeGitStatus: nativeStatuses.git,
 }));
 
@@ -106,8 +104,17 @@ describe('GET /api/health', () => {
         expect(body.nativeGit).toEqual({ loaded: true, binaryPath: '/native/current.node' });
         expect(nativeStatuses.file).toHaveBeenCalledOnce();
         expect(nativeStatuses.notes).toHaveBeenCalledOnce();
-        expect(nativeStatuses.content).toHaveBeenCalledOnce();
         expect(nativeStatuses.git).toHaveBeenCalledOnce();
+    });
+
+    it('reports an unusable repo-files capability for both repository search fields', async () => {
+        const unavailable = { loaded: false, binaryPath: '/native/stale.node', reason: 'missing repo files' };
+        nativeStatuses.file.mockReturnValueOnce(unavailable);
+        const resp = await request(`${baseUrl}/api/health`);
+        expect(resp.status).toBe(200);
+        const body = JSON.parse(resp.body);
+        expect(body.nativeFileIndex).toEqual(unavailable);
+        expect(body.nativeContentSearch).toEqual(unavailable);
     });
 
     it('calls getProcessCount instead of getAllProcesses', async () => {

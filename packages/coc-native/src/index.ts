@@ -27,6 +27,9 @@ export type { NativeAddon, NativeAddonStatus } from './types';
 
 export { loadNativeRepoFiles, nativeRepoFilesStatus } from './repo-files';
 export type {
+    NativeContentMatch,
+    NativeContentSearchOptions,
+    NativeContentSearchResult,
     NativeFileMatch,
     NativeRankedFileMatch,
     NativeRepoBlob,
@@ -37,13 +40,6 @@ export type {
     NativeRepoReplaceResult,
 } from './repo-files';
 
-export { loadNativeContentSearch, nativeContentSearchStatus } from './content-search';
-export type {
-    NativeContentMatch,
-    NativeContentSearchAddon,
-    NativeContentSearchOptions,
-    NativeContentSearchResult,
-} from './content-search';
 
 export {
     loadSymbolsLspBinary,

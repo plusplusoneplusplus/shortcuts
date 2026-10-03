@@ -11,8 +11,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { loadNativeContentSearch } from '../src/content-search';
-import type { NativeContentSearchAddon } from '../src/content-search';
 import { loadNativeGit } from '../src/git';
 import type { NativeGitAddon } from '../src/git';
 import { resetNativeAddonCache } from '../src/loader';
@@ -29,9 +27,6 @@ resetNativeAddonCache();
 // be loaded, and that error — naming the triple, the paths tried and the fix —
 // is exactly what the runner should print.
 export const addon: NativeRepoFilesAddon = loadNativeRepoFiles();
-
-/** The required content-search slice of the same compiled addon. */
-export const contentSearchAddon: NativeContentSearchAddon = loadNativeContentSearch();
 
 /** The required git slice of the same compiled addon. */
 export const gitAddon: NativeGitAddon = loadNativeGit();

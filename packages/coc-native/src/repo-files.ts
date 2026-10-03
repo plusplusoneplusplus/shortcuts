@@ -8,6 +8,12 @@ import { loadNativeAddon, nativeAddonStatus, NativeAddonLoadError } from './load
 import type * as Bindings from './native-bindings';
 import type { NativeAddonStatus } from './types';
 
+/** Content columns are UTF-16 offsets into the returned line text. */
+export type NativeContentMatch = Bindings.ContentMatch;
+export type NativeContentSearchOptions = Bindings.SearchContentOptions;
+/** Partial results report total, per-file and file-size caps through `truncated`. */
+export type NativeContentSearchResult = Bindings.ContentSearchResult;
+
 export type NativeRepoFiles = Bindings.RepoFiles;
 export type NativeRepoBlob = Bindings.RepoBlob;
 export type NativeRepoReplaceFile = Bindings.RepoReplaceFile;
