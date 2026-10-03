@@ -25,6 +25,8 @@ struct Variant {
     walked_at: Mutex<Option<Instant>>,
     /// A TTL refresh is running in the background.
     refreshing: AtomicBool,
+    #[cfg(test)]
+    after_refresh: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 
 /// One repository root's index variants (`[respecting ignores, showIgnored]`).
@@ -93,6 +95,10 @@ impl RepoIndexes {
         }
         let started = Instant::now();
         let fresh = index.refresh().is_ok();
+        #[cfg(test)]
+        if let Some(pause) = variant.after_refresh.lock().take() {
+            pause();
+        }
         *variant.walked_at.lock() = fresh.then_some(started);
         fresh
     }
@@ -108,3 +114,7 @@ impl RepoIndexes {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/support/repo_files_indexes_race.rs"]
+mod race_tests;

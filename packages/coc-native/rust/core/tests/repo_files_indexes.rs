@@ -113,24 +113,6 @@ fn a_fresh_snapshot_is_not_rewalked_before_the_ttl() {
 }
 
 #[test]
-fn invalidate_after_a_write_sees_it_even_with_a_scan_in_flight() {
-    let dir = repo();
-    for i in 0..200 {
-        write(dir.path(), &format!("d{}/f{i}.ts", i % 10));
-    }
-    let indexes = RepoIndexes::new(dir.path().to_path_buf(), Duration::ZERO);
-    files(&indexes, false);
-    for round in 0..20 {
-        // TTL 0: this read starts a background scan that may predate the write.
-        files(&indexes, false);
-        let name = format!("written{round}.ts");
-        write(dir.path(), &name);
-        assert!(indexes.invalidate());
-        assert!(files(&indexes, false).contains(&name), "round {round}");
-    }
-}
-
-#[test]
 fn a_failed_refresh_keeps_the_snapshot_and_retries() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("repo");
