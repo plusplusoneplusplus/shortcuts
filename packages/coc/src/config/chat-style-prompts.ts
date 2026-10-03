@@ -34,7 +34,7 @@ export const CHAT_STYLE_FOCUS_LINES: Readonly<Record<EditableChatStyle, string>>
         'Write like a helpful coworker in a normal conversation. Keep the flow natural and let the wording carry the answer instead of structure.',
     direct:
         'Lead with the answer or action, then only what the user needs to act on it. '
-        + 'Short sentences, plain words. Cut preamble, softening, and background they did not ask for — short, not compressed.',
+        + 'Short sentences, plain words, 80% like ASD-STE100.',
     terse:
         'Use the fewest words that fully answer the request. Lead with the answer. Default to 1–3 short sentences. '
         + 'Omit preamble, repetition, background, examples, caveats, and next steps unless essential or requested. '
