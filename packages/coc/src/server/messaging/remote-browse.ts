@@ -13,7 +13,7 @@ import {
     parseRemoteCloneKey, RemoteServerOfflineError,
     type RemoteChatSummary, type WorkspaceDirectory,
 } from '../servers/workspace-directory';
-import { TOPIC_LIST_LIMIT } from './chat-target';
+import { sortTopicsByActivity, TOPIC_LIST_LIMIT, topicActivityMs } from './chat-target';
 
 export type MessagingRemoteDirectory = Pick<WorkspaceDirectory, 'list' | 'listRemoteChats'>;
 
@@ -63,14 +63,62 @@ export const REMOTE_REPO_NOT_FOUND_REPLY = 'Remote repo not found — run "list 
 export const REMOTE_LISTING_MISSING_REPLY = 'No remote listing yet — run "list remotes" first.';
 const REMOTES_UNAVAILABLE_REPLY = 'Remote servers are unavailable.';
 
-/** One numbered topic line, shared by local and remote `list topics`. */
-export function formatTopicLine(
-    topic: Pick<RemoteChatSummary, 'id' | 'status' | 'title' | 'customTitle' | 'promptPreview'>,
-    index: number,
-    code: (text: string) => string,
-    escape: (text: string) => string = text => text,
-): string {
-    return `${index + 1}. ${code(topic.id)} [${topic.status ?? 'unknown'}] ${escape(topic.title ?? topic.customTitle ?? topic.promptPreview?.slice(0, 60) ?? '')}`.trimEnd();
+/** Fields one `list topics` line reads; local processes and remote summaries both fit. */
+export type TopicSummary = Pick<RemoteChatSummary, 'id' | 'status' | 'title' | 'customTitle' | 'promptPreview'> & {
+    lastEventAt?: Date | string;
+    startTime?: Date | string;
+};
+
+export interface TopicListOptions extends RemoteBrowseFormat {
+    header: string;
+    footer: string;
+    currentId?: string | null;
+    /** Append each topic's id. */
+    verbose?: boolean;
+    now: number;
+}
+
+const TOPIC_STATUS_EMOJI = new Map([
+    ['running', '⏳'], ['queued', '🕒'], ['completed', '✅'], ['failed', '❌'], ['cancelled', '⏹'],
+]);
+const TOPIC_TITLE_MAX = 40;
+const CURRENT_TOPIC_MARKER = '▶ ';
+/** Not U+0020: a space-indented `n.` line renders as a Markdown list in Teams. */
+const TOPIC_INDENT = '\u2002\u2002';
+
+/** `now` / `Nm` / `Nh` / `Nd` since `ms`; undefined when the time is unknown. */
+export function formatRelativeAge(ms: number | undefined, now: number): string | undefined {
+    if (ms === undefined) return undefined;
+    const minutes = Math.floor(Math.max(0, now - ms) / 60_000);
+    if (minutes < 1) return 'now';
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
+function truncateTitle(text: string): string {
+    const chars = Array.from(text.replace(/\s+/g, ' ').trim());
+    return chars.length > TOPIC_TITLE_MAX ? `${chars.slice(0, TOPIC_TITLE_MAX - 1).join('').trimEnd()}…` : chars.join('');
+}
+
+/** Phone-friendly topic list shared by local and remote `list topics`. */
+export function formatTopicList(topics: readonly TopicSummary[], options: TopicListOptions): string {
+    const lines = topics.map((topic, i) => {
+        const title = truncateTitle(topic.title ?? topic.customTitle ?? topic.promptPreview ?? '') || '(untitled)';
+        const marker = topic.id === options.currentId ? CURRENT_TOPIC_MARKER : TOPIC_INDENT;
+        return [
+            `${marker}${i + 1}. ${TOPIC_STATUS_EMOJI.get(topic.status ?? '') ?? '❔'} ${options.escape(title)}`,
+            formatRelativeAge(topicActivityMs(topic), options.now),
+            options.verbose ? options.code(topic.id) : undefined,
+        ].filter(Boolean).join(' · ');
+    });
+    return [options.header, ...lines, options.footer].join('\n');
+}
+
+/** Footer for a selectable (local) topic list; `prefix` is `/` where commands need it. */
+export function localTopicListFooter(code: (text: string) => string, verbose: boolean | undefined, prefix = ''): string {
+    const select = `Reply ${code(`${prefix}select topic <n>`)}`;
+    return verbose ? select : `${select} · ${code(`${prefix}list topics -v`)} for ids`;
 }
 
 export async function listRemotesReply(
@@ -132,12 +180,13 @@ async function resolveRemoteRef(
     return REMOTE_REPO_NOT_FOUND_REPLY;
 }
 
-/** `list topics <n.m|name@server>`: the remote repo's most recent chats, read-only. */
+/** `list topics <n.m|name@server> [-v]`: the remote repo's most recent chats, read-only. */
 export async function listRemoteTopicsReply(
     directory: MessagingRemoteDirectory | undefined,
     slot: RemoteRefSlot | undefined,
     arg: string,
     { strong, code, escape }: RemoteBrowseFormat,
+    { verbose, now = Date.now() }: { verbose?: boolean; now?: number } = {},
 ): Promise<string> {
     if (!directory) return REMOTES_UNAVAILABLE_REPLY;
     let target: RemoteRepoRef | string | undefined;
@@ -145,9 +194,11 @@ export async function listRemoteTopicsReply(
         target = await resolveRemoteRef(directory, slot, arg);
         if (typeof target === 'string') return target;
         const topics = await directory.listRemoteChats(target.serverId, target.workspaceId, TOPIC_LIST_LIMIT);
-        const header = `Topics in ${strong(target.name)} @ ${strong(target.server)} (read-only)`;
-        if (!topics.length) return `${header}:\nNo chat topics found.`;
-        return `${header}:\n${topics.slice(0, TOPIC_LIST_LIMIT).map((topic, i) => formatTopicLine(topic, i, code, escape)).join('\n')}`;
+        const header = `${strong('Topics')} · ${escape(target.name)} @ ${escape(target.server)}`;
+        if (!topics.length) return `${header}\nNo chat topics found.`;
+        const footer = verbose ? 'Read-only' : `Read-only · ${code(`list topics ${arg} -v`)} for ids`;
+        return formatTopicList(sortTopicsByActivity(topics.slice(0, TOPIC_LIST_LIMIT)),
+            { header, footer, verbose, now, strong, code, escape });
     } catch (error) {
         console.error('[messaging] Listing remote topics failed:', error);
         const server = typeof target === 'object' ? target.server : undefined;

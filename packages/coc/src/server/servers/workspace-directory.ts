@@ -84,6 +84,9 @@ export interface RemoteChatSummary {
     title?: string;
     customTitle?: string;
     promptPreview?: string;
+    /** ISO timestamps for the topic's relative age. */
+    lastEventAt?: string;
+    startTime?: string;
 }
 
 export interface WorkspaceDirectory {
@@ -324,6 +327,8 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                     ...(typeof p.title === 'string' ? { title: p.title } : {}),
                     ...(typeof p.customTitle === 'string' ? { customTitle: p.customTitle } : {}),
                     ...(typeof p.promptPreview === 'string' ? { promptPreview: p.promptPreview } : {}),
+                    ...(typeof p.lastEventAt === 'string' ? { lastEventAt: p.lastEventAt } : {}),
+                    ...(typeof p.startTime === 'string' ? { startTime: p.startTime } : {}),
                 }));
         },
 

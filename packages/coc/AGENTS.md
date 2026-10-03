@@ -199,7 +199,10 @@ references before editing. Paths are package-relative.
   (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in
   memory per WhatsApp group / Teams thread; remote repos are never selectable, and
   replies carry only server/repo names (failures logged server-side). Bare `list topics`
-  stays local.
+  stays local. Every topic list (local, remote, Teams thread) renders through
+  `formatTopicList` (status emoji, ≤40-char escaped title, relative age; ids only with
+  `-v`; no Markdown list syntax so Teams keeps the numbering). `listRecentTopics` sorts
+  its bounded page by last activity and `resolveTopic` indexes that same order.
 - Ask turns started from WhatsApp/Teams (first and connector follow-ups) relay
   `ask_user` questions one at a time to the originating group/thread through
   `src/server/messaging/ask-user-relay.ts`, wired at emit time via the late-bound

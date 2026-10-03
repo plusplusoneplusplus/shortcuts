@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { TeamsCommandRouter, type TeamsCommandRouterDeps } from '../../../src/server/messaging/teams-command-router';
 import { TeamsUserStateStore } from '../../../src/server/messaging/teams-user-state';
+import { formatTeamsOutbound } from '../../../src/server/messaging/teams-outbound-format';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 
 // ============================================================================
@@ -138,8 +139,11 @@ describe('TeamsCommandRouter', () => {
         expect(sendReplySpy.mock.calls[0][0]).toContain('1.1 shortcuts');
         await router.handle(makeMsg('/list topics 1.1'));
         expect(remotes.listRemoteChats).toHaveBeenCalledWith('srv-1', 'w1', 10);
-        expect(sendReplySpy.mock.calls[1][0]).toContain('(read-only)');
-        expect(sendReplySpy.mock.calls[1][0]).toContain('r-chat');
+        expect(sendReplySpy.mock.calls[1][0]).toContain('Read-only');
+        expect(sendReplySpy.mock.calls[1][0]).toContain('✅ Remote chat');
+        expect(sendReplySpy.mock.calls[1][0]).not.toContain('r-chat');
+        await router.handle(makeMsg('/list topics 1.1 -v'));
+        expect(sendReplySpy.mock.calls[2][0]).toContain('✅ Remote chat · `r-chat`');
     });
 
     it('reports safe command, queue, follow-up and dispatch failure categories', async () => {
@@ -194,8 +198,44 @@ describe('TeamsCommandRouter', () => {
 
         await router.handle(makeMsg('/list topics'));
         const reply = sendReplySpy.mock.calls[0][0] as string;
-        expect(reply).toContain('Chat topics (repo: **ProjectA**)');
-        expect(reply).toContain('Fix bug');
+        expect(reply.split('\n')).toEqual([
+            '**Topics** · ProjectA',
+            expect.stringMatching(/^\u2002\u20021\. ✅ Fix bug · \d+d$/),
+            expect.stringMatching(/^\u2002\u20022\. ⏳ Add feature · \d+d$/),
+            'Reply `select topic <n>` · `list topics -v` for ids',
+        ]);
+        expect(reply).not.toContain('proc-');
+    });
+
+    it('lists topics with ids on -v, escaped titles, and the current-topic marker', async () => {
+        (deps.store.getAllProcesses as any).mockResolvedValue([
+            { id: 'proc-111', status: 'failed', title: 'Fix *the* <b>bug</b>', startTime: new Date(), metadata: { workspaceId: 'ws-1' } },
+        ]);
+        await router.handle(makeMsg('/select repo ProjectA'));
+        await router.handle(makeMsg('/select topic proc-111'));
+        sendReplySpy.mockClear();
+        await router.handle(makeMsg('/list topics -v'));
+        const reply = sendReplySpy.mock.calls[0][0] as string;
+        expect(reply.split('\n')[1]).toBe('▶ 1. ❌ Fix \\*the\\* <b>bug</b> · now · `proc-111`');
+        expect(reply.split('\n')[2]).toBe('Reply `select topic <n>`');
+    });
+
+    it('renders the topic list as safe Teams HTML lines, not a renumbered Markdown list', async () => {
+        (deps.store.getAllProcesses as any).mockResolvedValue([
+            { id: 'p1', status: 'running', title: 'One', startTime: new Date(), metadata: { workspaceId: 'ws-1' } },
+            { id: 'p2', status: 'queued', title: 'Two <script>', startTime: new Date(0), metadata: { workspaceId: 'ws-1' } },
+            { id: 'p3', status: 'cancelled', title: 'Three', startTime: new Date(0), metadata: { workspaceId: 'ws-1' } },
+        ]);
+        await router.handle(makeMsg('/select repo ProjectA'));
+        await router.handle(makeMsg('/select topic 2'));
+        sendReplySpy.mockClear();
+        await router.handle(makeMsg('/list topics'));
+        const html = formatTeamsOutbound(sendReplySpy.mock.calls[0][0] as string, 'markdown');
+        expect(html.startsWith('AI: ')).toBe(true);
+        expect(html).not.toMatch(/<ol|<li/);
+        expect(html).not.toContain('<script>');
+        expect(html).toContain('▶ 2. 🕒 Two &lt;script&gt;');
+        expect(html).toContain('\u2002\u20023. ⏹ Three');
     });
 
     it('handles no topics', async () => {
@@ -419,7 +459,7 @@ describe('TeamsCommandRouter', () => {
             expect(sendReplySpy).toHaveBeenLastCalledWith('🗜️ Compacted "Fix bug" — context 82k → 14k tokens', expect.any(String));
             noTurnStarted();
             await router.handle(makeMsg('/list topics'));
-            expect(sendReplySpy.mock.lastCall?.[0]).toMatch(/proc-111.*⬅️/);
+            expect(sendReplySpy.mock.lastCall?.[0]).toMatch(/^▶ 1\. ✅ Fix bug · /m);
         });
 
         it('maps busy, unsupported, no-session and unknown failures to short replies', async () => {
@@ -495,6 +535,22 @@ describe('TeamsCommandRouter', () => {
                 { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
             ]);
             expect(deps.selectThreadTarget).toHaveBeenCalledWith(expect.any(Object), 'ws-1', 'proc-111');
+        });
+
+        it('lists thread topics in the shared format, marking the bound chat, with / footer commands', async () => {
+            deps.resolveThreadReply = vi.fn().mockResolvedValue({ process: { id: 'proc-222', metadata: { workspaceId: 'ws-1' } }, workspaceId: 'ws-1' });
+            router = new TeamsCommandRouter(deps);
+            await router.handle(makeMsg('/list topics', { replyToMessageId: 'root-a' }));
+            expect(sendReplySpy.mock.calls[0][0].split('\n')).toEqual([
+                '**Topics** · ProjectA',
+                expect.stringMatching(/^\u2002\u20021\. ✅ Fix bug · \d+d$/),
+                expect.stringMatching(/^▶ 2\. ⏳ Add feature · \d+d$/),
+                'Reply `/select topic <n>` · `/list topics -v` for ids',
+            ]);
+            await router.handle(makeMsg('/list topics -v', { replyToMessageId: 'root-a' }));
+            expect(sendReplySpy.mock.calls[1][0]).toContain('Fix bug · ');
+            expect(sendReplySpy.mock.calls[1][0]).toMatch(/Add feature · \d+d · `proc-222`/);
+            expect(sendReplySpy.mock.calls[1][0].split('\n').at(-1)).toBe('Reply `/select topic <n>`');
         });
 
         it('dispatches control commands in the shared thread without sending them to AI', async () => {

@@ -215,11 +215,15 @@ turn's mode; plain text has none, so a follow-up keeps the chat's mode and a new
 Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
 first turn lends its queued mode) at every Teams/WhatsApp enqueue site.
 `list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
-`list topics <n.m|name@server>` (10 most recent remote chats, read-only header) are
+`list topics <n.m|name@server> [-v]` (10 most recent remote chats, read-only footer) are
 answered by `messaging/remote-browse.ts` over the route-layer `WorkspaceDirectory`
 (`list()` + `listRemoteChats()` → the remote's `GET /api/processes?workspace=&limit=`).
 The `n.m` numbering lives in a per-chat in-memory `RemoteRefMemory` (WhatsApp group,
 Teams thread or channel+user); remote repos never become the selected repo.
+Local, remote and Teams-thread topic lists share `formatTopicList` in `remote-browse.ts`
+(`▶` current marker, status emoji, truncated escaped title, `now`/`Nm`/`Nh`/`Nd` age from
+`lastEventAt ?? startTime`, ids only with `-v`, one next-step footer). `listRecentTopics`
+re-sorts its bounded page by that activity time, so `select topic <n>` picks the listed item.
 
 ### Messaging ask_user question relay
 

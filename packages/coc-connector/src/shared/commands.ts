@@ -16,7 +16,7 @@
  *     and `/ask [chatid] message` combine both.
  *   - `list topics <ref>` lists a remote repo's chats read-only; `<ref>` is a
  *     `n.m` number from `list remotes` or `name@server`. Bare `list topics`
- *     stays local.
+ *     stays local. A trailing `-v` on either form also shows topic ids.
  */
 
 export type MessagingChatMode = 'ask' | 'autopilot';
@@ -24,8 +24,11 @@ export type MessagingChatMode = 'ask' | 'autopilot';
 export type MessagingCommand =
     | { type: 'list-repos' | 'list-remotes' | 'create-topic' | 'help' | 'quota'; args: '' }
     | { type: 'select-repo' | 'select-topic'; args: string }
-    /** `args` is an optional remote repo ref (`n.m` or `name@server`); empty lists local topics. */
-    | { type: 'list-topics'; args: string }
+    /**
+     * `args` is an optional remote repo ref (`n.m` or `name@server`); empty lists
+     * local topics. `verbose` (`-v`) shows topic ids.
+     */
+    | { type: 'list-topics'; args: string; verbose?: boolean }
     /** `args` is optional custom instructions that focus the summary. */
     | { type: 'compact'; args: string }
     /** `mode` is undefined for plain text: keep the chat's current mode. */
@@ -37,7 +40,10 @@ export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-re
 
 interface CommandSpec {
     type: MessagingControlCommand['type'];
-    /** Matched against the text after an optional leading `/`; group 1 is the argument. */
+    /**
+     * Matched against the text after an optional leading `/`; group 1 is the
+     * argument, group 2 (list-topics only) the `-v` flag.
+     */
     pattern: RegExp;
     usage: string;
     summary: string;
@@ -47,7 +53,7 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
     { type: 'list-repos', pattern: /^list\s+(?:repos?|agents?)$/i, usage: 'list repos', summary: 'list registered repos (alias: list agents)' },
     { type: 'select-repo', pattern: /^select\s+repos?\s+(.+)$/i, usage: 'select repo <n|name|id>', summary: 'choose the repo for new chats' },
     { type: 'list-remotes', pattern: /^list\s+remotes?$/i, usage: 'list remotes', summary: 'list remote servers and their repos' },
-    { type: 'list-topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?$/i, usage: 'list topics', summary: 'list recent chats; add n.m or repo@server for a remote repo (read-only)' },
+    { type: 'list-topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?(\s+-v)?$/i, usage: 'list topics', summary: 'list recent chats (add -v for ids); add n.m or repo@server for a remote repo (read-only)' },
     { type: 'create-topic', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'your next message starts a new chat' },
     { type: 'select-topic', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'continue an existing chat' },
     { type: 'compact', pattern: /^compact(?:\s+(.+))?$/is, usage: 'compact [instructions]', summary: "compact the chat's context (quoted reply's chat, else selected topic)" },
@@ -80,7 +86,9 @@ export function parseMessagingCommand(text: string): MessagingCommand {
     const body = value.replace(/^\//, '').trim();
     for (const { pattern, type } of MESSAGING_COMMAND_SPECS) {
         const match = pattern.exec(body);
-        if (match) return { type, args: (match[1] ?? '').trim() } as MessagingControlCommand;
+        if (!match) continue;
+        const args = (match[1] ?? '').trim();
+        return (type === 'list-topics' ? { type, args, verbose: !!match[2] } : { type, args }) as MessagingControlCommand;
     }
     const modeCommand = MODE_PATTERN.exec(value);
     if (modeCommand) {

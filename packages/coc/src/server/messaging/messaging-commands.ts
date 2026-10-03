@@ -14,7 +14,7 @@ import { isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusonepluspl
 import { APIError } from '../errors';
 import type { CompactProcessOutcome } from '../processes/compact-process';
 import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
-import { formatTopicLine, listRemotesReply, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
+import { formatTopicList, listRemotesReply, localTopicListFooter, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
 
 export type MessagingQuotaSource = () => Promise<AgentProvidersQuotaResponse | null | undefined>;
 /** Compacts a chat's provider session; throws `APIError` on guard failures. */
@@ -58,6 +58,8 @@ export interface MessagingCommandContext {
     remotes?: MessagingRemoteDirectory;
     /** This chat's last `list remotes` numbering, so `n.m` refs resolve. */
     remoteRefs?: RemoteRefSlot;
+    /** Clock for topic ages; `Date.now` by default. */
+    now?: () => number;
 }
 
 const plain = (text: string) => text;
@@ -139,7 +141,10 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
     // Remote browsing is read-only and independent of the selected repo.
     const format = { strong, code, escape: ctx.escape ?? plain };
     if (command.type === 'list-remotes') return listRemotesReply(ctx.remotes, ctx.remoteRefs, format);
-    if (command.type === 'list-topics' && command.args) return listRemoteTopicsReply(ctx.remotes, ctx.remoteRefs, command.args, format);
+    const now = ctx.now?.() ?? Date.now();
+    if (command.type === 'list-topics' && command.args) {
+        return listRemoteTopicsReply(ctx.remotes, ctx.remoteRefs, command.args, format, { verbose: command.verbose, now });
+    }
 
     const workspaces = await ctx.store.getWorkspaces();
     if (command.type === 'compact') {
@@ -171,14 +176,18 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
         return '❌ No repo selected. Use `list repos`, then `select repo <n|name>`.';
     }
     const workspaceId = repo?.id;
-    const scope = repo ? `repo: ${strong(repo.name ?? repo.id)}` : 'all repos';
 
     if (command.type === 'list-topics') {
         const topics = await listRecentTopics(ctx.store, workspaceId);
         if (!topics.length) return 'No chat topics found.';
-        const current = ctx.selection.topicId(workspaceId);
-        return `Chat topics (${scope}):\n${topics.map((topic, i) =>
-            formatTopicLine(topic, i, code) + (topic.id === current ? ' ⬅️' : '')).join('\n')}`;
+        return formatTopicList(topics, {
+            ...format,
+            header: `${strong('Topics')} · ${repo ? format.escape(repo.name ?? repo.id) : 'all repos'}`,
+            footer: localTopicListFooter(code, command.verbose),
+            currentId: ctx.selection.topicId(workspaceId),
+            verbose: command.verbose,
+            now,
+        });
     }
     if (command.type === 'create-topic') {
         ctx.selection.selectTopic(workspaceId, null);

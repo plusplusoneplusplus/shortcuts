@@ -21,7 +21,13 @@ import {
     compactChatReply, handleMessagingCommand, invalidCommandReply, readQuotaReply,
     type MessagingCompactor, type MessagingQuotaSource,
 } from './messaging-commands';
-import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
+import { formatTopicList, localTopicListFooter, RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
+
+const TEAMS_FORMAT = {
+    strong: (text: string) => `**${escapeTeamsMarkdown(text)}**`,
+    code: teamsCodeSpan,
+    escape: escapeTeamsMarkdown,
+};
 
 // ============================================================================
 // Types
@@ -208,9 +214,7 @@ export class TeamsCommandRouter {
             store: this.deps.store,
             requireRepoForTopics: false,
             getQuota: this.deps.getQuota,
-            strong: text => `**${escapeTeamsMarkdown(text)}**`,
-            code: teamsCodeSpan,
-            escape: escapeTeamsMarkdown,
+            ...TEAMS_FORMAT,
             compact: this.deps.compact,
             remotes: this.deps.remotes,
             remoteRefs: this.remoteRefs.slot(chatKey),
@@ -282,8 +286,14 @@ export class TeamsCommandRouter {
             const recent = await listRecentTopics(this.deps.store, workspace.id);
             this.deps.recordThreadCommand?.(msg);
             await reply(recent.length
-                ? `**Chat Topics** (repo: ${escapeTeamsMarkdown(workspace.name ?? workspace.id)}):\n${recent.map((p, i) =>
-                    `${i + 1}. ${teamsCodeSpan(p.id.slice(0, 8))} ${escapeTeamsMarkdown(p.title ?? p.customTitle ?? p.id)}`).join('\n')}`
+                ? formatTopicList(recent, {
+                    ...TEAMS_FORMAT,
+                    header: `**Topics** · ${escapeTeamsMarkdown(workspace.name ?? workspace.id)}`,
+                    footer: localTopicListFooter(teamsCodeSpan, command.verbose, '/'),
+                    currentId: (selection as { process?: AIProcess } | null | undefined)?.process?.id,
+                    verbose: command.verbose,
+                    now: Date.now(),
+                })
                 : 'No chat topics found.');
             return;
         }

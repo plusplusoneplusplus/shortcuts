@@ -33,9 +33,21 @@ export function resolveWorkspace<W extends { id: string; name?: string }>(
     return workspaces.find(w => (w.name ?? '').toLowerCase() === lower || w.id.toLowerCase() === lower);
 }
 
+/** Last activity of a topic (last conversation event, else start time); undefined when unknown. */
+export function topicActivityMs(topic: { lastEventAt?: Date | string; startTime?: Date | string }): number | undefined {
+    const value = topic.lastEventAt ?? topic.startTime;
+    const ms = value === undefined ? NaN : new Date(value).getTime();
+    return Number.isNaN(ms) ? undefined : ms;
+}
+
+/** Stable most-recent-activity-first order for a topic page. */
+export function sortTopicsByActivity<T extends { lastEventAt?: Date | string; startTime?: Date | string }>(topics: T[]): T[] {
+    return topics.sort((a, b) => (topicActivityMs(b) ?? 0) - (topicActivityMs(a) ?? 0));
+}
+
 /**
- * Most recent topics for a workspace (or all workspaces), in store order. A
- * workspace-scoped list keeps only processes that workspace owns, so list
+ * Most recent topics for a workspace (or all workspaces), the store's bounded
+ * page re-sorted by last activity. A workspace-scoped list keeps only processes that workspace owns, so list
  * positions match what {@link resolveTopic} selects.
  * Bounded and conversation-free: an unbounded `getAllProcesses` loads every turn
  * in the repo and stalls the server on large stores.
@@ -49,7 +61,7 @@ export async function listRecentTopics(
         limit: TOPIC_LIST_LIMIT,
         exclude: ['conversation', 'toolCalls'],
     });
-    return workspaceId ? topics.filter(topic => topic.metadata?.workspaceId === workspaceId) : topics;
+    return sortTopicsByActivity(workspaceId ? topics.filter(topic => topic.metadata?.workspaceId === workspaceId) : topics);
 }
 
 /**

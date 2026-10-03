@@ -86,7 +86,8 @@ describe('WhatsApp workspace command routing', () => {
         expect(send).toHaveBeenLastCalledWith('Remote servers\n1. devbox (ssh) — online\n   1.1 shortcuts', 'remotes');
         await router.handle(inbound('list topics 1.1', 'topics'));
         expect(remotes.listRemoteChats).toHaveBeenCalledWith('srv-1', 'w1', 10);
-        expect(send).toHaveBeenLastCalledWith('Topics in shortcuts @ devbox (read-only):\n1. r-chat [completed] Remote chat', 'topics');
+        expect(send).toHaveBeenLastCalledWith(
+            'Topics · shortcuts @ devbox\n\u2002\u20021. ✅ Remote chat\nRead-only · list topics 1.1 -v for ids', 'topics');
         expect(bindings.isKnownMessage('out-remotes')).toBe(true);
         expect(bindings.isKnownMessage('out-topics')).toBe(true);
         expect(bindings.selectedRepo).toBeFalsy();
@@ -96,11 +97,18 @@ describe('WhatsApp workspace command routing', () => {
     it('selects topics only in the chosen workspace and creates a fresh topic on demand', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('topic-a'), 'list');
-        expect(send).not.toHaveBeenCalledWith(expect.stringContaining('topic-b'), 'list');
+        expect(send).toHaveBeenCalledWith(
+            'Topics · Alpha\n\u2002\u20021. ❔ Topic A · now\nReply select topic <n> · list topics -v for ids', 'list');
+        await router.handle(inbound('list topics -v', 'list-v'));
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic A · now · topic-a'), 'list-v');
+        expect(send).not.toHaveBeenCalledWith(expect.stringContaining('topic-b'), 'list-v');
         await router.handle(inbound('select topic topic-b', 'bad'));
         expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic not found'), 'bad');
         await router.handle(inbound('select topic topic-a', 'good'));
+        await router.handle(inbound('list topics', 'marked'));
+        expect(send).toHaveBeenCalledWith(expect.stringMatching(/^Topics · Alpha\n▶ 1\. ❔ Topic A · now\n/), 'marked');
+        await router.handle(inbound('list topics -q', 'malformed'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('Unknown command'), 'malformed');
         await router.handle(inbound('/autopilot fix this', 'autopilot'));
         expect(enqueue).toHaveBeenCalledWith('ws-a', 'fix this', 'autopilot', 'topic-a', expect.any(String), undefined);
         await router.handle(inbound('create topic', 'new'));

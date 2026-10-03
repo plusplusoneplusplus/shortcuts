@@ -12,14 +12,18 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/List Agent', { type: 'list-repos', args: '' }],
     ['select repo 2', { type: 'select-repo', args: '2' }],
     ['/Select Repos My Repo', { type: 'select-repo', args: 'My Repo' }],
-    ['list topics', { type: 'list-topics', args: '' }],
-    ['/list chat topic', { type: 'list-topics', args: '' }],
+    ['list topics', { type: 'list-topics', args: '', verbose: false }],
+    ['/list chat topic', { type: 'list-topics', args: '', verbose: false }],
     ['list remotes', { type: 'list-remotes', args: '' }],
     ['/LIST Remote', { type: 'list-remotes', args: '' }],
-    ['list topics 1.2', { type: 'list-topics', args: '1.2' }],
-    ['/List Topics 10.3', { type: 'list-topics', args: '10.3' }],
-    ['list topics shortcuts@devbox', { type: 'list-topics', args: 'shortcuts@devbox' }],
-    ['/list chat topics Shortcuts@DevBox', { type: 'list-topics', args: 'Shortcuts@DevBox' }],
+    ['list topics 1.2', { type: 'list-topics', args: '1.2', verbose: false }],
+    ['/List Topics 10.3', { type: 'list-topics', args: '10.3', verbose: false }],
+    ['list topics shortcuts@devbox', { type: 'list-topics', args: 'shortcuts@devbox', verbose: false }],
+    ['/list chat topics Shortcuts@DevBox', { type: 'list-topics', args: 'Shortcuts@DevBox', verbose: false }],
+    ['list topics -v', { type: 'list-topics', args: '', verbose: true }],
+    ['/List Chat Topics  -V', { type: 'list-topics', args: '', verbose: true }],
+    ['list topics 1.2 -v', { type: 'list-topics', args: '1.2', verbose: true }],
+    ['list topics shortcuts@devbox -v', { type: 'list-topics', args: 'shortcuts@devbox', verbose: true }],
     ['create topic', { type: 'create-topic', args: '' }],
     ['/CREATE chat topic', { type: 'create-topic', args: '' }],
     ['select topic 1', { type: 'select-topic', args: '1' }],
@@ -52,6 +56,10 @@ const cases: Array<[string, MessagingCommand]> = [
     ['list topics please', { type: 'invalid', args: 'list topics please' }],
     ['list topics 1.', { type: 'invalid', args: 'list topics 1.' }],
     ['list topics a@b c', { type: 'invalid', args: 'list topics a@b c' }],
+    ['list topics -x', { type: 'invalid', args: 'list topics -x' }],
+    ['list topics -v 1.2', { type: 'invalid', args: 'list topics -v 1.2' }],
+    ['list topics -v -v', { type: 'invalid', args: 'list topics -v -v' }],
+    ['/list topics -verbose', { type: 'invalid', args: '/list topics -verbose' }],
     ['list remotes now', { type: 'invalid', args: 'list remotes now' }],
     ['/select remote 1', { type: 'invalid', args: '/select remote 1' }],
     ['/list nonsense', { type: 'invalid', args: '/list nonsense' }],
@@ -95,5 +103,6 @@ describe('parseMessagingCommand', () => {
         expect(MESSAGING_HELP_TEXT).toContain('compact [instructions] — ');
         expect(MESSAGING_HELP_TEXT).toContain('list remotes — ');
         expect(MESSAGING_HELP_TEXT).toContain('repo@server');
+        expect(MESSAGING_HELP_TEXT).toContain('-v for ids');
     });
 });
