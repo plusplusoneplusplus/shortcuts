@@ -188,6 +188,13 @@ Classic classify-diff toolbars call `useModalJobAiSelection()` directly and rend
 one provider is selectable and shows either an effort-tier selector or the
 pickable-model command picker.
 
+`commits/CommitDetail.tsx` mounts those controls in a classification-settings
+disclosure, with selection owned by the workspace-scoped hook. Header and settings
+disclosures reset on workspace or commit changes. The collapsed header retains SHA
+copying and hides the metadata subtree from keyboard navigation. Its toolbar wraps
+review and view controls as independent groups; `DiffViewToggle` accepts a quiet
+appearance for this surface.
+
 Categories: `logic`, `mechanical`, `test`, `simple`, `generated`; `simple` is
 low-attention by default. PR and commit pop-out file rails show category badges plus a
 critical marker, and their selected-file unified diff views render test fidelity

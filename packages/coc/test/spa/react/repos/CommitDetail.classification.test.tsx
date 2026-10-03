@@ -13,7 +13,7 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -109,6 +109,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/UnifiedDiffVi
 const mockClassify = vi.fn();
 const mockToggleFilter = vi.fn();
 let mockClassificationStatus = 'idle';
+let mockClassificationError: string | undefined;
+beforeEach(() => { mockClassificationError = undefined; });
 let mockActiveFilters = new Set<string>();
 
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/useClassification', () => ({
@@ -116,7 +118,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/useClassifica
         state: {
             status: mockClassificationStatus,
             activeFilters: mockActiveFilters,
-            error: undefined,
+            error: mockClassificationError,
             result: undefined,
         },
         classify: mockClassify,
@@ -184,6 +186,15 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         expect(btn.textContent).toBe('Re-classify');
     });
 
+    it('shows classification failures outside the control groups without opening settings', async () => {
+        mockClassificationError = 'Could not classify the diff. Try again.';
+        await renderDetail();
+        const error = screen.getByRole('alert');
+        expect(error.textContent).toBe(mockClassificationError);
+        expect(screen.getByTestId('commit-classify-bar').contains(error)).toBe(false);
+        expect(screen.queryByTestId('commit-classify-settings')).toBeNull();
+    });
+
     it('Classify button is disabled when status is loading', async () => {
         mockClassificationStatus = 'loading';
         await renderDetail();
@@ -191,9 +202,49 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         expect(btn.disabled).toBe(true);
     });
 
-    it('model picker is rendered', async () => {
+    it('reveals the existing model picker through an accessible settings toggle', async () => {
         await renderDetail();
+        const toggle = screen.getByRole('button', { name: 'Classification settings' });
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByTestId('commit-classify-model-picker-chip')).toBeNull();
+        await act(async () => { fireEvent.click(toggle); });
+        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByTestId('commit-classify-settings').id).toBe(toggle.getAttribute('aria-controls'));
         expect(screen.getByTestId('commit-classify-model-picker-chip')).toBeTruthy();
+        await act(async () => { fireEvent.click(toggle); });
+        expect(screen.queryByTestId('commit-classify-settings')).toBeNull();
+    });
+
+    it('keeps AI settings disabled while classification is running', async () => {
+        mockClassificationStatus = 'loading';
+        await renderDetail();
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Classification settings' })); });
+        expect((screen.getByTestId('commit-classify-model-picker-chip') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('still runs classification from the primary button', async () => {
+        await renderDetail();
+        await act(async () => { fireEvent.click(screen.getByTestId('commit-classify-button')); });
+        expect(mockClassify).toHaveBeenCalledOnce();
+    });
+
+    it('names icon actions and reports the comments panel state', async () => {
+        await renderDetail();
+        const comments = screen.getByRole('button', { name: 'Toggle comments' });
+        expect(comments.getAttribute('aria-pressed')).toBe('false');
+        await act(async () => { fireEvent.click(comments); });
+        expect(comments.getAttribute('aria-pressed')).toBe('true');
+        for (const name of ['Toggle comments', 'Toggle AI chat', 'Open in new window']) {
+            expect(screen.getByRole('button', { name }).querySelector('svg')!.getAttribute('aria-hidden')).toBe('true');
+        }
+    });
+
+    it('resets settings when changing workspace even if the commit hash is the same', async () => {
+        let view: ReturnType<typeof render>;
+        await act(async () => { view = render(<CommitDetail workspaceId="ws1" hash="abc1234" />); });
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Classification settings' })); });
+        await act(async () => { view!.rerender(<CommitDetail workspaceId="ws2" hash="abc1234" />); });
+        expect(screen.queryByTestId('commit-classify-settings')).toBeNull();
     });
 
     it('keeps the view toggle, hunk nav and panel buttons on the same row as the classify controls', async () => {
@@ -205,7 +256,7 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         expect(bar.querySelector('[data-testid="diff-view-toggle"], [data-testid="diff-view-unified"]')).toBeTruthy();
     });
 
-    it('splits the bar into wrap-as-a-unit left and right groups inside a size container', async () => {
+    it('wraps review and view groups independently inside a size container', async () => {
         mockClassificationStatus = 'ready';
         await renderDetail();
         const bar = screen.getByTestId('commit-classify-bar');
@@ -215,10 +266,14 @@ describe('CommitDetail — classification toolbar (AC-05)', () => {
         expect(bar.parentElement!.className).toContain('[container-type:inline-size]');
         for (const group of [left, right]) {
             expect(group.parentElement).toBe(bar);
-            expect(group.className).toContain('flex-nowrap');
         }
         expect(right.className).toContain('ml-auto');
-        for (const id of ['commit-classify-ai-controls', 'commit-classify-button', 'commit-prev-priority-btn', 'commit-next-priority-btn']) {
+        expect(right.className).toContain('flex-wrap');
+        for (const id of ['commit-review-controls', 'commit-view-controls']) {
+            expect(screen.getByTestId(id).className).toContain('flex-nowrap');
+            expect(screen.getByTestId(id).parentElement).toBe(right);
+        }
+        for (const id of ['commit-classify-settings-toggle', 'commit-classify-button', 'commit-prev-priority-btn', 'commit-next-priority-btn']) {
             expect(left.contains(screen.getByTestId(id))).toBe(true);
         }
         for (const id of ['commit-reviewed-count', 'toggle-comments-btn', 'toggle-chat-btn', 'commit-popout-btn']) {
@@ -316,6 +371,9 @@ describe('CommitDetail — reviewed count (AC-05)', () => {
         // parseDiffFileList is mocked to return 2 files
         expect(badge.textContent).toBe('0/2 reviewed');
         expect(badge.getAttribute('title')).toBe('0 of 2 files reviewed');
+        const progress = screen.getByRole('progressbar', { name: 'Files reviewed' });
+        expect(progress.getAttribute('aria-valuenow')).toBe('0');
+        expect(progress.getAttribute('aria-valuemax')).toBe('2');
         expect(badge.querySelector('span')!.className).toContain('[@container_(max-width:559px)]:hidden');
     });
 });

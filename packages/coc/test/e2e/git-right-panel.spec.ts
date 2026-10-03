@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import {
     createMultiCommitRepo,
@@ -212,17 +213,23 @@ test.describe('Git right-panel — Copy hash feedback', () => {
             await page.locator('[data-testid^="commit-row-"]').first().click();
             await expect(page.getByTestId('commit-info-header')).toBeVisible({ timeout: 5_000 });
 
-            // Grant clipboard permission and click Copy
-            await page.context().grantPermissions(['clipboard-write']);
+            const hash = execFileSync('git', ['rev-parse', 'HEAD'], {
+                cwd: repoDir,
+                encoding: 'utf8',
+            }).trim();
+            await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
             const copyBtn = page.getByTestId('commit-info-copy-hash');
-            await expect(copyBtn).toContainText('Copy');
+            await expect(copyBtn).toHaveAccessibleName('Copy commit hash');
+            await expect(copyBtn).toHaveText(hash.slice(0, 8));
             await copyBtn.click();
 
-            // Should show 'Copied!' feedback
-            await expect(copyBtn).toContainText('Copied!', { timeout: 3_000 });
+            await expect(copyBtn).toHaveAccessibleName('Copied!', { timeout: 3_000 });
+            await expect(copyBtn.getByRole('status')).toHaveText('Copied!');
+            await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(hash);
 
-            // After 2s, should revert back to 'Copy'
-            await expect(copyBtn).toContainText('Copy', { timeout: 5_000 });
+            await expect(copyBtn).toHaveAccessibleName('Copy commit hash', { timeout: 5_000 });
+            await expect(copyBtn).toHaveText(hash.slice(0, 8));
+            await expect(copyBtn.getByRole('status')).toHaveCount(0);
         } finally {
             safeRmSync(tmpDir);
         }

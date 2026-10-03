@@ -140,7 +140,7 @@ describe('CommitDetail', () => {
 
         it('renders the metadata as a single wrapping row', () => {
             expect(source).toContain('data-testid="commit-info-meta-row"');
-            expect(source).toContain('flex flex-wrap items-center gap-x-3 gap-y-0.5');
+            expect(source).toContain('flex flex-wrap items-center gap-x-3 gap-y-1');
         });
 
         it('has commit-info-body section', () => {

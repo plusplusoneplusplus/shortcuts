@@ -3,6 +3,16 @@
 Commit review surface for the Git tab: the commit list on the left, the commit
 detail/diff pane, and the commit-bound chat panels.
 
+## CommitDetail
+
+`CommitDetail.tsx` keeps the title and copyable SHA available in expanded and
+collapsed headers. Collapsed metadata uses `hidden` so its controls leave the
+keyboard order. Header and classification-settings disclosures reset on
+`(workspaceId, hash)` changes. Settings reuse `ClassifyDiffAiControls` and the
+workspace-scoped `useModalJobAiSelection`; disable selectors during classification.
+Review and view control groups wrap independently in narrow panes. Icon buttons
+need accessible names, and panel toggles expose their pressed state.
+
 ## CommitList interaction kernel
 
 `CommitList.tsx` owns only the public prop contract and wiring. Behavior is

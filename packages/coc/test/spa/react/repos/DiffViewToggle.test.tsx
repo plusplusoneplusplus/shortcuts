@@ -27,6 +27,19 @@ describe('DiffViewToggle', () => {
         }
     });
 
+    it('quiet appearance uses line icons and retains accessible selection and switching', () => {
+        const onChange = vi.fn();
+        render(<DiffViewToggle mode="unified" onChange={onChange} appearance="quiet" />);
+        const unified = screen.getByRole('button', { name: 'Unified view' });
+        const split = screen.getByRole('button', { name: 'Split view' });
+        expect(unified.getAttribute('aria-pressed')).toBe('true');
+        expect(unified.className).toContain('bg-[#e8f0fc]');
+        expect(split.querySelector('svg')).toBeTruthy();
+        expect(split.textContent).toBe('Split');
+        fireEvent.click(split);
+        expect(onChange).toHaveBeenCalledWith('split');
+    });
+
     it('active button has aria-pressed="true", inactive has aria-pressed="false" (unified mode)', () => {
         render(<DiffViewToggle mode="unified" onChange={() => {}} />);
         expect(screen.getByTestId('diff-view-toggle-unified').getAttribute('aria-pressed')).toBe('true');
