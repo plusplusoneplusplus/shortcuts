@@ -41,6 +41,11 @@ const HTML_PAGE_PARTITION = 'coc-html-page';
 
 interface HtmlPageEntry {
     win: BrowserWindow;
+    /**
+     * The SPA's webContents id, captured at open: `win.webContents` throws once
+     * the window is destroyed, and the 'closed' teardown runs after that.
+     */
+    ownerId: number;
     view: WebContentsView;
     pageId: string;
     filePath: string;
@@ -74,7 +79,7 @@ function pushState(owner: WebContents, state: HtmlPageLoadState): void {
 }
 
 function destroyEntry(entry: HtmlPageEntry): void {
-    const entries = entriesByOwner.get(entry.win.webContents.id);
+    const entries = entriesByOwner.get(entry.ownerId);
     if (entries?.get(entry.pageId) === entry) {
         entries.delete(entry.pageId);
     }
@@ -198,7 +203,7 @@ function openPage(sender: WebContents, pageId: unknown, filePath: unknown): Html
     view.setVisible(false);
     // Index 0: under any other overlay (the find bar) that shares the window.
     win.contentView.addChildView(view, 0);
-    const entry: HtmlPageEntry = { win, view, pageId, filePath: check.path };
+    const entry: HtmlPageEntry = { win, ownerId: sender.id, view, pageId, filePath: check.path };
     entries.set(pageId, entry);
     wirePageView(entry);
     void view.webContents.loadURL(htmlPageFileUrl(check.path)).catch(() => {
