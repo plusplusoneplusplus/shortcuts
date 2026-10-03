@@ -41,12 +41,14 @@ describe('native Notes capability at server startup', () => {
         vi.restoreAllMocks();
     });
 
+    /** Writes a stub addon; `source` can borrow capabilities from the built binary as `real`. */
     function useAddon(source: string, name = 'stub.js'): string {
         const addonPath = path.join(tempDir, name);
         const { binaryPath } = nativeAddonStatus();
         if (!binaryPath) throw new Error('The native addon must be built before running startup tests');
         fs.writeFileSync(addonPath,
-            `${source}\nmodule.exports.NativeDatabaseHandle = require(${JSON.stringify(binaryPath)}).NativeDatabaseHandle;\n`);
+            `const real = require(${JSON.stringify(binaryPath)});\n${source}\n` +
+                'module.exports.NativeDatabaseHandle = real.NativeDatabaseHandle;\n');
         process.env.COC_NATIVE_PATH = addonPath;
         resetNativeAddonCache();
         return addonPath;
@@ -99,9 +101,8 @@ describe('native Notes capability at server startup', () => {
         const addonPath = useAddon(
             'class NotesIndex { async search() { return { results: [], truncated: false }; } ' +
                 'async refresh() {} async refreshChanged() {} } ' +
-                'module.exports = { openRepoFiles: () => ({}), NotesIndex, ' +
-                'buildNotesIndex: async () => new NotesIndex(), ' +
-                'searchContent: async () => ({ matches: [], truncated: false }) };',
+                'module.exports = { RepoFiles: real.RepoFiles, openRepoFiles: real.openRepoFiles, NotesIndex, ' +
+                'buildNotesIndex: async () => new NotesIndex() };',
         );
         const stderrWrites: string[] = [];
         vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
@@ -111,17 +112,21 @@ describe('native Notes capability at server startup', () => {
 
         server = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tempDir });
 
+        expect(stderrWrites.join('')).toContain(`native file index: loaded (${addonPath})`);
         expect(stderrWrites.join('')).toContain(`native Notes index: loaded (${addonPath})`);
         expect(stderrWrites.join('')).toContain(`native content search: loaded (${addonPath})`);
     });
 
-    it('reports content search as unavailable when the binary predates it', async () => {
-        // Not a startup failure: content search is resolved on the first query,
-        // so a stale binary shows up here rather than blocking the whole server.
+    it('reports file index and content search as unavailable when RepoFiles predates content search', async () => {
+        // Not a startup failure: repo files are resolved on first use, so a
+        // stale binary shows up here rather than blocking the whole server.
+        // Content search lives on the RepoFiles handle, so both lines share one reason.
         const addonPath = useAddon(
             'class NotesIndex { async search() { return { results: [], truncated: false }; } ' +
                 'async refresh() {} async refreshChanged() {} } ' +
-                'module.exports = { openRepoFiles: () => ({}), NotesIndex, ' +
+                'class RepoFiles { readBlob() {} writeBlob() {} listDirectory() {} listFiles() {} ' +
+                'replaceContent() {} indexFiles() {} searchFiles() {} searchFilesRanked() {} invalidate() {} dispose() {} } ' +
+                'module.exports = { RepoFiles, openRepoFiles: () => new RepoFiles(), NotesIndex, ' +
                 'buildNotesIndex: async () => new NotesIndex() };',
         );
         const stderrWrites: string[] = [];
@@ -133,7 +138,10 @@ describe('native Notes capability at server startup', () => {
         server = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: tempDir });
 
         expect(stderrWrites.join('')).toContain(
-            `native content search: unavailable (${addonPath} does not export content search)`,
+            `native file index: unavailable (${addonPath} does not export repo files)`,
+        );
+        expect(stderrWrites.join('')).toContain(
+            `native content search: unavailable (${addonPath} does not export repo files)`,
         );
     });
 });
