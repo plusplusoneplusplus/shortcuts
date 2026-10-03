@@ -27,7 +27,7 @@ describe('Teams ask_user question relay', () => {
     let sent = 0;
     const processes = new Map<string, any>();
     const store = {
-        getWorkspaces: vi.fn().mockResolvedValue([{ id: 'ws-a', name: 'Alpha', rootPath: '/a' }]),
+        getWorkspaces: vi.fn().mockResolvedValue([{ id: 'global-workspace-00', name: 'Alpha', rootPath: '/a' }]),
         getProcess: vi.fn(async (id: string) => processes.get(id)),
         updateProcess: vi.fn().mockResolvedValue(undefined),
     };
@@ -63,7 +63,7 @@ describe('Teams ask_user question relay', () => {
             enqueueChat: async () => { throw new Error('Expected relay admission'); },
             executeFollowUp: async () => { throw new Error('Expected relay follow-up'); },
             enqueueRelayChat: async (_ws, _prompt, id) => {
-                tasks.set(id, { id, repoId: 'ws-a', processId: toQueueProcessId(id), status: 'running', payload: {} } as any);
+                tasks.set(id, { id, repoId: 'global-workspace-00', processId: toQueueProcessId(id), status: 'running', payload: {} } as any);
                 return id;
             },
             admitRelayFollowUp: async (process, _text, requestId, _mode, taskId) => {
@@ -138,7 +138,7 @@ describe('Teams ask_user question relay', () => {
     it('locates a follow-up turn by its relay request id', async () => {
         const request = await startRequest();
         processes.set(request.processId, {
-            id: request.processId, status: 'completed', metadata: { workspaceId: 'ws-a', queueTaskId: request.requestId },
+            id: request.processId, status: 'completed', metadata: { workspaceId: 'global-workspace-00', queueTaskId: request.requestId },
         });
         await handle(inbound('follow', 'and then?', 'root'));
         expect(followUps).toHaveLength(1);

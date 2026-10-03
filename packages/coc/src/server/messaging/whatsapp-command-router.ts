@@ -5,7 +5,8 @@ import { isMessagingControlCommand, parseMessagingCommand, type MessagingChatMod
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
-import { handleMessagingCommand, invalidCommandReply, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
+import { resolveChatWorkspace } from './chat-target';
+import { handleMessagingCommand, invalidCommandReply, NO_CHAT_WORKSPACE_REPLY, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
 import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 import { admitBotControlledFollowUp } from './bot-control-admission';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
@@ -61,7 +62,6 @@ export class WhatsAppCommandRouter {
                 const bindings = this.deps.bindings;
                 await reply(await handleMessagingCommand(command, {
                     store: this.deps.store,
-                    requireRepoForTopics: true,
                     getQuota: this.deps.getQuota,
                     compact: this.deps.compact,
                     remotes: this.deps.remotes,
@@ -71,14 +71,14 @@ export class WhatsAppCommandRouter {
                     selection: {
                         repoId: () => bindings.selectedRepo,
                         selectRepo: id => bindings.selectRepo(id),
-                        topicId: id => id ? bindings.topic(id) : null,
-                        selectTopic: (id, processId) => { if (id) bindings.selectTopic(id, processId); },
+                        topicId: id => bindings.topic(id),
+                        selectTopic: (id, processId) => bindings.selectTopic(id, processId),
                     },
                 }));
                 return;
             }
             const workspaces = await this.deps.store.getWorkspaces();
-            let workspaceId = workspaces.find(workspace => workspace.id === this.deps.bindings.selectedRepo)?.id;
+            let workspaceId = resolveChatWorkspace(workspaces, this.deps.bindings.selectedRepo)?.id;
             let targetId = workspaceId ? this.deps.bindings.topic(workspaceId) : null;
             if (command.type === 'chat-explicit') {
                 const process = await this.deps.store.getProcess(command.chatId);
@@ -100,7 +100,7 @@ export class WhatsAppCommandRouter {
                 }
             }
             if (!workspaceId || !workspaces.some(ws => ws.id === workspaceId)) {
-                await reply('No repo selected. Run `list repos`, then `select repo <n|name>`.');
+                await reply(NO_CHAT_WORKSPACE_REPLY);
                 return;
             }
             if (!command.args) { await reply('Send a message to start a chat.'); return; }

@@ -5,6 +5,7 @@
 
 import type { AIProcess, ProcessStore, QueuedTask } from '@plusplusoneplusplus/forge';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
+import { GLOBAL_WORKSPACE_ID } from '../workspaces/global-workspace';
 
 /** How many recent topics `list topics` shows and `select topic <n>` indexes into. */
 export const TOPIC_LIST_LIMIT = 10;
@@ -31,6 +32,18 @@ export function resolveWorkspace<W extends { id: string; name?: string }>(
     if (byId) return byId;
     const lower = nameOrIndex.toLowerCase();
     return workspaces.find(w => (w.name ?? '').toLowerCase() === lower || w.id.toLowerCase() === lower);
+}
+
+/**
+ * The repo messaging chats and topic commands use: the selected repo while it
+ * still exists, else the built-in Global workspace. Undefined only when Global
+ * is missing from the store.
+ */
+export function resolveChatWorkspace<W extends { id: string }>(
+    workspaces: readonly W[],
+    selectedId: string | null | undefined,
+): W | undefined {
+    return workspaces.find(w => w.id === selectedId) ?? workspaces.find(w => w.id === GLOBAL_WORKSPACE_ID);
 }
 
 /** Last activity of a topic (last conversation event, else start time); undefined when unknown. */

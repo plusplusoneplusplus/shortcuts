@@ -91,6 +91,7 @@ describe('TeamsCommandRouter', () => {
                 getWorkspaces: vi.fn().mockResolvedValue([
                     { id: 'ws-1', name: 'ProjectA', rootPath: '/repo/projectA' },
                     { id: 'ws-2', name: 'ProjectB', rootPath: '/repo/projectB' },
+                    { id: 'global-workspace-00', name: 'Global', rootPath: '/coc/global-workspace' },
                 ]),
                 getAllProcesses: vi.fn().mockResolvedValue([
                     { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: '2025-01-02T00:00:00Z', promptPreview: 'Fix the bug', metadata: { workspaceId: 'ws-1' } },
@@ -98,7 +99,7 @@ describe('TeamsCommandRouter', () => {
                 ]),
                 getProcess: vi.fn().mockImplementation(async (id: string) => {
                     if (id === 'proc-111') return { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: '2025-01-02T00:00:00Z', promptPreview: 'Fix the bug', metadata: { workspaceId: 'ws-1' } };
-                    if (id === 'proc-222') return { id: 'proc-222', status: 'running', title: 'Add feature', startTime: '2025-01-01T00:00:00Z', promptPreview: 'Add feature' };
+                    if (id === 'proc-222') return { id: 'proc-222', status: 'running', title: 'Add feature', startTime: '2025-01-01T00:00:00Z', promptPreview: 'Add feature', metadata: { workspaceId: 'ws-1' } };
                     return undefined;
                 }),
             } as any,
@@ -161,7 +162,7 @@ describe('TeamsCommandRouter', () => {
     it('lists repos (alias)', async () => {
         await router.handle(makeMsg('/list repos'));
         expect(sendReplySpy).toHaveBeenCalledTimes(1);
-        expect(sendReplySpy.mock.calls[0][0]).toContain('Repos (2)');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Repos (3)');
         expect(sendReplySpy.mock.calls[0][0]).toContain('/repo/projectA');
     });
 
@@ -255,20 +256,26 @@ describe('TeamsCommandRouter', () => {
         expect(sendReplySpy.mock.calls[0][0]).toContain('Ready for a new topic');
     });
 
-    it('errors on create topic without repo', async () => {
+    it('creates a topic in Global when no repo is selected', async () => {
         await router.handle(makeMsg('/create topic'));
-        expect(sendReplySpy.mock.calls[0][0]).toContain('No repo selected');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Ready for a new topic');
+        await router.handle(makeMsg('Fresh question'));
+        expect(deps.enqueueChat).toHaveBeenCalledWith('global-workspace-00', 'Fresh question', undefined);
     });
 
     // ── select topic ──────────────────────────────────────────
 
     it('selects an existing topic by ID', async () => {
+        await router.handle(makeMsg('/select repo ProjectA'));
+        sendReplySpy.mockClear();
         await router.handle(makeMsg('/select topic proc-111'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
         expect(sendReplySpy.mock.calls[0][0]).toContain('Fix bug');
     });
 
     it('selects a topic by numeric index', async () => {
+        await router.handle(makeMsg('/select repo ProjectA'));
+        sendReplySpy.mockClear();
         // proc-111 (2025-01-02) sorts first, proc-222 (2025-01-01) second
         await router.handle(makeMsg('/select topic 1'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
@@ -276,6 +283,8 @@ describe('TeamsCommandRouter', () => {
     });
 
     it('selects second topic by numeric index', async () => {
+        await router.handle(makeMsg('/select repo ProjectA'));
+        sendReplySpy.mockClear();
         await router.handle(makeMsg('/select topic 2'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
         expect(sendReplySpy.mock.calls[0][0]).toContain('Add feature');
@@ -299,8 +308,8 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('/list topics'));
         await router.handle(makeMsg('/select topic 2'));
         expect(getAllProcesses.mock.calls.map(([filter]) => filter)).toEqual([
-            { limit: 10, exclude: ['conversation', 'toolCalls'] },
-            { limit: 10, exclude: ['conversation', 'toolCalls'] },
+            { workspaceId: 'global-workspace-00', limit: 10, exclude: ['conversation', 'toolCalls'] },
+            { workspaceId: 'global-workspace-00', limit: 10, exclude: ['conversation', 'toolCalls'] },
             { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
             { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
         ]);
@@ -323,6 +332,7 @@ describe('TeamsCommandRouter', () => {
     // ── chat (follow-up or create new) ────────────────────────
 
     it('follows up on selected topic', async () => {
+        await router.handle(makeMsg('/select repo ProjectA'));
         await router.handle(makeMsg('/select topic proc-222'));
         sendReplySpy.mockClear();
 
@@ -339,16 +349,59 @@ describe('TeamsCommandRouter', () => {
         expect(sendReplySpy.mock.calls[0][0]).toContain('New topic created');
     });
 
-    it('auto-selects first repo when no repo selected', async () => {
+    it('starts new chats in Global when no repo is selected, without persisting a selection', async () => {
         await router.handle(makeMsg('Hello world'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'Hello world', undefined);
-        expect(sendReplySpy.mock.calls[0][0]).toContain('ProjectA');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('global-workspace-00', 'Hello world', undefined);
+        expect(sendReplySpy.mock.calls[0][0]).toContain('New topic created in **Global**');
+        expect(new TeamsUserStateStore(tmpDir).get('user-aad-1').selectedRepo).toBeNull();
     });
 
-    it('errors when no repos available and no topic selected', async () => {
-        (deps.store.getWorkspaces as any).mockResolvedValue([]);
+    it('falls back to Global when the selected repo no longer exists', async () => {
+        await router.handle(makeMsg('/select repo ProjectB'));
+        (deps.store.getWorkspaces as any).mockResolvedValue([
+            { id: 'ws-1', name: 'ProjectA' }, { id: 'global-workspace-00', name: 'Global' },
+        ]);
         await router.handle(makeMsg('Hello'));
-        expect(sendReplySpy.mock.calls[0][0]).toContain('No repo available');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('global-workspace-00', 'Hello', undefined);
+        sendReplySpy.mockClear();
+        await router.handle(makeMsg('/list topics'));
+        expect(sendReplySpy.mock.calls[0][0]).toBe('No chat topics found.');
+    });
+
+    it('replies with a fixed error when neither the selected repo nor Global exists', async () => {
+        (deps.store.getWorkspaces as any).mockResolvedValue([{ id: 'ws-1', name: 'ProjectA' }]);
+        for (const text of ['Hello', '/list topics', '/create topic', '/select topic 1']) {
+            await router.handle(makeMsg(text));
+        }
+        expect(sendReplySpy.mock.calls.map(([reply]) => reply)).toEqual(Array(4).fill(
+            '❌ The Global workspace is unavailable. Use `list repos`, then `select repo <n|name>`.'));
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('selects Global by name, case-insensitively, at its list position', async () => {
+        await router.handle(makeMsg('/select repo global'));
+        await router.handle(makeMsg('/select repo 3'));
+        expect(sendReplySpy.mock.calls.map(([reply]) => reply)).toEqual(Array(2).fill(
+            '✅ Selected repo: **Global**. Your next message starts a new chat.'));
+    });
+
+    it('select repo starts a fresh chat, even when re-selecting the current repo', async () => {
+        await router.handle(makeMsg('/select repo ProjectA'));
+        await router.handle(makeMsg('/select topic proc-111'));
+        await router.handle(makeMsg('/select repo ProjectA'));
+        await router.handle(makeMsg('First'));
+        expect(deps.executeFollowUp).not.toHaveBeenCalled();
+        expect(deps.enqueueChat).toHaveBeenLastCalledWith('ws-1', 'First', undefined);
+        // The new chat becomes the last active topic; switching repo must not resume it.
+        await router.handle(makeMsg('/select repo ProjectB'));
+        await router.handle(makeMsg('Second'));
+        expect(deps.executeFollowUp).not.toHaveBeenCalled();
+        expect(deps.enqueueChat).toHaveBeenLastCalledWith('ws-2', 'Second', undefined);
+        expect(new TeamsUserStateStore(tmpDir).get('user-aad-1')).toMatchObject({ selectedRepo: 'ws-2', selectedTopic: null });
+        // Explicit targeting still wins over the fresh-start selection.
+        await router.handle(makeMsg('/select repo ProjectB'));
+        await router.handle(makeMsg('[proc-111] Back to the old chat'));
+        expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'Back to the old chat', undefined);
     });
 
     // ── error handling ────────────────────────────────────────
@@ -365,7 +418,7 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('SELECT REPO ProjectB'));
         await router.handle(makeMsg('list agents'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected repo');
-        expect(sendReplySpy.mock.calls[1][0]).toContain('Repos (2)');
+        expect(sendReplySpy.mock.calls[1][0]).toContain('Repos (3)');
         expect(deps.enqueueChat).not.toHaveBeenCalled();
     });
 
@@ -413,7 +466,7 @@ describe('TeamsCommandRouter', () => {
 
     it('runs /autopilot messages in autopilot mode for new chats and explicit chats', async () => {
         await router.handle(makeMsg('/autopilot fix the build'));
-        expect(deps.enqueueChat).toHaveBeenCalledWith('ws-1', 'fix the build', 'autopilot');
+        expect(deps.enqueueChat).toHaveBeenCalledWith('global-workspace-00', 'fix the build', 'autopilot');
         await router.handle(makeMsg('/autopilot [proc-111] keep going'));
         expect(deps.executeFollowUp).toHaveBeenCalledWith('proc-111', 'keep going', 'autopilot');
     });
@@ -464,6 +517,7 @@ describe('TeamsCommandRouter', () => {
 
         it('maps busy, unsupported, no-session and unknown failures to short replies', async () => {
             const { APIError } = await import('../../../src/server/errors');
+            await router.handle(makeMsg('/select repo ProjectA'));
             await router.handle(makeMsg('/select topic proc-111'));
             const error = vi.spyOn(console, 'error').mockImplementation(() => {});
             const cases: Array<[unknown, string]> = [
@@ -602,7 +656,8 @@ describe('TeamsCommandRouter', () => {
 
         it('rejects cross-workspace and missing topics without changing the thread', async () => {
             const msg = (text: string) => makeMsg(text, { replyToMessageId: 'root-a' });
-            await router.handle(msg('/select topic proc-222'));
+            vi.mocked(deps.store.getProcess).mockResolvedValueOnce({ id: 'proc-other', status: 'completed', metadata: { workspaceId: 'ws-2' } } as any);
+            await router.handle(msg('/select topic proc-other'));
             await router.handle(msg('/select topic missing'));
             expect(sendReplySpy.mock.calls[0][0]).toContain('not found in the selected repo');
             expect(sendReplySpy.mock.calls[1][0]).toContain('not found in the selected repo');
@@ -654,6 +709,7 @@ describe('TeamsCommandRouter', () => {
         });
 
         it('admits pending thread replies by the bound task ID without changing the selected topic', async () => {
+            await router.handle(makeMsg('/select repo ProjectA'));
             await router.handle(makeMsg('/select topic proc-111'));
             sendReplySpy.mockClear();
             const reply = makeMsg('queued reply', { replyToMessageId: 'pending' });
@@ -667,6 +723,7 @@ describe('TeamsCommandRouter', () => {
         });
 
         it('passes the follow-up mode through as typed so plain text keeps the chat mode', async () => {
+            await router.handle(makeMsg('/select repo ProjectA'));
             await router.handle(makeMsg('/select topic proc-111'));
             const modes: Array<[string, string | undefined]> = [
                 ['keep going', undefined], ['/ask just look', 'ask'], ['/autopilot fix it', 'autopilot'],

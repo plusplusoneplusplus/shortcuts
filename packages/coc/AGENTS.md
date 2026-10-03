@@ -188,7 +188,13 @@ references before editing. Paths are package-relative.
   `MESSAGING_HELP_TEXT`); unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
   answers selection, help, quota and `compact [instructions]` for both routers via a
-  `MessagingSelection` adapter. `compact` targets the quoted/bound-thread answer's
+  `MessagingSelection` adapter. With no selected repo (or a removed one), plain messages
+  and topic commands in both connectors use the built-in Global workspace via
+  `resolveChatWorkspace` in `chat-target.ts` (fixed reply if Global is missing; the
+  selection is not persisted). `select repo` (including re-selecting the current repo or
+  Global) clears the selected topic (Teams also `lastActiveTopic`) so the next plain
+  message starts a new chat; quote/thread replies, `select topic` and `[chatid]` still
+  target their chat. WhatsApp `state.json` keeps its per-repo `topics` map. `compact` targets the quoted/bound-thread answer's
   chat, else the selected topic; it calls `processes/compact-process.ts` (shared with
   the compact route), never enqueues a turn or changes selection, and maps 400/409/422
   to fixed replies. `/autopilot <msg>` / `/ask <msg>` set the turn's mode; plain text keeps

@@ -80,7 +80,6 @@ function makeContext(directory = makeDirectory(), memory = new RemoteRefMemory()
             getProcess: vi.fn(),
         } as any,
         selection: { repoId: () => 'local-ws', selectRepo: vi.fn(), topicId: () => null, selectTopic: vi.fn() },
-        requireRepoForTopics: true,
         remotes: directory,
         remoteRefs: memory.slot(chatKey),
         now: () => NOW,

@@ -959,7 +959,7 @@ describe('Teams messaging routes (integration)', () => {
         const tasks = new Map<string, QueuedTask>();
         const queue = Object.assign(new EventEmitter(), { getTask: (id: string) => tasks.get(id) });
         const store = {
-            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'workspace-a', name: 'A', rootPath: dir }]),
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'global-workspace-00', name: 'A', rootPath: dir }]),
             getProcess: vi.fn().mockResolvedValue(undefined),
         } as unknown as ProcessStore;
         const enqueueFollowUp = vi.fn(async (_ws, _process, _text, _request, _mode, taskId) => taskId);
@@ -1004,7 +1004,7 @@ describe('Teams messaging routes (integration)', () => {
             await opts.onMessage(historical);
             expect(enqueueFollowUp).toHaveBeenCalledOnce();
             expect(bot.reactToChannelMessage.mock.calls.map(([msg]: [typeof root]) => msg.messageId)).toEqual(['root']);
-            const folder = getRepoDataPath(dir, 'workspace-a', 'teams-answer-relay');
+            const folder = getRepoDataPath(dir, 'global-workspace-00', 'teams-answer-relay');
             const receipts = () => fs.readdirSync(folder)
                 .map(name => JSON.parse(fs.readFileSync(path.join(folder, name), 'utf8')));
             expect(receipts().find(receipt => receipt.messageId === 'root')).toMatchObject({

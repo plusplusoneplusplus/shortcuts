@@ -9,10 +9,12 @@ import {
     listRecentTopics,
     onTaskTerminal,
     parseListIndex,
+    resolveChatWorkspace,
     resolveTopic,
     resolveWorkspace,
     topicActivityMs,
 } from '../../../src/server/messaging/chat-target';
+import { GLOBAL_WORKSPACE_ID } from '../../../src/server/workspaces/global-workspace';
 
 const BOUNDED = { limit: TOPIC_LIST_LIMIT, exclude: ['conversation', 'toolCalls'] };
 
@@ -49,6 +51,23 @@ describe('resolveWorkspace', () => {
     it('only accepts a lenient index when strictIndex is false', () => {
         expect(resolveWorkspace(workspaces, '2nd')).toBeUndefined();
         expect(resolveWorkspace(workspaces, '2nd', false)).toBe(workspaces[1]);
+    });
+});
+
+describe('resolveChatWorkspace', () => {
+    const global = { id: GLOBAL_WORKSPACE_ID, name: 'Global' };
+    const workspaces = [{ id: 'ws-a', name: 'Alpha' }, global];
+
+    it('uses the selected repo while it exists, else the Global workspace', () => {
+        expect(resolveChatWorkspace(workspaces, 'ws-a')).toBe(workspaces[0]);
+        expect(resolveChatWorkspace(workspaces, null)).toBe(global);
+        expect(resolveChatWorkspace(workspaces, undefined)).toBe(global);
+        expect(resolveChatWorkspace(workspaces, 'ws-removed')).toBe(global);
+    });
+
+    it('returns undefined when Global is missing and nothing valid is selected', () => {
+        expect(resolveChatWorkspace([workspaces[0]], 'ws-removed')).toBeUndefined();
+        expect(resolveChatWorkspace([], null)).toBeUndefined();
     });
 });
 

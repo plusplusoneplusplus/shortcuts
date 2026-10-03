@@ -16,9 +16,9 @@ import {
 import { TeamsUserStateStore } from './teams-user-state';
 import type { TeamsEventType } from './teams-attempt-store';
 import { escapeTeamsMarkdown, teamsCodeSpan } from './teams-outbound-format';
-import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
+import { listRecentTopics, resolveChatWorkspace, resolveTopic, resolveWorkspace } from './chat-target';
 import {
-    compactChatReply, handleMessagingCommand, invalidCommandReply, readQuotaReply,
+    compactChatReply, handleMessagingCommand, invalidCommandReply, NO_CHAT_WORKSPACE_REPLY, readQuotaReply,
     type MessagingCompactor, type MessagingQuotaSource,
 } from './messaging-commands';
 import { formatTopicList, localTopicListFooter, RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
@@ -212,7 +212,6 @@ export class TeamsCommandRouter {
     private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string): Promise<string> {
         return handleMessagingCommand(command, {
             store: this.deps.store,
-            requireRepoForTopics: false,
             getQuota: this.deps.getQuota,
             ...TEAMS_FORMAT,
             compact: this.deps.compact,
@@ -392,47 +391,25 @@ export class TeamsCommandRouter {
             await this.sendAcceptance(`💬 Message sent to topic \`${targetId.slice(0, 8)}\``, msg, () =>
                 this.deps.acknowledgeFollowUp?.(msg));
         } else {
-            // No active topic — create new if repo is selected
-            const repoId = state.selectedRepo;
-            if (!repoId) {
-                // Try to use the first available workspace
-                const workspaces = await this.deps.store.getWorkspaces();
-                if (workspaces.length === 0) {
-                    await this.deps.sendReply(
-                        '❌ No repo available. Register a workspace first.',
-                        msg.messageId,
-                    );
-                    return;
-                }
-                const firstRepo = workspaces[0];
-                const admission = this.deps.admitNewChat
-                    ? await this.deps.admitNewChat(msg, firstRepo.id, message, mode)
-                    : { taskId: await this.deps.enqueueChat(firstRepo.id, message, mode), duplicate: false };
-                const { taskId } = admission;
-                if (admission.duplicate) return;
-                observe?.('dispatch-queued');
-                this.userState.update(userKey, {
-                    selectedRepo: firstRepo.id,
-                    lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
-                });
-                await this.sendAcceptance(
-                    `💬 New topic created in **${escapeTeamsMarkdown(firstRepo.name ?? firstRepo.id)}**: \`${taskId.slice(0, 8)}\``,
-                    msg, () => this.deps.acknowledgeNewChat?.(taskId),
-                );
-            } else {
-                const admission = this.deps.admitNewChat
-                    ? await this.deps.admitNewChat(msg, repoId, message, mode)
-                    : { taskId: await this.deps.enqueueChat(repoId, message, mode), duplicate: false };
-                const { taskId } = admission;
-                if (admission.duplicate) return;
-                observe?.('dispatch-queued');
-                this.userState.update(userKey, {
-                    lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
-                });
-                await this.sendAcceptance(`💬 New topic created: \`${taskId.slice(0, 8)}\``, msg, () =>
-                    this.deps.acknowledgeNewChat?.(taskId));
+            // No active topic — start a new chat in the selected repo, else Global.
+            const repo = resolveChatWorkspace(await this.deps.store.getWorkspaces(), state.selectedRepo);
+            if (!repo) {
+                await this.deps.sendReply(NO_CHAT_WORKSPACE_REPLY, msg.messageId);
+                return;
             }
-
+            const admission = this.deps.admitNewChat
+                ? await this.deps.admitNewChat(msg, repo.id, message, mode)
+                : { taskId: await this.deps.enqueueChat(repo.id, message, mode), duplicate: false };
+            const { taskId } = admission;
+            if (admission.duplicate) return;
+            observe?.('dispatch-queued');
+            this.userState.update(userKey, {
+                lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
+            });
+            await this.sendAcceptance(
+                `💬 New topic created in **${escapeTeamsMarkdown(repo.name ?? repo.id)}**: \`${taskId.slice(0, 8)}\``,
+                msg, () => this.deps.acknowledgeNewChat?.(taskId),
+            );
         }
     }
 
