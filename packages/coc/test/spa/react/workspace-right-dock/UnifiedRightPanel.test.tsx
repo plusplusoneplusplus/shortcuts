@@ -280,6 +280,78 @@ describe('UnifiedRightPanel', () => {
         });
     });
 
+    describe('browser tabs', () => {
+        const browserTabs = () => screen.queryAllByRole('tab').filter(tab => (tab.getAttribute('data-testid') ?? '').includes('browser'));
+
+        it('opens blank and pasted-URL tabs, keeps them across chats, and never persists them', async () => {
+            const { rerender } = renderPanel({ chatId: 'chat-1' });
+            openViaMenu('unified-panel-open-browser');
+            expect(browserTabs()).toHaveLength(1);
+            expect(browserTabs()[0].textContent).toContain('New Tab');
+            expect((screen.getByTestId('browser-address') as HTMLInputElement).value).toBe('');
+
+            fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+            fireEvent.change(screen.getByTestId('unified-panel-open-menu-search'), { target: { value: 'example.com/docs' } });
+            await waitFor(() => expect(screen.getByTestId('unified-panel-open-menu-url')).toBeTruthy());
+            fireEvent.click(screen.getByTestId('unified-panel-open-menu-url'));
+            expect(browserTabs()).toHaveLength(2);
+            expect(browserTabs()[1].textContent).toContain('example.com');
+            expect(browserTabs()[1].getAttribute('aria-selected')).toBe('true');
+
+            rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-2" dock={dockStub()} />);
+            expect(browserTabs()).toHaveLength(2);
+            rerender(<UnifiedRightPanel workspaceId={WS} chatId={null} dock={dockStub()} />);
+            expect(browserTabs()).toHaveLength(2);
+
+            const closeId = browserTabs()[0].getAttribute('data-testid')!.replace('unified-panel-tab-', '');
+            fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${closeId}`));
+            expect(browserTabs()).toHaveLength(1);
+
+            const raw = localStorage.getItem(`unified-right-panel:${WS}:tabs`) ?? '';
+            expect(raw).not.toContain('browser');
+            expect(raw).not.toContain('example.com');
+        });
+
+        it('rejects a malformed or unsupported address inline and follows a valid one', () => {
+            renderPanel({ chatId: 'chat-1' });
+            openViaMenu('unified-panel-open-browser');
+            const address = screen.getByTestId('browser-address') as HTMLInputElement;
+
+            fireEvent.change(address, { target: { value: 'what is a monad' } });
+            fireEvent.submit(address.form!);
+            expect(screen.getByTestId('browser-address-error').textContent).toMatch(/Not a URL/);
+            expect(browserTabs()[0].textContent).toContain('New Tab');
+
+            fireEvent.change(address, { target: { value: 'javascript:alert(1)' } });
+            fireEvent.submit(address.form!);
+            expect(screen.getByTestId('browser-address-error').textContent).toMatch(/not supported/);
+
+            fireEvent.change(address, { target: { value: 'localhost:3000' } });
+            expect(screen.queryByTestId('browser-address-error')).toBeNull();
+            fireEvent.submit(address.form!);
+            expect(address.value).toBe('http://localhost:3000/');
+            expect(browserTabs()[0].textContent).toContain('localhost:3000');
+            expect(readUnifiedPanelState(WS).workspaceTabs[0].browserUrl).toBe('http://localhost:3000/');
+        });
+
+        it('offers the system browser when there is no desktop bridge', () => {
+            const open = vi.spyOn(window, 'open').mockReturnValue(null);
+            try {
+                renderPanel({ chatId: 'chat-1' });
+                openViaMenu('unified-panel-open-browser');
+                expect((screen.getByTestId('browser-open-external') as HTMLButtonElement).disabled).toBe(true);
+                const address = screen.getByTestId('browser-address') as HTMLInputElement;
+                fireEvent.change(address, { target: { value: 'https://example.com' } });
+                fireEvent.submit(address.form!);
+                fireEvent.click(screen.getByTestId('browser-open-external'));
+                expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer');
+                expect(screen.getByTestId('browser-web-fallback').textContent).toContain('desktop app');
+            } finally {
+                open.mockRestore();
+            }
+        });
+    });
+
     it('starts empty, and its empty state creates nothing on its own', () => {
         localStorage.setItem(workspaceDockOpenStorageKey(WS), '1');
         renderPanel();
@@ -607,7 +679,7 @@ describe('UnifiedRightPanel', () => {
         // Every kind this build knows now renders, so the fallback is for a
         // descriptor from a build that knows one more — it must not blank the panel.
         writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, {
-            kind: 'browser' as never, ownerWorkspaceId: WS, chatId: null, resourceId: 'https://x', label: 'x',
+            kind: 'future-kind' as never, ownerWorkspaceId: WS, chatId: null, resourceId: 'x', label: 'x',
         }));
         renderPanel();
         expect(screen.getByTestId('unified-panel-unsupported')).toBeTruthy();

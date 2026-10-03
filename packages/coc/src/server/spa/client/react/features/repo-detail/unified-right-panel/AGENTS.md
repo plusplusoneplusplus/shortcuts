@@ -1,7 +1,7 @@
 # unified-right-panel
 
 The workspace's one and only right panel: a Cursor-style resource-tabbed column
-holding Terminal, Notes, files, notes, canvases, chat diffs, and local HTML pages, with a
+holding Terminal, Notes, files, notes, canvases, chat diffs, local HTML pages, and web browser tabs, with a
 Search/Explorer navigator at its right edge. There is no second right panel and
 no flag.
 
@@ -28,7 +28,7 @@ Three different workspace ids, kept apart on purpose:
   the tab strip; a switch also closes the `+` menu, whose search results are
   scoped to the repo they were fetched from.
 
-Tabs are scoped by kind: `terminal | notes | note | git | html-page` are workspace-owned,
+Tabs are scoped by kind: `terminal | notes | note | git | html-page | browser` are workspace-owned,
 `file | canvas | diff | external` belong to the selected chat (`scopeForKind`).
 Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
@@ -44,7 +44,8 @@ it.
 resource id is the opaque capability the owning member's host issued, it has no
 entry in the "+" menu, and it is never persisted. `html-page` carries an absolute
 local path and an Electron view id, dedupes across chats in its panel scope, and is
-also excluded from storage. `unifiedTabId`
+also excluded from storage. `browser` is a session-only web tab (see "Browser
+tabs"); every open mints a fresh resource id, so it never dedupes. `unifiedTabId`
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the
 queue store's `selectedTaskIdByRepo[workspaceId]` — never the global
@@ -71,7 +72,8 @@ from same-id clones never merge into one tab.
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
-| `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. |
+| `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
+| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns the editable address bar with inline rejection and an Open in system browser fallback. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | The one Git tab per panel scope (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu). Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
 | `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
@@ -506,6 +508,18 @@ the window. `file-path-preview.ts` calls the owning local server's
 `files/html/resolve` route before opening the native view, so paths outside a repo
 can open only from the server's canonical HTML allowlist and a remote path can
 never be handed to the local Electron process.
+
+## Browser tabs
+
+The `+` menu's **Browser** entry opens a blank tab; a pasted URL opens one at
+that address. Each tab captures the dock target and its concrete route as
+owner when opened — that owner is the tab's site-session identity, and a later
+target switch never retargets it. Tabs are workspace-owned, so they stay
+across chat switches, and `browser` is an ephemeral kind: neither the tab, its
+URL, nor its selection reaches storage, so a restart starts with none.
+`updateBrowserTab` follows the page's URL and label without activating the tab.
+Without a desktop bridge the view offers Open in system browser instead of
+embedded browsing.
 
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 

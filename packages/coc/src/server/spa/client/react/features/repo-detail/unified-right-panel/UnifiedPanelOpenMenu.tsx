@@ -4,9 +4,11 @@
  * `onOpenMenu` seam.
  *
  * One popover, one cursor: file search results and resource actions (File via
- * search, New Terminal, Explorer, Notes, Canvas, Changes) share a single
- * arrow-navigable list built by `unifiedPanelOpenMenuModel`. There is no
- * URL/browser input and no blank "Diff" item — diffs arrive through existing
+ * search, New Terminal, Explorer, Notes, Browser, Canvas, Changes) share a single
+ * arrow-navigable list built by `unifiedPanelOpenMenuModel`. A query that is an
+ * http(s) URL or bare domain adds an "Open in Browser" row; one written with
+ * another scheme adds an inline "not supported" row. There is no blank "Diff"
+ * item — diffs arrive through existing
  * diff links, except for Changes, which is listed only when the selected chat
  * has recorded a file change and opens that chat's whole-chat diff in one
  * reused tab.
@@ -52,6 +54,7 @@ import {
     type OpenMenuItem,
 } from './unifiedPanelOpenMenuModel';
 import { chatChangesTabInput, useUnifiedChatChanges } from './unifiedChatChanges';
+import { browserOpenInput } from './unifiedBrowserTabs';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 
 /** Results requested and rendered per query, matching QuickOpen. */
@@ -255,7 +258,22 @@ export function UnifiedPanelOpenMenu({
         }
     }, [chatId, creating, workspaceId, ownerContext, onOpenResource, onClose]);
 
+    // A browser tab is owned by the target's concrete workspace — the identity
+    // its temporary site session is keyed by.
+    const browserContext = useMemo(() => ({
+        ownerWorkspaceId: target,
+        ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
+        chatId,
+        ...(target !== workspaceId && targetOption?.label ? { repoLabel: targetOption.label } : {}),
+    }), [target, targetRoutingRef, chatId, workspaceId, targetOption?.label]);
+
     const selectItem = useCallback((item: OpenMenuItem) => {
+        if (item.type === 'url-error') return;
+        if (item.type === 'url') {
+            onOpenResource(browserOpenInput(browserContext, item.url));
+            onClose();
+            return;
+        }
         if (item.type === 'file') {
             onOpenResource(fileOpenInput(item.file.path, ownerContext));
             onClose();
@@ -269,6 +287,11 @@ export function UnifiedPanelOpenMenu({
         if (item.action.disabled === true) return;
         if (item.action.id === 'canvas') {
             void createCanvas();
+            return;
+        }
+        if (item.action.id === 'browser') {
+            onOpenResource(browserOpenInput(browserContext));
+            onClose();
             return;
         }
         if (item.action.id === 'changes') {
@@ -289,7 +312,7 @@ export function UnifiedPanelOpenMenu({
         }
         onOpenWorkspaceResource(item.action.id);
         onClose();
-    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, workspaceId, createCanvas, chatChanges, chatId, targetOption?.label]);
+    }, [onOpenResource, onOpenWorkspaceResource, onClose, ownerContext, browserContext, workspaceId, createCanvas, chatChanges, chatId, targetOption?.label]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -323,7 +346,7 @@ export function UnifiedPanelOpenMenu({
                     type="text"
                     value={query}
                     onChange={event => setQuery(event.target.value)}
-                    placeholder={targetUnavailable ? 'Repository unavailable' : 'Search files…'}
+                    placeholder={targetUnavailable ? 'Repository unavailable' : 'Search files or paste a URL…'}
                     disabled={targetUnavailable}
                     aria-label="Search files"
                     className="min-w-0 flex-1 bg-transparent text-xs text-[#1f1f1f] outline-none placeholder-[#999] dark:text-[#cccccc] dark:placeholder-[#777]"
@@ -362,6 +385,35 @@ export function UnifiedPanelOpenMenu({
                                     </span>
                                 )}
                             </button>
+                        );
+                    }
+                    if (item.type === 'url') {
+                        return (
+                            <button
+                                key={item.key}
+                                type="button"
+                                className={rowClass}
+                                title={item.url}
+                                onMouseEnter={() => setCursor(index)}
+                                onClick={() => selectItem(item)}
+                                data-testid="unified-panel-open-menu-url"
+                            >
+                                <span aria-hidden className="opacity-60">{ACTION_ICONS.browser}</span>
+                                <span className="truncate text-[#1f1f1f] dark:text-[#cccccc]">Open {item.url}</span>
+                                <span className="ml-auto flex-shrink-0 text-[10px] text-[#8a8a8a]">Browser</span>
+                            </button>
+                        );
+                    }
+                    if (item.type === 'url-error') {
+                        return (
+                            <div
+                                key={item.key}
+                                role="alert"
+                                className="px-2.5 py-1.5 text-[11px] text-[#a1260d] dark:text-[#f48771]"
+                                data-testid="unified-panel-open-menu-url-error"
+                            >
+                                {item.reason}
+                            </div>
                         );
                     }
                     if (item.type === 'canvas') {
@@ -439,6 +491,7 @@ const ACTION_ICONS: Record<string, string> = {
     terminal: '▶',
     explorer: '🗂',
     notes: '🗒',
+    browser: '🌐',
     canvas: '🎨',
     changes: '±',
 };

@@ -67,14 +67,14 @@ export interface PersistedNotesView {
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
 /** Every kind, in the order the "+" menu and default strip present them. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page',
+    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser',
 ];
 
 /** The fixed resource id of a workspace's one Git tab. */
@@ -85,10 +85,10 @@ export const GIT_TAB_RESOURCE_ID = 'git';
  * capability that expires with its connection, so a restored tab could only
  * show "unavailable"; running Go to Definition again is the real recovery.
  */
-const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'html-page']);
+const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'html-page', 'browser']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
-const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'git', 'html-page']);
+const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'git', 'html-page', 'browser']);
 
 /**
  * The scope key used for the workspace's own selection — the active tab when no
@@ -212,6 +212,11 @@ export interface UnifiedPanelTab {
     notesView?: PersistedNotesView;
     /** Desktop view id; page tabs are session-only and excluded from storage. */
     htmlPageId?: string;
+    /**
+     * A `browser` tab's current http(s) URL, or absent for a blank tab. Browser
+     * tabs are session-only; the URL is never persisted.
+     */
+    browserUrl?: string;
 }
 
 export interface UnifiedPanelState {
@@ -360,7 +365,8 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && gitViewKey(a.gitView) === gitViewKey(b.gitView)
         && a.gitMemberId === b.gitMemberId
         && notesViewKey(a.notesView) === notesViewKey(b.notesView)
-        && a.htmlPageId === b.htmlPageId;
+        && a.htmlPageId === b.htmlPageId
+        && a.browserUrl === b.browserUrl;
 }
 
 function gitViewKey(view: PersistedGitView | undefined): string {
@@ -491,6 +497,8 @@ export interface OpenUnifiedTabInput {
     gitView?: PersistedGitView;
     gitMemberId?: string;
     htmlPageId?: string;
+    /** A `browser` tab's initial URL; absent opens a blank tab. */
+    browserUrl?: string;
 }
 
 /** Source of `revealNonce`. Monotonic for the life of the page. */
@@ -567,6 +575,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...(input.kind === 'git' && input.gitView ? { gitView: input.gitView } : {}),
         ...(input.kind === 'git' && input.gitMemberId ? { gitMemberId: input.gitMemberId } : {}),
         ...(input.kind === 'html-page' && input.htmlPageId ? { htmlPageId: input.htmlPageId } : {}),
+        ...(input.kind === 'browser' && input.browserUrl ? { browserUrl: input.browserUrl } : {}),
     };
 
     let nextList: readonly UnifiedPanelTab[];
@@ -617,6 +626,27 @@ export function updateNotesView(
     } else {
         workspaceTabs[index] = { ...current, notesView: { notePath } };
     }
+    return { ...state, workspaceTabs };
+}
+
+/**
+ * Follow a `browser` tab's live page: its current URL and the label (the page
+ * title, or the host while there is none). Does not activate the tab.
+ */
+export function updateBrowserTab(
+    state: UnifiedPanelState,
+    id: string,
+    update: { url?: string; label?: string },
+): UnifiedPanelState {
+    const index = state.workspaceTabs.findIndex(tab => tab.id === id && tab.kind === 'browser');
+    if (index < 0) return state;
+    const current = state.workspaceTabs[index];
+    const label = update.label === undefined || update.label.trim() === '' ? current.label : update.label;
+    const browserUrl = update.url === undefined ? current.browserUrl : update.url;
+    if (label === current.label && browserUrl === current.browserUrl) return state;
+    const workspaceTabs = [...state.workspaceTabs];
+    const { browserUrl: _url, ...rest } = current;
+    workspaceTabs[index] = { ...rest, label, ...(browserUrl ? { browserUrl } : {}) };
     return { ...state, workspaceTabs };
 }
 

@@ -101,6 +101,8 @@ import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
+import { UnifiedBrowserTab } from './UnifiedBrowserTab';
+import { browserLabelForUrl } from './unifiedBrowserTabs';
 import { desktopHtmlPageBridge, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
@@ -207,6 +209,7 @@ export function UnifiedRightPanel({
     const {
         state, tabs, activeId, active, open, openPreview, previewToReplace, promote, activate, close, move,
         updateNotesSelection,
+        updateBrowser,
     } = useUnifiedPanelTabs(workspaceId, chatId);
 
     // Reconcile only at the chat-selection boundary. Resource entry points still
@@ -574,6 +577,10 @@ export function UnifiedRightPanel({
     const handleErrorChange = useCallback(
         (id: string, hasError: boolean) => setFlag(setErrorIds, id, hasError),
         [setFlag],
+    );
+    const navigateBrowser = useCallback(
+        (id: string, url: string) => updateBrowser(id, { url, label: browserLabelForUrl(url) }),
+        [updateBrowser],
     );
 
     useEffect(() => {
@@ -1560,6 +1567,12 @@ export function UnifiedRightPanel({
                                         visible={isOpen && !menuOpen && !quickOpenVisible && !exactOpenVisible
                                             && pendingClose === null && pendingDirty === null}
                                         onErrorChange={handleErrorChange}
+                                    />
+                                ) : tab.kind === 'browser' ? (
+                                    <UnifiedBrowserTab
+                                        tabId={tab.id}
+                                        url={tab.browserUrl}
+                                        onNavigate={navigateBrowser}
                                     />
                                 ) : <UnifiedTabView
                                     tab={tab}
