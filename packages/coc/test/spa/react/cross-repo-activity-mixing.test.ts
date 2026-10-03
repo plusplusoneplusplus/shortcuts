@@ -101,7 +101,7 @@ describe('Fix 1: repo-scoped keys on workspace-dependent tab components', () => 
     });
 
     it('RepoGitTab still has key={ws.id}', () => {
-        expect(REPO_DETAIL_SOURCE).toContain('<RepoGitTab key={ws.id}');
+        expect(REPO_DETAIL_SOURCE).toContain('key={`${ws.id}-split-git`}');
     });
 });
 
