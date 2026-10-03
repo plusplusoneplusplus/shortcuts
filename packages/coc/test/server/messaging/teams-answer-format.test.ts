@@ -24,7 +24,7 @@ function expectValid(parts: string[], label: string): void {
         expect(outbound).toMatch(/^<p>CoC · <strong>Request /);
         expect(part).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
         expect(part).not.toMatch(/&(?:amp|lt|gt|quot|#39)(?!;)/);
-        const tags = outbound.match(/<\/?(?:p|strong|em|code|pre|a|br)\b[^>]*>/g) ?? [];
+        const tags = outbound.match(/<\/?(?:p|strong|em|code|pre|a|br|table|thead|tbody|tr|th|td)\b[^>]*>/g) ?? [];
         const open: string[] = [];
         for (const tag of tags) {
             if (tag === '<br>') continue;
@@ -98,6 +98,70 @@ describe('formatTeamsAnswerChunks', () => {
         expect(() => formatTeamsAnswerChunks('okay', '<img src=x>')).toThrow(TypeError);
         expect(() => formatTeamsAnswerChunks('okay', 'private prompt text')).toThrow(TypeError);
         expect(() => formatTeamsAnswerChunks('okay', '')).toThrow(TypeError);
+    });
+
+    it('renders AI-job Markdown tables as bordered HTML with headers and padded cells', () => {
+        const answer = 'Here are recent chats:\n\n| Person | Last activity |\n|---|---|\n' +
+            '| **Contact A** | Oct 2, 4:37 PM |\n| Contact B | Oct 2, 4:22 PM |\n\nEnd.';
+        const parts = formatTeamsAnswerChunks(answer, 'table');
+        expectValid(parts, 'table');
+        expect(parts).toHaveLength(1);
+        const html = content(parts);
+        expect(html).toContain('<table border="1" cellpadding="6" cellspacing="0">');
+        expect(html).toContain('<thead><tr><th scope="col">Person</th><th scope="col">Last activity</th></tr></thead>');
+        expect(html).toContain('<tr><td><strong>Contact A</strong></td><td>Oct 2, 4:37 PM</td></tr>');
+        expect(html).toContain('</tbody></table><br><p>End.</p>');
+        expect(html).not.toContain('|---');
+        expect(html).not.toContain('| Person');
+    });
+
+    it('recognizes tables without outer pipes while leaving malformed and fenced tables visible', () => {
+        const answer = 'Name | Value\n- | -\nA | B\n\n' +
+            '| Not a table | Still text |\n| invalid | separator |\n\n' +
+            '```txt\n| Code | Value |\n|---|---|\n| C | D |\n```';
+        const parts = formatTeamsAnswerChunks(answer, 'syntax');
+        expectValid(parts, 'syntax');
+        const html = content(parts);
+        expect(html.match(/<table /g)).toHaveLength(1);
+        expect(html).toContain('<tr><td>A</td><td>B</td></tr>');
+        expect(html).toContain('<p>| Not a table | Still text |</p>');
+        expect(html).toContain('<pre><code>| Code | Value |\n|---|---|\n| C | D |</code></pre>');
+    });
+
+    it('splits large tables between rows and repeats the header in each independently valid part', () => {
+        const rows = Array.from({ length: 220 }, (_, i) => `| row-${i} | ${'&👩‍💻'.repeat(24)} |`);
+        const answer = '| Key | Value |\n|---|---|\n' + rows.join('\n');
+        const parts = formatTeamsAnswerChunks(answer, 'large-table', 'Source context');
+        expect(parts.length).toBeGreaterThan(1);
+        expectValid(parts, 'large-table');
+        for (const part of parts) {
+            expect(part.match(/<table /g)).toHaveLength(1);
+            expect(part).toContain('<th scope="col">Key</th><th scope="col">Value</th>');
+        }
+        expect([...parts.join('').matchAll(/<td>row-(\d+)<\/td>/g)].map(match => Number(match[1])))
+            .toEqual(Array.from({ length: 220 }, (_, i) => i));
+        expect(parts).toEqual(formatTeamsAnswerChunks(answer, 'large-table', 'Source context'));
+    });
+
+    it('preserves oversized cells as labeled text without losing surrounding table rows', () => {
+        const value = '&👩‍💻'.repeat(4000);
+        const answer = `| Key | Value |\n|---|---|\n| before | first |\n| huge | ${value} |\n| after | last |`;
+        const parts = formatTeamsAnswerChunks(answer, 'huge-cell');
+        expectValid(parts, 'huge-cell');
+        const html = content(parts);
+        expect(html).toContain('<tr><td>before</td><td>first</td></tr>');
+        expect(html).toContain('<tr><td>after</td><td>last</td></tr>');
+        expect(visible(html)).toContain(`Key: huge\nValue: ${value}`);
+        expect(html.indexOf('before')).toBeLessThan(html.indexOf('Key: huge'));
+        expect(html.indexOf('Key: huge')).toBeLessThan(html.indexOf('after'));
+    });
+
+    it('preserves a table with oversized headers using bounded text fragments', () => {
+        const header = 'H'.repeat(21_000);
+        const answer = `| ${header} | Other |\n|---|---|\n| value | last |`;
+        const parts = formatTeamsAnswerChunks(answer, 'huge-header');
+        expectValid(parts, 'huge-header');
+        expect(visible(content(parts))).toBe(answer);
     });
 
     it('handles an empty answer and unmatched code fences visibly', () => {

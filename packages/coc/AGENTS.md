@@ -225,8 +225,11 @@ references before editing. Paths are package-relative.
   and preserve separate endpoint/channel saves and unsaved-change connect gating.
 - Delegated Teams sends use safe HTML with `CoC ·` assistant attribution in the first
   text block; the authenticated user's native sender identity stays unchanged.
-  Chunk budgets include attribution. Persisted partial receipts resume only with
-  identical chunk boundaries; changed boundaries require reconciliation.
+  Markdown tables share a safe renderer for outbound messages and AI answers;
+  bounded answer parts split at rows with repeated headers. Oversized rows retain
+  their column labels as text. Chunk budgets include attribution and table markup.
+  Persisted partial receipts resume only with identical chunk boundaries;
+  changed boundaries require reconciliation.
   Receipts differ from final answers:
   accepted channel-thread follow-ups settle receipts without an acceptance post;
   new chats retain confirmations. Relay captured terminal turns by request ID

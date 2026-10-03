@@ -1,6 +1,7 @@
 /** Pure, bounded formatting for outbound Teams thread replies. */
 
-import { TEAMS_CHANNEL_PREFIX, escapeTeamsHtml, formatTeamsOutbound, safeTeamsHref } from './teams-outbound-format';
+import { marked } from 'marked';
+import { TEAMS_CHANNEL_PREFIX, escapeTeamsHtml, formatTeamsOutbound, renderTeamsTableParts, safeTeamsHref } from './teams-outbound-format';
 
 export const TEAMS_ANSWER_MAX_BYTES = 20_000;
 
@@ -41,18 +42,24 @@ function renderInline(text: string): string {
     return result + escapeTeamsHtml(text.slice(start));
 }
 
-interface Block {
+type Block = {
     html: string;
     source: string;
     kind: 'text' | 'code';
-}
+} | {
+    html: string;
+    source: string;
+    kind: 'table';
+    table: ReturnType<typeof renderTeamsTableParts>;
+};
 
 function blocksFor(answer: string): Block[] {
     const blocks: Block[] = [];
     const lines = (answer.trim() ? answer : EMPTY_ANSWER).replace(/\r\n?/g, '\n').split('\n');
     let code: string[] | null = null;
     let openingFence = '';
-    for (const line of lines) {
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index];
         if (/^\s*```/.test(line)) {
             if (code === null) {
                 code = [];
@@ -67,6 +74,18 @@ function blocksFor(answer: string): Block[] {
         } else if (line.trim() === '') {
             blocks.push({ source: '', html: '<br>', kind: 'text' });
         } else {
+            if (line.includes('|') && /^\s*\|?\s*:?-+/.test(lines[index + 1] ?? '')) {
+                const token = marked.lexer(lines.slice(index).join('\n'), { gfm: true })[0];
+                if (token?.type === 'table') {
+                    const table = renderTeamsTableParts(token);
+                    blocks.push({
+                        source: token.raw, kind: 'table', table,
+                        html: table.open + table.rows.map(row => row.html).join('') + table.close,
+                    });
+                    index += token.raw.replace(/\n+$/, '').split('\n').length - 1;
+                    continue;
+                }
+            }
             const list = line.match(/^\s*((?:[-*+]|\d+[.)]))\s+(.*)$/);
             const heading = line.match(/^\s{0,3}#{1,6}\s+(.+)$/);
             const source = list?.[2] ?? heading?.[1] ?? line;
@@ -86,6 +105,33 @@ function blocksFor(answer: string): Block[] {
 }
 
 function splitOversized(block: Block, limit: number): string[] {
+    if (block.kind === 'table') {
+        const { open, rows, close } = block.table;
+        const overhead = bytes(open + close);
+        if (overhead + 16 > limit) {
+            return splitOversized({ ...block, kind: 'text' }, limit);
+        }
+        const parts: string[] = [];
+        let body = '';
+        let size = overhead;
+        for (const row of rows) {
+            const length = bytes(row.html);
+            if (size + length > limit && body) {
+                parts.push(open + body + close);
+                body = '';
+                size = overhead;
+            }
+            if (overhead + length > limit) {
+                // An oversized row stays visible as text; ordinary parts repeat the table header.
+                parts.push(...splitOversized({ html: '', source: row.source, kind: 'text' }, limit));
+            } else {
+                body += row.html;
+                size += length;
+            }
+        }
+        if (body || !parts.length) parts.push(open + body + close);
+        return parts;
+    }
     const [open, close] = block.kind === 'code'
         ? ['<pre><code>', '</code></pre>']
         : ['<p>', '</p>'];

@@ -261,8 +261,12 @@ and writes never fall back to MCP.
 
 Delegated outbound messages carry `CoC ·` assistant attribution inside the first
 text block of safe Teams HTML; body attribution does not change the native sender
-name/avatar. Code-first replies keep attribution outside the code. Multipart byte
-budgets include the complete labeled HTML. Receipts persist the attribution format;
+name/avatar. Code-first replies keep attribution outside the code.
+`messaging/teams-outbound-format.ts` shares safe GFM table rendering with
+`teams-answer-format.ts`: semantic headers, padded bordered cells and column alignment.
+Multipart answers split tables at row boundaries and repeat headers; oversized rows
+retain labeled text, and oversized headers retain source text. Byte budgets include
+table markup and attribution. Receipts persist the attribution format;
 partial receipts without it resume only when their complete chunk boundaries match.
 Changed boundaries require manual reconciliation, even with equal part counts.
 Own-message admission uses durable outbound IDs and request markers, not the label.

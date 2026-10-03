@@ -76,6 +76,36 @@ function renderInline(tokens: Token[]): string {
     }).join('');
 }
 
+export function renderTeamsTableParts(table: Token): {
+    open: string;
+    rows: { html: string; source: string }[];
+    close: string;
+} {
+    if (table.type !== 'table' || !('header' in table) || !Array.isArray(table.header)
+        || !('rows' in table) || !Array.isArray(table.rows)
+        || !('align' in table) || !Array.isArray(table.align)) {
+        throw new TypeError('Invalid Teams Markdown table');
+    }
+    const header: Tokens.TableCell[] = table.header;
+    const rows: Tokens.TableCell[][] = table.rows;
+    const alignments: Tokens.Table['align'] = table.align;
+    const cells = (row: Tokens.TableCell[], tag: 'th' | 'td') => row.map((cell, index) => {
+        const align = alignments[index];
+        const attributes = (tag === 'th' ? ' scope="col"' : '')
+            + (align === 'left' || align === 'center' || align === 'right' ? ` align="${align}"` : '');
+        return `<${tag}${attributes}>${renderInline(cell.tokens)}</${tag}>`;
+    }).join('');
+    return {
+        open: '<table border="1" cellpadding="6" cellspacing="0"><thead><tr>'
+            + cells(header, 'th') + '</tr></thead><tbody>',
+        rows: rows.map(row => ({
+            html: `<tr>${cells(row, 'td')}</tr>`,
+            source: row.map((cell, index) => `${header[index].text}: ${cell.text}`).join('\n'),
+        })),
+        close: '</tbody></table>',
+    };
+}
+
 function renderBlocks(tokens: Token[]): string {
     return tokens.map(token => {
         switch (token.type) {
@@ -103,6 +133,10 @@ function renderBlocks(tokens: Token[]): string {
                 return '<br>';
             case 'blockquote':
                 return renderBlocks(childrenOf(token));
+            case 'table': {
+                const table = renderTeamsTableParts(token);
+                return table.open + table.rows.map(row => row.html).join('') + table.close;
+            }
             default:
                 return `<p>${escapeTeamsHtml(token.raw)}</p>`;
         }

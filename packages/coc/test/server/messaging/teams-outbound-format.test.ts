@@ -25,6 +25,34 @@ describe('formatTeamsOutbound', () => {
         expect(html).not.toContain('<tag>');
     });
 
+    it('renders safe GFM tables with aligned headers, escaped pipes, and inline formatting', () => {
+        const html = formatTeamsOutbound(
+            '| **Name** | Value | Link |\n|:---|:---:|---:|\n' +
+            '| A\\|B | `<tag>` & <img src=x> | [docs](https://example.org/?a=1&b=2) |\n' +
+            '| C | *text* | [unsafe](javascript:bad) |',
+            'markdown',
+        );
+        expect(html).toContain('<p>CoC · AI-generated response</p><table border="1" cellpadding="6" cellspacing="0">');
+        expect(html).toContain('<th scope="col" align="left"><strong>Name</strong></th>');
+        expect(html).toContain('<th scope="col" align="center">Value</th>');
+        expect(html).toContain('<th scope="col" align="right">Link</th>');
+        expect(html).toContain('<td align="left">A|B</td>');
+        expect(html).toContain('<code>&lt;tag&gt;</code> &amp; &lt;img src=x&gt;');
+        expect(html).toContain('<a href="https://example.org/?a=1&amp;b=2">docs</a>');
+        expect(html).toContain('<td align="center"><em>text</em></td>');
+        expect(html).not.toMatch(/<img|href="javascript:/);
+        expect(html).not.toContain('|:---');
+        expect(html.match(/CoC · /g)).toHaveLength(1);
+    });
+
+    it('renders header-only tables and normalizes missing cells', () => {
+        const headerOnly = formatTeamsOutbound('| A | B |\n|---|---|', 'markdown');
+        expect(headerOnly).toContain('<th scope="col">A</th><th scope="col">B</th>');
+        expect(headerOnly).toContain('<tbody></tbody></table>');
+        const missing = formatTeamsOutbound('| A | B |\n|---|---|\n| one |', 'markdown');
+        expect(missing).toContain('<tr><td>one</td><td></td></tr>');
+    });
+
     it('escapes hostile names, paths, inline HTML, and attribute contents', () => {
         const html = formatTeamsOutbound(
             '**Agents / Repos** (1):\n1. **<img src=x onerror=alert(1)>** — ' +

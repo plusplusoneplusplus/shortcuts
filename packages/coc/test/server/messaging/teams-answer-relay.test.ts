@@ -65,6 +65,28 @@ describe('TeamsAnswerRelay new topics', () => {
         });
     }
 
+    it('relays an AI-job table as HTML to its original thread without Markdown pipes', async () => {
+        const root = message('table-root');
+        const admitted = await relay.admitNew(root, 'workspace-a', async id => {
+            tasks.set(id, { id, repoId: 'workspace-a', processId: toQueueProcessId(id), status: 'queued' } as QueuedTask);
+            return id;
+        });
+        finish(admitted.taskId, 'workspace-a',
+            '| Person | Last activity |\n|---|---|\n| Contact A | Oct 2, 4:37 PM |');
+        await relay.acknowledged(admitted.taskId);
+        expect(send).toHaveBeenCalledTimes(1);
+        const [answer, rootId] = send.mock.calls[0];
+        expect(rootId).toBe(root.messageId);
+        const html = formatTeamsOutbound(answer, 'html');
+        expect(html).toContain('<p>CoC · <strong>Request ');
+        expect(html).toContain('<th scope="col">Person</th><th scope="col">Last activity</th>');
+        expect(html).toContain('<tr><td>Contact A</td><td>Oct 2, 4:37 PM</td></tr>');
+        expect(html).not.toContain('|---');
+        expect(html).not.toContain('&lt;table');
+        await relay.reconcileTask(admitted.taskId);
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+
     it('persists a shared thread selection while retaining the original answer receipt', async () => {
         const root = message('root-selection');
         const admitted = await relay.admitNew(root, 'workspace-a', async id => {
