@@ -28,7 +28,6 @@ export function createTransport(mode: TeamsTransportMode, opts: {
     mcpServerUrl?: string; pollChannelReplies?: () => boolean;
     channelThreadRoots?: (channelId: string) => readonly string[];
     onChannelRootDiscovered?: (root: InboundTeamsMessage) => Promise<void>;
-    enableIc3DirectMessages?: boolean;
     ic3DirectMessageOptions?: Ic3DirectMessageOptions;
     connectionId?: string;
     operationRoutes?: Partial<TeamsOperationRoutes>;
@@ -40,12 +39,14 @@ export function createTransport(mode: TeamsTransportMode, opts: {
     if (mode === 'mcp') {
         if (!opts.mcpServerUrl) throw new Error('mcpServerUrl is required for MCP mode');
         return new McpTransport(opts.mcpServerUrl, opts.pollChannelReplies, opts.channelThreadRoots,
-            opts.onChannelRootDiscovered, opts.enableIc3DirectMessages, opts.ic3DirectMessageOptions,
+            opts.onChannelRootDiscovered, opts.ic3DirectMessageOptions,
             { connectionId: opts.connectionId, routes: opts.operationRoutes, onTokenRefresh: opts.onTokenRefresh,
                 graphOutboundOptions: opts.graphOutboundOptions,
                 channelReadBackend: opts.channelReadBackend, graphReadOptions: opts.graphReadOptions });
     }
-    if (opts.enableIc3DirectMessages) throw new Error('IC3 direct messages require MCP mode');
+    if (opts.operationRoutes?.selfSend === 'ic3' || opts.operationRoutes?.chatSend === 'ic3') {
+        throw new Error('IC3 direct messages require MCP mode');
+    }
     return new GraphTransport({ connectionId: opts.connectionId, routes: opts.operationRoutes, onTokenRefresh: opts.onTokenRefresh });
 }
 
@@ -218,6 +219,10 @@ export class TeamsBot implements MessagingConnector {
             console.error(`[teams-bot] send() failed: ${err.message}`);
             throw err;
         }
+    }
+
+    getConnectionId(): string {
+        return this.transport.connectionId;
     }
 
     /** Explicit destinations avoid interpreting a chat ID as the authenticated user's self-chat. */

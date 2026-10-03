@@ -27,6 +27,7 @@ import { TeamsAnswerRelay, teamsQuestionChatKey } from './teams-answer-relay';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { DEFAULT_CONFIG } from '../../config';
+import { TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 
 function attemptSummary(attempt: TeamsAttempt) {
     return {
@@ -372,6 +373,47 @@ export function registerTeamsMessagingRoutes(
                 sendJSON(res, 200, manager.getStatus());
             } catch (err) {
                 sendError(res, err instanceof RangeError ? 400 : 500, err instanceof Error ? err.message : String(err));
+            }
+        },
+    });
+
+    routes.push({
+        method: 'POST',
+        pattern: /^\/api\/messaging\/teams\/direct-message$/,
+        handler: async (req, res) => {
+            const body = await parseBodyOrReject(req, res);
+            if (!body) return;
+            const fields = ['chatId', 'recipientId', 'connectionId', 'content', 'contentType'];
+            if (Object.keys(body).some(key => !fields.includes(key))
+                || fields.some(key => typeof body[key] !== 'string' || !body[key].trim())
+                || (body.contentType !== 'text' && body.contentType !== 'html')) {
+                sendError(res, 400, 'Provide chatId, recipientId, current connectionId, content and contentType (text or html); replies and mentions are unsupported');
+                return;
+            }
+            const cancellation = new AbortController();
+            const abort = () => cancellation.abort();
+            const closed = () => { if (!res.writableEnded) abort(); };
+            req.once('aborted', abort);
+            res.once('close', closed);
+            if (req.aborted || res.destroyed) abort();
+            try {
+                const receipt = await manager.sendDirectMessage({
+                    kind: 'chat', chatId: body.chatId, recipientId: body.recipientId, connectionId: body.connectionId,
+                }, { content: body.content, contentType: body.contentType }, { signal: cancellation.signal });
+                sendJSON(res, 201, receipt);
+            } catch (error) {
+                if (error instanceof TeamsOperationError) {
+                    sendJSON(res, error.outcome === 'unknown' ? 502 : error.code === 'invalid-target'
+                        || error.code === 'unsupported' ? 400 : 409, {
+                        error: error.message, backend: error.backend, code: error.code, outcome: error.outcome,
+                    });
+                } else {
+                    sendJSON(res, 502, { error: 'Teams direct send failed; delivery is unknown. Do not replay.',
+                        outcome: 'unknown' });
+                }
+            } finally {
+                req.removeListener('aborted', abort);
+                res.removeListener('close', closed);
             }
         },
     });

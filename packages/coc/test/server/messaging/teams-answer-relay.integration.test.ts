@@ -98,7 +98,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
             aud: 'https://graph.microsoft.com', scp: 'ChannelMessage.Read.All',
             exp: Math.floor(Date.now() / 1000) + 3600,
         })).toString('base64url') + '.signature';
-        const transport = new McpTransport(endpoint, () => true, undefined, undefined, false, undefined, {
+        const transport = new McpTransport(endpoint, () => true, undefined, undefined, undefined, {
             channelReadBackend, graphReadOptions: { acquireToken: async () => readerToken },
         });
         await transport.initialize(readerToken, { teamId, channelId });

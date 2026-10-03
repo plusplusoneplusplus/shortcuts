@@ -27,7 +27,7 @@ function setup(options: { tracked?: string[]; replies?: () => boolean;
     const fetch = vi.fn(async (_url: string | URL, _init?: RequestInit) => response([]));
     vi.stubGlobal('fetch', fetch);
     const transport = new McpTransport('https://example.test/mcp', options.replies ?? (() => true),
-        () => options.tracked ?? [], options.discovered, false, undefined, {
+        () => options.tracked ?? [], options.discovered, undefined, {
             channelReadBackend: 'graph', graphReadOptions: { acquireToken },
         });
     return { transport, fetch, acquireToken };
@@ -215,7 +215,7 @@ describe('hybrid Graph channel reads', () => {
         vi.stubGlobal('fetch', fetch);
         const credential = token({ scp: 'Group.ReadWrite.All' });
         const transport = new McpTransport('https://example.test/mcp', () => false,
-            undefined, undefined, false, undefined, {
+            undefined, undefined, undefined, {
                 channelReadBackend: 'graph', graphReadOptions: { acquireToken: async () => credential },
                 routes: { channelSend: 'graph', channelReply: 'graph' },
                 graphOutboundOptions: { acquireToken: async () => credential },

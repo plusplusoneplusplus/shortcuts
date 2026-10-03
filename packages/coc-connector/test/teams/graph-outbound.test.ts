@@ -26,7 +26,7 @@ function setup(acquireToken = vi.fn(async () => token())) {
     const fetch = vi.fn(async (_url: string, _options?: RequestInit) =>
         new Response(JSON.stringify({ id: 'graph-message' }), { status: 201 }));
     vi.stubGlobal('fetch', fetch);
-    const transport = new McpTransport('https://example.test/mcp', undefined, undefined, undefined, false, undefined, {
+    const transport = new McpTransport('https://example.test/mcp', undefined, undefined, undefined, undefined, {
         routes, graphOutboundOptions: { acquireToken },
     });
     return { transport, acquireToken, fetch, callTool };

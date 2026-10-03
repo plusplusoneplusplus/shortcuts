@@ -31,10 +31,9 @@ describe('TeamsBot transport options', () => {
             pollChannelReplies: () => true,
             channelThreadRoots: () => ['root'],
             onChannelRootDiscovered: vi.fn(),
-            enableIc3DirectMessages: true,
             ic3DirectMessageOptions: { region: 'emea', acquireToken: vi.fn() },
             connectionId: 'connection',
-            operationRoutes: { self: 'ic3' },
+            operationRoutes: { selfSend: 'ic3' },
             auth: { onTokenRefresh: vi.fn() },
         };
 
@@ -42,7 +41,7 @@ describe('TeamsBot transport options', () => {
 
         expect(constructors.mcp).toHaveBeenCalledExactlyOnceWith(
             opts.mcpServerUrl, opts.pollChannelReplies, opts.channelThreadRoots,
-            opts.onChannelRootDiscovered, opts.enableIc3DirectMessages, opts.ic3DirectMessageOptions,
+            opts.onChannelRootDiscovered, opts.ic3DirectMessageOptions,
             { connectionId: opts.connectionId, routes: opts.operationRoutes,
                 onTokenRefresh: opts.auth?.onTokenRefresh },
         );

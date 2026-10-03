@@ -14,7 +14,7 @@ import { TeamsMessagingManager, defaultTeamsChannelName } from '../../../src/ser
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
 import { formatTeamsAnswerChunks, TEAMS_ANSWER_MAX_BYTES } from '../../../src/server/messaging/teams-answer-format';
 import { getRepoDataPath } from '../../../src/server/paths';
-import { acquireMcpOAuthToken, McpClient, TeamsBot } from '@plusplusoneplusplus/coc-connector/teams';
+import { acquireMcpOAuthToken, McpClient, TeamsBot, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { McpOauthManager } from '../../../src/server/mcp-oauth/mcp-oauth-manager';
 
 // Mock the teams-bot package
@@ -27,6 +27,11 @@ vi.mock('@plusplusoneplusplus/coc-connector/teams', async importOriginal => ({
             }),
             stop: vi.fn().mockResolvedValue(undefined),
             send: vi.fn().mockResolvedValue('msg-123'),
+            getConnectionId: vi.fn().mockReturnValue('test-connection'),
+            sendMessage: vi.fn().mockResolvedValue({ outcome: 'accepted', message: {
+                backend: 'ic3', connectionId: 'test-connection', messageId: '123',
+                destination: { kind: 'chat', chatId: '19:direct@thread.v2' },
+            } }),
             reactToChannelMessage: vi.fn().mockResolvedValue(undefined),
             setChannelId: vi.fn(),
             isConnected: vi.fn().mockReturnValue(true),
@@ -84,6 +89,7 @@ describe('TeamsMessagingManager', () => {
         expect(status.enabled).toBe(false);
         expect(status.ic3Region).toBeNull();
         expect(status.enableTrouter).toBe(false);
+        expect(status.connectionId).toBeNull();
         expect(status.outboundBackend).toBe('graph');
         expect(status.notificationStatus).toEqual({ state: 'disabled', error: null });
         expect(status.status).toBe('disconnected');
@@ -123,6 +129,51 @@ describe('TeamsMessagingManager', () => {
         expect(saved.botName).toBe('TestBot');
     });
 
+    it('excludes removed settings from status and subsequent saves', async () => {
+        const configPath = path.join(tmpDir, 'teams-messaging.json');
+        fs.writeFileSync(configPath, JSON.stringify({ enabled: false, enableIc3ChatSend: false }));
+        const restored = new TeamsMessagingManager(tmpDir);
+        expect(restored.getStatus()).not.toHaveProperty('enableIc3ChatSend');
+        await restored.updateConfig({ botName: 'TestBot' });
+        expect(JSON.parse(fs.readFileSync(configPath, 'utf8'))).not.toHaveProperty('enableIc3ChatSend');
+    });
+
+    it('routes ordinary DMs to IC3 without a send flag and reconnects when region changes', async () => {
+        const m2 = new TeamsMessagingManager(tmpDir, { homeDir: path.join(tmpDir, 'home') });
+        m2.setMessageHandler(async () => {});
+        const destination = {
+            kind: 'chat' as const, chatId: '19:direct@thread.v2',
+            recipientId: '00000000-0000-0000-0000-000000000003', connectionId: 'test-connection',
+        };
+        const body = { content: 'plain <text>', contentType: 'text' as const };
+        await expect(m2.sendDirectMessage(destination, body)).rejects.toMatchObject({ outcome: 'not-attempted' });
+        await m2.configureServer('https://example.test/teams');
+        await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel' });
+        await m2.connect();
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].operationRoutes?.chatSend).toBe('ic3');
+        await m2.updateConfig({ ic3Region: 'emea' });
+        expect(m2.getStatus().status).toBe('disconnected');
+        expect(m2.getStatus().connectionId).toBeNull();
+        await m2.connect();
+        const options = vi.mocked(TeamsBot).mock.lastCall![0];
+        expect(options.ic3DirectMessageOptions).toEqual({ region: 'emea' });
+        expect(options.operationRoutes).toEqual({ chatSend: 'ic3', channelSend: 'graph', channelReply: 'graph' });
+        const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+        const cancellation = new AbortController();
+        await expect(m2.sendDirectMessage(destination, body, { signal: cancellation.signal }))
+            .resolves.toMatchObject({ outcome: 'accepted', message: { backend: 'ic3' } });
+        expect(bot.sendMessage).toHaveBeenCalledExactlyOnceWith(destination, {
+            content: '<p>CoC \u00b7 plain &lt;text&gt;</p>', contentType: 'html',
+        }, { signal: cancellation.signal });
+        expect(bot.send).not.toHaveBeenCalled();
+        bot.getConnectionId.mockReturnValue('replacement-connection');
+        await expect(m2.sendDirectMessage(destination, body)).rejects.toMatchObject({ code: 'invalid-target', outcome: 'not-attempted' });
+        expect(bot.sendMessage).toHaveBeenCalledOnce();
+        await m2.updateConfig({ enabled: false });
+        expect(bot.stop).toHaveBeenCalledOnce();
+        await expect(m2.sendDirectMessage(destination, body)).rejects.toMatchObject({ outcome: 'not-attempted' });
+    });
+
     it.each([false, true])('defaults channel roots, enabled replies and writes to Graph with saved settings present: %s', async savedSettings => {
         if (savedSettings) {
             fs.writeFileSync(path.join(tmpDir, 'teams-messaging.json'), JSON.stringify({
@@ -142,7 +193,7 @@ describe('TeamsMessagingManager', () => {
         expect(options.channelReadBackend).toBe('graph');
         expect(options.graphReadOptions).toEqual({});
         expect(options.pollChannelReplies?.()).toBe(false);
-        expect(options.operationRoutes).toEqual({ channelSend: 'graph', channelReply: 'graph' });
+        expect(options.operationRoutes).toEqual({ chatSend: 'ic3', channelSend: 'graph', channelReply: 'graph' });
         expect(options.graphOutboundOptions).toEqual({});
         expect(options.enableTrouter).toBe(false);
         await restored.disconnect();
@@ -155,7 +206,7 @@ describe('TeamsMessagingManager', () => {
         await m2.updateConfig({ enabled: true, teamName: 'TestTeam', channelName: 'TestChannel', outboundBackend: 'mcp' });
         expect(new TeamsMessagingManager(tmpDir).getStatus().outboundBackend).toBe('mcp');
         await m2.connect();
-        expect(vi.mocked(TeamsBot).mock.lastCall![0].operationRoutes).toBeUndefined();
+        expect(vi.mocked(TeamsBot).mock.lastCall![0].operationRoutes).toEqual({ chatSend: 'ic3' });
         expect(vi.mocked(TeamsBot).mock.lastCall![0].channelReadBackend).toBe('graph');
         expect(vi.mocked(TeamsBot).mock.lastCall![0].graphReadOptions).toEqual({});
         await m2.updateConfig({ outboundBackend: 'graph' });
@@ -164,7 +215,7 @@ describe('TeamsMessagingManager', () => {
         await m2.connect();
         const options = vi.mocked(TeamsBot).mock.lastCall![0];
         expect(options.mode).toBe('mcp');
-        expect(options.operationRoutes).toEqual({ channelSend: 'graph', channelReply: 'graph' });
+        expect(options.operationRoutes).toEqual({ chatSend: 'ic3', channelSend: 'graph', channelReply: 'graph' });
         expect(options.graphOutboundOptions).toEqual({});
         await m2.updateConfig({ outboundBackend: 'mcp' });
         expect(m2.getStatus().status).toBe('disconnected');
@@ -716,6 +767,86 @@ describe('TeamsMessagingManager', () => {
 });
 
 describe('Teams messaging routes (integration)', () => {
+    it('exposes explicit 1:1 sends with typed outcomes, no fallback/replay, and strict options', async () => {
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-direct-api-'));
+        const manager = new TeamsMessagingManager(dir, { homeDir: path.join(dir, 'home') });
+        const routes: Route[] = [];
+        registerTeamsMessagingRoutes(routes, { dataDir: dir, manager });
+        manager.setMessageHandler(async () => {});
+        const server = http.createServer((req, res) => {
+            const pathname = new URL(req.url!, 'http://localhost').pathname;
+            const route = routes.find(r => r.method === req.method && r.pattern.test(pathname));
+            if (route) void Promise.resolve(route.handler(req, res, pathname.match(route.pattern)!));
+            else { res.writeHead(404); res.end(); }
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        try {
+            const address = server.address();
+            if (!address || typeof address === 'string') throw new Error('Expected TCP address');
+            const base = `http://127.0.0.1:${address.port}/api/messaging/teams`;
+            const post = (suffix: string, body: object) => fetch(base + suffix, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+            });
+            const payload = {
+                chatId: '19:direct@thread.v2', recipientId: '00000000-0000-0000-0000-000000000003',
+                connectionId: 'test-connection', content: 'plain <text>', contentType: 'text',
+            };
+            expect((await post('/direct-message', payload)).status).toBe(409);
+            expect((await post('/server', { url: 'https://example.test/teams' })).status).toBe(200);
+            expect((await post('/config', {
+                enabled: true, teamName: 'TestTeam', channelName: 'TestChannel',
+                ic3Region: 'amer',
+            })).status).toBe(200);
+            expect((await post('/reconnect', {})).status).toBe(200);
+            const status = await (await fetch(base + '/status')).json();
+            expect(status.connectionId).toBe('test-connection');
+            const bot = vi.mocked(TeamsBot).mock.results.at(-1)!.value;
+            for (const patch of [{ mentions: [] }, { replyToId: 'root' }, { contentType: 'markdown' },
+                { recipientId: '' }, { connectionId: '' }, { chatId: '' }, { content: ' ' }]) {
+                expect((await post('/direct-message', { ...payload, ...patch })).status).toBe(400);
+            }
+            expect(bot.sendMessage).not.toHaveBeenCalled();
+            const response = await post('/direct-message', payload);
+            expect(response.status).toBe(201);
+            expect(await response.json()).toMatchObject({ outcome: 'accepted', message: { backend: 'ic3', messageId: '123' } });
+            expect(bot.sendMessage).toHaveBeenCalledExactlyOnceWith({
+                kind: 'chat', chatId: payload.chatId, recipientId: payload.recipientId, connectionId: payload.connectionId,
+            }, { content: '<p>CoC \u00b7 plain &lt;text&gt;</p>', contentType: 'html' }, { signal: expect.any(AbortSignal) });
+            for (const outcome of ['rejected', 'unknown'] as const) {
+                bot.sendMessage.mockRejectedValueOnce(new TeamsOperationError('Safe IC3 error', 'ic3', 'network', outcome));
+                const failure = await post('/direct-message', payload);
+                expect(failure.status).toBe(outcome === 'unknown' ? 502 : 409);
+                expect(await failure.json()).toMatchObject({ outcome, backend: 'ic3', code: 'network' });
+            }
+            expect(bot.sendMessage).toHaveBeenCalledTimes(3);
+            expect(bot.send).not.toHaveBeenCalled();
+            let sendSignal: AbortSignal | undefined;
+            bot.sendMessage.mockImplementationOnce((_destination: unknown, _body: unknown, context: { signal: AbortSignal }) =>
+                new Promise((_resolve, reject) => {
+                    sendSignal = context.signal;
+                    context.signal.addEventListener('abort', () => reject(
+                        new TeamsOperationError('Cancelled IC3 write', 'ic3', 'unavailable', 'unknown'),
+                    ), { once: true });
+                }));
+            const cancelled = new AbortController();
+            const pending = fetch(base + '/direct-message', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload), signal: cancelled.signal,
+            });
+            await vi.waitFor(() => expect(sendSignal).toBeInstanceOf(AbortSignal));
+            cancelled.abort();
+            await expect(pending).rejects.toThrow();
+            await vi.waitFor(() => expect(sendSignal?.aborted).toBe(true));
+            expect((await post('/config', { enabled: false })).status).toBe(200);
+            expect((await post('/direct-message', payload)).status).toBe(409);
+            expect(bot.sendMessage).toHaveBeenCalledTimes(4);
+        } finally {
+            await manager.disconnect();
+            await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    });
     it('honors a live relay opt-out for thread polling, admission and terminal delivery without reconnect', async () => {
         const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'teams-opt-out-test-'));
@@ -958,7 +1089,7 @@ describe('Teams messaging routes (integration)', () => {
         try {
             const routes: any[] = [];
             registerTeamsMessagingRoutes(routes, { dataDir: tmpDir });
-            expect(routes.length).toBe(6);
+            expect(routes.length).toBe(7);
             expect(routes[0].method).toBe('GET');
             expect(routes[0].pattern).toEqual(/^\/api\/messaging\/teams\/status$/);
             expect(routes[1].pattern).toEqual(/^\/api\/messaging\/teams\/attempts$/);
@@ -966,7 +1097,8 @@ describe('Teams messaging routes (integration)', () => {
             expect(routes[3].method).toBe('POST');
             expect(routes[3].pattern).toEqual(/^\/api\/messaging\/teams\/server$/);
             expect(routes[4].pattern).toEqual(/^\/api\/messaging\/teams\/config$/);
-            expect(routes[5].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
+            expect(routes[5].pattern).toEqual(/^\/api\/messaging\/teams\/direct-message$/);
+            expect(routes[6].pattern).toEqual(/^\/api\/messaging\/teams\/reconnect$/);
         } finally {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }

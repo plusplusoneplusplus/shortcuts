@@ -253,7 +253,7 @@ describe('McpTransport', () => {
     let transport: TeamsTransport;
 
     beforeEach(() => {
-        transport = new McpTransport('https://mcp.test.com/server', undefined, undefined, undefined, undefined, { region: 'amer' });
+        transport = new McpTransport('https://mcp.test.com/server', undefined, undefined, undefined, { region: 'amer' });
         mockFetch.mockReset();
         initialized.mockClear();
     });

@@ -10,14 +10,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import type { BotStatus, InboundTeamsMessage, Ic3DirectMessageRegion, TrouterStatus } from '@plusplusoneplusplus/coc-connector/teams';
-import { TeamsBot, isIc3DirectMessageRegion } from '@plusplusoneplusplus/coc-connector/teams';
+import type { BotStatus, InboundTeamsMessage, Ic3DirectMessageRegion, TrouterStatus,
+    TeamsDestination, TeamsMessageBody, OperationContext, SendReceipt } from '@plusplusoneplusplus/coc-connector/teams';
+import { TeamsBot, TeamsOperationError, isIc3DirectMessageRegion, validateAction } from '@plusplusoneplusplus/coc-connector/teams';
 import { readMcpServerAuthInfo } from '../mcp-oauth/mcp-oauth-token-cache';
 import type { TeamsOAuthFlow } from './teams-oauth-flow';
 import { readRawGlobalConfig, writeRawGlobalConfig } from '../routes/mcp-config-writer';
 import { TeamsAttemptStore, type TeamsAttempt, type TeamsFailureCategory, type TeamsAttemptResult, type TeamsEventType, type TeamsSkipReason } from './teams-attempt-store';
 import type { TeamsAnswerRelay } from './teams-answer-relay';
-import { formatTeamsOutbound, type TeamsOutboundSource } from './teams-outbound-format';
+import { escapeTeamsHtml, formatTeamsOutbound, type TeamsOutboundSource } from './teams-outbound-format';
 import { DEFAULT_CONFIG } from '../../config';
 
 // ── Persisted Config ─────────────────────────────────────────
@@ -61,6 +62,7 @@ export class TeamsMessageNotSentError extends Error {
 // ── Manager ──────────────────────────────────────────────────
 
 export interface TeamsMessagingStatus {
+    connectionId: string | null;
     channelReadBackend: 'graph';
     outboundBackend: 'mcp' | 'graph';
     enableTrouter: boolean;
@@ -148,6 +150,7 @@ export class TeamsMessagingManager {
     getStatus(): TeamsMessagingStatus {
         const serverUrl = this.getServerUrl();
         return {
+            connectionId: this._status === 'connected' ? this.bot?.getConnectionId() ?? null : null,
             channelReadBackend: 'graph',
             outboundBackend: this.config.outboundBackend ?? 'graph',
             enableTrouter: this.config.enableTrouter === true,
@@ -317,8 +320,12 @@ export class TeamsMessagingManager {
                 mode: 'mcp',
                 channelReadBackend: 'graph',
                 graphReadOptions: {},
+                operationRoutes: {
+                    chatSend: 'ic3',
+                    ...((this.config.outboundBackend ?? 'graph') === 'graph'
+                        ? { channelSend: 'graph' as const, channelReply: 'graph' as const } : {}),
+                },
                 ...((this.config.outboundBackend ?? 'graph') === 'graph' ? {
-                    operationRoutes: { channelSend: 'graph' as const, channelReply: 'graph' as const },
                     graphOutboundOptions: {},
                 } : {}),
                 enableTrouter: this.config.enableTrouter === true,
@@ -505,6 +512,24 @@ export class TeamsMessagingManager {
         await this.bot.reactToChannelMessage(msg);
     }
 
+    /** Explicit send-only 1:1 entry point; it never uses the channel bridge's send/retry path. */
+    async sendDirectMessage(destination: Extract<TeamsDestination, { kind: 'chat' }>,
+        body: TeamsMessageBody, context?: OperationContext): Promise<SendReceipt> {
+        if (!this.config.enabled || !this.bot || this._status !== 'connected') {
+            throw new TeamsOperationError('Teams integration is disabled or disconnected', 'ic3', 'unavailable', 'not-attempted');
+        }
+        if (!destination.connectionId || destination.connectionId !== this.bot.getConnectionId()) {
+            throw new TeamsOperationError('Teams connection changed; read status again before sending',
+                'ic3', 'invalid-target', 'not-attempted');
+        }
+        validateAction({ kind: 'send', destination, body }, 'ic3', this.bot.getConnectionId());
+        const html = body.contentType === 'html' ? body.content
+            : escapeTeamsHtml(body.content).replace(/\r\n|\r|\n/g, '<br>');
+        return this.bot.sendMessage(destination, {
+            ...body, content: formatTeamsOutbound(html, 'html'), contentType: 'html',
+        }, context);
+    }
+
     // ── Private helpers ──────────────────────────────────────
 
     private loadConfig(): TeamsMessagingConfig {
@@ -522,7 +547,13 @@ export class TeamsMessagingManager {
                     config.ic3Region = null;
                     this._lastError = 'Invalid saved IC3 region; configure Teams connection settings and reconnect';
                 }
-                return config;
+                return {
+                    enabled: config.enabled, botName: config.botName,
+                    teamName: config.teamName, channelName: config.channelName,
+                    teamId: config.teamId, channelId: config.channelId,
+                    outboundBackend: config.outboundBackend, enableTrouter: config.enableTrouter,
+                    ic3Region: config.ic3Region,
+                };
             }
         } catch (err) {
             this._status = 'error';

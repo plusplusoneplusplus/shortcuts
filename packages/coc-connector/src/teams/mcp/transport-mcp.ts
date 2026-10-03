@@ -54,7 +54,9 @@ export class McpTransport implements TeamsTransport {
     private lifetime = new AbortController();
     private graphCredentials?: GraphCredentialStore;
     private graphReader?: GraphChannelReader;
-    readonly connectionId: string;
+    private _connectionId: string;
+    private initialized = false;
+    get connectionId(): string { return this._connectionId; }
     private readonly ic3Options: Ic3DirectMessageOptions;
     private account: ReturnType<typeof tokenAccount>;
     private _useChat = false;
@@ -81,7 +83,6 @@ export class McpTransport implements TeamsTransport {
         private readonly pollChannelReplies: () => boolean = () => false,
         private readonly channelThreadRoots: (channelId: string) => readonly string[] = () => [],
         private readonly onChannelRootDiscovered?: (root: InboundTeamsMessage) => Promise<void>,
-        private readonly enableIc3DirectMessages = false,
         ic3DirectMessageOptions?: Ic3DirectMessageOptions,
         private readonly operationOptions: {
             connectionId?: string;
@@ -92,7 +93,7 @@ export class McpTransport implements TeamsTransport {
             graphReadOptions?: GraphOutboundOptions;
         } = {},
     ) {
-        this.connectionId = operationOptions.connectionId ?? randomUUID();
+        this._connectionId = operationOptions.connectionId ?? randomUUID();
         this.operationOptions = { ...operationOptions, routes: { ...operationOptions.routes } };
         this.ic3Options = { ...ic3DirectMessageOptions };
         // Validate immutable IC3 configuration without acquiring credentials.
@@ -107,6 +108,7 @@ export class McpTransport implements TeamsTransport {
 
     private async configureOperations(client: McpClient, signal: AbortSignal): Promise<void> {
         signal.throwIfAborted();
+        const connectionId = this.connectionId;
         const mcp = new McpOperations({
             connectionId: this.connectionId, client,
             availableTools: this.toolsDiscovered ? this._availableTools : undefined,
@@ -122,7 +124,45 @@ export class McpTransport implements TeamsTransport {
         });
         const ic3 = new Ic3Operations({
             ...this.ic3Options, connectionId: this.connectionId,
-            enableSelfSend: this.enableIc3DirectMessages, expectedAccount: this.account, requireAccountMatch: true,
+            expectedAccount: this.account, requireAccountMatch: true,
+            verifyChat: async (chatId, writeSignal) => {
+                if (chatId === this.selfChatId) throw new Error('Self chat is not an ordinary destination');
+                if (!this._availableTools.includes('GetChat') || !this._availableTools.includes('ListChatMembers')) {
+                    throw new Error('MCP chat verification tools unavailable');
+                }
+                const read = async (name: string): Promise<unknown> => {
+                    const result = await client.callTool(name, { chatId }, writeSignal, { retryExpiredSession: false });
+                    writeSignal.throwIfAborted();
+                    if (result.isError || result.content.length !== 1 || result.content[0].type !== 'text') {
+                        throw new Error('MCP chat verification failed');
+                    }
+                    return JSON.parse(result.content[0].text ?? '');
+                };
+                const chat = await read('GetChat');
+                const membership = await read('ListChatMembers');
+                if (!chat || typeof chat !== 'object' || !('id' in chat) || !('chatType' in chat)
+                    || typeof chat.id !== 'string' || typeof chat.chatType !== 'string') {
+                    throw new Error('MCP chat metadata unavailable');
+                }
+                const members = Array.isArray(membership) ? membership
+                    : membership && typeof membership === 'object' && 'members' in membership ? membership.members
+                        : membership && typeof membership === 'object' && 'value' in membership ? membership.value : undefined;
+                if (!Array.isArray(members) || (membership && typeof membership === 'object'
+                    && (('hasMoreResults' in membership && membership.hasMoreResults === true)
+                        || ('nextLink' in membership && membership.nextLink)
+                        || ('@odata.nextLink' in membership && membership['@odata.nextLink'])))) {
+                    throw new Error('MCP complete chat membership unavailable');
+                }
+                return {
+                    chatId: chat.id, chatType: chat.chatType, connectionId,
+                    memberIds: members.map(member => {
+                        if (!member || typeof member !== 'object' || typeof member.userId !== 'string') {
+                            throw new Error('MCP member identity unavailable');
+                        }
+                        return member.userId;
+                    }),
+                };
+            },
         });
         const backends: TeamsOperations[] = [mcp, ic3];
         if (this.operationOptions.graphOutboundOptions) {
@@ -137,8 +177,9 @@ export class McpTransport implements TeamsTransport {
             }));
         }
         this.outbound = new RoutedTeamsOperations({
-            selfSend: this.enableIc3DirectMessages ? 'ic3' : 'mcp',
-            chatSend: 'mcp', channelSend: 'mcp', channelReply: 'mcp', channelLike: 'ic3',
+            selfSend: 'mcp',
+            chatSend: 'mcp',
+            channelSend: 'mcp', channelReply: 'mcp', channelLike: 'ic3',
             ...this.operationOptions.routes,
         }, backends);
     }
@@ -191,6 +232,10 @@ export class McpTransport implements TeamsTransport {
 
     async initialize(token: string, opts: { teamId?: string; channelId?: string; chatId?: string }): Promise<void> {
         this.lifetime.abort();
+        void this.outbound?.dispose();
+        this.outbound = null;
+        if (this.initialized && this.operationOptions.routes?.chatSend === 'ic3') this._connectionId = randomUUID();
+        this.initialized = true;
         this.lifetime = new AbortController();
         const signal = this.lifetime.signal;
         this.graphCredentials?.clear();
@@ -203,8 +248,6 @@ export class McpTransport implements TeamsTransport {
         this._chatId = null;
         this.selfChatId = null;
         this._initMessageId = null;
-        void this.outbound?.dispose();
-        this.outbound = null;
         console.log(`[mcp-transport] Initializing with teamId=${this.teamId}, serverUrl=${this.serverUrl}`);
         const client = new McpClient({
             serverUrl: this.serverUrl,
@@ -238,10 +281,10 @@ export class McpTransport implements TeamsTransport {
         if (!this.teamId) {
             this._useChat = true;
             console.log(`[mcp-transport] No teamId — using direct message (self) mode`);
-            console.log(`[mcp-transport] Self-DM sends use ${this.enableIc3DirectMessages ? 'IC3 (48:notes only)' : 'SendMessageToSelf'}`);
+            console.log(`[mcp-transport] Self-DM sends use ${this.operationOptions.routes?.selfSend === 'ic3' ? 'IC3 (48:notes only)' : 'SendMessageToSelf'}`);
 
             // IC3 notes IDs are not MCP chat IDs. Poll only an explicit MCP target.
-            if (this.enableIc3DirectMessages || opts.chatId) {
+            if (this.operationOptions.routes?.selfSend === 'ic3' || opts.chatId) {
                 this._chatId = opts.chatId ?? null;
             } else {
                 await this.discoverSelfChatForPolling();
@@ -287,11 +330,12 @@ export class McpTransport implements TeamsTransport {
         if (!this.client) throw new Error('McpTransport not initialized');
         const destination: TeamsDestination = this.teamId
             ? { kind: 'channel', teamId: this.teamId, channelId }
-            : channelId === '48:notes' || (!this.enableIc3DirectMessages && channelId === this.selfChatId)
+            : channelId === '48:notes' || channelId === this.selfChatId
                 ? { kind: 'self' } : { kind: 'chat', chatId: channelId };
         const body = { content: text, contentType: 'html' as const,
             ...(opts?.mentions !== undefined ? { mentions: opts.mentions.map(m => ({ id: m.aadId, displayName: m.displayName })) } : {}) };
-        if (this._useChat && this.enableIc3DirectMessages && destination.kind !== 'self') {
+        if (this._useChat && this.operationOptions.routes?.selfSend === 'ic3'
+            && this.operationOptions.routes?.chatSend !== 'ic3' && destination.kind !== 'self') {
             throw new TeamsOperationError('IC3 direct messages support only self-chat 48:notes',
                 'ic3', 'unsupported', 'not-attempted');
         }

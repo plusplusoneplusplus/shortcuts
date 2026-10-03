@@ -40,7 +40,7 @@ export interface TeamsBotOptions {
     trouterOptions?: TeamsTrouterOptions;
     /** Account-scoped connection identity; generated per instance when omitted. */
     connectionId?: string;
-    /** Per-instance outbound routing. An IC3 self-send route still requires its opt-in. */
+    /** Per-instance outbound routing for self, chat and channel operations. */
     operationRoutes?: Partial<TeamsOperationRoutes>;
     /** Separate, identity-pinned Graph credentials for explicit MCP channel write routes. */
     graphOutboundOptions?: GraphOutboundOptions;
@@ -58,8 +58,6 @@ export interface TeamsBotOptions {
     teamId?: string;
     /** MCP server URL for the Teams server — required for 'mcp' mode. */
     mcpServerUrl?: string;
-    /** Experimental MCP-mode IC3 self-DM sends to explicit 48:notes only (default: false). */
-    enableIc3DirectMessages?: boolean;
     /** Region and separate IC3 credential provider; supplying options does not enable sends. */
     ic3DirectMessageOptions?: Ic3DirectMessageOptions;
     /** Called when an inbound text message arrives. */

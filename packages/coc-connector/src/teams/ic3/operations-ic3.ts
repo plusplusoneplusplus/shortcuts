@@ -10,7 +10,6 @@ import {
 
 export interface Ic3OperationsOptions extends Ic3DirectMessageOptions {
     connectionId: string;
-    enableSelfSend?: boolean;
     /** Hybrid owners must fail closed when they cannot establish the primary account identity. */
     requireAccountMatch?: boolean;
 }
@@ -19,7 +18,6 @@ export interface Ic3OperationsOptions extends Ic3DirectMessageOptions {
 export class Ic3Operations implements TeamsOperations {
     readonly backend = 'ic3' as const;
     readonly connectionId: string;
-    private readonly enableSelfSend: boolean;
     private readonly accountUnavailable: boolean;
     private readonly credentials: Ic3CredentialStore;
     private readonly sender: Ic3DirectMessageClient;
@@ -28,7 +26,6 @@ export class Ic3Operations implements TeamsOperations {
 
     constructor(options: Ic3OperationsOptions) {
         this.connectionId = options.connectionId;
-        this.enableSelfSend = options.enableSelfSend === true;
         this.accountUnavailable = options.requireAccountMatch === true && !options.expectedAccount;
         this.credentials = new Ic3CredentialStore(options);
         this.sender = new Ic3DirectMessageClient(options, this.credentials);
@@ -44,7 +41,11 @@ export class Ic3Operations implements TeamsOperations {
             throw error;
         }
         if (action.kind === 'send' && action.destination.kind === 'self' && action.body.mentions === undefined) {
-            return this.enableSelfSend ? { supported: true } : { supported: false, reason: 'disabled' };
+            return { supported: true };
+        }
+        if (action.kind === 'send' && action.destination.kind === 'chat' && action.body.mentions === undefined) {
+            return action.destination.connectionId === this.connectionId && !!action.destination.recipientId
+                ? { supported: true } : { supported: false, reason: 'unsupported' };
         }
         // MCP channel references preserve the exact chatsvc channel/message identity.
         // Graph references have no proven mapping and cannot be translated implicitly.
@@ -62,7 +63,7 @@ export class Ic3Operations implements TeamsOperations {
         const content = body.contentType === 'html' ? body.content : body.content
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\r\n|\r|\n/g, '<br>');
-        const id = await this.sender.send(IC3_SELF_CHAT, content, undefined, context?.signal);
+        const id = await this.sender.send(target.kind === 'chat' ? target : IC3_SELF_CHAT, content, undefined, context?.signal);
         return messageReceipt(this, target, id);
     }
 

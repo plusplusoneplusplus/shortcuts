@@ -194,6 +194,13 @@ references before editing. Paths are package-relative.
   is not implemented. Never guess, fail over, or replay IC3 writes.
   Region/account changes require reconnect. Eligible Likes start before routing but
   never block dispatch or subsequent reads; asynchronous failures are sanitized and logged.
+- Normal Teams routes explicit ordinary direct sends through IC3, independently of connector
+  self-send routing. The enabled, connected bridge's send-only
+  `POST /api/messaging/teams/direct-message` requires an existing chat ID, intended recipient
+  object ID, current status `connectionId`, and explicit text/HTML. MCP chat metadata/membership
+  verifies the exact 1:1 before one bounded IC3 POST; missing access rejects without Graph
+  chat consent. Channel bridge/inbound routing stays unchanged. No creation, group/channel DM,
+  mentions/replies, fallback or replay; unknown outcomes require manual reconciliation.
 - Normal Teams `outboundBackend` defaults to `graph`; explicit `mcp` remains supported. Graph routes channel
   sends/replies through stable v1.0; authoritative channel roots and paginated replies always use Graph beta
   (preview API subject to change),

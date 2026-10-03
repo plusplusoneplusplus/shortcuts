@@ -294,6 +294,23 @@ An unset region rejects IC3 writes before credentials/network while MCP remains 
 Automatic region discovery is not implemented; writes never guess a region, fail over or retry.
 Identity-pinned credentials fail closed on mismatch.
 
+The normal manager selects `operationRoutes.chatSend: ic3` for ordinary direct sends.
+Its enabled, connected bridge's `/api/messaging/teams/direct-message` send-only endpoint
+accepts `chatId`, intended `recipientId` (object ID), current status `connectionId`,
+`content` and `contentType: text | html`. It uses `TeamsBot.sendMessage` and existing
+IC3 operation/receipt helpers, adding delegated CoC attribution. Channel sends/reads,
+Likes and inbound routing retain their existing routes.
+
+Ordinary 1:1 writes verify fresh MCP `GetChat` and complete `ListChatMembers` metadata:
+exact unchanged chat ID, `oneOnOne`, and distinct current-account/intended-recipient IDs.
+Missing tools/access or identity fail before dispatch, without Graph chat consent.
+Connection-scoped references reject stale/cross-connection sends; verification shares
+the ten-second write deadline and cancels on stop/reconnect. Connector IC3 self sends
+are always supported via `operationRoutes.selfSend: ic3`, mapped to `48:notes`;
+default connector self routing uses MCP. Chat creation,
+groups/channels, replies/mentions, an inbound DM bot and a dashboard DM composer
+are unsupported. No retry/fallback; unknown delivery requires reconciliation.
+
 Connector contracts live in [coc-connector/AGENTS.md](../../../../packages/coc-connector/AGENTS.md);
 server settings and gates belong in [admin-config.md](admin-config.md).
 

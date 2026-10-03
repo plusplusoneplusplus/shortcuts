@@ -22,6 +22,7 @@ export type {
     Ic3DirectMessageOptions,
     Ic3DirectMessageRegion,
     Ic3TokenProvider,
+    Ic3ChatVerifier,
 } from './ic3/ic3-direct-message-config';
 export type { McpChannelRootPage } from './mcp/transport-mcp';
 export { extractTenantId, acquireTokenViaAzCli, acquireMcpOAuthToken, acquireTokenWithDeviceCode, acquireTokenViaBrowser, getOAuthConfig, exchangeCodeForToken, saveMcpOAuthTokens } from './auth';
