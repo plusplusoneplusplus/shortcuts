@@ -1,6 +1,8 @@
 //! Explorer directory listings and subtree file walks.
 //!
 //! Listings apply Git ignore rules to directories and ripgrep rules to files.
+//! Like `git check-ignore`, an ignored directory that holds tracked files stays
+//! listed.
 //! Subtree file walks use the file index policy. Names sort with CLDR root
 //! collation — the order Node's `localeCompare` gives — never byte order.
 
@@ -11,6 +13,7 @@ use std::path::Path;
 use feruca::{Collator, Locale, Tailoring};
 
 use super::{resolve_in_root, RepoFilesError};
+use crate::git::{run_git, GitCommandOptions};
 use crate::repo_index::walk::{ignore_builder, to_posix, walk_builder};
 
 /// One row of a directory listing.
@@ -128,9 +131,14 @@ fn list_level(
     include_ignored: bool,
     max_entries: usize,
 ) -> (Vec<TreeEntry>, bool) {
-    let mut entries: Vec<_> = level_entries(root, dir, include_ignored, true)
-        .chain(level_entries(root, dir, include_ignored, false))
-        .collect();
+    let mut entries: Vec<_> = level_entries(root, dir, include_ignored, true).collect();
+    if !include_ignored {
+        let ignored: Vec<_> = level_entries(root, dir, true, true)
+            .filter(|all| !entries.iter().any(|kept| kept.path == all.path))
+            .collect();
+        entries.extend(with_tracked_files(root, ignored));
+    }
+    entries.extend(level_entries(root, dir, include_ignored, false));
     entries
         .sort_by(|a, b| b.is_dir().cmp(&a.is_dir()).then_with(|| locale_compare(&a.name, &b.name)));
     let truncated = entries.len() > max_entries;
@@ -143,6 +151,30 @@ fn list_level(
         }
     }
     (entries, truncated)
+}
+
+/// The ignored directories Git still tracks files under. Outside a Git repo,
+/// or if Git fails, there are none.
+fn with_tracked_files(root: &Path, ignored: Vec<TreeEntry>) -> Vec<TreeEntry> {
+    if ignored.is_empty() {
+        return ignored;
+    }
+    let mut args: Vec<String> = ["ls-files", "-z", "--cached", "--"].map(str::to_owned).into();
+    args.extend(ignored.iter().map(|dir| format!(":(literal){}/", dir.path)));
+    let options = GitCommandOptions {
+        timeout_ms: 15_000,
+        max_buffer_bytes: 64 * 1024 * 1024,
+        ..Default::default()
+    };
+    let Ok(stdout) = run_git(root, &args, &options) else { return Vec::new() };
+    let tracked: Vec<&str> = stdout.split('\0').filter(|path| !path.is_empty()).collect();
+    ignored
+        .into_iter()
+        .filter(|dir| {
+            let prefix = format!("{}/", dir.path);
+            tracked.iter().any(|path| path.starts_with(&prefix))
+        })
+        .collect()
 }
 
 /// Every file under `relative`, depth-first with each directory's entries in

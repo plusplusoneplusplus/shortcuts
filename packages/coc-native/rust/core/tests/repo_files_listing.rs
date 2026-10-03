@@ -204,3 +204,21 @@ fn non_git_directory_listing_keeps_ignore_hidden_directories() {
     write(root, "debug.log");
     assert_eq!(names(root, "", false), ["hidden", ".ignore"]);
 }
+
+#[test]
+fn ignored_directory_with_tracked_files_stays_listed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git").arg("-C").arg(root).args(args).status();
+        assert!(status.unwrap().success(), "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    fs::write(root.join(".gitignore"), "build/\nignored/\n").unwrap();
+    write(root, "build/out.js");
+    write(root, "ignored/scratch.txt");
+    git(&["add", "-f", "build/out.js"]);
+    // Like `git check-ignore`: tracked content keeps an ignored directory visible.
+    assert_eq!(names(root, "", false), [".git", "build", ".gitignore"]);
+    assert_eq!(names(root, "", true), [".git", "build", "ignored", ".gitignore"]);
+}
