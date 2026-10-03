@@ -1,4 +1,9 @@
 import { expectTypeOf, it } from 'vitest';
+import type { RepoGroupSearchResult } from '../../src/server/workspaces/repo-group-handler';
+import type {
+    GroupContentSearchService, RepoGroupContentSearchMemberResult,
+    RepoGroupContentSearchFailure, RepoGroupContentSearchResult,
+} from '../../src/server/workspaces/repo-group-content-search';
 import type {
     ContentMatch, ContentSearchOptions, ContentSearchResult,
     FileSearchResult, SearchFilesResult, TreeEntry, TreeListResult,
@@ -38,4 +43,44 @@ it('keeps repository result contracts and HTTP options independent of native han
         exclude?: string[];
         limit?: number;
     }>();
+});
+
+it('keeps group search wire shapes and the native-backed service boundary', () => {
+    type Counts = {
+        memberCount: number;
+        searchableMemberCount: number;
+        searchedMemberCount: number;
+        unavailableMemberCount: number;
+        failedMemberCount: number;
+    };
+    type Wire<T> = { [K in keyof T]: T[K] };
+    type Status = 'complete' | 'partial' | 'failed' | 'no-searchable-members';
+    expectTypeOf<RepoGroupSearchResult>().toEqualTypeOf<Wire<Counts & {
+        status: Status;
+        results: Array<{ workspaceId: string; repoName: string; path: string; score: number; indices: number[] }>;
+    }>>();
+    expectTypeOf<RepoGroupContentSearchMemberResult>().toEqualTypeOf<{
+        workspaceId: string;
+        repoName: string;
+        matches: ContentMatch[];
+        totalMatches: number;
+        truncated: boolean;
+    }>();
+    expectTypeOf<RepoGroupContentSearchFailure>().toEqualTypeOf<{
+        workspaceId: string;
+        repoName?: string;
+        reason: 'stale' | 'unavailable' | 'error';
+        message: string;
+    }>();
+    expectTypeOf<RepoGroupContentSearchResult>().toEqualTypeOf<Wire<Counts & {
+        status: Status;
+        members: RepoGroupContentSearchMemberResult[];
+        failures: RepoGroupContentSearchFailure[];
+        truncated: boolean;
+        totalMatches: number;
+        limit: number;
+    }>>();
+    expectTypeOf<GroupContentSearchService['searchContent']>().toEqualTypeOf<
+        (repoId: string, query: string, options?: ContentSearchOptions) => Promise<ContentSearchResult>
+    >();
 });

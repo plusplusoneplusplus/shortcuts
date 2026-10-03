@@ -11,6 +11,7 @@
  * stays on disk.
  */
 
+import type { ExplorerRepoGroupSearchResponse } from '@plusplusoneplusplus/coc-client';
 import type { ProcessStore, WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import type { NativeRankedFileMatch } from '@plusplusoneplusplus/coc-native';
 import { sendJSON } from '../core/api-handler';
@@ -57,21 +58,7 @@ export interface RepoGroupRouteDeps {
     repoTreeService?: Pick<RepoTreeService, 'searchFilesRanked' | 'searchContent'>;
 }
 
-export interface RepoGroupSearchResult {
-    status: 'complete' | 'partial' | 'failed' | 'no-searchable-members';
-    results: Array<{
-        workspaceId: string;
-        repoName: string;
-        path: string;
-        score: number;
-        indices: number[];
-    }>;
-    memberCount: number;
-    searchableMemberCount: number;
-    searchedMemberCount: number;
-    unavailableMemberCount: number;
-    failedMemberCount: number;
-}
+export type RepoGroupSearchResult = ExplorerRepoGroupSearchResponse;
 
 interface RankedGroupCandidate extends NativeRankedFileMatch {
     workspaceId: string;
