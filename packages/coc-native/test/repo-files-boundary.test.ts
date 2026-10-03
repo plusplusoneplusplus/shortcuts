@@ -190,6 +190,84 @@ describe('RepoFiles indexes', () => {
         await expect(files.invalidate()).resolves.toBe(true);
     });
 
+    // A one-hour TTL keeps the built snapshots from refreshing on their own,
+    // so only replaceContent itself can make outside changes visible.
+    const target = (text: string, match: string) =>
+        ({ line: 1, text, startColumn: text.indexOf(match), endColumn: text.indexOf(match) + match.length });
+
+    it('refreshes both built variants when replaceContent writes, even if a later file fails', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-replace-index-'));
+        const files = addon.openRepoFiles(dir, 3_600_000);
+        const listed = async (showIgnored: boolean) => (await files.indexFiles({ showIgnored, maxEntries: 100 })).files;
+        const locked = path.join(dir, 'locked.txt');
+        try {
+            execFileSync('git', ['init', '-q', dir]);
+            fs.writeFileSync(path.join(dir, '.gitignore'), 'secret.txt\n');
+            fs.writeFileSync(path.join(dir, 'secret.txt'), 'x');
+            expect(await listed(false)).not.toContain('secret.txt');
+            expect(await files.searchFiles('secret', 5, false)).toEqual([]);
+            expect(await listed(true)).toContain('secret.txt');
+
+            fs.writeFileSync(path.join(dir, 'outside.txt'), 'x');
+            await expect(files.replaceContent('secret.txt', 'public.txt', [
+                { path: '.gitignore', targets: [target('secret.txt', 'secret.txt')] },
+            ])).resolves.toEqual({ replacedMatches: 1, replacedFiles: 1, skipped: [] });
+            expect(await listed(false)).toContain('secret.txt');
+            expect((await files.searchFiles('secret', 5, false)).map(hit => hit.path)).toEqual(['secret.txt']);
+            expect(await listed(true)).toContain('outside.txt');
+
+            // .gitignore is committed, then writing the read-only second file fails.
+            fs.writeFileSync(locked, 'public.txt\n');
+            fs.chmodSync(locked, 0o444);
+            fs.writeFileSync(path.join(dir, 'late.txt'), 'x');
+            await expect(files.replaceContent('public.txt', 'secret.txt', [
+                { path: '.gitignore', targets: [target('public.txt', 'public.txt')] },
+                { path: 'locked.txt', targets: [target('public.txt', 'public.txt')] },
+            ])).rejects.not.toMatchObject({ code: 'InvalidArg' });
+            expect(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8')).toBe('secret.txt\n');
+            expect(await listed(false)).not.toContain('secret.txt');
+            expect(await files.searchFiles('secret', 5, false)).toEqual([]);
+            expect(await listed(true)).toContain('late.txt');
+        } finally {
+            files.dispose();
+            if (fs.existsSync(locked)) fs.chmodSync(locked, 0o644);
+            removeDir(dir);
+        }
+    });
+
+    it('leaves built variants alone when replaceContent writes nothing or rejects the query', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-native-replace-noop-'));
+        const files = addon.openRepoFiles(dir, 3_600_000);
+        const listed = async (showIgnored: boolean) => (await files.indexFiles({ showIgnored, maxEntries: 100 })).files;
+        try {
+            fs.writeFileSync(path.join(dir, 'a.txt'), 'old\n');
+            expect(await listed(false)).toEqual(['a.txt']);
+            expect(await listed(true)).toEqual(['a.txt']);
+
+            fs.writeFileSync(path.join(dir, 'outside.txt'), 'x');
+            const none = { replacedMatches: 0, replacedFiles: 0 };
+            await expect(files.replaceContent('old', 'new', [])).resolves.toEqual({ ...none, skipped: [] });
+            await expect(files.replaceContent('old', 'new', [
+                { path: 'gone.txt', targets: [target('old', 'old')] },
+                { path: 'a.txt', targets: [target('stale old', 'old')] },
+            ])).resolves.toMatchObject({ ...none, skipped: [{ reason: 'missing' }, { reason: 'stale' }] });
+            await expect(files.replaceContent('(', 'new', [
+                { path: 'a.txt', targets: [target('old', 'old')] },
+            ], { regex: true })).rejects.toMatchObject({ code: 'InvalidArg' });
+            expect(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8')).toBe('old\n');
+            expect(await listed(false)).toEqual(['a.txt']);
+            expect(await listed(true)).toEqual(['a.txt']);
+            expect(await files.searchFiles('outside', 5, false)).toEqual([]);
+
+            await expect(files.invalidate()).resolves.toBe(true);
+            expect(await listed(false)).toEqual(['a.txt', 'outside.txt']);
+            expect(await listed(true)).toEqual(['a.txt', 'outside.txt']);
+        } finally {
+            files.dispose();
+            removeDir(dir);
+        }
+    });
+
     it('rejects every call after dispose', async () => {
         const files = addon.openRepoFiles(root);
         await files.searchFiles('a', 5, false);
