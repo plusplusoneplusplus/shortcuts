@@ -596,12 +596,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             });
         },
     });
+    // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
+    // name / remote clone-key targets, and messaging `list remotes`.
+    const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
     opts.setSendToConversationRuntime?.({
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,
-        // Local + remote repo directory behind `list_workspaces` and
-        // `send_to_conversation` name / remote clone-key targets.
-        workspaceDirectory: createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime }),
+        workspaceDirectory,
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).
@@ -969,6 +970,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         executeFollowUp: (processId, message, mode) => bridge.executeFollowUp(processId, message, undefined, mode),
         getQuota: getMessagingQuota,
         compact: (proc, instructions) => compactProcess(store, proc, instructions),
+        remotes: workspaceDirectory,
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
     const whatsappBindings = new WhatsAppBindings(dataDir);
@@ -1000,6 +1002,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         react: messageId => whatsappMessagingManager.react(messageId),
         getQuota: getMessagingQuota,
         compact: (proc, instructions) => compactProcess(store, proc, instructions),
+        remotes: workspaceDirectory,
         questions: questionRelay,
         enqueue: (workspaceId, message, mode, processId, taskId) =>
             enqueueWithResolvedDefaults({

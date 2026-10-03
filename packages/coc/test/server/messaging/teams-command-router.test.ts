@@ -125,6 +125,23 @@ describe('TeamsCommandRouter', () => {
         expect(reply).toContain('2');
     });
 
+    it('lists remote servers and a remote repo\'s topics read-only (shared grammar smoke)', async () => {
+        const remotes = {
+            list: vi.fn().mockResolvedValue({
+                entries: [{ id: 'remote:srv-1:w1', name: 'shortcuts', type: 'repo', server: 'devbox', serverKind: 'ssh', online: true }],
+                servers: [{ serverId: 'srv-1', server: 'devbox', serverKind: 'ssh', online: true }],
+            }),
+            listRemoteChats: vi.fn().mockResolvedValue([{ id: 'r-chat', status: 'completed', title: 'Remote chat' }]),
+        };
+        router = new TeamsCommandRouter({ ...deps, remotes });
+        await router.handle(makeMsg('/list remotes'));
+        expect(sendReplySpy.mock.calls[0][0]).toContain('1.1 shortcuts');
+        await router.handle(makeMsg('/list topics 1.1'));
+        expect(remotes.listRemoteChats).toHaveBeenCalledWith('srv-1', 'w1', 10);
+        expect(sendReplySpy.mock.calls[1][0]).toContain('(read-only)');
+        expect(sendReplySpy.mock.calls[1][0]).toContain('r-chat');
+    });
+
     it('reports safe command, queue, follow-up and dispatch failure categories', async () => {
         const observe = vi.fn();
         await router.handle(makeMsg('/list agents'), observe);

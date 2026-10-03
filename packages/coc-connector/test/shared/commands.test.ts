@@ -14,6 +14,12 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/Select Repos My Repo', { type: 'select-repo', args: 'My Repo' }],
     ['list topics', { type: 'list-topics', args: '' }],
     ['/list chat topic', { type: 'list-topics', args: '' }],
+    ['list remotes', { type: 'list-remotes', args: '' }],
+    ['/LIST Remote', { type: 'list-remotes', args: '' }],
+    ['list topics 1.2', { type: 'list-topics', args: '1.2' }],
+    ['/List Topics 10.3', { type: 'list-topics', args: '10.3' }],
+    ['list topics shortcuts@devbox', { type: 'list-topics', args: 'shortcuts@devbox' }],
+    ['/list chat topics Shortcuts@DevBox', { type: 'list-topics', args: 'Shortcuts@DevBox' }],
     ['create topic', { type: 'create-topic', args: '' }],
     ['/CREATE chat topic', { type: 'create-topic', args: '' }],
     ['select topic 1', { type: 'select-topic', args: '1' }],
@@ -41,6 +47,10 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/select repo', { type: 'invalid', args: '/select repo' }],
     ['select repo', { type: 'invalid', args: 'select repo' }],
     ['list topics please', { type: 'invalid', args: 'list topics please' }],
+    ['list topics 1.', { type: 'invalid', args: 'list topics 1.' }],
+    ['list topics a@b c', { type: 'invalid', args: 'list topics a@b c' }],
+    ['list remotes now', { type: 'invalid', args: 'list remotes now' }],
+    ['/select remote 1', { type: 'invalid', args: '/select remote 1' }],
     ['/list nonsense', { type: 'invalid', args: '/list nonsense' }],
     ['/unknown', { type: 'invalid', args: '/unknown' }],
     ['/Unknown thing', { type: 'invalid', args: '/Unknown thing' }],
@@ -72,5 +82,7 @@ describe('parseMessagingCommand', () => {
         expect(MESSAGING_HELP_TEXT).toContain('[chatid] <message>');
         expect(MESSAGING_HELP_TEXT).toContain('Unknown command');
         expect(MESSAGING_HELP_TEXT).toContain('compact [instructions] — ');
+        expect(MESSAGING_HELP_TEXT).toContain('list remotes — ');
+        expect(MESSAGING_HELP_TEXT).toContain('repo@server');
     });
 });

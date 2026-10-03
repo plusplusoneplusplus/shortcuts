@@ -61,6 +61,32 @@ describe('WhatsApp workspace command routing', () => {
         expect(fs.existsSync(path.join(dir, 'messaging', 'whatsapp', 'bindings.json'))).toBe(false);
     });
 
+    it('browses remote servers read-only and records the replies as its own', async () => {
+        const remotes = {
+            list: vi.fn().mockResolvedValue({
+                entries: [{ id: 'remote:srv-1:w1', name: 'shortcuts', type: 'repo', server: 'devbox', serverKind: 'ssh', online: true }],
+                servers: [
+                    { server: 'local', serverKind: 'local', online: true },
+                    { serverId: 'srv-1', server: 'devbox', serverKind: 'ssh', online: true },
+                ],
+            }),
+            listRemoteChats: vi.fn().mockResolvedValue([{ id: 'r-chat', status: 'completed', title: 'Remote chat' }]),
+        };
+        send.mockImplementation(async (_text: string, quoted: string) => `out-${quoted}`);
+        router = new WhatsAppCommandRouter({ store, bindings, groupJid: () => 'group@g.us', enqueue, send, react, remotes });
+        await router.handle(inbound('list topics 1.1', 'early'));
+        expect(send).toHaveBeenLastCalledWith('No remote listing yet — run "list remotes" first.', 'early');
+        await router.handle(inbound('/list remotes', 'remotes'));
+        expect(send).toHaveBeenLastCalledWith('Remote servers\n1. devbox (ssh) — online\n   1.1 shortcuts', 'remotes');
+        await router.handle(inbound('list topics 1.1', 'topics'));
+        expect(remotes.listRemoteChats).toHaveBeenCalledWith('srv-1', 'w1', 10);
+        expect(send).toHaveBeenLastCalledWith('Topics in shortcuts @ devbox (read-only):\n1. r-chat [completed] Remote chat', 'topics');
+        expect(bindings.isKnownMessage('out-remotes')).toBe(true);
+        expect(bindings.isKnownMessage('out-topics')).toBe(true);
+        expect(bindings.selectedRepo).toBeFalsy();
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('selects topics only in the chosen workspace and creates a fresh topic on demand', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));

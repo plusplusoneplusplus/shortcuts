@@ -51,6 +51,8 @@ export interface WorkspaceDirectoryEntry {
 }
 
 export interface WorkspaceDirectoryServer {
+    /** Remote server id; absent for this server. */
+    serverId?: string;
     server: string;
     serverKind: WorkspaceServerKind;
     online: boolean;
@@ -75,8 +77,23 @@ export interface RemoteChatResult {
     sessionId?: string;
 }
 
+/** One chat of a remote repo, as returned by the remote's `GET /api/processes`. */
+export interface RemoteChatSummary {
+    id: string;
+    status?: string;
+    title?: string;
+    customTitle?: string;
+    promptPreview?: string;
+}
+
 export interface WorkspaceDirectory {
     list(): Promise<WorkspaceDirectoryListing>;
+    /**
+     * Most recent chats of one remote repo (remote store order). Throws
+     * {@link RemoteServerOfflineError} when the server is unregistered or
+     * unreachable, and a plain Error when it rejects the request.
+     */
+    listRemoteChats(serverId: string, workspaceId: string, limit: number): Promise<RemoteChatSummary[]>;
     /** Start a chat on a remote server. Throws an Error with a model-facing message. */
     startRemoteChat(request: RemoteChatRequest): Promise<RemoteChatResult>;
 }
@@ -151,6 +168,14 @@ function getSharedLastKnownCache(): CacheHandle<WorkspaceDirectoryEntry[]> {
 }
 
 class RemoteRejectedError extends Error {}
+
+/** The remote server has no reachable endpoint or did not answer in time. */
+export class RemoteServerOfflineError extends Error {
+    /** `detail` is for server-side logs only. */
+    constructor(readonly server: string, detail?: string) {
+        super(`Remote server "${server}" is offline${detail ? ` (${detail})` : ''}`);
+    }
+}
 
 function serverName(server: RemoteServerWithRuntime): string {
     return server.label || server.id;
@@ -272,10 +297,34 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                 }
             }));
             for (const result of results) {
-                servers.push({ server: serverName(result.server), serverKind: result.server.kind, online: result.online });
+                servers.push({ serverId: result.server.id, server: serverName(result.server), serverKind: result.server.kind, online: result.online });
                 entries.push(...result.entries);
             }
             return { entries, servers };
+        },
+
+        async listRemoteChats(serverId, workspaceId, limit) {
+            const server = options.remoteServers?.list().find(s => s.id === serverId);
+            if (!server?.effectiveUrl) throw new RemoteServerOfflineError(server ? serverName(server) : serverId);
+            const query = new URLSearchParams({ workspace: workspaceId, limit: String(limit), exclude: 'conversation,toolCalls' });
+            let body: any;
+            try {
+                body = await requestJson(`${server.effectiveUrl}/api/processes?${query}`, listTimeoutMs);
+            } catch (err) {
+                if (err instanceof RemoteRejectedError) throw err;
+                throw new RemoteServerOfflineError(serverName(server), err instanceof Error ? err.message : String(err));
+            }
+            const processes: any[] = Array.isArray(body?.processes) ? body.processes : [];
+            return processes
+                .filter(p => typeof p?.id === 'string' && p.metadata?.workspaceId === workspaceId)
+                .slice(0, limit)
+                .map(p => ({
+                    id: p.id,
+                    ...(typeof p.status === 'string' ? { status: p.status } : {}),
+                    ...(typeof p.title === 'string' ? { title: p.title } : {}),
+                    ...(typeof p.customTitle === 'string' ? { customTitle: p.customTitle } : {}),
+                    ...(typeof p.promptPreview === 'string' ? { promptPreview: p.promptPreview } : {}),
+                }));
         },
 
         async startRemoteChat(request) {

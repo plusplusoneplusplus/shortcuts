@@ -39,7 +39,7 @@ references before editing. Paths are package-relative.
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   Reject late responses after scope changes.
-- `list_workspaces` and `send_to_conversation` remote targets share one route-layer
+- `list_workspaces`, `send_to_conversation` remote targets and messaging `list remotes` share one route-layer
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
   local fallback; output never carries paths, URLs, or credentials.
@@ -174,6 +174,12 @@ references before editing. Paths are package-relative.
   chat, else the selected topic; it calls `processes/compact-process.ts` (shared with
   the compact route), never enqueues a turn or changes selection, and maps 400/409/422
   to fixed replies. Ask is default; `/autopilot <msg>` runs one message in Autopilot.
+  `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
+  `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`
+  (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in
+  memory per WhatsApp group / Teams thread; remote repos are never selectable, and
+  replies carry only server/repo names (failures logged server-side). Bare `list topics`
+  stays local.
 - Ask turns started from WhatsApp/Teams (first and connector follow-ups) relay
   `ask_user` questions one at a time to the originating group/thread through
   `src/server/messaging/ask-user-relay.ts`, wired at emit time via the late-bound

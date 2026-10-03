@@ -11,20 +11,25 @@
  *     other bare text is chat.
  *   - `[chatid] message` targets an explicit chat; `/autopilot [chatid] message`
  *     combines both.
+ *   - `list topics <ref>` lists a remote repo's chats read-only; `<ref>` is a
+ *     `n.m` number from `list remotes` or `name@server`. Bare `list topics`
+ *     stays local.
  */
 
 export type MessagingChatMode = 'ask' | 'autopilot';
 
 export type MessagingCommand =
-    | { type: 'list-repos' | 'list-topics' | 'create-topic' | 'help' | 'quota'; args: '' }
+    | { type: 'list-repos' | 'list-remotes' | 'create-topic' | 'help' | 'quota'; args: '' }
     | { type: 'select-repo' | 'select-topic'; args: string }
+    /** `args` is an optional remote repo ref (`n.m` or `name@server`); empty lists local topics. */
+    | { type: 'list-topics'; args: string }
     /** `args` is optional custom instructions that focus the summary. */
     | { type: 'compact'; args: string }
     | { type: 'chat'; args: string; mode: MessagingChatMode }
     | { type: 'chat-explicit'; chatId: string; args: string; mode: MessagingChatMode }
     | { type: 'invalid'; args: string };
 
-export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'select-repo' | 'select-topic' | 'compact' }>;
+export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-remotes' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'select-repo' | 'select-topic' | 'compact' }>;
 
 interface CommandSpec {
     type: MessagingControlCommand['type'];
@@ -37,7 +42,8 @@ interface CommandSpec {
 export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
     { type: 'list-repos', pattern: /^list\s+(?:repos?|agents?)$/i, usage: 'list repos', summary: 'list registered repos (alias: list agents)' },
     { type: 'select-repo', pattern: /^select\s+repos?\s+(.+)$/i, usage: 'select repo <n|name|id>', summary: 'choose the repo for new chats' },
-    { type: 'list-topics', pattern: /^list\s+(?:chat\s+)?topics?$/i, usage: 'list topics', summary: 'list recent chats' },
+    { type: 'list-remotes', pattern: /^list\s+remotes?$/i, usage: 'list remotes', summary: 'list remote servers and their repos' },
+    { type: 'list-topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?$/i, usage: 'list topics', summary: 'list recent chats; add n.m or repo@server for a remote repo (read-only)' },
     { type: 'create-topic', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'your next message starts a new chat' },
     { type: 'select-topic', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'continue an existing chat' },
     { type: 'compact', pattern: /^compact(?:\s+(.+))?$/is, usage: 'compact [instructions]', summary: "compact the chat's context (quoted reply's chat, else selected topic)" },
@@ -47,7 +53,7 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
 
 const EXPLICIT_CHAT_PATTERN = /^\[([^\]]+)\]\s*(.+)$/s;
 const AUTOPILOT_PATTERN = /^\/autopilot(?:\s+(.*))?$/is;
-const COMMAND_LIKE_PATTERN = /^(?:list|select|create)\s+(?:repos?|agents?|(?:chat\s+)?topics?)\b|^(?:list|select|create)$/i;
+const COMMAND_LIKE_PATTERN = /^(?:list|select|create)\s+(?:repos?|agents?|remotes?|(?:chat\s+)?topics?)\b|^(?:list|select|create)$/i;
 
 export const MESSAGING_HELP_TEXT = [
     'Commands (case-insensitive, leading / optional):',

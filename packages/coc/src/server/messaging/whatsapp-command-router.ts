@@ -5,6 +5,7 @@ import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsa
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
 import { handleMessagingCommand, invalidCommandReply, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
+import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
@@ -16,11 +17,15 @@ export interface WhatsAppRouterDeps {
     queued?: (binding: WhatsAppBinding) => void;
     getQuota?: MessagingQuotaSource;
     compact?: MessagingCompactor;
+    /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
+    remotes?: MessagingRemoteDirectory;
     /** Relayed ask_user questions; a matching reply is an answer, not a request. */
     questions?: Pick<AskUserQuestionRelayHub, 'tryAnswer'>;
 }
 
 export class WhatsAppCommandRouter {
+    private readonly remoteRefs = new RemoteRefMemory();
+
     constructor(private readonly deps: WhatsAppRouterDeps) {}
 
     async handle(msg: InboundWAMessage): Promise<void> {
@@ -44,6 +49,8 @@ export class WhatsAppCommandRouter {
                     requireRepoForTopics: true,
                     getQuota: this.deps.getQuota,
                     compact: this.deps.compact,
+                    remotes: this.deps.remotes,
+                    remoteRefs: this.remoteRefs.slot(msg.chatJid),
                     // A quote-reply to an answer compacts that answer's chat.
                     compactTarget: () => msg.quotedMessageId ? bindings.findMessage(msg.quotedMessageId) : undefined,
                     selection: {

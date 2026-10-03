@@ -21,6 +21,7 @@ import {
     compactChatReply, handleMessagingCommand, invalidCommandReply, readQuotaReply,
     type MessagingCompactor, type MessagingQuotaSource,
 } from './messaging-commands';
+import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 
 // ============================================================================
 // Types
@@ -51,6 +52,8 @@ export interface TeamsCommandRouterDeps {
     getQuota?: MessagingQuotaSource;
     /** Compacts a chat's provider context for the `compact` command. */
     compact?: MessagingCompactor;
+    /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
+    remotes?: MessagingRemoteDirectory;
     /** Send a reply back to Teams. */
     sendReply: (text: string, replyToId?: string) => Promise<void>;
     /** Data directory for persisting user state. */
@@ -66,6 +69,7 @@ export class TeamsCommandRouter {
     private readonly userState: TeamsUserStateStore;
     private readonly hydratingRoots = new Set<string>();
     private readonly threadDispatches = new Map<string, Promise<void>>();
+    private readonly remoteRefs = new RemoteRefMemory();
 
     constructor(deps: TeamsCommandRouterDeps) {
         this.deps = deps;
@@ -172,7 +176,7 @@ export class TeamsCommandRouter {
             } else if (command.type === 'chat') {
                 await this.handleChat(userKey, command.args, command.mode, msg, observe);
             } else {
-                await this.deps.sendReply(await this.handleControlCommand(userKey, command), msg.messageId);
+                await this.deps.sendReply(await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`), msg.messageId);
             }
         } catch (err: any) {
             observe?.('dispatch-failed');
@@ -195,7 +199,8 @@ export class TeamsCommandRouter {
         }
     }
 
-    private handleControlCommand(userKey: string, command: MessagingControlCommand): Promise<string> {
+    /** `chatKey` scopes the `list remotes` numbering: a bound thread, or a user in a channel. */
+    private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string): Promise<string> {
         return handleMessagingCommand(command, {
             store: this.deps.store,
             requireRepoForTopics: false,
@@ -204,6 +209,8 @@ export class TeamsCommandRouter {
             code: teamsCodeSpan,
             escape: escapeTeamsMarkdown,
             compact: this.deps.compact,
+            remotes: this.deps.remotes,
+            remoteRefs: this.remoteRefs.slot(chatKey),
             // Compact the chat plain messages currently continue.
             compactTarget: () => {
                 const state = this.userState.get(userKey);
@@ -223,13 +230,15 @@ export class TeamsCommandRouter {
 
     private async handleThreadCommand(msg: InboundTeamsMessage, command: MessagingControlCommand, silent = false): Promise<void> {
         const root = msg.replyToMessageId!;
-        if (silent && (command.type === 'list-repos' || command.type === 'list-topics'
+        if (silent && (command.type === 'list-repos' || command.type === 'list-topics' || command.type === 'list-remotes'
             || command.type === 'help' || command.type === 'quota')) return;
-        if (command.type === 'list-repos' || command.type === 'help' || command.type === 'quota') {
+        // Remote browsing is read-only and never touches the thread's selection.
+        const remoteBrowse = command.type === 'list-remotes' || (command.type === 'list-topics' && !!command.args);
+        if (command.type === 'list-repos' || command.type === 'help' || command.type === 'quota' || remoteBrowse) {
             this.deps.recordThreadCommand?.(msg);
             await this.deps.sendReply(command.type === 'help' ? MESSAGING_HELP_TEXT
                 : command.type === 'quota' ? await readQuotaReply(this.deps.getQuota)
-                    : await this.handleControlCommand('', command), root);
+                    : await this.handleControlCommand('', command, `${msg.channelId}\0${root}`), root);
             return;
         }
         if (command.type === 'compact') {

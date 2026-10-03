@@ -1,6 +1,7 @@
 /**
  * Platform-independent messaging command handling shared by the Teams and
- * WhatsApp routers: repo/topic selection, help, quota and compact. Each router supplies
+ * WhatsApp routers: repo/topic selection, help, quota, compact and read-only
+ * remote browsing. Each router supplies
  * its own selection state and text styling; transport, threads, quote-reply
  * bindings and enqueue wiring stay in the router.
  */
@@ -13,6 +14,7 @@ import { isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusonepluspl
 import { APIError } from '../errors';
 import type { CompactProcessOutcome } from '../processes/compact-process';
 import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
+import { formatTopicLine, listRemotesReply, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
 
 export type MessagingQuotaSource = () => Promise<AgentProvidersQuotaResponse | null | undefined>;
 /** Compacts a chat's provider session; throws `APIError` on guard failures. */
@@ -52,6 +54,10 @@ export interface MessagingCommandContext {
     compactTarget?: () => Promise<MessagingCompactTarget | null | undefined> | MessagingCompactTarget | null | undefined;
     /** Escapes plain text such as chat titles; identity by default. */
     escape?: (text: string) => string;
+    /** Local + remote repo directory for `list remotes` / `list topics <ref>`. */
+    remotes?: MessagingRemoteDirectory;
+    /** This chat's last `list remotes` numbering, so `n.m` refs resolve. */
+    remoteRefs?: RemoteRefSlot;
 }
 
 const plain = (text: string) => text;
@@ -130,6 +136,10 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
     const code = ctx.code ?? plain;
     if (command.type === 'help') return MESSAGING_HELP_TEXT;
     if (command.type === 'quota') return readQuotaReply(ctx.getQuota);
+    // Remote browsing is read-only and independent of the selected repo.
+    const format = { strong, code, escape: ctx.escape ?? plain };
+    if (command.type === 'list-remotes') return listRemotesReply(ctx.remotes, ctx.remoteRefs, format);
+    if (command.type === 'list-topics' && command.args) return listRemoteTopicsReply(ctx.remotes, ctx.remoteRefs, command.args, format);
 
     const workspaces = await ctx.store.getWorkspaces();
     if (command.type === 'compact') {
@@ -168,8 +178,7 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
         if (!topics.length) return 'No chat topics found.';
         const current = ctx.selection.topicId(workspaceId);
         return `Chat topics (${scope}):\n${topics.map((topic, i) =>
-            `${i + 1}. ${code(topic.id)} [${topic.status ?? 'unknown'}] ${topic.title ?? topic.customTitle ?? topic.promptPreview?.slice(0, 60) ?? ''}`.trimEnd()
-            + (topic.id === current ? ' ⬅️' : '')).join('\n')}`;
+            formatTopicLine(topic, i, code) + (topic.id === current ? ' ⬅️' : '')).join('\n')}`;
     }
     if (command.type === 'create-topic') {
         ctx.selection.selectTopic(workspaceId, null);

@@ -208,6 +208,12 @@ adapter; routers keep platform state and transport. `compact` targets the quoted
 WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
 and calls `processes/compact-process.ts` `compactProcess` (shared with
 `POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. Chats run in Ask mode unless the message starts with `/autopilot`.
+`list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
+`list topics <n.m|name@server>` (10 most recent remote chats, read-only header) are
+answered by `messaging/remote-browse.ts` over the route-layer `WorkspaceDirectory`
+(`list()` + `listRemoteChats()` → the remote's `GET /api/processes?workspace=&limit=`).
+The `n.m` numbering lives in a per-chat in-memory `RemoteRefMemory` (WhatsApp group,
+Teams thread or channel+user); remote repos never become the selected repo.
 
 ### Messaging ask_user question relay
 

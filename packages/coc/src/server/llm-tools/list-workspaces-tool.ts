@@ -64,7 +64,7 @@ export function createListWorkspacesTool(options: { directory: WorkspaceDirector
                     : entries;
                 return {
                     workspaces: matches.slice(0, LIST_WORKSPACES_MAX_RESULTS),
-                    servers,
+                    servers: servers.map(({ serverId: _serverId, ...server }) => server),
                     total: matches.length,
                     truncated: matches.length > LIST_WORKSPACES_MAX_RESULTS,
                 };
