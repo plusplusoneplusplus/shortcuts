@@ -12,10 +12,10 @@ use coc_native_core::repo_files::{
     TreeListing,
 };
 use coc_native_core::repo_index::{FuzzyMatcher, Hit};
-use napi::bindgen_prelude::{AsyncTask, Error, Status};
+use napi::bindgen_prelude::{AsyncTask, Error, FnArgs, Function, Status};
 use napi_derive::napi;
 
-use crate::task::{blocking, Blocking};
+use crate::task::Blocking;
 use coc_native_core::content_search::{ContentSearchOptions, ContentSearchResult};
 
 // Results and replace targets are core's own types (core's `napi` feature
@@ -178,8 +178,17 @@ impl RepoFiles {
         T: napi::bindgen_prelude::ToNapiValue + napi::bindgen_prelude::TypeName + Send + 'static,
         F: FnOnce(&Arc<RepoIndexes>, &Path) -> Result<T, RepoFilesError> + Send + 'static,
     {
+        AsyncTask::new(self.task(job))
+    }
+
+    fn task<T, F>(&self, job: F) -> Blocking<T>
+    where
+        F: FnOnce(&Arc<RepoIndexes>, &Path) -> Result<T, RepoFilesError> + Send + 'static,
+    {
         let indexes = Arc::clone(&self.indexes);
-        blocking(move || indexes.root().and_then(|root| job(&indexes, root)).map_err(to_napi_error))
+        Blocking::new(move || {
+            indexes.root().and_then(|root| job(&indexes, root)).map_err(to_napi_error)
+        })
     }
 }
 
@@ -344,7 +353,8 @@ impl RepoFiles {
             regex: flag(|o| o.regex),
             preserve_case: flag(|o| o.preserve_case),
         };
-        self.run(move |indexes, root| {
+        let diagnostic_query = query.clone();
+        let task = self.task(move |indexes, root| {
             let result = replace_content(root, &query, &replacement, &files, options);
             if !matches!(&result, Ok(s) if s.replaced_files == 0)
                 && !matches!(result, Err(RepoFilesError::InvalidArg(_)))
@@ -352,6 +362,28 @@ impl RepoFiles {
                 indexes.invalidate();
             }
             result
-        })
+        });
+        AsyncTask::new(task.map_error(move |env, mut error| {
+            if error.status == Status::InvalidArg
+                && error.reason.starts_with("Invalid regular expression: ")
+            {
+                let pattern = if options.whole_word {
+                    format!("\\b(?:{diagnostic_query})\\b")
+                } else {
+                    diagnostic_query
+                };
+                // Only diagnostics use Node's engine; matching stays in core on the worker.
+                // Pass the pattern as data, never interpolate it into JavaScript source.
+                let diagnostic = env
+                    .run_script::<_, Function<FnArgs<(String, String)>, Option<String>>>(
+                        "((pattern, flags) => { try { new RegExp(pattern, flags); return null; } catch (e) { return e.message; } })",
+                    )
+                    .and_then(|get| get.call((pattern, if options.case_sensitive { "g" } else { "gi" }.into()).into()));
+                if let Ok(Some(message)) = diagnostic {
+                    error.reason = format!("Invalid regular expression: {message}");
+                }
+            }
+            error
+        }))
     }
 }

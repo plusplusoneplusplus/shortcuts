@@ -127,8 +127,8 @@ const CASES: [line: string, query: string, replacement: string, options: Options
     ['x ( y', '(', ')', {}],
 ];
 
-const BAD = ['(unclosed', '[z-a]', 'a**', '(?<n>a)(?<n>b)', '\\k<nope>(?<n>a)', '(?<=a', '+a'];
-const ACCEPTED = ['\\k', 'a{,2}', '{', '}', '\\c', '\\q', '[\\d-z]', '(?:)', 'a|', '\\8', '\\1(a)', '\\0'];
+const BAD = ['[', ')', '\\', 'a{3,2}', '(?<1>a)', "('quoted", '(`globalThis.injected = true', '(unclosed', '[z-a]', 'a**', '(?<n>a)(?<n>b)', '\\k<nope>(?<n>a)', '(?<=a', '+a'];
+const ACCEPTED = ['(?i:a)', '\\k', 'a{,2}', '{', '}', '\\c', '\\q', '[\\d-z]', '(?:)', 'a|', '\\8', '\\1(a)', '\\0'];
 
 const addon = loadNativeRepoFiles();
 let root: string;
@@ -154,6 +154,41 @@ describe('replaceContent matches JavaScript RegExp', () => {
         // A lone surrogate is written as U+FFFD, exactly as `fs.writeFile` would.
         const written = Buffer.from(`${expected.text}\r\nkeep\n`, 'utf-8').toString('utf-8');
         expect(fs.readFileSync(path.join(root, file), 'utf-8')).toBe(written);
+    });
+
+    it.each(BAD.flatMap((query) => [false, true].flatMap((wholeWord) => [false, true].map((caseSensitive) => ({ query, wholeWord, caseSensitive })))))
+        ('preserves Node diagnostics for $query ($wholeWord, $caseSensitive)', async ({ query, wholeWord, caseSensitive }) => {
+            const options = { regex: true, wholeWord, caseSensitive };
+            let message = '';
+            try {
+                oracleMatcher(query, options);
+            } catch (error) {
+                message = `Invalid regular expression: ${(error as Error).message}`;
+            }
+            expect(message).not.toBe('');
+            const files = addon.openRepoFiles(root);
+            const file = 'invalid-query.txt';
+            fs.writeFileSync(path.join(root, file), 'keep');
+            try {
+                await expect(files.replaceContent(query, 'changed', [{ path: file, targets: [
+                    { line: 1, text: 'keep', startColumn: 0, endColumn: 4 },
+                ] }], options)).rejects.toMatchObject({ code: 'InvalidArg', message });
+                expect(fs.readFileSync(path.join(root, file), 'utf-8')).toBe('keep');
+            } finally {
+                files.dispose();
+            }
+        });
+
+    it('keeps query validation and disposed-handle errors ahead of regex diagnostics', async () => {
+        const files = addon.openRepoFiles(root);
+        await expect(files.replaceContent('', '', [], { regex: true })).rejects.toMatchObject({
+            code: 'InvalidArg', message: 'Missing required field: query',
+        });
+        await expect(files.replaceContent('(\n', '', [], { regex: true })).rejects.toMatchObject({
+            code: 'InvalidArg', message: 'Replace does not support multi-line queries',
+        });
+        files.dispose();
+        await expect(files.replaceContent('(', '', [], { regex: true })).rejects.toMatchObject({ code: 'Closing' });
     });
 
     it('accepts and rejects the same patterns', async () => {
