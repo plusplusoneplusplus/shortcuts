@@ -270,6 +270,27 @@ describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco
         expect(fake().zones.size).toBe(0);
     });
 
+    it('copies a resolve prompt for only the clicked card with the source refs', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+        const source = makeSource(kind);
+        stored = [
+            comment(source, 'c1'),
+            comment(source, 'c2', {
+                selection: { diffLineStart: 6, diffLineEnd: 6, side: 'removed', oldLineStart: 2, oldLineEnd: 2, startColumn: 0, endColumn: 1 },
+                selectedText: 'b',
+            }),
+        ];
+        await mount(source);
+        await act(async () => { fireEvent.click(within(cardOf('c1')).getByRole('button', { name: 'Copy resolve prompt' })); });
+        const prompt: string = writeText.mock.calls[0][0];
+        expect(prompt).toContain(`file: ${PATH}\nDiff range: ${REFS[kind][0]} → ${REFS[kind][1]}`);
+        expect(prompt).toContain('id: c1, status: open');
+        expect(prompt).toContain('Comment: note c1');
+        expect(prompt).not.toContain('c2');
+        expect(within(cardOf('c1')).getByRole('status').textContent).toBe('Prompt copied');
+    });
+
     it('uses the existing ask-AI response and error handling inside the thread', async () => {
         const source = makeSource(kind);
         stored = [comment(source, 'c1')];

@@ -191,6 +191,26 @@ describe('WorkingTreeFileDiff — comments in the editor', () => {
         view.unmount();
     });
 
+    it('copies a resolve prompt for only the clicked card with working-tree context', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+        hooks.comments = [
+            comment('c1'),
+            comment('c2', { selection: { diffLineStart: 2, diffLineEnd: 2, side: 'removed', oldLineStart: 2, oldLineEnd: 2, newLineStart: NaN, newLineEnd: NaN, startColumn: 0, endColumn: 1 }, selectedText: 'b' }),
+        ];
+        const view = await renderEditor();
+        const card = within(zoneOf('c2')!.domNode).getByTestId('comment-card-c2');
+        await act(async () => { fireEvent.click(within(card).getByRole('button', { name: 'Copy resolve prompt' })); });
+        const prompt: string = writeText.mock.calls[0][0];
+        expect(prompt).toContain('file: /repo/src/a.ts\nDiff range: working tree changes');
+        expect(prompt).toContain('id: c2, status: open');
+        expect(prompt).toContain('(removed)');
+        expect(prompt).not.toContain('c1');
+        expect(within(card).getByRole('status').textContent).toBe('Prompt copied');
+        vi.unstubAllGlobals();
+        view.unmount();
+    });
+
     it('the sidebar reveals the thread in the editor', async () => {
         hooks.comments = [comment('c1', { status: 'resolved' })];
         const view = await renderEditor();

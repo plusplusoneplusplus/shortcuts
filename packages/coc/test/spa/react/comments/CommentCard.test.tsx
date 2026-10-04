@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { CommentCard } from '../../../../src/server/spa/client/react/tasks/comments/CommentCard';
 import type { TaskComment } from '../../../../src/server/spa/client/comments/task-comments-types';
 
@@ -493,5 +493,50 @@ describe('CommentCard', () => {
             expect(screen.getByLabelText('Resolve')).toHaveProperty('disabled', false);
             expect(screen.getByLabelText('Delete')).toHaveProperty('disabled', false);
         });
+    });
+});
+
+describe('CommentCard — copy resolve prompt', () => {
+    const renderCard = (getResolvePrompt?: () => string) => render(
+        <CommentCard
+            comment={makeComment()}
+            onResolve={noop} onUnresolve={noop} onEdit={noop}
+            onDelete={noop} onAskAI={noop} onClick={noop}
+            getResolvePrompt={getResolvePrompt}
+        />
+    );
+
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it('hides the action when no prompt builder is given', () => {
+        renderCard();
+        expect(screen.queryByTestId('comment-copy-prompt')).toBeNull();
+    });
+
+    it('is a labelled button and copies the prompt with success feedback', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { clipboard: { writeText } });
+        const onClick = vi.fn();
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={onClick}
+                getResolvePrompt={() => 'the prompt'}
+            />
+        );
+        const button = screen.getByRole('button', { name: 'Copy resolve prompt' });
+        expect(button.getAttribute('title')).toBe('Copy resolve prompt');
+        await act(async () => { fireEvent.click(button); });
+        expect(writeText).toHaveBeenCalledWith('the prompt');
+        expect(screen.getByRole('status').textContent).toBe('Prompt copied');
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('reports a clipboard failure', async () => {
+        vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+        renderCard(() => 'the prompt');
+        await act(async () => { fireEvent.click(screen.getByTestId('comment-copy-prompt')); });
+        expect(screen.getByRole('status').textContent).toBe('Copy failed');
     });
 });

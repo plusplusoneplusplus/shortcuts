@@ -44,6 +44,7 @@ import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
+import { formatDiffCommentPrompt } from '../../../utils/diffCommentPrompt';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useCrossFileNav, type HunkNavigationHandle } from '../hooks/useCrossFileNav';
@@ -471,6 +472,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             onClearAiError={() => clearAiError(comment.id)}
             isResolving={resolvingIds.has(comment.id)}
             isDeleting={deletingIds.has(comment.id)}
+            getResolvePrompt={() => formatDiffCommentPrompt(comment)}
         />
     ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
 

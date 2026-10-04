@@ -14,6 +14,7 @@ import { cloneWsUrl } from '../../../api/wsUrl';
 import type { DiffComment, DiffCommentContext, DiffCommentSelection } from '../../../../comments/diff-comment-types';
 import type { DiffLine } from '../diff/UnifiedDiffViewer';
 import { relocateDiffAnchor } from '../../../utils/relocateDiffAnchor';
+import { formatDiffCommentsPrompt } from '../../../utils/diffCommentPrompt';
 import { computeStorageKey, patchDiffComment, deleteDiffCommentById } from '../../../utils/diffCommentApi';
 import { GIT_REVIEW_POPOUT_CHANNEL } from '../../../contexts/GitReviewPopOutContext';
 import type { GitReviewPopOutMessage } from '../../../contexts/GitReviewPopOutContext';
@@ -351,25 +352,7 @@ export function useDiffComments(
         const ctx = contextRef.current;
         if (!commentsRef.current.length || !ctx) return;
 
-        const commentsBlock = commentsRef.current
-            .map((c, i) =>
-                `### Comment ${i + 1} (id: ${c.id}, status: ${c.status})\n` +
-                `Lines ${c.selection.diffLineStart}–${c.selection.diffLineEnd} (${c.selection.side})\n` +
-                `Selected code:\n\`\`\`\n${c.selectedText}\n\`\`\`\n` +
-                `Comment: ${c.comment}`
-            )
-            .join('\n\n');
-
-        const refRange = ctx.newRef === 'working-tree'
-            ? `working tree changes`
-            : `${ctx.oldRef} → ${ctx.newRef}`;
-
-        const prompt =
-            `You are reviewing a git diff for file: ${ctx.filePath}\n` +
-            `Diff range: ${refRange}\n\n` +
-            `The following ${commentsRef.current.length} comment(s) have been added to the diff:\n\n` +
-            `${commentsBlock}\n\n` +
-            `Please address these comments.`;
+        const prompt = formatDiffCommentsPrompt(ctx, commentsRef.current);
 
         void navigator.clipboard.writeText(prompt);
     }, []); // commentsRef and contextRef are always up-to-date

@@ -22,6 +22,7 @@ import { useDiffFindShortcut } from './useDiffFindShortcut';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
+import { formatDiffCommentPrompt } from '../../../utils/diffCommentPrompt';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
@@ -419,6 +420,7 @@ export function FileDiffPanel({
             onClearAiError={() => clearAiError(comment.id)}
             isResolving={resolvingIds.has(comment.id)}
             isDeleting={deletingIds.has(comment.id)}
+            getResolvePrompt={() => formatDiffCommentPrompt(comment)}
         />
     ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, handleFixWithAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
 

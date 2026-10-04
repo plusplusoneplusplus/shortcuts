@@ -152,7 +152,10 @@ diverged elsewhere (unsaved explorer edit) is never written; features stay off.
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.
 `FileDiffPanel` uses each source's existing comment refs for CRUD, replies, and AI
-actions; sidebar navigation reveals and expands the editor thread. Anchor relocation
+actions; sidebar navigation reveals and expands the editor thread. Each inline card's Copy
+resolve prompt action copies that one comment through `utils/diffCommentPrompt.ts`
+(`formatDiffCommentPrompt`), the same formatter as the sidebar's copy-all, using the
+comment's own file and refs; the card shows copied/failed feedback. Anchor relocation
 matches source rows, excluding patch headers and no-newline annotations during engine
 switches. Both engines share the persisted comment shape.
 
