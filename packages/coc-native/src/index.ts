@@ -24,6 +24,7 @@ export {
     resetNativeAddonCache,
 } from './loader';
 export type { NativeAddon, NativeAddonStatus } from './types';
+export { loadWebView2Binary, webview2BinaryCandidates, WEBVIEW2_BINARY_NAME } from './webview2';
 
 export { loadNativeRepoFiles, nativeRepoFilesStatus } from './repo-files';
 export type {

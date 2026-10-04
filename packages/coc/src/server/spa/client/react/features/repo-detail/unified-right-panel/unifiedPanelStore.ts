@@ -28,6 +28,7 @@ import {
     serializeUnifiedPanelState,
     unifiedPanelStorageKey,
     type UnifiedPanelState,
+    closeTab,
 } from './unifiedPanelTabsModel';
 import { readUnifiedTreeState, writeUnifiedTreeState } from './unifiedPanelTree';
 import { clearUnifiedPanelNavigationHistory } from './unifiedPanelNavigationStore';
@@ -74,6 +75,10 @@ export function readUnifiedPanelState(workspaceId: string): UnifiedPanelState {
 /** Persist a workspace's state and wake every subscriber on that key. */
 export function writeUnifiedPanelState(workspaceId: string, next: UnifiedPanelState): void {
     const storageKey = unifiedPanelStorageKey(workspaceId);
+    writeState(storageKey, next);
+}
+
+function writeState(storageKey: string, next: UnifiedPanelState): void {
     const raw = serializeUnifiedPanelState(next);
     try {
         localStorage.setItem(storageKey, raw);
@@ -85,6 +90,14 @@ export function writeUnifiedPanelState(workspaceId: string, next: UnifiedPanelSt
     // operation keeps returning the identical reference.
     snapshotCache.set(storageKey, { raw, value: next });
     listeners.get(storageKey)?.forEach(listener => listener());
+}
+
+/** Native cleanup can close browser tabs in workspaces whose panels are unmounted. */
+export function closeBrowserPanelView(viewId: string): void {
+    for (const [storageKey, snapshot] of [...snapshotCache]) {
+        const tab = snapshot.value.workspaceTabs.find(tab => tab.kind === 'browser' && tab.resourceId === viewId);
+        if (tab) writeState(storageKey, closeTab(snapshot.value, tab.id));
+    }
 }
 
 /**

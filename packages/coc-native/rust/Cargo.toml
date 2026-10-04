@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "lsp", "napi"]
+members = ["core", "lsp", "napi", "webview2"]
 resolver = "2"
 
 [workspace.package]

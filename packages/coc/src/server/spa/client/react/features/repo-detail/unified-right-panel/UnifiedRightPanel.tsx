@@ -598,16 +598,16 @@ export function UnifiedRightPanel({
     useEffect(() => {
         const bridge = desktopBrowserBridge();
         if (!bridge) return;
-        return bridge.onNewTab(({ openerViewId, url }) => {
+        return bridge.onNewTab(({ openerViewId, url, engine }) => {
             const opener = tabsRef.current.find(tab => tab.kind === 'browser' && tab.resourceId === openerViewId);
             const normalized = normalizeBrowserUrl(url);
             if (!opener || !normalized.ok) return;
-            open(browserOpenInput({
+            open({ ...browserOpenInput({
                 ownerWorkspaceId: opener.ownerWorkspaceId,
                 ownerRoutingRef: opener.ownerRoutingRef,
                 chatId,
                 repoLabel: opener.repoLabel,
-            }, normalized.url));
+            }, normalized.url), browserEngine: engine });
         });
     }, [chatId, open]);
 
@@ -1624,6 +1624,7 @@ export function UnifiedRightPanel({
                                         viewId={tab.resourceId}
                                         sessionKey={browserSessionKey(tab)}
                                         url={tab.browserUrl}
+                                        relatedEngine={tab.browserEngine}
                                         active={tab.id === activeId}
                                         visible={isOpen && !menuOpen && !quickOpenVisible && !exactOpenVisible
                                             && pendingClose === null && pendingDirty === null}

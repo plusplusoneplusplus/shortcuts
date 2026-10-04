@@ -76,6 +76,7 @@ describe('electron-builder packaging config', () => {
             const unpack = config.asarUnpack ?? [];
             expect(unpack).toContain('**/*.node');
             expect(unpack).toContain('**/coc-symbols-lsp*');
+            expect(unpack).toContain('**/coc-webview2*');
             expect(unpack).toContain('**/@github/copilot/**');
             expect(unpack).toContain('**/@github/copilot-sdk-*/**');
             expect(unpack).toContain('**/@github/copilot-*-*/**');

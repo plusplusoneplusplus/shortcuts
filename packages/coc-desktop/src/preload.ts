@@ -58,6 +58,12 @@ const BROWSER_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-open-external';
 const BROWSER_VIEW_STATE_CHANNEL = 'coc-desktop:browser-view-state';
 const BROWSER_VIEW_NEW_TAB_CHANNEL = 'coc-desktop:browser-view-new-tab';
 const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
+const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
+const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
+const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
+const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
+const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
+const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {
@@ -115,22 +121,31 @@ interface HtmlPageRect {
 }
 
 /** Reply to `browser.open` / `browser.navigate` (mirrors `BrowserOpenResult` in browser-view-policy.ts). */
-type BrowserOpenResult = { ok: true } | { ok: false; reason: string };
+type BrowserEngine = 'electron' | 'webview2';
+type BrowserOpenResult = { ok: true; engine: BrowserEngine } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
+interface BrowserPreferences {
+    defaultEngine: BrowserEngine;
+    engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
+    clearing: BrowserEngine[];
+}
 
 /** Live navigation snapshot of a browser tab (mirrors `BrowserViewState`). */
 interface BrowserViewState {
     viewId: string;
+    engine: BrowserEngine;
     url: string;
     title: string;
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;
     error?: string;
+    errorCode?: string;
 }
 
 /** A page asked to open a new tab (mirrors `BrowserNewTabRequest`). */
 interface BrowserNewTabRequest {
     openerViewId: string;
+    engine: BrowserEngine;
     url: string;
 }
 
@@ -313,16 +328,16 @@ const api = {
     /**
      * Browser tab bridge (see browser-view-host.ts). The SPA picks an opaque
      * `viewId` per tab and opens it with an http(s) URL and the tab's concrete
-     * owner `sessionKey` (tabs with the same key share an in-memory sign-in
-     * session). It keeps the view over its placeholder with `setBounds` (null
+     * owner `sessionKey`. Sign-ins persist installation-wide in separate engine
+     * profiles. It keeps the view over its placeholder with `setBounds` (null
      * hides it) / `hide`, drives history with `nav`, and tears it down with
      * `close`. `onState` streams url/title/history/loading/error, `onNewTab`
      * asks the SPA to open a new-window link as another tab, and `onDownload`
      * reports downloads handed to the system browser.
      */
     browser: {
-        open: (viewId: string, url: string, sessionKey: string): Promise<BrowserOpenResult> =>
-            ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, url, sessionKey),
+        open: (viewId: string, url: string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
+            ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, url, sessionKey, relatedEngine),
         navigate: (viewId: string, url: string): Promise<BrowserOpenResult> =>
             ipcRenderer.invoke(BROWSER_VIEW_NAVIGATE_CHANNEL, viewId, url),
         nav: (viewId: string, action: 'back' | 'forward' | 'reload' | 'stop') =>
@@ -331,12 +346,20 @@ const api = {
             ipcRenderer.send(BROWSER_VIEW_SET_BOUNDS_CHANNEL, viewId, rect),
         hide: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_HIDE_CHANNEL, viewId),
         close: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_CLOSE_CHANNEL, viewId),
+        focus: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_FOCUS_CHANNEL, viewId),
         openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke(BROWSER_OPEN_EXTERNAL_CHANNEL, url),
         onState: (callback: (state: BrowserViewState) => void) => subscribe(BROWSER_VIEW_STATE_CHANNEL, callback),
         onNewTab: (callback: (request: BrowserNewTabRequest) => void) =>
             subscribe(BROWSER_VIEW_NEW_TAB_CHANNEL, callback),
         onDownload: (callback: (event: BrowserDownloadEvent) => void) =>
             subscribe(BROWSER_VIEW_DOWNLOAD_CHANNEL, callback),
+        getPreferences: (): Promise<BrowserPreferences> => ipcRenderer.invoke(BROWSER_PREFERENCES_GET_CHANNEL),
+        setDefaultEngine: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
+            ipcRenderer.invoke(BROWSER_PREFERENCES_SET_CHANNEL, engine),
+        clearData: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
+            ipcRenderer.invoke(BROWSER_CLEAR_DATA_CHANNEL, engine),
+        onPreferencesChanged: (callback: () => void) => subscribe(BROWSER_PREFERENCES_CHANGED_CHANNEL, callback),
+        onClosed: (callback: (event: { viewId: string; engine: BrowserEngine }) => void) => subscribe(BROWSER_VIEW_CLOSED_CHANNEL, callback),
     },
 } as const;
 

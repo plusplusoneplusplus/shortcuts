@@ -14,7 +14,8 @@
     "dist",
     "prebuilt",
     "*.node",
-    "coc-symbols-lsp.*"
+    "coc-symbols-lsp.*",
+    "coc-webview2.*.exe"
   ],
   "scripts": {
     "build": "tsc",

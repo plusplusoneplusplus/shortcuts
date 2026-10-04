@@ -37,6 +37,7 @@ bower_components
 
 # Compiled binary addons (https://nodejs.org/api/addons.html)
 build/Release
+packages/coc-native/coc-webview2.*.exe
 
 # Dependency directories
 node_modules/

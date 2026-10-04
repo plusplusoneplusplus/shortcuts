@@ -30,6 +30,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildSymbolsLsp } from './build-symbols-lsp.mjs';
+import { buildWebView2 } from './build-webview2.mjs';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cargoCwd = path.join('rust', 'napi');
@@ -147,6 +148,7 @@ function main() {
     // `build:native` — CI, the serve loop's staleness check, a fresh clone —
     // ends up with both, and neither can quietly lag the other.
     buildSymbolsLsp({ profile, target });
+    buildWebView2({ profile, target });
 }
 
 /**

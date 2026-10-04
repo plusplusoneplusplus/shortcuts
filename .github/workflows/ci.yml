@@ -254,6 +254,9 @@ jobs:
         run: |
           ls packages/coc-native/*.node >/dev/null
           ls packages/coc-native/coc-symbols-lsp.* >/dev/null
+          if [ "$RUNNER_OS" = Windows ] && [ "$RUNNER_ARCH" = X64 ]; then
+            test -f packages/coc-native/coc-webview2.win32-x64-msvc.exe
+          fi
 
       # Both artifacts `build:native` produces, for the same reason release.yml
       # ships both: the addon is dlopen'd and the symbol language server is
@@ -267,6 +270,7 @@ jobs:
           path: |
             packages/coc-native/*.node
             packages/coc-native/coc-symbols-lsp.*
+            packages/coc-native/coc-webview2.*.exe
           if-no-files-found: error
           retention-days: 1
 
@@ -798,6 +802,7 @@ jobs:
 
   coc-desktop-test:
     runs-on: ${{ matrix.os }}
+    needs: [coc-native]
 
     strategy:
       fail-fast: false
@@ -828,6 +833,15 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci
 
+      - name: Download native desktop capability
+        uses: actions/download-artifact@v4
+        with:
+          name: coc-native-${{ matrix.os }}
+          path: packages/coc-native
+
+      - name: Build native TypeScript contract
+        run: npm run build -w packages/coc-native
+
       - name: Build coc-desktop package
         run: npm run build
         working-directory: packages/coc-desktop
@@ -835,6 +849,21 @@ jobs:
       - name: Run coc-desktop tests
         run: npm run test:run
         working-directory: packages/coc-desktop
+
+      - name: Run live browser engine contracts
+        if: matrix.os != 'ubuntu-latest'
+        run: npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts --fileParallelism=false
+        working-directory: packages/coc-desktop
+        env:
+          COC_DESKTOP_E2E: '1'
+
+      - name: Run live Electron browser contracts on headless Linux
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a npm run test:run -- test/e2e/browser-view.e2e.test.ts test/e2e/browser-engines.e2e.test.ts --fileParallelism=false
+        working-directory: packages/coc-desktop
+        env:
+          COC_DESKTOP_E2E: '1'
+          COC_DESKTOP_E2E_NO_SANDBOX: '1'
 
   workflow-policy-test:
     runs-on: ubuntu-latest

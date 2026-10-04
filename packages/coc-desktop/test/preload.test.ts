@@ -68,6 +68,12 @@ import {
     BROWSER_VIEW_STATE_CHANNEL,
     BROWSER_VIEW_NEW_TAB_CHANNEL,
     BROWSER_VIEW_DOWNLOAD_CHANNEL,
+    BROWSER_PREFERENCES_GET_CHANNEL,
+    BROWSER_PREFERENCES_SET_CHANNEL,
+    BROWSER_CLEAR_DATA_CHANNEL,
+    BROWSER_PREFERENCES_CHANGED_CHANNEL,
+    BROWSER_VIEW_CLOSED_CHANNEL,
+    BROWSER_VIEW_FOCUS_CHANNEL,
 } from '../src/browser-view-policy';
 
 const exposeInMainWorld = vi.fn();
@@ -114,6 +120,26 @@ describe('preload bridge', () => {
         expect(exposeInMainWorld).toHaveBeenCalledWith('cocDesktop', expect.anything());
         return exposeInMainWorld.mock.calls[0][1];
     }
+
+    it('routes local browser preferences, confirmed cleanup, focus and broadcasts through the desktop bridge', async () => {
+        const api = exposedApi().browser;
+        await api.getPreferences();
+        expect(invoke).toHaveBeenCalledWith(BROWSER_PREFERENCES_GET_CHANNEL);
+        await api.setDefaultEngine('webview2');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_PREFERENCES_SET_CHANNEL, 'webview2');
+        await api.clearData('electron');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_CLEAR_DATA_CHANNEL, 'electron');
+        api.focus('view');
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_FOCUS_CHANNEL, 'view');
+        const offChanged = api.onPreferencesChanged(vi.fn());
+        const offClosed = api.onClosed(vi.fn());
+        expect(on).toHaveBeenCalledWith(BROWSER_PREFERENCES_CHANGED_CHANNEL, expect.any(Function));
+        expect(on).toHaveBeenCalledWith(BROWSER_VIEW_CLOSED_CHANNEL, expect.any(Function));
+        offChanged();
+        offClosed();
+        expect(removeListener).toHaveBeenCalledWith(BROWSER_PREFERENCES_CHANGED_CHANNEL, expect.any(Function));
+        expect(removeListener).toHaveBeenCalledWith(BROWSER_VIEW_CLOSED_CHANNEL, expect.any(Function));
+    });
 
     it('find.query sends on the real find-in-page channel', () => {
         const api = exposedApi();
@@ -316,7 +342,7 @@ describe('preload bridge', () => {
         const api = exposedApi();
         invoke.mockResolvedValue({ ok: true });
         await expect(api.browser.open('b1', 'https://example.com/', 'ws-1')).resolves.toEqual({ ok: true });
-        expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_CHANNEL, 'b1', 'https://example.com/', 'ws-1');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_CHANNEL, 'b1', 'https://example.com/', 'ws-1', undefined);
         await api.browser.navigate('b1', 'https://example.org/');
         expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_NAVIGATE_CHANNEL, 'b1', 'https://example.org/');
         invoke.mockResolvedValue(true);

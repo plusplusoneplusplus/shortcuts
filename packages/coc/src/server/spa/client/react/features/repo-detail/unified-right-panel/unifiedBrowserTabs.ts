@@ -4,8 +4,8 @@
  * A browser tab is workspace-owned and session-only: it never reaches storage,
  * so restarting CoC starts with none. Each Browser open is a new tab (no dedupe
  * by URL), and the tab carries the concrete owner the dock targeted when it was
- * opened — that owner is also the identity its temporary site session is keyed
- * by, so changing the dock target never retargets an open tab.
+ * opened. That identity governs routing; each engine's persistent sign-ins are
+ * shared installation-wide. Changing the dock target never retargets a tab.
  *
  * URL handling is deliberately narrow: only http(s) is accepted, a bare domain
  * gets `https://` (loopback hosts get `http://`), and arbitrary text is rejected
@@ -22,6 +22,13 @@ export type BrowserUrlResult =
 export const BLANK_BROWSER_LABEL = 'New Tab';
 
 const NOT_A_URL = 'Not a URL. Enter a web address such as example.com.';
+const MAX_BROWSER_URL_LENGTH = 8192;
+
+function loadableUrl(url: URL): BrowserUrlResult {
+    return url.href.length > MAX_BROWSER_URL_LENGTH
+        ? { ok: false, reason: 'That URL is too long (maximum 8192 characters).' }
+        : { ok: true, url: url.href };
+}
 
 const SCHEME = /^([a-z][a-z0-9+.-]*):/i;
 const HOST_PORT = /^[^/?#:@\s]+:\d+(?:[/?#]|$)/;
@@ -57,6 +64,7 @@ function isPlausibleHost(hostname: string): boolean {
 export function normalizeBrowserUrl(input: string): BrowserUrlResult {
     const text = input.trim();
     if (text === '') return { ok: false, reason: 'Enter a URL.' };
+    if (text.length > MAX_BROWSER_URL_LENGTH) return { ok: false, reason: 'That URL is too long (maximum 8192 characters).' };
     const scheme = SCHEME.exec(text);
     const hasScheme = scheme !== null && !HOST_PORT.test(text);
     if (hasScheme) {
@@ -71,7 +79,7 @@ export function normalizeBrowserUrl(input: string): BrowserUrlResult {
             return { ok: false, reason: 'That URL is malformed.' };
         }
         if (url.hostname === '') return { ok: false, reason: 'That URL has no host.' };
-        return { ok: true, url: url.href };
+        return loadableUrl(url);
     }
     if (/\s/.test(text)) return { ok: false, reason: NOT_A_URL };
     if (text.startsWith('//') || text.startsWith('/')) {
@@ -87,7 +95,7 @@ export function normalizeBrowserUrl(input: string): BrowserUrlResult {
         return { ok: false, reason: NOT_A_URL };
     }
     if (isLoopbackHost(url.hostname)) url.protocol = 'http:';
-    return { ok: true, url: url.href };
+    return loadableUrl(url);
 }
 
 const URL_LIKE_SCHEME = /^(?:[a-z][a-z0-9+.-]*:\/\/|(?:javascript|data|file|mailto|about|blob|view-source|chrome):)/i;

@@ -23,6 +23,7 @@ import { DbBrowserSection } from './DbBrowserSection';
 import { PromptsPanel } from './PromptsPanel';
 import { ProviderTokensSection } from './ProviderTokensSection';
 import { SettingsCard } from './SettingsCard';
+import { DesktopBrowserPreferences } from './DesktopBrowserPreferences';
 import { AdminRow, AdminToggle, SourceBadge } from './adminControls';
 
 import { isContainerMode, isServersEnabled } from '../utils/config';
@@ -654,6 +655,7 @@ export function AdminPanel() {
                                                         isDefaultValue={isDefaultValue}
                                                     />
                                                     {renderTabFeatures('appearance')}
+                                                    {isDesktop && <DesktopBrowserPreferences />}
                                                 </>
                                             )}
 

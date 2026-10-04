@@ -89,42 +89,34 @@ there to re-issuing the named open, which focuses the existing window.
 
 ## Desktop HTML page views
 
-`window.cocDesktop.htmlPage` (`packages/coc-desktop/src/preload.ts`) lets the SPA host a
-local `.html`/`.htm` file as a `WebContentsView` stacked over its window
-(`html-page-host.ts`). The SPA picks a per-panel-path `pageId`, calls `open(pageId, absPath)` —
-the main process replies `{ ok: false, reason }` for non-html, relative or missing paths,
-so the caller must fall back to the source viewer — then keeps the view over a
-placeholder with `setBounds(pageId, getBoundingClientRect())` (CSS px; `null` or `hide()`
-hides it) and destroys it with `close()`. `reload`, `openExternal` and `onState`
-(`loading`/`loaded`/`failed`) back the toolbar and error state; opening an existing
-view replays its last load state to a newly mounted tab. Views have no preload, run
-sandboxed in their own partition, never outlive a full SPA reload, and follow the
-navigation policy in `html-page-policy.ts`.
+`window.cocDesktop.htmlPage` (`packages/coc-desktop/src/preload.ts`) hosts local `.html`/`.htm` files using Electron `WebContentsView`s (`html-page-host.ts`), independent of the browser engine preference.
+The SPA picks a per-panel-path `pageId` and calls `open(pageId, absPath)`. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
+
+`setBounds(pageId, getBoundingClientRect())` aligns the view in CSS px; `null`/`hide()` hides it and `close()` destroys it.
+`reload`, `openExternal` and `onState` (`loading`/`loaded`/`failed`) back the toolbar. Opening a live view replays its load state.
+
+Views have no preload, use a separate sandboxed partition, close on full SPA reload, and follow `html-page-policy.ts`.
 
 ## Desktop browser views
 
-`window.cocDesktop.browser` hosts general web pages for right-panel browser tabs
-(also opened by a plain click on a chat http(s) link via `coc-open-browser-url`)
-(`browser-view-host.ts` + pure `browser-view-policy.ts`). `open(viewId, url, sessionKey)`
-accepts only absolute http(s) URLs (`{ ok: false, reason }` otherwise); reopening a live
-`viewId` with the same key keeps its history and re-pushes state. `navigate`, `nav(viewId,
-'back'|'forward'|'reload'|'stop')`, `setBounds`/`hide`/`close` mirror the HTML page bridge;
-`onState` streams `{ url, title, canGoBack, canGoForward, loading, error? }`. Reload after a
-failed load retries the failed URL. `sessionKey` is the tab's concrete owner
-(`browserSessionKey`); it maps to a hashed, in-memory `coc-browser-*` partition, so
-same-owner tabs share sign-ins, other owners / CoC / HTML pages are isolated, and nothing
-survives a restart. Views and pop-ups have no preload and run sandboxed with normal TLS;
-the session strips `Electron/` from the UA and denies permissions except clipboard write
-and fullscreen. `window.open` with features (`new-window`) opens a sandboxed child pop-up
-in the same session (closed with its tab); other new-window links fire `onNewTab({
-openerViewId, url })`; non-web navigations are denied. Downloads are cancelled and handed to
-`shell.openExternal`, reported via `onDownload({ viewId, url, ok, error? })`.
-`openExternal(url)` (invoke → boolean) opens an http(s) URL in the system browser.
-SPA side: `UnifiedBrowserTab` + `shared/file-path/browser-bridge.ts` (see the
-unified-right-panel AGENTS.md "Browser tabs"); views are hidden on unmount and closed only
-when the tab closes.
-E2E: `test/e2e/browser-view.e2e.test.ts` (local HTTP fixtures; `xvfb-run -a` +
-`COC_DESKTOP_E2E_NO_SANDBOX=1` on headless Linux).
+`window.cocDesktop.browser` uses desktop `browser-host-manager.ts`. `open(viewId, url, sessionKey, relatedEngine?)` validates HTTP(S)/ownership and replays live history.
+Results/state identify the retained engine; `sessionKey` identifies routing ownership, not a profile.
+
+### Browser profiles and preferences
+
+`desktop-browser.json` stores the default (Electron). Admin Appearance's Desktop Preferences uses local IPC, not workspace-server APIs.
+Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
+The Windows desktop helper enables OS-account SSO by default at environment creation without an environment flag. Profiles remain separate from Edge. SSO does not guarantee Conditional Access compliance; clearing site data does not disconnect Windows accounts.
+
+### Browser adapters and lifecycle
+
+Electron uses sandboxed `WebContentsView`s; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
+Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile and downloads go to the system browser.
+Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
+WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
+
+`UnifiedBrowserTab` hides on unmount and closes with its tab. Window teardown/SPA reload closes views; entry-point `onClosed` reaches inactive stores via `closeBrowserPanelView`.
+Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.
 
 Pop-out buttons draw the SVG `PopOutIcon` (`features/canvas/components/icons.tsx`),
 **never a text glyph**: U+29C9 `⧉` is missing from the UI font stack on common Linux

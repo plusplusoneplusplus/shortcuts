@@ -516,20 +516,27 @@ never be handed to the local Electron process.
 
 The `+` menu's **Browser** entry opens a blank tab; a pasted URL opens one at
 that address. Each tab captures the dock target and its concrete route as
-owner when opened — that owner is the tab's site-session identity, and a later
+owner when opened — that owner is the tab's routing identity, and a later
 target switch never retargets it. Tabs are workspace-owned, so they stay
 across chat switches, and `browser` is an ephemeral kind: neither the tab, its
 URL, nor its selection reaches storage, so a restart starts with none.
 `updateBrowserTab` follows the page's URL and label without activating the tab.
 In the desktop app `UnifiedBrowserTab` drives `window.cocDesktop.browser`
 (`shared/file-path/browser-bridge.ts`): the tab's `resourceId` is the view id
-and `browserSessionKey(tab)` the session. A blank tab opens no view until it
+and `browserSessionKey(tab)` the routing owner. Browser profiles persist per
+engine across all installation workspaces; browser tab descriptors stay
+ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
-Back/Forward/Reload|Stop, the page title, a load-error panel with Retry, and
+Back/Forward/Reload|Stop, the actual engine, the page title, a load-error panel
+with Retry and Desktop Preferences/runtime guidance, and
 download-handoff notices. Unmounting only hides the view (chat switch, collapse
 keep live history); `closeTab` closes it. `onState` feeds `updateBrowserTab`
 (URL after redirects, title as label). `onNewTab` opens another browser tab
-with the opener's owner. Placement over the placeholder (and hiding behind
+with the opener's owner and `browserEngine`; the desktop default affects only
+new views. Desktop Preferences lives in Admin Appearance and uses local IPC.
+The SPA entry point subscribes to `onClosed` and removes target-engine tabs
+from every cached workspace via `closeBrowserPanelView`, including unmounted
+panels. Placement over the placeholder (and hiding behind
 modal dialogs / the tab menu) is shared with HTML pages via
 `useNativeViewPlacement`. Without a desktop bridge the view offers Open in
 system browser (`openUrlInSystemBrowser`, `window.open` noopener) instead of
