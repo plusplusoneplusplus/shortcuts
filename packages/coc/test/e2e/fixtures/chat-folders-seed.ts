@@ -71,10 +71,13 @@ export async function fileChatInFolder(
     }
 }
 
-/** Load a workspace's Activity tab and wait for the list to be up. */
+/**
+ * Load a workspace's Activity tab and wait for the always-split Workspace
+ * panel to be up.
+ */
 export async function gotoActivity(page: Page, serverUrl: string, wsId: string): Promise<void> {
     await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`);
-    await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10_000 });
 }
 
 /**
@@ -87,7 +90,7 @@ export async function gotoActivity(page: Page, serverUrl: string, wsId: string):
  */
 export async function reloadActivity(page: Page): Promise<void> {
     await page.reload();
-    await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10_000 });
 }
 
 /** The folder subtree node, addressed by id — never by position. */

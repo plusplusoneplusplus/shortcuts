@@ -63,10 +63,10 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
     const showPlanDepTab = useShowPlanDepTab();
     const schedulesInScheduledSlideEnabled = useSchedulesInScheduledSlideEnabled();
     const isGitRepo = !!repo.gitInfo?.isGitRepo;
-    // Only reflect an active sub-tab when we're actually on the repos tab. The
-    // header also renders on the top-level pages (Admin / Settings / Wiki), where
-    // no workspace sub-tab is being viewed — so none of them should highlight.
-    const activeTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
+    // Match the rendered Workspace key, including RepoDetail's 'chats' fallback.
+    // Top-level pages have no active workspace sub-tab.
+    const rawActiveTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
+    const activeTab = rawActiveTab === 'chats' ? 'activity' : rawActiveTab;
 
     const { running: runningCount, queued: queuedCount } = useRepoQueueStats(workspaceId);
     const { ahead: gitAhead, behind: gitBehind } = useGitInfo(workspaceId);
@@ -217,6 +217,9 @@ export function WorkspaceTabsCluster({ repo, repos }: WorkspaceTabsClusterProps)
                     {gitBehind > 0 && <span>↓{gitBehind}</span>}
                 </span>
             );
+        }
+        if (key === 'tasks' && (repo.taskCount || 0) > 0) {
+            return <span {...tid('subbar-tasks-badge')} className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[17px] text-[10px] font-mono bg-[#0078d4] text-white px-1 rounded-full">{repo.taskCount}</span>;
         }
         return null;
     };

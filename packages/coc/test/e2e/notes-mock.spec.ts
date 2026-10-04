@@ -22,6 +22,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/notes-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-notes-mock';
 
@@ -41,21 +42,14 @@ function seedTree(): NoteTreeNode[] {
 }
 
 /**
- * Navigate to the workspace Notes sub-tab by hash and wait for the sidebar.
- * Waits for the workspace list to hydrate (repo-tab present) before setting the
- * hash so routing resolves the selected repo. Mirrors notes-status-dock.spec.ts.
+ * Navigate straight to the workspace Notes sub-tab and wait for the sidebar.
  */
 async function openNotesPage(
     page: import('@playwright/test').Page,
     serverUrl: string,
     wsId: string,
 ): Promise<void> {
-    await page.goto(serverUrl);
-    // Repos is the default view; wait for the seeded workspace to load.
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 15_000 });
-    await page.evaluate((id) => {
-        location.hash = `#repos/${id}/notes`;
-    }, wsId);
+    await gotoWorkspace(page, serverUrl, wsId, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
 }
 

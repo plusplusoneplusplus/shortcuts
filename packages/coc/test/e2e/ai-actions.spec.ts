@@ -14,6 +14,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 /** Poll GET /api/queue/:id until status matches or timeout expires. */
 async function waitForTaskStatus(
@@ -71,15 +72,8 @@ async function setupRepoWithAIActions(
 
     await seedWorkspace(serverUrl, wsId, 'ai-actions-repo', repoDir);
 
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-    await page.click('.repo-sub-tab[data-subtab="tasks"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
+    await gotoWorkspace(page, serverUrl, wsId, 'tasks');
+    await expect(page.locator('button[data-subtab="tasks"]')).toHaveAttribute('data-active', 'true');
 
     await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
@@ -403,12 +397,7 @@ test.describe('AI Actions (007)', () => {
 
             await seedWorkspace(serverUrl, 'ws-multi-skill', 'multi-skill-repo', repoDir);
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await expect(page.locator('#repo-detail-content')).toBeVisible();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await gotoWorkspace(page, serverUrl, 'ws-multi-skill', 'tasks');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             const queueResponsePromise = page.waitForResponse(res =>
@@ -461,12 +450,7 @@ test.describe('AI Actions (007)', () => {
 
             await seedWorkspace(serverUrl, 'ws-no-skills', 'no-skills-repo', repoDir);
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await expect(page.locator('#repo-detail-content')).toBeVisible();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await gotoWorkspace(page, serverUrl, 'ws-no-skills', 'tasks');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             const fileRow = page.locator('.miller-file-row').first();

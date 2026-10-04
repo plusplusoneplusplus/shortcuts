@@ -35,7 +35,7 @@ test.describe.skip('CommentPopover Advanced', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'popover edit target');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             // Wait for highlight to be attached
@@ -91,7 +91,7 @@ test.describe.skip('CommentPopover Advanced', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'popover escape test');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             await expect(page.locator(`#task-preview-body [data-comment-id="${id}"]`)).toBeAttached({ timeout: 10_000 });
@@ -127,7 +127,7 @@ test.describe.skip('CommentPopover Advanced', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'popover AI target');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             await expect(page.locator(`#task-preview-body [data-comment-id="${id}"]`)).toBeAttached({ timeout: 10_000 });

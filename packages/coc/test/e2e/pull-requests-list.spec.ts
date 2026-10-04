@@ -6,6 +6,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { setupPrRoutes } from './fixtures/pr-mock';
 import { resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
+import { gotoWorkspace, openSubTab } from './fixtures/remote-shell';
 import {
     MOCK_PR_LIST,
     MOCK_PR_LIST_WITH_DIFF_STATS,
@@ -73,11 +74,7 @@ async function seedPrWorkspace(
 async function openPrTab(page: any, serverUrl: string, wsId: string) {
     await enablePullRequestsFeature(serverUrl);
     await mockGitInfo(page, wsId);
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await page.click('button[data-subtab="pull-requests"]');
+    await gotoWorkspace(page, serverUrl, wsId, 'pull-requests');
 }
 
 /**
@@ -192,10 +189,7 @@ test.describe('Pull Requests tab — list', () => {
         try {
             await enablePullRequestsFeature(serverUrl);
             await mockGitInfo(page, repoId);
-            await page.goto(serverUrl);
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
+            await gotoWorkspace(page, serverUrl, repoId);
 
             const prSubTab = page.locator('button[data-subtab="pull-requests"]');
             await expect(prSubTab).toBeVisible({ timeout: 10000 });
@@ -437,8 +431,8 @@ test.describe('Pull Requests tab — list', () => {
 
             // Navigate back to the PR tab (without full page reload)
             await page.click('[data-tab="repos"]');
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await page.click('button[data-subtab="pull-requests"]');
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+            await openSubTab(page, 'pull-requests');
             await expect(page.locator('.pr-row')).toHaveCount(3, { timeout: 10000 });
 
             // No additional fetch — cache was used

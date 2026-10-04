@@ -54,7 +54,7 @@ test.describe.skip('Comment AI Advanced', () => {
                 });
             });
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = getCommentCard(page, id);
@@ -100,7 +100,7 @@ test.describe.skip('Comment AI Advanced', () => {
                 });
             });
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = getCommentCard(page, id);
@@ -145,7 +145,7 @@ test.describe.skip('Comment AI Advanced', () => {
                 });
             });
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = getCommentCard(page, id);
@@ -210,7 +210,7 @@ test.describe.skip('Comment AI Advanced', () => {
                 });
             });
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');

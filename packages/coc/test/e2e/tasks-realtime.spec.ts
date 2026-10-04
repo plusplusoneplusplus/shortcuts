@@ -15,6 +15,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync, getTaskRoot } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 /** Helper: create a repo with tasks, seed workspace, navigate to Tasks sub-tab. */
 async function navigateToTasksTab(
@@ -25,15 +26,8 @@ async function navigateToTasksTab(
 ): Promise<void> {
     await seedWorkspace(serverUrl, wsId, `${wsId}-repo`, repoDir);
 
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-    await page.click('.repo-sub-tab[data-subtab="tasks"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
+    await gotoWorkspace(page, serverUrl, wsId, 'tasks');
+    await expect(page.locator('button[data-subtab="tasks"]')).toHaveAttribute('data-active', 'true');
 
     // Wait for initial tasks to finish loading
     await expect(page.locator('[data-testid="task-tree"]')).toContainText('task-a', { timeout: 15000 });

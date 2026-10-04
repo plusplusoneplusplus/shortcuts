@@ -5,6 +5,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { request, seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/notes-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 const WORKSPACE_ID = 'ws-notes-chat-effort';
 
@@ -92,11 +93,7 @@ test('Notes Chat shows every effort tier outside the anchored settings popover',
             }
         });
 
-        await page.goto(serverUrl);
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 15_000 });
-        await page.evaluate(id => {
-            location.hash = `#repos/${id}/notes`;
-        }, WORKSPACE_ID);
+        await gotoWorkspace(page, serverUrl, WORKSPACE_ID, 'notes');
         await expect(page.getByTestId('notes-sidebar')).toBeVisible({ timeout: 15_000 });
 
         await page.getByTestId('notes-tree-item-Journal').click();

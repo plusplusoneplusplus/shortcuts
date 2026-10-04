@@ -12,6 +12,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, seedProcess, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 // ================================================================
 // 8.1 — New process updates stats badge
@@ -26,14 +27,8 @@ test.describe('Repo real-time: stats badge', () => {
             workspaceId: 'ws-rt-stats',
         });
 
-        // Navigate to repos tab and select the repo. Stats live in the
-        // Settings sub-tab (info section); navigate there to reach the stat cards.
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await page.click('.repo-sub-tab[data-subtab="settings"]');
+        // Navigate straight to the repo Settings sub-tab (stats live there).
+        await gotoWorkspace(page, serverUrl, 'ws-rt-stats', 'settings');
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         // Verify initial stats: 1 completed
@@ -69,14 +64,9 @@ test.describe('Repo real-time: task list', () => {
             // Register workspace pointing to the real repo (triggers TaskWatcher auto-watch)
             await seedWorkspace(serverUrl, 'ws-rt-tasks', 'rt-tasks-repo', repoDir);
 
-            // Navigate to repos tab → select repo → switch to Tasks sub-tab
-            await page.goto(serverUrl);
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await expect(page.locator('#repo-detail-content')).toBeVisible();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
-            await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
+            // Navigate straight to the Tasks sub-tab for the seeded workspace.
+            await gotoWorkspace(page, serverUrl, 'ws-rt-tasks', 'tasks');
+            await expect(page.locator('button[data-subtab="tasks"]')).toHaveAttribute('data-active', 'true');
 
             // Wait for initial tasks to finish loading — fixture includes "task-a"
             await expect(page.locator('[data-testid="task-tree"]')).toContainText('task-a', {
@@ -112,13 +102,8 @@ test.describe('Repo real-time: process status change', () => {
             workspaceId: 'ws-rt-status',
         });
 
-        // Navigate to repos tab → select repo → switch to Settings (stats grid).
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await page.click('.repo-sub-tab[data-subtab="settings"]');
+        // Navigate straight to Settings (the stats grid lives there).
+        await gotoWorkspace(page, serverUrl, 'ws-rt-status', 'settings');
         await expect(page.locator('[data-testid="settings-content-panel"]')).toBeVisible();
 
         // Verify running=1 in stats

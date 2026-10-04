@@ -39,7 +39,7 @@ test.describe.skip('Comment Sidebar Advanced', () => {
             await seedComment(serverUrl, WS_ID, TASK_PATH, 'resolved bug', 'bug', 'resolved');
             await seedComment(serverUrl, WS_ID, TASK_PATH, 'open question', 'question', 'open');
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');
@@ -80,7 +80,7 @@ test.describe.skip('Comment Sidebar Advanced', () => {
             // Only seed open bug comments
             await seedComment(serverUrl, WS_ID, TASK_PATH, 'open bug only', 'bug', 'open');
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');
@@ -118,7 +118,7 @@ test.describe.skip('Comment Sidebar Advanced', () => {
             // Grant clipboard permissions
             await page.context().grantPermissions(['clipboard-write', 'clipboard-read']);
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');
@@ -158,7 +158,7 @@ test.describe.skip('Comment Sidebar Advanced', () => {
             // Also seed a normal comment to verify contrast
             await seedComment(serverUrl, WS_ID, TASK_PATH, 'normal comment');
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');
@@ -191,7 +191,7 @@ test.describe.skip('Comment Sidebar Advanced', () => {
             await seedReply(serverUrl, WS_ID, TASK_PATH, id, 'Reply 3', 'Charlie');
             await seedReply(serverUrl, WS_ID, TASK_PATH, id, 'Reply 4', 'Diana');
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = page.locator(`[data-testid="comment-card-${id}"]`);

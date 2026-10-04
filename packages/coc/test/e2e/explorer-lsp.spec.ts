@@ -9,10 +9,11 @@
  * all. Only here do a keystroke, a hover and a Ctrl-click travel the whole way and
  * back, which is why the pieces this file asserts on are the ones no unit test
  * can reach: Monaco's own hover widget, its squiggles, and its go-to-definition
- * command landing a file in the Explorer's tab strip.
+ * command landing a file in the unified right-panel tab strip.
  *
  * Uses existing testids only:
- *   explorer-panel, tree-node-{path}, explorer-tab-list, explorer-tab-panel-{id},
+ *   unified-right-panel, unified-panel-explorer-mode, tree-node-{path},
+ *   unified-panel-tab-list, unified-panel-tab-{id}, unified-panel-view-{id},
  *   preview-pane, monaco-container, language-status, language-status-label,
  *   language-restart-btn
  */
@@ -22,11 +23,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { request, seedWorkspace } from './fixtures/seed';
-import {
-    editorTab,
-    enableExplorerEditorTabs,
-    expectEditorTabs,
-} from './fixtures/explorer-tabs-seed';
+import { enableExplorerEditorTabs } from './fixtures/explorer-tabs-seed';
 import {
     createDecoyRepoFixture,
     createPythonRepoFixture,
@@ -36,23 +33,26 @@ import {
     enableLanguageServers,
 } from './fixtures/language-server-seed';
 import { registerRemoteServer, startSecondaryServer } from './fixtures/secondary-server';
+import { gotoWorkspace, openExplorerPanel, selectRepoNamed } from './fixtures/remote-shell';
 import { execFileSync, spawnSync } from 'child_process';
 import { runMonacoMenuItem } from './helpers/monaco-menu';
 import type { Locator, Page } from '@playwright/test';
 
 const WORKSPACE_ID = 'ws-lsp';
 const PANEL_WORKSPACE_ID = 'ws-lsp-panel';
-const APP_TAB = 'file:src/app.ts';
-const FORMAT_TAB = 'file:src/format.ts';
-const APP_PANEL = `[data-testid="explorer-tab-panel-${APP_TAB}"]`;
-const RUST_APP_TAB = 'file:src/app.rs';
-const RUST_CORE_TAB = 'file:core-fixture/src/lib.rs';
-const RUST_APP_PANEL = `[data-testid="explorer-tab-panel-${RUST_APP_TAB}"]`;
-const PYTHON_APP_TAB = 'file:src/app.py';
-const PYTHON_STUB_TAB = 'file:src/helpers.pyi';
-const PYTHON_APP_PANEL = `[data-testid="explorer-tab-panel-${PYTHON_APP_TAB}"]`;
-const CPP_APP_TAB = 'file:src/app.cpp';
-const CPP_APP_PANEL = `[data-testid="explorer-tab-panel-${CPP_APP_TAB}"]`;
+const UNIFIED_PANEL = '[data-testid="unified-right-panel"]';
+const UNIFIED_ACTIVE_FILE = `${UNIFIED_PANEL} [data-testid^="unified-panel-view-"]:not([style*="display: none"])`;
+const APP_TAB = 'app.ts';
+const FORMAT_TAB = 'format.ts';
+const APP_PANEL = UNIFIED_ACTIVE_FILE;
+const RUST_APP_TAB = 'app.rs';
+const RUST_CORE_TAB = 'lib.rs';
+const RUST_APP_PANEL = UNIFIED_ACTIVE_FILE;
+const PYTHON_APP_TAB = 'app.py';
+const PYTHON_STUB_TAB = 'helpers.pyi';
+const PYTHON_APP_PANEL = UNIFIED_ACTIVE_FILE;
+const CPP_APP_TAB = 'app.cpp';
+const CPP_APP_PANEL = UNIFIED_ACTIVE_FILE;
 
 /**
  * Starting a Node process, handshaking with it and letting it read a project is
@@ -118,23 +118,58 @@ function createCppSymbolRepoFixture(tmpDir: string): string {
     return repoDir;
 }
 
-/** Navigate to the repo detail and click the Explorer sub-tab. */
+/**
+ * The visible, `UnifiedRightPanel`-hosted Explorer tree root. Scope tree
+ * queries to it (rather than a bare `[data-testid="tree-node-..."]`) because
+ * expanding a folder or opening a file makes `ExplorerPanel` write its own
+ * `#repos/{id}/explorer/{path}` deep link (for bookmarkability); the Router
+ * parses that hash back into `activeRepoSubTab`, and even though the
+ * "redirect away from a hidden sub-tab" effect immediately reverts it, the
+ * one tick where `activeRepoSubTab === 'explorer'` is enough to flip this
+ * component's `wasVisited('explorer')` latch forever — permanently mounting
+ * a second, `display:none` legacy `ExplorerPanel` (`mode="editor"`, desktop's
+ * now-unreachable old single-pane Explorer sub-tab) that mirrors the same
+ * tree. That second instance is invisible on screen but still matches
+ * un-scoped Playwright locators, causing strict-mode "resolved to 2
+ * elements" failures.
+ */
+const EXPLORER_PANEL_ROOT = '[data-testid="unified-panel-explorer-mode"]';
+
+/** Navigate to the repo detail and reveal the Explorer tree in the always-on
+ *  Workspace right panel. Explorer has no sub-tab button of its own on
+ *  desktop (`computeVisibleSubTabs` excludes it — "the desktop right panel
+ *  owns Terminal and Explorer"), so `openExplorerPanel` drives the panel's
+ *  own dock-toggle + tree-toggle instead of a dead `button[data-subtab]`. */
 async function gotoExplorer(page: Page, serverUrl: string): Promise<void> {
-    await page.goto(serverUrl);
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 8_000 });
-    await page.locator('button[data-subtab="explorer"]').click();
-    await expect(page.locator('[data-testid="explorer-panel"]')).toBeVisible({ timeout: 8_000 });
+    await gotoWorkspace(page, serverUrl, WORKSPACE_ID);
+    await openExplorerPanel(page);
+    await expect(page.locator(`${EXPLORER_PANEL_ROOT} [data-testid="explorer-panel"]`)).toBeVisible({ timeout: 8_000 });
 }
 
 /** Expand `src` and open a file from it in its own (pinned) editor tab. */
 async function openSourceFile(page: Page, name: string): Promise<void> {
-    await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="tree-node-src"]').click();
-    await expect(page.locator(`[data-testid="tree-node-src/${name}"]`)).toBeVisible({ timeout: 5_000 });
-    await page.locator(`[data-testid="tree-node-src/${name}"]`).dblclick();
+    const tree = page.locator(EXPLORER_PANEL_ROOT);
+    await expect(tree.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
+    await tree.locator('[data-testid="tree-node-src"]').click();
+    await expect(tree.locator(`[data-testid="tree-node-src/${name}"]`)).toBeVisible({ timeout: 5_000 });
+    await tree.locator(`[data-testid="tree-node-src/${name}"]`).dblclick();
     await expect(page.locator('[data-testid="preview-pane"]').first()).toBeVisible({ timeout: 8_000 });
+}
+
+function editorTab(page: Page, label: string, index = 0): Locator {
+    return page.locator(`${UNIFIED_PANEL} [data-testid="unified-panel-tab-list"] [role="tab"]`)
+        .filter({ hasText: label })
+        .nth(index);
+}
+
+async function openEditorTabLabels(page: Page): Promise<string[]> {
+    return page.locator(`${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`).evaluateAll(
+        nodes => nodes.map(node => (node.textContent ?? '').trim()),
+    );
+}
+
+async function expectEditorTabs(page: Page, labels: string[]): Promise<void> {
+    await expect.poll(() => openEditorTabLabels(page), { timeout: 8_000 }).toEqual(labels);
 }
 
 /** The status badge inside one editor tab's pane. */
@@ -172,31 +207,68 @@ async function wordCenter(
     return page.evaluate(
         ({ selector, lineText: line, word: needle, fromEnd: useLast }) => {
             const plain = (value: string | null): string => (value ?? '').replace(/\u00a0/g, ' ');
+            const key = (value: string | null): string => plain(value).replace(/\s+/g, '');
             const root = document.querySelector(selector);
-            if (!root) {
+            const editor = root?.querySelector('.monaco-editor');
+            if (!editor) {
                 return null;
             }
-            const targets = Array.from(root.querySelectorAll('.view-line')).filter(node =>
-                plain(node.textContent).includes(line),
-            );
-            const target = useLast ? targets.at(-1) : targets[0];
+            const viewLines = Array.from(editor.querySelectorAll('.view-lines .view-line'))
+                .filter(node => node.closest('.monaco-editor') === editor) as HTMLElement[];
+            const lineNumbers = Array.from(editor.querySelectorAll('.margin-view-overlays .line-numbers'))
+                .filter(node => node.closest('.monaco-editor') === editor)
+                .map(node => ({
+                    line: Number.parseInt(node.textContent ?? '', 10),
+                    top: (node as HTMLElement).getBoundingClientRect().top,
+                }))
+                .filter(entry => Number.isFinite(entry.line))
+                .sort((a, b) => a.top - b.top);
+            const logicalLines: Array<{ number: number; nodes: HTMLElement[]; text: string }> = [];
+            for (let index = 0; index < viewLines.length; index += 1) {
+                const node = viewLines[index]!;
+                const top = node.getBoundingClientRect().top;
+                const number = lineNumbers.filter(entry => entry.top <= top + 2).at(-1)?.line
+                    ?? logicalLines.at(-1)?.number
+                    ?? index + 1;
+                const previous = logicalLines.at(-1);
+                if (previous && previous.number === number) {
+                    previous.nodes.push(node);
+                    continue;
+                }
+                logicalLines.push({ number, nodes: [node], text: '' });
+            }
+            for (const logicalLine of logicalLines) {
+                logicalLine.text = logicalLine.nodes.map(node => plain(node.textContent)).join('');
+            }
+            const target = (useLast
+                ? logicalLines.filter(entry => key(entry.text).includes(key(line))).at(-1)
+                : logicalLines.find(entry => key(entry.text).includes(key(line)))) ?? null;
             if (!target) {
                 return null;
             }
-            const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
-            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-                const index = plain(node.textContent).indexOf(needle);
-                if (index < 0) {
-                    continue;
+            const lineNodes = useLast ? [...target.nodes].reverse() : target.nodes;
+            for (const lineNode of lineNodes) {
+                const textNodes: Node[] = [];
+                const walker = document.createTreeWalker(lineNode, NodeFilter.SHOW_TEXT);
+                for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                    textNodes.push(node);
                 }
-                const range = document.createRange();
-                range.setStart(node, index);
-                range.setEnd(node, index + needle.length);
-                const rect = range.getBoundingClientRect();
-                if (rect.width === 0) {
-                    return null;
+                const orderedTextNodes = useLast ? textNodes.reverse() : textNodes;
+                for (const textNode of orderedTextNodes) {
+                    const text = plain(textNode.textContent);
+                    const index = useLast ? text.lastIndexOf(needle) : text.indexOf(needle);
+                    if (index < 0) {
+                        continue;
+                    }
+                    const range = document.createRange();
+                    range.setStart(textNode, index);
+                    range.setEnd(textNode, index + needle.length);
+                    const rect = range.getBoundingClientRect();
+                    if (rect.width === 0) {
+                        continue;
+                    }
+                    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
                 }
-                return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
             }
             return null;
         },
@@ -231,15 +303,50 @@ async function wordHasDefinitionLink(
 ): Promise<boolean> {
     return page.evaluate(({ selector, line, needle }) => {
         const plain = (value: string | null): string => (value ?? '').replace(/\u00a0/g, ' ');
+        const key = (value: string | null): string => plain(value).replace(/\s+/g, '');
         const root = document.querySelector(selector);
-        const target = Array.from(root?.querySelectorAll('.view-line') ?? [])
-            .find(node => plain(node.textContent).includes(line));
-        if (!target) return false;
-        const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
-        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-            if (plain(node.textContent).includes(needle)) {
-                const owner = node.parentElement;
-                return owner !== null && owner.closest('.goto-definition-link') !== null;
+        const editor = root?.querySelector('.monaco-editor');
+        if (!editor) {
+            return false;
+        }
+        const viewLines = Array.from(editor.querySelectorAll('.view-lines .view-line'))
+            .filter(node => node.closest('.monaco-editor') === editor) as HTMLElement[];
+        const lineNumbers = Array.from(editor.querySelectorAll('.margin-view-overlays .line-numbers'))
+            .filter(node => node.closest('.monaco-editor') === editor)
+            .map(node => ({
+                line: Number.parseInt(node.textContent ?? '', 10),
+                top: (node as HTMLElement).getBoundingClientRect().top,
+            }))
+            .filter(entry => Number.isFinite(entry.line))
+            .sort((a, b) => a.top - b.top);
+        const logicalLines: Array<{ number: number; nodes: HTMLElement[]; text: string }> = [];
+        for (let index = 0; index < viewLines.length; index += 1) {
+            const node = viewLines[index]!;
+            const top = node.getBoundingClientRect().top;
+            const number = lineNumbers.filter(entry => entry.top <= top + 2).at(-1)?.line
+                ?? logicalLines.at(-1)?.number
+                ?? index + 1;
+            const previous = logicalLines.at(-1);
+            if (previous && previous.number === number) {
+                previous.nodes.push(node);
+                continue;
+            }
+            logicalLines.push({ number, nodes: [node], text: '' });
+        }
+        for (const logicalLine of logicalLines) {
+            logicalLine.text = logicalLine.nodes.map(node => plain(node.textContent)).join('');
+        }
+        const target = logicalLines.find(entry => key(entry.text).includes(key(line)));
+        if (!target) {
+            return false;
+        }
+        for (const lineNode of target.nodes) {
+            const walker = document.createTreeWalker(lineNode, NodeFilter.SHOW_TEXT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                if (plain(node.textContent).includes(needle)) {
+                    const owner = node.parentElement;
+                    return owner !== null && owner.closest('.goto-definition-link') !== null;
+                }
             }
         }
         return false;
@@ -329,19 +436,51 @@ async function waitForProjectLoaded(page: Page, panel = APP_PANEL): Promise<void
  */
 async function squigglyLines(page: Page, panel = APP_PANEL): Promise<string[]> {
     return page.evaluate((selector: string) => {
+        const plain = (value: string | null): string => (value ?? '').replace(/\u00a0/g, ' ');
         const root = document.querySelector(selector);
-        if (!root) {
+        const editor = root?.querySelector('.monaco-editor');
+        if (!editor) {
             return [];
         }
-        const lines = Array.from(root.querySelectorAll('.view-line')) as HTMLElement[];
+        const viewLines = Array.from(editor.querySelectorAll('.view-lines .view-line'))
+            .filter(node => node.closest('.monaco-editor') === editor) as HTMLElement[];
+        const lineNumbers = Array.from(editor.querySelectorAll('.margin-view-overlays .line-numbers'))
+            .filter(node => node.closest('.monaco-editor') === editor)
+            .map(node => ({
+                line: Number.parseInt(node.textContent ?? '', 10),
+                top: (node as HTMLElement).getBoundingClientRect().top,
+            }))
+            .filter(entry => Number.isFinite(entry.line))
+            .sort((a, b) => a.top - b.top);
+        const logicalLines: Array<{ number: number; nodes: HTMLElement[]; text: string }> = [];
+        const lineToText = new Map<HTMLElement, string>();
+        for (let index = 0; index < viewLines.length; index += 1) {
+            const node = viewLines[index]!;
+            const top = node.getBoundingClientRect().top;
+            const number = lineNumbers.filter(entry => entry.top <= top + 2).at(-1)?.line
+                ?? logicalLines.at(-1)?.number
+                ?? index + 1;
+            const previous = logicalLines.at(-1);
+            if (previous && previous.number === number) {
+                previous.nodes.push(node);
+                continue;
+            }
+            logicalLines.push({ number, nodes: [node], text: '' });
+        }
+        for (const logicalLine of logicalLines) {
+            logicalLine.text = logicalLine.nodes.map(node => plain(node.textContent)).join('');
+            for (const node of logicalLine.nodes) {
+                lineToText.set(node, logicalLine.text);
+            }
+        }
         return Array.from(root.querySelectorAll('.squiggly-error')).map(node => {
             const box = (node as HTMLElement).getBoundingClientRect();
             const middle = box.top + box.height / 2;
-            const line = lines.find(candidate => {
+            const line = viewLines.find(candidate => {
                 const lineBox = candidate.getBoundingClientRect();
                 return middle >= lineBox.top && middle < lineBox.bottom;
             });
-            return (line?.textContent ?? '').replace(/\u00a0/g, ' ');
+            return line ? lineToText.get(line) ?? plain(line.textContent) : '';
         });
     }, `${panel} [data-testid="monaco-container"]`);
 }
@@ -666,14 +805,13 @@ test.describe('Explorer language support – TypeScript and definition features'
             await page.keyboard.press('F12');
 
             await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
-            const formatPanel = `[data-testid="explorer-tab-panel-${FORMAT_TAB}"]`;
-            await expect(page.locator(`${formatPanel} [data-testid="monaco-container"]`)).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="monaco-container"]`)).toBeVisible({ timeout: 10_000 });
 
             // The reveal has to land on the declaration itself, not merely open
             // the file: the position rides all the way from the server's range
             // through the tab model into Monaco.
             await expect
-                .poll(() => caretLineText(page, formatPanel), { timeout: 15_000 })
+                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toContain('export function formatWidget');
         } finally {
             safeRmSync(tmpDir);
@@ -715,9 +853,7 @@ test.describe('Explorer language support – TypeScript and definition features'
             await expect(peek).toBeVisible({ timeout: 15_000 });
             try {
                 await expect(
-                    peek.locator('.preview .view-line')
-                        .filter({ hasText: 'Loading definition source...' })
-                        .first(),
+                    peek.getByRole('treeitem', { name: /Loading definition source\.\.\./ }),
                 ).toBeVisible();
             } finally {
                 releasePreviewRead();
@@ -726,7 +862,7 @@ test.describe('Explorer language support – TypeScript and definition features'
             await expect(peek.locator('.peekview-title .filename')).toHaveText('format.ts');
             await expect
                 .poll(
-                    () => caretPositionInEditorRoot(page, `${APP_PANEL} .reference-zone-widget .preview`),
+                    () => caretPositionInEditorRoot(page, `${UNIFIED_ACTIVE_FILE} .reference-zone-widget .preview`),
                     { timeout: 15_000 },
                 )
                 .toEqual({
@@ -742,9 +878,8 @@ test.describe('Explorer language support – TypeScript and definition features'
 
             await page.keyboard.press('F12');
             await expectEditorTabs(page, [APP_TAB, FORMAT_TAB]);
-            const formatPanel = `[data-testid="explorer-tab-panel-${FORMAT_TAB}"]`;
             await expect
-                .poll(() => caretPosition(page, formatPanel), { timeout: 15_000 })
+                .poll(() => caretPosition(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toEqual({
                     line: 6,
                     column: 17,
@@ -967,9 +1102,8 @@ test.describe('Explorer language support – Python', () => {
                 PYTHON_APP_PANEL,
             );
             await expectEditorTabs(page, [PYTHON_APP_TAB, PYTHON_STUB_TAB]);
-            const stubPanel = `[data-testid="explorer-tab-panel-${PYTHON_STUB_TAB}"]`;
             await expect
-                .poll(() => caretLineText(page, stubPanel), { timeout: 15_000 })
+                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toContain('def format_widget');
 
             await editorTab(page, PYTHON_APP_TAB).click();
@@ -1011,12 +1145,7 @@ test.describe('Explorer language support – Python', () => {
 
             await enableLanguageServers(serverUrl, PANEL_WORKSPACE_ID, 'python');
 
-            await page.goto(serverUrl);
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, {
-                timeout: 10_000,
-            });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 8_000 });
+            await gotoWorkspace(page, serverUrl, PANEL_WORKSPACE_ID);
             await openUnifiedSourceFile(page, 'app.py');
 
             await waitForLanguageServer(page, UNIFIED_ACTIVE_FILE);
@@ -1096,9 +1225,8 @@ test.describe('Explorer language support – Rust', () => {
                 RUST_APP_PANEL,
             );
             await expectEditorTabs(page, [RUST_APP_TAB, RUST_CORE_TAB]);
-            const corePanel = `[data-testid="explorer-tab-panel-${RUST_CORE_TAB}"]`;
             await expect
-                .poll(() => caretLineText(page, corePanel), { timeout: 15_000 })
+                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toContain('pub fn make_widget');
 
             await editorTab(page, RUST_APP_TAB).click();
@@ -1136,12 +1264,7 @@ test.describe('Explorer language support – Rust', () => {
 
             await enableLanguageServers(serverUrl, PANEL_WORKSPACE_ID, 'rust');
 
-            await page.goto(serverUrl);
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, {
-                timeout: 10_000,
-            });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 8_000 });
+            await gotoWorkspace(page, serverUrl, PANEL_WORKSPACE_ID);
             await openUnifiedSourceFile(page, 'app.rs');
 
             await waitForLanguageServer(page, UNIFIED_ACTIVE_FILE);
@@ -1206,36 +1329,6 @@ function initGitCheckout(dir: string, originUrl: string): void {
     git('remote', 'add', 'origin', originUrl);
 }
 
-/** Pick a repo out of the remote picker by name, and wait for its detail body. */
-async function selectRepoNamed(page: Page, name: string): Promise<void> {
-    await expect(page.locator('[data-testid="remote-chip"]').first()).toBeVisible({ timeout: 30_000 });
-    await page.locator('[data-testid="remote-chip"]').first().click();
-    await expect(page.locator('[data-testid="remote-dropdown"]')).toBeVisible({ timeout: 10_000 });
-    await page.locator('[data-testid="remote-search-input"]').fill(name);
-    const row = page.locator('[data-testid="remote-dropdown-item"]');
-    await expect(row).toHaveCount(1, { timeout: 30_000 });
-    await row.click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 15_000 });
-}
-
-/**
- * Click one sub-tab of the selected clone.
- *
- * In the remote-first shell the sub-tabs live in the top bar, and a narrow
- * viewport moves the later ones into an overflow menu, so both places have to
- * be tried.
- */
-async function openSubTab(page: Page, key: string): Promise<void> {
-    const inline = page.locator(`button[data-subtab="${key}"]`).first();
-    if (await inline.isVisible().catch(() => false)) {
-        await inline.click();
-    } else {
-        await page.locator('[data-testid="subbar-overflow-toggle"]').click();
-        await page.locator(`[data-testid="subbar-overflow-menu"] [data-subtab="${key}"]`).click();
-    }
-    await expect(page.locator('[data-testid="explorer-panel"]')).toBeVisible({ timeout: 15_000 });
-}
-
 /**
  * The text of every line currently rendered in one editor pane.
  *
@@ -1245,16 +1338,42 @@ async function openSubTab(page: Page, key: string): Promise<void> {
  */
 async function paneText(page: Page, panel: string): Promise<string> {
     return page.evaluate((selector: string) => {
+        const plain = (value: string | null): string => (value ?? '').replace(/\u00a0/g, ' ');
         const root = document.querySelector(selector);
-        return Array.from(root?.querySelectorAll('.view-line') ?? [])
-            .map(node => (node.textContent ?? '').replace(/\u00a0/g, ' '))
-            .join('\n');
+        const editor = root?.querySelector('.monaco-editor');
+        if (!editor) {
+            return '';
+        }
+        const viewLines = Array.from(editor.querySelectorAll('.view-lines .view-line'))
+            .filter(node => node.closest('.monaco-editor') === editor) as HTMLElement[];
+        const lineNumbers = Array.from(editor.querySelectorAll('.margin-view-overlays .line-numbers'))
+            .filter(node => node.closest('.monaco-editor') === editor)
+            .map(node => ({
+                line: Number.parseInt(node.textContent ?? '', 10),
+                top: (node as HTMLElement).getBoundingClientRect().top,
+            }))
+            .filter(entry => Number.isFinite(entry.line))
+            .sort((a, b) => a.top - b.top);
+        const logicalLines: Array<{ number: number; nodes: HTMLElement[]; text: string }> = [];
+        for (let index = 0; index < viewLines.length; index += 1) {
+            const node = viewLines[index]!;
+            const top = node.getBoundingClientRect().top;
+            const number = lineNumbers.filter(entry => entry.top <= top + 2).at(-1)?.line
+                ?? logicalLines.at(-1)?.number
+                ?? index + 1;
+            const previous = logicalLines.at(-1);
+            if (previous && previous.number === number) {
+                previous.nodes.push(node);
+                continue;
+            }
+            logicalLines.push({ number, nodes: [node], text: '' });
+        }
+        for (const logicalLine of logicalLines) {
+            logicalLine.text = logicalLine.nodes.map(node => plain(node.textContent)).join('');
+        }
+        return logicalLines.map(line => line.text).join('\n');
     }, `${panel} [data-testid="monaco-container"]`);
 }
-
-const UNIFIED_PANEL = '[data-testid="unified-right-panel"]';
-const UNIFIED_ACTIVE_FILE = `${UNIFIED_PANEL} [data-testid^="unified-panel-view-"]:not([style*="display: none"])`;
-
 
 async function openUnifiedSourceFile(page: Page, name: string): Promise<void> {
     const panelToggle = page.locator('[data-testid="workspace-dock-toggle"]').first();
@@ -1323,7 +1442,7 @@ test.describe('Explorer language support – direct remote clone', () => {
 
             await page.goto(serverUrl);
             await selectRepoNamed(page, 'Remote Python Repo');
-            await openSubTab(page, 'explorer');
+            await openExplorerPanel(page);
             await openSourceFile(page, 'app.py');
 
             // AC-01: the badge can only reach `ready` through the remote host's
@@ -1366,25 +1485,24 @@ test.describe('Explorer language support – direct remote clone', () => {
             await ctrlClickWord(page, 'label = format_widget', 'format_widget', PYTHON_APP_PANEL);
 
             await expectEditorTabs(page, [PYTHON_APP_TAB, PYTHON_STUB_TAB]);
-            const stubPanel = `[data-testid="explorer-tab-panel-${PYTHON_STUB_TAB}"]`;
-            await expect(page.locator(`${stubPanel} [data-testid="monaco-container"]`))
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="monaco-container"]`))
                 .toBeVisible({ timeout: 15_000 });
 
             // The marker is written into the remote checkout only, so this is
             // the assertion that separates "the right path" from "the right
             // host's copy of that path".
             await expect
-                .poll(() => paneText(page, stubPanel), { timeout: 15_000 })
+                .poll(() => paneText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toContain('helper stub from the remote checkout');
-            expect(await paneText(page, stubPanel)).not.toContain('dashboard decoy');
+            expect(await paneText(page, UNIFIED_ACTIVE_FILE)).not.toContain('dashboard decoy');
 
             await expect
-                .poll(() => caretLineText(page, stubPanel), { timeout: 15_000 })
+                .poll(() => caretLineText(page, UNIFIED_ACTIVE_FILE), { timeout: 15_000 })
                 .toContain('def format_widget');
 
             await expect(page.locator('[data-testid="clone-switch"]'))
                 .toHaveAttribute('title', 'Remote Python Repo');
-            await expect(page.locator(`${PYTHON_APP_PANEL} [data-testid="dirty-indicator"]`))
+            await expect(editorTab(page, PYTHON_APP_TAB).locator('[data-testid^="unified-panel-tab-dirty-"]'))
                 .toHaveCount(1);
 
             await editorTab(page, PYTHON_APP_TAB).click();

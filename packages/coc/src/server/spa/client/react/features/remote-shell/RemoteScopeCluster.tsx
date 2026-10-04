@@ -38,10 +38,9 @@ export function RemoteScopeCluster({ repo, repos, hideIdentity }: RemoteScopeClu
     const dreamsEnabled = useDreamsEnabled();
     const showPlanDepTab = useShowPlanDepTab();
     const isGitRepo = !!repo?.gitInfo?.isGitRepo;
-    // Only reflect an active sub-tab when we're actually on the repos tab. The
-    // header also renders on the top-level pages (Admin / Settings / Wiki), where
-    // no workspace sub-tab is being viewed — so WI/PR shouldn't highlight there.
-    const activeTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
+    // Use the same active key as WorkspaceTabsCluster; top-level pages have none.
+    const rawActiveTab = state.activeTab === 'repos' ? state.activeRepoSubTab : null;
+    const activeTab = rawActiveTab === 'chats' ? 'activity' : rawActiveTab;
 
     const tabs = useMemo(() => computeVisibleSubTabs({
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,

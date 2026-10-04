@@ -177,10 +177,19 @@ describe('RemoteScopeCluster', () => {
         expect(workItems.getAttribute('data-active')).toBe('true');
     });
 
-    it('does not highlight WI/PR off the repos tab (e.g. Admin)', () => {
+    it.each(['chats', 'activity'])('does not highlight remote tabs for the %s workspace route', (activeRepoSubTab) => {
+        mockAppState = { selectedRepoId: 'a', activeTab: 'repos', activeRepoSubTab };
+        render(<RemoteScopeCluster repo={mockRepos[0]} repos={mockRepos} />);
+
+        const tabs = screen.getAllByTestId('remote-scope-tab');
+        expect(tabs.every(el => el.getAttribute('data-active') === 'false')).toBe(true);
+        expect(tabs.every(el => !el.hasAttribute('aria-current'))).toBe(true);
+    });
+
+    it.each(['work-items', 'chats', 'activity'])('does not highlight remote tabs for %s off the repos tab', (activeRepoSubTab) => {
         // The header still renders on the top-level pages, but no workspace sub-tab
         // is being viewed there — so WI/PR must not show as active.
-        mockAppState = { selectedRepoId: 'a', activeTab: 'admin', activeRepoSubTab: 'work-items' };
+        mockAppState = { selectedRepoId: 'a', activeTab: 'admin', activeRepoSubTab };
         render(<RemoteScopeCluster repo={mockRepos[0]} repos={mockRepos} />);
 
         const active = screen.getAllByTestId('remote-scope-tab').filter(el => el.getAttribute('data-active') === 'true');

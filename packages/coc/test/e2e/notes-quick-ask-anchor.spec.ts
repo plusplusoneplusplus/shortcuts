@@ -5,6 +5,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/notes-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-notes-quick-ask';
 const NOTE_PATH = 'Journal/quick-ask.md';
@@ -43,11 +44,7 @@ async function enableQuickAsk(page: import('@playwright/test').Page): Promise<vo
 }
 
 async function openNote(page: import('@playwright/test').Page, serverUrl: string): Promise<void> {
-    await page.goto(serverUrl);
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 15_000 });
-    await page.evaluate((id) => {
-        location.hash = `#repos/${id}/notes`;
-    }, WS_ID);
+    await gotoWorkspace(page, serverUrl, WS_ID, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
     await page.locator('[data-testid="notes-tree-item-Journal"]').click();
     await page.locator('[data-testid="notes-tree-item-quick-ask.md"]').click();

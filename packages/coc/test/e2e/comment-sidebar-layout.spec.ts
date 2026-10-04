@@ -10,6 +10,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-sidebar-layout';
 
@@ -40,15 +41,10 @@ async function seedComment(
 async function navigateToTask(
     page: import('@playwright/test').Page,
     serverUrl: string,
+    wsId: string,
     taskName: string,
 ): Promise<void> {
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-    await page.click('.repo-sub-tab[data-subtab="tasks"]');
+    await gotoWorkspace(page, serverUrl, wsId, 'tasks');
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
     const taskItem = page.locator(`[data-testid="task-tree-item-${taskName}"]`);
@@ -73,7 +69,7 @@ test.describe('Comment Sidebar Layout', () => {
             await seedComment(serverUrl, WS_ID, 'task-a.md', 'second comment', 'question');
             await seedComment(serverUrl, WS_ID, 'task-a.md', 'resolved one', 'suggestion', 'resolved');
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');
             await expect(sidebar).toBeVisible({ timeout: 10000 });
@@ -106,7 +102,7 @@ test.describe('Comment Sidebar Layout', () => {
             await seedComment(serverUrl, WS_ID, 'task-a.md', 'second comment', 'question');
             await seedComment(serverUrl, WS_ID, 'task-a.md', 'resolved one', 'suggestion', 'resolved');
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');
             await expect(sidebar).toBeVisible({ timeout: 10000 });
@@ -137,7 +133,7 @@ test.describe('Comment Sidebar Layout', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, 'ws-no-comments', 'no-comments-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-b');
+            await navigateToTask(page, serverUrl, 'ws-no-comments', 'task-b');
 
             await expect(page.locator('#task-preview-body')).toBeVisible({ timeout: 10000 });
 

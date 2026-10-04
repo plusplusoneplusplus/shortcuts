@@ -126,15 +126,48 @@ describe('WorkspaceTabsCluster', () => {
         expect(git.getAttribute('data-active')).toBe('true');
     });
 
-    it('does not highlight any sub-tab off the repos tab (e.g. Admin)', () => {
+    it.each(['chats', 'activity'])('highlights Workspace for the %s route', (activeRepoSubTab) => {
+        mockAppState = { activeTab: 'repos', activeRepoSubTab };
+        const selected = repo('a', 'shortcuts');
+        render(<WorkspaceTabsCluster repo={selected as any} repos={[selected] as any} />);
+
+        const active = screen.getAllByTestId('clone-scope-tab').filter(el => el.getAttribute('data-active') === 'true');
+        expect(active).toHaveLength(1);
+        expect(active[0].getAttribute('data-subtab')).toBe('activity');
+        expect(active[0].getAttribute('aria-current')).toBe('page');
+    });
+
+    it.each(['notes', 'chats', 'activity'])('does not highlight %s off the repos tab', (activeRepoSubTab) => {
         // The header still renders on the top-level pages, but no workspace sub-tab
         // is being viewed there — so none should show as active.
-        mockAppState = { activeTab: 'admin', activeRepoSubTab: 'notes' };
+        mockAppState = { activeTab: 'admin', activeRepoSubTab };
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
         const active = screen.getAllByTestId('clone-scope-tab').filter(el => el.getAttribute('data-active') === 'true');
         expect(active).toHaveLength(0);
+    });
+
+    it('shows the selected workspace task count and updates it when switching clones', () => {
+        const repos = [
+            { ...repo('a', 'shortcuts'), taskCount: 3 },
+            { ...repo('b', 'shortcuts-2'), taskCount: 7 },
+        ];
+        const { rerender } = render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+
+        expect(screen.getAllByTestId('subbar-tasks-badge')).toHaveLength(1);
+        expect(screen.getByTestId('subbar-tasks-badge').textContent).toBe('3');
+        expect(screen.getByTestId('subbar-tasks-badge').closest('button')?.getAttribute('data-subtab')).toBe('tasks');
+
+        rerender(<WorkspaceTabsCluster repo={repos[1] as any} repos={repos as any} />);
+        expect(screen.getByTestId('subbar-tasks-badge').textContent).toBe('7');
+    });
+
+    it.each([undefined, 0])('omits the task badge for count %s', (taskCount) => {
+        const selected = { ...repo('a', 'shortcuts'), taskCount };
+        render(<WorkspaceTabsCluster repo={selected as any} repos={[selected] as any} />);
+
+        expect(screen.queryByTestId('subbar-tasks-badge')).toBeNull();
     });
 
     it('shows the schedules tab by default (flag off)', () => {

@@ -12,6 +12,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedProcess, seedQueueTask, seedWorkspace, request } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 // ================================================================
 // Helpers
@@ -100,14 +101,7 @@ test.describe('Error Handling (008)', () => {
 
             await seedWorkspace(serverUrl, 'ws-err-enqueue', 'err-enqueue-repo', repoDir);
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await gotoWorkspace(page, serverUrl, 'ws-err-enqueue', 'tasks');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             // Mock only the enqueue endpoint to return error (avoid breaking /api/models)
@@ -253,11 +247,9 @@ test.describe('Error Handling (008)', () => {
             payload: { prompt: 'Reload-Marker-' + Math.random().toString(36).slice(2) },
         });
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]').first()).toBeVisible({ timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        // Skip the picker; a direct hash nav into the seeded workspace exercises
+        // the same repo-detail body the picker would land on.
+        await gotoWorkspace(page, serverUrl, wsId);
 
         // Should show the seeded task in the chat list (mock AI completes the task
         // immediately so it lands in the Completed history section). We only need
@@ -320,11 +312,7 @@ test.describe('Error Handling (008)', () => {
             return route.continue();
         });
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]').first()).toBeVisible({ timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await gotoWorkspace(page, serverUrl, wsId);
 
         // No tasks should be visible while the history API is failing
         await expect(page.locator('[data-task-id]')).toHaveCount(0);
@@ -339,9 +327,7 @@ test.describe('Error Handling (008)', () => {
         // Remove route intercept and reload
         await page.unrouteAll({ behavior: 'ignoreErrors' });
         await page.reload();
-        await expect(page.locator('[data-testid="repo-tab"]').first()).toBeVisible({ timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10_000 });
 
         // Should now show the recovered task
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10_000 });
@@ -390,11 +376,7 @@ test.describe('Error Handling (008)', () => {
             workspaceId: wsId,
         });
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]').first()).toBeVisible({ timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await gotoWorkspace(page, serverUrl, wsId);
 
         // Verify the seeded task is reachable
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10_000 });

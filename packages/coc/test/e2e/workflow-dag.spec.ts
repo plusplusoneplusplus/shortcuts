@@ -9,6 +9,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 /**
  * Enable the Workflows tab feature flag on the running server. The Workflows
@@ -67,18 +68,13 @@ function createWorkflowFixture(tmpDir: string): string {
 async function navigateToPipeline(
     page: import('@playwright/test').Page,
     serverUrl: string,
+    wsId: string,
 ): Promise<void> {
     // The Workflows sub-tab is feature-flag-gated; opt in before navigating.
     await enableWorkflowsFeature(serverUrl);
 
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-    await page.click('button[data-subtab="workflows"]');
-    await expect(page.locator('button[data-subtab="workflows"]')).toHaveClass(/active/);
+    await gotoWorkspace(page, serverUrl, wsId, 'workflows');
+    await expect(page.locator('button[data-subtab="workflows"]')).toHaveAttribute('data-active', 'true');
 
     const pipelineItems = page.locator('.repo-workflow-item');
     await expect(pipelineItems).toHaveCount(1, { timeout: 10_000 });
@@ -96,8 +92,9 @@ test.describe('Workflow DAG Chart', () => {
         const repoDir = createWorkflowFixture(tmpDir);
 
         try {
-            await seedWorkspace(serverUrl, 'ws-dag-1', 'dag-repo', repoDir);
-            await navigateToPipeline(page, serverUrl);
+            const wsId = 'ws-dag-1';
+            await seedWorkspace(serverUrl, wsId, 'dag-repo', repoDir);
+            await navigateToPipeline(page, serverUrl, wsId);
 
             const container = page.locator('[data-testid="workflow-dag-container"]');
             await expect(container).toBeVisible({ timeout: 10_000 });
@@ -117,8 +114,9 @@ test.describe('Workflow DAG Chart', () => {
         const repoDir = createWorkflowFixture(tmpDir);
 
         try {
-            await seedWorkspace(serverUrl, 'ws-dag-2', 'dag-repo', repoDir);
-            await navigateToPipeline(page, serverUrl);
+            const wsId = 'ws-dag-2';
+            await seedWorkspace(serverUrl, wsId, 'dag-repo', repoDir);
+            await navigateToPipeline(page, serverUrl, wsId);
 
             await expect(
                 page.locator('[data-testid="workflow-dag-container"]'),
@@ -147,8 +145,9 @@ test.describe('Workflow DAG Chart', () => {
         const repoDir = createWorkflowFixture(tmpDir);
 
         try {
-            await seedWorkspace(serverUrl, 'ws-dag-3', 'dag-repo', repoDir);
-            await navigateToPipeline(page, serverUrl);
+            const wsId = 'ws-dag-3';
+            await seedWorkspace(serverUrl, wsId, 'dag-repo', repoDir);
+            await navigateToPipeline(page, serverUrl, wsId);
 
             await expect(
                 page.locator('[data-testid="workflow-dag-container"]'),
@@ -177,8 +176,9 @@ test.describe('Workflow DAG Chart', () => {
         const repoDir = createWorkflowFixture(tmpDir);
 
         try {
-            await seedWorkspace(serverUrl, 'ws-dag-4', 'dag-repo', repoDir);
-            await navigateToPipeline(page, serverUrl);
+            const wsId = 'ws-dag-4';
+            await seedWorkspace(serverUrl, wsId, 'dag-repo', repoDir);
+            await navigateToPipeline(page, serverUrl, wsId);
 
             await expect(
                 page.locator('[data-testid="workflow-dag-container"]'),
@@ -205,8 +205,9 @@ test.describe('Workflow DAG Chart', () => {
         const repoDir = createWorkflowFixture(tmpDir);
 
         try {
-            await seedWorkspace(serverUrl, 'ws-dag-5', 'dag-repo', repoDir);
-            await navigateToPipeline(page, serverUrl);
+            const wsId = 'ws-dag-5';
+            await seedWorkspace(serverUrl, wsId, 'dag-repo', repoDir);
+            await navigateToPipeline(page, serverUrl, wsId);
 
             const container = page.locator('[data-testid="workflow-dag-container"]');
             await expect(container).toBeVisible({ timeout: 10_000 });
@@ -225,8 +226,9 @@ test.describe('Workflow DAG Chart', () => {
         const repoDir = createWorkflowFixture(tmpDir);
 
         try {
-            await seedWorkspace(serverUrl, 'ws-dag-6', 'dag-repo', repoDir);
-            await navigateToPipeline(page, serverUrl);
+            const wsId = 'ws-dag-6';
+            await seedWorkspace(serverUrl, wsId, 'dag-repo', repoDir);
+            await navigateToPipeline(page, serverUrl, wsId);
 
             await expect(
                 page.locator('[data-testid="workflow-dag-container"]'),

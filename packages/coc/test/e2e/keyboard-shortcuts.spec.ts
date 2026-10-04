@@ -7,16 +7,12 @@
 
 import { test, expect } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 test.describe('Keyboard shortcuts', () => {
     test("pressing 'A' on Repos tab with selected repo navigates to Activity sub-tab", async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-ks-1', 'kb-test-repo-a', '/tmp/kb-test-repo-a');
-        await page.goto(serverUrl);
-
-        // Wait for repo to appear and select it
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await gotoWorkspace(page, serverUrl, 'ws-ks-1');
 
         // Press Alt+A to jump to Activity sub-tab
         await page.keyboard.press('Alt+a');
@@ -27,12 +23,7 @@ test.describe('Keyboard shortcuts', () => {
 
     test("pressing Alt+I on Repos tab with selected repo navigates to Work-items sub-tab", async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-ks-2', 'kb-test-repo-w', '/tmp/kb-test-repo-w');
-        await page.goto(serverUrl);
-
-        // Wait for repo to appear and select it
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await gotoWorkspace(page, serverUrl, 'ws-ks-2');
 
         // Press Alt+I — the `i` shortcut maps to the Work-items sub-tab
         // (see REPO_TAB_SHORTCUTS in `layout/Router.tsx`).
@@ -43,12 +34,7 @@ test.describe('Keyboard shortcuts', () => {
 
     test("pressing bare 'W' does NOT navigate away from current tab", async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-ks-3', 'kb-test-repo-bare-w', '/tmp/kb-test-repo-bare-w');
-        await page.goto(serverUrl);
-
-        // Wait for repo to appear and select it
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
+        await gotoWorkspace(page, serverUrl, 'ws-ks-3');
 
         const urlBefore = page.url();
 

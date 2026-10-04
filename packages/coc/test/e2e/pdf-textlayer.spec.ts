@@ -35,6 +35,7 @@ import {
     PDF_LEFT_COLUMN_PASSAGE,
     PDF_RIGHT_COLUMN_PASSAGE,
 } from './fixtures/pdf-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-pdf-textlayer';
 
@@ -52,11 +53,7 @@ function seedTree(): NoteTreeNode[] {
 }
 
 async function openNotesPage(page: Page, serverUrl: string, wsId: string): Promise<void> {
-    await page.goto(serverUrl);
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 15_000 });
-    await page.evaluate((id) => {
-        location.hash = `#repos/${id}/notes`;
-    }, wsId);
+    await gotoWorkspace(page, serverUrl, wsId, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
 }
 

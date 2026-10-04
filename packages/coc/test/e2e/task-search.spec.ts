@@ -13,6 +13,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 /** Helper: create a repo with tasks, seed it as a workspace, navigate to Tasks sub-tab. */
 async function setupRepoWithTasks(
@@ -26,15 +27,8 @@ async function setupRepoWithTasks(
 
     await seedWorkspace(serverUrl, wsId, 'search-repo', repoDir);
 
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-    await page.click('.repo-sub-tab[data-subtab="tasks"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
+    await gotoWorkspace(page, serverUrl, wsId, 'tasks');
+    await expect(page.locator('button[data-subtab="tasks"]')).toHaveAttribute('data-active', 'true');
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10000 });
 
     return repoDir;

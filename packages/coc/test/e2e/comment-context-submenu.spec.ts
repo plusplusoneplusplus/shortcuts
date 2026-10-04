@@ -27,7 +27,7 @@ test.describe.skip('ContextMenu Submenu', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'submenu-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
 
             // Context menu should be visible
