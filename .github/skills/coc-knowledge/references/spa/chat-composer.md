@@ -213,7 +213,17 @@ commit row *body* drags are copy-only; the unpushed-commit reorder path stays is
 the row's grab handle. The review-chat drop target that rebinds an existing chat is in
 [chat.md](chat.md).
 
-The formatter emits **pointer-only** blocks: `<attached_session_context>` for single
+Repository `PreviewPane` hosts opt into the shared Monaco editor's
+`selectionContext` prop. `shared/monaco/MonacoSelectionAttachPill` observes cursor
+selection, layout, scroll and blur, reads the live model, and routes file-selection
+payloads through `activeChatAttach`. The last-focused workspace subscriber in
+`FollowUpInputArea` validates, adds the chip and focuses its input; without a
+subscriber, `newChatSeedContext` seeds the workspace's draft composer. Generic
+file viewers and trusted absolute paths do not opt in. File-selection blocks
+include a repo-relative path, line range and a capped fenced snippet; user-turn
+parsing restores their context cards.
+
+Pointer attachments emit blocks: `<attached_session_context>` for single
 sessions, `<attached_ralph_session_context>` for Ralph groups, and
 `<attached_pointer_context>` for Work Item, commit, range, and PR references. Pointer blocks
 store the source workspace ID and stable identifiers (work item ID/number, commit hash,

@@ -276,6 +276,12 @@ revealed both on mount and from an effect keyed on `revealLine` and the content
 revision, because the content arrives after the editor does and a second hit in
 an already-open file has no mount to piggyback on.
 
+`PreviewPane` opts into `MonacoFileEditor.selectionContext` with its owner
+workspace and repo-relative path. The shared `MonacoSelectionAttachPill` reads
+selected text from the live model and routes it through `activeChatAttach` when
+session-context attachments are enabled. Trusted absolute paths and shared
+viewer hosts do not opt in; right-panel file tabs use the same preview host.
+
 `MonacoFileEditor` does not hand `value` to `@monaco-editor/react`, which
 silently writes any differing `value` back into the model. It remembers the
 texts it reported through `onChange` and drops a `value` that echoes one of

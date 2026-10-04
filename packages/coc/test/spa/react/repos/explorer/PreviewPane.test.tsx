@@ -37,11 +37,11 @@ vi.mock('../../../../../src/server/spa/client/react/features/language-servers/us
 
 // Mock MonacoFileEditor since Monaco requires a real DOM/worker environment
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, language, onChange, onSave, revealLine, revealColumn, revealNonce }: any) => {
+    MonacoFileEditor: ({ value, language, selectionContext, onChange, onSave, revealLine, revealColumn, revealNonce }: any) => {
         mockMonaco.onSave = onSave;
         mockMonaco.saveAction ??= () => mockMonaco.onSave?.();
         return (
-            <div data-testid="mock-monaco-editor" data-language={language} data-value={value}
+            <div data-testid="mock-monaco-editor" data-language={language} data-value={value} data-selection-context={JSON.stringify(selectionContext)}
                 data-reveal-line={revealLine} data-reveal-column={revealColumn} data-reveal-nonce={revealNonce}>
                 <textarea
                     data-testid="mock-monaco-textarea"
@@ -98,6 +98,7 @@ describe('PreviewPane', () => {
 
         await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
         expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-language')).toBe('typescript');
+        expect(JSON.parse(screen.getByTestId('mock-monaco-editor').getAttribute('data-selection-context')!)).toEqual({ workspaceId: 'r1', filePath: 'src/app.ts' });
     });
 
     it('renders markdown files in Monaco editor (not as rendered HTML)', async () => {

@@ -6,11 +6,12 @@
  */
 import type { editor as monacoEditor } from 'monaco-editor';
 import { MarkdownFileView, isMarkdownFile } from './MarkdownFileView';
-import { MonacoFileEditor, getMonacoLanguage, type EditorModelMountContext } from './MonacoFileEditor';
+import { MonacoFileEditor, getMonacoLanguage, type EditorModelMountContext, type MonacoFileEditorProps } from './MonacoFileEditor';
 import type { FileBlob, LineRange } from './types';
 
 export interface FileViewerProps {
     /** The bytes to show. `content` is already truncated/edited by the host. */
+    selectionContext?: MonacoFileEditorProps['selectionContext'];
     blob: FileBlob;
     /** Used to derive the Monaco language and to detect markdown. */
     fileName: string;
@@ -62,7 +63,7 @@ export function formatFileSize(bytes: number): string {
 }
 
 export function FileViewer({
-    blob, fileName, language, onChange, onSave,
+    selectionContext, blob, fileName, language, onChange, onSave,
     highlightRange, revealLine, revealColumn, revealNonce, markdown = 'off', codeTestId, markers, onModelMount,
 }: FileViewerProps) {
     if (blob.encoding === 'base64') {
@@ -95,6 +96,7 @@ export function FileViewer({
     return (
         <div className="h-full w-full min-h-0" data-testid={codeTestId}>
             <MonacoFileEditor
+                selectionContext={selectionContext}
                 value={blob.content}
                 language={getMonacoLanguage(fileName)}
                 onChange={onChange}

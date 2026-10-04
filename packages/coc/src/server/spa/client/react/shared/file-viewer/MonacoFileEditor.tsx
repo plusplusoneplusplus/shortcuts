@@ -15,7 +15,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
-import type { editor as monacoEditor, ISelection } from 'monaco-editor';
+import type { editor as monacoEditor, ISelection, Selection } from 'monaco-editor';
+import { MonacoSelectionAttachPill } from '../monaco/MonacoSelectionAttachPill';
+import { createFileSelectionContextPayload } from '../../features/chat/sessionContextDrag';
 import { useTheme } from '../../layout/ThemeProvider';
 // A constant, from a module with no runtime Monaco or React dependency: the
 // marker owner has to be the same string here and in the layer that builds the
@@ -153,6 +155,8 @@ export interface EditorHighlightRange {
 }
 
 export interface MonacoFileEditorProps {
+    /** Only repository preview hosts opt into selection attachments. */
+    selectionContext?: { workspaceId: string; filePath: string };
     value: string;
     language: string | null;
     /**
@@ -284,7 +288,7 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
 };
 
 export function MonacoFileEditor({
-    value, language, onChange, onSave, revealLine, revealColumn, revealNonce, highlightRange, markers, onModelMount,
+    selectionContext, value, language, onChange, onSave, revealLine, revealColumn, revealNonce, highlightRange, markers, onModelMount,
 }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
@@ -522,10 +526,33 @@ export function MonacoFileEditor({
         onChange(text, event?.changes ?? []);
     }, [onChange]);
 
+    const contextWorkspaceId = selectionContext?.workspaceId;
+    const contextFilePath = selectionContext?.filePath;
+    const buildSelectionPayload = useCallback((selection: Selection, model: monacoEditor.ITextModel) => {
+        if (!contextWorkspaceId || !contextFilePath) return null;
+        return createFileSelectionContextPayload({
+            sourceWorkspaceId: contextWorkspaceId,
+            filePath: contextFilePath,
+            range: {
+                start: selection.startLineNumber,
+                end: selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber
+                    ? selection.endLineNumber - 1 : selection.endLineNumber,
+            },
+            snippet: model.getValueInRange(selection),
+        });
+    }, [contextWorkspaceId, contextFilePath]);
+
     const monacoTheme = resolveIsDark(theme) ? 'vs-dark' : 'vs';
 
     return (
-        <div ref={wrapperRef} className="h-full w-full overflow-hidden" data-testid="monaco-editor-wrapper">
+        <div ref={wrapperRef} className="relative h-full w-full overflow-hidden" data-testid="monaco-editor-wrapper">
+            {selectionContext && (
+                <MonacoSelectionAttachPill
+                    editor={mounted?.editor ?? null}
+                    workspaceId={selectionContext.workspaceId}
+                    buildPayload={buildSelectionPayload}
+                />
+            )}
             {dimensions && (
                 <Editor
                     width={dimensions.width}
