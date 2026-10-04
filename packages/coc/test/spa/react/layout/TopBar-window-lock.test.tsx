@@ -3,7 +3,7 @@
  *
  * When the window carries `?window=<id>` (surfaced via `useLockedWorkspaceId`),
  * TopBar hides every cross-scope switcher — the segmented ScopeSlideSwitcher,
- * the My Work / My Life toggles, the classic RepoTabStrip — and suppresses the
+ * the My Work / My Life toggles and suppresses the
  * workspace identity chip in the remote/virtual headers, while keeping the
  * in-scope header (RemoteShellHeader / VirtualWorkspaceShellHeader) so the full
  * app for the scope still renders. The main (unlocked) window is unaffected.
@@ -17,7 +17,6 @@ const mockAppDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
 let mockAppState: any;
 let mockRepos: any[] = [];
-let mockRemoteShell = true;
 let mockScopeSwitcher = true;
 let mockMyWorkEnabled = true;
 let mockMyLifeEnabled = true;
@@ -45,9 +44,6 @@ vi.mock('../../../../src/server/spa/client/react/shared/AgentProviderQuotaIndica
 vi.mock('../../../../src/server/spa/client/react/repos/RepoManagementPopover', () => ({
     RepoManagementPopover: () => null,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoTabStrip', () => ({
-    RepoTabStrip: () => <div data-testid="repo-tab-strip" />,
-}));
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/RemoteShellHeader', () => ({
     RemoteShellHeader: (props: any) => (
         <div data-testid="remote-shell-header" data-hide-identity={String(!!props.hideIdentity)} />
@@ -65,9 +61,6 @@ vi.mock('../../../../src/server/spa/client/react/features/remote-shell/VirtualWo
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/ScopeSlideSwitcher', () => ({
     ScopeSlideSwitcher: () => <div data-testid="scope-switcher" />,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShell,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useScopeSwitcherEnabled', () => ({
     useScopeSwitcherEnabled: () => mockScopeSwitcher,
 }));
@@ -76,9 +69,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEn
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
     useMyLifeEnabled: () => mockMyLifeEnabled,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => false,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
@@ -102,7 +92,6 @@ const repo = (id: string, name: string) => ({
 beforeEach(() => {
     mockAppDispatch.mockReset();
     mockQueueDispatch.mockReset();
-    mockRemoteShell = true;
     mockScopeSwitcher = true;
     mockMyWorkEnabled = true;
     mockMyLifeEnabled = true;
@@ -143,14 +132,6 @@ describe('TopBar — locked pop-out window (AC-02)', () => {
         const header = screen.getByTestId('remote-shell-header');
         expect(header).toBeTruthy();
         expect(header.getAttribute('data-hide-identity')).toBe('true');
-    });
-
-    it('hides the classic RepoTabStrip when locked (remote shell off)', () => {
-        mockRemoteShell = false;
-        mockLockedId = 'a';
-        render(<TopBar />);
-        expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
-        expect(screen.queryByTestId('scope-switcher')).toBeNull();
     });
 
     it('locks a virtual scope identically, suppressing its identity (AC-04)', () => {

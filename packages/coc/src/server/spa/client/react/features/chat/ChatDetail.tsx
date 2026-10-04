@@ -90,7 +90,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, isSentinelEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, isRemoteShellEnabled, getDefaultChatStyle } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, isSentinelEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -550,7 +550,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         return { ...none, isRemote: appState.workspaces.length > 0 && !knownLocal };
     }, [reposCtx?.repos, appState.workspaces, workspaceId]);
     const implementTargets = useMemo(() => {
-        if (!isRemoteShellEnabled() || !reposCtx) return undefined;
+        if (!reposCtx) return undefined;
         return buildImplementTargets(reposCtx.repos, {
             workspaceId,
             label: workspaceName,

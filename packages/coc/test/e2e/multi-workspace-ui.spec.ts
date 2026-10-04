@@ -43,9 +43,7 @@ async function startTestServer(): Promise<TestServer> {
     const wsIdB = 'e2e-ws-b';
 
     const store = new FileProcessStore({ dataDir });
-    // Pin the classic shell (see e2e-server-config.ts) so this own-server spec
-    // matches the shared fixture and the graduated default-on shell flags don't
-    // reshape the layout out from under it.
+    // Match the shared E2E feature overrides.
     const configPath = path.join(dataDir, 'config.yaml');
     fs.writeFileSync(configPath, E2E_SERVER_CONFIG_YAML);
     const server = await createExecutionServer({ port: 0, host: '127.0.0.1', store, dataDir, configPath });
@@ -53,6 +51,17 @@ async function startTestServer(): Promise<TestServer> {
     // Register two workspaces via API
     await apiPost(server.url, '/api/workspaces', { id: wsIdA, name: 'Repo A', rootPath: wsDirA });
     await apiPost(server.url, '/api/workspaces', { id: wsIdB, name: 'Repo B', rootPath: wsDirB });
+    const preferencesResponse = await fetch(`${server.url}/api/preferences`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            hasSeenWelcome: true,
+            onboardingProgress: { dismissed: true, hasCompletedTour: true },
+        }),
+    });
+    if (!preferencesResponse.ok) {
+        throw new Error(`Failed to seed preferences: HTTP ${preferencesResponse.status}`);
+    }
 
     const cleanup = async () => {
         await server.close();
@@ -108,18 +117,14 @@ test.describe('Multi-Workspace UI Isolation', () => {
     });
 
     test('repos list shows both workspaces after registration', async ({ page }) => {
-        await page.goto(ctx.server.url);
+        await page.goto(`${ctx.server.url}/#repos/${ctx.wsIdA}`);
         await page.waitForLoadState('networkidle');
 
-        // Repos is the default landing tab — no explicit click is required.
-        // Both workspace names render in `[data-testid="repo-tab"]` entries on
-        // the persistent rail. Scope the assertion to the rail so the strict
-        // mode duplicate-element guard doesn't trip on the same name showing
-        // up inside per-workspace detail panels.
-        const repoTabs = page.locator('[data-testid="repo-tab"]');
-        await expect(repoTabs).toHaveCount(2, { timeout: 10_000 });
-        await expect(repoTabs.filter({ hasText: 'Repo A' })).toHaveCount(1);
-        await expect(repoTabs.filter({ hasText: 'Repo B' })).toHaveCount(1);
+        await page.locator('[data-testid="remote-chip"]').click();
+        const repoRows = page.locator('[data-testid="remote-dropdown-item"]');
+        await expect(repoRows).toHaveCount(2, { timeout: 10_000 });
+        await expect(repoRows.filter({ hasText: 'Repo A' })).toHaveCount(1);
+        await expect(repoRows.filter({ hasText: 'Repo B' })).toHaveCount(1);
     });
 
     test('queue badge for Repo A and Repo B shown independently in repos grid', async ({ page }) => {

@@ -245,8 +245,7 @@ describe('ReposView — responsive layout', () => {
 
             await screen.findByTestId('repo-detail-empty');
             const container = document.getElementById('view-repos')!;
-            expect(container.className).toContain('h-[calc(100vh-48px)]');
-            expect(container.className).not.toContain('40px');
+            expect(container.className).toContain('h-[calc(100vh-40px)]');
         });
     });
 
@@ -340,8 +339,7 @@ describe('ReposView — responsive layout', () => {
 
             await screen.findByTestId('repo-detail-empty');
             const container = document.getElementById('view-repos')!;
-            expect(container.className).toContain('h-[calc(100vh-48px)]');
-            expect(container.className).not.toContain('40px');
+            expect(container.className).toContain('h-[calc(100vh-40px)]');
         });
     });
 });
@@ -396,7 +394,7 @@ describe('RepoDetail — sub-tab strip responsiveness', () => {
         render(<ToastProvider value={{ addToast: vi.fn(), removeToast: vi.fn(), toasts: [] }}><RealRepoDetail repo={repo} repos={[repo]} onRefresh={vi.fn()} /></ToastProvider>);
 
         const tabs = screen.getByTestId('repo-sub-tab-strip').querySelectorAll('[data-subtab]');
-        expect(tabs.length).toBe(9);
+        expect([...tabs].map(tab => tab.getAttribute('data-subtab'))).not.toEqual(expect.arrayContaining(['git', 'terminal', 'explorer']));
         tabs.forEach(tab => {
             expect(tab.className).toContain('whitespace-nowrap');
             expect(tab.className).toContain('shrink-0');

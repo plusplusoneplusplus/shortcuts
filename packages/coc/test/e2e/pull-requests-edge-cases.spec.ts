@@ -7,6 +7,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { createMockPullRequest } from './fixtures/pr-fixtures';
 import { setupPrRoutes } from './fixtures/pr-mock';
+import { gotoWorkspace, openSubTab } from './fixtures/remote-shell';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,11 +71,7 @@ async function seedPrWorkspace(
 async function openPrTab(page: any, serverUrl: string, wsId: string): Promise<void> {
     await enablePullRequestsFeature(serverUrl);
     await mockGitInfo(page, wsId);
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await page.click('button[data-subtab="pull-requests"]');
+    await gotoWorkspace(page, serverUrl, wsId, 'pull-requests');
 }
 
 function isOriginPullRequestRoute(url: string): boolean {
@@ -247,8 +244,8 @@ test.describe('Pull Requests — cache edge cases', () => {
 
             // Navigate back — should fetch again (error was not cached)
             await page.click('[data-tab="repos"]');
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await page.click('button[data-subtab="pull-requests"]');
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10000 });
+            await openSubTab(page, 'pull-requests');
 
             await expect(page.locator('[data-testid="error-message"]')).toBeVisible({ timeout: 10000 });
             expect(fetchCount).toBe(2);

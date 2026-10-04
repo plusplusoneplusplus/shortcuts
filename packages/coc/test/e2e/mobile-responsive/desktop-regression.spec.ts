@@ -22,11 +22,14 @@ test.describe('Desktop Regression', () => {
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
         // ChatListPane (left panel) should be visible
-        const splitPanel = page.locator('[data-testid="activity-split-panel"]');
+        const splitPanel = page.locator('[data-testid="split-workspace-panel"]');
         await expect(splitPanel).toBeVisible();
 
-        // Detail pane should also be visible
-        const detail = page.locator('[data-testid="activity-detail-panel"]');
+        // Detail pane should also be visible. In the split-workspace layout
+        // the detail region has no dedicated testid before a task is
+        // selected — it's identified by the shared `data-pane="detail"`
+        // portal target.
+        const detail = page.locator('[data-pane="detail"]');
         await expect(detail.first()).toBeVisible();
     });
 
@@ -43,13 +46,16 @@ test.describe('Desktop Regression', () => {
         await expect(detail).toBeVisible({ timeout: 8000 });
     });
 
-    test('desktop: ReposView shows RepoTabStrip and repo tabs', async ({ page, serverUrl }) => {
+    test('desktop: TopBar shows the remote-chip workspace picker', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-desk-1', 'desk-repo');
         await page.goto(`${serverUrl}/#repos`);
 
-        // RepoTabStrip should be visible in TopBar with repo tabs
-        await expect(page.locator('[data-testid="repo-tab-strip"]')).toBeVisible({ timeout: 10000 });
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
+        // The remote-chip identity picker (and its clone/sub-tab cluster) is
+        // always rendered in the TopBar on desktop; opening it lists the one
+        // registered workspace.
+        await expect(page.locator('[data-testid="remote-chip"]').first()).toBeVisible({ timeout: 10000 });
+        await page.locator('[data-testid="remote-chip"]').first().click();
+        await expect(page.locator('[data-testid="remote-dropdown-item"]')).toHaveCount(1, { timeout: 10000 });
     });
 
     test('desktop: hamburger opens RepoManagementPopover', async ({ page, serverUrl }) => {
@@ -67,11 +73,10 @@ test.describe('Desktop Regression', () => {
 
     test('desktop: ReposView two-pane layout with repo selected', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-desk-2p', 'desk-2p-repo');
-        await page.goto(`${serverUrl}/#repos`);
 
-        // Select repo via RepoTabStrip
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
+        // Select the repo via direct hash navigation — the remote-chip picker
+        // is exercised separately above.
+        await page.goto(`${serverUrl}/#repos/ws-desk-2p`);
 
         await expect(page.locator('#repo-detail-content')).toBeVisible();
     });

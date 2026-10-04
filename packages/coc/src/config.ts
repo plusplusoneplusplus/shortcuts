@@ -315,14 +315,10 @@ export interface CLIConfig {
         quickAskSidenotes?: boolean;
         /** Ingest and embed a local PDF when a lone arXiv link is pasted into Notes. Disabled by default. */
         arxivPaperIngest?: boolean;
-        /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
-        remoteShell?: boolean;
         /** Sliding scope switcher (My Work · My Life · active workspace) in the remote-first header. Disabled by default. */
         scopeSwitcher?: boolean;
         /** Pinned repos / repo groups as their own segments inside the scope slide switcher. Disabled by default. */
         pinnedScopes?: boolean;
-        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
-        splitWorkspacePanel?: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide?: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
@@ -698,14 +694,10 @@ export interface ResolvedCLIConfig {
         quickAskSidenotes: boolean;
         /** Ingest and embed a local PDF when a lone arXiv link is pasted into Notes. Disabled by default. */
         arxivPaperIngest: boolean;
-        /** Remote-first dashboard shell (one tab per remote). Enabled by default. */
-        remoteShell: boolean;
         /** Sliding scope switcher (My Work · My Life · active workspace) in the remote-first header. Enabled by default. */
         scopeSwitcher: boolean;
         /** Pinned repos / repo groups as their own segments inside the scope slide switcher. Disabled by default. */
         pinnedScopes: boolean;
-        /** Split "Workspace" left panel (chat top / git bottom) feeding one shared detail pane. Enabled by default. */
-        splitWorkspacePanel: boolean;
         /** Schedule management inside the chat-list "Scheduled" slide (definitions list + right-pane create/edit), retiring the Schedules tab. Enabled by default. */
         schedulesInScheduledSlide: boolean;
         /** User-created chat folders in the chat list (manual organizing layer over chat/task rows). Disabled by default. */
@@ -1004,10 +996,8 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         botManagedConversations: false,
         quickAskSidenotes: true,
         arxivPaperIngest: false,
-        remoteShell: true,
         scopeSwitcher: true,
         pinnedScopes: true,
-        splitWorkspacePanel: true,
         schedulesInScheduledSlide: true,
         chatFolders: false,
         composerWordHint: true,

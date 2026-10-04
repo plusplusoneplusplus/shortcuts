@@ -183,9 +183,8 @@ export function createRepoWithUnpushedCommits(tmpDir: string): string {
  *
  * Steps:
  *  1. Seed the workspace pointing at a real repo directory
- *  2. Open the SPA and click the repos tab
- *  3. Wait for the repo to appear and click it
- *  4. Click the Git sub-tab
+ *  2. Navigate directly to its Git sub-tab via hash routing
+ *  3. Wait for the git sub-tab's commit list to render
  */
 export async function navigateToGitTab(
     page: Page,
@@ -196,12 +195,8 @@ export async function navigateToGitTab(
 ): Promise<void> {
     await seedWorkspace(serverUrl, wsId, wsName, repoDir);
 
-    await page.goto(serverUrl);
-    // Repos is the default view — select repo via RepoTabStrip in TopBar
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
+    await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}/git`);
+    await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10_000 });
 
-    await page.click('.repo-sub-tab[data-subtab="git"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="git"]')).toHaveClass(/active/);
+    await expect(page.locator('[data-testid="git-split-workspace-list"]')).toBeVisible();
 }

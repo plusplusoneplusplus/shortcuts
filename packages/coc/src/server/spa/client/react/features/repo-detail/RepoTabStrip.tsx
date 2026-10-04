@@ -17,7 +17,6 @@ import { useContainerAgents } from '../../contexts/ContainerAgentContext';
 import { ToastContext } from '../../contexts/ToastContext';
 import { getSpaCocClient } from '../../api/cocClient';
 import { isContainerMode, getHostname } from '../../utils/config';
-import { useUiLayoutMode } from '../../hooks/preferences/useUiLayoutMode';
 import { GenerateTaskDialog } from '../../tasks/GenerateTaskDialog';
 import { openScopePopOut } from '../scope-window/scopeWindow';
 import {
@@ -120,7 +119,6 @@ interface ContextMenuState {
 }
 
 export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, onRefresh }: RepoTabStripProps) {
-    const [uiLayoutMode] = useUiLayoutMode();
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [addOpen, setAddOpen] = useState(false);
     const [addFolderOpen, setAddFolderOpen] = useState(false);
@@ -1066,8 +1064,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         role="menu"
                         style={{ left: contextMenu.x, top: contextMenu.y }}
                     >
-                        {uiLayoutMode === 'classic' && (
-                            <button
+                        <button
                                 data-testid="repo-tab-context-queue-task"
                                 className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                                 role="menuitem"
@@ -1078,9 +1075,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             >
                                 🤖 Queue Task
                             </button>
-                        )}
-                        {uiLayoutMode === 'classic' && (
-                            <button
+                        <button
                                 data-testid="repo-tab-context-ask"
                                 className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                                 role="menuitem"
@@ -1091,7 +1086,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             >
                                 💡 Ask
                             </button>
-                        )}
                         <button
                             data-testid="repo-tab-context-run-script"
                             className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
@@ -1114,8 +1108,7 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                         >
                             🪟 Open in new window
                         </button>
-                        {uiLayoutMode === 'classic' && (
-                            <button
+                        <button
                                 data-testid="repo-tab-context-generate-plan"
                                 className="w-full text-left px-3 py-1.5 text-xs text-[#1e1e1e] dark:text-[#cccccc] hover:bg-[#0078d4]/10 dark:hover:bg-[#3794ff]/10 cursor-pointer"
                                 role="menuitem"
@@ -1126,7 +1119,6 @@ export function RepoTabStrip({ repos, selectedRepoId, onSelect, unseenCounts, on
                             >
                                 📋 Generate Plan
                             </button>
-                        )}
                         <hr className="my-1 border-[#e0e0e0] dark:border-[#3c3c3c]" />
                         <button
                             data-testid="repo-tab-context-customize-order"

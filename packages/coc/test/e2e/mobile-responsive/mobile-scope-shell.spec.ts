@@ -67,18 +67,17 @@ test.describe('Mobile scope shell (390×844)', () => {
         expect(page.url()).toContain(encodeURIComponent(groupId));
     });
 
-    test('the group tab bar pins Workspace / Git / Notes and keeps Settings in the more sheet', async ({ page, serverUrl }) => {
+    test('the group tab bar pins Workspace / Notes / Settings', async ({ page, serverUrl }) => {
         const groupId = await seedGroup(serverUrl);
         await page.goto(`${serverUrl}/#repos/${encodeURIComponent(groupId)}`);
 
         const bar = page.locator('[data-testid="mobile-tab-bar"]');
         await expect(bar).toBeVisible({ timeout: 15_000 });
         await expect(bar.locator('button[data-tab="chats"]')).toBeVisible();
-        await expect(bar.locator('button[data-tab="git"]')).toBeVisible();
+        await expect(bar.locator('button[data-tab="git"]')).toHaveCount(0);
         await expect(bar.locator('button[data-tab="notes"]')).toBeVisible();
 
-        await bar.locator('button[data-tab="more"]').tap();
-        await expect(page.locator('[data-testid="mobile-tab-more-item-settings"]')).toBeVisible({ timeout: 5000 });
+        await expect(bar.locator('button[data-tab="settings"]')).toBeVisible();
     });
 
     test('goes back from a group to the scope list', async ({ page, serverUrl }) => {

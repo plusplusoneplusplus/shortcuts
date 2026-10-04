@@ -135,6 +135,6 @@ test.describe('Mobile Repos', () => {
         const activityTab = mobileTabBar.locator('[data-tab="activity"]');
         await activityTab.tap();
 
-        await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10000 });
     });
 });

@@ -13,9 +13,6 @@
  * `baseUrl`) and feeds every message into the SAME `onMessage` handler, so remote
  * tasks update in real time exactly like local ones. Server-side loopback WS CORS
  * (AC-02) already permits the cross-origin upgrade to `127.0.0.1:{port}`.
- *
- * Gated implicitly by `features.remoteShell`: the aggregation only contributes
- * remote workspaces when the flag is on, so this no-ops (zero sockets) otherwise.
  */
 import { useEffect, useRef } from 'react';
 import type { ProcessWebSocketConnection } from '@plusplusoneplusplus/coc-client';

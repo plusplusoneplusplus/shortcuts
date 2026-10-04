@@ -22,7 +22,6 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 const mockDispatch = vi.fn();
 let mockAppState: any = {};
-let mockRemoteShellEnabled = false;
 let mockBreakpoint = 'desktop';
 let mockTodayViewEnabled = true;
 
@@ -42,9 +41,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedule
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkTodayViewEnabled', () => ({
     useMyWorkTodayViewEnabled: () => mockTodayViewEnabled,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShellEnabled,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
@@ -106,7 +102,6 @@ function barTabs(): (string | null)[] {
 beforeEach(() => {
     cleanup();
     mockDispatch.mockReset();
-    mockRemoteShellEnabled = false;
     mockBreakpoint = 'desktop';
     mockTodayViewEnabled = true;
     location.hash = '';
@@ -128,12 +123,10 @@ describe('MyWorkView mobile chrome', () => {
         expect(screen.queryByTestId('my-work-header')).toBeNull();
     });
 
-    it('keeps the inline header on desktop in the classic shell', () => {
-        // The swap is mobile-only: the desktop classic shell still renders the
-        // in-body header, so neither header can quietly take over the other's width.
+    it('leaves the virtual header to the TopBar on desktop', () => {
         render(<MyWorkView />);
 
-        expect(screen.getByTestId('my-work-header')).toBeTruthy();
+        expect(screen.queryByTestId('my-work-header')).toBeNull();
         expect(screen.queryByTestId('my-work-mobile-header')).toBeNull();
     });
 
@@ -192,10 +185,10 @@ describe('MyLifeView mobile chrome', () => {
         expect(screen.queryByTestId('my-life-header')).toBeNull();
     });
 
-    it('keeps the inline header on desktop in the classic shell', () => {
+    it('leaves the virtual header to the TopBar on desktop', () => {
         render(<MyLifeView />);
 
-        expect(screen.getByTestId('my-life-header')).toBeTruthy();
+        expect(screen.queryByTestId('my-life-header')).toBeNull();
         expect(screen.queryByTestId('my-life-mobile-header')).toBeNull();
     });
 

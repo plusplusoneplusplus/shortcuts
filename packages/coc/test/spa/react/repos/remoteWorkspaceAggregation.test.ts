@@ -11,12 +11,6 @@ import type { RemoteServer, WorkspaceInfo } from '@plusplusoneplusplus/coc-clien
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-// Feature flag — flipped per-test.
-let remoteShellEnabled = true;
-vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
-    isRemoteShellEnabled: () => remoteShellEnabled,
-}));
-
 // Registry client: getSpaCocClient().servers.list()
 const serversList = vi.fn<[], Promise<RemoteServer[]>>();
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -159,7 +153,6 @@ function serverWithStatus(id: string, label: string, status: RemoteServerRuntime
 }
 
 beforeEach(() => {
-    remoteShellEnabled = true;
     serversList.mockReset();
     remoteResponses.clear();
     constructedBaseUrls.length = 0;
@@ -436,17 +429,7 @@ describe('aggregateRemoteWorkspaces — offline cache fallback', () => {
     });
 });
 
-// ── feature-flag gating ─────────────────────────────────────────────────────
-
-describe('aggregateRemoteWorkspaces — feature flag', () => {
-    it('returns an empty aggregate and performs NO server fetch when remoteShell is OFF', async () => {
-        remoteShellEnabled = false;
-        const result = await aggregateRemoteWorkspaces();
-        expect(serversList).not.toHaveBeenCalled();
-        expect(constructedBaseUrls).toHaveLength(0);
-        expect(result).toEqual({ sources: [], workspaces: [], groupWorkspaces: [], gitInfo: {}, workflows: {}, warnings: [] });
-    });
-
+describe('aggregateRemoteWorkspaces — registry failures', () => {
     it('returns an empty aggregate when the registry list fails', async () => {
         serversList.mockRejectedValue(new Error('registry down'));
         const result = await aggregateRemoteWorkspaces();
@@ -581,19 +564,6 @@ describe('aggregateRemoteWorkspaces — clone lookup registry (AC-07)', () => {
         expect(lookupCloneBaseUrl('ws-legacy')).toBeUndefined();
     });
 
-    it('clears the registry when the remote-shell flag is OFF (per-clone routing reverts to local)', async () => {
-        // First populate while ON.
-        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
-        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1')] });
-        await aggregateRemoteWorkspaces();
-        expect(lookupCloneBaseUrl('w1')).toBe('http://127.0.0.1:4000');
-
-        // Flip OFF and re-aggregate → registry cleared.
-        remoteShellEnabled = false;
-        await aggregateRemoteWorkspaces();
-        expect(lookupCloneBaseUrl('w1')).toBeUndefined();
-    });
-
     it('clears the registry when the server registry is unavailable', async () => {
         serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
         remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1')] });
@@ -614,17 +584,6 @@ describe('aggregateRemoteWorkspaces — remote workspace snapshot', () => {
         await aggregateRemoteWorkspaces();
 
         expect(getRemoteWorkspacesSnapshot().map(w => w.id)).toEqual(['w1', 'w2']);
-    });
-
-    it('clears the snapshot when the remote-shell flag is OFF', async () => {
-        serversList.mockResolvedValue([onlineServer('srv-1', 'S1', 'http://127.0.0.1:4000')]);
-        remoteResponses.set('http://127.0.0.1:4000', { workspaces: [ws('w1')] });
-        await aggregateRemoteWorkspaces();
-        expect(getRemoteWorkspacesSnapshot()).toHaveLength(1);
-
-        remoteShellEnabled = false;
-        await aggregateRemoteWorkspaces();
-        expect(getRemoteWorkspacesSnapshot()).toEqual([]);
     });
 
     it('clears the snapshot when the server registry is unavailable', async () => {

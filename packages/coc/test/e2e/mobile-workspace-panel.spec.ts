@@ -9,9 +9,7 @@
  * list at a time (the other kept alive with `display:none`), and pushes the
  * shared detail full-screen with a back control.
  *
- * The E2E server pins `features.splitWorkspacePanel: false` (see
- * fixtures/e2e-server-config.ts — the rest of the suite targets the classic
- * shell), so every test here flips it back on through the live admin API.
+ * The shared E2E server uses the same always-split Workspace layout.
  */
 
 import * as fs from 'fs';
@@ -32,15 +30,6 @@ const CHAT_PREVIEW = 'Mobile workspace chat';
 test.use({ viewport: PHONE, hasTouch: true });
 
 /** Turn the split Workspace panel back on for this server instance. */
-async function enableSplitWorkspacePanel(serverUrl: string): Promise<void> {
-    const res = await request(`${serverUrl}/api/admin/config`, {
-        method: 'PUT',
-        body: JSON.stringify({ 'features.splitWorkspacePanel': true }),
-    });
-    if (res.status !== 200) {
-        throw new Error(`Failed to enable splitWorkspacePanel: ${res.status} ${res.body}`);
-    }
-}
 
 /**
  * Seed a git-backed workspace plus one chat, open its Workspace tab on a phone
@@ -51,7 +40,6 @@ async function openMobileWorkspace(page: Page, serverUrl: string): Promise<strin
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-mobile-ws-'));
     const repoDir = createMultiCommitRepo(tmpDir);
 
-    await enableSplitWorkspacePanel(serverUrl);
     await seedWorkspace(serverUrl, WS_ID, WS_NAME, repoDir);
     await seedProcess(serverUrl, 'proc-mobile-ws-1', {
         workspaceId: WS_ID,
@@ -70,8 +58,7 @@ async function openMobileWorkspace(page: Page, serverUrl: string): Promise<strin
     await page.goto(`${serverUrl}/#repos/${WS_ID}`);
     await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 15_000 });
 
-    // The Workspace tab keeps the chat tab's key — `chats` in the dev-workflow
-    // shell, `activity` in classic — so accept either.
+    // Both chat URL aliases resolve to the Workspace tab.
     const workspaceTab = page.locator(
         '[data-testid="mobile-tab-bar"] button[data-tab="chats"], [data-testid="mobile-tab-bar"] button[data-tab="activity"]',
     ).first();

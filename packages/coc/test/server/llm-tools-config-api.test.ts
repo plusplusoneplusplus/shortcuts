@@ -173,32 +173,6 @@ describe('LLM Tools Config API endpoints', () => {
             expect(data.disabledLlmTools).not.toContain('create_bug');
         });
 
-        it('ignores a classic global layout mode', async () => {
-            fs.writeFileSync(
-                path.join(tmpDir, 'preferences.json'),
-                JSON.stringify({ global: { uiLayoutMode: 'classic' } }),
-            );
-
-            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
-            expect(res.status).toBe(200);
-            const data = res.json();
-            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools());
-        });
-
-        it('ignores a dev-workflow global layout mode', async () => {
-            fs.writeFileSync(
-                path.join(tmpDir, 'preferences.json'),
-                JSON.stringify({ global: { uiLayoutMode: 'dev-workflow' } }),
-            );
-
-            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/llm-tools-config`);
-            expect(res.status).toBe(200);
-            const data = res.json();
-            expect(data.disabledLlmTools).toEqual(getEffectiveDefaultDisabledTools());
-            expect(data.disabledLlmTools).not.toContain('create_update_work_item');
-            expect(data.disabledLlmTools).not.toContain('create_bug');
-        });
-
         it('returns custom disabled list from preferences', async () => {
             // Pre-write preferences
             const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
@@ -222,7 +196,7 @@ describe('LLM Tools Config API endpoints', () => {
         it('returns empty disabled list when explicitly set to empty', async () => {
             fs.writeFileSync(
                 path.join(tmpDir, 'preferences.json'),
-                JSON.stringify({ global: { uiLayoutMode: 'classic' } }),
+                JSON.stringify({ global: { } }),
             );
             const prefsPath = path.join(tmpDir, 'repos', WORKSPACE_ID, 'preferences.json');
             fs.writeFileSync(prefsPath, JSON.stringify({ disabledLlmTools: [] }));

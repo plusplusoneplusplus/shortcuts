@@ -1,12 +1,10 @@
 /**
  * TopBar remote-shell header tests.
  *
- * The remote-first shell is the visual system gate: when features.remoteShell is
- * on (desktop), TopBar always renders RemoteShellHeader — including on top-level
+ * On desktop, TopBar always renders RemoteShellHeader — including on top-level
  * pages (Admin / Settings / Wiki) and cold loads with no repository selected.
  * Repository selection controls what appears *inside* the header (full clusters
  * vs. the unselected "Select repository" picker), not which header system is shown.
- * RepoTabStrip is only rendered in classic mode (remoteShell off).
  *
  * @vitest-environment jsdom
  */
@@ -25,10 +23,8 @@ let mockAppState: any = {
     wsStatus: 'open',
 };
 let mockRepos: any[] = [];
-let mockRemoteShell = true;
 let mockMyWorkEnabled = false;
 let mockMyLifeEnabled = false;
-let mockSplitPanel = false;
 let mockIsMobile = false;
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -63,17 +59,11 @@ vi.mock('../../../../src/server/spa/client/react/features/remote-shell/VirtualWo
         <div data-testid="virtual-workspace-shell-header" data-workspace={props.config?.workspaceId} />
     ),
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShell,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
     useMyWorkEnabled: () => mockMyWorkEnabled,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEnabled', () => ({
     useMyLifeEnabled: () => mockMyLifeEnabled,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanel,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
@@ -94,10 +84,9 @@ const repo = (id: string, name: string) => ({
 beforeEach(() => {
     mockAppDispatch.mockReset();
     mockQueueDispatch.mockReset();
-    mockRemoteShell = true;
     mockMyWorkEnabled = false;
     mockMyLifeEnabled = false;
-    mockSplitPanel = false;
+
     mockIsMobile = false;
     localStorage.clear();
     mockAppState = {
@@ -127,15 +116,6 @@ describe('TopBar remote-shell header', () => {
         expect(actions.firstElementChild?.getAttribute('data-testid')).toBe('header-new-btn');
         fireEvent.click(screen.getByTestId('header-new-btn'));
         expect(mockQueueDispatch).toHaveBeenCalledWith({ type: 'OPEN_DIALOG', workspaceId: 'a' });
-    });
-
-    it('falls back to the classic RepoTabStrip when remoteShell is off', () => {
-        mockRemoteShell = false;
-        render(<TopBar />);
-
-        expect(screen.queryByTestId('remote-shell-header')).toBeNull();
-        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
-        expect(screen.queryByTestId('header-new-btn')).toBeNull();
     });
 
     it('keeps the RemoteShellHeader off the repos tab (e.g. Wiki) when a clone is selected', () => {
@@ -219,16 +199,6 @@ describe('TopBar remote-shell header', () => {
         expect(screen.queryByTestId('repo-tab-strip')).toBeNull();
     });
 
-    it('falls back to the classic RepoTabStrip for My Work when remoteShell is off', () => {
-        mockMyWorkEnabled = true;
-        mockRemoteShell = false;
-        mockAppState = { ...mockAppState, selectedRepoId: 'my_work' };
-        render(<TopBar />);
-
-        expect(screen.queryByTestId('virtual-workspace-shell-header')).toBeNull();
-        expect(screen.getByTestId('repo-tab-strip')).toBeTruthy();
-    });
-
     it('does not render the virtual header off the repos tab (e.g. on Wiki)', () => {
         mockMyWorkEnabled = true;
         mockAppState = { ...mockAppState, activeTab: 'wiki', selectedRepoId: 'my_work' };
@@ -244,7 +214,6 @@ describe('TopBar remote-shell header', () => {
 
 describe('TopBar remote-shell — workspace dock toggle', () => {
     it('renders one right-panel toggle immediately after + New when splitWorkspacePanel is on', () => {
-        mockSplitPanel = true;
         render(<TopBar />);
 
         const actions = screen.getByTestId('topbar-actions');
@@ -257,7 +226,6 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
     });
 
     it('opens and closes the panel for the active clone', () => {
-        mockSplitPanel = true;
         render(<TopBar />);
 
         fireEvent.click(screen.getByRole('button', { name: 'Show right panel' }));
@@ -268,19 +236,4 @@ describe('TopBar remote-shell — workspace dock toggle', () => {
         expect(localStorage.getItem('split-workspace:a:dock-open')).toBe('0');
     });
 
-    it('hides the dock toggle when splitWorkspacePanel is off', () => {
-        mockSplitPanel = false;
-        render(<TopBar />);
-        expect(screen.getByTestId('header-new-btn')).toBeTruthy();
-        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
-    });
-
-    it('hides the dock toggle outside the remote-first shell', () => {
-        mockSplitPanel = true;
-        mockRemoteShell = false;
-        render(<TopBar />);
-        // No remote header → no + New and no dock toggle in the TopBar (the classic
-        // shell keeps its dock toggle in RepoDetail's own header).
-        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
-    });
 });

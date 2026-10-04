@@ -8,6 +8,7 @@ import { safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { MOCK_PR_CHECKS, MOCK_PR_DIFF, MOCK_PR_OPEN, MOCK_PR_THREADS } from './fixtures/pr-fixtures';
 import { setupPrRoutes } from './fixtures/pr-mock';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 /** Enable the Pull Requests feature flag on the running server. */
 async function enablePullRequestsFeature(serverUrl: string): Promise<void> {
@@ -63,11 +64,7 @@ test.describe('Pull Requests — detail view', () => {
             checks: MOCK_PR_CHECKS,
         });
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]').first()).toBeVisible({ timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await page.click('button[data-subtab="pull-requests"]');
+        await gotoWorkspace(page, serverUrl, repoId, 'pull-requests');
         await expect(page.getByTestId('pr-list')).toBeVisible({ timeout: 10000 });
         await page.getByTestId('pr-row').first().click();
         await expect(page.getByTestId('pr-detail')).toBeVisible({ timeout: 10000 });

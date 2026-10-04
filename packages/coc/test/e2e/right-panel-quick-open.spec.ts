@@ -10,9 +10,7 @@
  * column collapsed, press Ctrl+P, pick a nested file, and check that it lands as
  * a right-panel tab with the tree column revealed on it.
  *
- * The E2E server pins `features.splitWorkspacePanel: false` (see
- * fixtures/e2e-server-config.ts — the rest of the suite targets the classic
- * shell), so each test flips it back on through the live admin API.
+ * The shared E2E server uses the same always-split Workspace layout.
  */
 
 import * as fs from 'fs';
@@ -44,13 +42,6 @@ async function openRightPanel(page: Page, serverUrl: string): Promise<string> {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-rp-qo-'));
     const repoDir = createMultiCommitRepo(tmpDir);
 
-    const res = await request(`${serverUrl}/api/admin/config`, {
-        method: 'PUT',
-        body: JSON.stringify({ 'features.splitWorkspacePanel': true }),
-    });
-    if (res.status !== 200) {
-        throw new Error(`Failed to enable splitWorkspacePanel: ${res.status} ${res.body}`);
-    }
 
     await seedWorkspace(serverUrl, WS_ID, WS_NAME, repoDir);
     await seedProcess(serverUrl, 'proc-rp-qo-1', {
@@ -97,13 +88,6 @@ async function openGroupWithClosedPanel(
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, 'export const memberB = true;\n');
 
-    const config = await request(`${serverUrl}/api/admin/config`, {
-        method: 'PUT',
-        body: JSON.stringify({ 'features.splitWorkspacePanel': true }),
-    });
-    if (config.status !== 200) {
-        throw new Error(`Failed to enable splitWorkspacePanel: ${config.status} ${config.body}`);
-    }
     await seedWorkspace(serverUrl, GROUP_MEMBER_A, 'group-member-a', repoA);
     await seedWorkspace(serverUrl, GROUP_MEMBER_B, 'group-member-b', repoB);
     const group = await request(`${serverUrl}/api/repo-groups`, {

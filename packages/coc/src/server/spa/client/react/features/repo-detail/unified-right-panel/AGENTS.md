@@ -6,7 +6,7 @@ Search/Explorer navigator at its right edge. There is no second right panel and
 no flag.
 
 `RepoDetail.tsx` and `repos/RepoGroupView.tsx` render it under the
-`dockAvailable` gate (`splitWorkspacePanel` + desktop) and wrap their subtree in
+`dockAvailable` gate (desktop) and wrap their subtree in
 `UnifiedPanelHostProvider` under the same condition; the panel does not widen
 that gate. The state around it — open, selected Search/Explorer mode, width,
 resize, and target — comes from

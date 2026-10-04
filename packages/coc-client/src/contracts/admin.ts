@@ -286,7 +286,6 @@ export interface RuntimeDashboardConfig {
     botManagedConversationsEnabled: boolean;
     quickAskSidenotesEnabled: boolean;
     arxivPaperIngestEnabled: boolean;
-    remoteShellEnabled: boolean;
     singleRowShellEnabled: boolean;
     splitWorkspacePanelEnabled: boolean;
     /** Whether user-created chat folders are enabled in the chat list (feature flag, default off). */

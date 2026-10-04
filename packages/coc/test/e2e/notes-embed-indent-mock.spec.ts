@@ -23,6 +23,7 @@ import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
 import { createNotesStore, mockNotesApi, type NoteTreeNode } from './fixtures/notes-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-embed-indent-mock';
 const NOTE_PATH = 'Journal/getting-started.md';
@@ -63,11 +64,7 @@ async function openNotesPage(
     serverUrl: string,
     wsId: string,
 ): Promise<void> {
-    await page.goto(serverUrl);
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 15_000 });
-    await page.evaluate((id) => {
-        location.hash = `#repos/${id}/notes`;
-    }, wsId);
+    await gotoWorkspace(page, serverUrl, wsId, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
 }
 

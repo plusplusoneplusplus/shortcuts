@@ -1,23 +1,20 @@
 # Dashboard SPA — Remote-first shell
 
-How the dashboard presents workspaces owned by another CoC server: the feature gate,
-the top-row headers, the scope switcher, repo groups, and remote workspace aggregation.
+How the dashboard presents workspaces owned by another CoC server: the top-row
+headers, scope switcher, repo groups, and remote workspace aggregation.
 Which server a request actually reaches is [clone-routing.md](clone-routing.md).
 
-## Feature gate
+## Responsive shell
 
-`useRemoteShellEnabled()` (`hooks/feature-flags/useRemoteShellEnabled.ts`) reads the live
-`features.remoteShell` admin flag (runtime `remoteShellEnabled`, `isRemoteShellEnabled()`
-in `utils/config.ts`), declared once in `ADMIN_SETTING_DEFINITIONS` as
-`toggle-remote-shell-enabled`. Desktop-only, effective on reload; defaults in
-[../admin-config.md](../admin-config.md).
+Desktop always uses the remote-first shell. Mobile uses its dedicated scope list,
+scope bar, and per-clone workspace header.
 
 ## Shell headers
 
 `TopBar` renders one of three top rows.
 
-**`RemoteShellHeader`** — `remoteShellEnabled` + tab `repos` + a real repo selected +
-non-mobile. `RemoteScopeCluster` holds the current-remote chip plus Work Items / Pull
+**`RemoteShellHeader`** — desktop with a real repo selected.
+`RemoteScopeCluster` holds the current-remote chip plus Work Items / Pull
 Requests pills; the chip's dropdown lists recent remotes from the global preference
 `recentRemotes` (MRU keys `groupKey(group)`, cap 8; default-group fallback before any
 MRU), search over all remotes, and `AddFolderDialog` / `AddRepoDialog` /
@@ -34,18 +31,13 @@ clone switcher, clone popover, clone-scoped tabs, overflow menu, and repo info/r
 dialogs. `header-new-btn` is the first right-side action, enqueuing for the active clone.
 `ReposView` renders a `chromeless` `RepoDetail`.
 
-**`VirtualWorkspaceShellHeader`** — `remoteShellEnabled` + desktop + tab `repos` + a
+**`VirtualWorkspaceShellHeader`** — desktop + tab `repos` + a
 virtual workspace selected (`my_work`, `my_life`, or a repo group). Virtual workspaces
 have no repo or git context, so they cannot flow through `RemoteScopeCluster` /
 `WorkspaceTabsCluster`; each supplies a `VirtualWorkspaceHeaderConfig` of identity chip,
 sub-tabs, and actions (`MY_WORK_HEADER_CONFIG` / `MY_LIFE_HEADER_CONFIG` exported from
 `MyWorkView` / `MyLifeView`), driven by `useVirtualWorkspaceHeader`.
-`VirtualWorkspaceInlineHeader` is the in-body variant those views render in the classic
-shell and on mobile, gated on `!(remoteShell && !isMobile)`.
-
-**`RepoTabStrip`** — the fallback when the flag is on but no repo or virtual workspace
-can back a header (fresh window with no selection, or any tab other than Repos), so the
-top row stays consistent.
+`VirtualWorkspaceMobileTabBar` is the mobile in-body variant.
 
 ## Scope slide switcher
 
@@ -276,11 +268,9 @@ that same registry.
 recognized by id **prefix** (unlike My Work / My Life's id-equality checks) with no
 feature flag. It exposes Workspace (chat, key `chats`, `RepoChatTab`), Notes (`NotesView`,
 notes root = the group's own workspace dir), and Settings
-(`repos/RepoGroupSettingsTab.tsx`, `Alt+C`). With `splitWorkspacePanel` off it
-also exposes a standalone Git tab (`RepoGroupGitTab`); with the flag on the
-group's Chats tab hosts the member git list in `SplitWorkspacePanel` and hides
-the Git header tab on desktop and mobile. Its desktop split header and collapsed
-rail start group chats, the rail counts the group's running and queued tasks,
+(`repos/RepoGroupSettingsTab.tsx`, `Alt+C`). The group's Workspace tab hosts
+the member Git list in `SplitWorkspacePanel` on desktop and mobile. Its desktop
+split header and collapsed rail start group chats, the rail counts the group's running and queued tasks,
 and the remote-first shell pins status actions below the left column. Once
 membership loads, groups without a healthy member show chats across the full
 left column with no Git section.
@@ -351,10 +341,10 @@ delegates to `buildRepoSubTabSuffix`. Every navigator that knows its target id c
 `resolveWorkspaceRouteSuffix`). `GlobalStatusDock` exempts groups from its settings
 stand-down because the group shell has no docked sidebar footer.
 Members come from `useRepoGroupMembers(workspaceId, baseUrl, enabled)`
-(`repos/useRepoGroupMembers.ts`), enabled when Settings, Git, or the right dock
-needs membership.
+(`repos/useRepoGroupMembers.ts`). The Workspace view loads members immediately
+for its Git list and dock target picker; Settings reads member descriptions separately.
 
-**Right dock.** On desktop with `splitWorkspacePanel` on, `RepoGroupView` also renders
+**Right dock.** On desktop, `RepoGroupView` also renders
 `features/repo-detail/WorkspaceRightDock` as the outermost-right column (same gate as
 `RepoDetail`). The dock's open/view/width/target state scopes to the **group**, while a
 `workspace-dock-target-picker` in its header row chooses which workspace its Terminal and
@@ -376,9 +366,9 @@ on the repos tab. The chevron's picker is the only way out of an active group.
 
 ## Mobile scope shell (`breakpoint === 'mobile'`, < 768px)
 
-The narrow shell does **not** turn on `remoteShell` — `RemoteShellHeader`,
-`ScopeSlideSwitcher` and `WorkspaceTabsCluster` are width-hungry by construction. It
-gets its own presentation over the same model modules instead.
+`RemoteShellHeader`, `ScopeSlideSwitcher` and `WorkspaceTabsCluster` are width-hungry
+by construction. The narrow shell gets its own presentation over the same model
+modules.
 
 **`repos/MobileScopeList.tsx`** replaces `ReposGrid` in `ReposView`'s mobile branch
 (`ReposGrid` stays the desktop hamburger popover's surface). One scroll container,
@@ -466,6 +456,8 @@ through `useShellNavigation`.
 the heavily-mocked `featureFlags.ts` so partial test mocks of it do not break on a
 missing export.
 
-With `features.splitWorkspacePanel` on, `RepoDetail` and `WorkspaceTabsCluster` pass the
-flag into `computeVisibleSubTabs`, hiding the clone-scoped standalone Git tab and
-relabeling the chat tab Workspace; Git stays available inside `SplitWorkspacePanel`.
+`computeVisibleSubTabs` uses classic ordering and labels, hides standalone Git,
+Terminal and Explorer tabs, and labels the chat tab Workspace. Both `activity`
+and `chats` remain route aliases. Desktop quick actions include Queue Task, Ask
+and Generate Plan; deprecated plans use the "Plans (Dep.)" label. Git lives inside `SplitWorkspacePanel`;
+Terminal and Explorer live in the desktop right panel.

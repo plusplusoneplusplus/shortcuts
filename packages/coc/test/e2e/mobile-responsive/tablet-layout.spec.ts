@@ -12,15 +12,15 @@ import * as path from 'path';
 test.use({ viewport: TABLET });
 
 test.describe('Tablet Layout', () => {
-    test('tablet: repo tabs visible in TopBar', async ({ page, serverUrl }) => {
+    test('tablet: remote-chip workspace picker visible in TopBar', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-tab-col', 'tab-col-repo');
         await page.goto(`${serverUrl}/#repos`);
 
-        await page.click('[data-tab="repos"]');
-
-        // At tablet/desktop, repos are shown as tabs in the TopBar
-        const repoTabs = page.locator('[data-testid="repo-tab"]');
-        await expect(repoTabs).toHaveCount(1, { timeout: 10000 });
+        // At tablet/desktop widths the remote-chip identity picker (not the
+        // mobile scope list) owns workspace selection from the TopBar.
+        await expect(page.locator('[data-testid="remote-chip"]').first()).toBeVisible({ timeout: 10000 });
+        await page.locator('[data-testid="remote-chip"]').first().click();
+        await expect(page.locator('[data-testid="remote-dropdown-item"]')).toHaveCount(1, { timeout: 10000 });
     });
 
     test('tablet: TopBar tab buttons are visible', async ({ page, serverUrl }) => {
@@ -57,16 +57,16 @@ test.describe('Tablet Layout', () => {
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
 
         // Both list panel and detail panel should be visible at tablet width
-        const splitPanel = page.locator('[data-testid="activity-split-panel"]');
+        const splitPanel = page.locator('[data-testid="split-workspace-panel"]');
         await expect(splitPanel).toBeVisible();
     });
 
     test('tablet: ReposView renders detail pane on repo selection', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-tab-2p', 'tab-2p-repo');
-        await page.goto(`${serverUrl}/#repos`);
 
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
+        // Select the repo via direct hash navigation — the remote-chip picker
+        // is exercised separately above.
+        await page.goto(`${serverUrl}/#repos/ws-tab-2p`);
 
         // Repo detail pane should appear
         await expect(page.locator('#repo-detail-content')).toBeVisible();
@@ -75,9 +75,11 @@ test.describe('Tablet Layout', () => {
     test('tablet: dialog renders as centered modal', async ({ page, serverUrl }) => {
         await page.goto(`${serverUrl}/#repos`);
         await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10000 });
-        // Open AddRepoDialog via the RepoTabStrip add button (mini sidebar was removed)
-        await page.click('[data-testid="repo-tab-add-btn"]');
-        await page.click('[data-testid="repo-tab-add-repo-option"]');
+        // Open AddRepoDialog via the remote-chip picker's "Add specific repository"
+        // footer action (the classic RepoTabStrip add button was removed).
+        await page.locator('[data-testid="remote-chip"]').first().click();
+        await expect(page.locator('[data-testid="remote-dropdown"]')).toBeVisible({ timeout: 10000 });
+        await page.locator('[data-testid="remote-add-repo-option"]').click();
 
         const overlay = page.locator('#add-repo-overlay');
         await expect(overlay).toBeVisible();

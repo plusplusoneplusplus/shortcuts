@@ -18,18 +18,39 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace, seedQueueTask, request } from './fixtures/seed';
 import { createRepoFixture } from './fixtures/repo-fixtures';
+import { openAddRepoOption, openRemotePicker } from './fixtures/remote-shell';
 
 // ============================================================================
-// Helper: Open the Add Repo dialog
+// Helper: Open the Add Repo dialog via the remote-chip picker
 // ============================================================================
 
 async function openAddRepoDialog(page: import('@playwright/test').Page, serverUrl: string): Promise<void> {
     await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await page.click('[data-testid="repo-tab-add-btn"]');
-    await expect(page.locator('[data-testid="repo-tab-add-dropdown"]')).toBeVisible();
-    await page.locator('[data-testid="repo-tab-add-repo-option"]').dispatchEvent('click');
+    await openAddRepoOption(page, 'remote-add-repo-option');
     await expect(page.locator('#add-repo-overlay')).toBeVisible({ timeout: 5_000 });
+}
+
+/**
+ * Remove a single-clone workspace through the remote-chip picker's row menu,
+ * driving the "Remove from CoC" confirm dialog's own Cancel/Remove buttons
+ * directly instead of `removeWorkspaceViaRowMenu` (which only ever confirms).
+ * The graduated shell's removal confirmation is an in-app `Dialog`
+ * (`#clone-remove-dialog`), not a native `window.confirm()` — see TC4 below.
+ */
+async function openRemoveConfirmDialog(page: import('@playwright/test').Page, name: string): Promise<void> {
+    await openRemotePicker(page, name);
+    const row = page.locator('[data-testid="remote-dropdown-item"]');
+    await expect(row).toHaveCount(1, { timeout: 10_000 });
+
+    const rowMenu = page.locator('[data-testid="remote-dropdown-row-menu"]');
+    await expect(rowMenu).toHaveCount(1);
+    await rowMenu.click();
+
+    const menu = page.locator('[data-testid="context-menu"]');
+    await expect(menu).toBeVisible({ timeout: 5_000 });
+    await menu.getByRole('menuitem', { name: /Remove from CoC/ }).click();
+
+    await expect(page.locator('#clone-remove-dialog')).toBeVisible({ timeout: 5_000 });
 }
 
 // ============================================================================
@@ -129,59 +150,54 @@ test.describe('Repo add — generic server error handling', () => {
 });
 
 // ============================================================================
-// TC4: Remove repo uses browser confirm dialog (not a special in-progress warning)
+// TC4: Remove repo uses the remote-chip row menu's in-app confirm dialog
+// (not a browser window.confirm())
 //
-// Documents current behavior: the remove button opens a browser window.confirm()
-// dialog with no special warning about in-progress queue tasks.
-// If a "in-progress tasks" warning is ever added, this test should be updated.
+// Documents current behavior: "Remove from CoC" in the remote-dropdown row
+// menu opens an in-app `Dialog` (`#clone-remove-dialog`) with explicit
+// Cancel/Remove buttons — the classic RepoTabStrip's native
+// `window.confirm()` is gone along with the tab strip itself. If a special
+// "in-progress tasks" warning is ever added to that dialog, this test should
+// be updated.
 // ============================================================================
 
-test.describe('Repo remove — confirm dialog', () => {
-    // Remove flow moved from a dedicated #repo-remove-btn to the right-click
-    // context menu on the repo tab. Tests now open the context menu and click
-    // the "Remove" item ([data-testid="repo-tab-context-remove"]).
-    test('remove button triggers browser confirm dialog', async ({ page, serverUrl }) => {
+test.describe('Repo remove — in-app confirm dialog', () => {
+    test('remove row-menu action opens the in-app confirm dialog, not a browser dialog', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-remove-edge', 'edge-repo', '/tmp/edge-repo');
 
         await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+        await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10_000 });
 
-        // Set up a dialog handler BEFORE triggering the remove — track that it fires
-        let dialogFired = false;
+        // A native dialog listener should never fire for this flow.
+        let nativeDialogFired = false;
         page.on('dialog', async dialog => {
-            dialogFired = true;
-            await dialog.dismiss(); // Cancel — do not actually remove
+            nativeDialogFired = true;
+            await dialog.dismiss();
         });
 
-        await page.locator('[data-testid="repo-tab"]').first().click({ button: 'right' });
-        await expect(page.locator('[data-testid="repo-tab-context-remove"]')).toBeVisible({ timeout: 5_000 });
-        await page.click('[data-testid="repo-tab-context-remove"]');
+        await openRemoveConfirmDialog(page, 'edge-repo');
+        expect(nativeDialogFired).toBe(false);
 
-        // Allow time for dialog to appear
-        await page.waitForTimeout(500);
+        // Cancel — the repo must remain.
+        await page.locator('#clone-remove-dialog').getByRole('button', { name: 'Cancel' }).click();
+        await expect(page.locator('#clone-remove-dialog')).toBeHidden({ timeout: 5_000 });
 
-        expect(dialogFired).toBe(true);
-
-        // After cancel, repo should still be in the list
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1);
+        await openRemotePicker(page, 'edge-repo');
+        await expect(page.locator('[data-testid="remote-dropdown-item"]')).toHaveCount(1);
     });
 
-    test('confirming remove deletes the repo', async ({ page, serverUrl }) => {
+    test('confirming remove in the dialog deletes the repo', async ({ page, serverUrl }) => {
         await seedWorkspace(serverUrl, 'ws-remove-confirm', 'confirm-repo', '/tmp/confirm-repo');
 
         await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+        await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10_000 });
 
-        page.on('dialog', dialog => dialog.accept());
+        await openRemoveConfirmDialog(page, 'confirm-repo');
+        await page.locator('[data-testid="clone-remove-confirm-btn"]').click();
+        await expect(page.locator('#clone-remove-dialog')).toBeHidden({ timeout: 10_000 });
 
-        await page.locator('[data-testid="repo-tab"]').first().click({ button: 'right' });
-        await expect(page.locator('[data-testid="repo-tab-context-remove"]')).toBeVisible({ timeout: 5_000 });
-        await page.click('[data-testid="repo-tab-context-remove"]');
-
-        // After accept, repo should be gone
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(0, { timeout: 10_000 });
+        await openRemotePicker(page);
+        await expect(page.locator('[data-testid="remote-dropdown-item"]')).toHaveCount(0, { timeout: 10_000 });
     });
 });
 
@@ -189,8 +205,9 @@ test.describe('Repo remove — confirm dialog', () => {
 // TC5: Remove repo with running queue task — documents current behavior
 //
 // NOTE: Currently the UI does NOT warn about in-progress tasks when removing
-// a repo. It only shows the generic browser confirm dialog. This test documents
-// that the DELETE /api/workspaces/:id succeeds regardless of task state.
+// a repo. It only shows the generic "Remove from CoC?" confirm dialog. This
+// test documents that the DELETE /api/workspaces/:id succeeds regardless of
+// task state.
 // ============================================================================
 
 test.describe('Repo remove — with in-progress tasks (current behavior)', () => {
@@ -204,18 +221,17 @@ test.describe('Repo remove — with in-progress tasks (current behavior)', () =>
         });
 
         await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
+        await expect(page.locator('#view-repos')).toBeVisible({ timeout: 10_000 });
 
-        // Accept the default confirm dialog (no special in-progress-tasks warning expected)
-        page.on('dialog', dialog => dialog.accept());
-
-        await page.locator('[data-testid="repo-tab"]').first().click({ button: 'right' });
-        await expect(page.locator('[data-testid="repo-tab-context-remove"]')).toBeVisible({ timeout: 5_000 });
-        await page.click('[data-testid="repo-tab-context-remove"]');
+        // Confirm the default dialog (no special in-progress-tasks warning expected)
+        await openRemoveConfirmDialog(page, 'task-repo');
+        await expect(page.locator('#clone-remove-dialog')).not.toContainText(/in.progress|running task/i);
+        await page.locator('[data-testid="clone-remove-confirm-btn"]').click();
+        await expect(page.locator('#clone-remove-dialog')).toBeHidden({ timeout: 10_000 });
 
         // Repo is removed despite having in-progress tasks
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(0, { timeout: 10_000 });
+        await openRemotePicker(page);
+        await expect(page.locator('[data-testid="remote-dropdown-item"]')).toHaveCount(0, { timeout: 10_000 });
 
         // Verify the workspace is actually gone from the API
         const res = await request(`${serverUrl}/api/workspaces`);

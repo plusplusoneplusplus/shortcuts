@@ -14,6 +14,7 @@ import { type Page } from '@playwright/test';
 import { test, expect } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import { seedSchedule } from './fixtures/schedule-seed';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -30,7 +31,7 @@ async function disableSchedulesInScheduledSlide(serverUrl: string): Promise<void
 }
 
 /** Navigate to the Schedules sub-tab of the sole workspace in the sidebar. */
-async function navigateToSchedules(page: Page, serverUrl: string): Promise<void> {
+async function navigateToSchedules(page: Page, serverUrl: string, workspaceId: string): Promise<void> {
     await disableSchedulesInScheduledSlide(serverUrl);
     // Pre-dismiss the welcome modal AND concept tour so neither blocks pointer events.
     await request(`${serverUrl}/api/preferences`, {
@@ -40,12 +41,8 @@ async function navigateToSchedules(page: Page, serverUrl: string): Promise<void>
             onboardingProgress: { hasCompletedTour: true, dismissed: true },
         }),
     });
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10_000 });
-    await page.click('[data-subtab="schedules"]');
+    await gotoWorkspace(page, serverUrl, workspaceId, 'schedules');
+    await expect(page.locator('button[data-subtab="schedules"]')).toHaveAttribute('data-active', 'true');
 }
 
 /** Click a schedule item in the list and wait for the detail panel to appear. */
@@ -293,7 +290,7 @@ test.describe('Schedule Management - Edit, Delete & Run History', () => {
             workspaceId: 'ws-mgmt-ui-edit1',
         });
 
-        await navigateToSchedules(page, serverUrl);
+        await navigateToSchedules(page, serverUrl, 'ws-mgmt-ui-edit1');
         await clickScheduleItem(page, 'Edit Cron UI Test');
 
         // Click the Edit button in the detail toolbar
@@ -329,7 +326,7 @@ test.describe('Schedule Management - Edit, Delete & Run History', () => {
             workspaceId: 'ws-mgmt-ui-edit2',
         });
 
-        await navigateToSchedules(page, serverUrl);
+        await navigateToSchedules(page, serverUrl, 'ws-mgmt-ui-edit2');
         await clickScheduleItem(page, 'Cancel Edit Test');
 
         await page.locator('[data-testid="edit-btn"]').click();
@@ -356,7 +353,7 @@ test.describe('Schedule Management - Edit, Delete & Run History', () => {
             workspaceId: 'ws-mgmt-ui-del1',
         });
 
-        await navigateToSchedules(page, serverUrl);
+        await navigateToSchedules(page, serverUrl, 'ws-mgmt-ui-del1');
         await clickScheduleItem(page, 'Delete UI Test');
 
         // Accept the browser confirm() dialog before clicking delete
@@ -383,7 +380,7 @@ test.describe('Schedule Management - Edit, Delete & Run History', () => {
             workspaceId: 'ws-mgmt-ui-del2',
         });
 
-        await navigateToSchedules(page, serverUrl);
+        await navigateToSchedules(page, serverUrl, 'ws-mgmt-ui-del2');
         await clickScheduleItem(page, 'Dismiss Delete Test');
 
         // Dismiss the dialog (cancel)
@@ -409,7 +406,7 @@ test.describe('Schedule Management - Edit, Delete & Run History', () => {
             workspaceId: 'ws-mgmt-ui-hist1',
         });
 
-        await navigateToSchedules(page, serverUrl);
+        await navigateToSchedules(page, serverUrl, 'ws-mgmt-ui-hist1');
         await clickScheduleItem(page, 'History UI Test');
 
         // Initially no runs
@@ -440,7 +437,7 @@ test.describe('Schedule Management - Edit, Delete & Run History', () => {
             workspaceId: 'ws-mgmt-ui-hist2',
         });
 
-        await navigateToSchedules(page, serverUrl);
+        await navigateToSchedules(page, serverUrl, 'ws-mgmt-ui-hist2');
         await clickScheduleItem(page, 'Refresh History Test');
 
         // Wait for initial empty state to confirm page is loaded
@@ -494,7 +491,7 @@ test.describe('Schedule Management - Edit, Delete & Run History', () => {
             attempts++;
         }
 
-        await navigateToSchedules(page, serverUrl);
+        await navigateToSchedules(page, serverUrl, 'ws-mgmt-ui-pag');
         await clickScheduleItem(page, 'Pagination Test');
 
         // Load-more button should appear with count of remaining runs

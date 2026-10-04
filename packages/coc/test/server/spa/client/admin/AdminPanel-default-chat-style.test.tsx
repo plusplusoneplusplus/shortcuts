@@ -24,7 +24,6 @@ vi.mock('../../../../../src/server/spa/client/react/utils/config', () => ({
     getApiBase: () => '',
     isRalphEnabled: () => false,
     isServersEnabled: () => false,
-    isRemoteShellEnabled: () => false,
     applyRuntimeConfigPatch: () => { },
 }));
 

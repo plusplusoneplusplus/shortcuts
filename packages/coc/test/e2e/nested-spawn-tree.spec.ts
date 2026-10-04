@@ -147,7 +147,7 @@ async function spawnChatFromParent(
 /** Navigate to the per-repo Activity sub-tab and wait for the split panel. */
 async function gotoActivity(page: Page, serverUrl: string, wsId: string): Promise<void> {
     await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`);
-    await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10_000 });
 }
 
 // Locator builders --------------------------------------------------------
@@ -319,7 +319,7 @@ test.describe('Nested spawn tree — Tier A (seed-driven)', () => {
             expect(JSON.parse(collapsed as string)).toContain('root');
 
             await page.reload();
-            await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10_000 });
+            await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10_000 });
 
             // Still collapsed after reload.
             await expect(treeRow(page, 'root')).toBeVisible({ timeout: 10_000 });

@@ -30,7 +30,6 @@ import {
     type WorkspacesResponse,
 } from '@plusplusoneplusplus/coc-client';
 import { getSpaCocClient } from '../api/cocClient';
-import { isRemoteShellEnabled } from '../utils/config';
 import { registerCloneBaseUrls } from './cloneRegistry';
 import {
     loadRemoteWorkspaceCache,
@@ -382,19 +381,9 @@ async function loadOnlineSource(
  * Aggregate remote workspaces across all configured servers.
  *
  * Online servers are fetched live (and cached); offline/unreachable servers
- * yield their last-known cached entries flagged `offline`. Returns an empty
- * aggregate (no work, no warnings) when `features.remoteShell` is OFF, so the
- * classic flow is byte-for-byte unchanged.
+ * yield their last-known cached entries flagged `offline`.
  */
 export async function aggregateRemoteWorkspaces(): Promise<AggregatedRemoteWorkspaces> {
-    if (!isRemoteShellEnabled()) {
-        // Flag off: clear any stale lookup entries so per-clone routing reverts to
-        // the local default for every id.
-        registerCloneBaseUrls([]);
-        remoteWorkspaceSnapshot = [];
-        return EMPTY_AGGREGATE;
-    }
-
     let servers: RemoteServer[];
     try {
         servers = await getSpaCocClient().servers.list();

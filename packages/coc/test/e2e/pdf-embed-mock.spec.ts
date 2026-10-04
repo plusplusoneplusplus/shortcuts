@@ -23,6 +23,7 @@ import {
     MOCK_UPLOADED_PDF_PATH,
     type NoteTreeNode,
 } from './fixtures/notes-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-pdf-embed-mock';
 
@@ -57,11 +58,7 @@ async function openNotesPage(
     serverUrl: string,
     wsId: string,
 ): Promise<void> {
-    await page.goto(serverUrl);
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 15_000 });
-    await page.evaluate((id) => {
-        location.hash = `#repos/${id}/notes`;
-    }, wsId);
+    await gotoWorkspace(page, serverUrl, wsId, 'notes');
     await expect(page.locator('[data-testid="notes-sidebar"]')).toBeVisible({ timeout: 15_000 });
 }
 

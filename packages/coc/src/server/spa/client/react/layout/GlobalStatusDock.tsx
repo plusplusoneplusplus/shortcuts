@@ -32,17 +32,13 @@
  * default width where no split sidebar is mounted (e.g. the terminal tab).
  *
  * Rendered once at the App shell level as a flex sibling below `<main>`, so it
- * reserves its own height and never overlaps tab content. Gated to
- * `remoteShell && desktop`:
- *   - classic (non-remote) mode keeps the historic top-right cluster, and
- *   - mobile keeps the compact topbar connection dot (no room for a bottom bar).
+ * reserves its own height and never overlaps tab content. Mobile keeps the
+ * compact topbar connection dot because it has no room for a bottom bar.
  */
 
 import { StatusActions } from './StatusActions';
 import { useApp } from '../contexts/AppContext';
 import { useVisibleDashboardTab } from './useVisibleDashboardTab';
-import { useRemoteShellEnabled } from '../hooks/feature-flags/useRemoteShellEnabled';
-import { useSplitWorkspacePanelEnabled } from '../hooks/feature-flags/useSplitWorkspacePanelEnabled';
 import { useBreakpoint } from '../hooks/ui/useBreakpoint';
 import { isRepoGroupWorkspaceId } from '../repos/virtualWorkspaceIds';
 
@@ -56,13 +52,11 @@ export interface GlobalStatusDockProps {
 
 export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
     const { state } = useApp();
-    const remoteShell = useRemoteShellEnabled();
-    const splitWorkspacePanelEnabled = useSplitWorkspacePanelEnabled();
     const { isMobile } = useBreakpoint();
     // The page behind the admin dialog, which is what the dock sits under.
     const visibleTab = useVisibleDashboardTab();
 
-    if (!remoteShell || isMobile) return null;
+    if (isMobile) return null;
 
     // The workspace chat/activity sub-tab hosts the dock in its own left-column
     // footer so the chat detail pane keeps full height. Don't render a second
@@ -71,12 +65,8 @@ export function GlobalStatusDock({ onAdminOpen }: GlobalStatusDockProps) {
         visibleTab === 'repos' &&
         !!state.selectedRepoId &&
         (state.activeRepoSubTab === 'chats' || state.activeRepoSubTab === 'activity');
-    // Repo groups render `RepoChatTab` with its own docked footer regardless of
-    // the split-panel flag, so they stand down unconditionally; a regular
-    // workspace only has a footer to defer to when the split panel is on.
-    const inPanelFooter =
-        inChatSubTab &&
-        (isRepoGroupWorkspaceId(state.selectedRepoId) || splitWorkspacePanelEnabled);
+    // The Workspace split owns the status footer for repos and groups.
+    const inPanelFooter = inChatSubTab;
     if (inPanelFooter) return null;
 
     // The notes sub-tab hosts the cluster in `NotesView`'s own left-column

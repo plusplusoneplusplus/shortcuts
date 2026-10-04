@@ -6,7 +6,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildRuntimeDashboardConfig } from '../../../src/server/config/runtime-config-handler';
 import type { RuntimeConfigService } from '../../../src/config/runtime-config-service';
-import type { ResolvedCLIConfig } from '../../../src/config';
+import { CLIConfigSchema } from '../../../src/config/schema';
+import { buildRuntimeFeatureFlags } from '../../../src/config/admin-setting-definitions';
+import { DEFAULT_CONFIG, type ResolvedCLIConfig } from '../../../src/config';
 
 function createMockRuntimeConfigService(overrides: Partial<ResolvedCLIConfig> = {}, revision = 0): RuntimeConfigService {
     const config: ResolvedCLIConfig = {
@@ -769,5 +771,19 @@ describe('AC-08: live-classified route registration', () => {
         expect(terminalField!.runtime).toBe('restartRequired');
         expect(cronField).toBeDefined();
         expect(cronField!.runtime).toBe('restartRequired');
+    });
+});
+
+
+describe('graduated layout settings', () => {
+    it('accepts saved false values without publishing retired runtime switches', () => {
+        const saved = CLIConfigSchema.parse({ features: { splitWorkspacePanel: false, remoteShell: false } });
+        expect(saved.features).toMatchObject({ splitWorkspacePanel: false, remoteShell: false });
+        expect(buildRuntimeFeatureFlags(saved)).not.toHaveProperty('splitWorkspacePanelEnabled');
+        expect(buildRuntimeFeatureFlags(saved)).not.toHaveProperty('remoteShellEnabled');
+        const svc = createMockRuntimeConfigService({ features: { ...DEFAULT_CONFIG.features, ...saved.features } });
+        const runtime = buildRuntimeDashboardConfig(svc, 'my-host', '127.0.0.1').features;
+        expect(runtime).not.toHaveProperty('splitWorkspacePanelEnabled');
+        expect(runtime).not.toHaveProperty('remoteShellEnabled');
     });
 });

@@ -13,7 +13,6 @@ let mockQueueState: any = { repoQueueMap: {} };
 let mockQueueStats: any = { running: 0, queued: 0 };
 let mockGitInfo: any = { ahead: 0, behind: 0 };
 let mockUnseenCounts: Record<string, number> = {};
-let mockSplitWorkspacePanelEnabled = false;
 let mockSchedulesInScheduledSlideEnabled = false;
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
@@ -34,9 +33,7 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/usePullRequ
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useDreamsEnabled', () => ({ useDreamsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useNativeCliSessionsEnabled', () => ({ useNativeCliSessionsEnabled: () => true }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useShowPlanDepTab', () => ({ useShowPlanDepTab: () => true }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({ useSplitWorkspacePanelEnabled: () => mockSplitWorkspacePanelEnabled }));
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({ useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled }));
-vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({ useUiLayoutMode: () => ['dev-workflow', vi.fn()] }));
 vi.mock('../../../../src/server/spa/client/react/queue/hooks/useRepoQueueStats', () => ({ useRepoQueueStats: () => mockQueueStats, isHidden: () => false }));
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useGitInfo', () => ({ useGitInfo: () => mockGitInfo }));
 vi.mock('../../../../src/server/spa/client/react/features/remote-shell/useShellNavigation', () => ({
@@ -65,7 +62,7 @@ beforeEach(() => {
     mockQueueStats = { running: 0, queued: 0 };
     mockGitInfo = { ahead: 0, behind: 0 };
     mockUnseenCounts = {};
-    mockSplitWorkspacePanelEnabled = false;
+
     mockSchedulesInScheduledSlideEnabled = false;
 });
 
@@ -75,8 +72,8 @@ describe('WorkspaceTabsCluster', () => {
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
         const cloneTabs = screen.getAllByTestId('clone-scope-tab').map(el => el.getAttribute('data-subtab'));
-        expect(cloneTabs).toContain('git');
-        expect(cloneTabs).toContain('terminal');
+        expect(cloneTabs).not.toContain('git');
+        expect(cloneTabs).not.toContain('terminal');
         expect(cloneTabs).not.toContain('work-items');
         expect(cloneTabs).not.toContain('pull-requests');
     });
@@ -96,9 +93,9 @@ describe('WorkspaceTabsCluster', () => {
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
-        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'git')!;
+        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'notes')!;
         fireEvent.click(git);
-        expect(mockSwitchSubTab).toHaveBeenCalledWith('git');
+        expect(mockSwitchSubTab).toHaveBeenCalledWith('notes');
     });
 
     it('keeps a remote clone key when switching its sub-tab', () => {
@@ -113,31 +110,64 @@ describe('WorkspaceTabsCluster', () => {
         render(<WorkspaceTabsCluster repo={remote as any} repos={[remote] as any} />);
 
         const explorer = screen.getAllByTestId('clone-scope-tab')
-            .find(el => el.getAttribute('data-subtab') === 'explorer')!;
+            .find(el => el.getAttribute('data-subtab') === 'settings')!;
         fireEvent.click(explorer);
 
-        expect(mockSelectClone).toHaveBeenCalledWith('remote:server-1:shared', 'explorer');
+        expect(mockSelectClone).toHaveBeenCalledWith('remote:server-1:shared', 'settings');
         expect(mockSwitchSubTab).not.toHaveBeenCalled();
     });
 
     it('highlights the active clone sub-tab on the repos tab', () => {
-        mockAppState = { activeTab: 'repos', activeRepoSubTab: 'git' };
+        mockAppState = { activeTab: 'repos', activeRepoSubTab: 'notes' };
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
-        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'git')!;
+        const git = screen.getAllByTestId('clone-scope-tab').find(el => el.getAttribute('data-subtab') === 'notes')!;
         expect(git.getAttribute('data-active')).toBe('true');
     });
 
-    it('does not highlight any sub-tab off the repos tab (e.g. Admin)', () => {
+    it.each(['chats', 'activity'])('highlights Workspace for the %s route', (activeRepoSubTab) => {
+        mockAppState = { activeTab: 'repos', activeRepoSubTab };
+        const selected = repo('a', 'shortcuts');
+        render(<WorkspaceTabsCluster repo={selected as any} repos={[selected] as any} />);
+
+        const active = screen.getAllByTestId('clone-scope-tab').filter(el => el.getAttribute('data-active') === 'true');
+        expect(active).toHaveLength(1);
+        expect(active[0].getAttribute('data-subtab')).toBe('activity');
+        expect(active[0].getAttribute('aria-current')).toBe('page');
+    });
+
+    it.each(['notes', 'chats', 'activity'])('does not highlight %s off the repos tab', (activeRepoSubTab) => {
         // The header still renders on the top-level pages, but no workspace sub-tab
         // is being viewed there — so none should show as active.
-        mockAppState = { activeTab: 'admin', activeRepoSubTab: 'git' };
+        mockAppState = { activeTab: 'admin', activeRepoSubTab };
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
         const active = screen.getAllByTestId('clone-scope-tab').filter(el => el.getAttribute('data-active') === 'true');
         expect(active).toHaveLength(0);
+    });
+
+    it('shows the selected workspace task count and updates it when switching clones', () => {
+        const repos = [
+            { ...repo('a', 'shortcuts'), taskCount: 3 },
+            { ...repo('b', 'shortcuts-2'), taskCount: 7 },
+        ];
+        const { rerender } = render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
+
+        expect(screen.getAllByTestId('subbar-tasks-badge')).toHaveLength(1);
+        expect(screen.getByTestId('subbar-tasks-badge').textContent).toBe('3');
+        expect(screen.getByTestId('subbar-tasks-badge').closest('button')?.getAttribute('data-subtab')).toBe('tasks');
+
+        rerender(<WorkspaceTabsCluster repo={repos[1] as any} repos={repos as any} />);
+        expect(screen.getByTestId('subbar-tasks-badge').textContent).toBe('7');
+    });
+
+    it.each([undefined, 0])('omits the task badge for count %s', (taskCount) => {
+        const selected = { ...repo('a', 'shortcuts'), taskCount };
+        render(<WorkspaceTabsCluster repo={selected as any} repos={[selected] as any} />);
+
+        expect(screen.queryByTestId('subbar-tasks-badge')).toBeNull();
     });
 
     it('shows the schedules tab by default (flag off)', () => {
@@ -158,13 +188,12 @@ describe('WorkspaceTabsCluster', () => {
     });
 
     it('hides the standalone git tab when split workspace panel is enabled', () => {
-        mockSplitWorkspacePanelEnabled = true;
         const repos = [repo('a', 'shortcuts'), repo('b', 'shortcuts-2')];
         render(<WorkspaceTabsCluster repo={repos[0] as any} repos={repos as any} />);
 
         const cloneTabs = screen.getAllByTestId('clone-scope-tab');
         expect(cloneTabs.map(el => el.getAttribute('data-subtab'))).not.toContain('git');
-        const chatTab = cloneTabs.find(el => el.getAttribute('data-subtab') === 'chats');
+        const chatTab = cloneTabs.find(el => el.getAttribute('data-subtab') === 'activity');
         expect(chatTab?.textContent).toContain('Workspace');
     });
 });

@@ -18,6 +18,7 @@ import {
     navigateToGitTab,
 } from './fixtures/git-fixtures';
 import { seedWorkspace } from './fixtures/seed';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 // ================================================================
 // Unpushed commits separator
@@ -176,13 +177,9 @@ test.describe('Git advanced — Branch inline diff', () => {
             }),
         );
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await page.click('.repo-sub-tab[data-subtab="git"]');
-        await expect(page.locator('.repo-sub-tab[data-subtab="git"]')).toHaveClass(/active/);
+        await gotoWorkspace(page, serverUrl, wsId, 'git');
+        await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+        await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
 
         // BranchChanges should be visible
         await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
@@ -415,13 +412,9 @@ test.describe('Git advanced — Branch large diff Show All', () => {
             }),
         );
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await page.click('.repo-sub-tab[data-subtab="git"]');
-        await expect(page.locator('.repo-sub-tab[data-subtab="git"]')).toHaveClass(/active/);
+        await gotoWorkspace(page, serverUrl, wsId, 'git');
+        await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+        await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
 
         // BranchChanges should be visible
         await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });

@@ -30,7 +30,7 @@ test.describe.skip('Inline Comment Creation', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'inline-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
 
             // Context menu should be visible
@@ -66,7 +66,7 @@ test.describe.skip('Inline Comment Creation', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'inline-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
             await page.locator('[data-testid="context-menu-item-0"]').click();
             await expect(page.locator('[data-testid="inline-comment-popup"]')).toBeVisible();
@@ -94,7 +94,7 @@ test.describe.skip('Inline Comment Creation', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'inline-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
             await page.locator('[data-testid="context-menu-item-0"]').click();
             await expect(page.locator('[data-testid="inline-comment-popup"]')).toBeVisible();
@@ -122,7 +122,7 @@ test.describe.skip('Inline Comment Creation', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'inline-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
             await page.locator('[data-testid="context-menu-item-0"]').click();
             await expect(page.locator('[data-testid="inline-comment-popup"]')).toBeVisible();
@@ -148,7 +148,7 @@ test.describe.skip('Inline Comment Creation', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'inline-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
             await page.locator('[data-testid="context-menu-item-0"]').click();
             await expect(page.locator('[data-testid="inline-comment-popup"]')).toBeVisible();
@@ -174,7 +174,7 @@ test.describe.skip('Inline Comment Creation', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'inline-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
             await page.locator('[data-testid="context-menu-item-0"]').click();
             const popup = page.locator('[data-testid="inline-comment-popup"]');
@@ -201,7 +201,7 @@ test.describe.skip('Inline Comment Creation', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'inline-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
 
             // Create first comment
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
@@ -239,7 +239,7 @@ test.describe.skip('Inline Comment Creation', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'inline-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
 
             // Right-click without selecting text
             await page.locator('#task-preview-body').click({ button: 'right', position: { x: 10, y: 10 } });

@@ -40,7 +40,7 @@ test.describe.skip('Comment Lifecycle', () => {
             const r2 = await seedComment(serverUrl, WS_ID, TASK_PATH, 'second open comment');
             const id1 = (r1 as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');
@@ -77,7 +77,7 @@ test.describe.skip('Comment Lifecycle', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'resolved comment', 'general', 'resolved');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = getCommentCard(page, id);
@@ -107,7 +107,7 @@ test.describe.skip('Comment Lifecycle', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'original text');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = getCommentCard(page, id);
@@ -139,7 +139,7 @@ test.describe.skip('Comment Lifecycle', () => {
 
             await seedComment(serverUrl, WS_ID, TASK_PATH, 'keep this text');
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = page.locator('[data-testid^="comment-card-"]').first();
@@ -168,7 +168,7 @@ test.describe.skip('Comment Lifecycle', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'delete me');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = getCommentCard(page, id);
@@ -205,7 +205,7 @@ test.describe.skip('Comment Lifecycle', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'popover test comment');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             // Verify comment highlight exists in the rendered markdown
@@ -237,7 +237,7 @@ test.describe.skip('Comment Lifecycle', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'popover resolve');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             await expect(page.locator(`#task-preview-body [data-comment-id="${id}"]`)).toBeAttached({ timeout: 10_000 });
@@ -273,7 +273,7 @@ test.describe.skip('Comment Lifecycle', () => {
             const r = await seedComment(serverUrl, WS_ID, TASK_PATH, 'popover delete');
             const id = (r as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             await expect(page.locator(`#task-preview-body [data-comment-id="${id}"]`)).toBeAttached({ timeout: 10_000 });
@@ -321,7 +321,7 @@ test.describe.skip('Comment Lifecycle', () => {
                 });
             });
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = getCommentCard(page, id);
@@ -363,7 +363,7 @@ test.describe.skip('Comment Lifecycle', () => {
                 });
             });
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const card = getCommentCard(page, id);
@@ -427,7 +427,7 @@ test.describe.skip('Comment Lifecycle', () => {
                 });
             });
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');
@@ -466,7 +466,7 @@ test.describe.skip('Comment Lifecycle', () => {
             const idA = (r1 as any).comment.id as string;
             const idB = (r2 as any).comment.id as string;
 
-            await navigateToTask(page, serverUrl, TASK_NAME);
+            await navigateToTask(page, serverUrl, WS_ID, TASK_NAME);
             await waitForCommentSidebar(page);
 
             const sidebar = page.locator('[data-testid="comment-sidebar"]');

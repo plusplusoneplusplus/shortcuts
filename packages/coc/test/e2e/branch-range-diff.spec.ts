@@ -14,6 +14,7 @@
 
 import { test, expect } from './fixtures/server-fixture';
 import { request, seedWorkspace } from './fixtures/seed';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 // ── Shared mock data ────────────────────────────────────────────────────────
 
@@ -218,13 +219,9 @@ async function openBranchRangeOverview(
     await dismissOnboarding(serverUrl);
     await mockGitRoutes(page, wsId, mockOpts);
 
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-    await page.click('.repo-sub-tab[data-subtab="git"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="git"]')).toHaveClass(/active/);
+    await gotoWorkspace(page, serverUrl, wsId, 'git');
+    await expect(page.locator('button[data-subtab="activity"]')).toHaveAttribute('data-active', 'true');
+    await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
 
     // Wait for the branch-changes summary to appear, then click to select overview
     await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
@@ -496,12 +493,8 @@ test.describe('BranchRangeOverview — base mode toggle', () => {
             },
         );
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await page.click('.repo-sub-tab[data-subtab="git"]');
+        await gotoWorkspace(page, serverUrl, wsId, 'git');
+        await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
         await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
         await page.getByTestId('branch-changes-header').click();
         await expect(page.getByTestId('branch-commit-strip')).toBeVisible({ timeout: 10_000 });
@@ -542,12 +535,8 @@ test.describe('BranchRangeOverview — base mode toggle', () => {
             },
         );
 
-        await page.goto(serverUrl);
-        await page.click('[data-tab="repos"]');
-        await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-        await page.locator('[data-testid="repo-tab"]').first().click();
-        await expect(page.locator('#repo-detail-content')).toBeVisible();
-        await page.click('.repo-sub-tab[data-subtab="git"]');
+        await gotoWorkspace(page, serverUrl, wsId, 'git');
+        await expect(page.getByTestId('git-split-workspace-list')).toBeVisible();
         await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
         await page.getByTestId('branch-changes-header').click();
         await expect(page.getByTestId('branch-commit-strip')).toBeVisible({ timeout: 10_000 });
