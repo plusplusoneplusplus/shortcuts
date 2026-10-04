@@ -5,7 +5,9 @@
  * middle-truncated: first N segments + `…` + last M segments + filename.
  * Example: `packages/coc/…/hooks/useScriptTemplates.ts`
  *
- * The full path is always available as a `title` tooltip.
+ * When space runs out, the directory is clipped with an ellipsis so the
+ * filename always stays visible. The full path is always available as a
+ * `title` tooltip.
  */
 
 import React, { useMemo } from 'react';
@@ -15,6 +17,8 @@ export interface TruncatedPathProps {
     className?: string;
     /** Max directory segments before middle-truncation kicks in (default 5). */
     maxSegments?: number;
+    /** Tooltip text; defaults to the full path. */
+    title?: string;
 }
 
 /**
@@ -44,7 +48,7 @@ function truncateDir(segments: string[], maxSegments: number, sep: string): stri
     return [...head, '…', ...tail].join(sep) + sep;
 }
 
-export function TruncatedPath({ path, className, maxSegments = 5 }: TruncatedPathProps) {
+export function TruncatedPath({ path, className, maxSegments = 5, title }: TruncatedPathProps) {
     if (!path) return null;
 
     const { dirDisplay, fileName } = useMemo(() => {
@@ -54,9 +58,9 @@ export function TruncatedPath({ path, className, maxSegments = 5 }: TruncatedPat
     }, [path, maxSegments]);
 
     return (
-        <span className={`flex min-w-0 overflow-hidden font-mono ${className ?? ''}`} title={path}>
+        <span className={`flex min-w-0 overflow-hidden font-mono ${className ?? ''}`} title={title ?? path}>
             {dirDisplay && (
-                <span className="flex-shrink text-inherit opacity-70 whitespace-nowrap">{dirDisplay}</span>
+                <span className="min-w-0 flex-shrink overflow-hidden text-ellipsis text-inherit opacity-70 whitespace-nowrap">{dirDisplay}</span>
             )}
             <span className="flex-shrink-0 whitespace-nowrap text-inherit">{fileName}</span>
         </span>

@@ -44,6 +44,9 @@ import { MonacoFileDiffViewer, type MonacoFileDiffViewerHandle } from './MonacoF
 import type { DiffEditorFactory } from './monacoDiffEditorAdapter';
 import { resolveDiffEngineSelection, type DiffContentLoadState, type DiffEngineResolution } from './diffEngineResolution';
 import { DiffEngineFallbackBanner } from './DiffEngineFallbackBanner';
+import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openUnifiedPanelTab } from '../../repo-detail/unified-right-panel/unifiedPanelOpen';
+import { explorerFileTabInput } from '../../repo-detail/unified-right-panel/unifiedExplorerFiles';
 
 export interface FileDiffPanelProps {
     workspaceId: string;
@@ -419,6 +422,20 @@ export function FileDiffPanel({
         />
     ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, handleFixWithAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
 
+    // ── Ctrl/Cmd+click the path: open the file in its own right-panel tab ──
+    const panelHost = useUnifiedPanelHost();
+    const handlePathClick = useCallback((e: React.MouseEvent) => {
+        if (!panelHost || !(e.ctrlKey || e.metaKey)) return;
+        const input = explorerFileTabInput({ path: filePath }, {
+            ownerWorkspaceId: workspaceId,
+            scopeWorkspaceId: panelHost.workspaceId,
+            chatId: panelHost.chatId,
+        });
+        if (!input) return;
+        e.preventDefault();
+        openUnifiedPanelTab(panelHost.workspaceId, input);
+    }, [panelHost, filePath, workspaceId]);
+
     // ── Render ──
 
     return (
@@ -438,10 +455,13 @@ export function FileDiffPanel({
                             ← {backLabel}
                         </button>
                     )}
-                    <TruncatedPath
-                        path={filePath}
-                        className="text-xs font-mono text-[#1e1e1e] dark:text-[#ccc] truncate"
-                    />
+                    <span className="flex min-w-0" onClick={handlePathClick} data-testid="file-diff-path">
+                        <TruncatedPath
+                            path={filePath}
+                            title={panelHost ? `${filePath}\nCtrl+click to open file` : undefined}
+                            className="text-xs font-mono text-[#1e1e1e] dark:text-[#ccc] truncate"
+                        />
+                    </span>
                     {allFiles.length > 1 && (
                         <span
                             className="text-[10px] text-[#848484] flex-shrink-0"

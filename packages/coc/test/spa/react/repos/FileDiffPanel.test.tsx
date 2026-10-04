@@ -194,7 +194,13 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
     copyToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockOpenUnifiedPanelTab = vi.fn();
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen', () => ({
+    openUnifiedPanelTab: (...args: any[]) => mockOpenUnifiedPanelTab(...args),
+}));
+
 import { FileDiffPanel } from '../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel';
+import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import type { DiffSource } from '../../../../src/server/spa/client/react/features/git/diff/diffSource';
 
 // --- Helpers ---
@@ -1051,6 +1057,41 @@ describe('FileDiffPanel', () => {
             const headerOf = (c: HTMLElement) =>
                 c.querySelector('[data-testid="file-diff-header"]')!.innerHTML;
             expect(headerOf(withProp)).toBe(headerOf(without));
+        });
+    });
+
+    describe('Ctrl/Cmd+click on the file path', () => {
+        function renderHosted(host: { workspaceId: string; chatId: string | null } | null) {
+            return render(
+                <UnifiedPanelHostProvider host={host}>
+                    <FileDiffPanel workspaceId="ws-member" filePath="src/deep/foo.ts" source={makeCommitSource()} />
+                </UnifiedPanelHostProvider>,
+            );
+        }
+
+        it.each([['ctrlKey'], ['metaKey']])('opens the file in its own panel tab on %s+click', (key) => {
+            renderHosted({ workspaceId: 'ws-scope', chatId: 'chat-1' });
+            fireEvent.click(screen.getByTestId('truncated-path'), { [key]: true });
+            expect(mockOpenUnifiedPanelTab).toHaveBeenCalledTimes(1);
+            expect(mockOpenUnifiedPanelTab).toHaveBeenCalledWith('ws-scope', expect.objectContaining({
+                kind: 'file',
+                ownerWorkspaceId: 'ws-member',
+                chatId: 'chat-1',
+                resourceId: 'src/deep/foo.ts',
+                label: 'foo.ts',
+            }));
+        });
+
+        it('does nothing on a plain click', () => {
+            renderHosted({ workspaceId: 'ws-scope', chatId: null });
+            fireEvent.click(screen.getByTestId('truncated-path'));
+            expect(mockOpenUnifiedPanelTab).not.toHaveBeenCalled();
+        });
+
+        it('does nothing when no unified panel hosts the diff', () => {
+            renderHosted(null);
+            fireEvent.click(screen.getByTestId('truncated-path'), { ctrlKey: true });
+            expect(mockOpenUnifiedPanelTab).not.toHaveBeenCalled();
         });
     });
 });

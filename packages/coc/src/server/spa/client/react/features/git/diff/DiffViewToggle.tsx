@@ -3,60 +3,50 @@ import type { DiffViewMode } from '../hooks/useDiffViewMode';
 import type { DiffEngine } from '../hooks/useDiffEngine';
 import { DIFF_TOOLBAR_NARROW_HIDDEN } from './diffToolbarClasses';
 
-interface SegmentButton<T extends string> {
+interface ToggleOption<T extends string> {
     value: T;
     icon: string;
     label: string;
     title: string;
 }
 
-interface DiffToolbarSegmentsProps<T extends string> {
+interface DiffToolbarToggleProps<T extends string> {
     value: T;
     onChange: (value: T) => void;
-    buttons: SegmentButton<T>[];
-    groupLabel: string;
+    /** Exactly two options; the button shows the current one and flips to the other. */
+    buttons: [ToggleOption<T>, ToggleOption<T>];
     testId: string;
     appearance?: 'default' | 'quiet';
 }
 
-function DiffToolbarSegments<T extends string>({ value, onChange, buttons, groupLabel, testId, appearance = 'default' }: DiffToolbarSegmentsProps<T>) {
+/** One button that shows the current option and switches to the other on click. */
+function DiffToolbarToggle<T extends string>({ value, onChange, buttons, testId, appearance = 'default' }: DiffToolbarToggleProps<T>) {
     const quiet = appearance === 'quiet';
+    const current = buttons[0].value === value ? buttons[0] : buttons[1];
+    const next = current === buttons[0] ? buttons[1] : buttons[0];
+    const title = `${current.title} — switch to ${next.label}`;
     return (
-        <div
-            className="inline-flex shrink-0 rounded border border-[#d0d7de] dark:border-[#30363d] overflow-hidden text-xs"
-            role="group"
-            aria-label={groupLabel}
+        <button
+            type="button"
+            onClick={() => onChange(next.value)}
+            aria-label={title}
+            title={title}
             data-testid={testId}
+            data-value={current.value}
+            className={[
+                'inline-flex items-center whitespace-nowrap shrink-0 rounded border border-[#d0d7de] dark:border-[#30363d] px-2 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0078d4]',
+                quiet ? 'h-7' : '',
+                'bg-white dark:bg-[#161b22] text-[#1f2328] dark:text-[#c9d1d9] hover:bg-[#f3f4f6] dark:hover:bg-[#21262d]',
+            ].join(' ')}
         >
-            {buttons.map(({ value: buttonValue, icon, label, title }, i) => (
-                <button
-                    key={buttonValue}
-                    onClick={() => onChange(buttonValue)}
-                    aria-pressed={value === buttonValue}
-                    aria-label={title}
-                    title={title}
-                    data-testid={`${testId}-${buttonValue}`}
-                    className={[
-                        'inline-flex items-center whitespace-nowrap shrink-0 px-2 py-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0078d4]',
-                        quiet ? 'h-7' : '',
-                        !quiet && i > 0 ? 'border-l border-[#d0d7de] dark:border-[#30363d]' : '',
-                        value === buttonValue
-                            ? quiet
-                                ? 'bg-[#e8f0fc] dark:bg-[#163b5b] text-[#2465b9] dark:text-[#9acbff] font-medium'
-                                : 'bg-[#0550ae] dark:bg-[#79c0ff] text-white dark:text-black font-medium'
-                            : 'bg-white dark:bg-[#161b22] text-[#6e7681] hover:bg-[#f3f4f6] dark:hover:bg-[#21262d]',
-                    ].join(' ')}
-                >
-                    {quiet ? (
-                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
-                            <rect x="2" y="2" width="12" height="12" rx="1" />
-                            <path d={buttonValue === 'split' ? 'M8 2v12' : 'M2 6h12M2 10h12'} />
-                        </svg>
-                    ) : <span aria-hidden="true">{icon}</span>}
-                    <span className={`ml-1 ${DIFF_TOOLBAR_NARROW_HIDDEN}`} data-testid={`${testId}-${buttonValue}-label`}>{label}</span>
-                </button>
-            ))}
-        </div>
+            {quiet ? (
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true">
+                    <rect x="2" y="2" width="12" height="12" rx="1" />
+                    <path d={current.value === 'split' ? 'M8 2v12' : 'M2 6h12M2 10h12'} />
+                </svg>
+            ) : <span aria-hidden="true">{current.icon}</span>}
+            <span className={`ml-1 ${DIFF_TOOLBAR_NARROW_HIDDEN}`} data-testid={`${testId}-label`}>{current.label}</span>
+        </button>
     );
 }
 
@@ -66,18 +56,17 @@ interface DiffViewToggleProps {
     appearance?: 'default' | 'quiet';
 }
 
-const VIEW_BUTTONS: SegmentButton<DiffViewMode>[] = [
+const VIEW_BUTTONS: [ToggleOption<DiffViewMode>, ToggleOption<DiffViewMode>] = [
     { value: 'unified', icon: '☰', label: 'Unified', title: 'Unified view' },
     { value: 'split',   icon: '⬜', label: 'Split', title: 'Split view' },
 ];
 
 export function DiffViewToggle({ mode, onChange, appearance }: DiffViewToggleProps) {
     return (
-        <DiffToolbarSegments
+        <DiffToolbarToggle
             value={mode}
             onChange={onChange}
             buttons={VIEW_BUTTONS}
-            groupLabel="Diff view mode"
             testId="diff-view-toggle"
             appearance={appearance}
         />
@@ -89,19 +78,18 @@ interface DiffEngineToggleProps {
     onChange: (engine: DiffEngine) => void;
 }
 
-const ENGINE_BUTTONS: SegmentButton<DiffEngine>[] = [
+const ENGINE_BUTTONS: [ToggleOption<DiffEngine>, ToggleOption<DiffEngine>] = [
     { value: 'legacy', icon: '≡', label: 'Classic', title: 'Classic diff viewer' },
     { value: 'monaco', icon: '✎', label: 'Editor', title: 'Editor diff viewer' },
 ];
 
-/** Shared Classic / Editor (Monaco) engine switch for file diffs. */
+/** Shared Classic / Editor (Monaco) engine toggle for file diffs. */
 export function DiffEngineToggle({ engine, onChange }: DiffEngineToggleProps) {
     return (
-        <DiffToolbarSegments
+        <DiffToolbarToggle
             value={engine}
             onChange={onChange}
             buttons={ENGINE_BUTTONS}
-            groupLabel="Diff engine"
             testId="diff-engine-toggle"
         />
     );

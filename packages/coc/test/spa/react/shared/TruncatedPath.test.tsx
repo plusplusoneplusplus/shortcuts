@@ -39,6 +39,21 @@ describe('TruncatedPath', () => {
         expect(dirSpan.className).toContain('whitespace-nowrap');
     });
 
+    // Regression: the directory span could not shrink below its text, so long
+    // paths clipped the filename instead of the directory.
+    it('lets the directory shrink and clip so the filename stays visible', () => {
+        render(<TruncatedPath path="a/b/c/file.ts" />);
+        const dirSpan = screen.getByTitle('a/b/c/file.ts').children[0] as HTMLElement;
+        for (const cls of ['min-w-0', 'flex-shrink', 'overflow-hidden', 'text-ellipsis']) {
+            expect(dirSpan.className.split(' ')).toContain(cls);
+        }
+    });
+
+    it('uses a custom title when given', () => {
+        render(<TruncatedPath path="a/file.ts" title="custom tip" />);
+        expect(screen.getByTitle('custom tip').textContent).toBe('a/file.ts');
+    });
+
     it('applies flex-shrink-0 on the filename span', () => {
         render(<TruncatedPath path="a/b/c/file.ts" />);
         const el = screen.getByTitle('a/b/c/file.ts');

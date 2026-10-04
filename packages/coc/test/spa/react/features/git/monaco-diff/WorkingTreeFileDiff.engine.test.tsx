@@ -119,7 +119,7 @@ beforeEach(() => {
 describe('WorkingTreeFileDiff — diff engine', () => {
     it('renders the editor by default with no cached or server choice', async () => {
         await renderDiff();
-        expect(screen.getByTestId('diff-engine-toggle-monaco').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('diff-engine-toggle').getAttribute('data-value')).toBe('monaco');
         expect(clients['ws-a'].git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-a', '/repo/src/a.ts', 'unstaged');
         expect(screen.getByTestId('working-tree-file-diff-editor')).toBeTruthy();
         expect(screen.queryByTestId('classic-viewer')).toBeNull();
@@ -131,13 +131,13 @@ describe('WorkingTreeFileDiff — diff engine', () => {
         expect(screen.getByTestId('classic-viewer')).toBeTruthy();
         expect(screen.queryByTestId('working-tree-file-diff-editor')).toBeNull();
         expect(clients['ws-a'].git.getWorkingTreeFileContent).not.toHaveBeenCalled();
-        expect(screen.getByTestId('diff-engine-toggle-legacy').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('diff-engine-toggle').getAttribute('data-value')).toBe('legacy');
     });
 
     it('uses the cached Editor engine on first paint and feeds both server sides to Monaco', async () => {
         localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
         await renderDiff();
-        expect(screen.getByTestId('diff-engine-toggle-monaco').getAttribute('aria-pressed')).toBe('true');
+        expect(screen.getByTestId('diff-engine-toggle').getAttribute('data-value')).toBe('monaco');
         expect(clients['ws-a'].git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-a', '/repo/src/a.ts', 'unstaged');
         expect(screen.getByTestId('working-tree-file-diff-editor')).toBeTruthy();
         expect(screen.queryByTestId('classic-viewer')).toBeNull();
@@ -163,13 +163,13 @@ describe('WorkingTreeFileDiff — diff engine', () => {
     it('switches engine in place from the toolbar and persists the choice', async () => {
         localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'legacy');
         await renderDiff();
-        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle-monaco')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
         await act(async () => {});
         expect(patchGlobal).toHaveBeenCalledWith({ diffEngine: 'monaco' });
         expect(localStorage.getItem(DIFF_ENGINE_STORAGE_KEY)).toBe('monaco');
         expect(screen.getByTestId('working-tree-file-diff-editor')).toBeTruthy();
 
-        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle-legacy')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
         expect(screen.getByTestId('classic-viewer')).toBeTruthy();
         expect(screen.queryByTestId('working-tree-file-diff-editor')).toBeNull();
         expect(fakes[0].disposals).toBe(1);

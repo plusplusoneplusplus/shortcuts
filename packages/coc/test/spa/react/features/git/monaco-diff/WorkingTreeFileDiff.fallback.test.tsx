@@ -205,7 +205,7 @@ describe('WorkingTreeFileDiff — classic fallback', () => {
         view.rerender(
             <WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged" createDiffEditor={createDiffEditor} />,
         );
-        await act(async () => { fireEvent.click(screen.getByTestId('diff-view-toggle-split')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-view-toggle')); });
         await act(async () => {});
         expect(banner()?.getAttribute('data-reason')).toBe('editorFailed');
         expect(screen.queryByTestId('working-tree-file-diff-editor')).toBeNull();

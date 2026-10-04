@@ -233,12 +233,12 @@ describe('useDiffEngine', () => {
         const workingTree = within(view.getByTestId('working-tree-engine'));
         const filePanel = within(view.getByTestId('file-diff-panel-engine'));
 
-        expect(workingTree.getByTestId('diff-engine-toggle-legacy').getAttribute('aria-pressed')).toBe('true');
-        fireEvent.click(filePanel.getByTestId('diff-engine-toggle-monaco'));
-        expect(workingTree.getByTestId('diff-engine-toggle-monaco').getAttribute('aria-pressed')).toBe('true');
+        expect(workingTree.getByTestId('diff-engine-toggle').getAttribute('data-value')).toBe('legacy');
+        fireEvent.click(filePanel.getByTestId('diff-engine-toggle'));
+        expect(workingTree.getByTestId('diff-engine-toggle').getAttribute('data-value')).toBe('monaco');
 
-        fireEvent.click(workingTree.getByTestId('diff-engine-toggle-legacy'));
-        expect(filePanel.getByTestId('diff-engine-toggle-legacy').getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(workingTree.getByTestId('diff-engine-toggle'));
+        expect(filePanel.getByTestId('diff-engine-toggle').getAttribute('data-value')).toBe('legacy');
         expect(patchGlobal).toHaveBeenNthCalledWith(1, { diffEngine: 'monaco' });
         expect(patchGlobal).toHaveBeenNthCalledWith(2, { diffEngine: 'legacy' });
     });

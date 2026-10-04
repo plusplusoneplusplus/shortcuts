@@ -152,7 +152,7 @@ async function submit(text: string) {
     await act(async () => { fireEvent.click(screen.getByText('Submit')); });
 }
 async function toggleEngine(engine: 'legacy' | 'monaco') {
-    await act(async () => { fireEvent.click(screen.getByTestId(`diff-engine-toggle-${engine}`)); });
+    await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
     if (engine === 'monaco') await act(async () => { fake().finishDiff(CHANGES); });
 }
 
