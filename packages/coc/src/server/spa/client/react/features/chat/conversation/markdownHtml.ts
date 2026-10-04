@@ -99,6 +99,18 @@ function rewriteBareExcalidrawLinks(html: string): string {
     );
 }
 
+/**
+ * Classify a markdown link href that points at a local file so the anchor can
+ * show a trailing file-kind icon. Returns null for external URLs, in-page
+ * anchors, and other URL schemes (a single-letter "scheme" is a Windows drive).
+ */
+export function getLocalFileLinkKind(href: string | null | undefined): 'html' | 'source' | null {
+    const trimmed = (href ?? '').trim();
+    if (!trimmed || trimmed.startsWith('#')) return null;
+    if (/^[a-z][a-z0-9+.-]+:/i.test(trimmed) && !/^file:/i.test(trimmed)) return null;
+    return isEmbeddableHtmlPath(trimmed) ? 'html' : 'source';
+}
+
 let svgFenceIndex = 0;
 
 function createChatMarked(
@@ -160,9 +172,14 @@ function createChatMarked(
                 }
                 const isExternal = /^https?:\/\/|^mailto:/i.test(href ?? '');
                 const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-                return isExternal
-                    ? `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
-                    : `<a href="${safeHref}"${titleAttr}>${text}</a>`;
+                if (isExternal) {
+                    return `<a href="${safeHref}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+                }
+                const localKind = getLocalFileLinkKind(href);
+                const classAttr = localKind
+                    ? ` class="md-local-file-link md-local-file-link--${localKind}"`
+                    : '';
+                return `<a href="${safeHref}"${titleAttr}${classAttr}>${text}</a>`;
             },
             image(href: string, title: string | null | undefined, text: string): string {
                 if (htmlEmbedEnabled && isEmbeddableHtmlPath(href)) {

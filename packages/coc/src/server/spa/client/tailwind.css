@@ -2723,6 +2723,27 @@
     text-decoration: underline;
 }
 
+.chat-message-content .markdown-body a.md-local-file-link::after {
+    content: '';
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    margin-left: 0.2em;
+    vertical-align: -0.1em;
+    background-color: currentColor;
+    opacity: 0.7;
+    -webkit-mask: var(--md-local-file-icon) center / contain no-repeat;
+    mask: var(--md-local-file-icon) center / contain no-repeat;
+}
+
+.chat-message-content .markdown-body a.md-local-file-link--source {
+    --md-local-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5'/%3E%3C/svg%3E");
+}
+
+.chat-message-content .markdown-body a.md-local-file-link--html {
+    --md-local-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.4'%3E%3Crect x='1.5' y='2.5' width='13' height='11' rx='1.5'/%3E%3Cpath d='M1.5 5.5h13'/%3E%3C/svg%3E");
+}
+
 .chat-message-content .markdown-body code,
 .canvas-mermaid-preview .markdown-body code {
     background: #f3f3f3;

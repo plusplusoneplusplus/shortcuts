@@ -37,7 +37,9 @@ and historical session-id fallbacks.
 
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
-escaped and never injected); the raw toggle shows literal source. Turns with
+escaped and never injected); the raw toggle shows literal source. Local markdown anchors
+(relative, absolute, Windows, `file:`) get `md-local-file-link--html|--source`, which CSS
+renders as a trailing browser/code icon; external and other-scheme links stay plain. Turns with
 `pasteExternalized: true` keep the typed prompt visible and render the payload as an
 in-bubble card, with no extra persisted display state.
 
