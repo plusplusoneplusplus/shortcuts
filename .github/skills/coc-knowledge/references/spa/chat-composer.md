@@ -221,7 +221,12 @@ payloads through `activeChatAttach`. The last-focused workspace subscriber in
 subscriber, `newChatSeedContext` seeds the workspace's draft composer. Generic
 file viewers and trusted absolute paths do not opt in. File-selection blocks
 include a repo-relative path, line range and a capped fenced snippet; user-turn
-parsing restores their context cards.
+parsing restores their context cards. `MonacoFileDiffViewer` mounts
+`MonacoDiffSelectionAttachPill` in each side editor via the adapter's
+`getSelectionEditor`; side-local portals share the same overlay lifecycle.
+`monacoToSelection` and `createMonacoDiffSelectionDragPayload` supply the existing
+diff-selection shape using live model text and computed line changes.
+`FileDiffPanel` and `WorkingTreeFileDiff` supply workspace/path/ref metadata.
 
 Pointer attachments emit blocks: `<attached_session_context>` for single
 sessions, `<attached_ralph_session_context>` for Ralph groups, and

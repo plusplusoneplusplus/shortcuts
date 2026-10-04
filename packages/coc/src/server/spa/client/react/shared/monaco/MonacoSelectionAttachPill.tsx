@@ -5,7 +5,7 @@ import type { SessionContextAttachmentDragPayload } from '../../features/chat/se
 import { isSessionContextAttachmentsEnabled } from '../../utils/config';
 
 export interface MonacoSelectionAttachPillProps {
-    editor: MonacoEditor.IStandaloneCodeEditor | null;
+    editor: MonacoEditor.ICodeEditor | null;
     workspaceId: string;
     buildPayload: (selection: Selection, model: MonacoEditor.ITextModel) => SessionContextAttachmentDragPayload | null;
 }
@@ -63,9 +63,9 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, buildPayload }:
         <button
             ref={buttonRef}
             type="button"
-            className="absolute z-20 rounded-full border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 shadow dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className="pointer-events-auto absolute z-20 rounded-full border border-gray-300 bg-white px-2 py-1 text-xs text-gray-800 shadow dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             style={position}
-            onMouseDown={event => event.preventDefault()}
+            onMouseDown={event => { event.preventDefault(); event.stopPropagation(); }}
             onBlur={() => setPosition(null)}
             onClick={() => {
                 const selection = editor?.getSelection();

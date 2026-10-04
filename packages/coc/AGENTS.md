@@ -298,6 +298,14 @@ references before editing. Paths are package-relative.
 - MCP APIs and connection history expose only allowlisted safe fields, never tokens,
   `env`, headers, full arguments, or provider error bodies. Credentials stay on their host.
 
+## Monaco Selection Context
+
+- Repository file previews opt into `MonacoSelectionAttachPill`; diff viewers use
+  side-local `MonacoDiffSelectionAttachPill` portals and the existing diff-selection
+  builder. Keep payloads scoped to the owner workspace and read live model text.
+  Composer routing and context formatting are documented in the
+  [composer reference](../../.github/skills/coc-knowledge/references/spa/chat-composer.md).
+
 ## Build and Validation
 
 - Root `npm run build` builds workspaces; `npm run build -w packages/coc` runs package

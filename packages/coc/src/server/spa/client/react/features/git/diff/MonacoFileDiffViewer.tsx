@@ -51,6 +51,7 @@ import { synthesizeDiffLines } from './monacoDiffLineShim';
 import type { LanguageDocumentStore } from '../../language-servers/documentStore';
 import { useDiffLanguageFeatures } from './useDiffLanguageFeatures';
 import type { DiffDefinitionNavigate } from './diffLanguageMount';
+import { MonacoDiffSelectionAttachPill } from './MonacoDiffSelectionAttachPill';
 import type { DiffSelectionDragSource } from './diffSelectionContext';
 
 export type MonacoFileDiffViewerHandle = Pick<
@@ -322,6 +323,14 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
                 )}
                 <div className="relative flex-1 min-h-0">
                     <div ref={hostRef} className="absolute inset-0" data-testid={`${testId}-host`} />
+                    {diffSelectionDragSource && (
+                        <MonacoDiffSelectionAttachPill
+                            editor={editor}
+                            source={diffSelectionDragSource}
+                            modelsVersion={modelsVersion}
+                            diff={commentDiff}
+                        />
+                    )}
                     {!attached && !failed && (
                         <div className="absolute inset-0 flex items-center gap-2 px-4 py-2 text-xs text-[#848484]" data-testid={`${testId}-loading`}>
                             <Spinner size="sm" /> Loading editor...
