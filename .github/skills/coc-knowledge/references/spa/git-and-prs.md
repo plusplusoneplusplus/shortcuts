@@ -140,7 +140,9 @@ tab shows a dirty dot and closing it prompts (`DIRTY_CLOSE_KINDS` includes `git`
 `RepoGitDetailPane` passes `workingChangesRefreshKey` as `refreshKey`; each bump
 re-reads the diff and both sides quietly. A clean view reloads; unsaved edits are
 never replaced — when the disk text changed, a "File changed on disk" banner offers
-Reload (drop edits) or Keep mine (dismiss; the next save overwrites).
+Reload (drop edits) or Keep mine (dismiss; the next save overwrites). A successful
+save calls `onSaved` (`onWorkingTreeFileSaved` → `data.bumpWorkingChanges`), so the
+change list and the diff refresh; a saved staged edit then appears under Unstaged.
 
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.

@@ -395,6 +395,57 @@ describe('WorkingTreeFileDiff — disk changes while editing (AC-05)', () => {
     });
 });
 
+describe('WorkingTreeFileDiff — refresh after save (AC-06)', () => {
+    it('a successful save asks the owner to refresh the change list and diff', async () => {
+        const onSaved = vi.fn();
+        await renderDiff({ onSaved });
+        act(() => fakes[0].type('b\nedited\n'));
+        await act(async () => { fakes[0].pressSave(); });
+        expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it('a staged save also refreshes (the edit moves to the Unstaged list)', async () => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockImplementation(async (_ws: string, _p: string, stage: string) =>
+            stage === 'staged'
+                ? content('head\n', 'b\n', { head: { content: 'b\n', ref: 'INDEX', exists: true } })
+                : content('b\n', 'b\n'));
+        const onSaved = vi.fn();
+        await renderDiff({ stage: 'staged', onSaved });
+        act(() => fakes[0].type('b\nedit\n'));
+        await act(async () => { fakes[0].pressSave(); });
+        expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed save, or a save with nothing to write, does not refresh', async () => {
+        const onSaved = vi.fn();
+        writeBlob.mockRejectedValueOnce(new Error('disk full'));
+        await renderDiff({ onSaved });
+        await act(async () => { fakes[0].pressSave(); });
+        act(() => fakes[0].type('x\n'));
+        await act(async () => { fakes[0].pressSave(); });
+        expect(writeBlob).toHaveBeenCalledTimes(1);
+        expect(onSaved).not.toHaveBeenCalled();
+    });
+
+    it('the refresh that follows a save reloads the now-clean view with the saved text', async () => {
+        const onSaved = vi.fn();
+        const view = await renderDiff({ onSaved, refreshKey: 0 });
+        act(() => fakes[0].type('b\nsaved\n'));
+        await act(async () => { fakes[0].pressSave(); });
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('a\n', 'b\nsaved\n'));
+        await act(async () => {
+            view.rerender(
+                <WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged"
+                    createDiffEditor={createDiffEditor} onSaved={onSaved} refreshKey={1} />,
+            );
+        });
+        await act(async () => {});
+        expect(screen.queryByTestId('working-tree-file-diff-disk-changed')).toBeNull();
+        expect(screen.queryByTestId('working-tree-file-diff-dirty')).toBeNull();
+        expect(fakes[fakes.length - 1].modifiedText).toBe('b\nsaved\n');
+    });
+});
+
 describe('stagedDiskMatchesIndex', () => {
     const staged = (index: string, exists = true) =>
         content('h\n', index, { head: { content: index, ref: 'INDEX', exists } }) as never;

@@ -2258,4 +2258,11 @@ describe('RepoGitTab', () => {
             expect(readRepoGitTabModuleSource('RepoGitDetailPane.tsx')).toContain('onFileMissing={onWorkingTreeFileMissing}');
         });
     });
+
+    describe('refresh after a working-tree diff save', () => {
+        it('bumps the working-tree list and diff after an edited diff is saved', () => {
+            expect(source).toContain('onWorkingTreeFileSaved={data.bumpWorkingChanges}');
+            expect(readRepoGitTabModuleSource('RepoGitDetailPane.tsx')).toContain('onSaved={onWorkingTreeFileSaved}');
+        });
+    });
 });

@@ -686,6 +686,7 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
             onDetailDirtyChange={handleDetailDirtyChange}
             onDetailRegisterSave={handleDetailRegisterSave}
             workingChangesRefreshKey={data.workingChangesRefreshKey}
+            onWorkingTreeFileSaved={data.bumpWorkingChanges}
             onAllBranchCommentsClick={selection.selectBranchRangeComments}
             onBranchAskAI={skillActions.askAboutBranch}
             onCommitClassified={refreshClassificationStatus}

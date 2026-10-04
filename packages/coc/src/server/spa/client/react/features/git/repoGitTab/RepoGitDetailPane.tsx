@@ -44,6 +44,8 @@ export interface RepoGitDetailPaneProps {
     onDetailRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
     /** Bumped by every working-tree refresh; re-reads the shown working-tree diff. */
     workingChangesRefreshKey?: number;
+    /** Refreshes the working-tree list and diff after an edited working-tree diff is saved. */
+    onWorkingTreeFileSaved?: () => void;
     onAllBranchCommentsClick: () => void;
     onBranchAskAI: (mode: 'ask' | 'task') => void;
     onCommitClassified: () => void;
@@ -53,7 +55,7 @@ export function RepoGitDetailPane({
     workspaceId, view, commits, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
-    onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
+    onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
     if (view?.type === 'commit') {
         return (
@@ -142,6 +144,7 @@ export function RepoGitDetailPane({
                 onDirtyChange={onDetailDirtyChange}
                 onRegisterSave={onDetailRegisterSave}
                 refreshKey={workingChangesRefreshKey}
+                onSaved={onWorkingTreeFileSaved}
             />
         );
     }

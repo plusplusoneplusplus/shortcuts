@@ -87,6 +87,8 @@ export interface WorkingTreeFileDiffProps {
      * Reload / Keep mine instead).
      */
     refreshKey?: number;
+    /** Called after a diff edit is saved so the owner refreshes the change list and diff. */
+    onSaved?: () => void;
 }
 
 /**
@@ -125,7 +127,7 @@ type EditorContentState =
     | ({ key: string; status: 'loaded' } & LoadedEditorContent)
     | { key: string; status: 'failed' };
 
-export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey }: WorkingTreeFileDiffProps) {
+export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -268,6 +270,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     }, [diskChange]);
     const showDiskChangedBanner = isDirty && diskChange !== null && diskChange.key === contentKey
         && diskChange.diskText !== keptDiskText;
+    const onSavedRef = useRef(onSaved);
+    onSavedRef.current = onSaved;
     const handleSaveEdits = useCallback(async (): Promise<boolean> => {
         const { editedText: text, isDirty: dirty, workspaceId: ws, relativePath: path } = saveStateRef.current;
         if (!dirty || text === null) return true;
@@ -277,6 +281,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             setSaveError(null);
             setDiskChange(null);
             setKeptDiskText(null);
+            onSavedRef.current?.();
             return true;
         } catch (err) {
             setSaveError(err instanceof Error && err.message ? err.message : 'Failed to save file');
