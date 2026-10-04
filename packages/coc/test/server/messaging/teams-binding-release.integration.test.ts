@@ -12,6 +12,7 @@ import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-p
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { getRepoDataPath } from '../../../src/server/paths';
 import { TeamsMessagingManager } from '../../../src/server/messaging/teams-messaging-manager';
+import { TeamsUserStateStore } from '../../../src/server/messaging/teams-user-state';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
 
 vi.mock('node:fs', async importOriginal => {
@@ -580,6 +581,8 @@ describe('Teams authoritative binding release', () => {
 
     const wireProduction = () => {
         relay.dispose();
+        // Plain messages and topic commands use the selected repo (else Global).
+        new TeamsUserStateStore(dir).update('synthetic-user', { selectedRepo: 'ws-a' });
         manager = new TeamsMessagingManager(dir);
         vi.spyOn(manager, 'getStatus').mockReturnValue({
             enabled: true, status: 'connected', teamId, channelId,

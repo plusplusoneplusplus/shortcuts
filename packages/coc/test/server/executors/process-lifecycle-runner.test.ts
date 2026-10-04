@@ -873,6 +873,21 @@ describe('ProcessLifecycleRunner — parentProcessId from context.spawnedFromPro
         expect((proc?.metadata as any)?.parentProcessId).toBeUndefined();
     });
 
+    it('records a valid messaging origin on metadata and drops a malformed one', async () => {
+        const origin = { connector: 'teams', chatKey: 'team\u0000channel', threadId: 'dispatcher-root' };
+        const task = makeTask({
+            payload: { kind: 'chat', prompt: 'Job', workspaceId: 'ws-abc', context: { messagingOrigin: origin } } as any,
+        });
+        await runner.run(task, makeOpts());
+        expect((await store.getProcess(`queue_${task.id}`))?.metadata?.messagingOrigin).toEqual(origin);
+
+        const bad = makeTask({
+            payload: { kind: 'chat', prompt: 'Job', workspaceId: 'ws-abc', context: { messagingOrigin: { connector: 'sms', chatKey: 'x' } } } as any,
+        });
+        await runner.run(bad, makeOpts());
+        expect((await store.getProcess(`queue_${bad.id}`))?.metadata?.messagingOrigin).toBeUndefined();
+    });
+
     it('getAllProcesses({ parentProcessId }) returns the spawned child', async () => {
         const task = makeTask({
             payload: {

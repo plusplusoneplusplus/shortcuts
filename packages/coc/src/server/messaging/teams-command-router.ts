@@ -16,12 +16,22 @@ import {
 import { TeamsUserStateStore } from './teams-user-state';
 import type { TeamsEventType } from './teams-attempt-store';
 import { escapeTeamsMarkdown, teamsCodeSpan } from './teams-outbound-format';
-import { listRecentTopics, resolveTopic, resolveWorkspace } from './chat-target';
+import { listRecentTopics, resolveChatWorkspace, resolveTopic, resolveWorkspace } from './chat-target';
 import {
-    compactChatReply, handleMessagingCommand, invalidCommandReply, readQuotaReply,
+    compactChatReply, handleMessagingCommand, invalidCommandReply, NO_CHAT_WORKSPACE_REPLY, readQuotaReply,
     type MessagingCompactor, type MessagingQuotaSource,
 } from './messaging-commands';
-import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
+import { formatTopicList, localTopicListFooter, RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
+import type { MessagingHandOff } from './job-handoff';
+import type { MessagingJobOrigin } from './job-notices';
+
+const EMPTY_CHAT_REPLY = 'Send a message to start a chat.';
+
+const TEAMS_FORMAT = {
+    strong: (text: string) => `**${escapeTeamsMarkdown(text)}**`,
+    code: teamsCodeSpan,
+    escape: escapeTeamsMarkdown,
+};
 
 // ============================================================================
 // Types
@@ -54,6 +64,10 @@ export interface TeamsCommandRouterDeps {
     compact?: MessagingCompactor;
     /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
     remotes?: MessagingRemoteDirectory;
+    /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
+    handOff?: MessagingHandOff;
+    /** Where a job handed off from `msg` reports back; undefined while the channel is unknown. */
+    handOffOrigin?: (msg: InboundTeamsMessage) => MessagingJobOrigin | undefined;
     /** Send a reply back to Teams. */
     sendReply: (text: string, replyToId?: string) => Promise<void>;
     /** Data directory for persisting user state. */
@@ -138,10 +152,16 @@ export class TeamsCommandRouter {
                 // A thread is already bound to its target, so `[id]` text is part of the question.
                 const mode = command.mode;
                 const message = command.type === 'chat' ? command.args
-                    : msg.text.trim().replace(/^\/autopilot\s+/i, '');
+                    : msg.text.trim().replace(/^\/(?:autopilot|ask|ralph|sentinel)\s+/i, '');
                 if (!message) {
+                    if (mode && !this.deps.hasThreadCommand?.(msg)) {
+                        this.deps.recordThreadCommand?.(msg);
+                        await this.deps.sendReply(`❌ ${EMPTY_CHAT_REPLY}`, msg.replyToMessageId);
+                    }
                     return;
                 }
+                const threadTarget = binding.process?.id ?? (binding.taskId ? toQueueProcessId(binding.taskId) : undefined);
+                if (await this.tryHandOff(msg, threadTarget, message, mode, observe)) return;
                 const newChat = !binding.process && !binding.taskId;
                 const admission: { duplicate: boolean; taskId?: string } | null | undefined = binding.process
                     ? await this.deps.admitFollowUp?.(msg, binding.process, message, mode)
@@ -206,11 +226,8 @@ export class TeamsCommandRouter {
     private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string): Promise<string> {
         return handleMessagingCommand(command, {
             store: this.deps.store,
-            requireRepoForTopics: false,
             getQuota: this.deps.getQuota,
-            strong: text => `**${escapeTeamsMarkdown(text)}**`,
-            code: teamsCodeSpan,
-            escape: escapeTeamsMarkdown,
+            ...TEAMS_FORMAT,
             compact: this.deps.compact,
             remotes: this.deps.remotes,
             remoteRefs: this.remoteRefs.slot(chatKey),
@@ -282,8 +299,14 @@ export class TeamsCommandRouter {
             const recent = await listRecentTopics(this.deps.store, workspace.id);
             this.deps.recordThreadCommand?.(msg);
             await reply(recent.length
-                ? `**Chat Topics** (repo: ${escapeTeamsMarkdown(workspace.name ?? workspace.id)}):\n${recent.map((p, i) =>
-                    `${i + 1}. ${teamsCodeSpan(p.id.slice(0, 8))} ${escapeTeamsMarkdown(p.title ?? p.customTitle ?? p.id)}`).join('\n')}`
+                ? formatTopicList(recent, {
+                    ...TEAMS_FORMAT,
+                    header: `**Topics** · ${escapeTeamsMarkdown(workspace.name ?? workspace.id)}`,
+                    footer: localTopicListFooter(teamsCodeSpan, command.verbose, '/'),
+                    currentId: (selection as { process?: AIProcess } | null | undefined)?.process?.id,
+                    verbose: command.verbose,
+                    now: Date.now(),
+                })
                 : 'No chat topics found.');
             return;
         }
@@ -327,6 +350,7 @@ export class TeamsCommandRouter {
             await this.deps.sendReply(`❌ Chat "${chatId}" not found.`, msg.messageId);
             return;
         }
+        if (await this.tryHandOff(msg, process.id, message, mode, observe)) return;
 
         if (this.deps.admitFollowUp) {
             const admission = await this.deps.admitFollowUp(msg, process, message, mode);
@@ -342,7 +366,10 @@ export class TeamsCommandRouter {
     }
 
     private async handleChat(userKey: string, message: string, mode: MessagingChatMode | undefined, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
-        if (!message) return;
+        if (!message) {
+            if (mode) await this.deps.sendReply(`❌ ${EMPTY_CHAT_REPLY}`, msg.messageId);
+            return;
+        }
 
         const state = this.userState.get(userKey);
 
@@ -355,6 +382,8 @@ export class TeamsCommandRouter {
             targetProcess = await this.deps.store.getProcess(targetId)
                 ?? (!targetId.startsWith('queue_')
                     ? await this.deps.store.getProcess(toQueueProcessId(targetId)) : undefined);
+            const handOffTarget = targetProcess?.id ?? (targetId.startsWith('queue_') ? targetId : toQueueProcessId(targetId));
+            if (await this.tryHandOff(msg, handOffTarget, message, mode, observe)) return;
             if (targetProcess) {
                 targetId = targetProcess.id;
             } else {
@@ -382,48 +411,49 @@ export class TeamsCommandRouter {
             await this.sendAcceptance(`💬 Message sent to topic \`${targetId.slice(0, 8)}\``, msg, () =>
                 this.deps.acknowledgeFollowUp?.(msg));
         } else {
-            // No active topic — create new if repo is selected
-            const repoId = state.selectedRepo;
-            if (!repoId) {
-                // Try to use the first available workspace
-                const workspaces = await this.deps.store.getWorkspaces();
-                if (workspaces.length === 0) {
-                    await this.deps.sendReply(
-                        '❌ No repo available. Register a workspace first.',
-                        msg.messageId,
-                    );
-                    return;
-                }
-                const firstRepo = workspaces[0];
-                const admission = this.deps.admitNewChat
-                    ? await this.deps.admitNewChat(msg, firstRepo.id, message, mode)
-                    : { taskId: await this.deps.enqueueChat(firstRepo.id, message, mode), duplicate: false };
-                const { taskId } = admission;
-                if (admission.duplicate) return;
-                observe?.('dispatch-queued');
-                this.userState.update(userKey, {
-                    selectedRepo: firstRepo.id,
-                    lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
-                });
-                await this.sendAcceptance(
-                    `💬 New topic created in **${escapeTeamsMarkdown(firstRepo.name ?? firstRepo.id)}**: \`${taskId.slice(0, 8)}\``,
-                    msg, () => this.deps.acknowledgeNewChat?.(taskId),
-                );
-            } else {
-                const admission = this.deps.admitNewChat
-                    ? await this.deps.admitNewChat(msg, repoId, message, mode)
-                    : { taskId: await this.deps.enqueueChat(repoId, message, mode), duplicate: false };
-                const { taskId } = admission;
-                if (admission.duplicate) return;
-                observe?.('dispatch-queued');
-                this.userState.update(userKey, {
-                    lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
-                });
-                await this.sendAcceptance(`💬 New topic created: \`${taskId.slice(0, 8)}\``, msg, () =>
-                    this.deps.acknowledgeNewChat?.(taskId));
+            // No active topic — start a new chat in the selected repo, else Global.
+            const repo = resolveChatWorkspace(await this.deps.store.getWorkspaces(), state.selectedRepo);
+            if (!repo) {
+                await this.deps.sendReply(NO_CHAT_WORKSPACE_REPLY, msg.messageId);
+                return;
             }
-
+            const admission = this.deps.admitNewChat
+                ? await this.deps.admitNewChat(msg, repo.id, message, mode)
+                : { taskId: await this.deps.enqueueChat(repo.id, message, mode), duplicate: false };
+            const { taskId } = admission;
+            if (admission.duplicate) return;
+            observe?.('dispatch-queued');
+            this.userState.update(userKey, {
+                lastActiveTopic: this.deps.isAnswerRelayEnabled?.() === true ? toQueueProcessId(taskId) : taskId,
+            });
+            await this.sendAcceptance(
+                `💬 New topic created in **${escapeTeamsMarkdown(repo.name ?? repo.id)}**: \`${taskId.slice(0, 8)}\``,
+                msg, () => this.deps.acknowledgeNewChat?.(taskId),
+            );
         }
+    }
+
+    /**
+     * A mode-prefixed message to a sentinel starts a separate job instead of a
+     * sentinel turn; true when it did. The thread's selection is unchanged.
+     */
+    private async tryHandOff(
+        msg: InboundTeamsMessage, targetProcessId: string | undefined, message: string,
+        mode: MessagingChatMode | undefined, observe?: (type: TeamsEventType) => void,
+    ): Promise<boolean> {
+        const target = await this.deps.handOff?.resolve(targetProcessId, mode);
+        if (!target) return false;
+        const origin = this.deps.handOffOrigin?.(msg);
+        if (!origin) throw new Error('Teams hand-off origin is unavailable');
+        // Bound-thread replies are deduplicated by message id, like thread commands.
+        if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
+            if (this.deps.hasThreadCommand?.(msg)) return true;
+            this.deps.recordThreadCommand?.(msg);
+        }
+        await this.deps.handOff!.start(target, message, origin);
+        observe?.('dispatch-queued');
+        await this.sendAcceptance(`🚀 Started a separate ${target.mode} job. A notice follows when it finishes.`, msg, () => undefined);
+        return true;
     }
 
     private async sendAcceptance(text: string, msg: InboundTeamsMessage, settle: () => Promise<void> | undefined): Promise<void> {

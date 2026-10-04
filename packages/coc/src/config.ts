@@ -193,7 +193,7 @@ export interface CLIConfig {
     mapReduce?: {
         enabled?: boolean;
     };
-    /** Sentinel chat supervision mode configuration. Disabled by default. */
+    /** Sentinel dispatcher mode in the dashboard picker. Disabled by default. */
     sentinel?: {
         enabled?: boolean;
     };
@@ -575,7 +575,7 @@ export interface ResolvedCLIConfig {
     mapReduce: {
         enabled: boolean;
     };
-    /** Sentinel chat supervision mode configuration. */
+    /** Sentinel dispatcher mode in the dashboard picker. */
     sentinel: {
         enabled: boolean;
     };

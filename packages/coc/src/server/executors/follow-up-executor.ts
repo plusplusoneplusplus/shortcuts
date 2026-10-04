@@ -9,6 +9,7 @@
  * Must NOT create new processes — it appends to an existing one.
  */
 
+import { isMessagingJobOrigin } from '../messaging/job-notices';
 import * as os from 'os';
 import * as path from 'path';
 import type {
@@ -383,6 +384,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         // directory, and neither an artifact-bound chat nor a Ralph grilling
         // session (both own their own output contract). Every other turn skips
         // the mkdir + readdir.
+        // Ask and sentinel both run as interactive (read-only) turns: their
+        // questions relay to the phone thread and dangerous commands need
+        // approval. Phone threads start sentinel chats, so keying these on
+        // `'ask'` alone would drop both for every phone follow-up.
+        const interactiveTurn = toAgentMode(currentMode) === 'interactive';
         const planSaveEligible = currentMode === 'ask'
             && !!workingDirectory
             && !suppressesPlanSaveGuidance({ metadata: process.metadata });
@@ -501,7 +507,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 enqueueChat: this.runtime.getEnqueueChat?.(),
                 launchRalph: this.runtime.getLaunchRalph?.(),
                 sendMessage: this.runtime.getSendMessage?.(),
-                sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
+                sendToConversationRuntime: this.sendToConversationRuntimeFor(processId, options?.relayRequestId),
                 scheduleWakeup: cronDeps.scheduleWakeup,
                 cronTools: cronDeps.cronTools,
                 systemOne: this.buildSystemOneDeps(processId, wsId, workingDirectory),
@@ -512,13 +518,13 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
                 // resumed session keeps its prefix cache. A machine-triggered
-                // turn (cron / wakeup / trigger) has nobody to answer, so it
-                // short-circuits at call time instead of at registration time.
+                // turn (cron / wakeup / trigger) can ask its phone origin when
+                // handed off; other unattended turns short-circuit at call time.
                 onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
                 askUser: this.buildAskUserWiring(processId, {
                     computeTurnIndex: () => process.conversationTurns?.length ?? 0,
-                    isInteractive: () => turnSource === undefined,
-                    questionRelayRequestId: () => currentMode === 'ask' ? options?.relayRequestId : undefined,
+                    isInteractive: () => turnSource === undefined || isMessagingJobOrigin(process.metadata?.messagingOrigin),
+                    questionRelayRequestId: () => interactiveTurn ? options?.relayRequestId : undefined,
                 }),
             });
             const filteredTools = chatCtx.tools;
@@ -697,12 +703,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     disabledSkills,
                     mcpServers: resolvedMcpServers,
                     approvePermissions: this.approvePermissions,
-                    // Ask mode only, and interactive only: a cron/wakeup/trigger
+                    // Ask/sentinel only, and interactive only: a cron/wakeup/trigger
                     // follow-up (`turnSource` set) has nobody to approve, which
                     // the wiring turns into an immediate deny with a reason the
                     // model can act on.
                     dangerousCommandGuard: this.buildDangerousCommandGuardWiring(processId, {
-                        enabled: currentMode === 'ask',
+                        enabled: interactiveTurn,
                         isInteractive: () => turnSource === undefined,
                     }),
                     // Strict resume owns this callback: a provider that hands

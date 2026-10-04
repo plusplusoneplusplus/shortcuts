@@ -68,12 +68,11 @@ describe('ChatDetail mode resolution', () => {
         expect(draftCheckIndex).toBeLessThan(taskModeIndex);
     });
 
-    it('exposes check-now only for a feature-enabled Sentinel chat', () => {
+    it('no longer wires a Sentinel check-now action', () => {
         const source = readFileSync(CHAT_DETAIL_SOURCE, 'utf-8');
 
-        expect(source).toContain("const isSentinelChat = isSentinelEnabled() && resolveLoadedTaskMode(task) === 'sentinel';");
-        expect(source).toContain('onCheckSentinelNow={isSentinelChat ?');
-        expect(source).toContain('client.workspaces.checkSentinelNow(workspaceId)');
+        expect(source).not.toContain('onCheckSentinelNow');
+        expect(source).not.toContain('checkSentinelNow');
     });
 });
 

@@ -814,32 +814,10 @@ describe('ChatHeader', () => {
             expect(badge.getAttribute('data-provider')).toBe('codex');
         });
 
-        describe('Sentinel check now', () => {
-            it('renders and invokes the immediate check action when provided', () => {
-                const onCheckSentinelNow = vi.fn();
-                render(<ChatHeader {...defaultProps({ onCheckSentinelNow })} />);
+        it('has no Sentinel check-now action', () => {
+            render(<ChatHeader {...defaultProps()} />);
 
-                screen.getByTestId('sentinel-check-now-btn').click();
-
-                expect(onCheckSentinelNow).toHaveBeenCalledOnce();
-            });
-
-            it('disables the action while a check request is pending', () => {
-                render(<ChatHeader {...defaultProps({
-                    onCheckSentinelNow: vi.fn(),
-                    sentinelCheckPending: true,
-                })} />);
-
-                const button = screen.getByTestId('sentinel-check-now-btn') as HTMLButtonElement;
-                expect(button.disabled).toBe(true);
-                expect(button.title).toBe('Starting Sentinel check…');
-            });
-
-            it('omits the action for ordinary chats', () => {
-                render(<ChatHeader {...defaultProps()} />);
-
-                expect(screen.queryByTestId('sentinel-check-now-btn')).toBeNull();
-            });
+            expect(screen.queryByTestId('sentinel-check-now-btn')).toBeNull();
         });
 
         it('shows provider badge when task.metadata.provider is "copilot"', () => {

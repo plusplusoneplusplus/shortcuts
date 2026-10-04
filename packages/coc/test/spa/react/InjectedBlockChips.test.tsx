@@ -34,6 +34,16 @@ describe('InjectedBlockChips', () => {
         expect(labels(container)).toEqual(['Ask']);
     });
 
+    it('names the mode chip off the sentinel dispatcher block', () => {
+        const sentinel = READ_ONLY_DIRECTIVE.replace(
+            '</coc-read-only-mode>',
+            '</coc-read-only-mode>\n\n<coc-sentinel-dispatcher>\nYou are a dispatcher.\n</coc-sentinel-dispatcher>',
+        );
+        const { container } = render(<InjectedBlockChips chatMode={sentinel} />);
+
+        expect(labels(container)).toEqual(['Sentinel']);
+    });
+
     it('names the mode chip off the autopilot transition note', () => {
         const { container } = render(<InjectedBlockChips chatMode={AUTOPILOT_DIRECTIVE} />);
 

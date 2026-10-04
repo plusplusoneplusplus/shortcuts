@@ -80,6 +80,55 @@ describe('WhatsApp ask_user question relay', () => {
         return { tool, result, processId, emitted };
     }
 
+    function askFromJob(processId = 'job', requestId = 'job-turn') {
+        const emitted: string[] = [];
+        const tool = createAskUserTool({
+            computeTurnIndex: () => 1,
+            emitQuestions: (questions, control) => {
+                emitted.push(...questions.map(q => q.questionId));
+                hub.relay({ processId, requestId, origin: { connector: 'whatsapp', chatKey: 'group@g.us' }, questions, control });
+            },
+        });
+        const result = (tool.tool.handler as any)({ questions: [{ question: 'Color?', type: 'text' }] });
+        return { tool, result, emitted };
+    }
+
+    it('relays jobs without connector receipts, keeps selection, and answers two jobs by question id', async () => {
+        bindings.selectTopic('ws-a', 'dispatcher');
+        const a = askFromJob('job-a');
+        const b = askFromJob('job-b');
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(2));
+        expect(send.mock.calls[0][1]).toBeUndefined();
+        expect(bindings.isKnownMessage('sent-1')).toBe(true);
+        await router.handle(inbound('select repo Alpha', 'select'));
+        await router.handle(inbound('blue', 'answer-b', 'sent-2'));
+        await router.handle(inbound('red', 'answer-a', 'sent-1'));
+        expect((await b.result)[0].answer).toBe('blue');
+        expect((await a.result)[0].answer).toBe('red');
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(bindings.topic('ws-a')).toBeNull();
+    });
+
+    it('keeps a disconnected job question in the dashboard and does not re-post on reconnect', async () => {
+        connected = false;
+        const { tool, result, emitted } = askFromJob();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        connected = true;
+        expect(send).not.toHaveBeenCalled();
+        tool.answerQuestion(emitted[0], 'blue');
+        expect((await result)[0].answer).toBe('blue');
+    });
+
+    it('reports a job question answered in the dashboard as already answered', async () => {
+        const { tool, result, emitted } = askFromJob();
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        tool.answerQuestion(emitted[0], 'blue');
+        await result;
+        await router.handle(inbound('red', 'late-job', 'sent-1'));
+        expect(send).toHaveBeenLastCalledWith(QUESTION_RELAY_TEXT.alreadyAnswered, 'late-job');
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('posts the question quoted under the original request and takes a quote-reply as the answer', async () => {
         const { result } = await askFromRequest([{
             question: 'Which database?', type: 'select',

@@ -88,6 +88,7 @@ import { updateForEachGenerationMetadataFromAssistantTurn } from '../for-each/fo
 import { updateMapReduceGenerationMetadataFromAssistantTurn } from '../map-reduce/map-reduce-generation-metadata';
 import { validateBotControlMetadata } from '../messaging/bot-control-metadata';
 import { processOperationAdmission } from '../processes/process-operation-admission';
+import { isMessagingJobOrigin } from '../messaging/job-notices';
 
 // ============================================================================
 // Constants
@@ -780,6 +781,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         : undefined,
                 lensChat: isChatPayload(task.payload)
                     ? task.payload.context?.lensChat
+                    : undefined,
+                messagingOrigin: isChatPayload(task.payload) && isMessagingJobOrigin(task.payload.context?.messagingOrigin)
+                    ? task.payload.context.messagingOrigin
                     : undefined,
                 // Recorded on every in-scope turn, including the turns that
                 // inject nothing, so 'default' is a real state rather than a

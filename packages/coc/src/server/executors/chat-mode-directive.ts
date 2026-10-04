@@ -74,6 +74,28 @@ export const PLAN_SAVE_GUIDANCE_INTRO = 'If the user asks you to save a plan:';
  * ask mode. Without it the model still has the read-only block sitting in its
  * conversation history and keeps refusing to edit.
  */
+/** Tag wrapping the dispatcher rules a `sentinel` chat gets after its read-only section. */
+export const SENTINEL_DISPATCHER_TAG = 'coc-sentinel-dispatcher';
+
+/**
+ * The dispatcher rules for a `sentinel` chat. Rendered right after the
+ * read-only section (sentinel runs with ask permissions) and kept constant so
+ * {@link parseChatModeMarker} can split it back out of a stored marker by
+ * string equality.
+ *
+ * Short and phone-oriented: sentinel is what WhatsApp/Teams threads talk to.
+ */
+export const SENTINEL_DISPATCHER_DIRECTIVE = tagBlock(SENTINEL_DISPATCHER_TAG, [
+    'You are a dispatcher. Replies are often read on a phone, so keep them short.',
+    '- Answer quick questions yourself (read-only lookups, explanations, status checks).',
+    '- For anything that edits code, runs commands with side effects, or will take a while, hand it off: call ' +
+        '`send_to_conversation` in create mode (omit `processId`) with `mode: "autopilot"`, a short `title`, the ' +
+        'target `workspaceId` when it is not this one, and a self-contained `content` prompt that does not rely on ' +
+        'this chat\'s history.',
+    '- After a hand-off, reply with one short line saying what was handed off and where (repo + title).',
+    '- Do not try to edit files yourself; this chat is read-only.',
+].join('\n'));
+
 export const MODE_SWITCHED_TO_AUTOPILOT_NOTE =
     'This chat has been switched to autopilot mode. The read-only restriction stated earlier ' +
     'in this conversation no longer applies; you may edit files and run commands directly.';
@@ -120,7 +142,8 @@ export function buildChatModeDirective(input: ModeDirectiveInput): string | unde
  * calls for, untagged, or `undefined` when the mode says nothing.
  *
  * Either a complete `<coc-read-only-mode>` section (optionally carrying the
- * nested plan save guidance) or the fixed autopilot transition note, which is
+ * nested plan save guidance, and followed by the dispatcher rules in sentinel
+ * mode) or the fixed autopilot transition note, which is
  * what makes a stored directive splittable back into
  * (prose, instructions) — see {@link parseChatModeMarker}.
  */
@@ -132,6 +155,9 @@ function buildChatModeProse(
     const mode = normalizeChatModeOrDefault(rawMode);
     const previousMode = normalizeChatMode(rawPreviousMode);
     if (mode === 'ask') return buildReadOnlySection(planSaveContext);
+    // Sentinel is terminal and never resolves a plan destination, so its
+    // prose is fixed: the read-only rules plus the dispatcher rules.
+    if (mode === 'sentinel') return `${buildReadOnlySection()}\n\n${SENTINEL_DISPATCHER_DIRECTIVE}`;
     if (previousMode === 'ask') return MODE_SWITCHED_TO_AUTOPILOT_NOTE;
     return undefined;
 }
@@ -425,10 +451,17 @@ export function parseChatModeMarker(marker: string): ParsedChatModeMarker {
         const end = body.indexOf(readOnlyClose);
         if (end < 0) return { instructions: body || undefined };
         const section = body.slice(0, end + readOnlyClose.length);
-        const rest = body.slice(end + readOnlyClose.length).replace(/^\n+/, '');
+        let rest = body.slice(end + readOnlyClose.length).replace(/^\n+/, '');
+        // A sentinel marker carries the dispatcher rules right after the
+        // read-only section; they belong to the prose, not the instructions.
+        let dispatcher = '';
+        if (rest === SENTINEL_DISPATCHER_DIRECTIVE || rest.startsWith(`${SENTINEL_DISPATCHER_DIRECTIVE}\n\n`)) {
+            dispatcher = `\n\n${SENTINEL_DISPATCHER_DIRECTIVE}`;
+            rest = rest.slice(SENTINEL_DISPATCHER_DIRECTIVE.length).replace(/^\n+/, '');
+        }
         return {
-            prose: section,
-            proseBase: stripPlanSaveGuidance(section),
+            prose: section + dispatcher,
+            proseBase: stripPlanSaveGuidance(section) + dispatcher,
             instructions: rest || undefined,
         };
     }

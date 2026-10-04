@@ -19,7 +19,8 @@
  *     message into that existing conversation, wrapping the same delivery path
  *     `POST /api/processes/:id/message` uses (via the injected `sendMessage`
  *     capability). Returns the appended user-turn index. An omitted `mode`
- *     keeps the conversation's current mode (create mode defaults to `ask`).
+ *     keeps the conversation's current mode (create mode defaults to `ask`,
+ *     or `autopilot` when called from a sentinel chat).
  *
  * Per-invocation factory pattern: each AI call gets its own tool instance bound
  * to the store + enqueue/send capabilities + the caller's current workspace,
@@ -35,8 +36,9 @@ import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
 import type { AIProcess, CreateTaskInput, ProcessStore, StoredEffortTiersMap } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, mergeEffortTiersWithDefaults, resolveModelForProvider, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { validateAndParseTask } from '../routes/queue-shared';
-import { VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
+import { normalizeChatMode, VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
+import type { MessagingJobOrigin } from '../messaging/job-notices';
 import {
     buildChatOpenLink,
     createWorkspaceDirectory,
@@ -137,6 +139,14 @@ export interface SendToConversationRuntimeOptions {
      * a local-only directory over the store; remote targets are then unknown.
      */
     workspaceDirectory?: WorkspaceDirectory;
+    /**
+     * Per turn: the WhatsApp/Teams origin of the turn invoking the tool.
+     * Local create-mode chats record it as `metadata.messagingOrigin` and are
+     * tracked for completion notices; dashboard turns resolve undefined.
+     */
+    messagingOrigin?: () => MessagingJobOrigin | undefined;
+    /** Registers a handed-off local chat for completion notices. */
+    trackMessagingJob?: (job: { processId: string; workspaceId: string; origin: MessagingJobOrigin }) => void;
 }
 
 export interface SendToConversationToolOptions {
@@ -187,6 +197,8 @@ export type SendToConversationResult = SendToConversationSuccess | SendToConvers
 /** Modes this tool may start — a strict subset of the queue's chat modes. */
 const ALLOWED_MODES: ReadonlySet<string> = new Set<SendToConversationMode>(['autopilot', 'ask', 'ralph']);
 const DEFAULT_MODE: SendToConversationMode = 'ask';
+/** Create-mode default for a call made from a sentinel (dispatcher) chat. */
+const SENTINEL_DEFAULT_MODE: SendToConversationMode = 'autopilot';
 
 const ALLOWED_PRIORITIES: ReadonlySet<string> = new Set(['high', 'normal', 'low']);
 const DEFAULT_PRIORITY = 'normal';
@@ -222,7 +234,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'Send a message to a conversation. With `processId`, posts `content` into that EXISTING conversation and ' +
             'returns `{ processId, openLink, turnIndex }`. Without `processId`, starts a brand-new, separate ' +
             'fire-and-forget chat with `content` as its first prompt (it does NOT continue the current chat) and ' +
-            'returns `{ processId, openLink }`. `content` is required. In create mode `mode` defaults to `ask`; in post ' +
+            'returns `{ processId, openLink }`. `content` is required. In create mode `mode` defaults to `ask` (`autopilot` from a sentinel chat); in post ' +
             'mode omitting `mode` keeps the conversation\'s current mode. Create mode defaults to the current workspace. Create-mode `workspaceId` accepts an id from `list_workspaces` ' +
             '(including remote `remote:<serverId>:<workspaceId>` ids, which start the chat on that remote CoC ' +
             'server), or a repo name, with `name@server` to disambiguate. Post mode is local-only. For new conversations, provide a short, task-specific `title` ' +
@@ -254,7 +266,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     enum: ['autopilot', 'ask', 'ralph'],
                     description: 'Chat mode: `ask` (read-only), `autopilot` (can edit/run), or `ralph` ' +
                         '(create mode only: launch a Ralph build loop with `content` as the goal spec). ' +
-                        'Create mode defaults to `ask`; post mode keeps the conversation\'s current mode when omitted.',
+                        'Create mode defaults to `ask` (`autopilot` from a sentinel chat); post mode keeps the conversation\'s current mode when omitted.',
                 },
                 deliveryMode: {
                     type: 'string',
@@ -375,12 +387,14 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 parentProcessId,
                 args,
                 content,
-                mode: args.mode ?? DEFAULT_MODE,
+                mode: args.mode ?? await resolveDefaultCreateMode(store, parentProcessId),
                 model,
                 explicitProvider: provider,
                 effortTier: model ? undefined : effortTier,
                 validateProvider: runtime?.validateProvider,
                 getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
+                messagingOrigin: runtime?.messagingOrigin,
+                trackMessagingJob: runtime?.trackMessagingJob,
             });
         },
     });
@@ -458,6 +472,23 @@ async function postToExistingConversation(params: {
 // Create mode — start a brand-new conversation
 // ============================================================================
 
+/**
+ * Create-mode default when the call omits `mode`: `autopilot` from a sentinel
+ * (dispatcher) chat, whose hand-offs are meant to do the work, otherwise `ask`.
+ */
+async function resolveDefaultCreateMode(
+    store: ProcessStore,
+    parentProcessId: string | undefined,
+): Promise<SendToConversationMode> {
+    if (!parentProcessId) return DEFAULT_MODE;
+    try {
+        const parent = await store.getProcess(parentProcessId);
+        return normalizeChatMode(parent?.metadata?.mode) === 'sentinel' ? SENTINEL_DEFAULT_MODE : DEFAULT_MODE;
+    } catch {
+        return DEFAULT_MODE;
+    }
+}
+
 async function createNewConversation(params: {
     store: ProcessStore;
     directory: WorkspaceDirectory;
@@ -473,6 +504,8 @@ async function createNewConversation(params: {
     effortTier?: SendToConversationEffortTier;
     validateProvider?: ValidateSendToConversationProviderFn;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
+    messagingOrigin?: SendToConversationRuntimeOptions['messagingOrigin'];
+    trackMessagingJob?: SendToConversationRuntimeOptions['trackMessagingJob'];
 }): Promise<SendToConversationResult> {
     const {
         store,
@@ -489,6 +522,8 @@ async function createNewConversation(params: {
         effortTier,
         validateProvider,
         getEffortTiersForProvider,
+        messagingOrigin,
+        trackMessagingJob,
     } = params;
 
     if (args.title !== undefined && (typeof args.title !== 'string' || !args.title.trim())) {
@@ -599,6 +634,9 @@ async function createNewConversation(params: {
         });
     }
 
+    // Remote targets returned above: completion notices are local-only.
+    const origin = trackMessagingJob ? messagingOrigin?.() : undefined;
+
     // --- build + validate the task spec, then enqueue in-process ----------
     // Setting `payload.provider` makes the enqueue path treat the provider as
     // explicit, so inherited/selected providers suppress global default-provider
@@ -619,6 +657,7 @@ async function createNewConversation(params: {
         // process's top-level `parentProcessId` so the chat list can nest
         // spawned descendants under their root.
         spawnedFromProcessId: parentProcessId,
+        messagingOrigin: origin,
     });
 
     // Reuse the canonical enqueue validation/normalization (config shape, model
@@ -632,6 +671,13 @@ async function createNewConversation(params: {
 
     const taskId = await enqueueChat(validation.input);
     const processId = toQueueProcessId(taskId);
+    if (origin) {
+        try {
+            trackMessagingJob!({ processId, workspaceId: requestedWorkspaceId, origin });
+        } catch (error) {
+            console.error('[send_to_conversation] Could not track the completion notice:', error);
+        }
+    }
 
     return {
         processId,
@@ -651,8 +697,9 @@ function buildChatTaskSpec(params: {
     reasoningEffort?: string;
     effortTier?: SendToConversationEffortTier;
     spawnedFromProcessId?: string;
+    messagingOrigin?: MessagingJobOrigin;
 }): Record<string, unknown> {
-    const { workspaceId, mode, content, priority, title, provider, model, reasoningEffort, effortTier, spawnedFromProcessId } = params;
+    const { workspaceId, mode, content, priority, title, provider, model, reasoningEffort, effortTier, spawnedFromProcessId, messagingOrigin } = params;
     const config: Record<string, unknown> = {
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
@@ -671,7 +718,12 @@ function buildChatTaskSpec(params: {
             ...(provider ? { provider } : {}),
             ...(title ? { customTitle: title } : {}),
             ...(model ? { model } : {}),
-            ...(spawnedFromProcessId ? { context: { spawnedFromProcessId } } : {}),
+            ...(spawnedFromProcessId || messagingOrigin ? {
+                context: {
+                    ...(spawnedFromProcessId ? { spawnedFromProcessId } : {}),
+                    ...(messagingOrigin ? { messagingOrigin } : {}),
+                },
+            } : {}),
         },
         ...(Object.keys(config).length > 0 ? { config } : {}),
     };

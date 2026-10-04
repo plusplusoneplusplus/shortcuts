@@ -39,7 +39,7 @@ This table locates boundaries, not individual implementation classes.
 | `schedule/`, `cron/`, `triggers/` | Scheduled work and event-driven execution; [cron](cron.md) |
 | `tasks/`, `templates/` | Task/plan files, comments and reusable templates; [task comments](task-comments.md) |
 | `workflows/` | Workflow files and server adapters; [workflow engine](workflow-engine.md) |
-| `notes/`, `sync/`, `sentinel/` | Scoped notes, synchronization and monitoring; [notes](spa/notes.md), [sync](sync.md) |
+| `notes/`, `sync/` | Scoped notes and synchronization; [notes](spa/notes.md), [sync](sync.md) |
 | `skills/`, `prompts/`, `llm-tools/` | Instructions, prompt resources and tools; [LLM tools](llm-tools.md) |
 | `providers/`, `agent-providers/` | Provider selection, quota/status and model catalogs; [SDK](sdk-wrapper.md) |
 | `mcp-oauth/` | Interactive MCP authorization; [MCP settings](mcp-settings.md) |
@@ -203,40 +203,59 @@ remain connector-specific.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
-`compact [instructions]`, `[chatid]`, `/autopilot`, `/ask`; unknown `/word` → "Unknown
+`compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
 command" + the generated `MESSAGING_HELP_TEXT`, never sent to the AI).
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
 `AgentProvidersQuotaCache`) and compact for both routers via a `MessagingSelection`
 adapter; routers keep platform state and transport. `compact` targets the quoted
 WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
 and calls `processes/compact-process.ts` `compactProcess` (shared with
-`POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. `/autopilot <msg>` and `/ask <msg>` set the
-turn's mode; plain text has none, so a follow-up keeps the chat's mode and a new chat runs in
-Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
+`POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. `/ask`, `/autopilot`, `/ralph`, and `/sentinel` parse an explicit
+mode; plain text has none, so a follow-up keeps the chat's mode and a new chat runs in
+`sentinel` (the dispatcher) even when `sentinel.enabled` is off — that flag only gates the
+dashboard picker. Older threads bound to Ask chats stay Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
 first turn lends its queued mode) at every Teams/WhatsApp enqueue site.
+When the target is a sentinel (persisted or still queued), `/ask`, `/autopilot`, and `/ralph`
+hand off instead: `messaging/job-handoff.ts` `createMessagingHandOff` (one instance in
+`routes/index.ts`, passed to both routers) resolves the sentinel's workspace, enqueues a
+separate job with `context.spawnedFromProcessId` + `context.messagingOrigin`, and calls
+`MessagingJobNotices.track`, so it gets notices and `ask_user` relay like a model hand-off.
+No sentinel turn runs and selection is unchanged; `/sentinel` or no prefix reaches the
+sentinel. An empty mode prefix replies "Send a message to start a chat.".
 `list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
-`list topics <n.m|name@server>` (10 most recent remote chats, read-only header) are
+`list topics <n.m|name@server> [-v]` (10 most recent remote chats, read-only footer) are
 answered by `messaging/remote-browse.ts` over the route-layer `WorkspaceDirectory`
 (`list()` + `listRemoteChats()` → the remote's `GET /api/processes?workspace=&limit=`).
 The `n.m` numbering lives in a per-chat in-memory `RemoteRefMemory` (WhatsApp group,
 Teams thread or channel+user); remote repos never become the selected repo.
+Local, remote and Teams-thread topic lists share `formatTopicList` in `remote-browse.ts`
+(`▶` current marker, status emoji, truncated escaped title, `now`/`Nm`/`Nh`/`Nd` age from
+`lastEventAt ?? startTime`, ids only with `-v`, one next-step footer). `listRecentTopics`
+re-sorts its bounded page by that activity time, so `select topic <n>` picks the listed item.
 
 ### Messaging ask_user question relay
 
 `messaging/ask-user-relay.ts` (`AskUserQuestionRelayHub`) is the executor's
-`getAskUserQuestionRelay` capability. Each connector registers a
-`QuestionTransport` (`createWhatsAppQuestionTransport`,
-`TeamsAnswerRelay.questionTransport()`) that locates the request receipt by
-`(processId, relayRequestId | taskId)` and posts one question at a time
-(WhatsApp: quoted under the request; Teams: thread reply, relay flag required),
-formatted by `formatWhatsAppQuestion` / `formatTeamsQuestion`. `tryAnswer` runs
-before command routing: a reply to the question answers it; a plain message
-answers only when exactly one question is pending in that chat.
-`parseQuestionReply` handles numbers/option text, `1,3`, yes/no, text and
-`skip`. First answer wins through the tool's pending map; a failed post resolves
-`unavailable`; turn `cancelAll` clears pending questions. Pending state is in
-memory; question IDs persist in WhatsApp receipt `questionIds` and Teams root
-receipt `sentMessageIds`. Approvals stay dashboard-only.
+`getAskUserQuestionRelay` capability. Connector `QuestionTransport`s locate
+Ask/sentinel request receipts by `(processId, relayRequestId | taskId)`.
+Handed-off jobs supply `metadata.messagingOrigin` on every turn, independent
+of mode or receipt: WhatsApp posts to the saved group; Teams replies under
+its saved `threadId`, or posts top-level when unknown. Selection changes do
+not redirect job questions. Origins persist on the process and in the
+per-repo completion-notice ledger.
+
+Questions post one at a time using `formatWhatsAppQuestion` / `formatTeamsQuestion`.
+`tryAnswer` runs before command routing: a question reply answers it; plain text
+answers only when exactly one question is pending. Ambiguous thread-root replies
+leave both questions pending and ask for a specific question or dashboard answer.
+`parseQuestionReply` handles
+numbers, option text, `1,3`, yes/no, text and `skip`. The tool's pending map lets
+the first answer win; dashboard answers produce the existing already-answered
+reply on the phone. Disconnected job questions remain dashboard-only without
+re-posting; failed sends resolve `unavailable`; turn `cancelAll` clears pending
+questions. Pending state is in memory, so restart requires dashboard resolution.
+Direct request question IDs persist in WhatsApp receipt `questionIds` and Teams
+root receipt `sentMessageIds`. Approvals stay dashboard-only.
 
 ### Teams connection routing and consent
 
@@ -289,6 +308,26 @@ and pin to the configured MCP tenant/object identity on acquisition and refresh.
 Connection initialization and shutdown guard their lifetime before publishing state.
 Missing consent, account mismatch and denied channel access surface sanitized actionable
 errors. Azure CLI sign-in alone does not grant consent; failed reads never fall back to MCP.
+
+### Messaging job completion notices
+
+`messaging/job-notices.ts` (`MessagingJobNotices`) posts a direct notice (no AI turn)
+`<repo> · <title> · ✅|❌|⏹` to the originating group/channel each time a chat handed off
+by `send_to_conversation` from a connector turn ends a turn (first turn and every follow-up,
+matched by `onTaskTerminal` on the job's processId). Failures add `findRequestFailureText`
+(fixed text or a recognized usage-limit reset). The executor's per-turn
+`sendToConversationRuntimeFor(processId, relayRequestId | taskId)` resolves the origin through
+`AskUserQuestionRelayHub.locateOrigin`; the tool then calls `track`. The ledger is
+`repos/<workspaceId>/messaging-job-notices.json` (`atomicWriteJsonUnique`): terminal turns are
+`pending` before send, `sending` during it (a restart there marks it done, never resent),
+then `done` per queue task id. `restore()` at route setup also queues first turns that ended
+while the server was down; connector reconnects call `reconcile(platform)`. Transports:
+`createWhatsAppNoticeTransport` sends unquoted plain text and binds the notice as a
+`WhatsAppBinding` with `notice: true`, so a quote-reply follows up the job (mode kept by the
+follow-up resolver) without `selectTopic`; `TeamsAnswerRelay.noticeTransport()` posts a
+top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots` selection for it, so thread
+replies route to the job by root (a reply inside the dispatcher's thread would route to the
+dispatcher) and user selection is untouched.
 
 ### Teams IC3 connection contract
 

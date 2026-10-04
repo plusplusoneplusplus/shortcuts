@@ -90,7 +90,7 @@ import { MobileScratchpadTabBar } from './scratchpad/MobileScratchpadTabBar';
 import { buildScratchpadCandidates } from './scratchpad/scratchpadCandidates';
 import { resolveLoadedTaskMode } from './chatMode';
 import { normalizeChatMode } from '../../repos/modeConfig';
-import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, isSentinelEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
+import { isRalphEnabled, isRalphMultiAgentGrillEnabled, isCanvasEnabled, isCronEnabled, getDefaultProvider, isEffortLevelsEnabled, isSessionContextAttachmentsEnabled, getDefaultChatStyle } from '../../utils/config';
 import type { ChatMode } from '../../repos/modeConfig';
 import { useProviderReasoningEfforts } from '../../hooks/useProviderReasoningEfforts';
 import { useProviderEffortTiers } from '../../hooks/useProviderEffortTiers';
@@ -219,7 +219,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // queue/notes/canvas/skill calls below are scoped to this chat's workspace.
     const client = useCocClient(workspaceId);
     const [task, setTask] = useState<any>(null);
-    const [sentinelCheckPending, setSentinelCheckPending] = useState(false);
     const [fullTask, setFullTask] = useState<any>(null);
 
     // Derive attached plan file path (user-selected at task creation)
@@ -2311,18 +2310,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         richTextRef.current?.focus();
     }, [restoreAttachments]);
     const handleRewindError = useCallback((message: string) => addToast(message, 'error'), [addToast]);
-    const handleSentinelCheckNow = useCallback(async () => {
-        if (!workspaceId || sentinelCheckPending) return;
-        setSentinelCheckPending(true);
-        try {
-            await client.workspaces.checkSentinelNow(workspaceId);
-            addToast('Sentinel check started.', 'success');
-        } catch (error) {
-            addToast(getSpaCocClientErrorMessage(error, 'Failed to start Sentinel check.'), 'error');
-        } finally {
-            setSentinelCheckPending(false);
-        }
-    }, [addToast, client, sentinelCheckPending, workspaceId]);
     const rewind = useRewindTurn({
         client,
         processId,
@@ -2676,7 +2663,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         // both are plain functions re-created every render, so including them
         // would rebuild the bundle — and re-emit it — on every poll.
     }), [metadataProcess, turns.length, isPending, resumeSessionId, resumeLaunching, task?.status, handleFork, forking, onStartFreshSameContext, startingFreshSameContext]);
-    const isSentinelChat = isSentinelEnabled() && resolveLoadedTaskMode(task) === 'sentinel';
 
     const onHeaderMetadataChangeRef = useRef(onHeaderMetadataChange);
     onHeaderMetadataChangeRef.current = onHeaderMetadataChange;
@@ -2730,8 +2716,6 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     cronCount={cronsHook.manageableCount}
                     hasActiveCrons={cronsHook.hasActiveCrons}
                     onToggleCronPanel={() => setCronPanelOpen(v => !v)}
-                    onCheckSentinelNow={isSentinelChat ? () => { void handleSentinelCheckNow(); } : undefined}
-                    sentinelCheckPending={sentinelCheckPending}
                     onRenameTitle={processId ? () => setRenameOpen(true) : undefined}
                     onStartFreshSameContext={headerMetadata.onStartFreshSameContext}
                     startingFreshSameContext={headerMetadata.startingFreshSameContext}

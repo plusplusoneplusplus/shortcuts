@@ -7,6 +7,9 @@ import { WhatsAppCommandRouter, type WhatsAppRouterDeps } from '../../../src/ser
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { TaskQueueManager } from '@plusplusoneplusplus/forge';
 
+const GLOBAL = 'global-workspace-00';
+const NO_GLOBAL = '❌ The Global workspace is unavailable. Use `list repos`, then `select repo <n|name>`.';
+
 describe('WhatsApp workspace command routing', () => {
     let dir: string;
     let bindings: WhatsAppBindings;
@@ -16,8 +19,9 @@ describe('WhatsApp workspace command routing', () => {
     let router: WhatsAppCommandRouter;
     let getAllProcesses: ReturnType<typeof vi.fn>;
     let store: WhatsAppRouterDeps['store'];
-    const workspaces = [{ id: 'ws-a', name: 'Alpha' }, { id: 'ws-b', name: 'Beta' }];
+    const workspaces = [{ id: 'ws-a', name: 'Alpha' }, { id: 'ws-b', name: 'Beta' }, { id: GLOBAL, name: 'Global' }];
     const processes = [
+        { id: 'topic-g', metadata: { workspaceId: GLOBAL }, startTime: new Date(), title: 'Topic G' },
         { id: 'topic-a', metadata: { workspaceId: 'ws-a' }, startTime: new Date(), title: 'Topic A' },
         { id: 'topic-b', metadata: { workspaceId: 'ws-b' }, startTime: new Date(), title: 'Topic B' },
     ];
@@ -52,13 +56,14 @@ describe('WhatsApp workspace command routing', () => {
     });
     afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-    it('lists and selects across two workspaces, and requires explicit selection for chat', async () => {
+    it('lists and selects across workspaces, defaulting chat to Global until a repo is selected', async () => {
         await router.handle(inbound('what files?', 'unselected'));
-        expect(enqueue).not.toHaveBeenCalled();
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('list repos'), 'unselected');
+        expect(enqueue).toHaveBeenCalledWith(GLOBAL, 'what files?', undefined, expect.any(String), expect.any(String), undefined);
+        expect(bindings.selectedRepo).toBeNull();
         await router.handle(inbound('list repos', 'list'));
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Beta'), 'list');
+        expect(send).toHaveBeenCalledWith(expect.stringMatching(/^Repos \(3\):\n1\. Alpha.*\n2\. Beta.*\n3\. Global/), 'list');
         await router.handle(inbound('select repo 2', 'select'));
+        expect(send).toHaveBeenCalledWith('✅ Selected repo: Beta. Your next message starts a new chat.', 'select');
         expect(bindings.selectedRepo).toBe('ws-b');
         await router.handle(inbound('what files?', 'chat'));
         expect(enqueue).toHaveBeenCalledWith('ws-b', 'what files?', undefined, expect.any(String), expect.any(String), undefined);
@@ -86,7 +91,8 @@ describe('WhatsApp workspace command routing', () => {
         expect(send).toHaveBeenLastCalledWith('Remote servers\n1. devbox (ssh) — online\n   1.1 shortcuts', 'remotes');
         await router.handle(inbound('list topics 1.1', 'topics'));
         expect(remotes.listRemoteChats).toHaveBeenCalledWith('srv-1', 'w1', 10);
-        expect(send).toHaveBeenLastCalledWith('Topics in shortcuts @ devbox (read-only):\n1. r-chat [completed] Remote chat', 'topics');
+        expect(send).toHaveBeenLastCalledWith(
+            'Topics · shortcuts @ devbox\n\u2002\u20021. ✅ Remote chat\nRead-only · list topics 1.1 -v for ids', 'topics');
         expect(bindings.isKnownMessage('out-remotes')).toBe(true);
         expect(bindings.isKnownMessage('out-topics')).toBe(true);
         expect(bindings.selectedRepo).toBeFalsy();
@@ -96,11 +102,18 @@ describe('WhatsApp workspace command routing', () => {
     it('selects topics only in the chosen workspace and creates a fresh topic on demand', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('topic-a'), 'list');
-        expect(send).not.toHaveBeenCalledWith(expect.stringContaining('topic-b'), 'list');
+        expect(send).toHaveBeenCalledWith(
+            'Topics · Alpha\n\u2002\u20021. ❔ Topic A · now\nReply select topic <n> · list topics -v for ids', 'list');
+        await router.handle(inbound('list topics -v', 'list-v'));
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic A · now · topic-a'), 'list-v');
+        expect(send).not.toHaveBeenCalledWith(expect.stringContaining('topic-b'), 'list-v');
         await router.handle(inbound('select topic topic-b', 'bad'));
         expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic not found'), 'bad');
         await router.handle(inbound('select topic topic-a', 'good'));
+        await router.handle(inbound('list topics', 'marked'));
+        expect(send).toHaveBeenCalledWith(expect.stringMatching(/^Topics · Alpha\n▶ 1\. ❔ Topic A · now\n/), 'marked');
+        await router.handle(inbound('list topics -q', 'malformed'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('Unknown command'), 'malformed');
         await router.handle(inbound('/autopilot fix this', 'autopilot'));
         expect(enqueue).toHaveBeenCalledWith('ws-a', 'fix this', 'autopilot', 'topic-a', expect.any(String), undefined);
         await router.handle(inbound('create topic', 'new'));
@@ -227,7 +240,7 @@ describe('WhatsApp workspace command routing', () => {
             });
         });
 
-        it('asks for a topic when no repo or topic is selected', async () => {
+        it('asks for a topic when no topic is selected', async () => {
             await router.handle(inbound('compact', 'none'));
             expect(send).toHaveBeenLastCalledWith('❌ No topic selected. Use `list topics`, then `select topic <n>`.', 'none');
             await router.handle(inbound('select repo Alpha', 'select'));
@@ -294,6 +307,76 @@ describe('WhatsApp workspace command routing', () => {
             expect(send).toHaveBeenLastCalledWith('Chat not found. Use `list topics` to pick one.', 'gone');
             expect(compact).not.toHaveBeenCalled();
         });
+    });
+
+    it('lists, selects and creates topics in Global when no repo is selected', async () => {
+        await router.handle(inbound('list topics', 'list'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^Topics · Global\n.*Topic G/), 'list');
+        await router.handle(inbound('select topic topic-a', 'other-repo'));
+        expect(send).toHaveBeenLastCalledWith('❌ Topic not found in Global. Use `list topics`.', 'other-repo');
+        await router.handle(inbound('select topic 1', 'pick'));
+        expect(bindings.topic(GLOBAL)).toBe('topic-g');
+        await router.handle(inbound('continue', 'continue'));
+        expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual([GLOBAL, 'continue', undefined, 'topic-g']);
+        await router.handle(inbound('create topic', 'create'));
+        expect(send).toHaveBeenLastCalledWith('✅ Ready for a new topic. Send a message to start.', 'create');
+        expect(bindings.topic(GLOBAL)).toBeNull();
+    });
+
+    it('selects Global by name or position', async () => {
+        await router.handle(inbound('select repo Beta', 'beta'));
+        await router.handle(inbound('select repo global', 'by-name'));
+        expect(bindings.selectedRepo).toBe(GLOBAL);
+        await router.handle(inbound('select repo Beta', 'beta-again'));
+        await router.handle(inbound('select repo 3', 'by-index'));
+        expect(bindings.selectedRepo).toBe(GLOBAL);
+        expect(send).toHaveBeenLastCalledWith('✅ Selected repo: Global. Your next message starts a new chat.', 'by-index');
+    });
+
+    it('select repo starts a fresh chat instead of resuming that repo\'s previous topic', async () => {
+        await router.handle(inbound('select repo Alpha', 'select-a'));
+        await router.handle(inbound('alpha question', 'alpha'));
+        const alpha = bindings.findMessage('alpha')!;
+        await router.handle(inbound('select repo Beta', 'select-b'));
+        await router.handle(inbound('select repo Alpha', 'back-to-a'));
+        await router.handle(inbound('another question', 'fresh'));
+        expect(enqueue.mock.calls.at(-1)?.[0]).toBe('ws-a');
+        expect(enqueue.mock.calls.at(-1)?.[3]).not.toBe(alpha.processId);
+        // Re-selecting the current repo also starts fresh.
+        const second = bindings.findMessage('fresh')!.processId;
+        await router.handle(inbound('select repo Alpha', 'reselect'));
+        await router.handle(inbound('third question', 'third'));
+        expect(enqueue.mock.calls.at(-1)?.[3]).not.toBe(second);
+        // A quote-reply to an earlier answer still continues that chat.
+        alpha.outboundIds.push('answer-alpha');
+        bindings.update(alpha);
+        await router.handle(inbound('select repo Alpha', 'reselect-again'));
+        await router.handle(inbound('about that', 'quoted', { quotedMessageId: 'answer-alpha' }));
+        expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual(['ws-a', 'about that', undefined, alpha.processId]);
+    });
+
+    it('falls back to Global when the persisted repo was removed, keeping old per-repo topic state', async () => {
+        fs.mkdirSync(path.join(dir, 'messaging', 'whatsapp'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'messaging', 'whatsapp', 'state.json'), JSON.stringify({
+            selectedRepo: 'ws-removed', topics: { 'ws-removed': 'old-topic', [GLOBAL]: 'topic-g' }, outboundIds: [],
+        }));
+        bindings = new WhatsAppBindings(dir);
+        await bindings.restore(store);
+        expect(bindings.topic('ws-removed')).toBe('old-topic');
+        router = new WhatsAppCommandRouter({ store, bindings, groupJid: () => 'group@g.us', enqueue, send, react });
+        await router.handle(inbound('hello', 'stale'));
+        expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual([GLOBAL, 'hello', undefined, 'topic-g']);
+        await router.handle(inbound('list topics', 'list'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^Topics · Global\n/), 'list');
+    });
+
+    it('replies with a fixed error, never crashing, when Global is missing', async () => {
+        vi.mocked(store.getWorkspaces).mockResolvedValue(workspaces.slice(0, 2));
+        for (const text of ['hello', 'list topics', 'create topic', 'select topic 1']) {
+            await router.handle(inbound(text, `missing-${text}`));
+            expect(send).toHaveBeenLastCalledWith(NO_GLOBAL, `missing-${text}`);
+        }
+        expect(enqueue).not.toHaveBeenCalled();
     });
 
     it('restores workspace receipts and sticky account selection after restart', async () => {

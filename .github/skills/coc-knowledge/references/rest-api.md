@@ -71,7 +71,6 @@ Execution routes (`/execute`, `/api/ralph-launch`, `/api/processes/:id/ralph-sta
 | GET/PUT/DELETE | `/api/workspaces/:id/instructions/:mode` | Read/update/delete one instruction file (`base`\|`ask`\|`autopilot`; `plan` is an Ask alias) |
 | GET/PUT/PATCH | `/api/workspaces/:id/language-servers` | Read/replace/merge config and sanitized runtime status. PUT defaults omitted fields; PATCH preserves them; invalid definitions → `400`, no write |
 | POST | `/api/workspaces/:id/language-servers/retry` | Rediscover/retry opaque `sessionId`; unknown or cross-workspace session → `404`. See [language-servers.md](language-servers.md) |
-| POST | `/api/workspaces/:id/sentinel/check-now` | Run the workspace watchlist owner's active Sentinel scan cron immediately. Registered only when Sentinel is enabled; `404` without a live owner, `409` while busy or without an active scan cron |
 | GET/PUT | `/api/workspaces/:id/llm-tools-config` | Disabled tools + `conversationRetrievalAvailable`; unknown tool names filtered |
 | GET | `/api/workspaces/:id/summary` | Aggregated workspace summary |
 | GET | `/api/workspaces/:id/endev/status` | Cached EnDev xDPU eligibility; `?refresh=true` revalidates |

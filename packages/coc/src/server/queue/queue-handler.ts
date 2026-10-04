@@ -30,7 +30,6 @@ export function registerQueueRoutes(
         isAutoProviderRoutingActive?: () => boolean;
         getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
         dataDir?: string;
-        cancelSentinelCron?: (processId: string) => void;
         validateProvider?: (provider: ChatProvider) => Promise<void>;
         botManagedConversationsEnabled?: () => boolean;
         /**
@@ -59,7 +58,6 @@ export function registerQueueRoutes(
         resolveDefaultProvider: options.resolveDefaultProvider,
         isAutoProviderRoutingActive: options.isAutoProviderRoutingActive,
         getEffortTiersForProvider: options.getEffortTiersForProvider,
-        cancelSentinelCron: options.cancelSentinelCron,
         validateProvider: options.validateProvider,
         botManagedConversationsEnabled: options.botManagedConversationsEnabled,
     };

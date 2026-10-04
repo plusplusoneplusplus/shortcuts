@@ -26,7 +26,7 @@ import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import type { ModelInfo } from '@plusplusoneplusplus/forge';
 import { warmWslDistroCache } from '@plusplusoneplusplus/forge';
 import { sdkServiceRegistry, SDK_PROVIDER_COPILOT, SDK_PROVIDER_CODEX, SDK_PROVIDER_CLAUDE, SDK_PROVIDER_OPENCODE, modelMetadataStore, registerCodexSDKService, registerClaudeSDKService, registerOpenCodeSDKService } from '@plusplusoneplusplus/forge';
-import { cleanupAllStalePasteFiles } from '@plusplusoneplusplus/forge';
+import { cleanupAllStalePasteFiles, SqliteProcessStore } from '@plusplusoneplusplus/forge';
 import { MultiRepoQueueRouter } from './queue/multi-repo-queue-router';
 import { createQueueInfrastructure } from './infrastructure/queue-infrastructure';
 import { sweepOrphanedRunningProcesses, collectResumableFollowUpProcessIds } from './processes/finalize-orphaned-turn';
@@ -76,12 +76,8 @@ import { NotesSearchService } from './notes/notes-search-service';
 import { onRepoPreferencesChanged } from './preferences/repository';
 import { createDecisionService } from './decisions/decision-service';
 import { getDefaultSkillsToInstall } from './skills/default-skill-selection';
-import {
-    cancelSentinelCron,
-    checkSentinelNow,
-    registerSentinelCronProvisioning,
-    SENTINEL_CRON_DESCRIPTION,
-} from './sentinel/sentinel-cron';
+import { CronStore } from './cron/cron-store';
+import { cancelLegacySentinelScanCrons } from './cron/legacy-sentinel-crons';
 
 // ============================================================================
 // Close Handler Builder
@@ -291,7 +287,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
 
     // Forward declaration — cron infra is created after queue infra
     let cronInfra: CronInfrastructure | undefined;
-    let disposeSentinelCronProvisioning: (() => void) | undefined;
 
     // Forward declaration — trigger infra is created after queue infra
     let triggerInfra: TriggerInfrastructure | undefined;
@@ -535,16 +530,13 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     }
 
     const cronEnabled = resolvedConfig.cron?.enabled ?? false;
-    const sentinelEnabled = resolvedConfig.sentinel.enabled;
     const canvasEnabled = resolvedConfig.canvas?.enabled ?? false;
 
-    // Sentinel reuses cron timers internally even when general cron tooling is disabled.
-    if (cronEnabled || sentinelEnabled) {
+    if (cronEnabled) {
         cronInfra = await createCronInfrastructure({
             dataDir,
             queueFacade,
             store,
-            aiService: resolvedAiService,
             emit: (event) => {
                 try {
                     wsServer?.broadcastProcessEvent({
@@ -580,23 +572,10 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
                     });
                 } catch { /* best-effort broadcast */ }
             },
-            ...(!cronEnabled
-                ? { shouldArmCron: (cron) => cron.description === SENTINEL_CRON_DESCRIPTION }
-                : {}),
         });
-        if (sentinelEnabled) {
-            disposeSentinelCronProvisioning = registerSentinelCronProvisioning({
-                queueManager: queueFacade,
-                store: cronInfra.cronStore,
-                executor: cronInfra.cronExecutor,
-                emit: cronInfra.emit,
-                onError: (error, task) => {
-                    process.stderr.write(
-                        `[Sentinel] Failed to provision cron for task ${task.id}: ${error instanceof Error ? error.message : String(error)}\n`,
-                    );
-                },
-            });
-        }
+    } else if (store instanceof SqliteProcessStore) {
+        // Retired Sentinel scan crons are cancelled even when cron tooling is off.
+        cancelLegacySentinelScanCrons(new CronStore(store.getDatabase()));
     }
 
     const triggersEnabled = resolvedConfig.triggers?.enabled ?? true;
@@ -823,29 +802,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         remoteServerConnector,
         remoteServerSshConnector,
         getLocalBaseUrl: () => localBaseUrl,
-        cancelSentinelCron: cronInfra
-            ? (processId) => cancelSentinelCron(processId, {
-                store: cronInfra!.cronStore,
-                executor: cronInfra!.cronExecutor,
-                emit: cronInfra!.emit,
-            })
-            : undefined,
-        checkSentinelNow: sentinelEnabled && cronInfra
-            ? (workspaceId) => checkSentinelNow(workspaceId, {
-                dataDir,
-                processStore: store,
-                store: cronInfra!.cronStore,
-                executor: cronInfra!.cronExecutor,
-            })
-            : undefined,
-        cronStore: cronEnabled ? cronInfra?.cronStore : undefined,
-        cronExecutor: cronEnabled ? cronInfra?.cronExecutor : undefined,
+        cronStore: cronInfra?.cronStore,
+        cronExecutor: cronInfra?.cronExecutor,
         triggerStore: triggerInfra?.triggerStore,
         triggerManager: triggerInfra?.triggerManager,
         triggerEmit: triggerInfra?.emit,
         mcpOauthManager: mcpOauthInfra?.manager,
         resolveAiServiceForProvider,
-        cronEmit: cronEnabled ? cronInfra?.emit : undefined,
+        cronEmit: cronInfra?.emit,
         hostname: os.hostname(),
         bindAddress: host,
         syncEngines,
@@ -1093,12 +1057,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
             remoteServerConnector,
             remoteServerSshConnector,
             cronExecutor: cronInfra?.cronExecutor,
-            cronInfraDispose: cronInfra
-                ? () => {
-                    disposeSentinelCronProvisioning?.();
-                    cronInfra?.dispose();
-                }
-                : undefined,
+            cronInfraDispose: cronInfra?.dispose,
             turnPerformanceInfraDispose: turnPerformanceInfra?.dispose,
             triggerManager: triggerInfra?.triggerManager,
             triggerInfraDispose: triggerInfra?.dispose,

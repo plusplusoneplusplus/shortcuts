@@ -5,7 +5,8 @@ import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import { WhatsAppNotConnectedError } from './whatsapp-messaging-manager';
 import { onTaskTerminal } from './chat-target';
-import type { QuestionTransport } from './ask-user-relay';
+import type { QuestionTransport, QuestionRelayLocation } from './ask-user-relay';
+import { formatJobNotice, type JobNoticeTransport } from './job-notices';
 import { RELAY_ANSWER_TEXT, findRequestFailureText, findRequestAnswer, findRequestTurn, isTerminalStatus } from './relay-answer';
 
 export interface WhatsAppRelayDeps {
@@ -114,26 +115,54 @@ export class WhatsAppAnswerRelay {
 
 /** Posts relayed ask_user questions quoted under the WhatsApp request that started the turn. */
 export function createWhatsAppQuestionTransport(
-    deps: Pick<WhatsAppRelayDeps, 'bindings' | 'connected' | 'groupJid' | 'send'>,
+    deps: Pick<WhatsAppRelayDeps, 'bindings' | 'connected' | 'groupJid'> & { send: (text: string, quotedId?: string) => Promise<string> },
 ): QuestionTransport {
     const find = (request: { processId: string; requestId: string }) => deps.bindings.entries()
         .find(binding => binding.releaseState === undefined
             && binding.processId === request.processId && binding.taskId === request.requestId);
+    const locate = (request: QuestionRelayLocation) => {
+        if (request.origin) return deps.connected() && deps.groupJid() === request.origin.chatKey
+            ? { chatKey: request.origin.chatKey } : undefined;
+        const binding = find(request);
+        return binding ? { chatKey: binding.groupJid } : undefined;
+    };
     return {
         platform: 'whatsapp',
-        locate: request => {
-            const binding = find(request);
-            return binding ? { chatKey: binding.groupJid } : undefined;
-        },
+        locate,
         post: async (target, layout, request) => {
-            const binding = find(request);
-            if (!binding || !deps.connected() || deps.groupJid() !== target.chatKey) {
+            const binding = request.origin ? undefined : find(request);
+            if ((!request.origin && !binding) || !deps.connected() || deps.groupJid() !== target.chatKey) {
                 throw new WhatsAppNotConnectedError();
             }
-            const id = await deps.send(formatWhatsAppQuestion(layout), binding.inboundId);
-            if (id) deps.bindings.recordQuestion(binding, id);
+            const id = await deps.send(formatWhatsAppQuestion(layout), binding?.inboundId);
+            if (id && binding) deps.bindings.recordQuestion(binding, id);
+            else if (id) deps.bindings.recordOutbound(id);
             return id;
         },
         isPastQuestion: messageId => deps.bindings.isQuestionMessage(messageId),
+    };
+}
+
+/** Posts job completion notices to the group and binds them, so a quote-reply continues the job. */
+export function createWhatsAppNoticeTransport(
+    deps: Pick<WhatsAppRelayDeps, 'bindings' | 'connected' | 'groupJid'> & { send: (text: string) => Promise<string> },
+): JobNoticeTransport {
+    const connected = (chatKey: string) => deps.connected() && deps.groupJid() === chatKey;
+    return {
+        platform: 'whatsapp',
+        connected,
+        post: async (chatKey, notice) => {
+            if (!connected(chatKey)) return undefined;
+            const { line, detail } = formatJobNotice(notice);
+            let id: string;
+            try {
+                id = await deps.send(detail ? `${line}\n${detail}` : line);
+            } catch (error) {
+                if (error instanceof WhatsAppNotConnectedError) return undefined;
+                throw error;
+            }
+            deps.bindings.recordNotice({ groupJid: chatKey, workspaceId: notice.workspaceId, processId: notice.processId }, id);
+            return id;
+        },
     };
 }

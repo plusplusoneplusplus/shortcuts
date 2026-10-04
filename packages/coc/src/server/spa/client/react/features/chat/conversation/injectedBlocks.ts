@@ -8,6 +8,8 @@ export interface ExtractedInjectedBlocks {
 
 /** Tag wrapping the per-turn mode directive; mirrors `CHAT_MODE_DIRECTIVE_TAG`. */
 const CHAT_MODE_TAG = 'coc-chat-mode';
+/** Mirrors the server's `SENTINEL_DISPATCHER_TAG` (`chat-mode-directive.ts`). */
+const SENTINEL_DISPATCHER_TAG = 'coc-sentinel-dispatcher';
 
 /** Tags the server injects ahead of the user prompt, in no guaranteed order. */
 const INJECTED_TAGS = ['chat-style', CHAT_MODE_TAG, 'selected_skills'] as const;
@@ -95,7 +97,7 @@ export function extractInjectedBlocks(text: string): ExtractedInjectedBlocks {
 /**
  * Project a stored `chatModeContext` marker down to the part a transcript may
  * show: the `<coc-read-only-mode>` section, including any nested plan save
- * destination.
+ * destination, and a sentinel chat's `<coc-sentinel-dispatcher>` block.
  *
  * The marker is the directive the executor actually sent, so it is the only
  * source that reflects a workspace's live plan destination — the route that
@@ -136,6 +138,16 @@ export function projectChatModeContextForDisplay(marker: string | undefined): st
     if (end < 0) {
         return undefined;
     }
-    const section = body.slice(0, end + readOnlyClose.length);
+    let section = body.slice(0, end + readOnlyClose.length);
+    // A sentinel marker follows the read-only rules with the fixed dispatcher
+    // block; it is mode prose, not repo instructions, so it stays visible.
+    const rest = body.slice(section.length).replace(/^\n+/, '');
+    const dispatcherClose = `</${SENTINEL_DISPATCHER_TAG}>`;
+    if (rest.startsWith(`<${SENTINEL_DISPATCHER_TAG}>`)) {
+        const dispatcherEnd = rest.indexOf(dispatcherClose);
+        if (dispatcherEnd >= 0) {
+            section += `\n\n${rest.slice(0, dispatcherEnd + dispatcherClose.length)}`;
+        }
+    }
     return `<${CHAT_MODE_TAG}>\n${section}\n</${CHAT_MODE_TAG}>`;
 }

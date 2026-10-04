@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { parseMessagingCommand, type MessagingControlCommand } from '@plusplusoneplusplus/coc-connector';
 import { createCache } from '../../../src/server/cache';
 import { handleMessagingCommand, type MessagingCommandContext } from '../../../src/server/messaging/messaging-commands';
-import { RemoteRefMemory } from '../../../src/server/messaging/remote-browse';
+import { formatRelativeAge, formatTopicList, RemoteRefMemory } from '../../../src/server/messaging/remote-browse';
 import {
     createWorkspaceDirectory, RemoteServerOfflineError,
     type WorkspaceDirectoryEntry, type WorkspaceDirectoryOptions,
@@ -35,9 +35,17 @@ function routedFetch(routes: Record<string, () => Response | Promise<Response>>)
 const processesUrl = (base: string, workspaceId: string) =>
     `${base}/api/processes?workspace=${workspaceId}&limit=10&exclude=conversation%2CtoolCalls`;
 
+const NOW = Date.parse('2026-10-03T12:00:00Z');
+const HOUR = 3_600_000;
+const iso = (ms: number) => new Date(ms).toISOString();
+/** Non-current topic indent (two en spaces, so Teams does not render a Markdown list). */
+const IN = '\u2002\u2002';
+
+/** Chat n was last active n hours ago. */
 function chats(workspaceId: string, count: number) {
     return Array.from({ length: count }, (_, i) => ({
         id: `chat-${i + 1}`, status: 'completed', title: `Chat ${i + 1}`, metadata: { workspaceId },
+        startTime: iso(NOW - 48 * HOUR), lastEventAt: iso(NOW - (i + 1) * HOUR),
     }));
 }
 
@@ -63,7 +71,7 @@ function makeDirectory(opts: Partial<WorkspaceDirectoryOptions> = {}) {
 
 function makeContext(directory = makeDirectory(), memory = new RemoteRefMemory(), chatKey = 'group-1'): MessagingCommandContext {
     const getAllProcesses = vi.fn().mockResolvedValue([
-        { id: 'local-chat', status: 'running', title: 'Local chat', metadata: { workspaceId: 'local-ws' } },
+        { id: 'local-chat', status: 'running', title: 'Local chat', metadata: { workspaceId: 'local-ws' }, startTime: new Date(NOW) },
     ]);
     return {
         store: {
@@ -72,9 +80,9 @@ function makeContext(directory = makeDirectory(), memory = new RemoteRefMemory()
             getProcess: vi.fn(),
         } as any,
         selection: { repoId: () => 'local-ws', selectRepo: vi.fn(), topicId: () => null, selectTopic: vi.fn() },
-        requireRepoForTopics: true,
         remotes: directory,
         remoteRefs: memory.slot(chatKey),
+        now: () => NOW,
     };
 }
 
@@ -147,10 +155,14 @@ describe('list topics <remote ref>', () => {
         await run('list remotes', ctx);
         const reply = await run('list topics 1.2', ctx);
         const lines = reply.split('\n');
-        expect(lines[0]).toBe('Topics in shortcuts-2 @ devbox (read-only):');
-        expect(lines[1]).toBe('1. chat-1 [completed] Chat 1');
-        expect(lines).toHaveLength(11);
-        expect(reply).not.toContain('chat-11');
+        expect(lines[0]).toBe('Topics · shortcuts-2 @ devbox');
+        expect(lines[1]).toBe(`${IN}1. ✅ Chat 1 · 1h`);
+        expect(lines[10]).toBe(`${IN}10. ✅ Chat 10 · 10h`);
+        expect(lines[11]).toBe('Read-only · list topics 1.2 -v for ids');
+        expect(lines).toHaveLength(12);
+        expect(reply).not.toContain('Chat 11');
+        expect(reply).not.toContain('chat-1');
+        expect(reply).not.toContain('▶');
         expect(reply).not.toContain('⬅️');
         expect(ctx.selection.selectRepo).not.toHaveBeenCalled();
         expect(ctx.selection.selectTopic).not.toHaveBeenCalled();
@@ -158,7 +170,7 @@ describe('list topics <remote ref>', () => {
 
     it('resolves name@server case-insensitively without a prior listing', async () => {
         const reply = await run('/list topics SHORTCUTS-2@DevBox', makeContext());
-        expect(reply.split('\n')[0]).toBe('Topics in shortcuts-2 @ devbox (read-only):');
+        expect(reply.split('\n')[0]).toBe('Topics · shortcuts-2 @ devbox');
     });
 
     it('asks for list remotes when n.m arrives before any listing', async () => {
@@ -168,7 +180,7 @@ describe('list topics <remote ref>', () => {
     it('keeps the numbering per chat', async () => {
         const memory = new RemoteRefMemory();
         await run('list remotes', makeContext(undefined, memory, 'chat-a'));
-        expect(await run('list topics 1.2', makeContext(undefined, memory, 'chat-a'))).toContain('Topics in shortcuts-2');
+        expect(await run('list topics 1.2', makeContext(undefined, memory, 'chat-a'))).toContain('Topics · shortcuts-2');
         expect(await run('list topics 1.2', makeContext(undefined, memory, 'chat-b'))).toContain('run "list remotes" first');
     });
 
@@ -216,13 +228,140 @@ describe('list topics <remote ref>', () => {
                 [processesUrl(DEVBOX, 'w1')]: () => json({ processes: [] }),
             }),
         }));
-        expect(await run('list topics shortcuts@devbox', ctx)).toBe('Topics in shortcuts @ devbox (read-only):\nNo chat topics found.');
+        expect(await run('list topics shortcuts@devbox', ctx)).toBe('Topics · shortcuts @ devbox\nNo chat topics found.');
     });
 
     it('leaves bare list topics on the local selected repo', async () => {
         const ctx = makeContext();
         const reply = await run('list topics', ctx);
-        expect(reply).toBe('Chat topics (repo: local-repo):\n1. local-chat [running] Local chat');
+        expect(reply).toBe(`Topics · local-repo\n${IN}1. ⏳ Local chat · now\nReply select topic <n> · list topics -v for ids`);
+    });
+
+    it('appends ids with -v on the remote form', async () => {
+        const ctx = makeContext();
+        await run('list remotes', ctx);
+        const lines = (await run('list topics 1.2 -v', ctx)).split('\n');
+        expect(lines[1]).toBe(`${IN}1. ✅ Chat 1 · 1h · chat-1`);
+        expect(lines.at(-1)).toBe('Read-only');
+    });
+
+    it('sorts the remote page by last activity, not remote store order', async () => {
+        const ctx = makeContext(makeDirectory({
+            fetchImpl: routedFetch({
+                [`${DEVBOX}/api/workspaces`]: () => json({ workspaces: [{ id: 'w1', name: 'shortcuts' }] }),
+                [processesUrl(DEVBOX, 'w1')]: () => json({ processes: [
+                    { id: 'a', status: 'failed', title: 'Old', startTime: iso(NOW - 3 * 24 * HOUR), metadata: { workspaceId: 'w1' } },
+                    { id: 'b', status: 'queued', title: 'Fresh', startTime: iso(NOW - 5 * 24 * HOUR), lastEventAt: iso(NOW - 5 * 60_000), metadata: { workspaceId: 'w1' } },
+                ] }),
+            }),
+        }));
+        expect((await run('list topics shortcuts@devbox', ctx)).split('\n').slice(1, 3))
+            .toEqual([`${IN}1. 🕒 Fresh · 5m`, `${IN}2. ❌ Old · 3d`]);
+    });
+
+    it('escapes remote titles and applies transport styling', async () => {
+        const ctx = makeContext(makeDirectory({
+            fetchImpl: routedFetch({
+                [`${DEVBOX}/api/workspaces`]: () => json({ workspaces: [{ id: 'w1', name: 'shortcuts' }] }),
+                [processesUrl(DEVBOX, 'w1')]: () => json({ processes: [{ id: 'a', status: 'completed', title: 'fix *bold*', metadata: { workspaceId: 'w1' } }] }),
+            }),
+        }));
+        Object.assign(ctx, { strong: (t: string) => `*${t}*`, code: (t: string) => `\`${t}\``, escape: (t: string) => t.replace(/\*/g, '\\*') });
+        expect(await run('list topics shortcuts@devbox', ctx)).toBe(
+            `*Topics* · shortcuts @ devbox\n${IN}1. ✅ fix \\*bold\\*\nRead-only · \`list topics shortcuts@devbox -v\` for ids`);
+    });
+});
+
+describe('local list topics', () => {
+    function localContext(processes: object[], current: string | null = null): MessagingCommandContext {
+        return {
+            ...makeContext(),
+            store: {
+                getWorkspaces: vi.fn().mockResolvedValue([{ id: 'local-ws', name: 'local *repo*' }]),
+                getAllProcesses: vi.fn().mockResolvedValue(processes.map(p => ({ metadata: { workspaceId: 'local-ws' }, ...p }))),
+                getProcess: vi.fn(),
+            } as any,
+            selection: { repoId: () => 'local-ws', selectRepo: vi.fn(), topicId: () => current, selectTopic: vi.fn() },
+            strong: (t: string) => `*${t}*`,
+            code: (t: string) => `\`${t}\``,
+            escape: (t: string) => t.replace(/\*/g, '\\*'),
+        };
+    }
+
+    const processes = [
+        { id: 'queue_1790998775041-9c24qu7', status: 'completed', title: 'Late-bound executor capabilities and a very long tail', startTime: new Date(NOW - 2 * HOUR) },
+        { id: 'p-current', status: 'running', title: 'Fix *autopilot* follow up mode', startTime: new Date(NOW - 5 * 24 * HOUR), lastEventAt: new Date(NOW - 10_000) },
+        { id: 'p-failed', status: 'failed', title: 'WhatsApp remote browsing', startTime: new Date(NOW - 26 * HOUR) },
+    ];
+
+    it('renders the phone-friendly list: current marker, emoji, escaped truncated title, age, footer, no ids', async () => {
+        const reply = await run('list topics', localContext(processes, 'p-current'));
+        expect(reply).toBe([
+            '*Topics* · local \\*repo\\*',
+            '▶ 1. ⏳ Fix \\*autopilot\\* follow up mode · now',
+            `${IN}2. ✅ Late-bound executor capabilities and a… · 2h`,
+            `${IN}3. ❌ WhatsApp remote browsing · 1d`,
+            'Reply `select topic <n>` · `list topics -v` for ids',
+        ].join('\n'));
+        expect(reply).not.toContain('queue_');
+        expect(reply).not.toContain('⬅️');
+    });
+
+    it('appends ids with -v and drops the -v hint', async () => {
+        const lines = (await run('/list topics -v', localContext(processes))).split('\n');
+        expect(lines[1]).toBe(`${IN}1. ⏳ Fix \\*autopilot\\* follow up mode · now · \`p-current\``);
+        expect(lines[2]).toContain('· `queue_1790998775041-9c24qu7`');
+        expect(lines.at(-1)).toBe('Reply `select topic <n>`');
+    });
+
+    it('select topic <n> picks the topic shown at that position', async () => {
+        const ctx = localContext(processes);
+        await run('select topic 1', ctx);
+        expect(ctx.selection.selectTopic).toHaveBeenCalledWith('local-ws', 'p-current');
+    });
+
+    it('keeps malformed -v input an unknown command', () => {
+        expect(parseMessagingCommand('list topics -x').type).toBe('invalid');
+    });
+});
+
+describe('formatTopicList', () => {
+    const plainFormat = { strong: (t: string) => t, code: (t: string) => t, escape: (t: string) => t };
+    const line = (topic: object) =>
+        formatTopicList([{ id: 'x', ...topic }], { ...plainFormat, header: 'H', footer: 'F', now: NOW }).split('\n')[1];
+
+    it('maps every status to an emoji, unknown to ❔', () => {
+        const statuses: Array<[string | undefined, string]> = [
+            ['running', '⏳'], ['queued', '🕒'], ['completed', '✅'], ['failed', '❌'], ['cancelled', '⏹'],
+            ['paused', '❔'], [undefined, '❔'], ['constructor', '❔'],
+        ];
+        for (const [status, emoji] of statuses) expect(line({ status, title: 't' })).toBe(`${IN}1. ${emoji} t`);
+    });
+
+    it('falls back from title to customTitle to promptPreview, collapses whitespace, and labels untitled topics', () => {
+        expect(line({ customTitle: 'Custom' })).toBe(`${IN}1. ❔ Custom`);
+        expect(line({ promptPreview: 'do\n  the   thing' })).toBe(`${IN}1. ❔ do the thing`);
+        expect(line({})).toBe(`${IN}1. ❔ (untitled)`);
+    });
+
+    it('truncates to 40 characters without splitting surrogate pairs', () => {
+        expect(line({ title: 'a'.repeat(40) })).toBe(`${IN}1. ❔ ${'a'.repeat(40)}`);
+        expect(line({ title: 'a'.repeat(41) })).toBe(`${IN}1. ❔ ${'a'.repeat(39)}…`);
+        expect(line({ title: '😀'.repeat(45) })).toBe(`${IN}1. ❔ ${'😀'.repeat(39)}…`);
+    });
+});
+
+describe('formatRelativeAge', () => {
+    it('buckets into now / Nm / Nh / Nd and clamps future times', () => {
+        expect(formatRelativeAge(undefined, NOW)).toBeUndefined();
+        expect(formatRelativeAge(NOW - 59_999, NOW)).toBe('now');
+        expect(formatRelativeAge(NOW + HOUR, NOW)).toBe('now');
+        expect(formatRelativeAge(NOW - 60_000, NOW)).toBe('1m');
+        expect(formatRelativeAge(NOW - 59 * 60_000, NOW)).toBe('59m');
+        expect(formatRelativeAge(NOW - HOUR, NOW)).toBe('1h');
+        expect(formatRelativeAge(NOW - 23.9 * HOUR, NOW)).toBe('23h');
+        expect(formatRelativeAge(NOW - 24 * HOUR, NOW)).toBe('1d');
+        expect(formatRelativeAge(NOW - 30 * 24 * HOUR, NOW)).toBe('30d');
     });
 });
 
@@ -237,6 +376,21 @@ describe('WorkspaceDirectory.listRemoteChats', () => {
             }),
         });
         expect(await directory.listRemoteChats('srv-dev', 'w2', 10)).toEqual([{ id: 'a', status: 'running', customTitle: 'A' }]);
+    });
+
+    it('keeps string activity timestamps for relative ages', async () => {
+        const directory = makeDirectory({
+            fetchImpl: routedFetch({
+                [processesUrl(DEVBOX, 'w2')]: () => json({ processes: [
+                    { id: 'a', startTime: iso(NOW - HOUR), lastEventAt: iso(NOW), metadata: { workspaceId: 'w2' } },
+                    { id: 'b', startTime: 123, lastEventAt: null, metadata: { workspaceId: 'w2' } },
+                ] }),
+            }),
+        });
+        expect(await directory.listRemoteChats('srv-dev', 'w2', 10)).toEqual([
+            { id: 'a', startTime: iso(NOW - HOUR), lastEventAt: iso(NOW) },
+            { id: 'b' },
+        ]);
     });
 
     it('throws RemoteServerOfflineError for unknown, endpoint-less and unreachable servers', async () => {

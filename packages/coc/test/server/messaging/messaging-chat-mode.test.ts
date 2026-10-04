@@ -17,9 +17,17 @@ describe('createMessagingChatModeResolver', () => {
         await store.addProcess({ id, status: 'completed', metadata: { type: 'chat', mode }, conversationTurns: [] } as any);
     }
 
-    it('defaults a new chat to ask and honours an explicit mode', async () => {
-        expect(await resolve(undefined)).toBe('ask');
+    it('starts a new chat as the sentinel dispatcher and honours an explicit mode', async () => {
+        expect(await resolve(undefined)).toBe('sentinel');
         expect(await resolve(undefined, 'autopilot')).toBe('autopilot');
+        expect(await resolve(undefined, 'ask')).toBe('ask');
+        expect(await resolve(undefined, 'ralph')).toBe('ralph');
+        expect(await resolve(undefined, 'sentinel')).toBe('sentinel');
+    });
+
+    it('keeps an existing ask chat in ask for plain text (only new chats become sentinel)', async () => {
+        await addChat('queue_old', 'ask');
+        expect(await resolve('queue_old')).toBe('ask');
     });
 
     it('keeps an autopilot chat in autopilot for plain text (regression: follow-ups switched to ask)', async () => {
@@ -49,6 +57,9 @@ describe('createMessagingChatModeResolver', () => {
     it('keeps a sentinel chat in sentinel', async () => {
         await addChat('queue_s', 'sentinel');
         expect(await resolve('queue_s', 'ask')).toBe('sentinel');
+        expect(await resolve('queue_s', 'autopilot')).toBe('sentinel');
+        expect(await resolve('queue_s', 'ralph')).toBe('sentinel');
+        expect(await resolve('queue_s', 'sentinel')).toBe('sentinel');
         expect(await resolve('queue_s')).toBe('sentinel');
     });
 });

@@ -496,6 +496,51 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         await tool.handler({ content: 'hi' }, invocationStub);
         expect(payloadOf(captured.input!).mode).toBe('ask');
     });
+
+    it('mode defaults to autopilot when called from a sentinel (dispatcher) chat', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', mode: 'sentinel' } as ParentMeta & { mode?: string },
+        });
+        await tool.handler({ content: 'rename X to Y' }, invocationStub);
+        expect(payloadOf(captured.input!).mode).toBe('autopilot');
+    });
+
+    it('an explicit mode still wins from a sentinel chat', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', mode: 'sentinel' } as ParentMeta & { mode?: string },
+        });
+        await tool.handler({ content: 'look around', mode: 'ask' }, invocationStub);
+        expect(payloadOf(captured.input!).mode).toBe('ask');
+    });
+
+    it('a non-sentinel parent mode is never inherited as the default', async () => {
+        for (const mode of ['ask', 'autopilot', 'ralph']) {
+            const { tool, captured } = makeTool({
+                parentMeta: { provider: 'claude', mode } as ParentMeta & { mode?: string },
+            });
+            await tool.handler({ content: 'hi' }, invocationStub);
+            expect(payloadOf(captured.input!).mode).toBe('ask');
+        }
+    });
+
+    it('falls back to ask when the parent cannot be read', async () => {
+        const store = {
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'ws-1', name: 'ws-1', rootPath: '/repo/ws-1' }]),
+            // Only the default-mode lookup fails; the provider inheritance read succeeds.
+            getProcess: vi.fn()
+                .mockRejectedValueOnce(new Error('boom'))
+                .mockResolvedValue({ id: 'queue_p1', metadata: { provider: 'claude', mode: 'sentinel' } }),
+        } as unknown as ProcessStore;
+        const captured: { input?: CreateTaskInput } = {};
+        const { tool } = createSendToConversationTool({
+            store,
+            workspaceId: 'ws-1',
+            enqueueChat: async input => { captured.input = input; return 'task-1'; },
+            parentProcessId: 'queue_p1',
+        });
+        await tool.handler({ content: 'hi' }, invocationStub);
+        expect(payloadOf(captured.input!).mode).toBe('ask');
+    });
 });
 
 describe('createSendToConversationTool — post mode (processId provided)', () => {
@@ -1019,5 +1064,50 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 
         expect('error' in result && result.error).toBe('Remote server "vm" rejected the request: Unknown workspace. The chat was not started.');
         expect(enqueueChat).not.toHaveBeenCalled();
+    });
+});
+
+describe('createSendToConversationTool — messaging completion notices', () => {
+    const origin = { connector: 'whatsapp' as const, chatKey: 'group@g.us' };
+
+    it.each([origin, { connector: 'teams' as const, chatKey: 'channel', threadId: 'dispatcher-root' }])(
+        'records a connector turn origin on a local create-mode chat and tracks it (%j)', async origin => {
+        const trackMessagingJob = vi.fn();
+        const { tool, captured } = makeTool({ runtime: { messagingOrigin: () => origin, trackMessagingJob } });
+
+        const result = asSuccess(await tool.handler({ content: 'build it', mode: 'autopilot' }, invocationStub));
+
+        expect(payloadOf(captured.input!).context).toEqual({ spawnedFromProcessId: DEFAULT_PARENT_ID, messagingOrigin: origin });
+        expect(trackMessagingJob).toHaveBeenCalledWith({ processId: result.processId, workspaceId: 'ws-1', origin });
+    });
+
+    it('records no origin for a dashboard turn', async () => {
+        const trackMessagingJob = vi.fn();
+        const { tool, captured } = makeTool({ runtime: { messagingOrigin: () => undefined, trackMessagingJob } });
+
+        await tool.handler({ content: 'build it', mode: 'autopilot' }, invocationStub);
+
+        expect(payloadOf(captured.input!).context).toEqual({ spawnedFromProcessId: DEFAULT_PARENT_ID });
+        expect(trackMessagingJob).not.toHaveBeenCalled();
+    });
+
+    it('skips remote targets silently and still starts them', async () => {
+        const trackMessagingJob = vi.fn();
+        const messagingOrigin = vi.fn(() => origin);
+        const directory = {
+            list: vi.fn().mockResolvedValue({
+                entries: [{ id: 'remote:srv-1:w-api', name: 'api', type: 'repo', server: 'dev-vm', serverKind: 'devtunnel', online: true }],
+                servers: [],
+            }),
+            startRemoteChat: vi.fn().mockResolvedValue({ processId: 'queue_remote-task' }),
+        };
+        const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory: directory, messagingOrigin, trackMessagingJob } });
+
+        const result = asSuccess(await tool.handler({ content: 'hi', workspaceId: 'remote:srv-1:w-api' }, invocationStub));
+
+        expect(result.processId).toBe('queue_remote-task');
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(JSON.stringify(directory.startRemoteChat.mock.calls[0][0])).not.toContain('messagingOrigin');
+        expect(trackMessagingJob).not.toHaveBeenCalled();
     });
 });

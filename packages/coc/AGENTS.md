@@ -17,7 +17,7 @@ references before editing. Paths are package-relative.
 | Dashboard routing | [Shell](../../.github/skills/coc-knowledge/references/spa/shell.md), [clones](../../.github/skills/coc-knowledge/references/spa/clone-routing.md) |
 | Chat | [Conversation](../../.github/skills/coc-knowledge/references/spa/chat-conversation.md) |
 | Git, PRs, work items | [Git/PRs](../../.github/skills/coc-knowledge/references/spa/git-and-prs.md), [work items](../../.github/skills/coc-knowledge/references/spa/work-items.md) |
-| Notes and Sentinel | [Notes](../../.github/skills/coc-knowledge/references/spa/notes.md), `src/server/sentinel/` |
+| Notes | [Notes](../../.github/skills/coc-knowledge/references/spa/notes.md) |
 | Canvas/Kusto | [Canvas](../../.github/skills/coc-knowledge/references/spa/canvas.md) |
 | Ralph and worktrees | [Ralph](../../.github/skills/coc-knowledge/references/ralph.md) (launch/lifecycle links) |
 | MCP, tools, cron, memory, workflows, LSP, remote hosts, sync | [Knowledge index](../../.github/skills/coc-knowledge/SKILL.md#architecture-index) |
@@ -130,7 +130,7 @@ references before editing. Paths are package-relative.
   Task roots are opaque/protected, never user-root config or counted against its limit.
   Native Notes I/O owns containment/symlinks, atomic writes, sidecars, and order.
   See `src/server/notes/notes-write-handler.ts` and native instructions.
-- Protect managed `Plans`/`Sentinel` roots. Retarget Notes chats through the validated
+- Protect the managed `Plans` root. Retarget Notes chats through the validated
   `/api/processes/:id/note` route and enforce bound-section containment.
   Keep Tiptap dependencies at one exact version and bump the entire set together.
 - Canvas mutations use revision-checked `queue.runExclusive`, never direct writes.
@@ -153,10 +153,10 @@ references before editing. Paths are package-relative.
   Schedule writes serialize per repo; runtime keys are `(repoId, scheduleId)`. Await
   writes/reloads; retain
   state on scan failure. Wakeups persist before arming.
-- Sentinel ownership is exclusive/workspace-scoped: admission grace/exact-owner
-  replacement; cancel the prior cron. Preserve optimistic Board writes, approval/budget/
-  backoff, workspace-only classification, and descendant exclusion.
-  See `src/server/sentinel/sentinel-ownership.ts` and adjacent `sentinel-nudge.ts`.
+- Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
+  the mode directive (`chat-mode-directive.ts`); `send_to_conversation` create mode from a
+  sentinel defaults to `autopilot`. No workspace ownership or scan cron; any number may coexist.
+  Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
 - Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
   Commit-mode conflicts abort; the active checkout/HEAD never moves. Worktree execution
   uses owning-server committed objects, fails before queueing, performs no implicit
@@ -188,24 +188,54 @@ references before editing. Paths are package-relative.
   `MESSAGING_HELP_TEXT`); unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
   answers selection, help, quota and `compact [instructions]` for both routers via a
-  `MessagingSelection` adapter. `compact` targets the quoted/bound-thread answer's
+  `MessagingSelection` adapter. With no selected repo (or a removed one), plain messages
+  and topic commands in both connectors use the built-in Global workspace via
+  `resolveChatWorkspace` in `chat-target.ts` (fixed reply if Global is missing; the
+  selection is not persisted). `select repo` (including re-selecting the current repo or
+  Global) clears the selected topic (Teams also `lastActiveTopic`) so the next plain
+  message starts a new chat; quote/thread replies, `select topic` and `[chatid]` still
+  target their chat. WhatsApp `state.json` keeps its per-repo `topics` map. `compact` targets the quoted/bound-thread answer's
   chat, else the selected topic; it calls `processes/compact-process.ts` (shared with
   the compact route), never enqueues a turn or changes selection, and maps 400/409/422
-  to fixed replies. `/autopilot <msg>` / `/ask <msg>` set the turn's mode; plain text keeps
-  the chat's mode (new chats run in Ask) via `src/server/messaging/messaging-chat-mode.ts`,
-  never a defaulted `'ask'`.
+  to fixed replies. `/ask`, `/autopilot`, `/ralph`, and `/sentinel` parse an explicit mode; plain text keeps
+  the chat's mode (new chats run in `sentinel`, the dispatcher, whatever `sentinel.enabled` says)
+  via `src/server/messaging/messaging-chat-mode.ts`, never a hard-coded default at the enqueue site.
+  Sentinel follow-ups relay `ask_user` and keep the dangerous-command guard like Ask
+  (`follow-up-executor.ts` keys both on the interactive agent mode).
+  When the target (selected, quoted, `[chatid]`, or bound thread; persisted or still queued)
+  is a sentinel, `/ask`, `/autopilot`, and `/ralph` skip the sentinel turn:
+  `src/server/messaging/job-handoff.ts` (`createMessagingHandOff`, shared by both routers)
+  enqueues a separate job in the sentinel's workspace with `spawnedFromProcessId` +
+  `messagingOrigin` and tracks it in the notice ledger; selection is unchanged. WhatsApp
+  reacts 👍 and records the inbound id against redelivery; Teams replies in the thread and
+  dedupes bound-thread replies like thread commands. An empty prefix replies
+  "Send a message to start a chat."
   `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
   `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`
   (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in
   memory per WhatsApp group / Teams thread; remote repos are never selectable, and
   replies carry only server/repo names (failures logged server-side). Bare `list topics`
-  stays local.
-- Ask turns started from WhatsApp/Teams (first and connector follow-ups) relay
+  stays local. Every topic list (local, remote, Teams thread) renders through
+  `formatTopicList` (status emoji, ≤40-char escaped title, relative age; ids only with
+  `-v`; no Markdown list syntax so Teams keeps the numbering). `listRecentTopics` sorts
+  its bounded page by last activity and `resolveTopic` indexes that same order.
+- Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
+  `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through
   `src/server/messaging/ask-user-relay.ts`, wired at emit time via the late-bound
   `getAskUserQuestionRelay` capability. A reply (or a plain message while exactly
-  one is pending) answers; unpostable questions resolve `unavailable`; turn end
+  one is pending) answers. Job questions use the saved group/thread even after repo
+  selection changes; Teams origins retain `threadId` when known. Disconnected job
+  questions stay dashboard-only; failed posts resolve `unavailable`; turn end
   clears pending ones; approvals stay dashboard-only.
+- Chats handed off by `send_to_conversation` create mode from a WhatsApp/Teams turn
+  (origin via the ask_user relay's `locateOrigin`; local targets only, not Ralph) get
+  `metadata.messagingOrigin` and a direct notice `<repo> · <title> · ✅/❌/⏹` per
+  finished turn through `src/server/messaging/job-notices.ts` (per-repo
+  `messaging-job-notices.json`: pending → sending → done per task; interrupted sends are
+  never resent). WhatsApp binds the notice (`notice: true`) so a quote-reply follows up
+  the job; Teams posts it top-level and binds it as a thread root. Neither changes the
+  selected repo/topic; follow-up mode is kept.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

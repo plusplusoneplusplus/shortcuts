@@ -34,6 +34,7 @@ describe('TeamsAnswerRelay new topics', () => {
             getWorkspaces: vi.fn().mockResolvedValue([
                 { id: 'workspace-a', name: 'A', rootPath: path.join(dataDir, 'a') },
                 { id: 'workspace-b', name: 'B', rootPath: path.join(dataDir, 'b') },
+                { id: 'global-workspace-00', name: 'Global', rootPath: path.join(dataDir, 'global') },
             ]),
             getProcess: vi.fn().mockImplementation(async (id: string) => processes.get(id)),
         } as unknown as ProcessStore;
@@ -475,11 +476,11 @@ describe('TeamsAnswerRelay new topics', () => {
         expect(ack).toHaveBeenCalledTimes(1);
         const id = enqueue.mock.calls[0][2];
         expect(relay.hasInbound(message('post-1'))).toBe(true);
-        finish(id, 'workspace-a', 'Distinct saved response');
+        finish(id, 'global-workspace-00', 'Distinct saved response');
         queue.emit('taskCompleted', tasks.get(id));
         await relay.reconcileTask(id);
         expect(send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('Distinct saved response'), 'post-1');
-        const receiptFolder = getRepoDataPath(dataDir, 'workspace-a', 'teams-answer-relay');
+        const receiptFolder = getRepoDataPath(dataDir, 'global-workspace-00', 'teams-answer-relay');
         const receipt = fs.readFileSync(path.join(receiptFolder, fs.readdirSync(receiptFolder)[0]), 'utf8');
         expect(receipt).not.toMatch(/Distinct saved response|private prompt|user-1/);
         if (!relay.hasInbound(message('post-1'))) await router.handle(message('post-1'));

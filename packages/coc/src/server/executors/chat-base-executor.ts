@@ -44,8 +44,8 @@ import {
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import { advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
-import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
-import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
+import type { ChatMode, ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
+import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatMode, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { BaseExecutor } from './base-executor';
 import {
@@ -62,7 +62,9 @@ import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext, suppressesAutoFolder, suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { buildChatTurnContext } from './chat-turn-context-builder';
+import { isMessagingJobOrigin } from '../messaging/job-notices';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
+import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
@@ -683,6 +685,21 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
      * Mode never gates registration. Only `isInteractive` varies, and it is
      * evaluated at call time, so the schema stays byte-identical.
      */
+    /**
+     * `send_to_conversation` runtime for one turn. A turn a WhatsApp/Teams
+     * connector started (located through the ask_user relay's connector
+     * receipts) records its origin on chats it hands off, so they post
+     * completion notices back; dashboard turns locate nothing.
+     */
+    protected sendToConversationRuntimeFor(processId: string, requestId: string | undefined): SendToConversationRuntimeOptions | undefined {
+        const runtime = this.runtime.getSendToConversationRuntime?.();
+        if (!runtime || !requestId) return runtime;
+        return {
+            ...runtime,
+            messagingOrigin: () => this.runtime.getAskUserQuestionRelay?.()?.locateOrigin?.({ processId, requestId }),
+        };
+    }
+
     protected buildAskUserWiring(
         processId: string,
         opts: {
@@ -690,9 +707,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             isInteractive?: () => boolean;
             ralphGrillPlanningState?: { plan?: RalphGrillQuestionPlanningResult };
             /**
-             * Relay request id of an Ask turn, read when questions are emitted.
-             * A connector-originated request also posts its questions to that
-             * WhatsApp group / Teams thread; approvals never leave the dashboard.
+             * Connector request id, read when questions are emitted. Handed-off
+             * jobs use their persisted messagingOrigin even without a request
+             * receipt; approvals never leave the dashboard.
              */
             questionRelayRequestId?: () => string | undefined;
         },
@@ -712,10 +729,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             askUser: questionPayload,
                         });
                     }
-                    const requestId = opts.questionRelayRequestId?.();
+                    const process = await this.store.getProcess(processId);
+                    const origin = isMessagingJobOrigin(process?.metadata?.messagingOrigin)
+                        ? process.metadata.messagingOrigin : undefined;
+                    const requestId = opts.questionRelayRequestId?.() ?? (origin ? enrichedQuestionPayloads[0]?.batchId : undefined);
                     const questions = enrichedQuestionPayloads.filter(question => !question.approval);
                     if (requestId && questions.length > 0) {
-                        this.runtime.getAskUserQuestionRelay?.()?.relay({ processId, requestId, questions, control });
+                        this.runtime.getAskUserQuestionRelay?.()?.relay({ processId, requestId, origin, questions, control });
                     }
                 },
                 computeTurnIndex: opts.computeTurnIndex,
@@ -880,7 +900,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             enqueueChat: this.runtime.getEnqueueChat?.(),
             launchRalph: this.runtime.getLaunchRalph?.(),
             sendMessage: this.runtime.getSendMessage?.(),
-            sendToConversationRuntime: this.runtime.getSendToConversationRuntime?.(),
+            sendToConversationRuntime: this.sendToConversationRuntimeFor(processId, payload.relayRequestId ?? task.id),
             scheduleWakeup: cronDeps.scheduleWakeup,
             cronTools: cronDeps.cronTools,
             systemOne: this.buildSystemOneDeps(processId, payload.workspaceId, workingDirectory),
@@ -941,9 +961,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // the plan-file exception those rules already carve out. Grilling turns
         // and artifact-bound chats resolve to `undefined` so the model never
         // holds two competing save targets.
+        // A sentinel chat runs on the ask path (same permissions and tools) but
+        // its directive adds the dispatcher rules, so it names its own mode.
+        const directiveMode: ChatMode = isAsk && normalizeChatMode(payload.mode) === 'sentinel' ? 'sentinel' : mode;
         const modeDirective = buildChatModeDirective({
-            mode,
-            modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
+            mode: directiveMode,
+            modeInstructions: await loadChatModeInstructions(workingDirectory, directiveMode),
             planSaveContext: suppressesPlanSaveGuidance({ payload: task.payload })
                 ? undefined
                 : autoFolderContext,

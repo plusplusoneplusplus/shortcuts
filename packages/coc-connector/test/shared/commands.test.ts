@@ -12,14 +12,18 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/List Agent', { type: 'list-repos', args: '' }],
     ['select repo 2', { type: 'select-repo', args: '2' }],
     ['/Select Repos My Repo', { type: 'select-repo', args: 'My Repo' }],
-    ['list topics', { type: 'list-topics', args: '' }],
-    ['/list chat topic', { type: 'list-topics', args: '' }],
+    ['list topics', { type: 'list-topics', args: '', verbose: false }],
+    ['/list chat topic', { type: 'list-topics', args: '', verbose: false }],
     ['list remotes', { type: 'list-remotes', args: '' }],
     ['/LIST Remote', { type: 'list-remotes', args: '' }],
-    ['list topics 1.2', { type: 'list-topics', args: '1.2' }],
-    ['/List Topics 10.3', { type: 'list-topics', args: '10.3' }],
-    ['list topics shortcuts@devbox', { type: 'list-topics', args: 'shortcuts@devbox' }],
-    ['/list chat topics Shortcuts@DevBox', { type: 'list-topics', args: 'Shortcuts@DevBox' }],
+    ['list topics 1.2', { type: 'list-topics', args: '1.2', verbose: false }],
+    ['/List Topics 10.3', { type: 'list-topics', args: '10.3', verbose: false }],
+    ['list topics shortcuts@devbox', { type: 'list-topics', args: 'shortcuts@devbox', verbose: false }],
+    ['/list chat topics Shortcuts@DevBox', { type: 'list-topics', args: 'Shortcuts@DevBox', verbose: false }],
+    ['list topics -v', { type: 'list-topics', args: '', verbose: true }],
+    ['/List Chat Topics  -V', { type: 'list-topics', args: '', verbose: true }],
+    ['list topics 1.2 -v', { type: 'list-topics', args: '1.2', verbose: true }],
+    ['list topics shortcuts@devbox -v', { type: 'list-topics', args: 'shortcuts@devbox', verbose: true }],
     ['create topic', { type: 'create-topic', args: '' }],
     ['/CREATE chat topic', { type: 'create-topic', args: '' }],
     ['select topic 1', { type: 'select-topic', args: '1' }],
@@ -52,14 +56,18 @@ const cases: Array<[string, MessagingCommand]> = [
     ['list topics please', { type: 'invalid', args: 'list topics please' }],
     ['list topics 1.', { type: 'invalid', args: 'list topics 1.' }],
     ['list topics a@b c', { type: 'invalid', args: 'list topics a@b c' }],
+    ['list topics -x', { type: 'invalid', args: 'list topics -x' }],
+    ['list topics -v 1.2', { type: 'invalid', args: 'list topics -v 1.2' }],
+    ['list topics -v -v', { type: 'invalid', args: 'list topics -v -v' }],
+    ['/list topics -verbose', { type: 'invalid', args: '/list topics -verbose' }],
     ['list remotes now', { type: 'invalid', args: 'list remotes now' }],
     ['/select remote 1', { type: 'invalid', args: '/select remote 1' }],
     ['/list nonsense', { type: 'invalid', args: '/list nonsense' }],
     ['/unknown', { type: 'invalid', args: '/unknown' }],
     ['/Unknown thing', { type: 'invalid', args: '/Unknown thing' }],
-    ['/autopilot', { type: 'invalid', args: '/autopilot' }],
-    ['/autopilot   ', { type: 'invalid', args: '/autopilot' }],
-    ['/ask', { type: 'invalid', args: '/ask' }],
+    ['/autopilot', { type: 'chat', args: '', mode: 'autopilot' }],
+    ['/autopilot   ', { type: 'chat', args: '', mode: 'autopilot' }],
+    ['/ask', { type: 'chat', args: '', mode: 'ask' }],
     ['/asking for help', { type: 'invalid', args: '/asking for help' }],
     ['/help me', { type: 'invalid', args: '/help me' }],
 ];
@@ -67,6 +75,24 @@ const cases: Array<[string, MessagingCommand]> = [
 describe('parseMessagingCommand', () => {
     it.each(cases)('parses %j', (input, expected) => {
         expect(parseMessagingCommand(input)).toEqual(expected);
+    });
+
+    it.each(['ask', 'autopilot', 'ralph', 'sentinel'] as const)('parses the %s prefix without changing its body', mode => {
+        expect(parseMessagingCommand(` /${mode.toUpperCase()}  first line\nsecond line `)).toEqual({
+            type: 'chat', args: 'first line\nsecond line', mode,
+        });
+        expect(parseMessagingCommand(`/${mode} [job-in-another-repo] continue`)).toEqual({
+            type: 'chat-explicit', chatId: 'job-in-another-repo', args: 'continue', mode,
+        });
+        expect(parseMessagingCommand(`${mode} is mentioned in ordinary text`)).toEqual({
+            type: 'chat', args: `${mode} is mentioned in ordinary text`, mode: undefined,
+        });
+        expect(parseMessagingCommand(`/${mode}Extra body`)).toEqual({
+            type: 'invalid', args: `/${mode}Extra body`,
+        });
+        // An empty body is a chat with no message, so routers can ask for one.
+        expect(parseMessagingCommand(`/${mode}  `)).toEqual({ type: 'chat', args: '', mode });
+        expect(MESSAGING_HELP_TEXT).toContain(`/${mode} <message>`);
     });
 
     it('leaves plain chat mode undefined so follow-ups keep the chat mode', () => {
@@ -95,5 +121,6 @@ describe('parseMessagingCommand', () => {
         expect(MESSAGING_HELP_TEXT).toContain('compact [instructions] — ');
         expect(MESSAGING_HELP_TEXT).toContain('list remotes — ');
         expect(MESSAGING_HELP_TEXT).toContain('repo@server');
+        expect(MESSAGING_HELP_TEXT).toContain('-v for ids');
     });
 });

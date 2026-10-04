@@ -2,10 +2,8 @@
  * ask_user → WhatsApp/Teams question relay wiring.
  *
  * The relay is a late-bound runtime capability looked up when questions are
- * emitted. Only Ask turns that carry a relay request id hand questions to it;
- * autopilot turns, dashboard follow-ups and approval prompts stay
- * dashboard-only. Registration of `ask_user` is untouched (see
- * mode-invariant-tool-block.test.ts).
+ * emitted. Ask/sentinel connector requests and handed-off jobs relay questions;
+ * dashboard jobs without an origin and approval prompts stay dashboard-only.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -60,7 +58,7 @@ function makeOptions() {
     }) as any;
 }
 
-function chatTask(mode: 'ask' | 'autopilot', id: string, relayRequestId?: string): QueuedTask {
+function chatTask(mode: 'ask' | 'autopilot' | 'sentinel', id: string, relayRequestId?: string): QueuedTask {
     return {
         id, type: 'chat', priority: 'normal', status: 'running', createdAt: Date.now(),
         payload: { kind: 'chat', mode, prompt: 'Hello', ...(relayRequestId ? { relayRequestId } : {}) },
@@ -68,10 +66,10 @@ function chatTask(mode: 'ask' | 'autopilot', id: string, relayRequestId?: string
     } as QueuedTask;
 }
 
-function existingProcess(id: string): AIProcess {
+function existingProcess(id: string, mode = 'ask'): AIProcess {
     return {
         id, type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'p',
-        metadata: { type: 'chat', workspaceId: 'ws-1', mode: 'ask' },
+        metadata: { type: 'chat', workspaceId: 'ws-1', mode },
         conversationTurns: [
             { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
             { role: 'assistant', content: 'Hi', timestamp: new Date(), turnIndex: 1, timeline: [] },
@@ -109,9 +107,39 @@ describe('ask_user question relay wiring', () => {
         expect(relayed[0]).toMatchObject({ processId: 'queue_t2', requestId: 't2' });
     });
 
-    it('never relays an autopilot first turn', async () => {
+    it('keeps a dashboard autopilot first turn without a job origin dashboard-only', async () => {
         await new AutopilotExecutor(createMockProcessStore(), makeOptions()).execute(chatTask('autopilot', 't3', 'req-3'), 'Hello');
         expect(relayed).toEqual([]);
+    });
+
+    it.each(['whatsapp', 'teams'] as const)('relays an autopilot first turn carrying a %s job origin', async connector => {
+        const task = chatTask('autopilot', `job-${connector}`);
+        const origin = { connector, chatKey: 'phone-thread', ...(connector === 'teams' ? { threadId: 'root' } : {}) };
+        (task.payload as any).context = { messagingOrigin: origin };
+        // ProcessLifecycleRunner persists context.messagingOrigin before invoking the executor.
+        const process = existingProcess(`queue_job-${connector}`, 'autopilot');
+        process.metadata = { ...process.metadata, messagingOrigin: origin };
+        const store = createMockProcessStore({ initialProcesses: [process] });
+        await new AutopilotExecutor(store, makeOptions()).execute(task, 'Hello');
+        expect(relayed).toHaveLength(1);
+        expect(relayed[0]).toMatchObject({ processId: `queue_job-${connector}`, origin });
+        expect(relayed[0].requestId).toBeTruthy();
+    });
+
+    it('relays every handed-off job follow-up from its stored origin, including notice replies and wakeups', async () => {
+        const store = createMockProcessStore();
+        const process = existingProcess('job', 'autopilot');
+        const origin = { connector: 'teams', chatKey: 'phone-thread', threadId: 'dispatcher-root' };
+        process.metadata = { ...process.metadata, messagingOrigin: origin };
+        await store.addProcess(process);
+        const executor = new FollowUpExecutor(store, makeOptions());
+        await executor.executeFollowUp('job', 'next', undefined, 'autopilot');
+        await executor.executeFollowUp('job', 'next', undefined, 'autopilot', undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, { relayRequestId: 'notice-reply' });
+        await executor.executeFollowUp('job', 'next', undefined, 'autopilot', undefined, undefined, undefined, undefined,
+            { type: 'wakeup', id: 'wakeup-1' } as any);
+        expect(relayed).toHaveLength(3);
+        for (const request of relayed) expect(request).toMatchObject({ processId: 'job', origin });
     });
 
     it('relays an Ask follow-up only when it carries a relay request id', async () => {
@@ -127,6 +155,22 @@ describe('ask_user question relay wiring', () => {
         await executor.executeFollowUp('p1', 'next', undefined, 'autopilot', undefined, undefined, undefined, undefined,
             undefined, undefined, undefined, { relayRequestId: 'req-g' });
         expect(relayed).toHaveLength(1);
+    });
+
+    it('relays a sentinel first turn under its relay request id (phone threads start sentinel chats)', async () => {
+        await new ChatExecutor(createMockProcessStore(), makeOptions()).execute(chatTask('sentinel', 't5', 'req-5'), 'Hello');
+        expect(relayed).toHaveLength(1);
+        expect(relayed[0]).toMatchObject({ processId: 'queue_t5', requestId: 'req-5' });
+    });
+
+    it('relays a sentinel follow-up that carries a relay request id (regression: keyed on ask only)', async () => {
+        const store = createMockProcessStore();
+        await store.addProcess(existingProcess('p2', 'sentinel'));
+        const executor = new FollowUpExecutor(store, makeOptions());
+        await executor.executeFollowUp('p2', 'next', undefined, 'sentinel', undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, { relayRequestId: 'req-s' });
+        expect(relayed).toHaveLength(1);
+        expect(relayed[0]).toMatchObject({ processId: 'p2', requestId: 'req-s' });
     });
 
     it('never relays approval prompts', async () => {

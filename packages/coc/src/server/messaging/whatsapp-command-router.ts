@@ -5,10 +5,12 @@ import { isMessagingControlCommand, parseMessagingCommand, type MessagingChatMod
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
-import { handleMessagingCommand, invalidCommandReply, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
+import { resolveChatWorkspace } from './chat-target';
+import { handleMessagingCommand, invalidCommandReply, NO_CHAT_WORKSPACE_REPLY, type MessagingCompactor, type MessagingQuotaSource } from './messaging-commands';
 import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 import { admitBotControlledFollowUp } from './bot-control-admission';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
+import type { MessagingHandOff } from './job-handoff';
 
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess' | 'updateProcess'>;
@@ -27,6 +29,8 @@ export interface WhatsAppRouterDeps {
     /** Relayed ask_user questions; a matching reply is an answer, not a request. */
     questions?: Pick<AskUserQuestionRelayHub, 'tryAnswer'>;
     getBotManagedConversationsEnabled?: () => boolean;
+    /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
+    handOff?: MessagingHandOff;
 }
 
 function matchesBinding(task: QueuedTask | undefined, binding: WhatsAppBinding): task is QueuedTask {
@@ -61,7 +65,6 @@ export class WhatsAppCommandRouter {
                 const bindings = this.deps.bindings;
                 await reply(await handleMessagingCommand(command, {
                     store: this.deps.store,
-                    requireRepoForTopics: true,
                     getQuota: this.deps.getQuota,
                     compact: this.deps.compact,
                     remotes: this.deps.remotes,
@@ -71,15 +74,17 @@ export class WhatsAppCommandRouter {
                     selection: {
                         repoId: () => bindings.selectedRepo,
                         selectRepo: id => bindings.selectRepo(id),
-                        topicId: id => id ? bindings.topic(id) : null,
-                        selectTopic: (id, processId) => { if (id) bindings.selectTopic(id, processId); },
+                        topicId: id => bindings.topic(id),
+                        selectTopic: (id, processId) => bindings.selectTopic(id, processId),
                     },
                 }));
                 return;
             }
             const workspaces = await this.deps.store.getWorkspaces();
-            let workspaceId = workspaces.find(workspace => workspace.id === this.deps.bindings.selectedRepo)?.id;
+            let workspaceId = resolveChatWorkspace(workspaces, this.deps.bindings.selectedRepo)?.id;
             let targetId = workspaceId ? this.deps.bindings.topic(workspaceId) : null;
+            // A reply to a job notice continues that job; the dispatcher stays selected.
+            let keepSelection = false;
             if (command.type === 'chat-explicit') {
                 const process = await this.deps.store.getProcess(command.chatId);
                 const owner = process?.metadata?.workspaceId;
@@ -97,10 +102,11 @@ export class WhatsAppCommandRouter {
                     }
                     workspaceId = quoted.workspaceId;
                     targetId = quoted.processId;
+                    keepSelection = quoted.notice === true;
                 }
             }
             if (!workspaceId || !workspaces.some(ws => ws.id === workspaceId)) {
-                await reply('No repo selected. Run `list repos`, then `select repo <n|name>`.');
+                await reply(NO_CHAT_WORKSPACE_REPLY);
                 return;
             }
             if (!command.args) { await reply('Send a message to start a chat.'); return; }
@@ -121,6 +127,22 @@ export class WhatsAppCommandRouter {
                         throw new Error('Conversation is already controlled by another integration');
                     }
                 }
+            }
+            const react = async () => {
+                try {
+                    await this.deps.react(msg.messageId);
+                } catch (error) {
+                    console.error('[whatsapp-messaging] Reaction failed:', error);
+                }
+            };
+            const handOff = await this.deps.handOff?.resolve(targetId, command.mode);
+            if (handOff) {
+                await this.deps.handOff!.start(handOff, command.args, { connector: 'whatsapp', chatKey: msg.chatJid });
+                admitted = true;
+                // No receipt: the job reports through notices. Remember the inbound id so a redelivery is ignored.
+                this.deps.bindings.recordOutbound(msg.messageId);
+                await react();
+                return;
             }
             const taskId = randomUUID();
             const processId = targetId ?? toQueueProcessId(taskId);
@@ -149,13 +171,9 @@ export class WhatsAppCommandRouter {
                 }
             })) return;
             admitted = true;
-            this.deps.bindings.selectTopic(workspaceId, processId);
+            if (!keepSelection) this.deps.bindings.selectTopic(workspaceId, processId);
             this.deps.queued?.(binding);
-            try {
-                await this.deps.react(msg.messageId);
-            } catch (error) {
-                console.error('[whatsapp-messaging] Reaction failed:', error);
-            }
+            await react();
         } catch (error) {
             console.error('[whatsapp-messaging] Unable to handle inbound message:', error);
             await reply(admitted

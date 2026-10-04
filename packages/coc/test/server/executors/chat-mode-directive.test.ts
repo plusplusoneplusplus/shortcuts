@@ -15,6 +15,7 @@ import {
     CHAT_MODE_DIRECTIVE_TAG,
     MODE_SWITCHED_TO_AUTOPILOT_NOTE,
     PLAN_SAVE_GUIDANCE_INTRO,
+    SENTINEL_DISPATCHER_DIRECTIVE,
     buildChatModeDirective,
     buildChatModeDisplayBlock,
     loadChatModeInstructions,
@@ -190,6 +191,7 @@ describe('resolveFirstTurnDirectiveMode', () => {
         expect(resolveFirstTurnDirectiveMode(chat({ mode: 'ask' }))).toBe('ask');
         expect(resolveFirstTurnDirectiveMode(chat({ mode: 'plan' }))).toBe('ask');
         expect(resolveFirstTurnDirectiveMode(chat({ mode: 'autopilot' }))).toBe('autopilot');
+        expect(resolveFirstTurnDirectiveMode(chat({ mode: 'sentinel' }))).toBe('sentinel');
         // No mode at all is ask, matching normalizeChatModeOrDefault.
         expect(resolveFirstTurnDirectiveMode(chat())).toBe('ask');
     });
@@ -751,6 +753,87 @@ describe('shouldInjectChatModeDirective — plan-destination drift', () => {
             planSaveContext: undefined,
             checkPlanContextDrift: true,
             turns: injected(marker),
+            compaction: undefined,
+            canResumeSession: true,
+        })).toBe(true);
+    });
+});
+
+// ============================================================================
+// Sentinel (dispatcher) mode
+// ============================================================================
+
+describe('sentinel dispatcher directive', () => {
+    it('emits the read-only rules followed by the dispatcher rules', () => {
+        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
+
+        const readOnlyAt = directive.indexOf(READ_ONLY_SYSTEM_MESSAGE.trim());
+        const dispatcherAt = directive.indexOf(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(readOnlyAt).toBeGreaterThan(-1);
+        expect(dispatcherAt).toBeGreaterThan(readOnlyAt);
+    });
+
+    it('tells the model to hand off with send_to_conversation in autopilot and confirm in one line', () => {
+        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('dispatcher');
+        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('`send_to_conversation` in create mode');
+        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('`mode: "autopilot"`');
+        expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('one short line');
+    });
+
+    it('is selected only by sentinel mode', () => {
+        for (const mode of ['ask', 'autopilot', 'ralph'] as const) {
+            expect(buildChatModeDirective({ mode }) ?? '').not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+            expect(buildChatModeDirective({ mode, previousMode: 'ask' }) ?? '').not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        }
+    });
+
+    it('never carries a plan destination', () => {
+        const ctx = { tasksRoot: '/data/repos/ws-a/notes/Plans', existingFolders: ['x'] };
+        expect(buildChatModeDirective({ mode: 'sentinel', planSaveContext: ctx }))
+            .toBe(buildChatModeDirective({ mode: 'sentinel' }));
+    });
+
+    it('discloses the same block in the transcript', () => {
+        expect(buildChatModeDisplayBlock({ mode: 'sentinel' })).toBe(buildChatModeDirective({ mode: 'sentinel' }));
+    });
+
+    it('parses the dispatcher rules back as prose, keeping repo instructions separate', () => {
+        const parsed = parseChatModeMarker(buildChatModeDirective({ mode: 'sentinel', modeInstructions: 'ASK-ONLY' })!);
+
+        expect(parsed.prose!.endsWith(SENTINEL_DISPATCHER_DIRECTIVE)).toBe(true);
+        expect(parsed.proseBase).toBe(parsed.prose);
+        expect(parsed.instructions).toBe('ASK-ONLY');
+        expect(parseChatModeMarker(buildChatModeDirective({ mode: 'sentinel' })!).instructions).toBeUndefined();
+    });
+
+    it('is not re-sent on every follow-up of a stable sentinel chat', () => {
+        const marker = buildChatModeDirective({ mode: 'sentinel' })!;
+        const base = {
+            mode: 'sentinel' as ChatMode,
+            previousMode: 'sentinel' as ChatMode,
+            compaction: undefined,
+            canResumeSession: true,
+        };
+        const turns = [
+            { role: 'user' as const, content: 'hi', timestamp: new Date('2026-01-01T00:00:00.000Z'), turnIndex: 0, timeline: [], chatModeContext: marker },
+            { role: 'assistant' as const, content: 'ok', timestamp: new Date('2026-01-01T00:00:01.000Z'), turnIndex: 1, timeline: [] },
+        ];
+
+        expect(shouldInjectChatModeDirective({ ...base, turns })).toBe(false);
+        // Prompt side, with authoritative (absent) instructions and plan context.
+        expect(shouldInjectChatModeDirective({ ...base, turns, checkInstructionDrift: true, checkPlanContextDrift: true })).toBe(false);
+    });
+
+    it('re-injects once for a sentinel chat whose stored marker predates the dispatcher rules', () => {
+        const legacy = buildChatModeDirective({ mode: 'ask' })!;
+        const turns = [
+            { role: 'user' as const, content: 'hi', timestamp: new Date('2026-01-01T00:00:00.000Z'), turnIndex: 0, timeline: [], chatModeContext: legacy },
+        ];
+
+        expect(shouldInjectChatModeDirective({
+            mode: 'sentinel',
+            previousMode: 'sentinel',
+            turns,
             compaction: undefined,
             canResumeSession: true,
         })).toBe(true);

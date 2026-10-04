@@ -27,7 +27,7 @@ describe('Teams channel Like admission', () => {
         const tasks = new Map<string, QueuedTask>();
         const queue = Object.assign(new EventEmitter(), { getTask: (id: string) => tasks.get(id) });
         const store = {
-            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'workspace-a', name: 'Alpha', rootPath: dataDir }]),
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'global-workspace-00', name: 'Global', rootPath: dataDir }]),
             getProcess: vi.fn().mockResolvedValue(undefined),
         } as unknown as ProcessStore;
         manager = new TeamsMessagingManager(dataDir);

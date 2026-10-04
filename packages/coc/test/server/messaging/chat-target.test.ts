@@ -9,9 +9,12 @@ import {
     listRecentTopics,
     onTaskTerminal,
     parseListIndex,
+    resolveChatWorkspace,
     resolveTopic,
     resolveWorkspace,
+    topicActivityMs,
 } from '../../../src/server/messaging/chat-target';
+import { GLOBAL_WORKSPACE_ID } from '../../../src/server/workspaces/global-workspace';
 
 const BOUNDED = { limit: TOPIC_LIST_LIMIT, exclude: ['conversation', 'toolCalls'] };
 
@@ -51,6 +54,23 @@ describe('resolveWorkspace', () => {
     });
 });
 
+describe('resolveChatWorkspace', () => {
+    const global = { id: GLOBAL_WORKSPACE_ID, name: 'Global' };
+    const workspaces = [{ id: 'ws-a', name: 'Alpha' }, global];
+
+    it('uses the selected repo while it exists, else the Global workspace', () => {
+        expect(resolveChatWorkspace(workspaces, 'ws-a')).toBe(workspaces[0]);
+        expect(resolveChatWorkspace(workspaces, null)).toBe(global);
+        expect(resolveChatWorkspace(workspaces, undefined)).toBe(global);
+        expect(resolveChatWorkspace(workspaces, 'ws-removed')).toBe(global);
+    });
+
+    it('returns undefined when Global is missing and nothing valid is selected', () => {
+        expect(resolveChatWorkspace([workspaces[0]], 'ws-removed')).toBeUndefined();
+        expect(resolveChatWorkspace([], null)).toBeUndefined();
+    });
+});
+
 describe('listRecentTopics', () => {
     it('reads a bounded, conversation-free page for one workspace and keeps only its topics', async () => {
         const getAllProcesses = vi.fn().mockResolvedValue([topic('p1', 'ws-a'), topic('p2', 'ws-b'), topic('p3')]);
@@ -62,6 +82,29 @@ describe('listRecentTopics', () => {
         const getAllProcesses = vi.fn().mockResolvedValue([topic('p1', 'ws-a'), topic('p2')]);
         expect((await listRecentTopics({ getAllProcesses })).map(p => p.id)).toEqual(['p1', 'p2']);
         expect(getAllProcesses).toHaveBeenCalledWith(BOUNDED);
+    });
+
+    it('re-sorts the bounded page by last activity, falling back to start time, stably', async () => {
+        const at = (iso: string) => new Date(iso);
+        const getAllProcesses = vi.fn().mockResolvedValue([
+            { ...topic('started-late', 'ws-a'), startTime: at('2026-10-03T10:00:00Z') },
+            { ...topic('active-now', 'ws-a'), startTime: at('2026-10-01T00:00:00Z'), lastEventAt: at('2026-10-03T12:00:00Z') },
+            { ...topic('no-time', 'ws-a') },
+            { ...topic('tie-1', 'ws-a'), startTime: at('2026-10-02T00:00:00Z') },
+            { ...topic('tie-2', 'ws-a'), startTime: at('2026-10-02T00:00:00Z') },
+        ]);
+        expect((await listRecentTopics({ getAllProcesses }, 'ws-a')).map(p => p.id))
+            .toEqual(['active-now', 'started-late', 'tie-1', 'tie-2', 'no-time']);
+        expect(getAllProcesses).toHaveBeenCalledWith({ workspaceId: 'ws-a', ...BOUNDED });
+    });
+});
+
+describe('topicActivityMs', () => {
+    it('prefers lastEventAt, falls back to startTime, accepts ISO strings, and ignores bad dates', () => {
+        expect(topicActivityMs({ lastEventAt: new Date(5), startTime: new Date(1) })).toBe(5);
+        expect(topicActivityMs({ startTime: '1970-01-01T00:00:00.007Z' })).toBe(7);
+        expect(topicActivityMs({ startTime: 'garbage' })).toBeUndefined();
+        expect(topicActivityMs({})).toBeUndefined();
     });
 });
 
@@ -77,6 +120,18 @@ describe('resolveTopic', () => {
         const s = store();
         expect((await resolveTopic(s, 'ws-a', '2'))?.id).toBe('p2');
         expect(s.getProcess).not.toHaveBeenCalled();
+    });
+
+    it('resolves n to the n-th topic in last-activity order, as listed', async () => {
+        const getAllProcesses = vi.fn().mockResolvedValue([
+            { ...topic('older', 'ws-a'), startTime: new Date(2_000) },
+            { ...topic('busier', 'ws-a'), startTime: new Date(1_000), lastEventAt: new Date(3_000) },
+        ]);
+        const s = { getAllProcesses, getProcess: vi.fn() };
+        const listed = (await listRecentTopics(s, 'ws-a')).map(p => p.id);
+        expect(listed).toEqual(['busier', 'older']);
+        expect((await resolveTopic(s, 'ws-a', '1'))?.id).toBe(listed[0]);
+        expect((await resolveTopic(s, 'ws-a', '2'))?.id).toBe(listed[1]);
     });
 
     it('falls back to a direct id lookup', async () => {

@@ -31,6 +31,9 @@ import { randomUUID } from 'node:crypto';
 import type { BotControlMetadata } from '@plusplusoneplusplus/forge/ai';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
 import { admitBotControlledFollowUp } from './bot-control-admission';
+import type { MessagingJobNotices } from './job-notices';
+import type { MessagingHandOff } from './job-handoff';
+import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 
 function attemptSummary(attempt: TeamsAttempt) {
     return {
@@ -80,6 +83,10 @@ export interface TeamsMessagingRoutesOptions {
     oauthManager?: McpOauthManager;
     /** Relays ask_user questions into relay-bound threads; replies there answer them. */
     questionRelay?: Pick<AskUserQuestionRelayHub, 'register' | 'tryAnswer'>;
+    /** Completion notices for handed-off jobs; posted as job-bound thread roots. */
+    jobNotices?: Pick<MessagingJobNotices, 'register' | 'reconcile'>;
+    /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
+    handOff?: MessagingHandOff;
 }
 
 export function registerTeamsMessagingRoutes(
@@ -132,6 +139,7 @@ export function registerTeamsMessagingRoutes(
                     return { connected: status.enabled && status.status === 'connected', teamId: status.teamId, channelId: status.channelId };
                 },
                 send: (text, rootId) => manager.sendMessage(text, rootId, 'html'),
+                onReconnected: () => opts.jobNotices?.reconcile('teams') ?? Promise.resolve(),
             })
             : undefined;
         const reconcileRelease = async (operation: () => Promise<void>) => {
@@ -153,6 +161,7 @@ export function registerTeamsMessagingRoutes(
             });
             manager.setAnswerRelay(relay, unsubscribe, getAnswerRelayEnabled);
             opts.questionRelay?.register(relay.questionTransport());
+            opts.jobNotices?.register(relay.noticeTransport());
         }
         const router = new TeamsCommandRouter({
             store: opts.store,
@@ -235,6 +244,14 @@ export function registerTeamsMessagingRoutes(
             getQuota: opts.getQuota,
             compact: opts.compact,
             remotes: opts.remotes,
+            handOff: opts.handOff,
+            handOffOrigin: msg => {
+                const teamId = manager.getStatus().teamId;
+                return teamId ? {
+                    connector: 'teams', chatKey: teamsQuestionChatKey(teamId, msg.channelId),
+                    threadId: msg.replyToMessageId || msg.messageId,
+                } : undefined;
+            },
             sendReply: async (text, replyToId) => {
                 manager.recordEvent('reply-attempt');
                 try {

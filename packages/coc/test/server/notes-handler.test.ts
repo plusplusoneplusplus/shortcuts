@@ -168,12 +168,11 @@ describe('Notes Handler', () => {
             const res = await request(`${srv.url}/api/workspaces/${wsId}/notes/tree`);
             expect(res.status).toBe(200);
             const body = JSON.parse(res.body);
-            expect(body.tree).toHaveLength(2);
-            expect(body.tree.map((node: { name: string }) => node.name))
-                .toEqual(expect.arrayContaining(['Plans', 'Sentinel']));
+            expect(body.tree).toHaveLength(1);
+            expect(body.tree.map((node: { name: string }) => node.name)).toEqual(['Plans']);
             expect(body.tree.every((node: { type: string }) => node.type === 'notebook')).toBe(true);
             expect(body.notesRoot).toBeTruthy();
-            expect(body.systemFolders).toEqual(['Plans', 'Sentinel']);
+            expect(body.systemFolders).toEqual(['Plans']);
         });
 
         it('should return correct hierarchy for nested notebooks/sections/pages', async () => {
@@ -191,8 +190,8 @@ describe('Notes Handler', () => {
             const body = JSON.parse(res.body);
             const tree = body.tree;
 
-            // Top-level has four notebooks (including system folders) and one page.
-            expect(tree).toHaveLength(5);
+            // Top-level has three notebooks (including the Plans system folder) and one page.
+            expect(tree).toHaveLength(4);
 
             // Directories first, alphabetical (case-insensitive).
             expect(tree[0].name).toBe('personal');
@@ -203,28 +202,26 @@ describe('Notes Handler', () => {
 
             expect(tree[1].name).toBe('Plans');
             expect(tree[1].type).toBe('notebook');
-            expect(tree[2].name).toBe('Sentinel');
+
+            expect(tree[2].name).toBe('work');
             expect(tree[2].type).toBe('notebook');
-
-            expect(tree[3].name).toBe('work');
-            expect(tree[3].type).toBe('notebook');
-            expect(tree[3].children).toHaveLength(2);
+            expect(tree[2].children).toHaveLength(2);
             // Nested dir 'projects' is a section
-            expect(tree[3].children[0].name).toBe('projects');
-            expect(tree[3].children[0].type).toBe('section');
-            expect(tree[3].children[0].children).toHaveLength(1);
-            expect(tree[3].children[0].children[0].name).toBe('project1.md');
+            expect(tree[2].children[0].name).toBe('projects');
+            expect(tree[2].children[0].type).toBe('section');
+            expect(tree[2].children[0].children).toHaveLength(1);
+            expect(tree[2].children[0].children[0].name).toBe('project1.md');
 
-            expect(tree[3].children[1].name).toBe('daily.md');
-            expect(tree[3].children[1].type).toBe('page');
-            expect(tree[3].children[1].lastModifiedAt).toEqual(expect.any(String));
-            expect(Number.isNaN(Date.parse(tree[3].children[1].lastModifiedAt))).toBe(false);
-            expect(tree[3].lastModifiedAt).toBeUndefined();
+            expect(tree[2].children[1].name).toBe('daily.md');
+            expect(tree[2].children[1].type).toBe('page');
+            expect(tree[2].children[1].lastModifiedAt).toEqual(expect.any(String));
+            expect(Number.isNaN(Date.parse(tree[2].children[1].lastModifiedAt))).toBe(false);
+            expect(tree[2].lastModifiedAt).toBeUndefined();
 
             // File last
-            expect(tree[4].name).toBe('quick-note.md');
-            expect(tree[4].type).toBe('page');
-            expect(tree[4].lastModifiedAt).toEqual(expect.any(String));
+            expect(tree[3].name).toBe('quick-note.md');
+            expect(tree[3].type).toBe('page');
+            expect(tree[3].lastModifiedAt).toEqual(expect.any(String));
         });
 
         it('should sort directories before files, alphabetically within each', async () => {
@@ -246,9 +243,8 @@ describe('Notes Handler', () => {
             expect(tree[0].name).toBe('aaaa');
             expect(tree[1].name).toBe('beta');
             expect(tree[2].name).toBe('Plans');
-            expect(tree[3].name).toBe('Sentinel');
-            expect(tree[4].name).toBe('alpha.md');
-            expect(tree[5].name).toBe('zebra.md');
+            expect(tree[3].name).toBe('alpha.md');
+            expect(tree[4].name).toBe('zebra.md');
         });
     });
 

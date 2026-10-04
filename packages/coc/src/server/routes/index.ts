@@ -107,7 +107,7 @@ import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCom
 import { DEFAULT_CONFIG, getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
-import { TaskDefs, type ChatProvider } from '../tasks/task-types';
+import { TaskDefs, type ChatMode, type ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { createWorkspaceDirectory } from '../servers/workspace-directory';
@@ -171,7 +171,9 @@ import { WhatsAppBindings, WhatsAppBindingReleaseError } from '../messaging/what
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
-import { WhatsAppAnswerRelay, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
+import { WhatsAppAnswerRelay, createWhatsAppNoticeTransport, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
+import { MessagingJobNotices } from '../messaging/job-notices';
+import { createMessagingHandOff } from '../messaging/job-handoff';
 import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
@@ -180,8 +182,6 @@ import type { ResolveDefaultProviderOptions } from './queue-shared';
 import { ActiveWorkspaceTracker } from '../dashboard/active-workspace-tracker';
 import { ActiveWorkspaceBackgroundRefresher } from '../dashboard/active-workspace-background-refresher';
 import type { NotesSearchService } from '../notes/notes-search-service';
-import { registerSentinelRoutes } from '../sentinel/sentinel-handler';
-import type { SentinelCheckNowResult } from '../sentinel/sentinel-cron';
 
 /** Collect git commits made between headBefore and current HEAD. Non-fatal — returns [] on error. */
 async function collectWorkItemCommits(
@@ -255,8 +255,6 @@ export interface RegisterRoutesOptions {
     mcpOauthManager?: McpOauthManager;
     resolveAiServiceForProvider?: (provider: ChatProvider) => ISDKService;
     cronEmit?: CronEventEmit;
-    cancelSentinelCron?: (processId: string) => void;
-    checkSentinelNow?: (workspaceId: string) => Promise<SentinelCheckNowResult>;
     hostname?: string;
     bindAddress?: string;
     syncEngines?: Map<string, SyncEngine>;
@@ -438,13 +436,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     const prepareEnqueueTask = async (input: CreateTaskInput): Promise<void> => {
         await prepareTaskForEnqueue(input, {
-            dataDir,
-            store,
             getDefaultProvider: concreteDefaultProvider,
             resolveDefaultProvider,
             isAutoProviderRoutingActive,
             getEffortTiersForProvider,
-            cancelSentinelCron: opts.cancelSentinelCron,
         });
     };
     const enqueueWithResolvedDefaults = async (input: CreateTaskInput): Promise<string> => {
@@ -564,10 +559,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
     // name / remote clone-key targets, and messaging `list remotes`.
     const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
+    // Completion notices for chats a WhatsApp/Teams turn hands off; connectors
+    // register their transports below.
+    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade });
     opts.setSendToConversationRuntime?.({
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,
         workspaceDirectory,
+        trackMessagingJob: job => jobNotices.track(job),
     });
     registerProviderRoutes(routes, dataDir);
     // Provider SDK install routes (on-demand install of @openai/codex-sdk and @anthropic-ai/claude-agent-sdk).
@@ -591,7 +590,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         isAutoProviderRoutingActive,
         getEffortTiersForProvider,
         dataDir,
-        cancelSentinelCron: opts.cancelSentinelCron,
         validateProvider: validateSendToConversationProvider,
         state: queueGlobalState,
         botManagedConversationsEnabled: () => getLiveFeatureFlags().botManagedConversationsEnabled === true,
@@ -733,9 +731,6 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             resolveWorkspaceId: resolveProcessWorkspaceId,
         });
     }
-    if (opts.checkSentinelNow) {
-        registerSentinelRoutes(routes, { checkNow: opts.checkSentinelNow });
-    }
 
     // Trigger routes (generic event → action framework). Gated on the
     // triggers.enabled feature flag — the create endpoint is also rejected
@@ -844,7 +839,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     });
 
-    const messagingChatInput = (workspaceId: string, message: string, taskId?: string, mediumEffort = false, mode: MessagingChatMode = 'ask'): CreateTaskInput => {
+    const resolveMessagingChatMode = createMessagingChatModeResolver(store, queueFacade);
+    const messagingChatInput = (workspaceId: string, message: string, taskId?: string, mediumEffort = false, mode: ChatMode = 'ask'): CreateTaskInput => {
         const config: CreateTaskInput['config'] & { effortTier?: 'medium' } =
             mediumEffort ? { effortTier: 'medium' } : {};
         return {
@@ -859,9 +855,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) =>
         bridge.enqueue(messagingChatInput(workspaceId, message, taskId));
-    const enqueueTeamsChat = (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl']) =>
-        enqueueWithResolvedDefaults({ ...messagingChatInput(workspaceId, message, taskId, true, mode), botControl });
-    const resolveMessagingChatMode = createMessagingChatModeResolver(store, queueFacade);
+    // Teams threads start new chats as the sentinel dispatcher unless a mode prefix says otherwise.
+    const enqueueTeamsChat = async (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl']) =>
+        enqueueWithResolvedDefaults({
+            ...messagingChatInput(workspaceId, message, taskId, true, await resolveMessagingChatMode(undefined, mode)),
+            botControl,
+        });
+    // Mode-prefixed phone messages to a sentinel start a separate tracked job.
+    const messagingHandOff = createMessagingHandOff({ store, queue: queueFacade, enqueue: enqueueWithResolvedDefaults, jobNotices });
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
     // Container default agent session routes (feature-flagged)
@@ -902,6 +903,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const teamsMessagingManager = registerTeamsMessagingRoutes(routes, {
         dataDir,
         questionRelay,
+        jobNotices,
+        handOff: messagingHandOff,
         getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
         getAnswerRelayEnabled: () => ((opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay
             ?? DEFAULT_CONFIG.features.teamsAiAnswerRelay) === true,
@@ -976,6 +979,17 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         groupJid: () => whatsappMessagingManager.getStatus().groupJid,
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
     }));
+    jobNotices.register(createWhatsAppNoticeTransport({
+        bindings: whatsappBindings,
+        connected: () => {
+            const status = whatsappMessagingManager.getStatus();
+            return status.enabled && status.status === 'connected' && !!status.groupJid;
+        },
+        groupJid: () => whatsappMessagingManager.getStatus().groupJid,
+        send: text => whatsappMessagingManager.send(text),
+    }));
+    // Load notice ledgers, then post what a restart or disconnect left pending.
+    void jobNotices.restore().catch(error => console.error('[job-notices] Could not restore notices:', error));
     const whatsappRouter = new WhatsAppCommandRouter({
         store,
         bindings: whatsappBindings,
@@ -988,6 +1002,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         compact: (proc, instructions) => compactProcess(store, proc, instructions),
         remotes: workspaceDirectory,
         questions: questionRelay,
+        handOff: messagingHandOff,
         getTask: taskId => queueFacade.getTask(taskId),
         enqueue: async (workspaceId, message, mode, processId, taskId, botControl) => {
             const followUp = processId !== toQueueProcessId(taskId);
@@ -1014,8 +1029,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     whatsappMessagingManager.setConnectedHandler(async () => {
         await restoreWhatsAppBindings();
         await whatsappRelay.reconnected();
+        await jobNotices.reconcile('whatsapp');
     });
-    whatsappMessagingManager.setDisposeHandler(() => whatsappRelay.dispose());
+    // Server shutdown: drop both queue subscriptions.
+    whatsappMessagingManager.setDisposeHandler(() => {
+        whatsappRelay.dispose();
+        jobNotices.dispose();
+    });
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime
     // config service is available, else from the resolved config snapshot).

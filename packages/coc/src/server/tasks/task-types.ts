@@ -22,6 +22,7 @@ import type { Attachment, MCPServerConfig } from '@plusplusoneplusplus/forge';
 import type { ChatStyle, ForEachItem, MapReduceChildMode, MapReduceItem } from '@plusplusoneplusplus/coc-client';
 import type { RalphGrillSetup } from '../ralph/grill-planning';
 import type { RalphHumanInput } from '../ralph/types';
+import type { MessagingJobOrigin } from '../messaging/job-notices';
 
 // ============================================================================
 // Target Type
@@ -158,9 +159,8 @@ export function normalizeChatModeOrDefault(value: unknown, fallback: ChatMode = 
  *
  * `sentinel` stores its workflow identity in `metadata.mode` itself (unlike
  * ralph / for-each / map-reduce, which keep identity in a separate context
- * object), and the whole sentinel machinery — classifier, workspace ownership,
- * cron routing — keys off `metadata.mode === 'sentinel'`. A per-turn mode
- * switch would therefore silently dismantle the sentinel, so it is refused.
+ * object). A per-turn mode switch would therefore silently turn the
+ * dispatcher into an ordinary chat, so it is refused.
  */
 const TERMINAL_CHAT_MODES: ReadonlySet<ChatMode> = new Set(['sentinel']);
 
@@ -363,6 +363,11 @@ export interface ChatContext {
      * conversations form a parent→child tree in the chat list.
      */
     spawnedFromProcessId?: string;
+    /**
+     * WhatsApp/Teams origin of the turn that handed this chat off via
+     * `send_to_conversation`; denormalized onto `metadata.messagingOrigin`.
+     */
+    messagingOrigin?: MessagingJobOrigin;
     /** Auto provider selection details captured before execution. */
     autoProviderRouting?: {
         requested?: boolean;

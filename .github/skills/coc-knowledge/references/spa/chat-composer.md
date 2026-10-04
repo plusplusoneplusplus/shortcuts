@@ -75,10 +75,8 @@ child start/continue endpoints. Map Reduce adds editable `maxParallel` and
 `Sentinel` (`sentinel.enabled`, internal value `sentinel`) is a workflow-category mode
 available only from New Chat. The central mode registry supplies its shield icon and teal
 accent. Server normalization recognizes it as a chat mode and maps its base instruction
-profile to Ask so supervisor turns stay read-only. If workspace admission reports an active
-Sentinel, the composer preserves the draft and offers to open that process or confirm a
-replacement. Replacement resubmits the same draft with the reported process ID as a
-compare-and-swap guard; successful replacement clears the draft and selects the new process.
+profile to Ask so dispatcher turns stay read-only. Any number of Sentinel chats may exist
+per workspace; New Chat submits them like any other mode.
 
 ### Follow-up toolbar
 

@@ -129,7 +129,6 @@ function createDeps(overrides: Partial<CronExecutorDeps> = {}): {
         queueManager: overrides.queueManager ?? (queueManager as any),
         emit: overrides.emit ?? ((event: CronChangeEvent) => events.push(event)),
         resolveWorkspaceId: overrides.resolveWorkspaceId ?? (async () => 'ws-test'),
-        ...(overrides.runSentinelTick ? { runSentinelTick: overrides.runSentinelTick } : {}),
     };
 
     return { deps, store, timerRegistry, queueManager, processStore, events };
@@ -171,13 +170,13 @@ describe('CronExecutor', () => {
         it('arms only active crons accepted by the startup predicate', () => {
             const { deps, store, timerRegistry } = createDeps();
             store.insert(makeCron({ id: 'cron_general', description: 'General cron' }));
-            store.insert(makeCron({ id: 'cron_sentinel', description: 'Sentinel workspace scan' }));
+            store.insert(makeCron({ id: 'cron_selected', description: 'Selected cron' }));
 
             const executor = new CronExecutor(deps);
-            executor.armAll(cron => cron.description === 'Sentinel workspace scan');
+            executor.armAll(cron => cron.description === 'Selected cron');
 
             expect(timerRegistry._timers.has('cron_general')).toBe(false);
-            expect(timerRegistry._timers.has('cron_sentinel')).toBe(true);
+            expect(timerRegistry._timers.has('cron_selected')).toBe(true);
         });
     });
 
@@ -368,13 +367,13 @@ describe('CronExecutor', () => {
             expect(events.some(e => e.type === 'cron-expired')).toBe(true);
         });
 
-        it('refreshes a Sentinel cron expiry on every tick', async () => {
+        it('expires a cron on a sentinel conversation like any other cron', async () => {
             const now = new Date('2026-01-02T00:00:00.000Z');
             vi.setSystemTime(now);
             const processStore = createProcessStoreStub({
                 'queue_proc_sentinel': { status: 'completed', mode: 'sentinel' },
             });
-            const { deps, store, timerRegistry } = createDeps({ processStore });
+            const { deps, store, timerRegistry, queueManager } = createDeps({ processStore });
             store.insert(makeCron({
                 id: 'cron_sentinel',
                 processId: 'queue_proc_sentinel',
@@ -385,88 +384,8 @@ describe('CronExecutor', () => {
             executor.armAll();
             await timerRegistry._fire('cron_sentinel');
 
-            const updated = store.getById('cron_sentinel')!;
-            expect(updated.status).toBe('active');
-            expect(updated.expiresAt).toBe('2026-01-05T00:00:00.000Z');
-        });
-
-        it('runs the Sentinel classifier exactly once before enqueueing the tick', async () => {
-            const processStore = createProcessStoreStub({
-                'queue_proc_sentinel': { status: 'completed', mode: 'sentinel' },
-            });
-            const runSentinelTick = vi.fn(async () => {});
-            const { deps, store, queueManager } = createDeps({ processStore, runSentinelTick });
-            store.insert(makeCron({
-                id: 'cron_sentinel_scan',
-                processId: 'queue_proc_sentinel',
-                workspaceId: 'workspace-a',
-            }));
-
-            const executor = new CronExecutor(deps);
-            await executor.triggerNow('cron_sentinel_scan');
-
-            expect(runSentinelTick).toHaveBeenCalledTimes(1);
-            expect(runSentinelTick).toHaveBeenCalledWith(
-                expect.objectContaining({ id: 'queue_proc_sentinel' }),
-                'workspace-a',
-                expect.objectContaining({ intervalMs: 60_000 }),
-            );
-            expect(runSentinelTick.mock.invocationCallOrder[0])
-                .toBeLessThan(queueManager.enqueue.mock.invocationCallOrder[0]);
-        });
-
-        it('fails a Sentinel tick without enqueueing when classification fails', async () => {
-            const processStore = createProcessStoreStub({
-                'queue_proc_sentinel': { status: 'completed', mode: 'sentinel' },
-            });
-            const runSentinelTick = vi.fn(async () => {
-                throw new Error('classifier unavailable');
-            });
-            const { deps, store, queueManager } = createDeps({ processStore, runSentinelTick });
-            store.insert(makeCron({
-                id: 'cron_sentinel_scan_failure',
-                processId: 'queue_proc_sentinel',
-                workspaceId: 'workspace-a',
-            }));
-
-            const executor = new CronExecutor(deps);
-            await executor.triggerNow('cron_sentinel_scan_failure');
-
-            expect(runSentinelTick).toHaveBeenCalledTimes(1);
+            expect(store.getById('cron_sentinel')?.status).toBe('expired');
             expect(queueManager.enqueue).not.toHaveBeenCalled();
-            expect(store.getById('cron_sentinel_scan_failure')?.consecutiveFailures).toBe(1);
-        });
-
-        it('does not run the Sentinel classifier for ordinary cron ticks', async () => {
-            const runSentinelTick = vi.fn(async () => {});
-            const { deps, store } = createDeps({ runSentinelTick });
-            store.insert(makeCron({ id: 'cron_ordinary_scan' }));
-
-            const executor = new CronExecutor(deps);
-            await executor.triggerNow('cron_ordinary_scan');
-
-            expect(runSentinelTick).not.toHaveBeenCalled();
-        });
-
-        it('does not shorten a Sentinel cron with a longer custom expiry', async () => {
-            const now = new Date('2026-01-02T00:00:00.000Z');
-            vi.setSystemTime(now);
-            const processStore = createProcessStoreStub({
-                'queue_proc_sentinel': { status: 'completed', mode: 'sentinel' },
-            });
-            const { deps, store, timerRegistry } = createDeps({ processStore });
-            const customExpiry = '2026-02-01T00:00:00.000Z';
-            store.insert(makeCron({
-                id: 'cron_sentinel_custom_ttl',
-                processId: 'queue_proc_sentinel',
-                expiresAt: customExpiry,
-            }));
-
-            const executor = new CronExecutor(deps);
-            executor.armAll();
-            await timerRegistry._fire('cron_sentinel_custom_ttl');
-
-            expect(store.getById('cron_sentinel_custom_ttl')?.expiresAt).toBe(customExpiry);
         });
 
         it('auto-pauses when process is cancelled', async () => {

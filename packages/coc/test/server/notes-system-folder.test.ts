@@ -137,10 +137,10 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
         const res = await request(treeUrl(srv));
         expect(res.status).toBe(200);
         const data = JSON.parse(res.body);
-        expect(data.systemFolders).toEqual(['Plans', 'Sentinel']);
+        expect(data.systemFolders).toEqual(['Plans']);
     });
 
-    it.each(['Plans', 'Sentinel'])('GET /notes/tree auto-creates the %s folder', async (folderName) => {
+    it.each(['Plans'])('GET /notes/tree auto-creates the %s folder', async (folderName) => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
@@ -162,14 +162,14 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
         expect(res.status).toBe(200);
         const data = JSON.parse(res.body);
         const names = (data.tree as Array<{ name: string }>).map(node => node.name);
-        expect(names).toEqual(expect.arrayContaining(['Plans', 'Sentinel']));
+        expect(names).toEqual(expect.arrayContaining(['Plans']));
     });
 
     // -------------------------------------------------------------------------
     // Rename — system folder root blocked
     // -------------------------------------------------------------------------
 
-    it.each(['Plans', 'Sentinel'])('PATCH /notes/path returns 403 when renaming %s', async (folderName) => {
+    it.each(['Plans'])('PATCH /notes/path returns 403 when renaming %s', async (folderName) => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
@@ -182,7 +182,7 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
         expect(data.error).toMatch(/system folder/i);
     });
 
-    it.each(['Plans', 'Sentinel'])(
+    it.each(['Plans'])(
         'PATCH /notes/path still blocks rename of pre-created %s',
         async (folderName) => {
             const srv = await startServer();
@@ -202,7 +202,7 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
     // Delete — system folder root blocked
     // -------------------------------------------------------------------------
 
-    it.each(['Plans', 'Sentinel'])('DELETE /notes/path returns 403 when deleting %s', async (folderName) => {
+    it.each(['Plans'])('DELETE /notes/path returns 403 when deleting %s', async (folderName) => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
@@ -215,7 +215,7 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
         expect(data.error).toMatch(/system folder/i);
     });
 
-    it.each(['Plans', 'Sentinel'])('%s is not deleted when delete is attempted', async (folderName) => {
+    it.each(['Plans'])('%s is not deleted when delete is attempted', async (folderName) => {
         const srv = await startServer();
         await registerWorkspace(srv);
 
@@ -230,7 +230,7 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
     // Pages inside a system folder — not blocked
     // -------------------------------------------------------------------------
 
-    it.each(['Plans', 'Sentinel'])(
+    it.each(['Plans'])(
         'PATCH /notes/path allows renaming a page inside %s',
         async (folderName) => {
             const srv = await startServer();
@@ -249,7 +249,7 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
         },
     );
 
-    it.each(['Plans', 'Sentinel'])(
+    it.each(['Plans'])(
         'DELETE /notes/path allows deleting a page inside %s',
         async (folderName) => {
             const srv = await startServer();
@@ -289,5 +289,25 @@ describe('Notes System Folder Protection', { timeout: 30_000 }, () => {
 
         const res = await deleteReq(deleteUrl(srv, 'ToDelete'));
         expect(res.status).toBe(204);
+    });
+
+    it('GET /notes/tree no longer creates Sentinel and leaves existing Sentinel files untouched', async () => {
+        const srv = await startServer();
+        await registerWorkspace(srv);
+
+        const sentinelDir = path.join(notesRoot(), 'Sentinel');
+        expect(fs.existsSync(sentinelDir)).toBe(false);
+        await request(treeUrl(srv));
+        expect(fs.existsSync(sentinelDir)).toBe(false);
+
+        fs.mkdirSync(sentinelDir, { recursive: true });
+        const board = path.join(sentinelDir, 'Sentinel.md');
+        fs.writeFileSync(board, '# Board\n');
+        const res = await request(treeUrl(srv));
+        expect(res.status).toBe(200);
+        const data = JSON.parse(res.body);
+        expect(data.systemFolders).not.toContain('Sentinel');
+        expect((data.tree as Array<{ name: string }>).map(node => node.name)).toContain('Sentinel');
+        expect(fs.readFileSync(board, 'utf-8')).toBe('# Board\n');
     });
 });

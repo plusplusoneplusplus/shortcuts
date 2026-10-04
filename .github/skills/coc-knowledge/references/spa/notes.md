@@ -38,8 +38,8 @@ for the collection selector. Task-derived rows use the server-provided `isProtec
 marker to show a lock and stay outside modifier, range, and bulk-removal selection;
 opening one is a normal read/write collection switch.
 
-The managed root auto-creates the protected `Plans` and `Sentinel` folders and reports
-them in the tree response's `systemFolders`. Repo-folder and task-derived roots neither
+The managed root auto-creates the protected `Plans` folder and reports
+it in the tree response's `systemFolders`. Repo-folder and task-derived roots neither
 create nor report system folders.
 
 Refresh reloads both the selected tree and the derived collection list, so task
