@@ -234,7 +234,7 @@ describe('WorkingTreeFileDiff — comment integration', () => {
         await renderDiff('untracked');
         expect(screen.getByTestId('working-tree-file-diff-untracked')).toBeTruthy();
         expect(screen.getByTestId('mock-preview-pane')).toBeTruthy();
-        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-read-only')).toBe('true');
+        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-read-only')).toBe('false');
         expect(screen.queryByTestId('trigger-add-comment')).toBeNull();
     });
 

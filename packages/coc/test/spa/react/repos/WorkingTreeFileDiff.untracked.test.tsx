@@ -141,9 +141,9 @@ describe('WorkingTreeFileDiff — untracked file rendering', () => {
         expect(screen.getByTestId('mock-preview-pane').getAttribute('data-file-name')).toBe('README.md');
     });
 
-    it('sets readOnly on PreviewPane', async () => {
+    it('leaves the untracked PreviewPane editable (no readOnly)', async () => {
         await renderDiff('untracked');
-        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-read-only')).toBe('true');
+        expect(screen.getByTestId('mock-preview-pane').getAttribute('data-read-only')).toBe('false');
     });
 
     it('preserves data-testid on the wrapper div', async () => {

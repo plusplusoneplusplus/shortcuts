@@ -421,7 +421,6 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                                 repoId={workspaceId}
                                 filePath={relativePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
-                                readOnly
                                 onNotFound={handlePreviewNotFound}
                             />
                         </div>
