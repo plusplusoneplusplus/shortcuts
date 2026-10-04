@@ -2,7 +2,7 @@
  * ask_user → WhatsApp/Teams question relay wiring.
  *
  * The relay is a late-bound runtime capability looked up when questions are
- * emitted. Only Ask turns that carry a relay request id hand questions to it;
+ * emitted. Only Ask and sentinel turns that carry a relay request id hand questions to it;
  * autopilot turns, dashboard follow-ups and approval prompts stay
  * dashboard-only. Registration of `ask_user` is untouched (see
  * mode-invariant-tool-block.test.ts).
@@ -60,7 +60,7 @@ function makeOptions() {
     }) as any;
 }
 
-function chatTask(mode: 'ask' | 'autopilot', id: string, relayRequestId?: string): QueuedTask {
+function chatTask(mode: 'ask' | 'autopilot' | 'sentinel', id: string, relayRequestId?: string): QueuedTask {
     return {
         id, type: 'chat', priority: 'normal', status: 'running', createdAt: Date.now(),
         payload: { kind: 'chat', mode, prompt: 'Hello', ...(relayRequestId ? { relayRequestId } : {}) },
@@ -68,10 +68,10 @@ function chatTask(mode: 'ask' | 'autopilot', id: string, relayRequestId?: string
     } as QueuedTask;
 }
 
-function existingProcess(id: string): AIProcess {
+function existingProcess(id: string, mode = 'ask'): AIProcess {
     return {
         id, type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'p',
-        metadata: { type: 'chat', workspaceId: 'ws-1', mode: 'ask' },
+        metadata: { type: 'chat', workspaceId: 'ws-1', mode },
         conversationTurns: [
             { role: 'user', content: 'Hello', timestamp: new Date(), turnIndex: 0, timeline: [] },
             { role: 'assistant', content: 'Hi', timestamp: new Date(), turnIndex: 1, timeline: [] },
@@ -127,6 +127,22 @@ describe('ask_user question relay wiring', () => {
         await executor.executeFollowUp('p1', 'next', undefined, 'autopilot', undefined, undefined, undefined, undefined,
             undefined, undefined, undefined, { relayRequestId: 'req-g' });
         expect(relayed).toHaveLength(1);
+    });
+
+    it('relays a sentinel first turn under its relay request id (phone threads start sentinel chats)', async () => {
+        await new ChatExecutor(createMockProcessStore(), makeOptions()).execute(chatTask('sentinel', 't5', 'req-5'), 'Hello');
+        expect(relayed).toHaveLength(1);
+        expect(relayed[0]).toMatchObject({ processId: 'queue_t5', requestId: 'req-5' });
+    });
+
+    it('relays a sentinel follow-up that carries a relay request id (regression: keyed on ask only)', async () => {
+        const store = createMockProcessStore();
+        await store.addProcess(existingProcess('p2', 'sentinel'));
+        const executor = new FollowUpExecutor(store, makeOptions());
+        await executor.executeFollowUp('p2', 'next', undefined, 'sentinel', undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, { relayRequestId: 'req-s' });
+        expect(relayed).toHaveLength(1);
+        expect(relayed[0]).toMatchObject({ processId: 'p2', requestId: 'req-s' });
     });
 
     it('never relays approval prompts', async () => {

@@ -383,6 +383,11 @@ export class FollowUpExecutor extends ChatBaseExecutor {
         // directory, and neither an artifact-bound chat nor a Ralph grilling
         // session (both own their own output contract). Every other turn skips
         // the mkdir + readdir.
+        // Ask and sentinel both run as interactive (read-only) turns: their
+        // questions relay to the phone thread and dangerous commands need
+        // approval. Phone threads start sentinel chats, so keying these on
+        // `'ask'` alone would drop both for every phone follow-up.
+        const interactiveTurn = toAgentMode(currentMode) === 'interactive';
         const planSaveEligible = currentMode === 'ask'
             && !!workingDirectory
             && !suppressesPlanSaveGuidance({ metadata: process.metadata });
@@ -518,7 +523,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 askUser: this.buildAskUserWiring(processId, {
                     computeTurnIndex: () => process.conversationTurns?.length ?? 0,
                     isInteractive: () => turnSource === undefined,
-                    questionRelayRequestId: () => currentMode === 'ask' ? options?.relayRequestId : undefined,
+                    questionRelayRequestId: () => interactiveTurn ? options?.relayRequestId : undefined,
                 }),
             });
             const filteredTools = chatCtx.tools;
@@ -697,12 +702,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                     disabledSkills,
                     mcpServers: resolvedMcpServers,
                     approvePermissions: this.approvePermissions,
-                    // Ask mode only, and interactive only: a cron/wakeup/trigger
+                    // Ask/sentinel only, and interactive only: a cron/wakeup/trigger
                     // follow-up (`turnSource` set) has nobody to approve, which
                     // the wiring turns into an immediate deny with a reason the
                     // model can act on.
                     dangerousCommandGuard: this.buildDangerousCommandGuardWiring(processId, {
-                        enabled: currentMode === 'ask',
+                        enabled: interactiveTurn,
                         isInteractive: () => turnSource === undefined,
                     }),
                     // Strict resume owns this callback: a provider that hands

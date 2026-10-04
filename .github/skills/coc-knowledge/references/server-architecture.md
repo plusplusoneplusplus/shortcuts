@@ -212,7 +212,8 @@ WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
 and calls `processes/compact-process.ts` `compactProcess` (shared with
 `POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. `/autopilot <msg>` and `/ask <msg>` set the
 turn's mode; plain text has none, so a follow-up keeps the chat's mode and a new chat runs in
-Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
+`sentinel` (the dispatcher) even when `sentinel.enabled` is off — that flag only gates the
+dashboard picker. Older threads bound to Ask chats stay Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
 first turn lends its queued mode) at every Teams/WhatsApp enqueue site.
 `list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
 `list topics <n.m|name@server> [-v]` (10 most recent remote chats, read-only footer) are

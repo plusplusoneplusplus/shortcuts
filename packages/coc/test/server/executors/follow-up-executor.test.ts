@@ -494,6 +494,25 @@ describe('FollowUpExecutor', () => {
         expect(typeof callArg.dangerousCommandGuard.requestApproval).toBe('function');
     });
 
+    it('gates an interactive sentinel follow-up too (regression: guard keyed on ask only)', async () => {
+        const proc = makeProcess({
+            id: 'proc-guard-sentinel', sdkSessionId: 'sdk-guard-sentinel',
+            metadata: { type: 'chat', mode: 'sentinel' },
+        });
+        await store.addProcess(proc);
+
+        const executor = makeExecutor(store, {
+            queueConfig: createFixedQueueRuntimeConfig({
+                config: { dangerousCommandGuard: { enabled: true } },
+            }),
+        });
+        await executor.executeFollowUp('proc-guard-sentinel', 'msg', undefined, 'sentinel');
+
+        const callArg = sdkMocks.mockSendMessage.mock.calls[0][0] as any;
+        expect(callArg.dangerousCommandGuard.enabled).toBe(true);
+        expect(typeof callArg.dangerousCommandGuard.requestApproval).toBe('function');
+    });
+
     it('gives a cron-triggered follow-up no approval channel, so a match is denied outright', async () => {
         // AC-06: the interactivity signal is the same `turnSource` check
         // `ask_user` already uses. No channel → the SDK guard denies and tells

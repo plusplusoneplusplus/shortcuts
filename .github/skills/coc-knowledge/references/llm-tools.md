@@ -289,8 +289,8 @@ opt in based on `options.tools`; no executor changes are needed. See
   `AskUserEmitControl` (per-question `isPending`/`waitFor`/`answer`/`skip`/`resolveUnavailable`,
   `onCancelAll`). After the dashboard emit, `buildAskUserWiring` hands non-approval questions to
   the late-bound `getAskUserQuestionRelay` runtime capability when the turn supplies
-  `questionRelayRequestId` — Ask first turns (`payload.relayRequestId ?? task.id`) and Ask
-  follow-ups carrying `FollowUpTurnOptions.relayRequestId`. Autopilot turns, dashboard follow-ups
+  `questionRelayRequestId` — Ask/sentinel first turns (`payload.relayRequestId ?? task.id`) and
+  Ask/sentinel follow-ups carrying `FollowUpTurnOptions.relayRequestId`. Autopilot turns, dashboard follow-ups
   and approvals stay dashboard-only; registration never varies.
 - **Ralph grill exception:** the grill terminal round strips `ask_user` from the already-built
   array to end the questioning phase. It is the one path that mutates the tool block mid-turn.

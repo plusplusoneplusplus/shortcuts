@@ -17,9 +17,15 @@ describe('createMessagingChatModeResolver', () => {
         await store.addProcess({ id, status: 'completed', metadata: { type: 'chat', mode }, conversationTurns: [] } as any);
     }
 
-    it('defaults a new chat to ask and honours an explicit mode', async () => {
-        expect(await resolve(undefined)).toBe('ask');
+    it('starts a new chat as the sentinel dispatcher and honours an explicit mode', async () => {
+        expect(await resolve(undefined)).toBe('sentinel');
         expect(await resolve(undefined, 'autopilot')).toBe('autopilot');
+        expect(await resolve(undefined, 'ask')).toBe('ask');
+    });
+
+    it('keeps an existing ask chat in ask for plain text (only new chats become sentinel)', async () => {
+        await addChat('queue_old', 'ask');
+        expect(await resolve('queue_old')).toBe('ask');
     });
 
     it('keeps an autopilot chat in autopilot for plain text (regression: follow-ups switched to ask)', async () => {

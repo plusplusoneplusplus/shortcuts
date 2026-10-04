@@ -245,7 +245,7 @@ describe('registerAllRoutes', () => {
             const input = bridge.enqueue.mock.calls[index][0] as CreateTaskInput;
             expect(input).toMatchObject({
                 type: 'chat', repoId: workspaceId, priority: 'normal',
-                payload: { kind: 'chat', mode: 'ask', prompt, workspaceId },
+                payload: { kind: 'chat', mode: 'sentinel', prompt, workspaceId },
                 config: { afterEffortTier: 'medium', model: 'gpt-6.1-sol', reasoningEffort: 'medium' },
             });
             expect((input.config as Record<string, unknown>).effortTier).toBeUndefined();
@@ -305,7 +305,7 @@ describe('registerAllRoutes', () => {
         const input = bridge.enqueue.mock.calls[0][0] as CreateTaskInput;
         expect(input).toMatchObject({
             type: 'chat', repoId: 'global-workspace-00',
-            payload: { kind: 'chat', mode: 'ask', prompt: 'relay question', workspaceId: 'global-workspace-00' },
+            payload: { kind: 'chat', mode: 'sentinel', prompt: 'relay question', workspaceId: 'global-workspace-00' },
             config: { afterEffortTier: 'medium', model: 'custom-medium', reasoningEffort: 'high' },
         });
         if (relayEnabled === false) {

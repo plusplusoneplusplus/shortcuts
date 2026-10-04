@@ -198,8 +198,10 @@ references before editing. Paths are package-relative.
   chat, else the selected topic; it calls `processes/compact-process.ts` (shared with
   the compact route), never enqueues a turn or changes selection, and maps 400/409/422
   to fixed replies. `/autopilot <msg>` / `/ask <msg>` set the turn's mode; plain text keeps
-  the chat's mode (new chats run in Ask) via `src/server/messaging/messaging-chat-mode.ts`,
-  never a defaulted `'ask'`.
+  the chat's mode (new chats run in `sentinel`, the dispatcher, whatever `sentinel.enabled` says)
+  via `src/server/messaging/messaging-chat-mode.ts`, never a hard-coded default at the enqueue site.
+  Sentinel follow-ups relay `ask_user` and keep the dangerous-command guard like Ask
+  (`follow-up-executor.ts` keys both on the interactive agent mode).
   `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
   `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`
   (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in

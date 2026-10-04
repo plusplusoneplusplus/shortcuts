@@ -7,7 +7,7 @@
  *     `/ask`, whose free-text body would otherwise swallow ordinary messages.
  *   - Chat mode is three-state: `/autopilot <msg>` → autopilot, `/ask <msg>` →
  *     ask, plain text → undefined (follow-ups keep the chat's current mode; new
- *     chats default to ask).
+ *     chats start as the sentinel dispatcher).
  *   - Any other `/word` that is not a command is `invalid` (callers reply with
  *     "Unknown command" + help). Bare `list|select|create` followed by a
  *     command noun (repo/agent/topic) but malformed is also `invalid`;
@@ -71,7 +71,7 @@ export const MESSAGING_HELP_TEXT = [
     '/autopilot <message> — run this one message in autopilot (/ required)',
     '/ask <message> — run this one message in ask (read-only) mode (/ required)',
     '[chatid] <message> — send to a specific chat',
-    '<message> — chat in the selected topic (keeps its mode), or start one in ask',
+    '<message> — chat in the selected topic (keeps its mode), or start a sentinel (dispatcher) chat',
     'Any other /word replies "Unknown command".',
 ].join('\n');
 

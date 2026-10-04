@@ -107,7 +107,7 @@ import { TERMINAL_WORK_ITEM_STATUSES, WORK_ITEM_STATUSES, type WorkItemChangeCom
 import { DEFAULT_CONFIG, getResolvedConfigWithSource, loadConfigFile, writeConfigFile, getConfigFilePath } from '../../config';
 import type { ResolvedCLIConfig } from '../../config';
 import type { RuntimeConfigService } from '../../config/runtime-config-service';
-import { TaskDefs, type ChatProvider } from '../tasks/task-types';
+import { TaskDefs, type ChatMode, type ChatProvider } from '../tasks/task-types';
 import type { TerminalSessionManager } from '../terminal/index';
 import { registerRemoteServerRoutes } from '../servers/remote-server-routes';
 import { createWorkspaceDirectory } from '../servers/workspace-directory';
@@ -838,7 +838,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         },
     });
 
-    const messagingChatInput = (workspaceId: string, message: string, taskId?: string, mediumEffort = false, mode: MessagingChatMode = 'ask'): CreateTaskInput => {
+    const resolveMessagingChatMode = createMessagingChatModeResolver(store, queueFacade);
+    const messagingChatInput = (workspaceId: string, message: string, taskId?: string, mediumEffort = false, mode: ChatMode = 'ask'): CreateTaskInput => {
         const config: CreateTaskInput['config'] & { effortTier?: 'medium' } =
             mediumEffort ? { effortTier: 'medium' } : {};
         return {
@@ -853,9 +854,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     };
     const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) =>
         bridge.enqueue(messagingChatInput(workspaceId, message, taskId));
-    const enqueueTeamsChat = (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl']) =>
-        enqueueWithResolvedDefaults({ ...messagingChatInput(workspaceId, message, taskId, true, mode), botControl });
-    const resolveMessagingChatMode = createMessagingChatModeResolver(store, queueFacade);
+    // Teams threads start new chats as the sentinel dispatcher unless a mode prefix says otherwise.
+    const enqueueTeamsChat = async (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl']) =>
+        enqueueWithResolvedDefaults({
+            ...messagingChatInput(workspaceId, message, taskId, true, await resolveMessagingChatMode(undefined, mode)),
+            botControl,
+        });
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
     // Container default agent session routes (feature-flagged)
