@@ -40,6 +40,27 @@ export interface DesktopBrowserBridge {
     onDownload(callback: (event: BrowserDownloadEvent) => void): () => void;
 }
 
+/** Event a chat web-link click sends to ask the right panel for a browser tab. */
+export const OPEN_BROWSER_URL_EVENT = 'coc-open-browser-url';
+
+export interface OpenBrowserUrlDetail {
+    url: string;
+    /** Set by the panel that opened the tab. */
+    handled?: boolean;
+}
+
+/**
+ * Ask the mounted right panel to open `url` in a browser tab. Returns false
+ * when there is no desktop browser view or no panel took it, so the caller
+ * keeps its normal link behavior.
+ */
+export function requestPanelBrowserTab(url: string): boolean {
+    if (!desktopBrowserBridge()) return false;
+    const detail: OpenBrowserUrlDetail = { url };
+    window.dispatchEvent(new CustomEvent(OPEN_BROWSER_URL_EVENT, { detail }));
+    return detail.handled === true;
+}
+
 export function desktopBrowserBridge(): DesktopBrowserBridge | undefined {
     return (window as { cocDesktop?: { browser?: DesktopBrowserBridge } }).cocDesktop?.browser;
 }

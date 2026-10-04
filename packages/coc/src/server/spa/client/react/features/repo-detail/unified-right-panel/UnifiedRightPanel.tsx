@@ -103,7 +103,11 @@ import { UnifiedTabView } from './UnifiedTabView';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
 import { browserLabelForUrl, browserOpenInput, browserSessionKey, normalizeBrowserUrl } from './unifiedBrowserTabs';
-import { desktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
+import {
+    desktopBrowserBridge,
+    OPEN_BROWSER_URL_EVENT,
+    type OpenBrowserUrlDetail,
+} from '../../../shared/file-path/browser-bridge';
 import { desktopHtmlPageBridge, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
@@ -606,6 +610,26 @@ export function UnifiedRightPanel({
             }, normalized.url));
         });
     }, [chatId, open]);
+
+    // A web link clicked in a chat opens as a new browser tab owned by the dock target.
+    useEffect(() => {
+        const onOpenUrl = (event: Event) => {
+            const detail = (event as CustomEvent<OpenBrowserUrlDetail>).detail;
+            if (!detail || detail.handled || !desktopBrowserBridge()) return;
+            const normalized = normalizeBrowserUrl(detail.url);
+            if (!normalized.ok) return;
+            detail.handled = true;
+            open(browserOpenInput({
+                ownerWorkspaceId: target,
+                ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
+                chatId,
+                ...(target !== workspaceId && targetLabel ? { repoLabel: targetLabel } : {}),
+            }, normalized.url));
+            setWorkspaceDockOpen(workspaceId, true);
+        };
+        window.addEventListener(OPEN_BROWSER_URL_EVENT, onOpenUrl);
+        return () => window.removeEventListener(OPEN_BROWSER_URL_EVENT, onOpenUrl);
+    }, [chatId, open, target, targetLabel, targetRoutingRef, workspaceId]);
 
     useEffect(() => {
         const onOpenPage = (event: Event) => {

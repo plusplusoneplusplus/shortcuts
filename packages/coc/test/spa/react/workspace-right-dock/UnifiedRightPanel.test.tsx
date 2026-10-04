@@ -392,6 +392,38 @@ describe('UnifiedRightPanel', () => {
             Object.defineProperty(window, 'cocDesktop', { value: { browser: bridge }, configurable: true });
         });
 
+        it('opens a chat web link as a new browser tab and claims the event', async () => {
+            renderPanel({ chatId: 'chat-1' });
+            const send = (url: string) => {
+                const detail = { url, handled: false };
+                act(() => { window.dispatchEvent(new CustomEvent('coc-open-browser-url', { detail })); });
+                return detail;
+            };
+            expect(send('https://google.com/search?q=x').handled).toBe(true);
+            expect(browserTabs()).toHaveLength(1);
+            expect(browserTabs()[0].getAttribute('aria-selected')).toBe('true');
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(viewIdOf(), 'https://google.com/search?q=x', WS));
+
+            // Each click opens its own tab, like the "+" menu does.
+            send('https://google.com/search?q=x');
+            expect(browserTabs()).toHaveLength(2);
+
+            // Not a web URL, or already taken by another listener: left alone.
+            expect(send('javascript:alert(1)').handled).toBe(false);
+            const taken = { url: 'https://example.com', handled: true };
+            act(() => { window.dispatchEvent(new CustomEvent('coc-open-browser-url', { detail: taken })); });
+            expect(browserTabs()).toHaveLength(2);
+        });
+
+        it('ignores chat web links without the desktop browser view', () => {
+            delete (window as { cocDesktop?: unknown }).cocDesktop;
+            renderPanel({ chatId: 'chat-1' });
+            const detail = { url: 'https://example.com', handled: false };
+            act(() => { window.dispatchEvent(new CustomEvent('coc-open-browser-url', { detail })); });
+            expect(detail.handled).toBe(false);
+            expect(browserTabs()).toHaveLength(0);
+        });
+
         it('opens a view only once a blank tab has a URL, then navigates the live view', async () => {
             renderPanel({ chatId: 'chat-1' });
             openViaMenu('unified-panel-open-browser');

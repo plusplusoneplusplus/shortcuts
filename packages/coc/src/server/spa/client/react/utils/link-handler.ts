@@ -127,13 +127,17 @@ export const DEFAULT_LINK_HANDLERS_CONFIG: Record<string, boolean> =
  *               Missing built-in handler keys are treated as enabled.
  */
 export function openLink(href: string, config: Record<string, boolean>): void {
-    for (const handler of BUILTIN_LINK_HANDLERS) {
-        if (config[handler.name] !== false && handler.matches(href)) {
-            handler.open(href);
-            return;
-        }
+    const handler = findLinkHandler(href, config);
+    if (handler) {
+        handler.open(href);
+        return;
     }
     window.open(href, '_blank', 'noopener');
+}
+
+/** The first enabled handler that matches `href`, if any. */
+export function findLinkHandler(href: string, config: Record<string, boolean>): LinkHandler | undefined {
+    return BUILTIN_LINK_HANDLERS.find(handler => config[handler.name] !== false && handler.matches(href));
 }
 
 /**
