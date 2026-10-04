@@ -69,6 +69,8 @@ export function mountDiffLanguageModel(options: MountDiffLanguageOptions): () =>
         workspaceId,
         load: loadSource,
         readExternalSource: (resourceId, signal) => view.readExternalSource(resourceId, { signal }),
+        readExternalSemanticTokens: (resourceId, signal) =>
+            view.readExternalSemanticTokens(resourceId, { signal }),
         languageForFileName: getMonacoLanguage,
     });
     const shadow = applyShadowLanguage(monaco as unknown as ShadowMonaco, model);

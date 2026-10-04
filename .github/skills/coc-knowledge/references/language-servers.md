@@ -259,6 +259,17 @@ clears them. A relayed refresh request or a replay to a restarted server fires
 the provider's `onDidChange`. When two registrations share a model URI, only
 the oldest live one requests tokens and hands over on dispose.
 
+External definition sources get tokens through their capability: after Peek
+loads one, `definitionPreview.ts` sends `lsp-external-semantic-tokens` on the
+same attachment (none when that server advertises no tokens). The host opens the
+exact canonical file in the issuing attachment's session just for that request,
+then closes it, and drops `publishDiagnostics` for files outside the workspace.
+The decoded tokens are stored on the `externalSourceStore` record, so the
+read-only tab colors from them after the originating attachment is gone;
+`externalSemanticTokens.ts` serves that record to exactly the Peek or tab model
+whose text matches. A failed, unsupported, or cancelled request keeps basic
+syntax colors.
+
 ### Diff documents
 
 `MonacoFileDiffViewer` shares the explorer's reference-counted

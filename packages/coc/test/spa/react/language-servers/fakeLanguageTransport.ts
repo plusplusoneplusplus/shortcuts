@@ -52,6 +52,10 @@ export class FakeAttachment {
     readonly externalSources = new Map<string, { content: string; displayName: string; languageHint?: string }>();
     /** Held by a test that needs an external read still in flight while it asserts. */
     externalReadGate: Promise<void> | null = null;
+    /** Semantic-token requests for external sources, and what each answers. */
+    readonly externalTokenReads: SentExternalRead[] = [];
+    readonly externalTokens = new Map<string, Uint32Array>();
+    externalTokensGate: Promise<void> | null = null;
     /** Every `restart()` the layers above asked for. */
     restarts = 0;
     private readonly responders = new Map<string, RequestResponder>();
@@ -114,6 +118,11 @@ export class FakeAttachment {
                     throw new Error('Definition source unavailable.');
                 }
                 return source;
+            },
+            readExternalSemanticTokens: async (resourceId: string, options?: { signal?: AbortSignal }) => {
+                self.externalTokenReads.push({ resourceId, signal: options?.signal });
+                if (self.externalTokensGate) await self.externalTokensGate;
+                return self.externalTokens.get(resourceId) ?? null;
             },
             sendNotification: (method: string, params?: unknown) => {
                 if (!self.info) {

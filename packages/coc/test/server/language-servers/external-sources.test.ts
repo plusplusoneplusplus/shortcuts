@@ -17,6 +17,7 @@ import {
     EXTERNAL_SOURCE_MAX_BYTES,
     ExternalSourceRegistry,
     canonicalizeExternalFile,
+    externalSemanticTokensRequest,
     readExternalSource,
     type ExternalSourceGrant,
 } from '../../../src/server/language-servers/external-sources';
@@ -214,5 +215,47 @@ describe('authorized external source read', () => {
 
         expect(await readExternalSource(await grantFor(file), controller.signal))
             .toEqual({ ok: false, reason: 'cancelled' });
+    });
+});
+
+describe('externalSemanticTokensRequest', () => {
+    const legend = { tokenTypes: ['class'], tokenModifiers: [] };
+
+    it('prefers a full-document request', () => {
+        expect(externalSemanticTokensRequest(
+            { capabilities: { semanticTokensProvider: { legend, full: { delta: true }, range: true } } },
+            'a\nb',
+        )).toEqual({ method: 'textDocument/semanticTokens/full', params: {} });
+    });
+
+    it('spans every line, to the end of the last, when only ranges are offered', () => {
+        expect(externalSemanticTokensRequest(
+            { capabilities: { semanticTokensProvider: { legend, range: true } } },
+            'class A;\nint value;',
+        )).toEqual({
+            method: 'textDocument/semanticTokens/range',
+            params: { range: { start: { line: 0, character: 0 }, end: { line: 1, character: 10 } } },
+        });
+    });
+
+    it('reads a dynamic registration when initialize advertised nothing', () => {
+        expect(externalSemanticTokensRequest(
+            {
+                capabilities: {},
+                dynamicRegistrations: [
+                    { method: 'textDocument/hover' },
+                    { method: 'textDocument/semanticTokens', registerOptions: { legend, full: true } },
+                ],
+            },
+            '',
+        )?.method).toBe('textDocument/semanticTokens/full');
+    });
+
+    it('returns nothing when neither mode is offered', () => {
+        expect(externalSemanticTokensRequest({ capabilities: {} }, 'x')).toBeUndefined();
+        expect(externalSemanticTokensRequest(
+            { capabilities: { semanticTokensProvider: { legend, full: false, range: false } } },
+            'x',
+        )).toBeUndefined();
     });
 });

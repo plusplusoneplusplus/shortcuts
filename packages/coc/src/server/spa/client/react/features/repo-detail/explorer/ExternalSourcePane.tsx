@@ -7,12 +7,17 @@
  * source through it, and the content was handed to this pane. So the pane is a
  * plain read-only editor over text it was given: no save, no dirty state, no
  * language-server document, nothing the repository tree can reveal.
+ *
+ * Semantic colors come the same way: whatever tokens Peek received through the
+ * capability are on the record, and without them the text keeps basic syntax
+ * colors. The pane never asks a server anything.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     MonacoFileEditor,
     getMonacoLanguage,
+    type EditorModelMountContext,
 } from '../../../shared/file-viewer/MonacoFileEditor';
 import { mountNonEditableModel } from '../../../shared/file-viewer/nonEditableMonacoModel';
 import { EXTERNAL_SOURCE_LABEL, externalSourceLanguageId } from '../../language-servers/externalSource';
@@ -20,6 +25,10 @@ import {
     readExternalSourceRecord,
     retainExternalSource,
 } from '../../language-servers/externalSourceStore';
+import {
+    registerExternalSemanticTokens,
+    type ExternalSemanticTokensMonaco,
+} from '../../language-servers/externalSemanticTokens';
 
 export interface ExternalSourcePaneProps {
     /** Opaque capability id issued by the host that produced the definition. */
@@ -51,6 +60,20 @@ export function ExternalSourcePane({ resourceId, name, revealLine, revealColumn,
         () => (record ? externalSourceLanguageId(record, getMonacoLanguage) : 'plaintext'),
         [record],
     );
+
+    const mountModel = useCallback((context: EditorModelMountContext) => {
+        const unlock = mountNonEditableModel(context);
+        const disposeTokens = registerExternalSemanticTokens({
+            monaco: context.monaco as unknown as ExternalSemanticTokensMonaco,
+            languageId: language,
+            model: context.model,
+            resourceId,
+        });
+        return () => {
+            disposeTokens();
+            unlock();
+        };
+    }, [language, resourceId]);
 
     return (
         <div className="flex flex-col w-full h-full" data-testid="external-source-pane">
@@ -85,7 +108,7 @@ export function ExternalSourcePane({ resourceId, name, revealLine, revealColumn,
                         <MonacoFileEditor
                             value={record.content}
                             language={language}
-                            onModelMount={mountNonEditableModel}
+                            onModelMount={mountModel}
                             revealLine={revealLine}
                             revealColumn={revealColumn}
                             revealNonce={revealNonce}

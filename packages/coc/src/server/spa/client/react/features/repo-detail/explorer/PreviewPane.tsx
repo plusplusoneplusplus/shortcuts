@@ -384,6 +384,8 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             // header. Only the attachment that received that answer holds the
             // capability to read it, so the reader is this document's own view.
             readExternalSource: (resourceId, signal) => languageView.readExternalSource(resourceId, { signal }),
+            readExternalSemanticTokens: (resourceId, signal) =>
+                languageView.readExternalSemanticTokens(resourceId, { signal }),
             languageForFileName: getMonacoLanguage,
             showUnavailableForRejectedTarget: definitionPreviewOwners !== undefined,
         });

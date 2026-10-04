@@ -871,5 +871,70 @@ describe('getEditingSessionId', () => {
 
             await expect(reading).rejects.toMatchObject({ code: 'cancelled' });
         });
+        describe('external definition semantic tokens', () => {
+        const legend = { tokenTypes: ['keyword', 'class'], tokenModifiers: ['readonly'] };
+
+        function attached(capabilities?: Record<string, unknown>) {
+            const client = makeClient();
+            const attachment = client.attach('src/a.cpp');
+            const socket = latest();
+            socket.open();
+            socket.emit(attachedMessage(socket, {
+                state: { status: 'ready', definitionId: 'clangd', displayName: 'clangd', capabilities },
+            }));
+            return { client, attachment, socket };
+        }
+
+        it('asks with the opaque id on this attachment and decodes against its legend', async () => {
+            const { attachment, socket } = attached({ semanticTokensProvider: { legend, full: true } });
+
+            const reading = attachment.readExternalSemanticTokens('cap-1');
+            const sent = socket.sentOfType('lsp-external-semantic-tokens').at(-1)!;
+            expect(sent).toMatchObject({ attachmentId: 'att-1', resourceId: 'cap-1' });
+            socket.emit({
+                type: 'lsp-external-semantic-tokens-result',
+                requestId: sent.requestId,
+                // keyword (dropped), then a class two lines down
+                data: [0, 0, 5, 0, 0, 2, 4, 6, 1, 0],
+            });
+
+            const tokens = await reading;
+            // `lsp.class` is index 2 of CoC's legend; the keyword is dropped.
+            expect(Array.from(tokens!)).toEqual([2, 4, 6, 2, 0]);
+        });
+
+        it('sends nothing when the server has no semantic tokens', async () => {
+            const { attachment, socket } = attached({});
+
+            await expect(attachment.readExternalSemanticTokens('cap-1')).resolves.toBeNull();
+            expect(socket.sentOfType('lsp-external-semantic-tokens')).toHaveLength(0);
+        });
+
+        it('resolves null when the host could not analyze the file', async () => {
+            const { attachment, socket } = attached({ semanticTokensProvider: { legend, range: true } });
+
+            const reading = attachment.readExternalSemanticTokens('cap-1');
+            socket.emit({
+                type: 'lsp-external-semantic-tokens-result',
+                requestId: socket.sentOfType('lsp-external-semantic-tokens').at(-1)!.requestId,
+                error: { code: 'unknown-resource', message: 'gone' },
+            });
+
+            await expect(reading).resolves.toBeNull();
+        });
+
+        it('settles on disconnect and on cancellation', async () => {
+            const { attachment, socket } = attached({ semanticTokensProvider: { legend, full: true } });
+            const controller = new AbortController();
+
+            const cancelled = attachment.readExternalSemanticTokens('cap-1', { signal: controller.signal });
+            controller.abort();
+            await expect(cancelled).rejects.toMatchObject({ code: 'cancelled' });
+
+            const dropped = attachment.readExternalSemanticTokens('cap-2');
+            socket.drop();
+            await expect(dropped).rejects.toMatchObject({ code: 'disconnected' });
+        });
     });
+});
 });

@@ -191,6 +191,8 @@ export interface LanguageDocumentView {
      * workspace, through the attachment that was issued the capability.
      */
     readExternalSource(resourceId: string, options?: { signal?: AbortSignal }): Promise<ExternalSourceContent>;
+    /** Semantic tokens for that same external source, in CoC's legend; null when unavailable. */
+    readExternalSemanticTokens(resourceId: string, options?: { signal?: AbortSignal }): Promise<Uint32Array | null>;
     /** `{ textDocument: { uri }, position }` with the URI filled in. */
     documentParams<T extends Record<string, unknown>>(params?: T): T & { textDocument: { uri: string } };
 
@@ -641,6 +643,8 @@ export class LanguageDocumentStore {
             ) => record.attachment.sendRequestTo<T>(definitionId, method, params, options),
             readExternalSource: (resourceId, options) =>
                 record.attachment.readExternalSource(resourceId, options),
+            readExternalSemanticTokens: (resourceId, options) =>
+                record.attachment.readExternalSemanticTokens(resourceId, options),
             documentParams: <T extends Record<string, unknown>>(params?: T) =>
                 ({ ...(params ?? ({} as T)), textDocument: { uri: record.uri } }) as T & {
                     textDocument: { uri: string };

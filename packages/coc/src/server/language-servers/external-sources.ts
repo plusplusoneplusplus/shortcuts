@@ -13,6 +13,10 @@
  * anything, so replacing the file with a symlink after issuance cannot redirect
  * the read.
  *
+ * The same capability, presented on the same attachment, also buys semantic
+ * tokens for that one file: the bridge opens it in the attachment's own
+ * session just long enough to ask, then closes it.
+ *
  * Capabilities expire, are bounded per client, and are revoked when the
  * attachment or the socket goes away.
  */
@@ -53,6 +57,13 @@ export type ExternalSourceFailure =
     | 'binary'
     | 'read-failed'
     | 'cancelled';
+
+/** Why semantic tokens for an external source could not be produced. */
+export type ExternalSemanticTokensFailure =
+    | ExternalSourceFailure
+    | 'unsupported'
+    | 'in-use'
+    | 'failed';
 
 export type ExternalSourceRead =
     | { ok: true; content: string; displayName: string; languageHint: string }
@@ -228,6 +239,49 @@ export async function readExternalSource(
         content: buffer.toString('utf-8'),
         displayName: grant.displayName,
         languageHint: path.extname(canonical).replace(/^\./, '').toLowerCase(),
+    };
+}
+
+/**
+ * The semantic-tokens request a session can answer for a whole external file:
+ * `full` when advertised, otherwise `range` spanning every line. Read from the
+ * `initialize` capabilities, then from a later dynamic registration. Undefined
+ * when the server offers neither, so no request is made at all.
+ */
+export function externalSemanticTokensRequest(
+    state: { capabilities?: Record<string, unknown>; dynamicRegistrations?: { method: string; registerOptions?: unknown }[] },
+    content: string,
+): { method: string; params: Record<string, unknown> } | undefined {
+    const options = [
+        state.capabilities?.semanticTokensProvider,
+        ...(state.dynamicRegistrations ?? [])
+            .filter((registration) => registration.method === 'textDocument/semanticTokens')
+            .map((registration) => registration.registerOptions),
+    ];
+    const offered = (value: unknown) => value === true || (typeof value === 'object' && value !== null);
+    let range = false;
+    for (const option of options) {
+        if (!option || typeof option !== 'object') {
+            continue;
+        }
+        const { full, range: ranged } = option as { full?: unknown; range?: unknown };
+        if (offered(full)) {
+            return { method: 'textDocument/semanticTokens/full', params: {} };
+        }
+        range ||= offered(ranged);
+    }
+    if (!range) {
+        return undefined;
+    }
+    const lines = content.split('\n');
+    return {
+        method: 'textDocument/semanticTokens/range',
+        params: {
+            range: {
+                start: { line: 0, character: 0 },
+                end: { line: lines.length - 1, character: lines[lines.length - 1].length },
+            },
+        },
     };
 }
 

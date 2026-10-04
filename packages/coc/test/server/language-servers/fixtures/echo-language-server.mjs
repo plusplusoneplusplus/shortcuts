@@ -21,6 +21,12 @@
  *   fail                  -> replies with a JSON-RPC error
  *   askClient             -> sends a server-to-client request and returns its result
  *   ask                   -> sends `params.method` to the client and returns its result
+ *   textDocument/semanticTokens/full|range
+ *                         -> with --semantic-tokens <full|range>: one `class`
+ *                            token per open-document line, the length of the
+ *                            line; an error for a document that is not open
+ *                            or whose text contains SEMANTIC_FAIL; no reply
+ *                            (cancellable) when it contains SEMANTIC_SLOW
  *   shutdown              -> null
  * Notifications:
  *   textDocument/didOpen  -> publishes one diagnostic naming the document
@@ -31,6 +37,7 @@
  * Arguments:
  *   --pid-file <path>     -> writes this process's pid there at startup
  *   --stubborn            -> ignores `exit`, a closed stdin, and SIGTERM
+ *   --semantic-tokens <m> -> advertises semantic tokens in mode `full` or `range`
  */
 
 import process from 'node:process';
@@ -53,6 +60,9 @@ if (STUBBORN) {
     // Holds the event loop, so the process stays up even after stdin ends.
     setInterval(() => {}, 1_000);
 }
+
+const semanticIndex = process.argv.indexOf('--semantic-tokens');
+const SEMANTIC_MODE = semanticIndex >= 0 ? process.argv[semanticIndex + 1] : undefined;
 
 const SEPARATOR = '\r\n\r\n';
 let buffer = Buffer.alloc(0);
@@ -89,6 +99,14 @@ function handle(message) {
                         textDocumentSync: 1,
                         hoverProvider: true,
                         completionProvider: { triggerCharacters: ['.'] },
+                        ...(SEMANTIC_MODE
+                            ? {
+                                semanticTokensProvider: {
+                                    legend: { tokenTypes: ['keyword', 'class'], tokenModifiers: [] },
+                                    [SEMANTIC_MODE]: true,
+                                },
+                            }
+                            : {}),
                     },
                     serverInfo: { name: 'echo-language-server', version: '1.0.0' },
                     receivedInitializationOptions: params?.initializationOptions ?? null,
@@ -138,6 +156,33 @@ function handle(message) {
                 })),
             });
             return;
+        case 'textDocument/semanticTokens/full':
+        case 'textDocument/semanticTokens/range': {
+            const text = openDocuments.get(params?.textDocument?.uri);
+            if (text === undefined) {
+                send({ jsonrpc: '2.0', id, error: { code: -32602, message: 'document is not open' } });
+                return;
+            }
+            // Markers in the text stand in for a server that cannot analyze the
+            // file, or one still busy with it when the request is cancelled.
+            if (text.includes('SEMANTIC_FAIL')) {
+                send({ jsonrpc: '2.0', id, error: { code: -32603, message: 'cannot analyze' } });
+                return;
+            }
+            if (text.includes('SEMANTIC_SLOW')) {
+                cancellable.set(id, true);
+                return;
+            }
+            const data = [];
+            let previous = 0;
+            text.split('\n').forEach((line, index) => {
+                if (line.length === 0) return;
+                data.push(index - previous, 0, line.length, 1, 0);
+                previous = index;
+            });
+            send({ jsonrpc: '2.0', id, result: { data } });
+            return;
+        }
         case 'slow':
             cancellable.set(id, true);
             return;
