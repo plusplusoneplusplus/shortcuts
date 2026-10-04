@@ -100,6 +100,8 @@ import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/featu
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
+import { openUnifiedGitTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
+import { useSplitGitPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useSplitGitPanel';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 
 const WS = 'ws-1';
@@ -406,6 +408,62 @@ describe('UnifiedRightPanel dirty close guard (AC-05)', () => {
         fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
         await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull());
         expect(save).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks before closing the Git tab while its working-tree diff is dirty; Save writes, then closes', async () => {
+        const tabId = openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: CHAT });
+        // The detail reports through `useSplitGitPanel`, exactly as `RepoGitTab`
+        // forwards its edited working-tree diff's dirty/save seams.
+        let detail: ReturnType<typeof useSplitGitPanel> | null = null;
+        function GitDetailProbe() {
+            detail = useSplitGitPanel({ scopeWorkspaceId: WS, chatId: CHAT, enabled: true });
+            return null;
+        }
+        render(<>
+            <UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />
+            <GitDetailProbe />
+        </>);
+        await screen.findByTestId('unified-git-tab');
+
+        const save = vi.fn(async () => true);
+        act(() => { detail!.onDetailRegisterSave?.(save); detail!.onDetailDirtyChange?.(true); });
+        expect(screen.getByTestId(`unified-panel-tab-dirty-${tabId}`)).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+        expect(screen.getByTestId('explorer-close-tabs-prompt')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));
+        expect(screen.getByTestId(`unified-panel-tab-${tabId}`)).toBeTruthy();
+        expect(save).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull());
+        expect(save).toHaveBeenCalledTimes(1);
+    });
+
+    it("Don't Save closes a dirty Git tab without writing; a failed save keeps it", async () => {
+        const tabId = openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: CHAT });
+        let detail: ReturnType<typeof useSplitGitPanel> | null = null;
+        function GitDetailProbe() {
+            detail = useSplitGitPanel({ scopeWorkspaceId: WS, chatId: CHAT, enabled: true });
+            return null;
+        }
+        render(<>
+            <UnifiedRightPanel workspaceId={WS} chatId={CHAT} dock={dockStub()} />
+            <GitDetailProbe />
+        </>);
+        await screen.findByTestId('unified-git-tab');
+        const save = vi.fn(async () => false);
+        act(() => { detail!.onDetailRegisterSave?.(save); detail!.onDetailDirtyChange?.(true); });
+
+        fireEvent.click(screen.getByTestId(`unified-panel-tab-close-${tabId}`));
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+        await screen.findByTestId('explorer-close-tabs-error');
+        expect(screen.getByTestId(`unified-panel-tab-dirty-${tabId}`)).toBeTruthy();
+
+        fireEvent.click(screen.getByTestId('explorer-close-dont-save-btn'));
+        await waitFor(() => expect(screen.queryByTestId(`unified-panel-tab-${tabId}`)).toBeNull());
+        expect(save).toHaveBeenCalledTimes(1);
     });
 
     it('closes a clean canvas tab with no prompt', async () => {

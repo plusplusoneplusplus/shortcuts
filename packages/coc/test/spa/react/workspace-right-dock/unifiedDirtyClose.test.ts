@@ -40,8 +40,8 @@ describe('needsDirtyCloseConfirm', () => {
 
     it('only prompts for kinds that can both report and write back edits', () => {
         const prompting = ALL_UNIFIED_TAB_KINDS.filter(kind => needsDirtyCloseConfirm({ kind }, true));
-        expect(prompting).toEqual(['file', 'note', 'canvas']);
-        expect([...DIRTY_CLOSE_KINDS].sort()).toEqual(['canvas', 'file', 'note']);
+        expect(prompting).toEqual(['file', 'note', 'canvas', 'git']);
+        expect([...DIRTY_CLOSE_KINDS].sort()).toEqual(['canvas', 'file', 'git', 'note']);
     });
 
     it('never prompts for a kind that holds nothing to save', () => {
@@ -70,6 +70,12 @@ describe('dirtyCloseLabel', () => {
 
     it('falls back to the label when the descriptor carries no usable path', () => {
         expect(dirtyCloseLabel({ resourceId: '   ', label: 'Untitled' })).toBe('Untitled');
+    });
+
+    it("names a Git tab by its edited working-tree file, not its fixed slot", () => {
+        const gitView = { type: 'working-tree-file' as const, filePath: 'src/b.ts', stage: 'unstaged' as const };
+        expect(dirtyCloseLabel({ resourceId: 'git', label: 'Git', gitView })).toBe('src/b.ts');
+        expect(dirtyCloseLabel({ resourceId: 'git', label: 'Git', repoLabel: 'api', gitView })).toBe('api: src/b.ts');
     });
 });
 

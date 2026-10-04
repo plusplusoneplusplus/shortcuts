@@ -73,6 +73,34 @@ export function useUnifiedGitTabHost(scopeWorkspaceId: string): HTMLElement | nu
     );
 }
 
+/**
+ * The Git tab's unsaved-edits seam: the tab body publishes the panel's
+ * `onDirtyChange` / `onRegisterSave` (bound to its tab id) here, and the
+ * detail portaled into it reports through them, so closing the tab while an
+ * edited working-tree diff is dirty asks Save / Don't Save / Cancel.
+ */
+export interface UnifiedGitTabDirtyBridge {
+    onDirtyChange: (isDirty: boolean) => void;
+    onRegisterSave: (save: (() => Promise<boolean>) | null) => void;
+}
+
+const dirtyBridges = new Map<string, UnifiedGitTabDirtyBridge>();
+
+/** Publish the Git tab's dirty bridge for a panel scope. */
+export function setUnifiedGitTabDirtyBridge(scopeWorkspaceId: string, bridge: UnifiedGitTabDirtyBridge): void {
+    dirtyBridges.set(scopeWorkspaceId, bridge);
+}
+
+/** Withdraw `bridge`; a no-op when a newer mount already replaced it. */
+export function clearUnifiedGitTabDirtyBridge(scopeWorkspaceId: string, bridge: UnifiedGitTabDirtyBridge): void {
+    if (dirtyBridges.get(scopeWorkspaceId) === bridge) dirtyBridges.delete(scopeWorkspaceId);
+}
+
+/** The current Git tab dirty bridge for a panel scope, if a Git tab is mounted. */
+export function getUnifiedGitTabDirtyBridge(scopeWorkspaceId: string): UnifiedGitTabDirtyBridge | null {
+    return dirtyBridges.get(scopeWorkspaceId) ?? null;
+}
+
 /** The descriptor of a workspace's one Git tab. */
 export function unifiedGitTabInput(input: {
     ownerWorkspaceId: string;

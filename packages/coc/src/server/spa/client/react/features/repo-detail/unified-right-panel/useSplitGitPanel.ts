@@ -3,7 +3,9 @@ import { persistGitView, persistedViewIdentity } from '../../git/repoGitTab/sele
 import type { RightPanelView } from '../../git/repoGitTab/types';
 import { closeTab, findTab } from './unifiedPanelTabsModel';
 import { updateUnifiedPanelState } from './unifiedPanelOpen';
-import { openUnifiedGitTab, unifiedGitTabId, useUnifiedGitTab, useUnifiedGitTabHost } from './unifiedGitTabHost';
+import {
+    getUnifiedGitTabDirtyBridge, openUnifiedGitTab, unifiedGitTabId, useUnifiedGitTab, useUnifiedGitTabHost,
+} from './unifiedGitTabHost';
 
 interface SplitGitPanelOptions {
     scopeWorkspaceId: string;
@@ -49,7 +51,18 @@ export function useSplitGitPanel({
         });
     }, [enabled, memberMatches, tab, scopeWorkspaceId, ownerRoutingRef, chatId, memberId]);
 
+    // The detail reports its unsaved edits to whichever Git tab body is mounted
+    // now, so closing that tab prompts like any dirty editor tab.
+    const onDetailDirtyChange = useCallback((isDirty: boolean) => {
+        getUnifiedGitTabDirtyBridge(scopeWorkspaceId)?.onDirtyChange(isDirty);
+    }, [scopeWorkspaceId]);
+    const onDetailRegisterSave = useCallback((save: (() => Promise<boolean>) | null) => {
+        getUnifiedGitTabDirtyBridge(scopeWorkspaceId)?.onRegisterSave(save);
+    }, [scopeWorkspaceId]);
+
     return {
+        onDetailDirtyChange: enabled ? onDetailDirtyChange : undefined,
+        onDetailRegisterSave: enabled ? onDetailRegisterSave : undefined,
         detailContainer: enabled ? host : null,
         detailActive: enabled,
         onViewChange: enabled ? openView : undefined,

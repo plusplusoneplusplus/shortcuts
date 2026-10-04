@@ -13,6 +13,7 @@ import {
     diffLanguageFor,
     diffRefUri,
     isDiffRefUri,
+    isEditableDiff,
     resolveDiffEditorTheme,
     sameDiffModels,
 } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffOptions';
@@ -125,6 +126,56 @@ describe('buildDiffEditorOptions', () => {
         expect(options.useInlineViewWhenSpaceIsLimited).toBe(false);
         // Hosts the add-comment widget (AC-05).
         expect(options.glyphMargin).toBe(true);
+    });
+});
+
+describe('editable modified side', () => {
+    const base = { workspaceId: 'ws-1', relativePath: 'src/a.ts', original: 'old\n', modified: 'new\n' };
+
+    it('editable options open only the modified side', () => {
+        const options = buildDiffEditorOptions('split', true);
+        expect(options.readOnly).toBe(false);
+        expect(options.domReadOnly).toBe(false);
+        expect(options.originalEditable).toBe(false);
+    });
+
+    it('an editable unstaged diff yields an editable modified side', () => {
+        const models = buildDiffModels({ ...base, stage: 'unstaged' });
+        expect(isEditableDiff(true, 'unstaged', models)).toBe(true);
+        expect(buildDiffEditorOptions('unified', isEditableDiff(true, 'unstaged', models)))
+            .toMatchObject({ readOnly: false, originalEditable: false });
+    });
+
+    it('not requested → read-only', () => {
+        expect(isEditableDiff(false, 'unstaged', buildDiffModels({ ...base, stage: 'unstaged' }))).toBe(false);
+    });
+
+    it('ref-backed staged sides stay read-only', () => {
+        expect(isEditableDiff(true, 'staged', buildDiffModels({ ...base, stage: 'staged' }))).toBe(false);
+    });
+
+    it('a staged diff whose disk equals the index edits the real document; the HEAD side stays ref-backed', () => {
+        const models = buildDiffModels({ ...base, stage: 'staged', modifiedMatchesWorkingCopy: true });
+        expect(models.modified).toMatchObject({ uri: browserDocumentUri(base.workspaceId, base.relativePath), isWorkingCopy: true });
+        expect(isDiffRefUri(models.original.uri)).toBe(true);
+        expect(isEditableDiff(true, 'staged', models)).toBe(true);
+        expect(buildDiffEditorOptions('split', isEditableDiff(true, 'staged', models)))
+            .toMatchObject({ readOnly: false, originalEditable: false });
+    });
+
+    it('commit / PR snapshots stay read-only', () => {
+        for (const stage of ['unstaged', 'staged'] as const) {
+            const models = buildDiffModels({ ...base, stage, modelIdentity: 'commit:abc', modifiedMatchesWorkingCopy: true });
+            expect(isEditableDiff(true, stage, models)).toBe(false);
+        }
+    });
+
+    it('a branch-range head stays read-only even when it is the working copy', () => {
+        const models = buildDiffModels({ ...base, stage: 'branch-range', modelIdentity: 'range:a..b', modifiedMatchesWorkingCopy: true });
+        expect(models.modified.isWorkingCopy).toBe(true);
+        expect(isEditableDiff(true, 'branch-range', models)).toBe(false);
+        expect(buildDiffEditorOptions('split', isEditableDiff(true, 'branch-range', models)))
+            .toMatchObject({ readOnly: true, originalEditable: false, domReadOnly: true });
     });
 });
 

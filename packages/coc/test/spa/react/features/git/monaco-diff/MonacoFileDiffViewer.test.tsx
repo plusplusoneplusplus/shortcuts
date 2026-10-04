@@ -116,6 +116,54 @@ describe('MonacoFileDiffViewer — editor inputs', () => {
     });
 });
 
+describe('MonacoFileDiffViewer — editable modified side', () => {
+    it('is read-only and binds no save command unless editable', async () => {
+        const h = harness();
+        await act(flush);
+        expect(h.createEditor.mock.calls[0][1]).toMatchObject({ readOnly: true });
+        expect(h.fake().adapter.addSaveCommand).not.toHaveBeenCalled();
+        expect(h.fake().adapter.onDidChangeModifiedContent).not.toHaveBeenCalled();
+    });
+
+    it('editable unstaged: modified side opens, edits and Ctrl/Cmd+S reach the host', async () => {
+        const onModifiedChange = vi.fn();
+        const onSave = vi.fn();
+        const h = harness({ editable: true, onModifiedChange, onSave });
+        await act(flush);
+        expect(h.createEditor.mock.calls[0][1]).toMatchObject({ readOnly: false, originalEditable: false });
+        act(() => h.fake().type('one\nTHREE\n'));
+        expect(onModifiedChange).toHaveBeenLastCalledWith('one\nTHREE\n');
+        act(() => h.fake().pressSave());
+        expect(onSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('editable is ignored for a ref-backed staged side', async () => {
+        const h = harness({ stage: 'staged', editable: true, onSave: vi.fn() });
+        await act(flush);
+        expect(h.createEditor.mock.calls[0][1]).toMatchObject({ readOnly: true });
+        expect(h.fake().saveCommands.size).toBe(0);
+    });
+
+    it('turning editable off unbinds the save command', async () => {
+        const h = harness({ editable: true, onSave: vi.fn() });
+        await act(flush);
+        expect(h.fake().saveCommands.size).toBe(1);
+        h.rerender({ editable: false });
+        expect(h.fake().saveCommands.size).toBe(0);
+        expect(h.fake().options.at(-1)).toMatchObject({ readOnly: true });
+    });
+
+    it('hunks recomputed after an edit report the edited text, not the loaded text', async () => {
+        const onLinesReady = vi.fn();
+        const h = harness({ editable: true, onLinesReady });
+        await act(flush);
+        act(() => h.fake().type('one\nTWO\nthree\n'));
+        act(() => h.fake().finishDiff([change(2, 2, 2, 3)]));
+        const lines = onLinesReady.mock.lastCall?.[0] as { content: string; type: string }[];
+        expect(lines.filter(l => l.type === 'added').map(l => l.content)).toEqual(['+TWO', '+three']);
+    });
+});
+
 describe('MonacoFileDiffViewer — hunks and callbacks', () => {
     it('handle is not ready and reports zero hunks until the diff is computed', async () => {
         const h = harness();

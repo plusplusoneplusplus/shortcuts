@@ -635,7 +635,12 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain("function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps)");
+            expect(source).toContain("function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps)");
+        });
+
+        it('passes the working-tree refresh key to the detail pane (editable diff refresh)', () => {
+            expect(source).toContain('workingChangesRefreshKey={data.workingChangesRefreshKey}');
+            expect(source.split('workingChangesRefreshKey={data.workingChangesRefreshKey}').length - 1).toBe(2);
         });
 
         it('derives isSplitWorkspace from the layout prop', () => {
@@ -2251,6 +2256,13 @@ describe('RepoGitTab', () => {
             expect(source).toContain('onWorkingTreeFileMissing={data.bumpWorkingChanges}');
             // …and the detail pane hands it to the working-tree file view.
             expect(readRepoGitTabModuleSource('RepoGitDetailPane.tsx')).toContain('onFileMissing={onWorkingTreeFileMissing}');
+        });
+    });
+
+    describe('refresh after a working-tree diff save', () => {
+        it('bumps the working-tree list and diff after an edited diff is saved', () => {
+            expect(source).toContain('onWorkingTreeFileSaved={data.bumpWorkingChanges}');
+            expect(readRepoGitTabModuleSource('RepoGitDetailPane.tsx')).toContain('onSaved={onWorkingTreeFileSaved}');
         });
     });
 });

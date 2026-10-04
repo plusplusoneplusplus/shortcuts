@@ -270,3 +270,91 @@ describe('MonacoFileDiffViewer — language features (AC-06)', () => {
         expect(liveMounts(b.fake())[0].uri).toBe(browserDocumentUri('ws-2', 'src/a.ts'));
     });
 });
+
+describe('MonacoFileDiffViewer — language document while editing', () => {
+    const EDITED = `${DISK}const c = 3;\n`;
+    const attach = () => {
+        const attachment = client.get('src/a.ts');
+        act(() => attachment.attach({ state: readyState({ textDocumentSync: 1 }) }));
+        return attachment;
+    };
+
+    it('sends edits as didChange and keeps features live on the edited text', async () => {
+        const h = harness({ editable: true });
+        await act(flush);
+        const attachment = attach();
+        h.rerender({ editable: true, editedText: EDITED });
+        await act(flush);
+        expect(store.peek('src/a.ts')).toMatchObject({ text: EDITED, dirty: true });
+        expect(attachment.methods()).toContain('textDocument/didChange');
+        expect(liveMounts(h.fake())).toEqual([{ uri: URI, live: true }]);
+    });
+
+    it('marks the document saved after a successful save', async () => {
+        const h = harness({ editable: true });
+        await act(flush);
+        const attachment = attach();
+        h.rerender({ editable: true, editedText: EDITED });
+        await act(flush);
+        expect(attachment.methods()).not.toContain('textDocument/didSave');
+        h.rerender({ editable: true, editedText: EDITED, savedText: EDITED });
+        await act(flush);
+        expect(store.peek('src/a.ts')).toMatchObject({ text: EDITED, dirty: false });
+        expect(attachment.methods()).toContain('textDocument/didSave');
+    });
+
+    it('a failed save leaves the document dirty', async () => {
+        const h = harness({ editable: true });
+        await act(flush);
+        const attachment = attach();
+        h.rerender({ editable: true, editedText: EDITED, savedText: null });
+        await act(flush);
+        expect(store.peek('src/a.ts')).toMatchObject({ text: EDITED, dirty: true });
+        expect(attachment.methods()).not.toContain('textDocument/didSave');
+    });
+
+    it('dropping the edits puts the disk text back', async () => {
+        const h = harness({ editable: true });
+        await act(flush);
+        h.rerender({ editable: true, editedText: EDITED });
+        await act(flush);
+        h.rerender({ editable: true, editedText: null });
+        await act(flush);
+        expect(store.peek('src/a.ts')).toMatchObject({ text: DISK, dirty: false });
+        expect(liveMounts(h.fake())).toEqual([{ uri: URI, live: true }]);
+    });
+
+    it('never writes a buffer the explorer changed', async () => {
+        const explorer = store.open({ path: 'src/a.ts', text: DISK });
+        explorer.update('// explorer edit\n');
+        const h = harness({ editable: true });
+        await act(flush);
+        h.rerender({ editable: true, editedText: EDITED });
+        await act(flush);
+        expect(store.peek('src/a.ts')?.text).toBe('// explorer edit\n');
+        expect(liveMounts(h.fake())).toEqual([]);
+        h.unmount();
+        expect(store.peek('src/a.ts')?.text).toBe('// explorer edit\n');
+        explorer.close();
+    });
+
+    it('closing with unsaved edits restores disk in a buffer the explorer shares', async () => {
+        const explorer = store.open({ path: 'src/a.ts', text: DISK });
+        const h = harness({ editable: true });
+        await act(flush);
+        h.rerender({ editable: true, editedText: EDITED });
+        await act(flush);
+        expect(explorer.getText()).toBe(EDITED);
+        h.unmount();
+        expect(explorer.getText()).toBe(DISK);
+        expect(explorer.isDirty()).toBe(false);
+        explorer.close();
+    });
+
+    it('ignores edited text on a read-only diff', async () => {
+        const h = harness({ editedText: EDITED });
+        await act(flush);
+        expect(store.peek('src/a.ts')).toMatchObject({ text: DISK, dirty: false });
+        expect(liveMounts(h.fake())).toEqual([{ uri: URI, live: true }]);
+    });
+});

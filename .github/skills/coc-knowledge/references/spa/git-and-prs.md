@@ -119,6 +119,36 @@ User-selected Classic and patch-only sources render without a fallback reason.
 Monaco supplies find, syntax, overview markers, unified/split layout, and hunk navigation while full-context
 and truncation controls stay specific to Classic.
 
+Editing: `MonacoFileDiffViewer`'s `editable` prop opens only the modified side, and
+only when `isEditableDiff` holds (working-tree stage, modified model is the real
+on-disk document); the original side, ref-backed sides, commit/PR snapshots, and
+branch-range heads stay read-only. `WorkingTreeFileDiff` enables it for unstaged
+diffs, and for staged diffs only when the disk file equals the index
+(`stagedDiskMatchesIndex`, from an extra unstaged content load; the index side
+then uses the real document URI via `modifiedMatchesWorkingCopy`). Otherwise a
+staged diff stays read-only with a note. Saving never touches the index; Ctrl/Cmd+S (`addSaveCommand`) writes the edited text with
+`explorerApi.writeBlob(workspaceId, repoRelativePath, text)`. Hunks recompute live:
+the controller reports diffs against the editor's current modified text.
+The header shows a Save button and a dirty marker while editable; the view reports
+`onDirtyChange` / `onRegisterSave` (Explorer contract; the untracked `PreviewPane`
+forwards them). `RepoGitTab` wraps user selection changes with `useDirtyDetailGuard`,
+which asks Save / Don't Save / Cancel (`ExplorerCloseTabsDialog`) while the diff is
+dirty; a failed save keeps the prompt and the buffer. It also forwards the same
+reports to `useSplitGitPanel`'s `onDetailDirtyChange` / `onDetailRegisterSave`, which
+reach the panel's Git tab through the dirty bridge in `unifiedGitTabHost`, so the Git
+tab shows a dirty dot and closing it prompts (`DIRTY_CLOSE_KINDS` includes `git`).
+`RepoGitDetailPane` passes `workingChangesRefreshKey` as `refreshKey`; each bump
+re-reads the diff and both sides quietly. A clean view reloads; unsaved edits are
+never replaced — when the disk text changed, a "File changed on disk" banner offers
+Reload (drop edits) or Keep mine (dismiss; the next save overwrites). A successful
+save calls `onSaved` (`onWorkingTreeFileSaved` → `data.bumpWorkingChanges`), so the
+change list and the diff refresh; a saved staged edit then appears under Unstaged.
+The host passes `editedText` / `savedText` to the viewer so `useDiffLanguageFeatures`
+keeps the shared language document on the editor's text: edits go out as
+`didChange`, the buffer is marked saved once the editor matches disk again (save or
+dropped edits), and unmounting with unsaved edits puts disk text back. A buffer that
+diverged elsewhere (unsaved explorer edit) is never written; features stay off.
+
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.
 `FileDiffPanel` uses each source's existing comment refs for CRUD, replies, and AI

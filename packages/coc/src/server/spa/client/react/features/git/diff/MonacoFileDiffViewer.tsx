@@ -14,6 +14,11 @@
  * Diff comments render through `MonacoDiffCommentLayer` once the editor is
  * attached and Monaco has computed the diff for the current models.
  *
+ * With `editable`, an on-disk modified side (see `isEditableDiff`) accepts
+ * edits: each edit is reported through `onModifiedChange`, Monaco recomputes
+ * the hunks live, and Ctrl/Cmd+S calls `onSave`. The original side stays
+ * read-only.
+ *
  * Unstaged modified sides and server-confirmed clean branch heads share the
  * explorer's language features through `useDiffLanguageFeatures`.
  * Ref-backed sides never register.
@@ -36,6 +41,7 @@ import type { DiffEditorAdapter } from './monacoDiffController';
 import {
     buildDiffEditorOptions,
     buildDiffModels,
+    isEditableDiff,
     resolveDiffEditorTheme,
     type MonacoDiffStage,
 } from './monacoDiffOptions';
@@ -96,6 +102,16 @@ export interface MonacoFileDiffViewerProps extends MonacoDiffCommentHandlers {
     onNavigateDefinition?: DiffDefinitionNavigate;
     /** Enables dragging a selected range into chat context. */
     diffSelectionDragSource?: DiffSelectionDragSource;
+    /** Lets the user edit an on-disk modified side. Default false. */
+    editable?: boolean;
+    /** The modified side's full text after each user edit (editable only). */
+    onModifiedChange?: (text: string) => void;
+    /** Ctrl/Cmd+S in the modified editor (editable only). */
+    onSave?: () => void;
+    /** The host's edited text (editable only); keeps the language document in step. */
+    editedText?: string | null;
+    /** What the host's last successful save wrote (editable only). */
+    savedText?: string | null;
     'data-testid'?: string;
 }
 
@@ -114,6 +130,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         onLineChanges, onLinesReady, onEditorError, createEditor = createDefaultDiffEditor,
         comments, renderCommentThread, onAddComment, onAskAI, onCopyAsContext,
         languageFeatures = true, languageStore, onNavigateDefinition, diffSelectionDragSource,
+        editable: editableRequested = false, onModifiedChange, onSave, editedText, savedText,
         'data-testid': testId = 'monaco-file-diff-viewer',
     }, ref) {
         const { theme } = useTheme();
@@ -134,7 +151,8 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             () => buildDiffModels({ workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified }),
             [workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified],
         );
-        const options = useMemo(() => buildDiffEditorOptions(viewMode), [viewMode]);
+        const editable = isEditableDiff(editableRequested, stage, models);
+        const options = useMemo(() => buildDiffEditorOptions(viewMode, editable), [viewMode, editable]);
         const language = useDiffLanguageFeatures({
             workspaceId,
             relativePath,
@@ -143,12 +161,14 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             enabled: languageFeatures && !identical,
             store: languageStore,
             onNavigate: onNavigateDefinition,
+            editedText: editable ? editedText : null,
+            savedText: editable ? savedText : null,
         });
         const editorTheme = resolveDiffEditorTheme(theme, prefersDarkScheme());
 
         // Latest values for callbacks and the one-shot creation below.
-        const latest = useRef({ options, onLineChanges, onLinesReady, onEditorError, createEditor });
-        latest.current = { options, onLineChanges, onLinesReady, onEditorError, createEditor };
+        const latest = useRef({ options, onLineChanges, onLinesReady, onEditorError, createEditor, onModifiedChange, onSave });
+        latest.current = { options, onLineChanges, onLinesReady, onEditorError, createEditor, onModifiedChange, onSave };
 
         // One controller per mounted host. Identical sides render no editor.
         useEffect(() => {
@@ -205,6 +225,17 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         }, [models, identical]);
 
         useEffect(() => { controllerRef.current?.setOptions(options); }, [options, identical]);
+
+        // Edits and Ctrl/Cmd+S on the modified side, only while it is editable.
+        useEffect(() => {
+            if (!editor || !editable) return;
+            const change = editor.onDidChangeModifiedContent(text => latest.current.onModifiedChange?.(text));
+            const save = editor.addSaveCommand(() => latest.current.onSave?.());
+            return () => {
+                change.dispose();
+                save.dispose();
+            };
+        }, [editor, editable]);
 
         // Providers on the modified model, re-mounted after every model swap
         // (the adapter drops them before swapping).

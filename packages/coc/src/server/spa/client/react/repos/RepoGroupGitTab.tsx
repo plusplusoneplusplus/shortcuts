@@ -281,6 +281,8 @@ export function RepoGroupGitTab({
                         onViewChange={splitGitPanel.onViewChange}
                         detailOpen={splitGitPanel.detailOpen}
                         restoreView={splitGitPanel.restoreView}
+                        onDetailDirtyChange={splitGitPanel.onDetailDirtyChange}
+                        onDetailRegisterSave={splitGitPanel.onDetailRegisterSave}
                         headerToolbarContainer={headerToolbarContainer}
                         active={active}
                     />

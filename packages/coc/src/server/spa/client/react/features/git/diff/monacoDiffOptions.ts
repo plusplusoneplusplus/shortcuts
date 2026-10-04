@@ -31,8 +31,9 @@ export interface DiffModelDescriptor {
     text: string;
     language: string;
     /**
-     * True only for the modified on-disk side of an unstaged diff or a
-     * server-confirmed clean branch head. Only that side may use a language server.
+     * True only for a modified side that is the on-disk file: an unstaged
+     * diff, a staged diff whose disk equals the index, or a server-confirmed
+     * clean branch head. Only that side may be edited or use a language server.
      */
     isWorkingCopy: boolean;
 }
@@ -52,7 +53,10 @@ export interface DiffModelsParams {
      * a server-confirmed branch-range working-copy head.
      */
     modelIdentity?: string;
-    /** Server-confirmed eligibility, used only for a branch-range modified side. */
+    /**
+     * The modified side is byte-identical to the disk file: server-confirmed for
+     * a branch-range head, host-checked (disk == index) for a staged diff.
+     */
     modifiedMatchesWorkingCopy?: boolean;
     original: string;
     modified: string;
@@ -100,7 +104,8 @@ export function diffLanguageFor(relativePath: string): string {
 
 /**
  * The two models for one file. Unstaged: index → disk (real URI). Staged:
- * HEAD → index (both synthetic).
+ * HEAD → index (both synthetic), except that the index side uses the real URI
+ * when the host confirmed the disk file equals the index.
  */
 export function buildDiffModels(params: DiffModelsParams): DiffModelsInput {
     const { workspaceId, relativePath, stage } = params;
@@ -129,9 +134,12 @@ export function buildDiffModels(params: DiffModelsParams): DiffModelsInput {
             modified: { uri: browserDocumentUri(workspaceId, relativePath), text: params.modified, language, isWorkingCopy: true },
         };
     }
+    const indexIsDisk = stage === 'staged' && params.modifiedMatchesWorkingCopy === true;
     return {
         original: { uri: diffRefUri(workspaceId, 'HEAD', relativePath), text: params.original, language, isWorkingCopy: false },
-        modified: { uri: diffRefUri(workspaceId, 'INDEX', relativePath), text: params.modified, language, isWorkingCopy: false },
+        modified: indexIsDisk
+            ? { uri: browserDocumentUri(workspaceId, relativePath), text: params.modified, language, isWorkingCopy: true }
+            : { uri: diffRefUri(workspaceId, 'INDEX', relativePath), text: params.modified, language, isWorkingCopy: false },
     };
 }
 
@@ -146,17 +154,27 @@ export function sameDiffModels(a: DiffModelsInput | null, b: DiffModelsInput | n
 export type DiffEditorOptions = monacoEditor.IDiffEditorConstructionOptions;
 
 /**
- * Diff editor options for a view mode. Both sides are read-only; the overview
- * ruler stands in for the classic mini-map; whitespace is not ignored so the
- * hunks match `git diff`.
+ * Whether the modified side may be edited: the host asked for it, the diff is
+ * a working-tree diff, and the modified model is the real on-disk document.
+ * Ref-backed sides, commit/PR snapshots and branch-range heads never qualify.
  */
-export function buildDiffEditorOptions(viewMode: DiffViewMode): DiffEditorOptions {
+export function isEditableDiff(requested: boolean, stage: MonacoDiffStage, models: DiffModelsInput): boolean {
+    return requested && stage !== 'branch-range' && models.modified.isWorkingCopy;
+}
+
+/**
+ * Diff editor options for a view mode. The original side is always read-only;
+ * the modified side is editable only when `editable` (see `isEditableDiff`).
+ * The overview ruler stands in for the classic mini-map; whitespace is not
+ * ignored so the hunks match `git diff`.
+ */
+export function buildDiffEditorOptions(viewMode: DiffViewMode, editable = false): DiffEditorOptions {
     return {
         renderSideBySide: viewMode === 'split',
         useInlineViewWhenSpaceIsLimited: false,
-        readOnly: true,
+        readOnly: !editable,
         originalEditable: false,
-        domReadOnly: true,
+        domReadOnly: !editable,
         ignoreTrimWhitespace: false,
         renderOverviewRuler: true,
         renderIndicators: true,

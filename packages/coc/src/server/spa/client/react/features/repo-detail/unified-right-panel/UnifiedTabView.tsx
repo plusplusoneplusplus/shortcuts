@@ -271,7 +271,13 @@ export function UnifiedTabView({
                 />
             );
         case 'git':
-            return <UnifiedGitTab scopeWorkspaceId={scopeWorkspaceId} />;
+            return (
+                <UnifiedGitTab
+                    scopeWorkspaceId={scopeWorkspaceId}
+                    onDirtyChange={handleDirty}
+                    onRegisterSave={handleRegisterSave}
+                />
+            );
         default:
             return (
                 <div

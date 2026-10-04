@@ -152,8 +152,12 @@ describe('WorkingTreeFileDiff — diff engine', () => {
 
     it('routes the content request to the selected workspace client', async () => {
         localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
+        // Disk differs from the index, so the staged index side stays ref-backed.
+        clients['ws-b'].git.getWorkingTreeFileContent.mockImplementation(async (_ws: string, _p: string, stage: string) =>
+            stage === 'staged' ? content('a\n', 'b\n') : content('b\n', 'c\n'));
         await renderDiff({ workspaceId: 'ws-b', stage: 'staged' });
         expect(clients['ws-b'].git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-b', '/repo/src/a.ts', 'staged');
+        expect(clients['ws-b'].git.getWorkingTreeFileContent).toHaveBeenCalledWith('ws-b', '/repo/src/a.ts', 'unstaged');
         expect(clients['ws-a'].git.getWorkingTreeFileContent).not.toHaveBeenCalled();
         const models = fakes[0].models[0];
         expect(models.original.uri).toMatch(/^coc-diff-ref:/);

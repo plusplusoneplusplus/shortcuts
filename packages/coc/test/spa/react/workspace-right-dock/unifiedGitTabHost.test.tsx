@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import {
     clearUnifiedGitTabHost,
+    getUnifiedGitTabDirtyBridge,
     getUnifiedGitTabHost,
     openUnifiedGitTab,
     setUnifiedGitTabHost,
@@ -54,6 +55,45 @@ describe('unifiedGitTab host store', () => {
         expect(getUnifiedGitTabHost('ws-a')).toBe(screen.getByTestId('unified-git-tab'));
         unmount();
         expect(getUnifiedGitTabHost('ws-a')).toBeNull();
+    });
+
+    it('forwards the detail dirty/save reports to the mounted Git tab of the same scope only', () => {
+        const dirtyA = vi.fn();
+        const registerA = vi.fn();
+        const dirtyB = vi.fn();
+        let panelA: ReturnType<typeof useSplitGitPanel> | null = null;
+        function Probe() {
+            panelA = useSplitGitPanel({ scopeWorkspaceId: 'ws-a', chatId: null, enabled: true });
+            return null;
+        }
+        const { rerender } = render(<>
+            <Probe />
+            <UnifiedGitTab scopeWorkspaceId="ws-a" onDirtyChange={dirtyA} onRegisterSave={registerA} />
+            <UnifiedGitTab scopeWorkspaceId="ws-b" onDirtyChange={dirtyB} />
+        </>);
+        const save = async () => true;
+        panelA!.onDetailDirtyChange?.(true);
+        panelA!.onDetailRegisterSave?.(save);
+        expect(dirtyA).toHaveBeenCalledWith(true);
+        expect(registerA).toHaveBeenCalledWith(save);
+        expect(dirtyB).not.toHaveBeenCalled();
+
+        // Unmounting the tab withdraws the bridge; later reports are dropped.
+        rerender(<Probe />);
+        expect(getUnifiedGitTabDirtyBridge('ws-a')).toBeNull();
+        panelA!.onDetailDirtyChange?.(false);
+        expect(dirtyA).toHaveBeenCalledTimes(1);
+    });
+
+    it('a disabled split panel exposes no dirty seams', () => {
+        let panel: ReturnType<typeof useSplitGitPanel> | null = null;
+        function Probe() {
+            panel = useSplitGitPanel({ scopeWorkspaceId: 'ws-x', chatId: null, enabled: false });
+            return null;
+        }
+        render(<Probe />);
+        expect(panel!.onDetailDirtyChange).toBeUndefined();
+        expect(panel!.onDetailRegisterSave).toBeUndefined();
     });
 
     it('a stale clear does not erase a newer node', () => {

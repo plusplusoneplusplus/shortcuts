@@ -135,8 +135,10 @@ describe('AC-06 source assertions', () => {
         expect(rule).toMatch(/stage !== 'unstaged'/);
     });
 
-    it('both diff editors stay read-only and the engine default is monaco', () => {
-        expect(read('monacoDiffOptions.ts')).toMatch(/readOnly: true,\s*originalEditable: false,/);
+    it('the original side is never editable, the modified side only via isEditableDiff, and the engine default is monaco', () => {
+        const options = read('monacoDiffOptions.ts');
+        expect(options).toMatch(/readOnly: !editable,\s*originalEditable: false,/);
+        expect(options).toMatch(/requested && stage !== 'branch-range' && models\.modified\.isWorkingCopy/);
         expect(readFileSync(join(SRC, 'features/git/hooks/useDiffEngine.ts'), 'utf8')).toMatch(/DEFAULT_DIFF_ENGINE: DiffEngine = 'monaco'/);
     });
 
