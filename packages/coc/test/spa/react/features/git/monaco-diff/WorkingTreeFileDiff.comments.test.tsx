@@ -224,6 +224,55 @@ describe('WorkingTreeFileDiff — comments in the editor', () => {
         view.unmount();
     });
 
+    it.each(['unified', 'split'] as const)('copies and drafts from original- and modified-side cards in the %s layout', async viewMode => {
+        localStorage.setItem('coc-diff-view-mode', viewMode);
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+        const insert = vi.fn();
+        publishUnifiedChatCanvasActions('chat-a', { askAi: vi.fn(), insertDraft: insert, sendToAi: vi.fn(async () => {}) });
+        hooks.comments = [
+            comment('c1'),
+            comment('c2', { selection: { diffLineStart: 2, diffLineEnd: 2, side: 'removed', oldLineStart: 2, oldLineEnd: 2, newLineStart: NaN, newLineEnd: NaN, startColumn: 0, endColumn: 1 }, selectedText: 'b' }),
+        ];
+        const view = await renderEditor({ workspaceId: 'group-1', chatId: 'chat-a' });
+        expect(zoneOf('c1')!.side).toBe('modified');
+        expect(zoneOf('c2')!.side).toBe(viewMode === 'split' ? 'original' : 'modified');
+        for (const [i, id] of [[0, 'c1'], [1, 'c2']] as const) {
+            const card = within(zoneOf(id)!.domNode).getByTestId(`comment-card-${id}`);
+            await act(async () => { fireEvent.click(within(card).getByRole('button', { name: 'Copy resolve prompt' })); });
+            fireEvent.click(within(card).getByRole('button', { name: 'Send to current chat' }));
+            expect(writeText).toHaveBeenLastCalledWith(formatDiffCommentPrompt(hooks.comments[i] as DiffComment));
+            expect(insert).toHaveBeenLastCalledWith(formatDiffCommentPrompt(hooks.comments[i] as DiffComment));
+        }
+        clearUnifiedChatCanvasActions();
+        vi.unstubAllGlobals();
+        view.unmount();
+    });
+
+    it('keeps a remote clone\u2019s own file context when drafting into the group panel\u2019s chat', async () => {
+        clients['clone-1'] = makeClient();
+        const insert = vi.fn();
+        publishUnifiedChatCanvasActions('chat-a', { askAi: vi.fn(), insertDraft: insert, sendToAi: vi.fn(async () => {}) });
+        const cloned = comment('c1', { context: { repositoryId: 'clone-1', filePath: '/clone/src/a.ts', oldRef: 'INDEX', newRef: 'working-tree' } });
+        hooks.comments = [cloned];
+        let view!: ReturnType<typeof render>;
+        await act(async () => {
+            view = render(
+                <UnifiedPanelHostProvider host={{ workspaceId: 'group-1', chatId: 'chat-a' }}>
+                    <WorkingTreeFileDiff workspaceId="clone-1" filePath="/clone/src/a.ts" repoRoot="/clone" stage="unstaged" createDiffEditor={createDiffEditor} />
+                </UnifiedPanelHostProvider>,
+            );
+        });
+        await act(async () => {});
+        await act(async () => { fake().finishDiff(CHANGES); });
+        expect(clients['clone-1'].git.getWorkingTreeFileContent).toHaveBeenCalled();
+        fireEvent.click(within(within(zoneOf('c1')!.domNode).getByTestId('comment-card-c1')).getByRole('button', { name: 'Send to current chat' }));
+        expect(insert).toHaveBeenCalledWith(formatDiffCommentPrompt(cloned));
+        expect(insert.mock.calls[0][0]).toContain('file: /clone/src/a.ts');
+        clearUnifiedChatCanvasActions();
+        view.unmount();
+    });
+
     it('copies a resolve prompt for only the clicked card with working-tree context', async () => {
         const writeText = vi.fn().mockResolvedValue(undefined);
         vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });

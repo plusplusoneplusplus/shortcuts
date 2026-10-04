@@ -332,6 +332,34 @@ describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco
         expect(stored.map(c => c.status)).toEqual(['open', 'open']);
     });
 
+    it.each(['unified', 'split'] as const)('copies and drafts from original- and modified-side cards in the %s layout', async viewMode => {
+        localStorage.setItem('coc-diff-view-mode', viewMode);
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+        const source = makeSource(kind);
+        stored = [
+            comment(source, 'c1'),
+            comment(source, 'c2', {
+                selection: { diffLineStart: 6, diffLineEnd: 6, side: 'removed', oldLineStart: 2, oldLineEnd: 2, startColumn: 0, endColumn: 1 },
+                selectedText: 'b',
+            }),
+        ];
+        const draft = publishChat('chat-a');
+        await act(async () => {
+            render(<UnifiedPanelHostProvider host={{ workspaceId: 'group-1', chatId: 'chat-a' }}>{panel(source)}</UnifiedPanelHostProvider>);
+        });
+        await act(async () => { fake().finishDiff(CHANGES); });
+        expect(zoneOf('c1').side).toBe('modified');
+        expect(zoneOf('c2').side).toBe(viewMode === 'split' ? 'original' : 'modified');
+        for (const [i, id] of [[0, 'c1'], [1, 'c2']] as const) {
+            await act(async () => { fireEvent.click(within(cardOf(id)).getByRole('button', { name: 'Copy resolve prompt' })); });
+            fireEvent.click(within(cardOf(id)).getByRole('button', { name: 'Send to current chat' }));
+            expect(writeText).toHaveBeenLastCalledWith(formatDiffCommentPrompt(stored[i]));
+            expect(draft).toHaveBeenLastCalledWith(formatDiffCommentPrompt(stored[i]));
+        }
+        expect(draft.mock.calls[1][0]).toContain('Lines 6–6 (removed)');
+    });
+
     it('disables Send without a mounted visible chat while Copy stays available', async () => {
         const source = makeSource(kind);
         stored = [comment(source, 'c1')];
