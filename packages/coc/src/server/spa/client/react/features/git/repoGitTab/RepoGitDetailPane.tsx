@@ -39,6 +39,9 @@ export interface RepoGitDetailPaneProps {
     onNavigateToWorkingTreeFile: (filePath: string, target: 'first' | 'last') => void;
     /** Refreshes the working-tree list when a selected untracked file no longer exists on disk. */
     onWorkingTreeFileMissing?: () => void;
+    /** An edited working-tree diff reports unsaved edits and its save function here. */
+    onDetailDirtyChange?: (isDirty: boolean) => void;
+    onDetailRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
     onAllBranchCommentsClick: () => void;
     onBranchAskAI: (mode: 'ask' | 'task') => void;
     onCommitClassified: () => void;
@@ -48,7 +51,7 @@ export function RepoGitDetailPane({
     workspaceId, view, commits, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
-    onWorkingTreeFileMissing, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
+    onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
     if (view?.type === 'commit') {
         return (
@@ -134,6 +137,8 @@ export function RepoGitDetailPane({
                 onNavigateToFile={onNavigateToWorkingTreeFile}
                 initialHunkTarget={hunkTarget}
                 onFileMissing={onWorkingTreeFileMissing}
+                onDirtyChange={onDetailDirtyChange}
+                onRegisterSave={onDetailRegisterSave}
             />
         );
     }

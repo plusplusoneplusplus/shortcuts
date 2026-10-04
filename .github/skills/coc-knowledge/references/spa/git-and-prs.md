@@ -129,6 +129,11 @@ then uses the real document URI via `modifiedMatchesWorkingCopy`). Otherwise a
 staged diff stays read-only with a note. Saving never touches the index; Ctrl/Cmd+S (`addSaveCommand`) writes the edited text with
 `explorerApi.writeBlob(workspaceId, repoRelativePath, text)`. Hunks recompute live:
 the controller reports diffs against the editor's current modified text.
+The header shows a Save button and a dirty marker while editable; the view reports
+`onDirtyChange` / `onRegisterSave` (Explorer contract; the untracked `PreviewPane`
+forwards them). `RepoGitTab` wraps user selection changes with `useDirtyDetailGuard`,
+which asks Save / Don't Save / Cancel (`ExplorerCloseTabsDialog`) while the diff is
+dirty; a failed save keeps the prompt and the buffer.
 
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.

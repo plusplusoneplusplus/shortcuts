@@ -228,6 +228,73 @@ describe('WorkingTreeFileDiff — editable staged diff (disk == index)', () => {
     });
 });
 
+describe('WorkingTreeFileDiff — save button, dirty marker, save registration (AC-04)', () => {
+    it('shows a dirty marker while edited and clears it after Save', async () => {
+        await renderDiff();
+        const saveBtn = screen.getByTestId('working-tree-file-diff-save-btn') as HTMLButtonElement;
+        expect(saveBtn.disabled).toBe(true);
+        expect(screen.queryByTestId('working-tree-file-diff-dirty')).toBeNull();
+        act(() => fakes[0].type('b\nedited\n'));
+        expect(screen.getByTestId('working-tree-file-diff-dirty')).toBeTruthy();
+        expect(saveBtn.disabled).toBe(false);
+        await act(async () => { saveBtn.click(); });
+        expect(writeBlob).toHaveBeenCalledWith('ws-a', 'src/a.ts', 'b\nedited\n');
+        expect(screen.queryByTestId('working-tree-file-diff-dirty')).toBeNull();
+    });
+
+    it('a failed Save keeps the buffer dirty and shows the error', async () => {
+        writeBlob.mockRejectedValueOnce(new Error('disk full'));
+        await renderDiff();
+        act(() => fakes[0].type('b\nedited\n'));
+        await act(async () => { screen.getByTestId('working-tree-file-diff-save-btn').click(); });
+        expect(screen.getByTestId('working-tree-file-diff-dirty')).toBeTruthy();
+        expect(screen.getByTestId('working-tree-file-diff-save-error').textContent).toContain('disk full');
+    });
+
+    it('reports dirty changes and false on unmount', async () => {
+        const onDirtyChange = vi.fn();
+        const view = await renderDiff({ onDirtyChange });
+        expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+        act(() => fakes[0].type('b\nedited\n'));
+        expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+        view.unmount();
+        expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it('registers a save that writes the edits and resolves true', async () => {
+        const onRegisterSave = vi.fn();
+        await renderDiff({ onRegisterSave });
+        const save = onRegisterSave.mock.calls.filter(([fn]) => fn !== null).pop()?.[0] as () => Promise<boolean>;
+        expect(save).toBeTypeOf('function');
+        act(() => fakes[0].type('b\nedited\n'));
+        let saved = false;
+        await act(async () => { saved = await save(); });
+        expect(saved).toBe(true);
+        expect(writeBlob).toHaveBeenCalledWith('ws-a', 'src/a.ts', 'b\nedited\n');
+    });
+
+    it('registered save resolves false when the write fails', async () => {
+        writeBlob.mockRejectedValueOnce(new Error('nope'));
+        const onRegisterSave = vi.fn();
+        await renderDiff({ onRegisterSave });
+        const save = onRegisterSave.mock.calls.filter(([fn]) => fn !== null).pop()?.[0] as () => Promise<boolean>;
+        act(() => fakes[0].type('b\nedited\n'));
+        let saved = true;
+        await act(async () => { saved = await save(); });
+        expect(saved).toBe(false);
+    });
+
+    it('a read-only staged diff shows no Save button and registers no save', async () => {
+        clients['ws-a'].git.getWorkingTreeFileContent.mockImplementation(async (_ws: string, _p: string, stage: string) =>
+            stage === 'staged' ? content('a\n', 'b\n', { base: { content: 'a\n', ref: 'HEAD', exists: true }, head: { content: 'b\n', ref: 'INDEX', exists: true } })
+                : content('b\n', 'c\n'));
+        const onRegisterSave = vi.fn();
+        await renderDiff({ stage: 'staged', onRegisterSave });
+        expect(screen.queryByTestId('working-tree-file-diff-save-btn')).toBeNull();
+        expect(onRegisterSave.mock.calls.every(([fn]) => fn === null)).toBe(true);
+    });
+});
+
 describe('stagedDiskMatchesIndex', () => {
     const staged = (index: string, exists = true) =>
         content('h\n', index, { head: { content: index, ref: 'INDEX', exists } }) as never;

@@ -56,6 +56,7 @@ import { useGitSkillActions } from './repoGitTab/useGitSkillActions';
 import { buildGitContextMenuItems } from './repoGitTab/gitContextMenuModel';
 import { RepoGitListPane } from './repoGitTab/RepoGitListPane';
 import { RepoGitDetailPane } from './repoGitTab/RepoGitDetailPane';
+import { useDirtyDetailGuard } from './repoGitTab/useDirtyDetailGuard';
 import { RepoGitOverlays } from './repoGitTab/RepoGitOverlays';
 import type { GitContextMenuState, PersistedGitView, RightPanelView, SkillMenuContext } from './repoGitTab/types';
 import { viewIdentity } from './repoGitTab/selectionModel';
@@ -193,13 +194,46 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
     // Keep a displayed tab current: re-run the same full refresh every 5 minutes.
     useGitAutoRefresh({ workspaceId, refreshAll: data.refreshAll, active });
 
-    const selection = useRepoGitSelection({
+    const rawSelection = useRepoGitSelection({
         workspaceId,
         routeWorkspaceId,
         commits: data.commits,
         loading: data.loading,
     });
-    selectionRef.current = selection;
+    selectionRef.current = rawSelection;
+
+    // An edited working-tree diff asks Save / Don't Save / Cancel before a
+    // user selection replaces it (AC-04). Data-driven view updates go through
+    // `rawSelection` (the bridge above) and are never blocked.
+    const rawView = rawSelection.view;
+    const detailGuard = useDirtyDetailGuard(rawView?.type === 'working-tree-file' ? rawView.filePath : null);
+    const { guard } = detailGuard;
+    const guardedSelectors = useMemo(() => ({
+        selectCommit: guard(rawSelection.selectCommit),
+        selectCommits: guard(rawSelection.selectCommits),
+        selectCommitFile: guard(rawSelection.selectCommitFile),
+        navigateToCommitFile: guard(rawSelection.navigateToCommitFile),
+        selectBranchRange: guard(rawSelection.selectBranchRange),
+        selectBranchFile: guard(rawSelection.selectBranchFile),
+        navigateToBranchFile: guard(rawSelection.navigateToBranchFile),
+        selectWorkingTreeFile: (filePath: string, stage: 'staged' | 'unstaged' | 'untracked') => {
+            // Re-clicking the file already shown is not a navigation.
+            const current = rawSelection.getView();
+            if (current?.type === 'working-tree-file' && current.filePath === filePath && current.stage === stage) return;
+            guard(rawSelection.selectWorkingTreeFile)(filePath, stage);
+        },
+        navigateToWorkingTreeFile: guard(rawSelection.navigateToWorkingTreeFile),
+        selectWorkingTreeComments: guard(rawSelection.selectWorkingTreeComments),
+        selectBranchRangeComments: guard(rawSelection.selectBranchRangeComments),
+        lookupCommit: guard(rawSelection.lookupCommit),
+    }), [
+        guard, rawSelection.selectCommit, rawSelection.selectCommits, rawSelection.selectCommitFile,
+        rawSelection.navigateToCommitFile, rawSelection.selectBranchRange, rawSelection.selectBranchFile,
+        rawSelection.navigateToBranchFile, rawSelection.selectWorkingTreeFile, rawSelection.getView,
+        rawSelection.navigateToWorkingTreeFile, rawSelection.selectWorkingTreeComments,
+        rawSelection.selectBranchRangeComments, rawSelection.lookupCommit,
+    ]);
+    const selection = { ...rawSelection, ...guardedSelectors };
     const restoreViewRef = useRef(restoreView);
     restoreViewRef.current = restoreView;
     hydrateRef.current = loaded => selection.hydrateFromInitialLoad(loaded, restoreViewRef.current);
@@ -637,6 +671,8 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
             onNavigateToCommitFile={selection.navigateToCommitFile}
             onNavigateToWorkingTreeFile={selection.navigateToWorkingTreeFile}
             onWorkingTreeFileMissing={data.bumpWorkingChanges}
+            onDetailDirtyChange={detailGuard.onDirtyChange}
+            onDetailRegisterSave={detailGuard.onRegisterSave}
             onAllBranchCommentsClick={selection.selectBranchRangeComments}
             onBranchAskAI={skillActions.askAboutBranch}
             onCommitClassified={refreshClassificationStatus}
@@ -824,6 +860,7 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
                     )
                     : null}
                 {overlays}
+                {detailGuard.dialog}
             </>
     );
 }

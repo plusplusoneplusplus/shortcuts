@@ -16,7 +16,9 @@
  * editable; Ctrl/Cmd+S writes it to disk through the explorer blob API,
  * keyed by this diff's own workspace. A staged diff is editable only while the
  * disk file equals the index (checked by also loading the unstaged sides);
- * saving it writes the disk file and never touches the index.
+ * saving it writes the disk file and never touches the index. The header
+ * Save button and dirty marker, plus `onDirtyChange` / `onRegisterSave`, follow
+ * the Explorer editor contract so the owner can prompt before leaving.
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
@@ -72,6 +74,10 @@ export interface WorkingTreeFileDiffProps {
     onFileMissing?: () => void;
     /** Monaco diff editor factory; tests pass an owned adapter. */
     createDiffEditor?: DiffEditorFactory;
+    /** Reports unsaved edits (the Explorer editor contract); false on unmount. */
+    onDirtyChange?: (isDirty: boolean) => void;
+    /** Registers the save function while the view is editable; null otherwise. */
+    onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
 }
 
 /**
@@ -104,7 +110,7 @@ type EditorContentState =
     | { key: string; status: 'loaded'; content: GitWorkingTreeFileContentResponse; diskMatchesIndex: boolean }
     | { key: string; status: 'failed' };
 
-export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor }: WorkingTreeFileDiffProps) {
+export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave }: WorkingTreeFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -212,6 +218,22 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             return false;
         }
     }, []);
+
+    // The untracked view forwards these to its PreviewPane instead.
+    const canSave = stage !== 'untracked' && editable && editorSides !== null;
+    useEffect(() => {
+        if (stage !== 'untracked') onDirtyChange?.(isDirty);
+    }, [stage, isDirty, onDirtyChange]);
+    useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
+    useEffect(() => {
+        if (!onRegisterSave || stage === 'untracked') return;
+        if (!canSave) {
+            onRegisterSave(null);
+            return;
+        }
+        onRegisterSave(handleSaveEdits);
+        return () => onRegisterSave(null);
+    }, [stage, canSave, onRegisterSave, handleSaveEdits]);
 
     const handleEditorError = useCallback(() => setEditorFailedKey(contentKey), [contentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(a => a + 1), []);
@@ -370,6 +392,27 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             <div className="px-4 py-3 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#fafafa] dark:bg-[#252526]" data-testid="working-tree-file-diff-header">
                 <div className="flex items-center gap-2">
                     <TruncatedPath path={filePath} className="text-sm font-semibold text-[#1e1e1e] dark:text-[#ccc] flex-1" />
+                    {canSave && isDirty && (
+                        <span
+                            className="text-xs text-[#0078d4] dark:text-[#3794ff] flex-shrink-0"
+                            title="Unsaved changes"
+                            aria-label="Unsaved changes"
+                            data-testid="working-tree-file-diff-dirty"
+                        >
+                            ●
+                        </span>
+                    )}
+                    {canSave && (
+                        <button
+                            onClick={() => { void handleSaveEdits(); }}
+                            disabled={!isDirty}
+                            title="Save (Ctrl/Cmd+S)"
+                            className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08] disabled:opacity-40 disabled:hover:bg-transparent"
+                            data-testid="working-tree-file-diff-save-btn"
+                        >
+                            Save
+                        </button>
+                    )}
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                     {stage !== 'untracked' && <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />}
                     {stage !== 'untracked' && <DiffViewToggle mode={viewMode} onChange={setViewMode} />}
@@ -422,6 +465,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                                 filePath={relativePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
                                 onNotFound={handlePreviewNotFound}
+                                onDirtyChange={onDirtyChange}
+                                onRegisterSave={onRegisterSave}
                             />
                         </div>
                     ) : editorSides ? (

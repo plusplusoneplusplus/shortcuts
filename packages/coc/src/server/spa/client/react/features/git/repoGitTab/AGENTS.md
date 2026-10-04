@@ -18,6 +18,7 @@ refresh, and the two layouts. Everything else lives here.
 | `useGitOperationActions.ts` | Fetch/pull/push/push-to/rebase/reset/amend/reword/drop/cherry-pick/reorder/conflict, plus all four async-job pollers. |
 | `useGitAutoPullController.ts` | The per-repo auto-pull setting (written via the preferences PATCH) and a read of the server-owned schedule. Owns no timer and never pulls. |
 | `useGitSkillActions.ts` | Skills list + MRU map, skill runs, Ask AI launches, queue-backed squash and conflict resolution. |
+| `useDirtyDetailGuard.tsx` | Save / Don't Save / Cancel prompt before a user selection replaces an edited working-tree diff. `RepoGitTab` wraps the selection's select/navigate functions with `guard`; data-driven `setView` stays unguarded. |
 | `RepoGitListPane.tsx`, `RepoGitDetailPane.tsx`, `RepoGitOverlays.tsx` | Presentation only; everything arrives as props. |
 
 ## Invariants
