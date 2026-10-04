@@ -849,6 +849,15 @@ export function FollowUpInputArea({
     // subscription always validates against the latest attached items.
     function handleActiveChatAttach(payload: SessionContextAttachmentDragPayload): boolean {
         if (!rootRef.current?.isConnected) return false;
+        // Repo panels can stay mounted while hidden. Decline before changing
+        // attachment/error state or focus so routing can try a visible composer.
+        for (let node: HTMLElement | null = rootRef.current; node; node = node.parentElement) {
+            const style = node.ownerDocument.defaultView?.getComputedStyle(node);
+            if (node.hidden || node.hasAttribute('inert') || style?.display === 'none'
+                || style?.visibility === 'hidden' || style?.visibility === 'collapse') {
+                return false;
+            }
+        }
         const validation = validateSessionContextDrop({
             payload,
             featureEnabled: sessionContextAttachmentsEnabled,

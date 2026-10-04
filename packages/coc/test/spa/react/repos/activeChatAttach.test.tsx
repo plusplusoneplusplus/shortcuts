@@ -264,6 +264,51 @@ describe('activeChatAttach channel', () => {
 });
 
 describe('FollowUpInputArea — editor pill attach', () => {
+    it.each([
+        { style: { display: 'none' } },
+        { style: { visibility: 'hidden' as const } },
+        { style: { visibility: 'collapse' as const } },
+        { hidden: true },
+        { inert: '' },
+    ])('skips a mounted composer inside a hidden panel (%j)', async hiddenProps => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const visible = vi.fn();
+        const hidden = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext: visible })} />);
+        render(<div {...hiddenProps}><FollowUpInputArea {...makeProps({ onAttachSessionContext: hidden })} /></div>);
+        await act(async () => { await Promise.resolve(); });
+        tracker.focusCount = 0;
+
+        const payload = fileSelection();
+        act(() => { expect(attachSelectionToChat('ws-1', payload)).toBe('active-chat'); });
+
+        expect(visible).toHaveBeenCalledWith(payload);
+        expect(hidden).not.toHaveBeenCalled();
+        expect(tracker.focusCount).toBe(1);
+        expect(peekNewChatSeedContext()).toEqual([]);
+    });
+
+    it('seeds a new chat without focusing or changing a hidden composer, then accepts when shown', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        const props = makeProps({ onAttachSessionContext });
+        const { rerender } = render(<div style={{ display: 'none' }}><FollowUpInputArea {...props} /></div>);
+        await act(async () => { await Promise.resolve(); });
+        tracker.focusCount = 0;
+
+        const payload = fileSelection();
+        act(() => { expect(attachSelectionToChat('ws-1', payload)).toBe('new-chat'); });
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+        expect(tracker.focusCount).toBe(0);
+        expect(peekNewChatSeedContext()).toEqual([payload]);
+        expect(screen.queryByTestId('follow-up-session-context-error')).toBeNull();
+
+        rerender(<div style={{ display: 'contents' }}><FollowUpInputArea {...props} /></div>);
+        act(() => { expect(attachSelectionToChat('ws-1', payload)).toBe('active-chat'); });
+        expect(onAttachSessionContext).toHaveBeenCalledWith(payload);
+        expect(tracker.focusCount).toBe(1);
+    });
+
     it('attaches a routed selection and focuses the chat input', async () => {
         mockSessionContextAttachmentsEnabled.value = true;
         const onAttachSessionContext = vi.fn();
