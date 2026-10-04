@@ -125,6 +125,12 @@ export interface DiffEditorAdapter {
      * Ignored unless that model is exactly `documentUri`.
      */
     setModifiedMarkers(documentUri: string, markers: readonly MonacoApi.editor.IMarkerData[]): void;
+    /** Current text of the modified model (user edits included); null with no model. */
+    getModifiedValue(): string | null;
+    /** Fires with the modified model's full text after each edit to it. */
+    onDidChangeModifiedContent(listener: (text: string) => void): Disposable;
+    /** Binds Ctrl/Cmd+S in the modified editor to `run`. */
+    addSaveCommand(run: () => void): Disposable;
     /** Dispose the editor and every model it owns. */
     dispose(): void;
 }
@@ -161,6 +167,13 @@ export interface MonacoDiffController {
     isDisposed(): boolean;
 }
 
+/** `models` with the modified text the editor holds now, so edits reach diff consumers. */
+function withLiveModifiedText(adapter: DiffEditorAdapter, models: DiffModelsInput): DiffModelsInput {
+    const text = adapter.getModifiedValue();
+    if (text === null || text === models.modified.text) return models;
+    return { ...models, modified: { ...models.modified, text } };
+}
+
 export function createMonacoDiffController(
     createAdapter: () => Promise<DiffEditorAdapter>,
     callbacks: MonacoDiffControllerCallbacks = {},
@@ -192,7 +205,7 @@ export function createMonacoDiffController(
         if (disposed || !adapter || !appliedModels) return;
         const changes = adapter.getLineChanges();
         navigator.setLineChanges(changes);
-        if (changes) callbacks.onLineChanges?.(changes, appliedModels);
+        if (changes) callbacks.onLineChanges?.(changes, withLiveModifiedText(adapter, appliedModels));
     };
 
     const attach = (created: DiffEditorAdapter) => {

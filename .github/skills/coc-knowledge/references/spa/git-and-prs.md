@@ -119,6 +119,14 @@ User-selected Classic and patch-only sources render without a fallback reason.
 Monaco supplies find, syntax, overview markers, unified/split layout, and hunk navigation while full-context
 and truncation controls stay specific to Classic.
 
+Editing: `MonacoFileDiffViewer`'s `editable` prop opens only the modified side, and
+only when `isEditableDiff` holds (working-tree stage, modified model is the real
+on-disk document); the original side, ref-backed sides, commit/PR snapshots, and
+branch-range heads stay read-only. `WorkingTreeFileDiff` enables it for unstaged
+diffs; Ctrl/Cmd+S (`addSaveCommand`) writes the edited text with
+`explorerApi.writeBlob(workspaceId, repoRelativePath, text)`. Hunks recompute live:
+the controller reports diffs against the editor's current modified text.
+
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.
 `FileDiffPanel` uses each source's existing comment refs for CRUD, replies, and AI

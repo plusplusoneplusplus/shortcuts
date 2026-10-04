@@ -22,6 +22,7 @@ type TextModel = MonacoApi.editor.ITextModel;
 type CodeEditor = MonacoApi.editor.ICodeEditor;
 
 const ADD_COMMENT_GLYPH_ID = 'coc.diff.addComment';
+const SAVE_ACTION_ID = 'coc.diff.save';
 const SIDES: readonly DiffEditorSide[] = ['original', 'modified'];
 
 function plainRange(range: MonacoRange): MonacoRange {
@@ -234,6 +235,24 @@ export function createMonacoDiffEditorAdapter(
         setModifiedMarkers(documentUri, markers) {
             const model = documentModel(documentUri);
             if (model) monaco.editor.setModelMarkers(model, LANGUAGE_MARKER_OWNER, [...markers]);
+        },
+        getModifiedValue() {
+            return editor.getModifiedEditor().getModel()?.getValue() ?? null;
+        },
+        onDidChangeModifiedContent(listener): Disposable {
+            const modifiedEditor = editor.getModifiedEditor();
+            return modifiedEditor.onDidChangeModelContent(() => {
+                const model = modifiedEditor.getModel();
+                if (model) listener(model.getValue());
+            });
+        },
+        addSaveCommand(run): Disposable {
+            return editor.getModifiedEditor().addAction({
+                id: SAVE_ACTION_ID,
+                label: 'Save File',
+                keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+                run: () => run(),
+            });
         },
         dispose() {
             unmountLanguage();

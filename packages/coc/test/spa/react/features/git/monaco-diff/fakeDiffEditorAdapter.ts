@@ -51,6 +51,14 @@ export interface FakeDiffEditor {
     finishDiff(changes: DiffLineChange[]): void;
     /** Fire onDidUpdateDiff without changing the result. */
     fireDiff(): void;
+    /** Text the modified model holds now (set by setModels and `type`). */
+    modifiedText: string | null;
+    /** Replace the modified text as a user edit would, firing content listeners. */
+    type(text: string): void;
+    /** Press Ctrl/Cmd+S: runs every bound save command. */
+    pressSave(): void;
+    /** Live save commands bound through addSaveCommand. */
+    saveCommands: Set<() => void>;
 }
 
 export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDiffEditor {
@@ -63,6 +71,7 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
         languageCleanup = null;
         cleanup?.();
     };
+    const contentListeners = new Set<(text: string) => void>();
     const currentModifiedUri = () => fake.models[fake.models.length - 1]?.modified.uri ?? null;
     const fake: FakeDiffEditor = {
         zones: new Map(),
@@ -94,11 +103,21 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
         fireDiff() {
             for (const listener of [...fake.listeners]) listener();
         },
+        modifiedText: null,
+        type(text) {
+            fake.modifiedText = text;
+            for (const listener of [...contentListeners]) listener(text);
+        },
+        saveCommands: new Set(),
+        pressSave() {
+            for (const run of [...fake.saveCommands]) run();
+        },
         adapter: {
             setModels: vi.fn((models: DiffModelsInput) => {
                 // Like the real adapter: providers go before their model does.
                 unmountLanguage();
                 fake.models.push(models);
+                fake.modifiedText = models?.modified?.text ?? null;
                 lineChanges = null; // a new pair starts computing
                 // Monaco drops view zones, glyph widgets and decorations with the old models.
                 fake.zones.clear();
@@ -159,6 +178,15 @@ export function createFakeDiffEditor(initialOptions?: DiffEditorOptions): FakeDi
             setModifiedMarkers: vi.fn((uri: string, markers: readonly unknown[]) => {
                 if (currentModifiedUri() !== uri) return;
                 fake.markerLog.push({ uri, count: markers.length });
+            }),
+            getModifiedValue: vi.fn(() => fake.modifiedText),
+            onDidChangeModifiedContent: vi.fn((listener: (text: string) => void) => {
+                contentListeners.add(listener);
+                return { dispose: () => { contentListeners.delete(listener); } };
+            }),
+            addSaveCommand: vi.fn((run: () => void) => {
+                fake.saveCommands.add(run);
+                return { dispose: () => { fake.saveCommands.delete(run); } };
             }),
             dispose: vi.fn(() => { unmountLanguage(); fake.disposals++; }),
         },

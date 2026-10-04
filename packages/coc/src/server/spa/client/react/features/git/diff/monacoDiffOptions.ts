@@ -146,17 +146,27 @@ export function sameDiffModels(a: DiffModelsInput | null, b: DiffModelsInput | n
 export type DiffEditorOptions = monacoEditor.IDiffEditorConstructionOptions;
 
 /**
- * Diff editor options for a view mode. Both sides are read-only; the overview
- * ruler stands in for the classic mini-map; whitespace is not ignored so the
- * hunks match `git diff`.
+ * Whether the modified side may be edited: the host asked for it, the diff is
+ * a working-tree diff, and the modified model is the real on-disk document.
+ * Ref-backed sides, commit/PR snapshots and branch-range heads never qualify.
  */
-export function buildDiffEditorOptions(viewMode: DiffViewMode): DiffEditorOptions {
+export function isEditableDiff(requested: boolean, stage: MonacoDiffStage, models: DiffModelsInput): boolean {
+    return requested && stage !== 'branch-range' && models.modified.isWorkingCopy;
+}
+
+/**
+ * Diff editor options for a view mode. The original side is always read-only;
+ * the modified side is editable only when `editable` (see `isEditableDiff`).
+ * The overview ruler stands in for the classic mini-map; whitespace is not
+ * ignored so the hunks match `git diff`.
+ */
+export function buildDiffEditorOptions(viewMode: DiffViewMode, editable = false): DiffEditorOptions {
     return {
         renderSideBySide: viewMode === 'split',
         useInlineViewWhenSpaceIsLimited: false,
-        readOnly: true,
+        readOnly: !editable,
         originalEditable: false,
-        domReadOnly: true,
+        domReadOnly: !editable,
         ignoreTrimWhitespace: false,
         renderOverviewRuler: true,
         renderIndicators: true,

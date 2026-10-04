@@ -11,6 +11,10 @@
  * Binary, oversized or unloadable content, or an editor
  * that fails to start, falls back to the classic viewer with a visible reason
  * (see diffEngineResolution).
+ *
+ * In the editor engine the modified (disk) side of an unstaged diff is
+ * editable; Ctrl/Cmd+S writes it to disk through the explorer blob API,
+ * keyed by this diff's own workspace.
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
@@ -37,6 +41,7 @@ import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useCrossFileNav, type HunkNavigationHandle } from '../hooks/useCrossFileNav';
 import { PreviewPane } from '../../repo-detail/explorer';
+import { explorerApi } from '../../repo-detail/explorer/explorerApi';
 import { repoRelative } from './WorkingTree';
 import { buildDiffContext } from '../../../../comments/diff-context-utils';
 import { copyToClipboard } from '../../../utils/format';
@@ -155,6 +160,36 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     // Classic renders for the legacy engine and when the editor cannot show this file.
     const classicActive = engineSelection.engine === 'legacy';
     const fallbackReason = engineSelection.engine === 'legacy' ? engineSelection.fallback : null;
+
+    // Editing the modified (disk) side. `savedText` is what the last successful
+    // save wrote; `editedText` the editor's text after the latest edit.
+    const relativePath = repoRoot ? repoRelative(filePath, repoRoot) : filePath;
+    const editable = stage === 'unstaged';
+    const [editedText, setEditedText] = useState<string | null>(null);
+    const [savedText, setSavedText] = useState<string | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    useEffect(() => {
+        setEditedText(null);
+        setSavedText(null);
+        setSaveError(null);
+    }, [contentKey]);
+    const diskText = savedText ?? editorSides?.head.content ?? null;
+    const isDirty = editedText !== null && editedText !== diskText;
+    const saveStateRef = useRef({ editedText, isDirty, workspaceId, relativePath });
+    saveStateRef.current = { editedText, isDirty, workspaceId, relativePath };
+    const handleSaveEdits = useCallback(async (): Promise<boolean> => {
+        const { editedText: text, isDirty: dirty, workspaceId: ws, relativePath: path } = saveStateRef.current;
+        if (!dirty || text === null) return true;
+        try {
+            await explorerApi.writeBlob(ws, path, text);
+            setSavedText(text);
+            setSaveError(null);
+            return true;
+        } catch (err) {
+            setSaveError(err instanceof Error && err.message ? err.message : 'Failed to save file');
+            return false;
+        }
+    }, []);
 
     const handleEditorError = useCallback(() => setEditorFailedKey(contentKey), [contentKey]);
     const retryEditor = useCallback(() => setEditorAttempt(a => a + 1), []);
@@ -333,6 +368,11 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             {/* Diff view + sidebar */}
             <div className="flex flex-1 min-h-0">
                 <div ref={scrollContainerRef} className="flex-1 overflow-auto px-1 py-1" data-testid="working-tree-file-diff-section">
+                    {saveError && (
+                        <div className="px-3 py-1 text-xs text-[#d32f2f] dark:text-[#f48771]" data-testid="working-tree-file-diff-save-error">
+                            Save failed: {saveError}
+                        </div>
+                    )}
                     {fallbackReason && (
                         <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
                     )}
@@ -352,7 +392,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                         <div className="h-full w-full" data-testid="working-tree-file-diff-untracked">
                             <PreviewPane
                                 repoId={workspaceId}
-                                filePath={repoRoot ? repoRelative(filePath, repoRoot) : filePath}
+                                filePath={relativePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
                                 readOnly
                                 onNotFound={handlePreviewNotFound}
@@ -362,8 +402,11 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                         <MonacoFileDiffViewer
                             ref={monacoViewerRef}
                             workspaceId={workspaceId}
-                            relativePath={repoRoot ? repoRelative(filePath, repoRoot) : filePath}
+                            relativePath={relativePath}
                             stage={stage as 'staged' | 'unstaged'}
+                            editable={editable}
+                            onModifiedChange={setEditedText}
+                            onSave={() => { void handleSaveEdits(); }}
                             original={editorSides.base.content}
                             modified={editorSides.head.content}
                             viewMode={viewMode}
