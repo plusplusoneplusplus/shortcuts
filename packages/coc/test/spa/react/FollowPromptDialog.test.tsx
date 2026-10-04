@@ -577,6 +577,9 @@ describe('FollowPromptDialog', () => {
     });
 
     it('disables additional info textarea while submitting', async () => {
+        const onClose = vi.fn();
+        let finishEnqueue!: () => void;
+        const enqueuePending = new Promise<void>(resolve => { finishEnqueue = resolve; });
         mockFetch.mockImplementation((url: string, opts?: any) => {
             if (url.includes('/skills')) {
                 return Promise.resolve({
@@ -585,23 +588,22 @@ describe('FollowPromptDialog', () => {
                 });
             }
             if (url.includes('/tasks/settings')) {
-                // Delay to keep submitting state active
-                return new Promise(resolve => setTimeout(() => resolve({
+                return Promise.resolve({
                     ok: true,
                     json: () => Promise.resolve({ folderPath: '/test/repos/abc/tasks' }),
-                }), 200));
+                });
             }
             if (opts?.method === 'POST' && url.includes('/queue')) {
-                return new Promise(resolve => setTimeout(() => resolve({
+                return enqueuePending.then(() => ({
                     ok: true,
                     json: () => Promise.resolve({ id: 'q-1' }),
-                }), 200));
+                }));
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         });
 
         await act(async () => {
-            renderDialog();
+            renderDialog(onClose);
         });
 
         await waitFor(() => {
@@ -626,6 +628,14 @@ describe('FollowPromptDialog', () => {
 
         // Textarea should be disabled while submitting
         expect(textarea.disabled).toBe(true);
+        await waitFor(() => {
+            expect(mockFetch.mock.calls.some(([url, opts]) => url.includes('/queue') && opts?.method === 'POST')).toBe(true);
+        });
+        await act(async () => { finishEnqueue(); });
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledOnce();
+            expect(textarea.disabled).toBe(false);
+        });
     });
 
     it('uses absolute taskPath directly without prepending tasks folder (skill submission)', async () => {

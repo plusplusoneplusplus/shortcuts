@@ -43,14 +43,17 @@ test('assistant image links render a decoded image instead of base64 source text
     const assistant = page.locator('.chat-message.assistant');
     await assistant.getByRole('link', { name: 'dashboard.png', exact: true }).click();
 
-    const panel = page.getByTestId('source-canvas-panel');
+    const panel = page.getByTestId('unified-right-panel');
     await expect(panel).toBeVisible();
+    await expect(panel).toHaveAttribute('data-open', 'true');
+    await expect(panel.getByTestId('unified-panel-toolbar')).toContainText('dashboard.png');
+    await expect(panel.getByTestId('preview-image')).toBeVisible();
     const image = panel.getByRole('img', { name: 'dashboard.png', exact: true });
     await expect(image).toBeVisible();
     await expect.poll(() => image.evaluate((element: HTMLImageElement) => (
         element.complete && element.naturalWidth > 0 && element.naturalHeight > 0
     ))).toBe(true);
-    await expect(panel.getByTestId('source-canvas-source')).toHaveCount(0);
+    await expect(panel.getByTestId('monaco-container')).toHaveCount(0);
     await expect(panel).not.toContainText(PNG_BASE64);
     await testInfo.attach('source-canvas-image', {
         body: await panel.screenshot(),

@@ -138,7 +138,7 @@ test.describe('Note Editor Toolbar — Strikethrough regression', () => {
         try {
             const repoDir = createRepoFixture(tmpDir);
             createTasksFixture(repoDir);
-            await mockTasksContent(page, '# Multi\n\nApply both bold and strike.');
+            await mockTasksContent(page, 'Apply both bold and strike.');
 
             await openTaskInEditor(page, serverUrl, repoDir);
 
@@ -148,18 +148,19 @@ test.describe('Note Editor Toolbar — Strikethrough regression', () => {
 
             const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-            // Select all text in paragraph via triple-click
-            const paragraph = editor.locator('p:has-text("Apply both")');
-            await paragraph.click({ clickCount: 3 });
-            await page.waitForTimeout(200);
+            // Keyboard selection stays stable when bold changes the text's width.
+            await editor.click();
+            await page.keyboard.press(`${mod}+a`);
+            await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+                .toBe('Apply both bold and strike.');
 
             // Apply Bold via keyboard shortcut
             await page.keyboard.press(`${mod}+b`);
             await expect(editor.locator('strong')).toBeVisible({ timeout: 5_000 });
 
-            // Re-select (Bold application may change selection)
-            await paragraph.click({ clickCount: 3 });
-            await page.waitForTimeout(200);
+            await page.keyboard.press(`${mod}+a`);
+            await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+                .toBe('Apply both bold and strike.');
 
             // Apply Strikethrough
             await page.keyboard.press(`${mod}+Shift+s`);
@@ -167,6 +168,7 @@ test.describe('Note Editor Toolbar — Strikethrough regression', () => {
             // Both marks should be applied
             await expect(editor.locator('s')).toBeVisible({ timeout: 5_000 });
             await expect(editor.locator('strong')).toBeVisible();
+            await expect(editor.locator('strong s, s strong')).toHaveText('Apply both bold and strike.');
         } finally {
             safeRmSync(tmpDir);
         }

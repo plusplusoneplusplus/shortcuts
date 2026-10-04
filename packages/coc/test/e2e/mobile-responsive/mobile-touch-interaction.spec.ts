@@ -183,16 +183,17 @@ test.describe('Mobile Touch Interaction', () => {
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 10000 });
         await page.locator('[data-task-id]').first().tap();
 
-        const backBtn = page.locator('[data-testid="activity-chat-back-btn"]');
+        const backBtn = page.getByTestId('split-workspace-mobile-back');
         await expect(backBtn).toBeVisible({ timeout: 8000 });
 
         const box = await backBtn.boundingBox();
-        // RepoChatTab back button renders at ~20px; 16px is the relaxed minimum
-        expect(box!.height).toBeGreaterThanOrEqual(16);
-        expect(box!.width).toBeGreaterThanOrEqual(16);
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+        expect(box!.width).toBeGreaterThanOrEqual(44);
 
         // Verify tapping back button works
         await backBtn.tap();
+        await expect(page.getByTestId('split-workspace-chat')).toBeVisible();
+        await expect(page.getByTestId('activity-chat-detail')).toBeHidden();
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 5000 });
     });
 });

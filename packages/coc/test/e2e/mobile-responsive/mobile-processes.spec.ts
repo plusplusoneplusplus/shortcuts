@@ -59,9 +59,11 @@ test.describe('Mobile Processes', () => {
         // Detail should render on mobile
         const detail = page.locator('[data-testid="activity-chat-detail"]');
         await expect(detail).toBeVisible({ timeout: 8000 });
+        await expect(page.getByTestId('split-workspace-chat')).toBeHidden();
+        expect((await detail.boundingBox())!.width).toBeGreaterThan(300);
 
         // Back button must be present
-        await expect(page.locator('[data-testid="activity-chat-back-btn"]')).toBeVisible();
+        await expect(page.getByTestId('split-workspace-mobile-back')).toBeVisible();
     });
 
     test('mobile: back button returns to process list', async ({ page, serverUrl }) => {
@@ -76,9 +78,11 @@ test.describe('Mobile Processes', () => {
         await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 8000 });
 
         // Tap back button
-        await page.locator('[data-testid="activity-chat-back-btn"]').tap();
+        await page.getByTestId('split-workspace-mobile-back').tap();
 
         // Task list should be visible again
+        await expect(page.getByTestId('split-workspace-chat')).toBeVisible();
+        await expect(page.getByTestId('activity-chat-detail')).toBeHidden();
         await expect(page.locator('[data-task-id]').first()).toBeVisible({ timeout: 5000 });
     });
 

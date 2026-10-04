@@ -26,6 +26,9 @@ test.describe('Cross-Viewport Deep Links', () => {
 
         // Detail should render on mobile (full-screen)
         await expect(page.locator('[data-testid="activity-chat-detail"]')).toBeVisible({ timeout: 10000 });
+        await expect(page.getByTestId('split-workspace-panel')).toHaveAttribute('data-mobile-detail', 'true');
+        await expect(page.getByTestId('split-workspace-chat')).toBeHidden();
+        await expect(page.getByTestId('split-workspace-mobile-back')).toBeVisible();
     });
 
     test('deeplinks: #repos/:id resolves at mobile viewport', async ({ page, serverUrl }) => {

@@ -343,7 +343,9 @@ test.describe('Git sub-tab — BranchChanges', () => {
             await expect(page.getByTestId('branch-changes')).toBeVisible({ timeout: 10_000 });
 
             const summary = page.getByTestId('branch-changes-summary');
-            await expect(summary).toContainText('2 commits ahead');
+            await expect(summary).toHaveText(/^\S+\.\.\.HEAD · 2 · \+2 −0$/);
+            await expect(summary).toHaveAttribute('title', /^\S+\.\.\.HEAD · 2 commits ahead · \+2 −0$/);
+            await expect(page.getByTestId('branch-changes-file-count')).toHaveText('2f');
         } finally {
             safeRmSync(tmpDir);
         }

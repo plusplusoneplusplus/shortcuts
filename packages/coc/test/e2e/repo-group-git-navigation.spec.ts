@@ -16,14 +16,17 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { createMultiCommitRepo } from './fixtures/git-fixtures';
 import { seedWorkspace, request } from './fixtures/seed';
+import { repoHashUrl } from './fixtures/remote-shell';
 import type { Page } from '@playwright/test';
 
 const MEMBER_A = 'group-git-nav-a';
 const MEMBER_B = 'group-git-nav-b';
 const GROUP_NAME = 'E2E Git Nav Group';
+const MEMBER_B_SUBJECT = 'test: member B change';
 
 /** Dismiss the onboarding welcome modal so it doesn't swallow clicks. */
 async function dismissOnboarding(serverUrl: string): Promise<void> {
@@ -43,6 +46,9 @@ async function dismissOnboarding(serverUrl: string): Promise<void> {
 async function seedGroupWithTwoRepos(serverUrl: string, tmpDir: string): Promise<string> {
     const repoA = createMultiCommitRepo(path.join(tmpDir, 'a'));
     const repoB = createMultiCommitRepo(path.join(tmpDir, 'b'));
+    fs.appendFileSync(path.join(repoB, 'src', 'index.ts'), '\nexport const groupMember = "b";\n');
+    execFileSync('git', ['add', 'src/index.ts'], { cwd: repoB, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', MEMBER_B_SUBJECT], { cwd: repoB, stdio: 'ignore' });
     await seedWorkspace(serverUrl, MEMBER_A, 'group-git-nav-repo-a', repoA);
     await seedWorkspace(serverUrl, MEMBER_B, 'group-git-nav-repo-b', repoB);
     await dismissOnboarding(serverUrl);
@@ -59,7 +65,7 @@ async function seedGroupWithTwoRepos(serverUrl: string, tmpDir: string): Promise
 
 /** Open the group's Git tab and wait for a member's commit list to render. */
 async function openGroupGit(page: Page, serverUrl: string, groupId: string, suffix = ''): Promise<void> {
-    await page.goto(`${serverUrl}/#repos/${encodeURIComponent(groupId)}/git${suffix}`);
+    await page.goto(repoHashUrl(serverUrl, groupId, `git${suffix}`));
     await expect(page.getByTestId('repo-group-git-tab')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('commit-list-loading')).toBeHidden({ timeout: 20_000 });
 }
@@ -170,18 +176,25 @@ test.describe('Repo group Git navigation', () => {
         try {
             const groupId = await seedGroupWithTwoRepos(serverUrl, tmpDir);
 
-            // Learn a real SHA from member B without ever saving a preference.
+            // Learn a real SHA from member B before discarding client state.
             await openGroupGit(page, serverUrl, groupId, `/member/${MEMBER_B}`);
             const shortHash = await openNewestCommit(page);
 
-            // Wipe every remembered preference, then open the link cold.
+            // A fragment-only goto keeps the live dock stores. Leave the document
+            // as well as clearing preferences so this exercises a genuine cold load.
             await page.evaluate(() => localStorage.clear());
+            await page.goto('about:blank');
             await openGroupGit(page, serverUrl, groupId, `/member/${MEMBER_B}/${shortHash}`);
 
             await expect(page.getByTestId('repo-group-view')).toHaveAttribute('data-workspace', groupId);
             await expect(hostedMember(page)).toHaveAttribute('data-member', MEMBER_B, { timeout: 20_000 });
             await expect(page.getByTestId('commit-detail')).toBeVisible({ timeout: 20_000 });
+            await expect(page.getByTestId('commit-info-subject')).toHaveText(MEMBER_B_SUBJECT);
+            await expect(page.getByTestId('unified-right-panel')).toHaveAttribute('data-open', 'true');
             await expect(page).toHaveURL(new RegExp(`#repos/${groupId}/git/member/${MEMBER_B}/${shortHash}`));
+            await page.reload();
+            await expect(page.getByTestId('commit-info-subject')).toHaveText(MEMBER_B_SUBJECT);
+            await expect(hostedMember(page)).toHaveAttribute('data-member', MEMBER_B);
         } finally {
             safeRmSync(tmpDir);
         }

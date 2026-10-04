@@ -15,6 +15,7 @@ import type { Page } from '@playwright/test';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { createMultiCommitRepo } from './fixtures/git-fixtures';
 import { request, seedWorkspace } from './fixtures/seed';
+import { gotoWorkspace, repoHashUrl } from './fixtures/remote-shell';
 
 const REPO_ID = 'ws-tracked-search-repo';
 const MEMBER_A = 'ws-tracked-search-a';
@@ -44,9 +45,6 @@ function addTrackedSearchFile(repoDir: string, marker: string): void {
     });
 }
 
-async function enableTrackedSearchShell(serverUrl: string): Promise<void> {
-}
-
 async function pressContentSearchShortcut(page: Page): Promise<void> {
     await page.keyboard.press('Control+Shift+f');
     await expect(page.getByTestId('content-search-overlay')).toBeVisible({ timeout: 10_000 });
@@ -60,8 +58,8 @@ test.describe('Tracked content search overlay', () => {
             const repoDir = createMultiCommitRepo(tmpDir);
             await seedWorkspace(serverUrl, REPO_ID, 'tracked-search-repo', repoDir);
 
-            await page.goto(`${serverUrl}/#repos/${REPO_ID}/git`);
-            await expect(page.getByTestId('repo-git-tab')).toBeVisible({ timeout: 20_000 });
+            await gotoWorkspace(page, serverUrl, REPO_ID, 'git');
+            await expect(page.getByTestId('git-split-workspace-list')).toBeVisible({ timeout: 20_000 });
 
             await pressContentSearchShortcut(page);
             await expect(page.getByRole('dialog', { name: 'Search repository' })).toHaveCount(1);
@@ -81,7 +79,6 @@ test.describe('Tracked content search overlay', () => {
             addTrackedSearchFile(repoA, 'alphaMarker');
             addTrackedSearchFile(repoB, 'betaMarker');
 
-            await enableTrackedSearchShell(serverUrl);
             await seedWorkspace(serverUrl, MEMBER_A, MEMBER_A_LABEL, repoA);
             await seedWorkspace(serverUrl, MEMBER_B, MEMBER_B_LABEL, repoB);
             const response = await request(`${serverUrl}/api/repo-groups`, {
@@ -96,7 +93,7 @@ test.describe('Tracked content search overlay', () => {
             }
             const groupId = JSON.parse(response.body).workspace.id as string;
 
-            await page.goto(`${serverUrl}/#repos/${groupId}/git`);
+            await page.goto(repoHashUrl(serverUrl, groupId, 'git'));
             await expect(page.getByTestId('repo-group-git-tab')).toBeVisible({ timeout: 20_000 });
 
             await page.keyboard.press('Control+p');

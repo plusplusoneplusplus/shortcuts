@@ -79,12 +79,20 @@ async function expectBottomRightLens(page: import('@playwright/test').Page): Pro
     await expect(lens).toBeVisible();
     await expect(page.getByTestId('commit-chat-side-panel')).toHaveCount(0);
 
-    const box = await lens.boundingBox();
-    const viewport = page.viewportSize();
-    expect(box).toBeTruthy();
-    expect(viewport).toBeTruthy();
-    expect(box!.x).toBeGreaterThan(viewport!.width / 2);
-    expect(box!.y).toBeGreaterThan(viewport!.height / 3);
+    const geometry = await lens.evaluate(element => {
+        const container = (element as HTMLElement).offsetParent;
+        if (!container) throw new Error('The review lens has no positioning container');
+        const lensRect = element.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        return {
+            rightInset: containerRect.right - lensRect.right,
+            bottomInset: containerRect.bottom - lensRect.bottom,
+            containsReviewSurface: !!container.querySelector('[data-testid="diff-section"], [data-testid="file-diff-section"]'),
+        };
+    });
+    expect(geometry.containsReviewSurface).toBe(true);
+    expect(geometry.rightInset).toBeCloseTo(16, 0);
+    expect(geometry.bottomInset).toBeCloseTo(16, 0);
 }
 
 async function expectCompactInitialComposer(page: import('@playwright/test').Page): Promise<void> {
@@ -198,13 +206,14 @@ async function gotoFresh(page: import('@playwright/test').Page, url: string): Pr
 
 test.describe('feature-flagged commit chat lens', () => {
     test('dormant pill passes hit testing and text selection through the old lens rectangle', async ({ page, serverUrl, dataDir }) => {
+        const workspaceId = `${WORKSPACE_ID}-pill`;
         const repoDir = createMultiCommitRepo(dataDir);
         const commit = latestCommit(repoDir);
 
-        await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Lens', repoDir);
+        await seedWorkspace(serverUrl, workspaceId, 'Commit Chat Lens', repoDir);
         await enableCommitChatLensFeature(serverUrl, 'pill');
 
-        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}`);
+        await page.goto(`${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#repos/${encodeURIComponent(workspaceId)}/git/${encodeURIComponent(commit.hash)}`);
         await expect(page.getByTestId('diff-section')).toBeVisible();
         await page.getByTestId('toggle-chat-btn').click();
 
@@ -223,7 +232,7 @@ test.describe('feature-flagged commit chat lens', () => {
                 top: `${y + 96}px`,
                 zIndex: '1',
                 whiteSpace: 'nowrap',
-                font: '16px monospace',
+                font: '12px monospace',
                 color: 'black',
                 background: 'white',
                 userSelect: 'text',
@@ -232,6 +241,7 @@ test.describe('feature-flagged commit chat lens', () => {
             const rect = target.getBoundingClientRect();
             return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
         }, lensBox!);
+        expect(textBox.x + textBox.width).toBeLessThan(lensBox!.x + lensBox!.width);
 
         await page.mouse.move(8, 8);
         await expect(lens).toHaveAttribute('data-focused', 'false');
@@ -258,21 +268,22 @@ test.describe('feature-flagged commit chat lens', () => {
     });
 
     test('loads a chat dropped on the lens and still shows it after a reload', async ({ page, serverUrl, dataDir }) => {
+        const workspaceId = `${WORKSPACE_ID}-drop`;
         const repoDir = createMultiCommitRepo(dataDir);
         const commit = latestCommit(repoDir);
         const droppedTaskId = 'dropped-chat-task';
 
-        await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Lens', repoDir);
+        await seedWorkspace(serverUrl, workspaceId, 'Commit Chat Lens', repoDir);
         await enableCommitChatLensFeature(serverUrl);
         await enableSessionContextAttachments(serverUrl);
         await seedProcess(serverUrl, `queue_${droppedTaskId}`, {
-            workspaceId: WORKSPACE_ID,
+            workspaceId,
             type: 'chat',
             status: 'completed',
             promptPreview: 'Dropped conversation',
         });
 
-        const url = `${serverUrl}/?workspace=${encodeURIComponent(WORKSPACE_ID)}#repos/${encodeURIComponent(WORKSPACE_ID)}/git/${encodeURIComponent(commit.hash)}`;
+        const url = `${serverUrl}/?workspace=${encodeURIComponent(workspaceId)}#repos/${encodeURIComponent(workspaceId)}/git/${encodeURIComponent(commit.hash)}`;
         await page.goto(url);
         await expect(page.getByTestId('diff-section')).toBeVisible();
         await page.getByTestId('toggle-chat-btn').click();
@@ -281,12 +292,12 @@ test.describe('feature-flagged commit chat lens', () => {
         await expect(lens).toBeVisible();
         await expect(lens.getByTestId('commit-chat-send-btn')).toBeVisible();
 
-        await dropChatOnLens(page, `queue_${droppedTaskId}`, WORKSPACE_ID);
+        await dropChatOnLens(page, `queue_${droppedTaskId}`, workspaceId);
 
         await expect(lens.getByTestId('activity-chat-detail')).toBeVisible();
         await expect(lens.getByTestId('commit-chat-send-btn')).toHaveCount(0);
 
-        const bindingUrl = `${serverUrl}/api/workspaces/${encodeURIComponent(WORKSPACE_ID)}/commit-chat-bindings/${encodeURIComponent(commit.hash)}`;
+        const bindingUrl = `${serverUrl}/api/workspaces/${encodeURIComponent(workspaceId)}/commit-chat-bindings/${encodeURIComponent(commit.hash)}`;
         await expect.poll(async () => JSON.parse((await request(bindingUrl)).body).taskId).toBe(droppedTaskId);
 
         await gotoFresh(page, url);

@@ -10,7 +10,7 @@
  * its own local state — the desktop / standalone-mobile paths are unchanged.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({
@@ -163,12 +163,39 @@ vi.mock('../../../../../src/server/spa/client/react/utils/format', () => ({
     formatRelativeTime: (value: string) => `relative:${value}`,
 }));
 
-import { QueueProvider } from '../../../../../src/server/spa/client/react/contexts/QueueContext';
+import { QueueProvider, useQueue } from '../../../../../src/server/spa/client/react/contexts/QueueContext';
 import { RepoChatTab } from '../../../../../src/server/spa/client/react/features/chat/RepoChatTab';
+import { SplitWorkspacePanel } from '../../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel';
 import {
     MobileWorkspacePaneProvider,
+    splitWorkspaceMobilePaneStorageKey,
     useMobileWorkspacePaneState,
 } from '../../../../../src/server/spa/client/react/features/repo-detail/mobileWorkspacePane';
+
+/** Mount the real shell after the router's workspace-scoped selection is available. */
+function SelectedChatWorkspace({ workspaceId = 'ws-1' }: { workspaceId?: string }) {
+    const { state, dispatch } = useQueue();
+    const [detailContainer, setDetailContainer] = useState<HTMLDivElement | null>(null);
+    useEffect(() => {
+        dispatch({ type: 'SELECT_QUEUE_TASK', id: 'queue_task-1', repoId: workspaceId });
+    }, [dispatch, workspaceId]);
+    if (!state.selectedTaskIdByRepo[workspaceId]) return null;
+    return (
+        <SplitWorkspacePanel
+            workspaceId={workspaceId}
+            chatList={
+                <RepoChatTab
+                    workspaceId={workspaceId}
+                    layout="split-workspace"
+                    detailContainer={detailContainer}
+                    detailActive
+                />
+            }
+            gitList={<div data-testid="git-list" />}
+            detail={<div ref={setDetailContainer} />}
+        />
+    );
+}
 
 /** Mirrors how SplitWorkspacePanel hosts the tab on the mobile Workspace path. */
 function MobileWorkspaceHarness({ workspaceId = 'ws-1' }: { workspaceId?: string }) {
@@ -206,6 +233,51 @@ describe('RepoChatTab: mobile Workspace detail push', () => {
         render(<MobileWorkspaceHarness />);
         await waitFor(() => expect(screen.getByTestId('chat-list-pane')).toBeTruthy());
         expect(screen.getByTestId('harness').getAttribute('data-detail-open')).toBe('false');
+    });
+
+    it.each(['activity', 'chats'])('opens the outer mobile detail for an initially selected /%s deep link', async (route) => {
+        window.location.hash = `#repos/ws-1/${route}/queue_task-1`;
+        render(<QueueProvider><SelectedChatWorkspace /></QueueProvider>);
+
+        await waitFor(() => expect(screen.getByTestId('chat-detail-pane')).toBeTruthy());
+        expect(screen.getByTestId('split-workspace-panel')).toHaveAttribute('data-mobile-detail', 'true');
+        expect(screen.getByTestId('split-workspace-detail')).not.toHaveClass('hidden');
+        expect(screen.getByTestId('split-workspace-chat')).toHaveClass('hidden');
+
+        fireEvent.click(screen.getByTestId('split-workspace-mobile-back'));
+        expect(screen.getByTestId('split-workspace-detail')).toHaveClass('hidden');
+        expect(screen.getByTestId('split-workspace-chat')).not.toHaveClass('hidden');
+        fireEvent.click(screen.getByTestId('stub-select-chat'));
+        expect(screen.getByTestId('split-workspace-detail')).not.toHaveClass('hidden');
+    });
+
+    it('opens an initially selected chat even when the workspace remembers the Git segment', async () => {
+        localStorage.setItem(splitWorkspaceMobilePaneStorageKey('ws-1'), 'git');
+        render(<QueueProvider><SelectedChatWorkspace /></QueueProvider>);
+
+        await waitFor(() => expect(screen.getByTestId('chat-detail-pane')).toBeTruthy());
+        expect(screen.getByTestId('split-workspace-detail')).not.toHaveClass('hidden');
+        expect(screen.getByTestId('split-workspace-git')).toHaveClass('hidden');
+        expect(localStorage.getItem(splitWorkspaceMobilePaneStorageKey('ws-1'))).toBe('git');
+    });
+
+    it('keeps an initially selected detail open when mount effects are replayed', async () => {
+        render(<StrictMode><QueueProvider><SelectedChatWorkspace /></QueueProvider></StrictMode>);
+
+        await waitFor(() => expect(screen.getByTestId('chat-detail-pane')).toBeTruthy());
+        expect(screen.getByTestId('split-workspace-detail')).not.toHaveClass('hidden');
+    });
+
+    it('clears the previous workspace detail when switching to an unselected workspace', async () => {
+        const { rerender } = render(<MobileWorkspaceHarness workspaceId="ws-1" />);
+        await waitFor(() => expect(screen.getByTestId('stub-select-chat')).toBeTruthy());
+        fireEvent.click(screen.getByTestId('stub-select-chat'));
+        expect(screen.getByTestId('harness')).toHaveAttribute('data-detail-open', 'true');
+
+        rerender(<MobileWorkspaceHarness workspaceId="ws-2" />);
+
+        await waitFor(() => expect(screen.getByTestId('harness')).toHaveAttribute('data-detail-open', 'false'));
+        expect(screen.getByTestId('chat-list-pane')).toBeTruthy();
     });
 
     it('pushes the shell detail when a conversation is selected', async () => {
