@@ -7,7 +7,6 @@ export interface GlobalPreferences {
   recentRemotes?: string[];
   hasSeenWelcome?: boolean;
   dismissedTips?: string[];
-  uiLayoutMode?: 'classic' | 'dev-workflow';
   /** Engine for the working-tree file diff. Absent means `monaco`. */
   diffEngine?: 'legacy' | 'monaco';
   htmlEmbed?: {

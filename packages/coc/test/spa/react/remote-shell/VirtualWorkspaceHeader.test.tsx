@@ -3,8 +3,8 @@
  *
  * Both headers render a virtual workspace's identity + sub-tabs + action buttons
  * off a shared `VirtualWorkspaceHeaderConfig` via `useVirtualWorkspaceHeader`.
- * The shell header is the remote-first TopBar variant; the inline header is the
- * classic-shell / mobile in-body variant.
+ * The shell header is the desktop TopBar variant; the inline header shares the
+ * same configuration model.
  *
  * @vitest-environment jsdom
  */

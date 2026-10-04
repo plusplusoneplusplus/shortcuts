@@ -1,6 +1,6 @@
 /**
- * useWorkspaceNavigation.navigateToWorkspace — the classic-shell workspace tab
- * switcher. Focus (AC-03 of preserve-explorer-state): switching away from a
+ * useWorkspaceNavigation.navigateToWorkspace — shared workspace navigation.
+ * Focus (AC-03 of preserve-explorer-state): switching away from a
  * workspace whose file explorer has unsaved edits must prompt first, and a cancel
  * must leave the current workspace (and its dirty buffer) untouched.
  *

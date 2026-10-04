@@ -15,6 +15,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 const WS_ID = 'ws-strike';
 
@@ -40,13 +41,7 @@ async function openTaskInEditor(
 ): Promise<void> {
     await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
 
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-    await page.click('.repo-sub-tab[data-subtab="tasks"]');
+    await gotoWorkspace(page, serverUrl, WS_ID, 'tasks');
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10_000 });
 
     const taskRow = page.locator('[data-testid="task-tree-item-task-a"]');
@@ -143,7 +138,7 @@ test.describe('Note Editor Toolbar — Strikethrough regression', () => {
         try {
             const repoDir = createRepoFixture(tmpDir);
             createTasksFixture(repoDir);
-            await mockTasksContent(page, '# Multi\n\nApply both bold and strike.');
+            await mockTasksContent(page, 'Apply both bold and strike.');
 
             await openTaskInEditor(page, serverUrl, repoDir);
 
@@ -153,18 +148,19 @@ test.describe('Note Editor Toolbar — Strikethrough regression', () => {
 
             const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-            // Select all text in paragraph via triple-click
-            const paragraph = editor.locator('p:has-text("Apply both")');
-            await paragraph.click({ clickCount: 3 });
-            await page.waitForTimeout(200);
+            // Keyboard selection stays stable when bold changes the text's width.
+            await editor.click();
+            await page.keyboard.press(`${mod}+a`);
+            await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+                .toBe('Apply both bold and strike.');
 
             // Apply Bold via keyboard shortcut
             await page.keyboard.press(`${mod}+b`);
             await expect(editor.locator('strong')).toBeVisible({ timeout: 5_000 });
 
-            // Re-select (Bold application may change selection)
-            await paragraph.click({ clickCount: 3 });
-            await page.waitForTimeout(200);
+            await page.keyboard.press(`${mod}+a`);
+            await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().trim()))
+                .toBe('Apply both bold and strike.');
 
             // Apply Strikethrough
             await page.keyboard.press(`${mod}+Shift+s`);
@@ -172,6 +168,7 @@ test.describe('Note Editor Toolbar — Strikethrough regression', () => {
             // Both marks should be applied
             await expect(editor.locator('s')).toBeVisible({ timeout: 5_000 });
             await expect(editor.locator('strong')).toBeVisible();
+            await expect(editor.locator('strong s, s strong')).toHaveText('Apply both bold and strike.');
         } finally {
             safeRmSync(tmpDir);
         }

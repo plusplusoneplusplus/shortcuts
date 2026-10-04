@@ -29,7 +29,6 @@ import { test, expect, safeRmSync, type Page } from './fixtures/server-fixture';
 import { seedWorkspace, request } from './fixtures/seed';
 import {
     startSecondaryServer,
-    enableRemoteShell,
     registerRemoteServer,
     remoteServerStatus,
 } from './fixtures/secondary-server';
@@ -88,7 +87,6 @@ test.describe('Remove from CoC — remote repos (AC-02)', () => {
 
             await registerRemoteServer(serverUrl, 'Agent Host', secondary.url);
 
-            await enableRemoteShell(page);
             await page.goto(serverUrl);
 
             await openDropdownFiltered(page, 'Agent Repo');
@@ -143,7 +141,6 @@ test.describe('Remove from CoC — remote repos (AC-02)', () => {
             await seedWorkspace(secondary.url, 'e2e-rm-agent-off', 'Agent Offline Repo', remoteDir);
             const registered = await registerRemoteServer(serverUrl, 'Agent Host', secondary.url);
 
-            await enableRemoteShell(page);
             // First load while the server is up, so the SPA caches its workspace
             // list — that cache is what keeps the row visible once it goes away.
             await page.goto(serverUrl);

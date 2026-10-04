@@ -10,7 +10,6 @@ const mockDispatch = vi.fn();
 let mockActiveRepoSubTab = 'notes';
 let mockSelectedNotePath: string | null = null;
 let mockSchedulesInScheduledSlideEnabled = false;
-let mockRemoteShell = false;
 let mockIsMobile = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -89,11 +88,6 @@ vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useSched
     useSchedulesInScheduledSlideEnabled: () => mockSchedulesInScheduledSlideEnabled,
 }));
 
-// Remote-first shell gate — when on (desktop) the header lives in the TopBar so
-// the in-body header stands down. Defaults off so the in-body header renders.
-vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShell,
-}));
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
         breakpoint: mockIsMobile ? 'mobile' : 'desktop',
@@ -127,29 +121,11 @@ describe('MyLifeView', () => {
         mockActiveRepoSubTab = 'notes';
         mockSelectedNotePath = null;
         mockSchedulesInScheduledSlideEnabled = false;
-        mockRemoteShell = false;
         mockIsMobile = false;
         mockDispatch.mockClear();
         repositoryServiceMocks.syncMyLife.mockResolvedValue({ goalCount: 0, entryCount: 0 });
         repositoryServiceMocks.generateMyLifeSummary.mockResolvedValue({ path: 'Weekly/summary.md' });
         location.hash = '';
-    });
-
-    it('renders the single-row header with tabs and action buttons', () => {
-        renderView();
-        expect(screen.getByTestId('my-life-header')).toBeTruthy();
-        expect(screen.getByTestId('my-life-sync-btn')).toBeTruthy();
-        expect(screen.getByTestId('my-life-generate-btn')).toBeTruthy();
-        expect(screen.getByTestId('my-life-tab-activity')).toBeTruthy();
-        expect(screen.getByTestId('my-life-tab-notes')).toBeTruthy();
-        expect(screen.getByTestId('my-life-tab-git')).toBeTruthy();
-        expect(screen.getByTestId('my-life-tab-schedules')).toBeTruthy();
-        expect(screen.getByTestId('my-life-tab-settings')).toBeTruthy();
-    });
-
-    it('renders a vertical splitter between tabs and action buttons', () => {
-        renderView();
-        expect(screen.getByTestId('my-life-header-splitter')).toBeTruthy();
     });
 
     it('defaults to Notes tab when activeRepoSubTab is not in tabs list', () => {
@@ -219,74 +195,8 @@ describe('MyLifeView', () => {
         });
     });
 
-    it('clicking Activity tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-        mockActiveRepoSubTab = 'notes';
-        renderView();
-
-        fireEvent.click(screen.getByTestId('my-life-tab-activity'));
-
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-        expect(location.hash).toBe('#repos/my_life/activity');
-    });
-
-    it('clicking Notes tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-        mockActiveRepoSubTab = 'activity';
-        renderView();
-
-        fireEvent.click(screen.getByTestId('my-life-tab-notes'));
-
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'notes' });
-        expect(location.hash).toBe('#repos/my_life/notes');
-    });
-
-    it('active tab has active styling indicator', () => {
-        mockActiveRepoSubTab = 'activity';
-        renderView();
-
-        const activityBtn = screen.getByTestId('my-life-tab-activity');
-        // Active tab should contain the indicator span
-        expect(activityBtn.querySelector('span')).toBeTruthy();
-
-        const notesBtn = screen.getByTestId('my-life-tab-notes');
-        expect(notesBtn.querySelector('span')).toBeNull();
-    });
-
-    it('header stays visible regardless of active tab', () => {
-        mockActiveRepoSubTab = 'notes';
-        const { unmount } = renderView();
-        expect(screen.getByTestId('my-life-header')).toBeTruthy();
-        unmount();
-
-        mockActiveRepoSubTab = 'activity';
-        renderView();
-        expect(screen.getByTestId('my-life-header')).toBeTruthy();
-    });
-
     it('exports MY_LIFE_WORKSPACE_ID constant', () => {
         expect(MY_LIFE_WORKSPACE_ID).toBe('my_life');
-    });
-
-    describe('actions', () => {
-        it('syncs My Life through the typed repository service', async () => {
-            repositoryServiceMocks.syncMyLife.mockResolvedValueOnce({ goalCount: 2, entryCount: 1 });
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-life-sync-btn'));
-
-            expect(repositoryServiceMocks.syncMyLife).toHaveBeenCalledTimes(1);
-            expect(await screen.findByText('Synced 3 items')).toBeTruthy();
-        });
-
-        it('generates a summary through the typed repository service', async () => {
-            repositoryServiceMocks.generateMyLifeSummary.mockResolvedValueOnce({ path: 'Weekly/2026-W18.md' });
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-life-generate-btn'));
-
-            expect(repositoryServiceMocks.generateMyLifeSummary).toHaveBeenCalledTimes(1);
-            expect(await screen.findByText('Summary saved to Weekly/2026-W18.md')).toBeTruthy();
-            expect(location.hash).toBe('#repos/my_life/notes/Weekly%2F2026-W18.md');
-        });
     });
 
     describe('git tab', () => {
@@ -314,15 +224,6 @@ describe('MyLifeView', () => {
             expect(gitTab.getAttribute('data-workspace-id')).toBe(MY_LIFE_WORKSPACE_ID);
         });
 
-        it('clicking Git tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-            mockActiveRepoSubTab = 'notes';
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-life-tab-git'));
-
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
-            expect(location.hash).toBe('#repos/my_life/git');
-        });
     });
 
     describe('schedules tab', () => {
@@ -348,16 +249,6 @@ describe('MyLifeView', () => {
 
             const schedulesTab = screen.getByTestId('repo-schedules-tab');
             expect(schedulesTab.getAttribute('data-workspace-id')).toBe(MY_LIFE_WORKSPACE_ID);
-        });
-
-        it('clicking Schedules tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-            mockActiveRepoSubTab = 'notes';
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-life-tab-schedules'));
-
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'schedules' });
-            expect(location.hash).toBe('#repos/my_life/schedules');
         });
 
         describe('when schedules-in-scheduled-slide flag is enabled', () => {
@@ -410,23 +301,10 @@ describe('MyLifeView', () => {
             expect(settingsTab.getAttribute('data-repo-id')).toBe(MY_LIFE_WORKSPACE_ID);
         });
 
-        it('clicking Settings tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-            mockActiveRepoSubTab = 'notes';
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-life-tab-settings'));
-
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
-            // switchTab now routes through buildRepoSubTabSuffix, which keeps the
-            // open settings section in the hash (defaults to 'info').
-            expect(location.hash).toBe('#repos/my_life/settings/info');
-        });
     });
 
-    describe('header placement (remote-first shell)', () => {
-        it('hides the in-body header on remote-first desktop (it lives in the TopBar)', () => {
-            mockRemoteShell = true;
-            mockIsMobile = false;
+    describe('responsive header placement', () => {
+        it('leaves the desktop header in the TopBar', () => {
             renderView();
 
             expect(screen.queryByTestId('my-life-header')).toBeNull();
@@ -434,7 +312,6 @@ describe('MyLifeView', () => {
         });
 
         it('swaps the in-body header for the mobile tab bar on mobile', () => {
-            mockRemoteShell = true;
             mockIsMobile = true;
             renderView();
 
@@ -442,12 +319,6 @@ describe('MyLifeView', () => {
             expect(screen.getByTestId('my-life-mobile-header')).toBeTruthy();
         });
 
-        it('keeps the in-body header in the classic (non-remote) shell', () => {
-            mockRemoteShell = false;
-            renderView();
-
-            expect(screen.getByTestId('my-life-header')).toBeTruthy();
-        });
     });
 
     describe('mobile header (MobileTabBar)', () => {
@@ -492,13 +363,5 @@ describe('MyLifeView', () => {
             expect(repositoryServiceMocks.syncMyLife).toHaveBeenCalledTimes(1);
         });
 
-        it('keeps full labelled action buttons on desktop with no overflow trigger', () => {
-            mockIsMobile = false;
-            renderView();
-
-            expect(screen.getByTestId('my-life-sync-btn')).toBeTruthy();
-            expect(screen.getByTestId('my-life-generate-btn')).toBeTruthy();
-            expect(screen.queryByTestId('my-life-actions-overflow-btn')).toBeNull();
-        });
     });
 });

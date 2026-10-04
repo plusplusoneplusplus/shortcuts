@@ -29,7 +29,7 @@ test.describe.skip('Category Selection in InlineCommentPopup', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'catsel-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
 
             // Click "Add comment"
@@ -73,7 +73,7 @@ test.describe.skip('Category Selection in InlineCommentPopup', () => {
             createTasksFixture(repoDir);
             await seedWorkspace(serverUrl, WS_ID, 'catsel-repo', repoDir);
 
-            await navigateToTask(page, serverUrl, 'task-a');
+            await navigateToTask(page, serverUrl, WS_ID, 'task-a');
             await selectTextAndOpenContextMenu(page, 'Root-level pending');
             await page.locator('[data-testid="context-menu-item-0"]').click();
             await expect(page.locator('[data-testid="inline-comment-popup"]')).toBeVisible();

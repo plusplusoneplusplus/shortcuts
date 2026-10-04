@@ -34,9 +34,6 @@ async function startServer(): Promise<{
 }> {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-e2e-ws-'));
     const store = new FileProcessStore({ dataDir });
-    // Pin the classic shell (see e2e-server-config.ts): remoteShell moves the
-    // ws-status-indicator into the sidebar footer, so the flags must stay off
-    // for this spec's own server the same way the shared fixture does.
     const configPath = path.join(dataDir, 'config.yaml');
     fs.writeFileSync(configPath, E2E_SERVER_CONFIG_YAML);
     const server = await createExecutionServer({
@@ -163,7 +160,7 @@ test.describe('Section 8: Server Restart Recovery', () => {
             await page.goto(server.url);
 
             // Wait for the WS to establish
-            await expect(page.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -177,21 +174,21 @@ test.describe('Section 8: Server Restart Recovery', () => {
         }
     });
 
-    test('8.2 TopBar status changes from "Connected" after server disconnect', async ({ page }) => {
+    test('8.2 status dock changes from "Connected" after server disconnect', async ({ page }) => {
         const { server, cleanup } = await startServer();
         try {
             await setupPage(page);
             await page.goto(server.url);
 
-            await expect(page.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
             await server.close();
 
             // Status indicator should no longer show "Connected"
-            await expect(page.locator('[data-testid="ws-status-indicator"]')).not.toHaveAttribute(
-                'aria-label', 'Connection: Connected', { timeout: 8000 }
+            await expect(page.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
+                'data-ws-status', /^(closed|reconnecting)$/, { timeout: 8000 }
             );
         } finally {
             await cleanup();
@@ -205,7 +202,7 @@ test.describe('Section 8: Server Restart Recovery', () => {
             await page.goto(server.url);
 
             // Wait for initial WS connection — no toast on first connect
-            await expect(page.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -240,7 +237,7 @@ test.describe('Section 8: Server Restart Recovery', () => {
             await page.goto(server.url);
 
             // Wait for initial WS connection
-            await expect(page.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -255,6 +252,7 @@ test.describe('Section 8: Server Restart Recovery', () => {
             // The useWebSocket hook retries after 1s; new connection is intercepted again
             // and connectToServer() is called → reconnects to real server
             await expect(page.getByText('Reconnected')).toBeVisible({ timeout: 15000 });
+            await expect(page.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute('data-ws-status', 'open');
         } finally {
             await page.close();
             await cleanup();
@@ -284,10 +282,10 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
             await page2.goto(activityUrl);
 
             // Wait for WS connections on both tabs
-            await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page1.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
-            await expect(page2.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page2.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -322,10 +320,10 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
             await page1.goto(activityUrl);
             await page2.goto(activityUrl);
 
-            await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page1.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
-            await expect(page2.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page2.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -355,10 +353,10 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
             await page2.goto(activityUrl);
 
             // Both tabs should be stably connected
-            await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page1.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
-            await expect(page2.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page2.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -373,10 +371,10 @@ test.describe('Section 9: Multi-Tab Event Synchronization', () => {
             await page1.waitForTimeout(2000);
             await page2.waitForTimeout(2000);
 
-            await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page1.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected'
             );
-            await expect(page2.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page2.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected'
             );
         } finally {
@@ -407,10 +405,10 @@ test.describe('Section 10: Workspace-Scoped Events Do Not Leak', () => {
             await page1.goto(`${server.url}/#repos`);
             await page2.goto(`${server.url}/#repos`);
 
-            await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page1.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
-            await expect(page2.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page2.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -443,10 +441,10 @@ test.describe('Section 10: Workspace-Scoped Events Do Not Leak', () => {
             await page1.goto(`${server.url}/#repos`);
             await page2.goto(`${server.url}/#repos`);
 
-            await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page1.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
-            await expect(page2.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page2.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -494,10 +492,10 @@ test.describe('Section 10: Workspace-Scoped Events Do Not Leak', () => {
             await page1.goto(`${server.url}/#repos`);
             await page2.goto(`${server.url}/#repos`);
 
-            await expect(page1.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page1.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
-            await expect(page2.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page2.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected', { timeout: 15000 }
             );
 
@@ -517,7 +515,7 @@ test.describe('Section 10: Workspace-Scoped Events Do Not Leak', () => {
 
             // Page2 may still receive the broadcast (no subscription set) — check stability
             await expect(page2.locator('[data-react]')).toBeVisible();
-            await expect(page2.locator('[data-testid="ws-status-indicator"]')).toHaveAttribute(
+            await expect(page2.getByTestId('sidebar-ws-status-indicator')).toHaveAttribute(
                 'aria-label', 'Connection: Connected'
             );
         } finally {
@@ -527,4 +525,3 @@ test.describe('Section 10: Workspace-Scoped Events Do Not Leak', () => {
         }
     });
 });
-

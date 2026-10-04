@@ -96,7 +96,6 @@ interface DashboardConfig {
     /** Whether the deprecated Plans (Dep.) / Tasks (Dep.) sub-tab is shown. Default false (hidden). */
     showPlanDepTab?: boolean;
     /** Whether the remote-first dashboard shell is enabled (feature flag). */
-    remoteShellEnabled?: boolean;
     /** Whether Quick Ask side-notes on assistant chat turns are enabled (admin: Quick Ask side-notes). */
     quickAskSidenotesEnabled?: boolean;
     /** Whether a lone pasted arXiv link is downloaded and embedded in Notes. */
@@ -105,8 +104,6 @@ interface DashboardConfig {
     scopeSwitcherEnabled?: boolean;
     /** Whether pinned repos / repo groups get their own segments in the scope slide switcher. Default false. */
     pinnedScopesEnabled?: boolean;
-    /** Whether the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
-    splitWorkspacePanelEnabled?: boolean;
     /** Whether schedule management lives in the chat-list "Scheduled" slide (definitions list + right-pane create/edit) instead of the Schedules tab. */
     schedulesInScheduledSlideEnabled?: boolean;
     /** Whether user-created chat folders are shown in the chat list. Default false. */
@@ -443,11 +440,6 @@ export function isShowPlanDepTab(): boolean {
     return getConfig().showPlanDepTab === true;
 }
 
-/** Returns true when the remote-first dashboard shell is enabled. */
-export function isRemoteShellEnabled(): boolean {
-    return getConfig().remoteShellEnabled === true;
-}
-
 /** Live `features.quickAskSidenotes` flag (admin: Quick Ask side-notes). */
 export function isQuickAskSidenotesEnabled(): boolean {
     return getConfig().quickAskSidenotesEnabled === true;
@@ -466,11 +458,6 @@ export function isScopeSwitcherEnabled(): boolean {
 /** Returns true when pinned repos / repo groups render as their own scope-switcher segments. */
 export function isPinnedScopesEnabled(): boolean {
     return getConfig().pinnedScopesEnabled === true;
-}
-
-/** Returns true when the split "Workspace" left panel (chat top / git bottom + shared detail pane) is enabled. */
-export function isSplitWorkspacePanelEnabled(): boolean {
-    return getConfig().splitWorkspacePanelEnabled === true;
 }
 
 /** Returns true when schedule management in the chat-list "Scheduled" slide is enabled. */

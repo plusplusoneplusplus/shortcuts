@@ -11,7 +11,6 @@ let mockActiveRepoSubTab = 'notes';
 let mockSelectedNotePath: string | null = null;
 let mockSchedulesInScheduledSlideEnabled = false;
 let mockTodayViewEnabled = false;
-let mockRemoteShell = false;
 let mockIsMobile = false;
 
 vi.mock('../../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -105,11 +104,6 @@ vi.mock('../../../../../src/server/spa/client/react/features/my-work/MyWorkToday
     ),
 }));
 
-// Remote-first shell gate — when on (desktop) the header lives in the TopBar so
-// the in-body header stands down. Defaults off so the in-body header renders.
-vi.mock('../../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShell,
-}));
 vi.mock('../../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
         breakpoint: mockIsMobile ? 'mobile' : 'desktop',
@@ -144,29 +138,11 @@ describe('MyWorkView', () => {
         mockSelectedNotePath = null;
         mockSchedulesInScheduledSlideEnabled = false;
         mockTodayViewEnabled = false;
-        mockRemoteShell = false;
         mockIsMobile = false;
         mockDispatch.mockClear();
         repositoryServiceMocks.syncMyWork.mockResolvedValue({ actionItemCount: 0, followUpCount: 0 });
         repositoryServiceMocks.generateMyWorkSummary.mockResolvedValue({ path: 'Weekly/summary.md' });
         location.hash = '';
-    });
-
-    it('renders the single-row header with tabs and action buttons', () => {
-        renderView();
-        expect(screen.getByTestId('my-work-header')).toBeTruthy();
-        expect(screen.getByTestId('my-work-sync-btn')).toBeTruthy();
-        expect(screen.getByTestId('my-work-generate-btn')).toBeTruthy();
-        expect(screen.getByTestId('my-work-tab-activity')).toBeTruthy();
-        expect(screen.getByTestId('my-work-tab-notes')).toBeTruthy();
-        expect(screen.getByTestId('my-work-tab-git')).toBeTruthy();
-        expect(screen.getByTestId('my-work-tab-schedules')).toBeTruthy();
-        expect(screen.getByTestId('my-work-tab-settings')).toBeTruthy();
-    });
-
-    it('renders a vertical splitter between tabs and action buttons', () => {
-        renderView();
-        expect(screen.getByTestId('my-work-header-splitter')).toBeTruthy();
     });
 
     it('defaults to Notes tab when activeRepoSubTab is not in tabs list', () => {
@@ -218,49 +194,6 @@ describe('MyWorkView', () => {
 
         const notesView = screen.getByTestId('notes-view');
         expect(notesView.getAttribute('data-workspace-id')).toBe(MY_WORK_WORKSPACE_ID);
-    });
-
-    it('clicking Activity tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-        mockActiveRepoSubTab = 'notes';
-        renderView();
-
-        fireEvent.click(screen.getByTestId('my-work-tab-activity'));
-
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'activity' });
-        expect(location.hash).toBe('#repos/my_work/activity');
-    });
-
-    it('clicking Notes tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-        mockActiveRepoSubTab = 'activity';
-        renderView();
-
-        fireEvent.click(screen.getByTestId('my-work-tab-notes'));
-
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'notes' });
-        expect(location.hash).toBe('#repos/my_work/notes');
-    });
-
-    it('active tab has active styling indicator', () => {
-        mockActiveRepoSubTab = 'activity';
-        renderView();
-
-        const activityBtn = screen.getByTestId('my-work-tab-activity');
-        // Active tab should contain the indicator span
-        expect(activityBtn.querySelector('span')).toBeTruthy();
-
-        const notesBtn = screen.getByTestId('my-work-tab-notes');
-        expect(notesBtn.querySelector('span')).toBeNull();
-    });
-
-    it('header stays visible regardless of active tab', () => {
-        mockActiveRepoSubTab = 'notes';
-        const { unmount } = renderView();
-        expect(screen.getByTestId('my-work-header')).toBeTruthy();
-        unmount();
-
-        mockActiveRepoSubTab = 'activity';
-        renderView();
-        expect(screen.getByTestId('my-work-header')).toBeTruthy();
     });
 
     it('exports MY_WORK_WORKSPACE_ID constant', () => {
@@ -317,29 +250,6 @@ describe('MyWorkView', () => {
         });
     });
 
-    describe('actions', () => {
-        it('syncs My Work through the typed repository service', async () => {
-            repositoryServiceMocks.syncMyWork.mockResolvedValueOnce({ actionItemCount: 2, followUpCount: 1 });
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-work-sync-btn'));
-
-            expect(repositoryServiceMocks.syncMyWork).toHaveBeenCalledTimes(1);
-            expect(await screen.findByText('Synced 3 items')).toBeTruthy();
-        });
-
-        it('generates a summary through the typed repository service', async () => {
-            repositoryServiceMocks.generateMyWorkSummary.mockResolvedValueOnce({ path: 'Weekly/2026-W18.md' });
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-work-generate-btn'));
-
-            expect(repositoryServiceMocks.generateMyWorkSummary).toHaveBeenCalledTimes(1);
-            expect(await screen.findByText('Summary saved to Weekly/2026-W18.md')).toBeTruthy();
-            expect(location.hash).toBe('#repos/my_work/notes/Weekly%2F2026-W18.md');
-        });
-    });
-
     describe('git tab', () => {
         it('shows NotesGitTab when git tab is active', () => {
             mockActiveRepoSubTab = 'git';
@@ -365,15 +275,6 @@ describe('MyWorkView', () => {
             expect(gitTab.getAttribute('data-workspace-id')).toBe(MY_WORK_WORKSPACE_ID);
         });
 
-        it('clicking Git tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-            mockActiveRepoSubTab = 'notes';
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-work-tab-git'));
-
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
-            expect(location.hash).toBe('#repos/my_work/git');
-        });
     });
 
     describe('schedules tab', () => {
@@ -399,16 +300,6 @@ describe('MyWorkView', () => {
 
             const schedulesTab = screen.getByTestId('repo-schedules-tab');
             expect(schedulesTab.getAttribute('data-workspace-id')).toBe(MY_WORK_WORKSPACE_ID);
-        });
-
-        it('clicking Schedules tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-            mockActiveRepoSubTab = 'notes';
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-work-tab-schedules'));
-
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'schedules' });
-            expect(location.hash).toBe('#repos/my_work/schedules');
         });
 
         describe('when schedules-in-scheduled-slide flag is enabled', () => {
@@ -461,17 +352,6 @@ describe('MyWorkView', () => {
             expect(settingsTab.getAttribute('data-repo-id')).toBe(MY_WORK_WORKSPACE_ID);
         });
 
-        it('clicking Settings tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-            mockActiveRepoSubTab = 'notes';
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-work-tab-settings'));
-
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
-            // switchTab now routes through buildRepoSubTabSuffix, which keeps the
-            // open settings section in the hash (defaults to 'info').
-            expect(location.hash).toBe('#repos/my_work/settings/info');
-        });
     });
 
     describe('Today view flag (myWork.todayView)', () => {
@@ -487,12 +367,11 @@ describe('MyWorkView', () => {
             expect(notesContainer.style.display).not.toBe('none');
         });
 
-        it('with the flag ON, a Today tab appears and lands by default', () => {
+        it('with the flag ON, Today lands by default', () => {
             mockTodayViewEnabled = true;
             mockActiveRepoSubTab = 'templates'; // not a My Work tab → falls back to default (today)
             renderView();
 
-            expect(screen.getByTestId('my-work-tab-today')).toBeTruthy();
             // Today content is visible (landing tab); Notes is hidden.
             const todayContainer = screen.getByTestId('my-work-today-tab').parentElement!;
             expect(todayContainer.style.display).not.toBe('none');
@@ -521,31 +400,17 @@ describe('MyWorkView', () => {
             expect(todayContainer.style.display).toBe('none');
         });
 
-        it('clicking the Today tab dispatches SET_REPO_SUB_TAB and updates hash', () => {
-            mockTodayViewEnabled = true;
-            mockActiveRepoSubTab = 'notes';
-            renderView();
-
-            fireEvent.click(screen.getByTestId('my-work-tab-today'));
-
-            expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'today' });
-            expect(location.hash).toBe('#repos/my_work/today');
-        });
     });
 
-    describe('header placement (remote-first shell)', () => {
-        it('hides the in-body header on remote-first desktop (it lives in the TopBar)', () => {
-            mockRemoteShell = true;
-            mockIsMobile = false;
+    describe('responsive header placement', () => {
+        it('leaves the desktop header in the TopBar', () => {
             renderView();
 
             expect(screen.queryByTestId('my-work-header')).toBeNull();
-            // Content still mounts (the footer now docks per sub-tab, not here).
             expect(screen.getByTestId('my-work-view')).toBeTruthy();
         });
 
         it('swaps the in-body header for the mobile tab bar on mobile', () => {
-            mockRemoteShell = true;
             mockIsMobile = true;
             renderView();
 
@@ -553,12 +418,6 @@ describe('MyWorkView', () => {
             expect(screen.getByTestId('my-work-mobile-header')).toBeTruthy();
         });
 
-        it('keeps the in-body header in the classic (non-remote) shell', () => {
-            mockRemoteShell = false;
-            renderView();
-
-            expect(screen.getByTestId('my-work-header')).toBeTruthy();
-        });
     });
 
     describe('mobile header (MobileTabBar)', () => {
@@ -603,13 +462,5 @@ describe('MyWorkView', () => {
             expect(repositoryServiceMocks.syncMyWork).toHaveBeenCalledTimes(1);
         });
 
-        it('keeps full labelled action buttons on desktop with no overflow trigger', () => {
-            mockIsMobile = false;
-            renderView();
-
-            expect(screen.getByTestId('my-work-sync-btn')).toBeTruthy();
-            expect(screen.getByTestId('my-work-generate-btn')).toBeTruthy();
-            expect(screen.queryByTestId('my-work-actions-overflow-btn')).toBeNull();
-        });
     });
 });

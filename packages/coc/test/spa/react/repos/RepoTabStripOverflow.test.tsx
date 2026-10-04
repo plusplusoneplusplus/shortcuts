@@ -71,10 +71,6 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ContainerAgentContext'
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
-    useUiLayoutMode: () => ['default'],
-}));
-
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({
         preferences: {

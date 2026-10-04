@@ -6,6 +6,7 @@
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { request } from './seed';
+import { gotoWorkspace } from './remote-shell';
 
 /** Seed a comment via POST /api/comments/{wsId}/{encodedPath}. */
 export async function seedComment(
@@ -34,21 +35,16 @@ export async function seedComment(
 
 /**
  * Navigate from the SPA root to a specific task file preview.
- * Steps: goto serverUrl → click repos tab → click first repo → click tasks sub-tab
- *        → click task-tree item → wait for #task-preview-body.
+ * Steps: open the seeded workspace's Tasks sub-tab (remote shell hash
+ *        navigation) → click task-tree item → wait for #task-preview-body.
  */
 export async function navigateToTask(
     page: Page,
     serverUrl: string,
+    wsId: string,
     taskName: string,
 ): Promise<void> {
-    await page.goto(serverUrl);
-    // Repos is the default view — select repo via RepoTabStrip in TopBar
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-    await page.click('.repo-sub-tab[data-subtab="tasks"]');
+    await gotoWorkspace(page, serverUrl, wsId, 'tasks');
     await expect(page.locator('[data-testid="task-tree"]')).toBeVisible({ timeout: 10_000 });
 
     const taskItem = page.locator(`[data-testid="task-tree-item-${taskName}"]`);

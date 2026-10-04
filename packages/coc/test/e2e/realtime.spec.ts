@@ -83,7 +83,7 @@ test.describe('Data consistency via REST + reload', () => {
             await page.reload();
             // After deletion the task may appear in history or be gone — just
             // verify the activity panel re-renders without error.
-            await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 8000 });
+            await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 8000 });
         } finally {
             cleanup();
         }
@@ -105,7 +105,7 @@ test.describe('Data consistency via REST + reload', () => {
             await page.reload();
             // The cancelled task is in history, not completely gone — just verify
             // the per-repo activity panel still renders.
-            await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 8000 });
+            await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 8000 });
         } finally {
             cleanup();
         }

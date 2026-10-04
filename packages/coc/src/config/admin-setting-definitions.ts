@@ -884,14 +884,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         },
     }),
     bool({
-        key: 'features.remoteShell', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'remoteShellEnabled',
-        ui: {
-            tab: 'appearance', group: 'dashboard', order: 65, label: 'Remote-first shell',
-            hint: 'Replace per-clone repo tabs with a remote-first shell: one entry per git remote, a clone switcher, and remote/clone-scoped sub-tabs. Desktop only. Enabled by default.',
-            testId: 'toggle-remote-shell-enabled',
-        },
-    }),
-    bool({
         key: 'features.scopeSwitcher', default: true, absentFallback: false, runtime: 'live', runtimeFlag: 'scopeSwitcherEnabled',
         ui: {
             tab: 'appearance', group: 'dashboard', order: 66, label: 'Scope slide switcher', badge: 'experimental',
@@ -905,14 +897,6 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
             tab: 'appearance', group: 'dashboard', order: 66.5, label: 'Pinned scope segments', badge: 'experimental',
             hint: 'Pin repos and repo groups from the workspace picker so they get their own persistent segments in the scope slide switcher, between My Work / My Life and the workspace chip. Requires the scope slide switcher. Enabled by default.',
             testId: 'toggle-pinned-scopes-enabled',
-        },
-    }),
-    bool({
-        key: 'features.splitWorkspacePanel', default: true, runtime: 'live', runtimeFlag: 'splitWorkspacePanelEnabled',
-        ui: {
-            tab: 'appearance', group: 'dashboard', order: 67, label: 'Split Workspace panel',
-            hint: 'Replaces the Activity tab with a split "Workspace" view (chat list on top, git on the bottom) that feeds one shared detail pane, and hides the standalone Git tab. Enabled by default.',
-            testId: 'toggle-split-workspace-panel-enabled',
         },
     }),
     bool({

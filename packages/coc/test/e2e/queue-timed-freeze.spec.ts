@@ -144,7 +144,7 @@ test.describe('Queue — freeze a task for a preset number of hours', () => {
 
             // (a) open the chat list with at least two queued tasks
             await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`);
-            await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({
+            await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({
                 timeout: 10_000,
             });
             await expect(queuedRow(page, idA)).toBeVisible({ timeout: 10_000 });

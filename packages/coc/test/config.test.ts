@@ -158,25 +158,25 @@ timeout: 300
         it('silently ignores unknown / removed feature flags (backward compat)', () => {
             // A config written before an experimental feature flag was removed may
             // still carry it under features.*. Unknown feature keys must be passed
-            // through — loading must not throw, warn, or alter behaviour, and the
-            // sibling features.remoteShell flag still resolves normally. This is the
+            // through — loading must not throw, warn, or alter behaviour, and a
+            // sibling live flag still resolves normally. This is the
             // mechanism that keeps a legacy single-row-shell feature entry harmless.
             const legacyKey = 'anExperimentalFlagRemovedLater';
             const configPath = path.join(tmpDir, 'legacy-feature-flag.yaml');
             fs.writeFileSync(configPath, [
                 'features:',
-                '  remoteShell: true',
+                '  scopeSwitcher: true',
                 `  ${legacyKey}: true`,
             ].join('\n') + '\n');
             const result = loadConfigFile(configPath);
             expect(result).toBeDefined();
-            expect(result!.features!.remoteShell).toBe(true);
+            expect(result!.features!.scopeSwitcher).toBe(true);
             expect((result!.features as Record<string, unknown>)[legacyKey]).toBe(true);
 
-            // Fully resolved config keeps remoteShell and never tracks the unknown
+            // Fully resolved config keeps the live flag and never tracks the unknown
             // key as a config source.
             const resolved = getResolvedConfigWithSource(configPath);
-            expect(resolved.resolved.features.remoteShell).toBe(true);
+            expect(resolved.resolved.features.scopeSwitcher).toBe(true);
             expect(Object.keys(resolved.sources)).not.toContain(`features.${legacyKey}`);
         });
 
@@ -189,15 +189,15 @@ timeout: 300
             fs.writeFileSync(configPath, [
                 'features:',
                 '  unifiedRightPanel: false',
-                '  splitWorkspacePanel: true',
+                '  gitCrossCloneCherryPick: true',
             ].join('\n') + '\n');
 
             const result = loadConfigFile(configPath);
             expect(result).toBeDefined();
-            expect(result!.features!.splitWorkspacePanel).toBe(true);
+            expect(result!.features!.gitCrossCloneCherryPick).toBe(true);
 
             const resolved = getResolvedConfigWithSource(configPath);
-            expect(resolved.resolved.features.splitWorkspacePanel).toBe(true);
+            expect(resolved.resolved.features.gitCrossCloneCherryPick).toBe(true);
             expect(resolved.resolved.features).not.toHaveProperty('unifiedRightPanel');
             expect(Object.keys(resolved.sources)).not.toContain('features.unifiedRightPanel');
         });
@@ -1176,10 +1176,8 @@ timeout: 300
                 '  ralphMultiAgentGrill: true',
                 '  nativeCliSessions: true',
                 '  quickAskSidenotes: true',
-                '  remoteShell: true',
                 '  scopeSwitcher: true',
                 '  pinnedScopes: true',
-                '  splitWorkspacePanel: true',
                 '  schedulesInScheduledSlide: true',
                 '  chatFolders: true',
                 '  composerWordHint: false',
@@ -1477,11 +1475,9 @@ timeout: 300
                     "pinnedScopes": true,
                     "quickAskSidenotes": true,
                     "ralphMultiAgentGrill": false,
-                    "remoteShell": true,
                     "schedulesInScheduledSlide": true,
                     "scopeSwitcher": true,
                     "sessionContextAttachments": true,
-                    "splitWorkspacePanel": true,
                     "teamsAiAnswerRelay": true,
                     "teamsBridgeObservability": false,
                     "teamsMessageReaction": true,
@@ -1686,11 +1682,9 @@ timeout: 300
                   "features.pinnedScopes": "default",
                   "features.quickAskSidenotes": "default",
                   "features.ralphMultiAgentGrill": "default",
-                  "features.remoteShell": "default",
                   "features.schedulesInScheduledSlide": "default",
                   "features.scopeSwitcher": "default",
                   "features.sessionContextAttachments": "default",
-                  "features.splitWorkspacePanel": "default",
                   "features.teamsAiAnswerRelay": "file",
                   "features.teamsBridgeObservability": "file",
                   "features.teamsMessageReaction": "file",

@@ -1,7 +1,7 @@
 /**
  * useLinkHandlers — persisted link-handler config hook.
  *
- * Mirrors the pattern of `useUiLayoutMode`:
+ * Shares a persisted preference through a module-level store:
  * - Module-level shared state so all hook instances stay in sync.
  * - Fetches `GET /api/preferences` exactly once at startup.
  * - `setHandlerEnabled(name, enabled)` writes back via `PATCH /api/preferences`

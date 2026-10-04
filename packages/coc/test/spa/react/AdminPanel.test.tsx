@@ -662,7 +662,7 @@ describe('AdminPanel', () => {
                 if (url.includes('/preferences')) {
                     return Promise.resolve({
                         ok: true,
-                        json: () => Promise.resolve({ theme: 'auto', reposSidebarCollapsed: false, uiLayoutMode: 'classic', htmlEmbed: { enabled: false } }),
+                        json: () => Promise.resolve({ theme: 'auto', reposSidebarCollapsed: false, htmlEmbed: { enabled: false } }),
                     });
                 }
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
@@ -703,7 +703,6 @@ describe('AdminPanel', () => {
                         json: () => Promise.resolve({
                             theme: 'auto',
                             reposSidebarCollapsed: false,
-                            uiLayoutMode: 'classic',
                             htmlEmbed: { enabled: true },
                             promptAutocomplete: { enabled: true, ai: { enabled: false } },
                         }),

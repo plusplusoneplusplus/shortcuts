@@ -56,23 +56,9 @@ export interface VisibleSubTabOptions {
     workflowsEnabled: boolean;
     pullRequestsEnabled: boolean;
     dreamsEnabled: boolean;
-    /** When false (default), the deprecated `tasks` sub-tab is hidden in both layout modes. */
+    /** When false (default), the deprecated `tasks` sub-tab is hidden in the tab strip. */
     showPlanDepTab: boolean;
-    uiLayoutMode: 'classic' | 'dev-workflow';
-    /**
-     * When true (feature flag `splitWorkspacePanel`, default on), the split
-     * "Workspace" view takes over the chat slot: the standalone `git`,
-     * `terminal`, and `explorer` sub-tabs are hidden — git's diff/stage/commit
-     * functionality now lives inside the split panel, and Terminal/Explorer move
-     * into the workspace right dock (segmented Terminal|Explorer) — and the chat
-     * tab is relabeled "Workspace". The tab *key* (`activity`/`chats`) is
-     * unchanged so mount/selection logic is unaffected — only the label and the
-     * git/terminal/explorer visibility change. Optional — and defaulted to
-     * false below — so the remote-shell callers, which don't host the split
-     * panel or dock, keep today's behavior; real callers pass the flag, which
-     * is on by default.
-     */
-    splitWorkspacePanelEnabled?: boolean;
+
     /**
      * When true (feature flag `schedulesInScheduledSlide`, default off), the
      * standalone `schedules` sub-tab is hidden. Schedule management moves into
@@ -91,7 +77,7 @@ export interface VisibleSubTabOptions {
 
 /**
  * Compute the visible sub-tabs for a repo, applying feature-flag gating,
- * git-repo gating, and per-layout-mode relabeling/reordering.
+ * git-repo gating, and classic tab labels.
  *
  * This is a verbatim extraction of the logic previously inlined in RepoDetail
  * so the two stay behaviorally identical.
@@ -99,8 +85,7 @@ export interface VisibleSubTabOptions {
 export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     const {
         isGitRepo, terminalEnabled, notesEnabled, workflowsEnabled,
-        pullRequestsEnabled, dreamsEnabled, showPlanDepTab, uiLayoutMode,
-        splitWorkspacePanelEnabled = false,
+        pullRequestsEnabled, dreamsEnabled, showPlanDepTab,
         schedulesInScheduledSlideEnabled = false,
     } = opts;
 
@@ -113,54 +98,18 @@ export function computeVisibleSubTabs(opts: VisibleSubTabOptions): SubTabDef[] {
     if (!pullRequestsEnabled) tabs = tabs.filter(t => t.key !== 'pull-requests');
     if (!dreamsEnabled) tabs = tabs.filter(t => t.key !== 'dreams');
     // Schedules tab retirement (AC-04): when the schedules-in-slide flag is ON,
-    // hide the standalone `schedules` sub-tab. Applied before the layout
-    // relabel/reorder so the dev-workflow "Jobs" rename has nothing to act on.
+    // hide the standalone `schedules` sub-tab.
     if (schedulesInScheduledSlideEnabled) tabs = tabs.filter(t => t.key !== 'schedules');
 
-    if (uiLayoutMode === 'classic') {
-        // Classic: replace Chats with Activity, relabel Tasks as Plans
-        tabs = tabs
-            .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab, label: 'Activity' } : t)
-            .map(t => t.key === 'tasks' ? { ...t, label: 'Plans (Dep.)' } : t);
-    } else {
-        // Dev-workflow: relabel and reorder tabs
-        const devWorkflowRelabels: Record<string, string> = {
-            'schedules': 'Jobs',
-            'pull-requests': 'Full Requests',
-        };
-        const devWorkflowOrder: RepoSubTab[] = [
-            'chats', 'work-items', 'dreams', 'schedules', 'explorer',
-            'workflows', 'git', 'terminal', 'pull-requests', 'tasks', 'settings',
-        ];
-        const tabMap = new Map(tabs.map(t => [t.key, t]));
-        const ordered: SubTabDef[] = [];
-        for (const key of devWorkflowOrder) {
-            const tab = tabMap.get(key);
-            if (tab) {
-                const newLabel = devWorkflowRelabels[key];
-                ordered.push(newLabel ? { ...tab, label: newLabel } : tab);
-                tabMap.delete(key);
-            }
-        }
-        // Append dynamic tabs (notes, wiki) that aren't in the fixed order
-        for (const [, tab] of tabMap) {
-            ordered.push(tab);
-        }
-        tabs = ordered;
-    }
+    tabs = tabs
+        .map(t => t.key === 'chats' ? { ...t, key: 'activity' as RepoSubTab } : t)
+        .map(t => t.key === 'tasks' ? { ...t, label: 'Plans (Dep.)' } : t);
 
-    // Split "Workspace" panel (feature flag). Applied last so it overrides the
-    // per-layout labeling in either mode. Hide the standalone `git`, `terminal`,
-    // and `explorer` sub-tabs — git's functionality moves into the split panel,
-    // and Terminal/Explorer move into the workspace right dock — and relabel the
-    // chat tab (key `activity` in classic, `chats` in dev-workflow) to
-    // "Workspace". The key is left untouched so mount/selection/pinned-tab logic
-    // is unaffected.
-    if (splitWorkspacePanelEnabled) {
-        tabs = tabs
-            .filter(t => t.key !== 'git' && t.key !== 'terminal' && t.key !== 'explorer')
-            .map(t => (t.key === 'activity' || t.key === 'chats') ? { ...t, label: 'Workspace' } : t);
-    }
+    // Workspace owns Git; the desktop right panel owns Terminal and Explorer.
+    // Preserve the chat aliases while giving the shared surface one label.
+    tabs = tabs
+        .filter(t => t.key !== 'git' && t.key !== 'terminal' && t.key !== 'explorer')
+        .map(t => (t.key === 'activity' || t.key === 'chats') ? { ...t, label: 'Workspace' } : t);
 
     return tabs;
 }

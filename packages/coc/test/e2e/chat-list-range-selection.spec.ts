@@ -51,7 +51,7 @@ async function makeWorkspace(
 /** Navigate to the per-repo Activity sub-tab and wait for its split panel. */
 async function gotoActivity(page: Page, serverUrl: string, wsId: string): Promise<void> {
     await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`);
-    await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10_000 });
 }
 
 /** Current selection-count-pill value (0 when the pill is absent, i.e. <2 selected). */

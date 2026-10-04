@@ -11,9 +11,6 @@
  * (`dockStatusFooter`) and `GlobalStatusDock` stands down on the notes sub-tab,
  * so the editor pane keeps full height and no partial-width band is painted.
  *
- * The default E2E config pins `features.remoteShell` off (the classic shell has
- * no docked status cluster at all), so this spec forces the remote-first shell
- * on by overriding GET /api/config/runtime.
  */
 
 import * as fs from 'fs';
@@ -25,29 +22,6 @@ import { createRepoFixture } from './fixtures/repo-fixtures';
 
 const WS_ID = 'ws-notes-dock';
 
-/**
- * Force the remote-first shell on regardless of the E2E server's pinned-off
- * config by merging `remoteShellEnabled: true` into GET /api/config/runtime.
- * The App renders only after `loadRuntimeConfig()` resolves, so the flag is in
- * effect on the very first render.
- */
-async function enableRemoteShell(page: import('@playwright/test').Page): Promise<void> {
-    await page.route('**/api/config/runtime', async (route) => {
-        try {
-            const resp = await route.fetch();
-            const json = await resp.json();
-            const features = { ...(json.features ?? {}), remoteShellEnabled: true };
-            await route.fulfill({
-                status: resp.status(),
-                headers: { ...resp.headers(), 'content-type': 'application/json' },
-                body: JSON.stringify({ ...json, features }),
-            });
-        } catch {
-            await route.continue().catch(() => {});
-        }
-    });
-}
-
 test.describe('Notes page — status dock (remote-first shell)', () => {
     test('notes sub-tab docks the status cluster in its own sidebar, no global band', async ({
         page,
@@ -57,8 +31,6 @@ test.describe('Notes page — status dock (remote-first shell)', () => {
         try {
             const repoDir = createRepoFixture(tmpDir);
             await seedWorkspace(serverUrl, WS_ID, `${WS_ID}-repo`, repoDir);
-            await enableRemoteShell(page);
-
             // Control: on a non-notes surface (the repos landing) the app-wide
             // GlobalStatusDock band IS rendered — proving the remote-first shell
             // is genuinely active and the dock renders when appropriate. This

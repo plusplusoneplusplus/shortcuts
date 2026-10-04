@@ -101,7 +101,6 @@ function RouteSync() {
                 selectedRepoId: stateRef.current.selectedRepoId,
                 repoRouteState: stateRef.current.repoRouteState,
                 repoTabState: stateRef.current.repoTabState,
-                getUiLayoutMode: () => 'classic',
                 isSchedulesInSlide: () => false,
             };
             applyRouteEffects(resolveDashboardRoute(location.hash, ctx).effects, {

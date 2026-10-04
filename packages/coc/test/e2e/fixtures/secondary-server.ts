@@ -14,7 +14,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { expect, type Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { safeRmSync } from '../../helpers/safe-rm';
 import { createE2EMockSDKService } from './mock-ai';
 import { E2E_SERVER_CONFIG_YAML } from './e2e-server-config';
@@ -73,24 +73,6 @@ export async function startSecondaryServer(): Promise<SecondaryServer> {
             safeRmSync(dataDir);
         },
     };
-}
-
-/** Force the remote-first shell on (the shared E2E config pins it off). */
-export async function enableRemoteShell(page: Page): Promise<void> {
-    await page.route('**/api/config/runtime', async (route) => {
-        try {
-            const resp = await route.fetch();
-            const json = await resp.json();
-            const features = { ...(json.features ?? {}), remoteShellEnabled: true };
-            await route.fulfill({
-                status: resp.status(),
-                headers: { ...resp.headers(), 'content-type': 'application/json' },
-                body: JSON.stringify({ ...json, features }),
-            });
-        } catch {
-            await route.continue().catch(() => {});
-        }
-    });
 }
 
 /** Register `remoteUrl` on `serverUrl` as a `url`-kind remote server. */

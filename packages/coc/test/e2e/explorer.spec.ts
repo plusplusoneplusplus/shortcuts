@@ -1,32 +1,29 @@
 /**
- * Tests the ExplorerPanel inside a repo detail view:
+ * Tests the desktop remote-shell Explorer flow inside the unified right panel:
  *   - FileTree navigation (initial load, expand directory, filter)
  *   - PreviewPane: file open, dirty-indicator after edit, save button
  *   - QuickOpen: Ctrl+P overlay, filter, select file
  *   - Refresh: reloads the file tree
- *   - Content search: Search view, grouped results, click-to-open-at-line,
- *     include filter + collapse + keyboard navigation
- *   - Editor tabs (behind `features.explorerEditorTabs`): preview replacement,
- *     pinning, switching, closing, duplicate-name labels, reload persistence
+ *   - Content search via the panel's Search mode, with grouped results and
+ *     click-to-open-at-line
+ *   - Unified right-panel file tabs: preview replacement, pinning, switching,
+ *     closing, overflow, reorder, dirty state, and reload persistence
  *
- * Relies on existing data-testid attributes in the explorer components
- * (no new testids added):
- *   explorer-panel, explorer-sidebar, explorer-refresh-btn,
- *   explorer-preview-pane, file-tree, tree-node-{path},
- *   preview-pane, preview-toolbar, save-btn, dirty-indicator,
- *   monaco-container, quick-open-overlay, quick-open-dialog,
- *   quick-open-input, quick-open-results, quick-open-item-{idx},
- *   explorer-view-tree, explorer-view-search, content-search-panel,
- *   content-search-input, content-search-toggle-{case,word,regex},
+ * Relies on existing data-testid attributes only:
+ *   unified-right-panel, unified-panel-explorer-mode, unified-panel-search-mode,
+ *   unified-panel-search-toggle, unified-panel-tree-toggle,
+ *   unified-panel-tab-list, unified-panel-tab-{id}, unified-panel-tab-label-{id},
+ *   unified-panel-tab-close-{id}, unified-panel-tab-dirty-{id},
+ *   unified-panel-view-{id}, explorer-panel, explorer-sidebar,
+ *   explorer-refresh-btn, file-tree, tree-node-{path}, preview-pane,
+ *   preview-toolbar, dirty-indicator, monaco-container, quick-open-overlay,
+ *   quick-open-dialog, quick-open-input, quick-open-results,
+ *   content-search-panel, content-search-input, content-search-toggle-{case,word,regex},
  *   content-search-results, content-search-group, content-search-match,
  *   content-search-summary, content-search-empty, content-search-regex-error,
  *   content-search-file-header, content-search-file-count,
- *   content-search-filters-toggle, content-search-filters-dot,
- *   content-search-include,
- *   explorer-tab-strip, explorer-tab-list, explorer-tab-{id},
- *   explorer-tab-label-{id}, explorer-tab-close-{id}, explorer-tab-dirty-{id},
- *   explorer-tab-panel-{id}, explorer-tabbed-editor,
- *   explorer-mobile-back-bar, explorer-mobile-back-btn
+ *   content-search-filters-toggle, content-search-filters-dot, content-search-include,
+ *   explorer-breadcrumbs
  */
 
 import * as fs from 'fs';
@@ -34,8 +31,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
-import { editorTab, enableExplorerEditorTabs, expectEditorTabs } from './fixtures/explorer-tabs-seed';
-import type { Page } from '@playwright/test';
+import { gotoWorkspace, openExplorerPanel } from './fixtures/remote-shell';
+import { enableExplorerEditorTabs } from './fixtures/explorer-tabs-seed';
+import type { Locator, Page } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,6 +47,12 @@ const SEARCH_NEEDLE = 'ZzQqSearchNeedle';
 
 /** 1-based line of SEARCH_NEEDLE inside src/search-fixture.ts. */
 const SEARCH_NEEDLE_LINE = 4;
+
+const WORKSPACE_ID = 'ws-explorer';
+const UNIFIED_PANEL = '[data-testid="unified-right-panel"]';
+const UNIFIED_ACTIVE_FILE = `${UNIFIED_PANEL} [data-testid^="unified-panel-view-"]:not([style*="display: none"])`;
+const EXPLORER_PANEL_ROOT = '[data-testid="unified-panel-explorer-mode"]';
+const SEARCH_PANEL_ROOT = '[data-testid="unified-panel-search-mode"]';
 
 /** Create a repo with files for explorer testing. */
 function createExplorerRepoFixture(tmpDir: string): string {
@@ -107,10 +111,47 @@ const MOBILE_VIEWPORT = { width: 390, height: 844 };
  * inside the visible slice of it. Read in one evaluate so the numbers describe
  * the same frame.
  */
-async function stripGeometry(page: Page, tabId: string) {
-    return page.evaluate((id: string) => {
-        const list = document.querySelector('[data-testid="explorer-tab-list"]') as HTMLElement | null;
-        const tab = list?.querySelector(`[data-tab-id="${id}"]`) as HTMLElement | null;
+function normalizeTabLabel(idOrLabel: string): string {
+    return idOrLabel.startsWith('file:') ? idOrLabel.slice(5).split('/').pop()! : idOrLabel;
+}
+
+function editorTab(page: Page, idOrLabel: string, index = 0): Locator {
+    return page.locator(`${UNIFIED_PANEL} [data-testid="unified-panel-tab-list"] [role="tab"]`)
+        .filter({ hasText: normalizeTabLabel(idOrLabel) })
+        .nth(index);
+}
+
+async function openEditorTabLabels(page: Page): Promise<string[]> {
+    return page.locator(`${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`).evaluateAll(
+        nodes => nodes.map(node => (node.textContent ?? '').trim()),
+    );
+}
+
+async function expectEditorTabs(page: Page, idsOrLabels: string[]): Promise<void> {
+    await expect.poll(
+        () => openEditorTabLabels(page),
+        { timeout: 8_000 },
+    ).toEqual(idsOrLabels.map(normalizeTabLabel));
+}
+
+function treeNode(page: Page, nodePath: string): Locator {
+    return page.locator(`${EXPLORER_PANEL_ROOT} [data-testid="tree-node-${nodePath}"]`);
+}
+
+function explorerPanel(page: Page): Locator {
+    return page.locator(`${EXPLORER_PANEL_ROOT} [data-testid="explorer-panel"]`);
+}
+
+function searchPanel(page: Page): Locator {
+    return page.locator(`${SEARCH_PANEL_ROOT} [data-testid="content-search-panel"]`);
+}
+
+async function stripGeometry(page: Page, idOrLabel: string) {
+    return page.evaluate((label: string) => {
+        const list = document.querySelector('[data-testid="unified-panel-tab-list"]') as HTMLElement | null;
+        const tab = Array.from(list?.querySelectorAll('[role="tab"]') ?? []).find(node =>
+            (node.querySelector('[data-testid^="unified-panel-tab-label-"]')?.textContent ?? '').trim() === label,
+        ) as HTMLElement | null;
         if (!list || !tab) return null;
         const listBox = list.getBoundingClientRect();
         const tabBox = tab.getBoundingClientRect();
@@ -121,7 +162,7 @@ async function stripGeometry(page: Page, tabId: string) {
             // 1 px of slack: sub-pixel layout should not decide this.
             fullyVisible: tabBox.left >= listBox.left - 1 && tabBox.right <= listBox.right + 1,
         };
-    }, tabId);
+    }, normalizeTabLabel(idOrLabel));
 }
 
 /**
@@ -131,20 +172,18 @@ async function stripGeometry(page: Page, tabId: string) {
  * a beat after the view paints, so under load a `keyboard.type` right after the
  * click can land on nothing at all.
  */
-async function focusMonacoBuffer(page: Page, panelTestId: string): Promise<void> {
-    const editor = page.locator(`[data-testid="${panelTestId}"] [data-testid="monaco-container"] .monaco-editor`);
+async function focusMonacoBuffer(page: Page, panelSelector = UNIFIED_ACTIVE_FILE): Promise<void> {
+    const editor = page.locator(`${panelSelector} [data-testid="monaco-container"] .monaco-editor`);
     await expect(editor).toBeVisible({ timeout: 15_000 });
     await editor.locator('.view-lines').click();
     await expect
         .poll(
             () =>
                 page.evaluate(
-                    (id: string) =>
+                    (selector: string) =>
                         !!document.activeElement &&
-                        !!document
-                            .querySelector(`[data-testid="${id}"] [data-testid="monaco-container"]`)
-                            ?.contains(document.activeElement),
-                    panelTestId,
+                        !!document.querySelector(selector)?.contains(document.activeElement),
+                    `${panelSelector} [data-testid="monaco-container"]`,
                 ),
             { timeout: 10_000 },
         )
@@ -153,19 +192,20 @@ async function focusMonacoBuffer(page: Page, panelTestId: string): Promise<void>
 
 /** Switch the Explorer sidebar to the Search view and wait for the panel. */
 async function gotoSearchView(page: Page): Promise<void> {
-    await page.locator('[data-testid="explorer-view-search"]').click();
-    await expect(page.locator('[data-testid="content-search-panel"]')).toBeVisible({ timeout: 5_000 });
+    await page.locator('[data-testid="unified-panel-search-toggle"]').first().click();
+    await expect(searchPanel(page)).toBeVisible({ timeout: 5_000 });
 }
 
-/** Navigate to the repo detail and click the Explorer sub-tab. */
+async function gotoTreeView(page: Page): Promise<void> {
+    await page.locator('[data-testid="unified-panel-tree-toggle"]').first().click();
+    await expect(explorerPanel(page)).toBeVisible({ timeout: 5_000 });
+}
+
+/** Navigate to the repo detail and reveal the Explorer tree in the right panel. */
 async function gotoExplorer(page: Page, serverUrl: string): Promise<void> {
-    // Repos is the implicit default view — navigate to base URL (no tab button needed)
-    await page.goto(serverUrl);
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10_000 });
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 8_000 });
-    await page.locator('button[data-subtab="explorer"]').click();
-    await expect(page.locator('[data-testid="explorer-panel"]')).toBeVisible({ timeout: 8_000 });
+    await gotoWorkspace(page, serverUrl, WORKSPACE_ID);
+    await openExplorerPanel(page);
+    await expect(explorerPanel(page)).toBeVisible({ timeout: 8_000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -177,12 +217,12 @@ test.describe('ExplorerPanel – Initial render', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
-            await expect(page.locator('[data-testid="explorer-sidebar"]')).toBeVisible();
-            await expect(page.locator('[data-testid="file-tree"]')).toBeVisible({ timeout: 8_000 });
+            await expect(explorerPanel(page).locator('[data-testid="explorer-sidebar"]')).toBeVisible();
+            await expect(explorerPanel(page).locator('[data-testid="file-tree"]')).toBeVisible({ timeout: 8_000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -192,13 +232,13 @@ test.describe('ExplorerPanel – Initial render', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
             // src and docs directories should appear
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await expect(page.locator('[data-testid="tree-node-docs"]')).toBeVisible({ timeout: 5_000 });
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await expect(treeNode(page, 'docs')).toBeVisible({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -208,11 +248,11 @@ test.describe('ExplorerPanel – Initial render', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
-            await expect(page.locator('[data-testid="explorer-refresh-btn"]')).toBeVisible({ timeout: 5_000 });
+            await expect(explorerPanel(page).locator('[data-testid="explorer-refresh-btn"]')).toBeVisible({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -228,16 +268,16 @@ test.describe('ExplorerPanel – Directory navigation', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
             // Click the 'src' directory to expand it
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-src"]').click();
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'src').click();
 
             // Child files should now appear
-            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+            await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -247,11 +287,17 @@ test.describe('ExplorerPanel – Directory navigation', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
-            await expect(page.locator('[data-testid="explorer-breadcrumbs"]')).toBeVisible({ timeout: 5_000 });
+            await treeNode(page, 'src').click();
+            await treeNode(page, 'src/index.ts').dblclick();
+            const breadcrumbs = page.locator(`${UNIFIED_PANEL} [data-testid="explorer-breadcrumbs"]`);
+            await expect(breadcrumbs).toBeVisible({ timeout: 5_000 });
+            await expect(breadcrumbs.locator('[data-testid="breadcrumb-segment-root"]')).toContainText('root');
+            await expect(breadcrumbs.locator('[data-testid="breadcrumb-segment-0"]')).toHaveText('src');
+            await expect(breadcrumbs.locator('[data-testid="breadcrumb-segment-1"]')).toHaveText('index.ts');
         } finally {
             safeRmSync(tmpDir);
         }
@@ -267,20 +313,20 @@ test.describe('ExplorerPanel – File preview', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
             // Expand src directory first
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-src"]').click();
-            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'src').click();
+            await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
 
             // Double-click to open in preview
-            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
+            await treeNode(page, 'src/index.ts').dblclick();
 
             // Preview pane should become active with the file
-            await expect(page.locator('[data-testid="preview-pane"]')).toBeVisible({ timeout: 8_000 });
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="preview-pane"]`)).toBeVisible({ timeout: 8_000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -290,16 +336,16 @@ test.describe('ExplorerPanel – File preview', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-src"]').click();
-            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
-            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'src').click();
+            await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
+            await treeNode(page, 'src/index.ts').dblclick();
 
-            await expect(page.locator('[data-testid="preview-toolbar"]')).toBeVisible({ timeout: 8_000 });
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="preview-toolbar"]`)).toHaveCount(1);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -315,12 +361,12 @@ test.describe('ExplorerPanel – Search bar', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
-            await expect(page.locator('[data-testid="explorer-search-bar"]')).toBeVisible({ timeout: 5_000 });
-            await page.locator('[data-testid="explorer-search-input"]').fill('index');
+            await expect(explorerPanel(page).locator('[data-testid="explorer-search-bar"]')).toBeVisible({ timeout: 5_000 });
+            await explorerPanel(page).locator('[data-testid="explorer-search-input"]').fill('index');
         } finally {
             safeRmSync(tmpDir);
         }
@@ -336,16 +382,16 @@ test.describe('ExplorerPanel – Refresh', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
-            await expect(page.locator('[data-testid="explorer-refresh-btn"]')).toBeVisible({ timeout: 5_000 });
-            await page.locator('[data-testid="explorer-refresh-btn"]').click();
+            await expect(explorerPanel(page).locator('[data-testid="explorer-refresh-btn"]')).toBeVisible({ timeout: 5_000 });
+            await explorerPanel(page).locator('[data-testid="explorer-refresh-btn"]').click();
 
             // Tree should still be visible after refresh
-            await expect(page.locator('[data-testid="file-tree"]')).toBeVisible({ timeout: 8_000 });
-            await expect(page.locator('[data-testid="explorer-error"]')).toHaveCount(0);
+            await expect(explorerPanel(page).locator('[data-testid="file-tree"]')).toBeVisible({ timeout: 8_000 });
+            await expect(explorerPanel(page).locator('[data-testid="explorer-error"]')).toHaveCount(0);
         } finally {
             safeRmSync(tmpDir);
         }
@@ -361,12 +407,12 @@ test.describe('ExplorerPanel – QuickOpen', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
             // Ensure explorer panel is focused then press Ctrl+P
-            await page.locator('[data-testid="explorer-panel"]').click();
+            await explorerPanel(page).click();
             await page.keyboard.press('Control+p');
 
             await expect(page.locator('[data-testid="quick-open-overlay"]')).toBeVisible({ timeout: 5_000 });
@@ -380,11 +426,11 @@ test.describe('ExplorerPanel – QuickOpen', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
 
-            await page.locator('[data-testid="explorer-panel"]').click();
+            await explorerPanel(page).click();
             await page.keyboard.press('Control+p');
             await expect(page.locator('[data-testid="quick-open-input"]')).toBeVisible({ timeout: 5_000 });
 
@@ -409,18 +455,18 @@ test.describe('ExplorerPanel – Content search', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
 
             await gotoSearchView(page);
-            await expect(page.locator('[data-testid="file-tree"]')).toHaveCount(0);
-            await expect(page.locator('[data-testid="content-search-idle"]')).toBeVisible();
+            await expect(explorerPanel(page)).not.toBeVisible();
+            await expect(page.locator(`${SEARCH_PANEL_ROOT} [data-testid="content-search-idle"]`)).toBeVisible();
 
             // Back to the tree: the previously loaded entries are still there.
-            await page.locator('[data-testid="explorer-view-tree"]').click();
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 5_000 });
+            await gotoTreeView(page);
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 5_000 });
         } finally {
             safeRmSync(tmpDir);
         }
@@ -430,7 +476,7 @@ test.describe('ExplorerPanel – Content search', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
             await gotoSearchView(page);
@@ -470,7 +516,7 @@ test.describe('ExplorerPanel – Content search', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
             await gotoSearchView(page);
@@ -481,8 +527,8 @@ test.describe('ExplorerPanel – Content search', () => {
             await match.click();
 
             // The preview opens on the clicked file …
-            await expect(page.locator('[data-testid="monaco-container"]')).toBeVisible({ timeout: 15_000 });
-            const editor = page.locator('[data-testid="monaco-container"] .monaco-editor').first();
+            await expect(page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="monaco-container"]`)).toBeVisible({ timeout: 15_000 });
+            const editor = page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="monaco-container"] .monaco-editor`);
             await expect(editor).toBeVisible({ timeout: 15_000 });
             await expect(editor.locator('.view-lines')).toContainText(SEARCH_NEEDLE, { timeout: 15_000 });
 
@@ -501,7 +547,7 @@ test.describe('ExplorerPanel – Content search', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
             await gotoSearchView(page);
@@ -519,7 +565,7 @@ test.describe('ExplorerPanel – Content search', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
             await gotoSearchView(page);
@@ -543,7 +589,7 @@ test.describe('ExplorerPanel – Content search', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
 
             await gotoExplorer(page, serverUrl);
             await gotoSearchView(page);
@@ -584,7 +630,7 @@ test.describe('ExplorerPanel – Content search', () => {
 
             // 5. Enter opens the focused match in the preview, at its line.
             await page.keyboard.press('Enter');
-            const editor = page.locator('[data-testid="monaco-container"] .monaco-editor').first();
+            const editor = page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="monaco-container"] .monaco-editor`);
             await expect(editor).toBeVisible({ timeout: 15_000 });
             await expect(editor.locator('.view-lines')).toContainText(SEARCH_NEEDLE, { timeout: 15_000 });
             await expect(editor.locator('.line-numbers.active-line-number')).toHaveText(
@@ -598,7 +644,7 @@ test.describe('ExplorerPanel – Content search', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. Editor tabs (features.explorerEditorTabs)
+// 7. Unified right-panel file tabs
 // ---------------------------------------------------------------------------
 
 test.describe('ExplorerPanel – Editor tabs', () => {
@@ -606,124 +652,113 @@ test.describe('ExplorerPanel – Editor tabs', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             // Live flag: must be on before the SPA loads its runtime config.
             await enableExplorerEditorTabs(serverUrl);
 
             await gotoExplorer(page, serverUrl);
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-src"]').click();
-            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'src').click();
+            await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
 
             // 1. A single click opens ONE replaceable preview tab, and a second
             //    single click replaces it rather than stacking.
-            await page.locator('[data-testid="tree-node-src/index.ts"]').click();
+            await treeNode(page, 'src/index.ts').click();
             await expectEditorTabs(page, ['file:src/index.ts']);
             await expect(editorTab(page, 'file:src/index.ts')).toHaveAttribute('data-preview', 'true');
 
-            await page.locator('[data-testid="tree-node-src/utils.ts"]').click();
+            await treeNode(page, 'src/utils.ts').click();
             await expectEditorTabs(page, ['file:src/utils.ts']);
 
             // 2. A double click pins, so the next single click adds a tab.
-            await page.locator('[data-testid="tree-node-src/utils.ts"]').dblclick();
+            await treeNode(page, 'src/utils.ts').dblclick();
             await expect(editorTab(page, 'file:src/utils.ts')).not.toHaveAttribute('data-preview', 'true');
-            await page.locator('[data-testid="tree-node-src/index.ts"]').click();
+            await treeNode(page, 'src/index.ts').click();
             await expectEditorTabs(page, ['file:src/utils.ts', 'file:src/index.ts']);
 
             // 3. Both buffers stay mounted; clicking a tab switches which one shows.
-            const utilsPanel = page.locator('[data-testid="explorer-tab-panel-file:src/utils.ts"]');
-            const indexPanel = page.locator('[data-testid="explorer-tab-panel-file:src/index.ts"]');
-            await expect(indexPanel).toHaveAttribute('data-active', 'true');
+            await expect(editorTab(page, 'file:src/index.ts')).toHaveAttribute('aria-selected', 'true');
             await editorTab(page, 'file:src/utils.ts').click();
-            await expect(utilsPanel).toHaveAttribute('data-active', 'true');
-            await expect(indexPanel).not.toHaveAttribute('data-active', 'true');
+            await expect(editorTab(page, 'file:src/utils.ts')).toHaveAttribute('aria-selected', 'true');
+            await expect(editorTab(page, 'file:src/index.ts')).toHaveAttribute('aria-selected', 'false');
             await expect(
-                utilsPanel.locator('[data-testid="monaco-container"] .monaco-editor .view-lines'),
+                page.locator(`${UNIFIED_ACTIVE_FILE} [data-testid="monaco-container"] .monaco-editor .view-lines`),
             ).toContainText('add', { timeout: 15_000 });
 
             // 4. The close button on a clean tab closes just that tab.
-            await page.locator('[data-testid="explorer-tab-close-file:src/utils.ts"]').click();
+            await editorTab(page, 'file:src/utils.ts').locator('[data-testid^="unified-panel-tab-close-"]').click();
             await expectEditorTabs(page, ['file:src/index.ts']);
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('E.19 the tab session survives a full reload, and colliding names widen', async ({ page, serverUrl }) => {
+    test('E.19 the tab session survives a full reload, and colliding names stay open', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
 
             await gotoExplorer(page, serverUrl);
-            await expect(page.locator('[data-testid="tree-node-docs"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-docs"]').click();
-            await expect(page.locator('[data-testid="tree-node-docs/README.md"]')).toBeVisible({ timeout: 5_000 });
+            await expect(treeNode(page, 'docs')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'docs').click();
+            await expect(treeNode(page, 'docs/README.md')).toBeVisible({ timeout: 5_000 });
 
-            // Two files with the SAME filename: the labels widen to the shortest
-            // distinguishing path, and every tab still tooltips its full path.
-            await page.locator('[data-testid="tree-node-README.md"]').dblclick();
-            await page.locator('[data-testid="tree-node-docs/README.md"]').dblclick();
+            // Two files with the SAME filename still keep two distinct tabs
+            // open in order, even though the host strip now renders basename labels.
+            await treeNode(page, 'README.md').dblclick();
+            await treeNode(page, 'docs/README.md').dblclick();
             await expectEditorTabs(page, ['file:README.md', 'file:docs/README.md']);
-            await expect(page.locator('[data-testid="explorer-tab-label-file:docs/README.md"]'))
-                .toHaveText('docs/README.md');
-            await expect(editorTab(page, 'file:docs/README.md')).toHaveAttribute('title', 'docs/README.md');
+            const readmeTabs = page.locator(`${UNIFIED_PANEL} [data-testid^="unified-panel-tab-label-"]`).filter({ hasText: 'README.md' });
+            await expect(readmeTabs).toHaveCount(2);
+            await expect(editorTab(page, 'README.md', 1)).toHaveAttribute('aria-selected', 'true');
 
             // A real reload (not a same-hash navigation) restores the session.
             await page.reload();
-            await expect(page.locator('[data-testid="explorer-panel"]')).toBeVisible({ timeout: 10_000 });
+            await openExplorerPanel(page);
+            await expect(explorerPanel(page)).toBeVisible({ timeout: 10_000 });
             await expectEditorTabs(page, ['file:README.md', 'file:docs/README.md']);
-            await expect(editorTab(page, 'file:docs/README.md')).toHaveAttribute('aria-selected', 'true');
+            await expect(editorTab(page, 'README.md', 1)).toHaveAttribute('aria-selected', 'true');
         } finally {
             safeRmSync(tmpDir);
         }
     });
 
-    test('E.20 on a narrow viewport the strip sits above the buffer and Files keeps the session', async ({ page, serverUrl }) => {
+    test('E.20 collapsing and reopening the dock keeps the file-tab session intact', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
 
             // Navigate at the default desktop size, then shrink: `useBreakpoint`
             // listens for matchMedia changes, so the panel re-lays-out live and
             // the repos navigation never has to be driven at phone width.
             await gotoExplorer(page, serverUrl);
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-src"]').click();
-            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
-            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
-            await page.locator('[data-testid="tree-node-src/utils.ts"]').dblclick();
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'src').click();
+            await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
+            await treeNode(page, 'src/index.ts').dblclick();
+            await treeNode(page, 'src/utils.ts').dblclick();
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
 
-            await page.setViewportSize(MOBILE_VIEWPORT);
+            // Collapsing the dock hides the whole panel but does not discard
+            // the host tab session. Reopening it restores the same tabs and active
+            // selection.
+            const dockToggle = page.locator('[data-testid="workspace-dock-toggle"]').first();
+            await expect(dockToggle).toBeVisible({ timeout: 10_000 });
+            await dockToggle.click();
+            await expect(page.locator(UNIFIED_PANEL)).toHaveAttribute('data-open', 'false');
 
-            // Mobile shows the editor OR the tree, never both: the tree is gone
-            // and the back bar appears in its place.
-            await expect(page.locator('[data-testid="explorer-mobile-back-bar"]')).toBeVisible({ timeout: 5_000 });
-            await expect(page.locator('[data-testid="file-tree"]')).not.toBeVisible();
-
-            // The strip stays a horizontal strip stacked above the buffer — it
-            // never becomes a column beside it, and it spans the editor area.
-            const editorBox = (await page.locator('[data-testid="explorer-tabbed-editor"]').boundingBox())!;
-            const stripBox = (await page.locator('[data-testid="explorer-tab-strip"]').boundingBox())!;
-            const panelBox = (await page.locator('[data-testid="explorer-tab-panel-file:src/utils.ts"]').boundingBox())!;
-            expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(panelBox.y + 1);
-            expect(stripBox.width).toBeGreaterThan(editorBox.width * 0.9);
-            expect(panelBox.height).toBeGreaterThan(0);
-
-            // Files goes back to the tree WITHOUT closing anything (AC-06): both
-            // tabs are still open and the active one is still the active one.
-            await page.locator('[data-testid="explorer-mobile-back-btn"]').click();
-            await expect(page.locator('[data-testid="file-tree"]')).toBeVisible({ timeout: 5_000 });
+            await openExplorerPanel(page);
+            await expect(explorerPanel(page)).toBeVisible({ timeout: 10_000 });
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
             await expect(editorTab(page, 'file:src/utils.ts')).toHaveAttribute('aria-selected', 'true');
 
-            // And tapping a file returns to the editor with that tab active.
-            await page.locator('[data-testid="tree-node-src/index.ts"]').click();
-            await expect(page.locator('[data-testid="explorer-mobile-back-bar"]')).toBeVisible({ timeout: 5_000 });
+            // Clicking an already-open file row focuses its existing tab instead of
+            // opening another one or replacing a preview slot.
+            await treeNode(page, 'src/index.ts').click();
             await expect(editorTab(page, 'file:src/index.ts')).toHaveAttribute('aria-selected', 'true');
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
         } finally {
@@ -735,15 +770,15 @@ test.describe('ExplorerPanel – Editor tabs', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
 
             await gotoExplorer(page, serverUrl);
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-src"]').click();
-            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
-            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
-            await page.locator('[data-testid="tree-node-src/utils.ts"]').dblclick();
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'src').click();
+            await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
+            await treeNode(page, 'src/index.ts').dblclick();
+            await treeNode(page, 'src/utils.ts').dblclick();
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
 
             const active = editorTab(page, 'file:src/utils.ts');
@@ -754,8 +789,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
                     return {
                         background: style.backgroundColor,
                         color: style.color,
-                        accent: style.borderBottomColor,
-                        accentWidth: style.borderBottomWidth,
+                        shadow: style.boxShadow,
                     };
                 });
 
@@ -768,8 +802,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             const darkInactive = await styleOf('file:src/index.ts');
             expect(dark.background).toBe('rgb(30, 30, 30)');
             expect(dark.color).toBe('rgb(255, 255, 255)');
-            expect(dark.accent).toBe('rgb(55, 148, 255)');
-            expect(dark.accentWidth).toBe('2px');
+            expect(dark.shadow).toContain('rgb(55, 148, 255)');
             // The active tab is distinguishable from its neighbour, not just tinted.
             expect(darkInactive.background).not.toBe(dark.background);
 
@@ -778,9 +811,8 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             const light = await styleOf('file:src/utils.ts');
             const lightInactive = await styleOf('file:src/index.ts');
             expect(light.background).toBe('rgb(255, 255, 255)');
-            expect(light.color).toBe('rgb(30, 30, 30)');
-            expect(light.accent).toBe('rgb(0, 120, 212)');
-            expect(light.accentWidth).toBe('2px');
+            expect(light.color).toMatch(/rgb\(3[01], 3[01], 3[01]\)/);
+            expect(light.shadow).toContain('rgb(0, 120, 212)');
             expect(lightInactive.background).not.toBe(light.background);
 
             // Same tab, genuinely repainted for the theme.
@@ -797,17 +829,17 @@ test.describe('ExplorerPanel – Editor tabs', () => {
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
             const overflowPaths = createOverflowFiles(repoDir, 8);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
 
             await gotoExplorer(page, serverUrl);
-            await expect(page.locator('[data-testid="tree-node-overflow"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-overflow"]').click();
-            await expect(page.locator(`[data-testid="tree-node-${overflowPaths[0]}"]`)).toBeVisible({ timeout: 5_000 });
+            await expect(treeNode(page, 'overflow')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'overflow').click();
+            await expect(treeNode(page, overflowPaths[0])).toBeVisible({ timeout: 5_000 });
 
             // Pin every file so they stack instead of replacing one preview tab.
             for (const filePath of overflowPaths) {
-                await page.locator(`[data-testid="tree-node-${filePath}"]`).dblclick();
+                await treeNode(page, filePath).dblclick();
             }
             await expectEditorTabs(page, overflowPaths.map(p => `file:${p}`));
 
@@ -828,7 +860,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
 
             // Activating that off-screen tab from outside the strip (the tree)
             // has to scroll it back into view — it is unreachable otherwise.
-            await page.locator(`[data-testid="tree-node-${overflowPaths[0]}"]`).click();
+            await treeNode(page, overflowPaths[0]).click();
             await expect(editorTab(page, firstId)).toHaveAttribute('aria-selected', 'true');
             await expect.poll(async () => (await stripGeometry(page, firstId))!.fullyVisible, { timeout: 5_000 })
                 .toBe(true);
@@ -841,47 +873,36 @@ test.describe('ExplorerPanel – Editor tabs', () => {
         }
     });
 
-    test('E.23 a dragged tab is marked while dragging, and keyboard focus is visible', async ({ page, serverUrl }) => {
+    test('E.23 reordering and keyboard focus stay visible in the host strip', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
 
             await gotoExplorer(page, serverUrl);
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-src"]').click();
-            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
-            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
-            await page.locator('[data-testid="tree-node-src/utils.ts"]').dblclick();
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'src').click();
+            await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
+            await treeNode(page, 'src/index.ts').dblclick();
+            await treeNode(page, 'src/utils.ts').dblclick();
             await expectEditorTabs(page, ['file:src/index.ts', 'file:src/utils.ts']);
 
             const indexTab = editorTab(page, 'file:src/index.ts');
             const utilsTab = editorTab(page, 'file:src/utils.ts');
 
-            // 1. Dragging state. A real HTML5 drag needs a live DataTransfer, so
-            //    hand the same one to both ends of the gesture.
+            // 1. Reordering moves a focused tab within the strip.
             await expect(indexTab).toHaveAttribute('draggable', 'true');
-            const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-            await indexTab.dispatchEvent('dragstart', { dataTransfer });
-            await expect(indexTab).toHaveAttribute('data-dragging', 'true');
-            await expect(utilsTab).not.toHaveAttribute('data-dragging', 'true');
-            // The dragged tab is dimmed while it travels.
-            expect(await indexTab.evaluate(el => getComputedStyle(el).opacity)).toBe('0.5');
-
-            // 2. Dropping it on its neighbour reorders and clears the state.
-            await utilsTab.dispatchEvent('dragover', { dataTransfer });
-            await utilsTab.dispatchEvent('drop', { dataTransfer });
+            await indexTab.focus();
+            await page.keyboard.press('Alt+ArrowRight');
             await expectEditorTabs(page, ['file:src/utils.ts', 'file:src/index.ts']);
-            await expect(indexTab).not.toHaveAttribute('data-dragging', 'true');
-            expect(await indexTab.evaluate(el => getComputedStyle(el).opacity)).toBe('1');
 
-            // 3. Roving tabindex: only the active tab is in the tab order.
+            // 2. Roving tabindex: only the active tab is in the tab order.
             await utilsTab.click();
             await expect(utilsTab).toHaveAttribute('tabindex', '0');
             await expect(indexTab).toHaveAttribute('tabindex', '-1');
 
-            // 4. Arrow keys walk the strip, moving DOM focus with the selection,
+            // 3. Arrow keys walk the strip, moving DOM focus with the selection,
             //    and the focused tab paints a focus ring (a box-shadow) that a
             //    mouse click alone does not draw.
             await utilsTab.focus();
@@ -894,7 +915,7 @@ test.describe('ExplorerPanel – Editor tabs', () => {
             expect(focusedShadow).not.toBe(restingShadow);
             expect(focusedShadow).not.toBe('none');
 
-            // 5. Home/End jump to the ends of the strip, still by keyboard.
+            // 4. Home/End jump to the ends of the strip, still by keyboard.
             await page.keyboard.press('Home');
             await expect(utilsTab).toBeFocused();
             await expect(utilsTab).toHaveAttribute('aria-selected', 'true');
@@ -910,31 +931,31 @@ test.describe('ExplorerPanel – Editor tabs', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-explorer-'));
         try {
             const repoDir = createExplorerRepoFixture(tmpDir);
-            await seedWorkspace(serverUrl, 'ws-explorer', 'explorer-repo', repoDir);
+            await seedWorkspace(serverUrl, WORKSPACE_ID, 'explorer-repo', repoDir);
             await enableExplorerEditorTabs(serverUrl);
 
             await gotoExplorer(page, serverUrl);
-            await expect(page.locator('[data-testid="tree-node-src"]')).toBeVisible({ timeout: 8_000 });
-            await page.locator('[data-testid="tree-node-src"]').click();
-            await expect(page.locator('[data-testid="tree-node-src/index.ts"]')).toBeVisible({ timeout: 5_000 });
-            await page.locator('[data-testid="tree-node-src/index.ts"]').dblclick();
+            await expect(treeNode(page, 'src')).toBeVisible({ timeout: 8_000 });
+            await treeNode(page, 'src').click();
+            await expect(treeNode(page, 'src/index.ts')).toBeVisible({ timeout: 5_000 });
+            await treeNode(page, 'src/index.ts').dblclick();
             await expectEditorTabs(page, ['file:src/index.ts']);
 
             const tab = editorTab(page, 'file:src/index.ts');
-            const dot = page.locator('[data-testid="explorer-tab-dirty-file:src/index.ts"]');
-            const closeBtn = page.locator('[data-testid="explorer-tab-close-file:src/index.ts"]');
+            const dot = tab.locator('[data-testid^="unified-panel-tab-dirty-"]');
+            const closeBtn = tab.locator('[data-testid^="unified-panel-tab-close-"]');
 
             // Clean to start with: no dot, close button offered.
             await expect(tab).not.toHaveAttribute('data-dirty', 'true');
             await expect(dot).toHaveCount(0);
             await expect(closeBtn).toBeVisible();
 
-            const panel = page.locator('[data-testid="explorer-tab-panel-file:src/index.ts"]');
+            const panel = page.locator(UNIFIED_ACTIVE_FILE);
             const editor = panel.locator('[data-testid="monaco-container"] .monaco-editor');
             await expect(editor).toBeVisible({ timeout: 15_000 });
             await expect(editor.locator('.view-lines')).toContainText('main entry', { timeout: 15_000 });
 
-            await focusMonacoBuffer(page, 'explorer-tab-panel-file:src/index.ts');
+            await focusMonacoBuffer(page);
             await page.keyboard.type('EDITED_BY_E24');
             await expect(editor.locator('.view-lines')).toContainText('EDITED_BY_E24', { timeout: 10_000 });
 

@@ -66,10 +66,6 @@ vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useMyLifeEn
     useMyLifeEnabled: () => false,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => false,
-}));
-
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function getHeader(container: HTMLElement): HTMLElement {

@@ -142,49 +142,13 @@ describe('PreferencesSection', () => {
             expect(onError).toHaveBeenCalledWith('Write failed');
         });
     });
+});
 
-    it('renders UI Mode dropdown with correct default', async () => {
+
+describe('classic dashboard preferences', () => {
+    it('has no layout-mode picker', async () => {
         mocks.preferences.getGlobal.mockResolvedValue({});
-
         await act(async () => { renderSection(); });
-
-        await waitFor(() => {
-            const select = screen.getByTestId('pref-ui-layout-mode') as HTMLSelectElement;
-            expect(select.value).toBe('classic');
-        });
-    });
-
-    it('renders UI Mode dropdown with server value', async () => {
-        mocks.preferences.getGlobal.mockResolvedValue({ uiLayoutMode: 'dev-workflow' });
-
-        await act(async () => { renderSection(); });
-
-        await waitFor(() => {
-            const select = screen.getByTestId('pref-ui-layout-mode') as HTMLSelectElement;
-            expect(select.value).toBe('dev-workflow');
-        });
-    });
-
-    it('calls patchGlobal when UI Mode select changes', async () => {
-        mocks.preferences.getGlobal.mockResolvedValue({ uiLayoutMode: 'classic' });
-        mocks.preferences.patchGlobal.mockResolvedValue({ uiLayoutMode: 'dev-workflow' });
-
-        await act(async () => { renderSection(); });
-
-        await waitFor(() => {
-            expect(screen.getByTestId('pref-ui-layout-mode')).toBeDefined();
-        });
-
-        await act(async () => {
-            fireEvent.change(screen.getByTestId('pref-ui-layout-mode'), { target: { value: 'dev-workflow' } });
-        });
-
-        await waitFor(() => {
-            expect(mocks.preferences.patchGlobal).toHaveBeenCalledWith(
-                expect.objectContaining({ uiLayoutMode: 'dev-workflow' })
-            );
-        });
-
-        expect(onSuccess).toHaveBeenCalledWith('Preference saved');
+        expect(screen.queryByTestId('pref-ui-layout-mode')).toBeNull();
     });
 });

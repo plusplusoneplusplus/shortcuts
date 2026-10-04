@@ -1751,18 +1751,12 @@ describe('work-item tool wiring (removed)', () => {
     let store: ReturnType<typeof createMockProcessStore>;
     let dataDir: string;
 
-    function writeLayoutMode(uiLayoutMode: 'classic' | 'dev-workflow') {
-        fs.writeFileSync(
-            path.join(dataDir, 'preferences.json'),
-            JSON.stringify({ global: { uiLayoutMode } }),
-        );
-    }
 
     beforeEach(() => {
         store = createMockProcessStore();
         dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-tool-wiring-'));
         fs.mkdirSync(path.join(dataDir, 'repos', 'ws-123'), { recursive: true });
-        writeLayoutMode('dev-workflow');
+
         sdkMocks.resetAll();
         sdkMocks.mockIsAvailable.mockResolvedValue({ available: true });
         sdkMocks.mockSendMessage.mockResolvedValue({

@@ -1,247 +1,43 @@
-/**
- * repoSubTabs — unit tests for the extracted sub-tab visibility logic.
- * Guards that the shared helper behaves exactly like the logic previously
- * inlined in RepoDetail (feature-flag gating, git gating, layout relabel/reorder).
- */
 import { describe, it, expect } from 'vitest';
-import {
-    computeVisibleSubTabs,
-    SUB_TABS,
-    VISIBLE_SUB_TABS,
-    type VisibleSubTabOptions,
-} from '../../../../src/server/spa/client/react/features/repo-detail/repoSubTabs';
+import { computeVisibleSubTabs, SUB_TABS, VISIBLE_SUB_TABS, type VisibleSubTabOptions } from '../../../../src/server/spa/client/react/features/repo-detail/repoSubTabs';
 
 const allOn: VisibleSubTabOptions = {
-    isGitRepo: true,
-    terminalEnabled: true,
-    notesEnabled: true,
-    workflowsEnabled: true,
-    pullRequestsEnabled: true,
-    dreamsEnabled: true,
-    showPlanDepTab: true,
-    uiLayoutMode: 'dev-workflow',
+    isGitRepo: true, terminalEnabled: true, notesEnabled: true, workflowsEnabled: true,
+    pullRequestsEnabled: true, dreamsEnabled: true, showPlanDepTab: true,
 };
 
-describe('VISIBLE_SUB_TABS', () => {
-    it('hides wiki by default but keeps it in the full SUB_TABS list', () => {
-        expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
-        expect(SUB_TABS.find(t => t.key === 'wiki')).toBeDefined();
-    });
-
-    // The remote-scope tabs use the short labels "WIs" / "PRs" so they stay
-    // compact in the remote shell header (RemoteScopeCluster / RemoteSubBar).
-    it('labels the remote-scope tabs compactly as "WIs" and "PRs"', () => {
-        expect(SUB_TABS.find(t => t.key === 'work-items')?.label).toBe('WIs');
-        expect(SUB_TABS.find(t => t.key === 'pull-requests')?.label).toBe('PRs');
-    });
-
-    it('keeps CLI Sessions out of both dashboard tab strips', () => {
-        expect(SUB_TABS.find(t => t.key === 'cli-sessions')).toBeUndefined();
-        expect(computeVisibleSubTabs(allOn).find(t => t.key === 'cli-sessions')).toBeUndefined();
-    });
-});
-
-describe('computeVisibleSubTabs', () => {
-    it('classic mode replaces chats with activity and relabels tasks', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
-        expect(tabs.find(t => t.key === 'chats')).toBeUndefined();
-        expect(tabs.find(t => t.key === 'activity')?.label).toBe('Activity');
-        expect(tabs.find(t => t.key === 'tasks')?.label).toBe('Plans (Dep.)');
-    });
-
-    // Screenshot scenario: classic mode keeps the compact "WIs" / "PRs" labels
-    // for the remote-scope tabs (no per-layout override touches them here).
-    it('classic mode keeps the compact "WIs" / "PRs" labels', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
-        expect(tabs.find(t => t.key === 'work-items')?.label).toBe('WIs');
-        expect(tabs.find(t => t.key === 'pull-requests')?.label).toBe('PRs');
-    });
-
-    it('dev-workflow mode reorders chats first and relabels PRs / schedules', () => {
+describe('Workspace tabs', () => {
+    it('keeps classic order and labels while hiding standalone Git, Terminal and Explorer', () => {
         const tabs = computeVisibleSubTabs(allOn);
-        expect(tabs[0].key).toBe('chats');
-        // Work Items keeps the compact base label; the dev-workflow override only
-        // renames pull-requests to "Full Requests".
-        expect(tabs.find(t => t.key === 'work-items')?.label).toBe('WIs');
-        expect(tabs.find(t => t.key === 'pull-requests')?.label).toBe('Full Requests');
-        expect(tabs.find(t => t.key === 'schedules')?.label).toBe('Jobs');
-    });
-
-    it('hides git and pull-requests for a non-git repo', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, isGitRepo: false });
-        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
-        expect(tabs.find(t => t.key === 'pull-requests')).toBeUndefined();
-    });
-
-    it('gates tabs behind their feature flags', () => {
-        const tabs = computeVisibleSubTabs({
-            ...allOn,
-            terminalEnabled: false,
-            notesEnabled: false,
-            workflowsEnabled: false,
-            pullRequestsEnabled: false,
-            dreamsEnabled: false,
-        });
-        for (const key of ['terminal', 'notes', 'workflows', 'pull-requests', 'dreams']) {
-            expect(tabs.find(t => t.key === key)).toBeUndefined();
-        }
-        // Non-gated tabs survive.
-        expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
-        expect(tabs.find(t => t.key === 'git')).toBeDefined();
-    });
-
-    // AC-02: the deprecated `tasks` sub-tab is hidden when showPlanDepTab is false,
-    // in both classic and dev-workflow layout modes.
-    it('hides the tasks (Plans Dep.) tab when showPlanDepTab is false — classic', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic', showPlanDepTab: false });
-        expect(tabs.find(t => t.key === 'tasks')).toBeUndefined();
-    });
-
-    it('hides the tasks (Tasks Dep.) tab when showPlanDepTab is false — dev-workflow', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', showPlanDepTab: false });
-        expect(tabs.find(t => t.key === 'tasks')).toBeUndefined();
-    });
-
-    // AC-03: when showPlanDepTab is true, the tab appears exactly as before with
-    // the layout-specific label.
-    it('shows the tasks tab labeled "Plans (Dep.)" in classic mode when showPlanDepTab is true', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic', showPlanDepTab: true });
+        expect(tabs.map(t => t.key)).toEqual([
+            'activity', 'work-items', 'dreams', 'pull-requests', 'workflows', 'schedules', 'tasks', 'notes', 'settings',
+        ]);
+        expect(tabs[0].label).toBe('Workspace');
         expect(tabs.find(t => t.key === 'tasks')?.label).toBe('Plans (Dep.)');
-    });
-
-    it('shows the tasks tab labeled "Tasks (Dep.)" in dev-workflow mode when showPlanDepTab is true', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', showPlanDepTab: true });
-        expect(tabs.find(t => t.key === 'tasks')?.label).toBe('Tasks (Dep.)');
-    });
-});
-
-// AC-02: when the splitWorkspacePanel flag is on, the split "Workspace" view
-// replaces the chat slot — the standalone `git` sub-tab is hidden and the chat
-// tab is relabeled "Workspace" (key preserved). The admin flag is on by
-// default; the option itself is optional here and treated as off when omitted,
-// for callers (remote-shell) that don't host the split panel. The off-path is a
-// strict no-op.
-describe('computeVisibleSubTabs — splitWorkspacePanel flag', () => {
-    it('omitting the option leaves git visible and labels unchanged (classic)', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
-        expect(tabs.find(t => t.key === 'git')?.label).toBe('Git');
-        expect(tabs.find(t => t.key === 'activity')?.label).toBe('Activity');
-    });
-
-    it('explicit false is a no-op (dev-workflow keeps git + "Chats")', () => {
-        const off = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', splitWorkspacePanelEnabled: false });
-        const baseline = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow' });
-        expect(off).toEqual(baseline);
-        expect(off.find(t => t.key === 'git')?.label).toBe('Git');
-        expect(off.find(t => t.key === 'chats')?.label).toBe('Chats');
-    });
-
-    it('flag on hides the git sub-tab and relabels the chat tab "Workspace" (classic)', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic', splitWorkspacePanelEnabled: true });
-        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
-        // Key preserved (activity), only the label changes so mount/selection logic is unaffected.
-        expect(tabs.find(t => t.key === 'activity')?.label).toBe('Workspace');
-        expect(tabs.find(t => t.key === 'chats')).toBeUndefined();
-    });
-
-    it('flag on hides the git sub-tab and relabels the chat tab "Workspace" (dev-workflow)', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', splitWorkspacePanelEnabled: true });
-        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
-        expect(tabs.find(t => t.key === 'chats')?.label).toBe('Workspace');
-        expect(tabs.find(t => t.key === 'activity')).toBeUndefined();
-    });
-
-    // AC-02: with the flag on, git/terminal/explorer are all hidden (they move
-    // into the split panel + right dock); the remaining tabs are untouched.
-    it('flag on hides git, terminal, and explorer — other tabs are untouched (parity of the rest)', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, splitWorkspacePanelEnabled: true });
-        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
-        expect(tabs.find(t => t.key === 'terminal')).toBeUndefined();
-        expect(tabs.find(t => t.key === 'explorer')).toBeUndefined();
-        expect(tabs.find(t => t.key === 'pull-requests')).toBeDefined();
-        expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
-        expect(tabs.find(t => t.key === 'workflows')).toBeDefined();
-    });
-
-    // AC-02: terminal/explorer are filtered out iff the flag is on — in both
-    // layout modes — and remain visible when it is off.
-    it('flag on hides terminal and explorer in both layout modes', () => {
-        for (const uiLayoutMode of ['classic', 'dev-workflow'] as const) {
-            const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode, splitWorkspacePanelEnabled: true });
-            expect(tabs.find(t => t.key === 'terminal')).toBeUndefined();
-            expect(tabs.find(t => t.key === 'explorer')).toBeUndefined();
-        }
-    });
-
-    it('flag off keeps terminal and explorer visible in both layout modes', () => {
-        for (const uiLayoutMode of ['classic', 'dev-workflow'] as const) {
-            const off = computeVisibleSubTabs({ ...allOn, uiLayoutMode, splitWorkspacePanelEnabled: false });
-            expect(off.find(t => t.key === 'terminal')).toBeDefined();
-            expect(off.find(t => t.key === 'explorer')).toBeDefined();
-            // Parity with the default (option omitted) path.
-            const baseline = computeVisibleSubTabs({ ...allOn, uiLayoutMode });
-            expect(off.find(t => t.key === 'terminal')).toEqual(baseline.find(t => t.key === 'terminal'));
-            expect(off.find(t => t.key === 'explorer')).toEqual(baseline.find(t => t.key === 'explorer'));
-        }
-    });
-
-    it('flag on is idempotent with the non-git-repo path (git already hidden)', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, isGitRepo: false, splitWorkspacePanelEnabled: true });
-        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
-        // Chat tab still relabeled even when there was no git tab to hide.
-        expect(tabs.find(t => t.key === 'chats')?.label).toBe('Workspace');
-    });
-});
-
-// AC-04: when the schedulesInScheduledSlide flag is on, schedule management
-// moves into the chat-list "Scheduled" slide + main pane, so the standalone
-// `schedules` sub-tab is retired from the strip. Off by default; the off-path
-// is a strict no-op. The old tab code is not deleted — only hidden here.
-describe('computeVisibleSubTabs — schedulesInScheduledSlide flag', () => {
-    it('off by default: omitting the option keeps schedules visible ("Jobs" in dev-workflow)', () => {
-        const tabs = computeVisibleSubTabs(allOn);
-        expect(tabs.find(t => t.key === 'schedules')?.label).toBe('Jobs');
-    });
-
-    it('off by default: omitting the option keeps schedules visible ("Schedules" in classic)', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic' });
         expect(tabs.find(t => t.key === 'schedules')?.label).toBe('Schedules');
+        expect(tabs.find(t => t.key === 'pull-requests')?.label).toBe('PRs');
+        expect(tabs.find(t => t.key === 'work-items')?.label).toBe('WIs');
     });
-
-    it('explicit false is a no-op (equals baseline in both modes)', () => {
-        for (const uiLayoutMode of ['classic', 'dev-workflow'] as const) {
-            const off = computeVisibleSubTabs({ ...allOn, uiLayoutMode, schedulesInScheduledSlideEnabled: false });
-            const baseline = computeVisibleSubTabs({ ...allOn, uiLayoutMode });
-            expect(off).toEqual(baseline);
-            expect(off.find(t => t.key === 'schedules')).toBeDefined();
-        }
+    it('hides deprecated Plans unless opted in', () => {
+        expect(computeVisibleSubTabs({ ...allOn, showPlanDepTab: false }).map(t => t.key)).not.toContain('tasks');
     });
-
-    it('flag on hides the schedules sub-tab (dev-workflow)', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'dev-workflow', schedulesInScheduledSlideEnabled: true });
-        expect(tabs.find(t => t.key === 'schedules')).toBeUndefined();
+    it('hides PRs for a non-Git repo while retaining its Workspace', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, isGitRepo: false });
+        expect(tabs.map(t => t.key)).not.toContain('pull-requests');
+        expect(tabs[0]).toMatchObject({ key: 'activity', label: 'Workspace' });
     });
-
-    it('flag on hides the schedules sub-tab (classic)', () => {
-        const tabs = computeVisibleSubTabs({ ...allOn, uiLayoutMode: 'classic', schedulesInScheduledSlideEnabled: true });
-        expect(tabs.find(t => t.key === 'schedules')).toBeUndefined();
+    it('continues to gate optional feature tabs', () => {
+        const tabs = computeVisibleSubTabs({ ...allOn, notesEnabled: false, workflowsEnabled: false, pullRequestsEnabled: false, dreamsEnabled: false });
+        expect(tabs.map(t => t.key)).toEqual(['activity', 'work-items', 'schedules', 'tasks', 'settings']);
     });
-
-    it('flag on hides ONLY schedules — neighbouring group tabs (explorer, workflows) survive', () => {
+    it('moves schedules into the Scheduled slide when enabled', () => {
         const tabs = computeVisibleSubTabs({ ...allOn, schedulesInScheduledSlideEnabled: true });
-        expect(tabs.find(t => t.key === 'schedules')).toBeUndefined();
-        expect(tabs.find(t => t.key === 'explorer')).toBeDefined();
-        expect(tabs.find(t => t.key === 'workflows')).toBeDefined();
-        expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
+        expect(tabs.map(t => t.key)).not.toContain('schedules');
+        expect(tabs.map(t => t.key)).toEqual(['activity', 'work-items', 'dreams', 'pull-requests', 'workflows', 'tasks', 'notes', 'settings']);
     });
-
-    it('composes with the splitWorkspacePanel flag (both on → git and schedules both hidden)', () => {
-        const tabs = computeVisibleSubTabs({
-            ...allOn, splitWorkspacePanelEnabled: true, schedulesInScheduledSlideEnabled: true,
-        });
-        expect(tabs.find(t => t.key === 'git')).toBeUndefined();
-        expect(tabs.find(t => t.key === 'schedules')).toBeUndefined();
-        // Unrelated tabs remain.
-        expect(tabs.find(t => t.key === 'work-items')).toBeDefined();
+    it('keeps wiki in definitions but hidden by default, and CLI Sessions off the strip', () => {
+        expect(SUB_TABS.find(t => t.key === 'wiki')).toBeDefined();
+        expect(VISIBLE_SUB_TABS.find(t => t.key === 'wiki')).toBeUndefined();
+        expect(SUB_TABS.find(t => t.key === 'cli-sessions')).toBeUndefined();
     });
 });

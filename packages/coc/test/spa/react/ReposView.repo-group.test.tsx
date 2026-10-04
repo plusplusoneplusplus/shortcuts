@@ -36,6 +36,9 @@ vi.mock('../../../src/server/spa/client/react/repos/RepoGroupView', async () => 
 vi.mock('../../../src/server/spa/client/react/features/chat/RepoChatTab', () => ({
     RepoChatTab: () => null,
 }));
+vi.mock('../../../src/server/spa/client/react/layout/StatusActions', () => ({
+    StatusActions: () => <div data-testid="stub-status-actions" />,
+}));
 
 import { AppProvider, appReducer, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { QueueProvider } from '../../../src/server/spa/client/react/contexts/QueueContext';

@@ -10,9 +10,9 @@
  * an individual task use `#repos/<wsId>/activity/queue_<taskId>`.
  *
  * Uses existing data-testid attributes:
- *   RepoChatTab:         data-testid="activity-split-panel"
+ *   SplitWorkspacePanel: data-testid="split-workspace-panel"
  *   ChatListPane:        data-testid="queue-empty-state"
- *   ChatDetailPane:      data-testid="activity-detail-panel"
+ *   ChatDetailPane:      [data-pane="detail"] (no empty-state task selected)
  *   ChatDetail:          data-testid="activity-chat-detail"
  *   ConversationMiniMap: data-testid="minimap-panel"
  */
@@ -72,8 +72,8 @@ function wsTask(wsId: string, overrides: QueueTaskOverrides = {}): QueueTaskOver
 /** Navigate to the per-repo Activity sub-tab. */
 async function gotoActivity(page: Page, serverUrl: string, wsId: string): Promise<void> {
     await page.goto(`${serverUrl}/#repos/${encodeURIComponent(wsId)}/activity`);
-    // RepoChatTab renders the queue list with `data-testid="activity-split-panel"`.
-    await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible({ timeout: 10_000 });
+    // SplitWorkspacePanel renders the queue list with `data-testid="split-workspace-panel"`.
+    await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible({ timeout: 10_000 });
 }
 
 /** Navigate directly to a task via the activity deep link (queue_<taskId>). */
@@ -100,8 +100,11 @@ test.describe('Repo activity – Desktop layout', () => {
         try {
             await gotoActivity(page, serverUrl, wsId);
 
-            await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible();
-            await expect(page.locator('[data-testid="activity-detail-panel"]')).toBeVisible();
+            await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible();
+            // In the split-workspace layout the detail region has no
+            // dedicated testid before a task is selected — it's identified
+            // by the shared `data-pane="detail"` portal target.
+            await expect(page.locator('[data-pane="detail"]')).toBeVisible();
         } finally {
             cleanup();
         }
@@ -271,7 +274,7 @@ test.describe('Repo activity – Controls', () => {
             await refreshBtn.click();
 
             await page.waitForTimeout(500);
-            await expect(page.locator('[data-testid="activity-split-panel"]')).toBeVisible();
+            await expect(page.locator('[data-testid="split-workspace-panel"]')).toBeVisible();
         } finally {
             cleanup();
         }

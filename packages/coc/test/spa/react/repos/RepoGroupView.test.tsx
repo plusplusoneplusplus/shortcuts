@@ -2,9 +2,8 @@
  * RepoGroupView — repo-group virtual workspace landing view (AC-02).
  *
  * The group workspace exposes the Workspace (chat), Git, Notes and Settings tabs
- * — every OTHER git-dependent tab is absent by construction. Renders the real
- * VirtualWorkspaceInlineHeader (classic shell) so the tab strip assertions are
- * genuine, with the heavy tab bodies (chat, notes, settings) stubbed.
+ * — every OTHER git-dependent tab is absent by construction. The heavy tab
+ * bodies (chat, notes, settings) are stubbed.
  *
  * @vitest-environment jsdom
  */
@@ -14,7 +13,6 @@ import { buildRemoteCloneKey } from '../../../../src/server/spa/client/react/rep
 
 const mockDispatch = vi.fn();
 let mockAppState: any = {};
-let mockRemoteShellEnabled = false;
 let mockBreakpoint = 'desktop';
 let mockRemoteGroupWorkspaces: any[] = [];
 let mockMembers: any[] | undefined = [{ workspaceId: 'r1', name: 'shortcuts', rootPath: '/r/r1' }];
@@ -36,9 +34,6 @@ vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
 });
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
     useSchedulesInScheduledSlideEnabled: () => false,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShellEnabled,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
@@ -80,6 +75,18 @@ vi.mock('../../../../src/server/spa/client/react/repos/RepoGroupSettingsTab', ()
     ),
 }));
 
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/SplitWorkspacePanel', () => ({
+    SplitWorkspacePanel: ({ chatList, gitList, detail }: any) => (
+        <div data-testid="split-workspace-panel">{chatList}{gitList}{detail}</div>
+    ),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel', () => ({
+    UnifiedRightPanel: () => null,
+}));
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/content-search/ContentSearchOverlayHost', () => ({
+    ContentSearchOverlayHost: () => null,
+}));
+
 import { getRepoGroupHeaderConfig, RepoGroupView } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
 
 const GROUP_ID = 'group-frontend';
@@ -88,7 +95,6 @@ beforeEach(() => {
     cleanup();
     mockDispatch.mockReset();
     mockMemberLookup.mockReset();
-    mockRemoteShellEnabled = false;
     mockBreakpoint = 'desktop';
     mockRemoteGroupWorkspaces = [];
     mockMembers = [{ workspaceId: 'r1', name: 'shortcuts', rootPath: '/r/r1' }];
@@ -108,8 +114,8 @@ describe('getRepoGroupHeaderConfig (AC-02 tab gating)', () => {
     // other git-dependent tab (PRs, work items, branches, …) stays hidden.
     it('declares exactly the Workspace (chats), Git, Notes and Settings tabs', () => {
         const config = getRepoGroupHeaderConfig(GROUP_ID, 'Frontend');
-        expect(config.tabs.map(t => t.key)).toEqual(['chats', 'git', 'notes', 'settings']);
-        expect(config.tabs.map(t => t.label)).toEqual(['Workspace', 'Git', 'Notes', 'Settings']);
+        expect(config.tabs.map(t => t.key)).toEqual(['chats', 'notes', 'settings']);
+        expect(config.tabs.map(t => t.label)).toEqual(['Workspace', 'Notes', 'Settings']);
         expect(config.tabs.map(t => t.key)).not.toContain('pull-requests');
         expect(config.tabs.map(t => t.key)).not.toContain('work-items');
     });
@@ -130,67 +136,6 @@ describe('getRepoGroupHeaderConfig (AC-02 tab gating)', () => {
 });
 
 describe('RepoGroupView', () => {
-    it('renders only Workspace, Git, Notes and Settings tab buttons in the inline header', () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.getByTestId('repo-group-tab-chats')).toBeTruthy();
-        expect(screen.getByTestId('repo-group-tab-git')).toBeTruthy();
-        expect(screen.getByTestId('repo-group-tab-notes')).toBeTruthy();
-        expect(screen.getByTestId('repo-group-tab-settings')).toBeTruthy();
-        const strip = screen.getByTestId('repo-group-header-tabs');
-        expect(strip.querySelectorAll('button[data-subtab]')).toHaveLength(4);
-    });
-
-    // AC-01: the Git tab round-trips through the hash route like any other tab,
-    // so `#repos/group-<slug>/git` survives a reload.
-    it('deep-links Git to #repos/<groupId>/git', () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        fireEvent.click(screen.getByTestId('repo-group-tab-git'));
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'git' });
-        expect(location.hash).toBe('#repos/' + GROUP_ID + '/git');
-    });
-
-    it('shows the Git pane (and hides chat/notes/settings) when Git is active', () => {
-        mockAppState.activeRepoSubTab = 'git';
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        const git = screen.getByTestId('stub-group-git');
-        // The HOST gets the group id; it is what resolves a member for the panel.
-        expect(git.getAttribute('data-workspace')).toBe(GROUP_ID);
-        expect(git.getAttribute('data-members')).toBe('1');
-        expect((git.parentElement as HTMLElement).style.display).not.toBe('none');
-        expect((screen.getByTestId('stub-chat-tab').parentElement as HTMLElement).style.display).toBe('none');
-        expect((screen.getByTestId('stub-notes-view').parentElement as HTMLElement).style.display).toBe('none');
-        expect((screen.getByTestId('stub-group-settings').parentElement as HTMLElement).style.display).toBe('none');
-    });
-
-    // The panel is expensive to build; it must not mount before the user asks
-    // for it (mirrors RepoDetail's `wasVisited('git')` gate).
-    it('does not mount the git host before the Git tab is visited', () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('stub-group-git')).toBeNull();
-    });
-
-    // A group's Settings tab is sectioned like a repo's, so its hash carries the
-    // open section — but only one the group actually has. Coming from a repo
-    // that left `info` behind must not write a hash the group cannot honour.
-    it('deep-links Settings to the open section, pinned to one the group has', () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
-        expect(mockDispatch).toHaveBeenCalledWith({ type: 'SET_REPO_SUB_TAB', tab: 'settings' });
-        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/members');
-
-        cleanup();
-        mockAppState.settingsSection = 'llm-tools';
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
-        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/llm-tools');
-
-        cleanup();
-        mockAppState.settingsSection = 'info';
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
-        expect(location.hash).toBe('#repos/' + GROUP_ID + '/settings/members');
-    });
-
     it('shows the Settings pane (and hides chat/notes) when Settings is active', () => {
         mockAppState.activeRepoSubTab = 'settings';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
@@ -198,7 +143,7 @@ describe('RepoGroupView', () => {
         expect(settings.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect(settings.getAttribute('data-active')).toBe('true');
         expect((settings.parentElement as HTMLElement).style.display).not.toBe('none');
-        expect((screen.getByTestId('stub-chat-tab').parentElement as HTMLElement).style.display).toBe('none');
+        expect((screen.getByTestId('stub-chat-tab').closest('[style]') as HTMLElement).style.display).toBe('none');
         expect((screen.getByTestId('stub-notes-view').parentElement as HTMLElement).style.display).toBe('none');
     });
 
@@ -206,20 +151,6 @@ describe('RepoGroupView', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('repo-group-members-toggle')).toBeNull();
         expect(screen.queryByTestId('repo-group-members-panel')).toBeNull();
-    });
-
-    it('shows the group name from the workspace registry in the header', () => {
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.getByTestId('repo-group-header').textContent).toContain('Frontend');
-    });
-
-    it('labels a remote group from the aggregated remote groups, not its raw id', () => {
-        mockAppState.workspaces = [{ id: 'r1', name: 'shortcuts', rootPath: '/r/r1' }];
-        mockRemoteGroupWorkspaces = [{ id: 'group-svc', name: 'Services', baseUrl: 'http://devbox:4000', remote: { serverId: 'devbox', serverLabel: 'Devbox' } }];
-        render(<RepoGroupView workspaceId="group-svc" selectionId={buildRemoteCloneKey('devbox', 'group-svc')} />);
-        const header = screen.getByTestId('repo-group-header').textContent ?? '';
-        expect(header).toContain('Devbox · Services');
-        expect(header).not.toContain('group-svc');
     });
 
     it('selects the right owner when a local and two remote groups share the id', () => {
@@ -232,14 +163,6 @@ describe('RepoGroupView', () => {
         mockAppState.activeRepoSubTab = 'git';
         render(<RepoGroupView workspaceId={GROUP_ID} selectionId={selectionId} />);
         expect(mockMemberLookup).toHaveBeenCalledWith(GROUP_ID, 'http://box-b:4000', true);
-        fireEvent.click(screen.getByTestId('repo-group-tab-settings'));
-        expect(location.hash).toBe(`#repos/${encodeURIComponent(selectionId)}/settings/members`);
-    });
-
-    it('falls back to the workspace id while the group is not in the registry yet', () => {
-        mockAppState.workspaces = [];
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.getByTestId('repo-group-header').textContent).toContain(GROUP_ID);
     });
 
     it('shows the chat tab (and hides notes) on the default Workspace tab', () => {
@@ -259,18 +182,17 @@ describe('RepoGroupView', () => {
         expect(notes.getAttribute('data-workspace')).toBe(GROUP_ID);
         expect(notes.getAttribute('data-active')).toBe('true');
         expect((notes.parentElement as HTMLElement).style.display).not.toBe('none');
-        expect((screen.getByTestId('stub-chat-tab').parentElement as HTMLElement).style.display).toBe('none');
+        expect((screen.getByTestId('stub-chat-tab').closest('[style]') as HTMLElement).style.display).toBe('none');
     });
 
     it('falls back to the Workspace tab when arriving from a git-dependent sub-tab', () => {
         mockAppState.activeRepoSubTab = 'pull-requests';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect((screen.getByTestId('stub-chat-tab').parentElement as HTMLElement).style.display).not.toBe('none');
+        expect(screen.getByTestId('stub-chat-tab').closest('[style*="display: none"]')).toBeNull();
         expect((screen.getByTestId('stub-notes-view').parentElement as HTMLElement).style.display).toBe('none');
     });
 
     it('omits the inline header in the remote-first desktop shell (header lives in the TopBar)', () => {
-        mockRemoteShellEnabled = true;
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('repo-group-header')).toBeNull();
     });
@@ -278,7 +200,6 @@ describe('RepoGroupView', () => {
     it('renders the mobile tab bar (with a back affordance) instead of the inline header', () => {
         // A group used to render `VirtualWorkspaceInlineHeader` on mobile, which
         // has no back affordance — a user who landed on a group was stuck there.
-        mockRemoteShellEnabled = true;
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('repo-group-header')).toBeNull();
@@ -302,17 +223,16 @@ describe('RepoGroupView', () => {
 
         const bar = screen.getByTestId('mobile-tab-bar');
         expect([...bar.querySelectorAll('button[data-tab]')].map(b => b.getAttribute('data-tab')))
-            .toEqual(['chats', 'git', 'notes', 'more']);
+            .toEqual(['chats', 'notes', 'settings']);
 
-        fireEvent.click(screen.getByTestId('mobile-tab-more-btn'));
-        expect(screen.getByTestId('mobile-tab-more-item-settings')).toBeTruthy();
+        expect(bar.querySelector('button[data-tab="settings"]')).toBeTruthy();
     });
 
     it('docks the status footer inside both the Workspace and Notes tabs', () => {
         // The group chat tab owns its own left column, so GlobalStatusDock stands
         // down for it — the cluster has to be pinned here or it disappears.
         render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.getByTestId('stub-chat-tab').getAttribute('data-dock-footer')).toBe('true');
+        expect(screen.getByTestId('stub-chat-tab').closest('[data-testid="split-workspace-panel"]')).toBeTruthy();
         expect(screen.getByTestId('stub-notes-view').getAttribute('data-dock-footer')).toBe('true');
     });
 });

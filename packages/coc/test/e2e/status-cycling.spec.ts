@@ -12,6 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
+import { gotoWorkspace } from './fixtures/remote-shell';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
 
 /** Helper: create a repo with tasks, seed it as a workspace, navigate to Tasks sub-tab. */
@@ -26,15 +27,8 @@ async function setupRepoWithTasks(
 
     await seedWorkspace(serverUrl, wsId, 'status-repo', repoDir);
 
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-    await page.click('.repo-sub-tab[data-subtab="tasks"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
+    await gotoWorkspace(page, serverUrl, wsId, 'tasks');
+    await expect(page.locator('button[data-subtab="tasks"]')).toHaveAttribute('data-active', 'true');
 
     await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
@@ -93,7 +87,8 @@ test.describe('Status Cycling (011)', () => {
     test('11.3 status persists after refresh', async ({ page, serverUrl }) => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-status-'));
         try {
-            await setupRepoWithTasks(page, serverUrl, tmpDir);
+            const wsId = 'ws-status';
+            await setupRepoWithTasks(page, serverUrl, tmpDir, wsId);
 
             // Change task-a from pending → in-progress via context menu
             const taskRow = page.locator('.miller-file-row', { hasText: 'task-a' });
@@ -114,14 +109,8 @@ test.describe('Status Cycling (011)', () => {
             });
 
             // Reload the page
-            await page.goto(serverUrl);
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-            // Re-select repo and navigate to Tasks
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await expect(page.locator('#repo-detail-content')).toBeVisible();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await gotoWorkspace(page, serverUrl, wsId, 'tasks');
+            await expect(page.locator('button[data-subtab="tasks"]')).toHaveAttribute('data-active', 'true');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             // task-a should still show 🔄 (in-progress) after refresh

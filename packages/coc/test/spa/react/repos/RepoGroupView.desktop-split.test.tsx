@@ -23,8 +23,6 @@ const mockDispatch = vi.fn();
 const mockQueueDispatch = vi.fn();
 let mockAppState: any = {};
 let mockQueueMap: Record<string, { running: any[]; queued: any[] }> = {};
-let mockRemoteShellEnabled = false;
-let mockSplitPanelEnabled = true;
 const mockGetRepoGroup = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -42,14 +40,8 @@ vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
     const routes = await import('../../../../src/server/spa/client/react/layout/dashboardRoutes');
     return { buildWorkspaceSubTabSuffix: routes.buildWorkspaceSubTabSuffix };
 });
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => mockRemoteShellEnabled,
-}));
 vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
     StatusActions: ({ variant }: { variant: string }) => <div data-testid="stub-status-actions" data-variant={variant} />,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanelEnabled,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
@@ -140,14 +132,12 @@ beforeEach(() => {
     mockDispatch.mockReset();
     mockQueueDispatch.mockReset();
     mockQueueMap = {};
-    mockRemoteShellEnabled = false;
     mockGetRepoGroup.mockReset();
     mockGetRepoGroup.mockResolvedValue({
         id: GROUP_ID,
         name: 'AI Repos',
         members: [{ workspaceId: 'r1', stale: false, name: 'shortcuts', rootPath: '/r/r1' }],
     });
-    mockSplitPanelEnabled = true;
     mockAppState = {
         activeRepoSubTab: 'chats',
         selectedNotePath: null,
@@ -219,24 +209,17 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
             .querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
     });
 
-    it('pins status actions to the split sidebar only in the remote desktop shell', () => {
-        mockRemoteShellEnabled = true;
+    it('pins status actions to the split sidebar on desktop', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.getByTestId('split-workspace-footer')
             .querySelector('[data-testid="stub-status-actions"]')?.getAttribute('data-variant')).toBe('sidebar');
-
-        cleanup();
-        mockRemoteShellEnabled = false;
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('split-workspace-footer')).toBeNull();
     });
 
     it('removes the desktop Git header tab and leaves only the embedded Git host', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 
         expect(screen.queryByTestId('repo-group-tab-git')).toBeNull();
-        expect(Array.from(screen.getByTestId('repo-group-header-tabs').querySelectorAll('[data-subtab]'))
-            .map(tab => tab.getAttribute('data-subtab'))).toEqual(['chats', 'notes', 'settings']);
+        expect(screen.queryByTestId('repo-group-header-tabs')).toBeNull();
         expect(screen.getAllByTestId('stub-group-git-tab')).toHaveLength(1);
     });
 
@@ -248,7 +231,6 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
             selectedRepoId: GROUP_ID,
             repoRouteState: {},
             repoTabState: {},
-            getUiLayoutMode: () => 'classic',
             isSchedulesInSlide: () => false,
         };
         const { effects } = resolveDashboardRoute(hash, ctx);
@@ -269,7 +251,6 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         render(<RepoGroupView workspaceId={GROUP_ID} />);
 
         expect(screen.queryByTestId('repo-group-tab-git')).toBeNull();
-        expect(screen.getByTestId('repo-group-tab-chats').querySelector('span')).toBeTruthy();
         expect(screen.getByTestId('stub-chat-tab').parentElement?.style.display).not.toBe('none');
         expect(screen.getByTestId('stub-group-git-tab').dataset.member).toBe('r1');
         expect(screen.getByTestId('split-workspace-detail-host')
@@ -313,13 +294,5 @@ describe('RepoGroupView — desktop split Workspace panel', () => {
         click('stub-chat-row');
         expect(host.querySelector('[data-testid="stub-chat-detail"]')).toBeTruthy();
         expect(screen.getByTestId('unified-git-tab').querySelector('[data-testid="stub-git-detail"]')).toBeTruthy();
-    });
-
-    it('keeps the plain chat tab when the flag is off', () => {
-        mockSplitPanelEnabled = false;
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('split-workspace-panel')).toBeNull();
-        expect(screen.getByTestId('stub-chat-tab').dataset.layout).toBe('');
-        expect(screen.getByTestId('repo-group-tab-git')).toBeTruthy();
     });
 });

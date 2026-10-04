@@ -18,7 +18,6 @@ const mockDispatch = vi.fn();
 let mockAppState: any = {};
 let mockBreakpoint = 'desktop';
 let mockRemoteGroupWorkspaces: any[] = [];
-let mockSplitPanelEnabled = true;
 const mockGetRepoGroup = vi.fn();
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -40,12 +39,6 @@ vi.mock('../../../../src/server/spa/client/react/layout/Router', async () => {
 vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSchedulesInScheduledSlideEnabled', () => ({
     useSchedulesInScheduledSlideEnabled: () => false,
 }));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => false,
-}));
-vi.mock('../../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanelEnabled,
-}));
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({
         breakpoint: mockBreakpoint,
@@ -53,6 +46,9 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
         isTablet: false,
         isDesktop: mockBreakpoint === 'desktop',
     }),
+}));
+vi.mock('../../../../src/server/spa/client/react/layout/StatusActions', () => ({
+    StatusActions: () => <div data-testid="stub-status-actions" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/repoGroupService', () => ({
     getRepoGroup: (...args: unknown[]) => mockGetRepoGroup(...args),
@@ -118,7 +114,6 @@ beforeEach(() => {
     mockGetRepoGroup.mockReset();
     mockGetRepoGroup.mockResolvedValue({ id: GROUP_ID, name: 'AI Repos', members: MEMBERS });
     mockBreakpoint = 'desktop';
-    mockSplitPanelEnabled = true;
     mockRemoteGroupWorkspaces = [];
     mockSelectedTaskIdByRepo = {};
     mockAppState = {
@@ -259,13 +254,6 @@ describe('RepoGroupView right panel', () => {
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
         expect(screen.queryByTestId('unified-right-panel')).toBeNull();
-    });
-
-    it('omits the panel when the split-workspace flag is off', () => {
-        mockSplitPanelEnabled = false;
-        render(<RepoGroupView workspaceId={GROUP_ID} />);
-        expect(screen.queryByTestId('unified-right-panel')).toBeNull();
-        expect(mockGetRepoGroup).not.toHaveBeenCalled();
     });
 
     it('lists the group root plus every member and defaults to the first member', async () => {

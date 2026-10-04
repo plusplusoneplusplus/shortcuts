@@ -3,24 +3,8 @@
  * completed chat in detail view at mobile viewport without showing a blank
  * pane.
  *
- * Regression context (mobile blank-screen bug):
- *
- * On mobile, tapping a just-finished chat on the per-repo Activity page used
- * to render a blank screen. Two factors combined:
- *
- *   1. The Router unconditionally redirected `/activity` → `/chats` for
- *      non-virtual repos.
- *   2. In classic UI mode (the default), `RepoDetail` only rendered the
- *      chat surface when `activeSubTab === 'activity'`. The redirected
- *      `'chats'` value collapsed the wrapper to `display:none` ⇒ 0×0
- *      detail pane ⇒ blank screen.
- *
- * The fix (1) removes the redirect so `/activity/<id>` deep-links keep
- * `activeSubTab='activity'`, and (2) makes the `RepoDetail` chat-surface
- * wrapper accept BOTH `'activity'` and `'chats'` keys interchangeably so
- * cross-mode URLs render in either layout mode.
- *
- * These tests pin both URL forms × both layout modes to prevent regression.
+ * Both URL aliases must open the outer Workspace detail, not merely mount a
+ * conversation inside its hidden keep-alive slot.
  */
 import * as fs from 'fs';
 import * as os from 'os';
@@ -37,33 +21,10 @@ function makeTmpRoot(name: string): string {
     return fs.mkdtempSync(path.join(os.tmpdir(), `coc-mob-${name}-`));
 }
 
-/**
- * Force a specific UI layout mode on the server so the test deterministically
- * exercises the classic-vs-dev-workflow rendering branch we want to cover.
- * The mode is global, so subsequent tests reset it to their desired value.
- */
-async function setUiLayoutMode(serverUrl: string, mode: 'classic' | 'dev-workflow'): Promise<void> {
-    const res = await request(`${serverUrl}/api/preferences`, {
-        method: 'PATCH',
-        body: JSON.stringify({ uiLayoutMode: mode }),
-    });
-    if (res.status >= 400) {
-        throw new Error(`Failed to set uiLayoutMode=${mode}: ${res.status} ${res.body}`);
-    }
-}
 
-/**
- * Clear client-side state that would mask the bug:
- *   - resizable left-panel widths (could leave a non-zero detail pane on a
- *     re-run even when the regression is back)
- *   - mobile-detail vs list view toggles
- *   - any cached layout-mode hint
- *
- * Must run after `page.goto` for at least one navigation so `localStorage` is
- * accessible (origin must be set).
- */
+/** Clear persisted layout state before the first SPA mount. */
 async function clearClientState(page: Page): Promise<void> {
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
         try {
             localStorage.clear();
             sessionStorage.clear();
@@ -113,23 +74,8 @@ async function seedCompletedChat(
 }
 
 /**
- * Hard-reload the page to `/#` so the SPA mounts fresh and picks up the
- * server-side uiLayoutMode preference.
- *
- * IMPORTANT: Workspaces must be seeded BEFORE calling this function so that
- * the repos list is populated when `fetchRepos()` fires on mount. A hash
- * change away from `/#` later (same origin) does NOT trigger a new page load
- * and will not re-fetch repos — the list must already contain the workspace.
- */
-async function reloadWithMode(page: Page, serverUrl: string, mode: 'classic' | 'dev-workflow'): Promise<void> {
-    await setUiLayoutMode(serverUrl, mode);
-    await page.goto(`${serverUrl}/#`);
-    await clearClientState(page);
-}
-
-/**
  * Walk through both URL aliases (`/activity/<id>` and `/chats/<id>`) under
- * the given UI layout mode. The chat detail must render with a non-zero
+ * the classic Workspace layout. The chat detail must render with a non-zero
  * width in every cell.
  */
 async function assertDeepLinkRendersDetail(
@@ -139,9 +85,7 @@ async function assertDeepLinkRendersDetail(
     processId: string,
     urlSegment: 'activity' | 'chats',
 ): Promise<void> {
-    // Hash change to the deep link.  The repos list is already populated
-    // (workspace was seeded before page.goto(/#)), so selectedRepo resolves
-    // immediately and RepoChatTab mounts with the correct selectedTaskId.
+    // Cold-load directly at the process link so selection precedes shell mount.
     await page.goto(`${serverUrl}/#repos/${wsId}/${urlSegment}/${encodeURIComponent(processId)}`);
 
     const detail = page.locator('[data-testid="activity-chat-detail"]');
@@ -157,24 +101,27 @@ async function assertDeepLinkRendersDetail(
         `activity-chat-detail (${urlSegment}) should have non-zero width on mobile`,
     ).toBeGreaterThan(200);
 
-    // The mobile list should not also be visible — the detail pane replaces it.
-    await expect(page.locator('[data-testid="activity-mobile-list"]')).toHaveCount(0);
+    await expect(page.getByTestId('split-workspace-panel')).toHaveAttribute('data-mobile-detail', 'true');
+    await expect(page.getByTestId('split-workspace-chat')).toBeHidden();
+    await expect(page.getByTestId('split-workspace-mobile-back')).toBeVisible();
+
+    await page.reload();
+    await expect(detail).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('split-workspace-chat')).toBeHidden();
 }
 
 test.describe('Mobile Activity Deep Link', () => {
     test.beforeEach(async ({ page }) => {
         // Ensure no stale localStorage from a previous spec leaks in
         await page.context().clearCookies();
+        await clearClientState(page);
     });
 
     test('mobile (classic mode): /activity/<taskId> deep-link renders detail pane with non-zero width', async ({ page, serverUrl }) => {
-        // Seed workspace BEFORE reloadWithMode so fetchRepos() on page load
-        // returns the workspace and the subsequent hash-change navigation finds it.
         const wsId = 'ws-mob-act-classic';
         await seedWorkspace(serverUrl, wsId, 'mob-act-classic-repo', makeTmpRoot('act-classic'));
         const { processId } = await seedCompletedChat(serverUrl, wsId, 'Mobile Activity Classic');
 
-        await reloadWithMode(page, serverUrl, 'classic');
         await assertDeepLinkRendersDetail(page, serverUrl, wsId, processId, 'activity');
     });
 
@@ -183,25 +130,6 @@ test.describe('Mobile Activity Deep Link', () => {
         await seedWorkspace(serverUrl, wsId, 'mob-chat-classic-repo', makeTmpRoot('chat-classic'));
         const { processId } = await seedCompletedChat(serverUrl, wsId, 'Mobile Chats Classic');
 
-        await reloadWithMode(page, serverUrl, 'classic');
-        await assertDeepLinkRendersDetail(page, serverUrl, wsId, processId, 'chats');
-    });
-
-    test('mobile (dev-workflow mode): /activity/<taskId> deep-link renders detail pane with non-zero width', async ({ page, serverUrl }) => {
-        const wsId = 'ws-mob-act-dev';
-        await seedWorkspace(serverUrl, wsId, 'mob-act-dev-repo', makeTmpRoot('act-dev'));
-        const { processId } = await seedCompletedChat(serverUrl, wsId, 'Mobile Activity Dev');
-
-        await reloadWithMode(page, serverUrl, 'dev-workflow');
-        await assertDeepLinkRendersDetail(page, serverUrl, wsId, processId, 'activity');
-    });
-
-    test('mobile (dev-workflow mode): /chats/<taskId> deep-link renders detail pane with non-zero width', async ({ page, serverUrl }) => {
-        const wsId = 'ws-mob-chat-dev';
-        await seedWorkspace(serverUrl, wsId, 'mob-chat-dev-repo', makeTmpRoot('chat-dev'));
-        const { processId } = await seedCompletedChat(serverUrl, wsId, 'Mobile Chats Dev');
-
-        await reloadWithMode(page, serverUrl, 'dev-workflow');
         await assertDeepLinkRendersDetail(page, serverUrl, wsId, processId, 'chats');
     });
 
@@ -210,13 +138,12 @@ test.describe('Mobile Activity Deep Link', () => {
         await seedWorkspace(serverUrl, wsId, 'mob-tap-classic-repo', makeTmpRoot('tap-classic'));
         await seedCompletedChat(serverUrl, wsId, 'Just Finished Chat (Classic)');
 
-        await reloadWithMode(page, serverUrl, 'classic');
-
         await page.goto(`${serverUrl}/#repos/${wsId}/activity`);
 
         // Wait for the activity list to render the seeded task
-        await expect(page.locator('[data-testid="activity-mobile-list"]')).toBeVisible({ timeout: 10000 });
-        const item = page.locator('[data-testid="activity-mobile-list"] [data-task-id]').first();
+        const list = page.getByTestId('split-workspace-chat');
+        await expect(list).toBeVisible({ timeout: 10000 });
+        const item = list.locator('[data-task-id]').first();
         await expect(item).toBeVisible({ timeout: 10000 });
 
         await item.tap();
@@ -229,33 +156,11 @@ test.describe('Mobile Activity Deep Link', () => {
             return box?.width ?? 0;
         }, 'activity-chat-detail should have non-zero width after tap').toBeGreaterThan(200);
 
-        // After tapping a completed chat, the list pane is replaced by the detail.
-        await expect(page.locator('[data-testid="activity-mobile-list"]')).toHaveCount(0);
-    });
-
-    test('mobile (dev-workflow mode): tap a just-completed chat in the chats list opens the detail pane full-width', async ({ page, serverUrl }) => {
-        const wsId = 'ws-mob-tap-dev';
-        await seedWorkspace(serverUrl, wsId, 'mob-tap-dev-repo', makeTmpRoot('tap-dev'));
-        await seedCompletedChat(serverUrl, wsId, 'Just Finished Chat (Dev)');
-
-        await reloadWithMode(page, serverUrl, 'dev-workflow');
-
-        await page.goto(`${serverUrl}/#repos/${wsId}/chats`);
-
-        await expect(page.locator('[data-testid="activity-mobile-list"]')).toBeVisible({ timeout: 10000 });
-        const item = page.locator('[data-testid="activity-mobile-list"] [data-task-id]').first();
-        await expect(item).toBeVisible({ timeout: 10000 });
-
+        await expect(list).toBeHidden();
+        await page.getByTestId('split-workspace-mobile-back').tap();
+        await expect(list).toBeVisible();
+        await expect(detail).toBeHidden();
         await item.tap();
-
-        const detail = page.locator('[data-testid="activity-chat-detail"]');
-        await expect(detail).toBeVisible({ timeout: 10000 });
-
-        await expect.poll(async () => {
-            const box = await detail.boundingBox();
-            return box?.width ?? 0;
-        }, 'activity-chat-detail should have non-zero width after tap').toBeGreaterThan(200);
-
-        await expect(page.locator('[data-testid="activity-mobile-list"]')).toHaveCount(0);
+        await expect(detail).toBeVisible();
     });
 });

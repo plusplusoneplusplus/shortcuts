@@ -14,6 +14,7 @@ import * as path from 'path';
 import { test, expect, safeRmSync } from './fixtures/server-fixture';
 import { seedWorkspace } from './fixtures/seed';
 import { createRepoFixture, createTasksFixture } from './fixtures/repo-fixtures';
+import { gotoWorkspace } from './fixtures/remote-shell';
 
 /**
  * Add prompt fixtures so the Run Skill submenu has items to render.
@@ -40,15 +41,8 @@ async function setupRepoForPrefs(
 
     await seedWorkspace(serverUrl, wsId, 'prefs-repo', repoDir);
 
-    await page.goto(serverUrl);
-    await page.click('[data-tab="repos"]');
-    await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-
-    await page.locator('[data-testid="repo-tab"]').first().click();
-    await expect(page.locator('#repo-detail-content')).toBeVisible();
-
-    await page.click('.repo-sub-tab[data-subtab="tasks"]');
-    await expect(page.locator('.repo-sub-tab[data-subtab="tasks"]')).toHaveClass(/active/);
+    await gotoWorkspace(page, serverUrl, wsId, 'tasks');
+    await expect(page.locator('button[data-subtab="tasks"]')).toHaveAttribute('data-active', 'true');
 
     await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
@@ -250,10 +244,7 @@ test.describe('Preferences (007)', () => {
 
             // Reload to pick up preference.
             await page.reload();
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10_000 });
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             await openFollowPromptDialog(page);
@@ -299,10 +290,7 @@ test.describe('Preferences (007)', () => {
 
             // Reload.
             await page.reload();
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(1, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await expect(page.locator('#repo-detail-content')).toBeVisible({ timeout: 10_000 });
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             // Open dialog again — provider should be preserved.
@@ -387,12 +375,7 @@ test.describe('Preferences (007)', () => {
 
             await seedWorkspace(serverUrl, 'ws-prefs-2', 'prefs-repo-2', repoDir2);
 
-            await page.goto(serverUrl);
-            await page.click('[data-tab="repos"]');
-            await expect(page.locator('[data-testid="repo-tab"]')).toHaveCount(2, { timeout: 10000 });
-            await page.locator('[data-testid="repo-tab"]').first().click();
-            await expect(page.locator('#repo-detail-content')).toBeVisible();
-            await page.click('.repo-sub-tab[data-subtab="tasks"]');
+            await gotoWorkspace(page, serverUrl, 'ws-prefs', 'tasks');
             await expect(page.locator('.miller-columns')).toBeVisible({ timeout: 10000 });
 
             await openFollowPromptDialog(page);

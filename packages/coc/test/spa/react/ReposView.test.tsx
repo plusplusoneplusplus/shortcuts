@@ -58,10 +58,6 @@ vi.mock('../../../src/server/spa/client/react/features/chat/RepoChatTab', () => 
     RepoChatTab: () => null,
 }));
 
-let mockUiLayoutModeValue = 'classic';
-vi.mock('../../../src/server/spa/client/react/hooks/preferences/useUiLayoutMode', () => ({
-    useUiLayoutMode: () => [mockUiLayoutModeValue, vi.fn()],
-}));
 
 vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useWorkflowsEnabled', () => ({
     useWorkflowsEnabled: () => true,
@@ -756,7 +752,7 @@ describe('RepoDetail', () => {
         const tabLabels = Array.from(buttons).map(b => b.textContent?.trim());
         expect(tabLabels).toContain('Settings');
         expect(tabLabels).toContain('Workflows');
-        expect(tabLabels).toContain('Activity');
+        expect(tabLabels).toContain('Workspace');
     });
 
     it('does not render Edit and Remove buttons (removed from header)', () => {
@@ -769,20 +765,16 @@ describe('RepoDetail', () => {
     });
 
     it('shows task count badge when tasks exist', () => {
-        // Tasks tab is only visible in dev-workflow layout mode
-        mockUiLayoutModeValue = 'dev-workflow';
         const repo = makeRepo({
             workspace: { id: 'ws-1', name: 'Test', rootPath: '/test' },
             taskCount: 5,
         });
-        try {
+        {
             render(<Wrap><RepoDetail repo={repo} repos={[repo]} onRefresh={() => {}} /></Wrap>);
             // The badge with task count is the bg-[#0078d4] rounded-full span
             const badges = document.querySelectorAll('span.rounded-full');
             const taskBadge = Array.from(badges).find(b => b.textContent === '5');
             expect(taskBadge).not.toBeUndefined();
-        } finally {
-            mockUiLayoutModeValue = 'classic';
         }
     });
 

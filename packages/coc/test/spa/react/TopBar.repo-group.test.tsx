@@ -30,16 +30,8 @@ vi.mock('../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator
 vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
     useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
 }));
-// The virtual shell header only renders in the remote-first desktop shell.
-vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useRemoteShellEnabled', () => ({
-    useRemoteShellEnabled: () => true,
-}));
 // Pin the flags the dock toggle and the other virtual workspaces are gated on,
 // so AC-06's present/absent assertions do not depend on admin config defaults.
-let mockSplitPanelEnabled = true;
-vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useSplitWorkspacePanelEnabled', () => ({
-    useSplitWorkspacePanelEnabled: () => mockSplitPanelEnabled,
-}));
 vi.mock('../../../src/server/spa/client/react/hooks/feature-flags/useMyWorkEnabled', () => ({
     useMyWorkEnabled: () => true,
 }));
@@ -92,7 +84,6 @@ function renderTopBarWithGroup(withName = true, groupId = GROUP_ID) {
 
 beforeEach(() => {
     mockRemoteGroupWorkspaces = [];
-    mockSplitPanelEnabled = true;
     localStorage.clear();
     location.hash = '';
     Object.defineProperty(window, 'matchMedia', {
@@ -127,18 +118,6 @@ describe('TopBar — repo-group virtual header', () => {
         expect(screen.getByTestId('repo-group-shell-tab-settings').textContent).toBe('Settings');
         expect([...header.querySelectorAll('button[data-subtab]')].map(tab => tab.getAttribute('data-subtab')))
             .toEqual(['chats', 'notes', 'settings']);
-    });
-
-    it('keeps the standalone Git tab when the split flag is off', () => {
-        mockSplitPanelEnabled = false;
-        renderTopBarWithGroup();
-        const header = screen.getByTestId('virtual-workspace-shell-header');
-        const keys = [...header.querySelectorAll('button[data-subtab]')].map(b => b.getAttribute('data-subtab'));
-        expect(keys).toContain('git');
-        expect(screen.getByTestId('repo-group-shell-tab-git').textContent).toBe('Git');
-        expect(keys).not.toContain('pull-requests');
-        expect(keys).not.toContain('work-items');
-        expect(keys).not.toContain('branches');
     });
 
     it('labels the header with the registered group name', () => {
@@ -199,12 +178,6 @@ describe('TopBar — repo-group dock toggle', () => {
             fireEvent.click(screen.getByRole('button', { name: 'Hide right panel' }));
         });
         expect(localStorage.getItem(openKey)).toBe('0');
-    });
-
-    it('hides the controls when the split-workspace flag is off', () => {
-        mockSplitPanelEnabled = false;
-        renderTopBarWithGroup();
-        expect(screen.queryByTestId('workspace-dock-toggle')).toBeNull();
     });
 
     it('renders no controls for My Work or My Life', () => {

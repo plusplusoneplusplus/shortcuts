@@ -8,9 +8,7 @@
  * Both virtual workspaces wear the shared `MobileTabBar` skin on mobile
  * (`VirtualWorkspaceMobileTabBar`): a back-to-scope-list slot, three pinned
  * tabs, and a `···` button whose sheet holds the remaining tabs plus the
- * header actions. The in-body `VirtualWorkspaceInlineHeader` this file used to
- * assert against is desktop/classic-shell only now, so every locator here goes
- * through the mobile chrome.
+ * header actions, so every locator here goes through the mobile chrome.
  *
  * The document-level `scrollWidth <= clientWidth` check the AC names is
  * necessary but not sufficient: the SPA shell is a fixed-height flex column

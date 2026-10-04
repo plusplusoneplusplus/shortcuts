@@ -25,7 +25,7 @@ vi.mock('../../../src/server/spa/client/react/shared/AgentProviderQuotaIndicator
 }));
 
 vi.mock('../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
-    useBreakpoint: () => ({ breakpoint: 'desktop', isMobile: false, isTablet: false, isDesktop: true }),
+    useBreakpoint: () => ({ breakpoint: 'mobile', isMobile: true, isTablet: false, isDesktop: false }),
 }));
 
 let mockMyWorkEnabled = false;
@@ -264,7 +264,7 @@ describe('appReducer — SET_ACTIVE_TAB for top tabs', () => {
 // ─── TopBar connection status indicator ─────────────────────────
 
 describe('TopBar — connection status indicator', () => {
-    it('renders the ws-status-indicator pill on desktop', () => {
+    it('renders the ws-status-indicator pill in the mobile topbar', () => {
         renderTopBar();
         expect(screen.getByTestId('ws-status-indicator')).toBeDefined();
     });

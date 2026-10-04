@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Which of the two list surfaces the mobile Workspace panel is showing. The
@@ -64,7 +64,9 @@ export function useMobileWorkspacePaneState(workspaceId: string): MobileWorkspac
     const [detailOpen, setDetailOpen] = useState(false);
     const skipPersistRef = useRef(true);
 
-    useEffect(() => {
+    // Reset before child selection effects push a deep-linked detail; a passive
+    // parent reset would otherwise hide the detail opened during the same mount.
+    useLayoutEffect(() => {
         skipPersistRef.current = true;
         setPaneState(readPane(storageKey));
         // A workspace switch always lands on the list, never on a stale detail.

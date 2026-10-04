@@ -2,6 +2,10 @@
 
 TopBar repo navigation and the per-repo detail view.
 
+The dashboard uses the classic tab order and quick actions. Workspace accepts
+`activity` and `chats` route aliases; the optional plan tab is `Plans (Dep.)`.
+Layout is fixed, with no global or per-repo mode preference.
+
 ## RepoTabStrip kernel decomposition
 
 `RepoTabStrip.tsx` is the top-bar repo navigation surface (visible tabs, agent
@@ -55,7 +59,7 @@ overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fi
 surface: a single Cursor-style tab strip over Terminal, Notes, files, notes,
 canvases, and chat diffs, plus a file-tree column pinned to its right edge.
 `RepoDetail.tsx` renders it for a repo and `repos/RepoGroupView.tsx` for a repo
-group; both gate on `dockAvailable` (`splitWorkspacePanel` + desktop) and wrap
+group; both gate on `dockAvailable` (desktop) and wrap
 their subtree in `UnifiedPanelHostProvider` under the same gate. There is no
 second panel and no flag to switch between panels. The panel's own contract —
 tab identity, entry-point seams, keep-alive, the close guards — is in
@@ -130,7 +134,7 @@ for a concrete clone or a `group-*` selection. Ctrl/Cmd+\ does the same from
 `layout/Router.tsx`'s keydown handler (next to Ctrl/Cmd+B for the left column):
 it calls `toggleWorkspaceDockOpen` for the selected workspace, matches
 `e.code === 'Backslash'` so non-US layouts work, is skipped while typing in an
-input, and only fires with `splitWorkspacePanel` on. The button's tooltip names
+input. The button's tooltip names
 the shortcut; its `aria-label` stays plain. My Work / My Life have no panel.
 Search and Explorer are peer navigator controls inside the panel; selecting one
 opens or switches the navigator, and selecting the active one collapses it

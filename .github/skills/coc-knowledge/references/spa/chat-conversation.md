@@ -190,8 +190,8 @@ The list is scoped to the current repo's git origin: with `current.remoteUrl` se
 repos sharing its canonical origin id (`resolveCanonicalOriginId` /
 `resolveRepoOriginScope` in `repos/originScope.ts`) survive; with no remote URL, no origin
 filter. The current repo is always present and ordered first, so it stays the default.
-`ChatDetail` builds the list from `useReposOptional()` gated on `isRemoteShellEnabled()`;
-outside a `ReposProvider` (a pop-out window) the card is local-only.
+`ChatDetail` builds the list from `useReposOptional()`; outside a `ReposProvider`
+(a pop-out window) the card is local-only.
 
 Three enqueue paths:
 
