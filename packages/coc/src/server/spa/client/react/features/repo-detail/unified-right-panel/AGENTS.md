@@ -448,11 +448,14 @@ that target open and continues with later targets. File tabs use only the strip'
   a tombstone-only tab closes with no prompt. Terminate happens **before** the
   close and routes through `getCocClientForWorkspace(owner)`; 404 counts as
   success, anything else rejects and the tab, the view, and the PTYs all stay.
-- **Dirty buffers.** `DIRTY_CLOSE_KINDS` is `file | note | canvas` — the three
+- **Dirty buffers.** `DIRTY_CLOSE_KINDS` is `file | note | canvas | git` — the
   kinds that both report dirtiness (`onDirtyChange`) and hand back a way to write
   it (`onRegisterSave`), so the Save button always has something behind it. The
   prompt is the Explorer's own `explorer/ExplorerCloseTabsDialog`. A rejected or
-  `false` save keeps the tab, the buffer, and the prompt as a retry.
+  `false` save keeps the tab, the buffer, and the prompt as a retry. The `git`
+  tab's body (`UnifiedGitTab`) publishes its bound callbacks as a dirty bridge in
+  `unifiedGitTabHost`; `useSplitGitPanel` hands `RepoGitTab` forwarders so an
+  edited working-tree diff marks and guards the Git tab, labelled by its file.
 
 `CanvasPanel` and `NoteEditor` publish exactly the contract `PreviewPane`
 established; `useCanvasRecord.saveNow()` and `NoteEditor`'s flush both return

@@ -133,7 +133,10 @@ The header shows a Save button and a dirty marker while editable; the view repor
 `onDirtyChange` / `onRegisterSave` (Explorer contract; the untracked `PreviewPane`
 forwards them). `RepoGitTab` wraps user selection changes with `useDirtyDetailGuard`,
 which asks Save / Don't Save / Cancel (`ExplorerCloseTabsDialog`) while the diff is
-dirty; a failed save keeps the prompt and the buffer.
+dirty; a failed save keeps the prompt and the buffer. It also forwards the same
+reports to `useSplitGitPanel`'s `onDetailDirtyChange` / `onDetailRegisterSave`, which
+reach the panel's Git tab through the dirty bridge in `unifiedGitTabHost`, so the Git
+tab shows a dirty dot and closing it prompts (`DIRTY_CLOSE_KINDS` includes `git`).
 
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.

@@ -127,6 +127,10 @@ interface RepoGitTabProps {
      * Defaults to true.
      */
     active?: boolean;
+    /** Host dirty report for the detail's unsaved edits (e.g. the panel Git tab's close guard). */
+    onDetailDirtyChange?: (isDirty: boolean) => void;
+    /** Host save registration for the detail's unsaved edits. */
+    onDetailRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
 }
 
 /**
@@ -141,7 +145,7 @@ export function RepoGitTab(props: RepoGitTabProps) {
     return <RepoGitTabView key={baseUrl ?? 'local'} {...props} />;
 }
 
-function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps) {
+function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -208,6 +212,14 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
     const rawView = rawSelection.view;
     const detailGuard = useDirtyDetailGuard(rawView?.type === 'working-tree-file' ? rawView.filePath : null);
     const { guard } = detailGuard;
+    const handleDetailDirtyChange = useCallback((isDirty: boolean) => {
+        detailGuard.onDirtyChange(isDirty);
+        onDetailDirtyChange?.(isDirty);
+    }, [detailGuard.onDirtyChange, onDetailDirtyChange]);
+    const handleDetailRegisterSave = useCallback((save: (() => Promise<boolean>) | null) => {
+        detailGuard.onRegisterSave(save);
+        onDetailRegisterSave?.(save);
+    }, [detailGuard.onRegisterSave, onDetailRegisterSave]);
     const guardedSelectors = useMemo(() => ({
         selectCommit: guard(rawSelection.selectCommit),
         selectCommits: guard(rawSelection.selectCommits),
@@ -671,8 +683,8 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
             onNavigateToCommitFile={selection.navigateToCommitFile}
             onNavigateToWorkingTreeFile={selection.navigateToWorkingTreeFile}
             onWorkingTreeFileMissing={data.bumpWorkingChanges}
-            onDetailDirtyChange={detailGuard.onDirtyChange}
-            onDetailRegisterSave={detailGuard.onRegisterSave}
+            onDetailDirtyChange={handleDetailDirtyChange}
+            onDetailRegisterSave={handleDetailRegisterSave}
             onAllBranchCommentsClick={selection.selectBranchRangeComments}
             onBranchAskAI={skillActions.askAboutBranch}
             onCommitClassified={refreshClassificationStatus}
