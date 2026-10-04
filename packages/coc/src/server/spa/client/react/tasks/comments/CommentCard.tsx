@@ -34,6 +34,11 @@ export interface CommentCardProps {
     showFilePath?: boolean;
     /** Builds this comment's resolve prompt; when set, the card offers Copy resolve prompt. */
     getResolvePrompt?: () => string;
+    /**
+     * Drafts the resolve prompt into the current chat's composer. With
+     * `getResolvePrompt` set and this unset, Send to current chat shows disabled.
+     */
+    onSendResolvePrompt?: (prompt: string) => void;
 }
 
 export function CommentCard({
@@ -52,6 +57,7 @@ export function CommentCard({
     isDeleting,
     showFilePath = false,
     getResolvePrompt,
+    onSendResolvePrompt,
 }: CommentCardProps) {
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(comment.comment);
@@ -232,6 +238,18 @@ export function CommentCard({
                         data-testid="comment-copy-prompt"
                     >
                         📋
+                    </button>
+                )}
+                {getResolvePrompt && (
+                    <button
+                        className={`${ACTION_BTN} disabled:opacity-40 disabled:cursor-not-allowed`}
+                        onClick={() => onSendResolvePrompt?.(getResolvePrompt())}
+                        disabled={!onSendResolvePrompt}
+                        title={onSendResolvePrompt ? 'Send to current chat' : 'Send to current chat (no chat open)'}
+                        aria-label="Send to current chat"
+                        data-testid="comment-send-prompt"
+                    >
+                        💬
                     </button>
                 )}
                 {promptFeedback && (

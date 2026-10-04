@@ -92,7 +92,7 @@ and revision; comments anchor to the selection, and sending them posts one batch
 that is marked `sent` only after the send succeeds. Both reach the canvas's OWNING
 conversation — never the selected one — through the
 `unified-right-panel/unifiedChatCanvasActions.ts` registry: `ChatDetail` publishes
-`{ askAi, sendToAi }` under its chat id (`sendFollowUp(message, 'enqueue')`, so a busy AI
+`{ askAi, insertDraft, sendToAi }` under its chat id (`sendFollowUp(message, 'enqueue')`, so a busy AI
 receives the batch at the next turn boundary), and the canvas tab looks them up by
 `tab.chatId`. An unmounted chat publishes nothing and the tab hides both actions.
 

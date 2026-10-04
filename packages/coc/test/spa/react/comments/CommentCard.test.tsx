@@ -540,3 +540,40 @@ describe('CommentCard — copy resolve prompt', () => {
         expect(screen.getByRole('status').textContent).toBe('Copy failed');
     });
 });
+
+describe('CommentCard — send resolve prompt to current chat', () => {
+    const renderCard = (props: { getResolvePrompt?: () => string; onSendResolvePrompt?: (p: string) => void; onClick?: () => void }) => render(
+        <CommentCard
+            comment={makeComment()}
+            onResolve={noop} onUnresolve={noop} onEdit={noop}
+            onDelete={noop} onAskAI={noop} onClick={props.onClick ?? noop}
+            getResolvePrompt={props.getResolvePrompt}
+            onSendResolvePrompt={props.onSendResolvePrompt}
+        />
+    );
+
+    it('hides the action when no prompt builder is given', () => {
+        renderCard({ onSendResolvePrompt: vi.fn() });
+        expect(screen.queryByTestId('comment-send-prompt')).toBeNull();
+    });
+
+    it('hands the prompt to the current chat without touching the card', () => {
+        const onSend = vi.fn();
+        const onClick = vi.fn();
+        renderCard({ getResolvePrompt: () => 'the prompt', onSendResolvePrompt: onSend, onClick });
+        const button = screen.getByRole('button', { name: 'Send to current chat' }) as HTMLButtonElement;
+        expect(button.disabled).toBe(false);
+        expect(button.getAttribute('title')).toBe('Send to current chat');
+        fireEvent.click(button);
+        expect(onSend).toHaveBeenCalledWith('the prompt');
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('is disabled with an explanatory tooltip when no chat is available', () => {
+        renderCard({ getResolvePrompt: () => 'the prompt' });
+        const button = screen.getByRole('button', { name: 'Send to current chat' }) as HTMLButtonElement;
+        expect(button.disabled).toBe(true);
+        expect(button.getAttribute('title')).toBe('Send to current chat (no chat open)');
+        expect((screen.getByRole('button', { name: 'Copy resolve prompt' }) as HTMLButtonElement).disabled).toBe(false);
+    });
+});

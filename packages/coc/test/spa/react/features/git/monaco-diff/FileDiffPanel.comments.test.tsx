@@ -67,6 +67,9 @@ import { DIFF_ENGINE_STORAGE_KEY, __resetDiffEngineForTesting } from '../../../.
 import { useFileDiffEngineState } from '../../../../../../src/server/spa/client/react/features/git/hooks/useFileDiffEngineState';
 import { LanguageDocumentStore, browserDocumentUri } from '../../../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import { FakeClient } from '../../../language-servers/fakeLanguageTransport';
+import { UnifiedPanelHostProvider, type UnifiedPanelHost } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { clearUnifiedChatCanvasActions, publishUnifiedChatCanvasActions } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatCanvasActions';
+import { formatDiffCommentPrompt } from '../../../../../../src/server/spa/client/react/utils/diffCommentPrompt';
 
 const ORIGINAL = 'a\nb\nc\n';
 const MODIFIED = 'a\nB\nc\nd\n';
@@ -207,7 +210,14 @@ beforeEach(() => {
 afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    clearUnifiedChatCanvasActions();
 });
+
+function publishChat(chatId: string) {
+    const insertDraft = vi.fn();
+    publishUnifiedChatCanvasActions(chatId, { askAi: vi.fn(), insertDraft, sendToAi: vi.fn(async () => {}) });
+    return insertDraft;
+}
 
 describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco comments', kind => {
     it('portals stored comments and replies without changing their persisted shape', async () => {
@@ -289,6 +299,48 @@ describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco
         expect(prompt).toContain('Comment: note c1');
         expect(prompt).not.toContain('c2');
         expect(within(cardOf('c1')).getByRole('status').textContent).toBe('Prompt copied');
+    });
+
+    it('drafts the clicked card\u2019s prompt into the chat the panel shows, following chat switches', async () => {
+        const source = makeSource(kind);
+        stored = [
+            comment(source, 'c1'),
+            comment(source, 'c2', {
+                selection: { diffLineStart: 6, diffLineEnd: 6, side: 'removed', oldLineStart: 2, oldLineEnd: 2, startColumn: 0, endColumn: 1 },
+                selectedText: 'b',
+            }),
+        ];
+        const draftA = publishChat('chat-a');
+        const draftB = publishChat('chat-b');
+        const hosted = (host: UnifiedPanelHost | null) => (
+            <UnifiedPanelHostProvider host={host}>{panel(source)}</UnifiedPanelHostProvider>
+        );
+        let view!: ReturnType<typeof render>;
+        await act(async () => { view = render(hosted({ workspaceId: 'group-1', chatId: 'chat-a' })); });
+        await act(async () => { fake().finishDiff(CHANGES); });
+
+        fireEvent.click(within(cardOf('c2')).getByRole('button', { name: 'Send to current chat' }));
+        expect(draftA).toHaveBeenCalledTimes(1);
+        expect(draftA).toHaveBeenCalledWith(formatDiffCommentPrompt(stored[1]));
+        expect(draftA.mock.calls[0][0]).toContain(`Diff range: ${REFS[kind][0]} → ${REFS[kind][1]}`);
+        expect(draftA.mock.calls[0][0]).not.toContain('note c1');
+
+        await act(async () => { view.rerender(hosted({ workspaceId: 'group-1', chatId: 'chat-b' })); });
+        fireEvent.click(within(cardOf('c1')).getByRole('button', { name: 'Send to current chat' }));
+        expect(draftB).toHaveBeenCalledWith(formatDiffCommentPrompt(stored[0]));
+        expect(draftA).toHaveBeenCalledTimes(1);
+        expect(stored.map(c => c.status)).toEqual(['open', 'open']);
+    });
+
+    it('disables Send without a mounted visible chat while Copy stays available', async () => {
+        const source = makeSource(kind);
+        stored = [comment(source, 'c1')];
+        await act(async () => {
+            render(<UnifiedPanelHostProvider host={{ workspaceId: 'ws-a', chatId: 'chat-gone' }}>{panel(source)}</UnifiedPanelHostProvider>);
+        });
+        await act(async () => { fake().finishDiff(CHANGES); });
+        expect((within(cardOf('c1')).getByRole('button', { name: 'Send to current chat' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((within(cardOf('c1')).getByRole('button', { name: 'Copy resolve prompt' }) as HTMLButtonElement).disabled).toBe(false);
     });
 
     it('uses the existing ask-AI response and error handling inside the thread', async () => {

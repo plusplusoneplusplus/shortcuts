@@ -45,6 +45,7 @@ import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
 import { formatDiffCommentPrompt } from '../../../utils/diffCommentPrompt';
+import { useCurrentChatInsertDraft } from '../../repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useCrossFileNav, type HunkNavigationHandle } from '../hooks/useCrossFileNav';
@@ -458,6 +459,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     }, [showEditor]);
 
     // Editor engine: the same thread card the sidebar shows, inline under the line.
+    const insertDraftIntoCurrentChat = useCurrentChatInsertDraft();
     const renderCommentThread = useCallback((comment: DiffComment) => (
         <CommentCard
             comment={comment}
@@ -473,8 +475,9 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             isResolving={resolvingIds.has(comment.id)}
             isDeleting={deletingIds.has(comment.id)}
             getResolvePrompt={() => formatDiffCommentPrompt(comment)}
+            onSendResolvePrompt={insertDraftIntoCurrentChat}
         />
-    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
+    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds, insertDraftIntoCurrentChat]);
 
     return (
         <div className="working-tree-file-diff flex flex-col h-full overflow-hidden" data-testid="working-tree-file-diff">

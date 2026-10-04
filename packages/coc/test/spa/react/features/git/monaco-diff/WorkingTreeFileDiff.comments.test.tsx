@@ -89,6 +89,9 @@ import {
     __resetDiffEngineForTesting,
 } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine';
 import type { DiffEditorFactory } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffEditorAdapter';
+import { UnifiedPanelHostProvider, type UnifiedPanelHost } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import { clearUnifiedChatCanvasActions, publishUnifiedChatCanvasActions } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatCanvasActions';
+import { formatDiffCommentPrompt } from '../../../../../../src/server/spa/client/react/utils/diffCommentPrompt';
 
 function comment(id: string, extra: Partial<DiffComment> = {}): DiffComment {
     return {
@@ -112,12 +115,15 @@ const createDiffEditor: DiffEditorFactory = async (_host, options) => {
 };
 const fake = () => fakes[fakes.length - 1];
 
-async function renderEditor() {
+const editor = () => (
+    <WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged" createDiffEditor={createDiffEditor} />
+);
+const hosted = (host: UnifiedPanelHost | null) => <UnifiedPanelHostProvider host={host}>{editor()}</UnifiedPanelHostProvider>;
+
+async function renderEditor(host?: UnifiedPanelHost | null) {
     let view!: ReturnType<typeof render>;
     await act(async () => {
-        view = render(
-            <WorkingTreeFileDiff workspaceId="ws-a" filePath="/repo/src/a.ts" repoRoot="/repo" stage="unstaged" createDiffEditor={createDiffEditor} />,
-        );
+        view = render(host === undefined ? editor() : hosted(host));
     });
     await act(async () => {});
     await act(async () => { fake().finishDiff(CHANGES); });
@@ -188,6 +194,33 @@ describe('WorkingTreeFileDiff — comments in the editor', () => {
         }));
         act(() => fake().runAction('coc.diff.comment.copyContext', sel));
         expect(hooks.copyToClipboard).toHaveBeenCalledWith(expect.stringContaining('d'));
+        view.unmount();
+    });
+
+    it('drafts the clicked card\u2019s prompt into the visible chat of a group panel, following chat switches', async () => {
+        const insertA = vi.fn();
+        const insertB = vi.fn();
+        publishUnifiedChatCanvasActions('chat-a', { askAi: vi.fn(), insertDraft: insertA, sendToAi: vi.fn(async () => {}) });
+        publishUnifiedChatCanvasActions('chat-b', { askAi: vi.fn(), insertDraft: insertB, sendToAi: vi.fn(async () => {}) });
+        hooks.comments = [
+            comment('c1'),
+            comment('c2', { selection: { diffLineStart: 2, diffLineEnd: 2, side: 'removed', oldLineStart: 2, oldLineEnd: 2, newLineStart: NaN, newLineEnd: NaN, startColumn: 0, endColumn: 1 }, selectedText: 'b' }),
+        ];
+        const view = await renderEditor({ workspaceId: 'group-1', chatId: 'chat-a' });
+        const send = (id: string) => within(within(zoneOf(id)!.domNode).getByTestId(`comment-card-${id}`)).getByRole('button', { name: 'Send to current chat' });
+        fireEvent.click(send('c2'));
+        expect(insertA).toHaveBeenCalledWith(formatDiffCommentPrompt(hooks.comments[1]));
+        expect(insertA.mock.calls[0][0]).toContain('file: /repo/src/a.ts\nDiff range: working tree changes');
+        expect(insertA.mock.calls[0][0]).not.toContain('note c1');
+
+        await act(async () => { view.rerender(hosted({ workspaceId: 'group-1', chatId: 'chat-b' })); });
+        fireEvent.click(send('c1'));
+        expect(insertB).toHaveBeenCalledWith(formatDiffCommentPrompt(hooks.comments[0]));
+        expect(insertA).toHaveBeenCalledTimes(1);
+
+        await act(async () => { view.rerender(hosted(null)); });
+        expect((send('c1') as HTMLButtonElement).disabled).toBe(true);
+        clearUnifiedChatCanvasActions();
         view.unmount();
     });
 
