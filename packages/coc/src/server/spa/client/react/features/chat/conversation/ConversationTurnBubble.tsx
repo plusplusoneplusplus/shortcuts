@@ -49,6 +49,7 @@ import {
     shortenSessionProcessId,
     type ParsedAttachedContextBlock,
     type ParsedDiffSelectionContextBlock,
+    type ParsedFileSelectionContextBlock,
     type ParsedPointerContextBlock,
     type ParsedRalphSessionContextBlock,
     type ParsedSessionContextBlock,
@@ -541,8 +542,47 @@ function AttachedDiffSelectionContextBlockCard({ context }: { context: ParsedDif
     );
 }
 
+function AttachedFileSelectionContextBlockCard({ context }: { context: ParsedFileSelectionContextBlock }) {
+    const rows: Array<[string, string]> = [
+        ['File', context.filePath],
+        ['Lines', `${context.range.start}-${context.range.end}`],
+        ['Workspace ID', context.sourceWorkspaceId],
+    ];
+    return (
+        <details
+            className="rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/30 text-[12px] overflow-hidden"
+            data-testid="attached-file-selection-context-block"
+        >
+            <summary className="cursor-pointer select-none list-none px-3 py-2 flex items-center gap-2">
+                <span aria-hidden="true" className="shrink-0">▤</span>
+                <span className="shrink-0 whitespace-nowrap font-medium text-indigo-800 dark:text-indigo-200">Attached file selection</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-indigo-800/80 dark:text-indigo-200/80" data-testid="attached-file-selection-context-summary">
+                    {context.label}
+                </span>
+                {context.truncated && (
+                    <span className="shrink-0 rounded-full border border-indigo-300 dark:border-indigo-700 px-1.5 py-0.5 text-[10px] text-indigo-700 dark:text-indigo-300" data-testid="attached-file-selection-context-truncated">
+                        truncated
+                    </span>
+                )}
+            </summary>
+            <div className="border-t border-indigo-300 dark:border-indigo-700 px-3 py-2 space-y-2 text-[#3c3c3c] dark:text-[#c8c8c8]">
+                <dl className="grid grid-cols-[auto,1fr] gap-x-2 gap-y-1">
+                    {rows.map(([label, value]) => (
+                        <React.Fragment key={label}>
+                            <dt className="text-indigo-700 dark:text-indigo-300">{label}</dt>
+                            <dd className="font-mono break-all">{value}</dd>
+                        </React.Fragment>
+                    ))}
+                </dl>
+                <pre className="max-h-60 overflow-auto whitespace-pre rounded border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-[#1e1e1e] p-2 font-mono text-[11px]" data-testid="attached-file-selection-context-snippet">{context.snippet}</pre>
+            </div>
+        </details>
+    );
+}
+
 function AttachedContextBlockCard({ context }: { context: ParsedAttachedContextBlock }) {
     if (context.kind === 'diff-selection') return <AttachedDiffSelectionContextBlockCard context={context} />;
+    if (context.kind === 'file-selection') return <AttachedFileSelectionContextBlockCard context={context} />;
     if (context.kind === 'ralph-session') return <AttachedRalphSessionContextBlockCard context={context} />;
     if (context.kind === 'session') return <AttachedSessionContextBlockCard context={context} />;
     return <AttachedPointerContextBlockCard context={context} />;
@@ -1234,7 +1274,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
         [isUser, turn.chatModeContext, injectedBlocks.chatMode],
     );
     const parsedUserContent = useMemo(
-        () => isUser ? parseAttachedSessionContextBlocks(injectedBlocks.text) : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], diffSelectionContexts: [], remainingContent: '' },
+        () => isUser ? parseAttachedSessionContextBlocks(injectedBlocks.text) : { attachedContexts: [], sessionContexts: [], ralphSessionContexts: [], pointerContexts: [], diffSelectionContexts: [], fileSelectionContexts: [], remainingContent: '' },
         [isUser, injectedBlocks.text],
     );
     const userContentText = isUser ? parsedUserContent.remainingContent : '';

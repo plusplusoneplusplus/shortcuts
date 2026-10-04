@@ -8,6 +8,7 @@ import {
     DIFF_SELECTION_CONTEXT_DRAG_MIME,
     FILE_PATH_DRAG_MIME,
     FILE_PATH_DRAG_KIND,
+    FILE_SELECTION_CONTEXT_KIND,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
     GIT_RANGE_CONTEXT_DRAG_KIND,
     POINTER_CONTEXT_DRAG_MIME,
@@ -19,6 +20,7 @@ import {
     SESSION_CONTEXT_DRAG_MIME,
     WORK_ITEM_CONTEXT_DRAG_KIND,
     createDiffSelectionContextDragPayload,
+    createFileSelectionContextPayload,
     type DiffSelectionContextDragPayload,
     type FilePathDragPayload,
     type GitCommitContextDragPayload,
@@ -80,7 +82,8 @@ type AttachedLogicalContextItem =
     | Extract<AttachedContextItem, { kind: 'commit' }>
     | Extract<AttachedContextItem, { kind: 'range' }>
     | Extract<AttachedContextItem, { kind: 'pull-request' }>
-    | Extract<AttachedContextItem, { kind: 'diff-selection' }>;
+    | Extract<AttachedContextItem, { kind: 'diff-selection' }>
+    | Extract<AttachedContextItem, { kind: 'file-selection' }>;
 
 function isLogicalSessionContextItem(item: AttachedContextItem): item is AttachedLogicalSessionContextItem {
     return item.kind === 'session' || item.kind === 'ralph-session';
@@ -92,7 +95,8 @@ function isLogicalContextItem(item: AttachedContextItem): item is AttachedLogica
         || item.kind === 'commit'
         || item.kind === 'range'
         || item.kind === 'pull-request'
-        || item.kind === 'diff-selection';
+        || item.kind === 'diff-selection'
+        || item.kind === 'file-selection';
 }
 
 function getLogicalContextItems(items: AttachedContextItem[]): AttachedLogicalContextItem[] {
@@ -556,6 +560,9 @@ function normalizeAttachmentDragPayload(value: unknown): SessionContextAttachmen
     if (kind === RALPH_SESSION_CONTEXT_DRAG_KIND) return normalizeRalphSessionContextPayload(value);
     if (kind === SESSION_CONTEXT_DRAG_KIND) return normalizeSessionContextPayload(value);
     if (kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) return normalizeDiffSelectionContextPayload(value);
+    if (kind === FILE_SELECTION_CONTEXT_KIND) {
+        return (value as { version?: unknown }).version === 1 ? createFileSelectionContextPayload(value) : null;
+    }
     return normalizePointerContextPayload(value);
 }
 
@@ -625,6 +632,9 @@ export function getPayloadLogicalKey(payload: SessionContextAttachmentDragPayloa
     if (payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) {
         return diffSelectionLogicalKey(payload);
     }
+    if (payload.kind === FILE_SELECTION_CONTEXT_KIND) {
+        return fileSelectionLogicalKey(payload);
+    }
     const pullRequestRef = payload.number !== undefined ? `number:${payload.number}` : `id:${payload.pullRequestId}`;
     return `pull-request\0${payload.sourceWorkspaceId}\0${pullRequestRef}`;
 }
@@ -638,6 +648,11 @@ function diffSelectionLogicalKey(source: Pick<DiffSelectionContextDragPayload, '
     return `diff-selection\0${source.sourceWorkspaceId}\0${source.filePath}\0${range(source.oldRange)}\0${range(source.newRange)}\0${JSON.stringify(source.ref)}`;
 }
 
+/** Two file selections are the same attachment when they cover the same lines of the same file. */
+function fileSelectionLogicalKey(source: { sourceWorkspaceId: string; filePath: string; range: { start: number; end: number } }): string {
+    return `file-selection\0${source.sourceWorkspaceId}\0${source.filePath}\0${source.range.start}-${source.range.end}`;
+}
+
 function getItemLogicalKey(item: AttachedLogicalContextItem): string {
     if (item.kind === 'session') return `session\0${item.sourceWorkspaceId}\0${item.sourceProcessId}`;
     if (item.kind === 'ralph-session') return `ralph-session\0${item.sourceWorkspaceId}\0${item.sourceRalphSessionId}`;
@@ -645,6 +660,7 @@ function getItemLogicalKey(item: AttachedLogicalContextItem): string {
     if (item.kind === 'commit') return `commit\0${item.sourceWorkspaceId}\0${item.commitHash}`;
     if (item.kind === 'range') return `range\0${item.sourceWorkspaceId}\0${item.baseRef}\0${item.headRef}`;
     if (item.kind === 'diff-selection') return diffSelectionLogicalKey(item);
+    if (item.kind === 'file-selection') return fileSelectionLogicalKey(item);
     const pullRequestRef = item.number !== undefined ? `number:${item.number}` : `id:${item.pullRequestId}`;
     return `pull-request\0${item.sourceWorkspaceId}\0${pullRequestRef}`;
 }
@@ -656,6 +672,7 @@ function duplicateErrorForPayload(payload: SessionContextAttachmentDragPayload):
     if (payload.kind === GIT_RANGE_CONTEXT_DRAG_KIND) return 'This range is already attached to the message.';
     if (payload.kind === PULL_REQUEST_CONTEXT_DRAG_KIND) return 'This pull request is already attached to the message.';
     if (payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) return 'This diff selection is already attached to the message.';
+    if (payload.kind === FILE_SELECTION_CONTEXT_KIND) return 'This file selection is already attached to the message.';
     return 'This session is already attached to the message.';
 }
 
@@ -666,6 +683,7 @@ function duplicateErrorForItem(item: AttachedLogicalContextItem): string {
     if (item.kind === 'range') return 'This range is already attached to the message.';
     if (item.kind === 'pull-request') return 'This pull request is already attached to the message.';
     if (item.kind === 'diff-selection') return 'This diff selection is already attached to the message.';
+    if (item.kind === 'file-selection') return 'This file selection is already attached to the message.';
     return 'This session is already attached to the message.';
 }
 
@@ -676,6 +694,10 @@ function isDuplicatePayload(existingItems: AttachedLogicalContextItem[], payload
 
 function isConversationRetrievalRequired(items: AttachedLogicalContextItem[]): boolean {
     return items.some(isLogicalSessionContextItem);
+}
+
+function carriesOwnSnippet(payload: SessionContextAttachmentDragPayload): boolean {
+    return payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND || payload.kind === FILE_SELECTION_CONTEXT_KIND;
 }
 
 export function validateSessionContextDrop(options: {
@@ -695,9 +717,9 @@ export function validateSessionContextDrop(options: {
     if (!options.activeWorkspaceId) {
         return { ok: false, error: 'Open a workspace before attaching context.' };
     }
-    // A diff selection carries its own text and names its source repo, so it
-    // can be dropped into a chat of any workspace (multi-repo).
-    if (options.payload.kind !== DIFF_SELECTION_CONTEXT_DRAG_KIND && options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
+    // A diff or file selection carries its own text and names its source repo,
+    // so it can be attached to a chat of any workspace (multi-repo).
+    if (!carriesOwnSnippet(options.payload) && options.payload.sourceWorkspaceId !== options.activeWorkspaceId) {
         return { ok: false, error: 'Only context from the active workspace can be attached.' };
     }
     if (payloadIncludesProcess(options.payload, options.currentProcessId)) {
@@ -743,7 +765,7 @@ export function validateSessionContextAttachmentsForSend(options: {
     if (!options.activeWorkspaceId) {
         return 'Open a workspace before attaching context.';
     }
-    if (contextItems.some(item => item.kind !== 'diff-selection' && item.sourceWorkspaceId !== options.activeWorkspaceId)) {
+    if (contextItems.some(item => item.kind !== 'diff-selection' && item.kind !== 'file-selection' && item.sourceWorkspaceId !== options.activeWorkspaceId)) {
         return 'Only context from the active workspace can be attached.';
     }
     const selfAttachedItem = getSessionContextItems(options.items).find(item =>

@@ -32,6 +32,12 @@ export const PULL_REQUEST_CONTEXT_DRAG_KIND = 'coc.pull-request-context';
  */
 export const DIFF_SELECTION_CONTEXT_DRAG_MIME = 'application/vnd.coc.diff-selection-context+json';
 export const DIFF_SELECTION_CONTEXT_DRAG_KIND = 'coc.diff-selection-context';
+/**
+ * Carries a text selection made inside a Monaco file editor: the repo-relative
+ * file path, the selected line range, and the selected text itself. Attached
+ * from the editor's "Attach as context" pill, never dragged.
+ */
+export const FILE_SELECTION_CONTEXT_KIND = 'coc.file-selection-context';
 
 export type SessionContextSourceStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type RalphSessionContextPhase = 'grilling' | 'executing' | 'awaiting-input' | 'complete' | 'failed';
@@ -136,6 +142,19 @@ export interface DiffSelectionContextDragPayload {
     label: string;
 }
 
+export interface FileSelectionContextPayload {
+    kind: typeof FILE_SELECTION_CONTEXT_KIND;
+    version: 1;
+    sourceWorkspaceId: string;
+    /** Repo-relative, POSIX-separated path of the file the selection belongs to. */
+    filePath: string;
+    /** 1-based, inclusive line range of the selection. */
+    range: DiffSelectionLineRange;
+    /** Selected text, verbatim (uncapped; the chip item applies the size cap). */
+    snippet: string;
+    label: string;
+}
+
 export type PointerContextDragPayload =
     | WorkItemContextDragPayload
     | GitCommitContextDragPayload
@@ -146,7 +165,8 @@ export type SessionContextAttachmentDragPayload =
     | SessionContextDragPayload
     | RalphSessionContextDragPayload
     | PointerContextDragPayload
-    | DiffSelectionContextDragPayload;
+    | DiffSelectionContextDragPayload
+    | FileSelectionContextPayload;
 
 export interface CreateSessionContextDragPayloadOptions {
     activeWorkspaceId?: string | null;
@@ -732,6 +752,41 @@ export function createDiffSelectionContextDragPayload(source: {
     };
 }
 
+/** Chip label like `src/status.rs:24-35` (or `src/status.rs:24` for one line). */
+export function buildFileSelectionLabel(filePath: string, range: DiffSelectionLineRange): string {
+    return range.start === range.end ? `${filePath}:${range.start}` : `${filePath}:${range.start}-${range.end}`;
+}
+
+/**
+ * Build (or re-validate) a file-selection payload. Returns `null` when the
+ * workspace, file path, range, or snippet is missing, or the file path is not
+ * repo-relative.
+ */
+export function createFileSelectionContextPayload(source: {
+    sourceWorkspaceId?: unknown;
+    filePath?: unknown;
+    range?: unknown;
+    snippet?: unknown;
+}): FileSelectionContextPayload | null {
+    const sourceWorkspaceId = typeof source.sourceWorkspaceId === 'string' ? source.sourceWorkspaceId.trim() : '';
+    const filePath = typeof source.filePath === 'string' ? source.filePath.trim().replace(/^\.\/+/, '') : '';
+    const snippet = typeof source.snippet === 'string' ? source.snippet : '';
+    if (!sourceWorkspaceId || looksLikeLocalPath(sourceWorkspaceId)) return null;
+    if (!filePath || looksLikeLocalPath(filePath)) return null;
+    if (!snippet.trim()) return null;
+    if (!isValidLineRange(source.range) || source.range.start < 1) return null;
+    const range = { start: source.range.start, end: source.range.end };
+    return {
+        kind: FILE_SELECTION_CONTEXT_KIND,
+        version: 1,
+        sourceWorkspaceId,
+        filePath,
+        range,
+        snippet,
+        label: buildFileSelectionLabel(filePath, range),
+    };
+}
+
 /**
  * `text/plain` keeps the raw selected diff text so dropping into a non-CoC
  * target (editor, terminal) behaves like a normal text drag.
@@ -752,6 +807,10 @@ function writeSessionContextAttachmentDragData(
         writeRalphSessionContextDragData(dataTransfer, payload);
     } else if (payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) {
         writeDiffSelectionContextDragData(dataTransfer, payload);
+    } else if (payload.kind === FILE_SELECTION_CONTEXT_KIND) {
+        // Never dragged; keep a sane text flavour if one ends up in a bundle.
+        dataTransfer.effectAllowed = 'copy';
+        dataTransfer.setData('text/plain', payload.snippet);
     } else {
         writePointerContextDragData(dataTransfer, payload);
     }

@@ -68,6 +68,8 @@ export function AttachedContextPreviews({ items, onRemove, className, ...props }
                             ? 'border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-950/30'
                             : item.kind === 'diff-selection'
                                 ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/30'
+                            : item.kind === 'file-selection'
+                                ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/30'
                             : isPointerContextItem(item)
                                 ? 'border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-950/30'
                                 : 'border-[#d0d0d0] dark:border-[#3c3c3c] bg-[#f5f5f5] dark:bg-[#2d2d2d]',
@@ -78,17 +80,21 @@ export function AttachedContextPreviews({ items, onRemove, className, ...props }
                             ? 'attached-ralph-context-chip'
                             : item.kind === 'diff-selection'
                                 ? 'attached-diff-selection-context-chip'
+                            : item.kind === 'file-selection'
+                                ? 'attached-file-selection-context-chip'
                             : isPointerContextItem(item)
                                 ? `attached-${item.kind}-context-chip`
                                 : 'attached-context-chip'}
                 >
-                    <span className="shrink-0">{item.kind === 'session' ? '🧵' : item.kind === 'ralph-session' ? '🔄' : item.kind === 'diff-selection' ? '±' : isPointerContextItem(item) ? getPointerContextIcon(item) : '📎'}</span>
+                    <span className="shrink-0">{item.kind === 'session' ? '🧵' : item.kind === 'ralph-session' ? '🔄' : item.kind === 'diff-selection' ? '±' : item.kind === 'file-selection' ? '▤' : isPointerContextItem(item) ? getPointerContextIcon(item) : '📎'}</span>
                     <span className={cn(
                         'shrink-0 font-medium text-[10px] uppercase tracking-wide',
                         item.kind === 'ralph-session'
                             ? 'text-purple-700 dark:text-purple-300'
                             : item.kind === 'diff-selection'
                                 ? 'text-emerald-700 dark:text-emerald-300'
+                            : item.kind === 'file-selection'
+                                ? 'text-indigo-700 dark:text-indigo-300'
                             : isPointerContextItem(item)
                                 ? 'text-sky-700 dark:text-sky-300'
                                 : 'text-[#848484]',
@@ -99,6 +105,8 @@ export function AttachedContextPreviews({ items, onRemove, className, ...props }
                                 ? 'RALPH'
                                 : item.kind === 'diff-selection'
                                     ? 'Diff'
+                                : item.kind === 'file-selection'
+                                    ? 'File'
                                 : isPointerContextItem(item)
                                     ? getPointerContextLabel(item)
                                     : item.role === 'user' ? 'You' : 'Assistant'}
@@ -136,6 +144,19 @@ export function AttachedContextPreviews({ items, onRemove, className, ...props }
                                     </span>
                                 )}
                                 <span className="ml-1 text-emerald-700/80 dark:text-emerald-300/80 font-mono">{item.preview}</span>
+                            </span>
+                        ) : item.kind === 'file-selection' ? (
+                            <span title={item.snippet} data-testid="attached-file-selection-context-preview">
+                                <span className="font-medium font-mono">{item.label}</span>
+                                {item.truncated && (
+                                    <span
+                                        className="ml-1 px-1 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-[10px]"
+                                        data-testid="attached-file-selection-truncated"
+                                    >
+                                        truncated
+                                    </span>
+                                )}
+                                <span className="ml-1 text-indigo-700/80 dark:text-indigo-300/80 font-mono">{item.preview}</span>
                             </span>
                         ) : isPointerContextItem(item) ? (
                             <>
