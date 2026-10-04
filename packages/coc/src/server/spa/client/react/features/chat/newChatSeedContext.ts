@@ -41,11 +41,15 @@ export function pushNewChatSeedContext(payloads: SessionContextAttachmentDragPay
     }
 }
 
-/** Return and clear all buffered payloads. Returns an empty array when empty. */
-export function drainNewChatSeedContext(): SessionContextAttachmentDragPayload[] {
+/** Drain one workspace, preserving other workspaces; omitted id drains all. */
+export function drainNewChatSeedContext(workspaceId?: string): SessionContextAttachmentDragPayload[] {
     if (pending.length === 0) return [];
-    const drained = pending;
-    pending = [];
+    const drained = workspaceId === undefined
+        ? pending
+        : pending.filter(payload => payload.sourceWorkspaceId === workspaceId);
+    pending = workspaceId === undefined
+        ? []
+        : pending.filter(payload => payload.sourceWorkspaceId !== workspaceId);
     return drained;
 }
 

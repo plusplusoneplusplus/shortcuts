@@ -67,6 +67,18 @@ describe('newChatSeedContext store', () => {
         expect(drainNewChatSeedContext()).toEqual([]);
     });
 
+    it('drains only the requested workspace and leaves the others buffered', () => {
+        const a = makeCommitPayload();
+        const b = makeSessionPayload({ sourceWorkspaceId: 'ws-2' });
+        pushNewChatSeedContext([a, b]);
+        expect(drainNewChatSeedContext('ws-3')).toEqual([]);
+        expect(peekNewChatSeedContext()).toEqual([a, b]);
+        expect(drainNewChatSeedContext('ws-1')).toEqual([a]);
+        expect(peekNewChatSeedContext()).toEqual([b]);
+        expect(drainNewChatSeedContext('ws-2')).toEqual([b]);
+        expect(peekNewChatSeedContext()).toEqual([]);
+    });
+
     it('appends across multiple pushes (append-keep)', () => {
         const a = makeCommitPayload({ commitHash: 'aaaa1111', shortHash: 'aaaa111' });
         const b = makeSessionPayload({ sourceProcessId: 'proc-b' });

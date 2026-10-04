@@ -94,8 +94,9 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
-- Monaco selection attachments target a visible follow-up composer. Mounted
-  composers in hidden or inert panels decline before changing state or focus.
+- Monaco selection attachments target a visible follow-up composer or seed the
+  new-chat input in their workspace. Hidden or inert composers decline before
+  changing state or focus; seed drains preserve items for other workspaces.
 - Copilot decisions use a two-minute deadline per initial/repair attempt.
   Preserve caller cancellation and explicit backend timeout overrides.
 - First/follow-up turns share context/system/policy/runner/settlement helpers

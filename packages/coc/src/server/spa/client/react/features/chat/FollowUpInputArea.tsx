@@ -64,7 +64,7 @@ import {
     useConversationRetrievalCapability,
     validateSessionContextDrop,
 } from './sessionContextDrop';
-import { subscribeActiveChatAttach } from './activeChatAttach';
+import { isContextComposerVisible, subscribeActiveChatAttach } from './activeChatAttach';
 import { findComposerEditable, textOffsetFromPoint } from './filePathDropCaret';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
@@ -848,16 +848,7 @@ export function FollowUpInputArea({
     // ("Attach as context"). The handler is read through a ref so the single
     // subscription always validates against the latest attached items.
     function handleActiveChatAttach(payload: SessionContextAttachmentDragPayload): boolean {
-        if (!rootRef.current?.isConnected) return false;
-        // Repo panels can stay mounted while hidden. Decline before changing
-        // attachment/error state or focus so routing can try a visible composer.
-        for (let node: HTMLElement | null = rootRef.current; node; node = node.parentElement) {
-            const style = node.ownerDocument.defaultView?.getComputedStyle(node);
-            if (node.hidden || node.hasAttribute('inert') || style?.display === 'none'
-                || style?.visibility === 'hidden' || style?.visibility === 'collapse') {
-                return false;
-            }
-        }
+        if (!isContextComposerVisible(rootRef.current)) return false;
         const validation = validateSessionContextDrop({
             payload,
             featureEnabled: sessionContextAttachmentsEnabled,

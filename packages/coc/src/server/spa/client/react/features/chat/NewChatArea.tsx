@@ -99,10 +99,13 @@ import {
 } from './sessionContextDrop';
 import { findComposerEditable, textOffsetFromPoint } from './filePathDropCaret';
 import {
+    DIFF_SELECTION_CONTEXT_DRAG_KIND,
+    FILE_SELECTION_CONTEXT_KIND,
     RALPH_SESSION_CONTEXT_DRAG_KIND,
     SESSION_CONTEXT_DRAG_KIND,
     type SessionContextAttachmentDragPayload,
 } from './sessionContextDrag';
+import { isContextComposerVisible } from './activeChatAttach';
 import { drainNewChatSeedContext, subscribeNewChatSeedContext } from './newChatSeedContext';
 import { useContainerWidth } from './hooks/useContainerWidth';
 import { useUnifiedPanelHost } from '../repo-detail/unified-right-panel/unifiedPanelHost';
@@ -1161,27 +1164,28 @@ export function InitialChatComposer({
     }
 
     // Drain context items dropped onto the desktop "+ New chat" button (AC-01).
-    // Runs on mount to pick up items buffered before this composer existed, and
-    // stays subscribed so a drop onto an already-open composer appends
-    // (append-keep, AC-03). Items land in `pendingSeedContext` and are merged by
-    // the effect below.
+    // Pull on render to retry when the owner or panel visibility changes, and
+    // subscribe for pushes onto an already-open composer (append-keep). Only
+    // this workspace is drained; other views retain their buffered items.
     useEffect(() => {
         const pull = () => {
-            const drained = drainNewChatSeedContext();
+            if (!workspaceId || !sessionContextAttachmentsEnabled
+                || !isContextComposerVisible(composerRootRef.current)) return;
+            const drained = drainNewChatSeedContext(workspaceId);
             if (drained.length > 0) {
                 setPendingSeedContext(prev => [...prev, ...drained]);
             }
         };
         pull();
         return subscribeNewChatSeedContext(pull);
-    }, []);
+    });
 
     // Merge buffered seed items into the attached-context using the same
     // validation as a direct composer drop (dedupe, workspace alignment, cap).
     // Session/Ralph kinds that require conversation retrieval stay pending while
     // the capability is still resolving (null), then retry once it settles.
     useEffect(() => {
-        if (pendingSeedContext.length === 0) return;
+        if (pendingSeedContext.length === 0 || !isContextComposerVisible(composerRootRef.current)) return;
         if (!sessionContextAttachmentsEnabled) {
             setPendingSeedContext([]);
             return;
@@ -1189,6 +1193,7 @@ export function InitialChatComposer({
         const stillPending: SessionContextAttachmentDragPayload[] = [];
         let nextError: string | null = null;
         let attachedAny = false;
+        let focusSelectionInput = false;
         // A multi-select bundle (AC-02) merges several items in one synchronous
         // pass, but `attachedContext.getItems()` reflects `itemsRef.current`,
         // which does not update until the next render. Track keys added in this
@@ -1196,6 +1201,8 @@ export function InitialChatComposer({
         // being added twice (AC-03 dedupe).
         const seenThisPass = new Set<string>();
         for (const payload of pendingSeedContext) {
+            // A composer can change workspace while capability resolution is pending.
+            if (payload.sourceWorkspaceId !== workspaceId) continue;
             const requiresRetrieval = payload.kind === SESSION_CONTEXT_DRAG_KIND
                 || payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND;
             if (requiresRetrieval && canRetrieveConversations === null) {
@@ -1207,6 +1214,8 @@ export function InitialChatComposer({
                 // Duplicate already merged earlier in this same pass — skip.
                 continue;
             }
+            focusSelectionInput ||= payload.kind === FILE_SELECTION_CONTEXT_KIND
+                || payload.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND;
             const validation = validateSessionContextDrop({
                 payload,
                 featureEnabled: sessionContextAttachmentsEnabled,
@@ -1228,11 +1237,11 @@ export function InitialChatComposer({
         } else if (attachedAny) {
             setSessionContextDropError(null);
         }
+        if (focusSelectionInput) richTextRef.current?.focus();
         if (stillPending.length !== pendingSeedContext.length) {
             setPendingSeedContext(stillPending);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pendingSeedContext, canRetrieveConversations, workspaceId, sessionContextAttachmentsEnabled]);
+    });
 
     function focusInputAndInsertSlash() {
         const cur = richTextRef.current?.getValue() ?? input;

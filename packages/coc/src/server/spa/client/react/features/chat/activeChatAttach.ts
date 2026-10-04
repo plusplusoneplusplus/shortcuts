@@ -88,3 +88,16 @@ export function hasActiveChatAttachSubscriber(workspaceId: string): boolean {
 export function resetActiveChatAttach(): void {
     subscribers = [];
 }
+
+/** Hidden mounted panels must not consume editor selections or take focus. */
+export function isContextComposerVisible(root: HTMLElement | null): boolean {
+    if (!root?.isConnected) return false;
+    for (let node: HTMLElement | null = root; node; node = node.parentElement) {
+        const style = node.ownerDocument.defaultView?.getComputedStyle(node);
+        if (node.hidden || node.hasAttribute('inert') || style?.display === 'none'
+            || style?.visibility === 'hidden' || style?.visibility === 'collapse') {
+            return false;
+        }
+    }
+    return true;
+}

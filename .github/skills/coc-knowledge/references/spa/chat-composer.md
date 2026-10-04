@@ -219,7 +219,11 @@ selection, layout, scroll and blur, reads the live model, and routes file-select
 payloads through `activeChatAttach`. The last-focused visible workspace subscriber
 in `FollowUpInputArea` validates, adds the chip and focuses its input. Composers in
 hidden or inert panels decline before changing attachment state or focus; routing
-tries the next subscriber, then falls back to `newChatSeedContext`. Generic
+tries the next subscriber, then falls back to `newChatSeedContext`. Visible,
+feature-enabled initial composers drain only their workspace’s buffered items;
+other workspaces remain buffered. File and diff seeds focus the input after
+validation, including duplicate feedback. Composers retry buffered seeds on
+render so workspace and panel visibility changes can make them eligible. Generic
 file viewers and trusted absolute paths do not opt in. File-selection blocks
 include a repo-relative path, line range and a capped fenced snippet; user-turn
 parsing restores their context cards. `MonacoFileDiffViewer` mounts
