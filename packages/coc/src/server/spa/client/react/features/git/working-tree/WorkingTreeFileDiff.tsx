@@ -19,6 +19,9 @@
  * saving it writes the disk file and never touches the index. The header
  * Save button and dirty marker, plus `onDirtyChange` / `onRegisterSave`, follow
  * the Explorer editor contract so the owner can prompt before leaving.
+ * A `refreshKey` bump re-reads the file: clean views reload silently, while
+ * unsaved edits are kept and a "File changed on disk" banner offers Reload /
+ * Keep mine.
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
@@ -78,6 +81,12 @@ export interface WorkingTreeFileDiffProps {
     onDirtyChange?: (isDirty: boolean) => void;
     /** Registers the save function while the view is editable; null otherwise. */
     onRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
+    /**
+     * Bumped by the owner's git refresh. Re-reads the diff and both sides;
+     * unsaved edits are never replaced (a "File changed on disk" banner offers
+     * Reload / Keep mine instead).
+     */
+    refreshKey?: number;
 }
 
 /**
@@ -104,13 +113,19 @@ type PopupState = {
     selectedText: string;
 } | null;
 
-/** Both file sides for the Monaco engine, keyed by the request that loaded them. */
+/**
+ * Both file sides for the Monaco engine. `diskText` is the on-disk file (null
+ * when the staged disk check failed), used to tell a disk change apart.
+ */
+type LoadedEditorContent = { content: GitWorkingTreeFileContentResponse; diskMatchesIndex: boolean; diskText: string | null };
+
+/** Editor content keyed by the request that loaded it. */
 type EditorContentState =
     | { key: string; status: 'loading' }
-    | { key: string; status: 'loaded'; content: GitWorkingTreeFileContentResponse; diskMatchesIndex: boolean }
+    | ({ key: string; status: 'loaded' } & LoadedEditorContent)
     | { key: string; status: 'failed' };
 
-export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave }: WorkingTreeFileDiffProps) {
+export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey }: WorkingTreeFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -151,22 +166,22 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     // Monaco engine: load both full-text sides for this file and stage.
     const wantsEditor = diffEngine === 'monaco' && stage !== 'untracked';
     const contentKey = `${workspaceId}\u0000${stage}\u0000${filePath}\u0000${editorAttempt}`;
+    const loadEditorContent = useCallback(async (): Promise<LoadedEditorContent> => {
+        const content = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage as 'staged' | 'unstaged');
+        if (stage !== 'staged') return { content, diskMatchesIndex: false, diskText: content.head.content };
+        // The unstaged head is the disk file; a failed check keeps the diff read-only.
+        const disk = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, 'unstaged').catch(() => null);
+        return { content, diskMatchesIndex: stagedDiskMatchesIndex(content, disk), diskText: disk?.head.content ?? null };
+    }, [cloneClient, workspaceId, filePath, stage]);
     useEffect(() => {
         if (!wantsEditor) return;
         let cancelled = false;
         setEditorContent({ key: contentKey, status: 'loading' });
-        const load = async () => {
-            const content = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage as 'staged' | 'unstaged');
-            if (stage !== 'staged') return { content, diskMatchesIndex: false };
-            // The unstaged head is the disk file; a failed check keeps the diff read-only.
-            const disk = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, 'unstaged').catch(() => null);
-            return { content, diskMatchesIndex: stagedDiskMatchesIndex(content, disk) };
-        };
-        load()
+        loadEditorContent()
             .then(loaded => { if (!cancelled) setEditorContent({ key: contentKey, status: 'loaded', ...loaded }); })
             .catch(() => { if (!cancelled) setEditorContent({ key: contentKey, status: 'failed' }); });
         return () => { cancelled = true; };
-    }, [wantsEditor, contentKey, workspaceId, filePath, stage, cloneClient]);
+    }, [wantsEditor, contentKey, loadEditorContent]);
 
     const currentContent = editorContent?.key === contentKey ? editorContent : null;
     const contentLoadState: DiffContentLoadState | null = !currentContent ? null
@@ -196,15 +211,63 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     const [editedText, setEditedText] = useState<string | null>(null);
     const [savedText, setSavedText] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
+    // A refresh that found the disk file changed under unsaved edits; the
+    // banner offers Reload / Keep mine. `keptDiskText` is the disk text the
+    // user chose to overwrite, so later refreshes of it stay quiet.
+    const [diskChange, setDiskChange] = useState<({ key: string } & LoadedEditorContent) | null>(null);
+    const [keptDiskText, setKeptDiskText] = useState<string | null>(null);
+    // Re-mounts the editor when its buffer must be replaced by a text equal to
+    // the current `modified` prop (which alone would not reset the editor).
+    const [editorGeneration, setEditorGeneration] = useState(0);
     useEffect(() => {
         setEditedText(null);
         setSavedText(null);
         setSaveError(null);
+        setDiskChange(null);
+        setKeptDiskText(null);
     }, [contentKey]);
     const diskText = savedText ?? editorSides?.head.content ?? null;
     const isDirty = editedText !== null && editedText !== diskText;
-    const saveStateRef = useRef({ editedText, isDirty, workspaceId, relativePath });
-    saveStateRef.current = { editedText, isDirty, workspaceId, relativePath };
+    const shownModified = currentContent?.status === 'loaded' ? currentContent.content.head.content : null;
+    const saveStateRef = useRef({ editedText, isDirty, diskText, shownModified, contentKey, workspaceId, relativePath });
+    saveStateRef.current = { editedText, isDirty, diskText, shownModified, contentKey, workspaceId, relativePath };
+
+    // Show freshly loaded sides, dropping any edits in the buffer.
+    const applyLoadedContent = useCallback((key: string, loaded: LoadedEditorContent) => {
+        const { editedText: buffer, shownModified: shown } = saveStateRef.current;
+        const next = loaded.content.head.content;
+        if (buffer !== null && buffer !== next && shown === next) setEditorGeneration(g => g + 1);
+        setEditorContent({ key, status: 'loaded', ...loaded });
+        setEditedText(null);
+        setSavedText(null);
+        setSaveError(null);
+        setDiskChange(null);
+        setKeptDiskText(null);
+    }, []);
+
+    // A git refresh (auto-refresh, agent edits) re-reads both sides. Clean:
+    // reload silently. Dirty: never touch the buffer; flag a disk change.
+    const handleRefreshedContent = useCallback((key: string, loaded: LoadedEditorContent) => {
+        const { isDirty: dirty, diskText: disk, contentKey: currentKey } = saveStateRef.current;
+        if (key !== currentKey) return;
+        if (!dirty) {
+            applyLoadedContent(key, loaded);
+            return;
+        }
+        if (loaded.diskText !== disk) setDiskChange({ key, ...loaded });
+    }, [applyLoadedContent]);
+    const reloadFromDisk = useCallback(() => {
+        if (!diskChange) return;
+        const { key, ...loaded } = diskChange;
+        applyLoadedContent(key, loaded);
+        setEditorGeneration(g => g + 1);
+    }, [diskChange, applyLoadedContent]);
+    const keepMine = useCallback(() => {
+        setKeptDiskText(diskChange?.diskText ?? null);
+        setDiskChange(null);
+    }, [diskChange]);
+    const showDiskChangedBanner = isDirty && diskChange !== null && diskChange.key === contentKey
+        && diskChange.diskText !== keptDiskText;
     const handleSaveEdits = useCallback(async (): Promise<boolean> => {
         const { editedText: text, isDirty: dirty, workspaceId: ws, relativePath: path } = saveStateRef.current;
         if (!dirty || text === null) return true;
@@ -212,6 +275,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             await explorerApi.writeBlob(ws, path, text);
             setSavedText(text);
             setSaveError(null);
+            setDiskChange(null);
+            setKeptDiskText(null);
             return true;
         } catch (err) {
             setSaveError(err instanceof Error && err.message ? err.message : 'Failed to save file');
@@ -279,24 +344,28 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
             resolveComment, unresolveComment, runRelocation, askAI, aiLoadingIds, aiErrors,
             clearAiError, resolvingIds, deletingIds, copyAllCommentsAsPrompt } = useDiffComments(workspaceId, diffContext);
 
-    const fetchDiff = useCallback((full = false) => {
+    // `quiet` keeps the current diff on screen while re-reading it (refresh).
+    const fetchDiff = useCallback((full = false, quiet = false) => {
         if (stage === 'untracked') {
             setLoading(false);
             setDiff(null);
             setError(null);
             return;
         }
-        setLoading(true);
-        setError(null);
-        setDiff(null);
+        if (!quiet) {
+            setLoading(true);
+            setError(null);
+            setDiff(null);
+        }
         cloneClient.git.getWorkingTreeFileDiff(workspaceId, filePath, { stage, full })
             .then(data => {
                 setDiff(data.diff ?? '');
                 setTruncated(!!data.truncated);
                 setTotalLines(data.totalLines ?? 0);
+                setError(null);
             })
-            .catch(err => setError(err.message || 'Failed to load diff'))
-            .finally(() => setLoading(false));
+            .catch(err => { if (!quiet) setError(err.message || 'Failed to load diff'); })
+            .finally(() => { if (!quiet) setLoading(false); });
     }, [workspaceId, filePath, stage, cloneClient]);
 
     useEffect(() => {
@@ -307,6 +376,20 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     useEffect(() => {
         if (fullRequested) fetchDiff(true);
     }, [fullRequested, fetchDiff]);
+
+    const lastRefreshKeyRef = useRef(refreshKey);
+    useEffect(() => {
+        if (refreshKey === lastRefreshKeyRef.current) return;
+        lastRefreshKeyRef.current = refreshKey;
+        if (stage === 'untracked') return;
+        fetchDiff(fullRequested, true);
+        // Only a shown editor reloads; a loading one already reads fresh content.
+        if (!wantsEditor || saveStateRef.current.shownModified === null) return;
+        const key = saveStateRef.current.contentKey;
+        loadEditorContent()
+            .then(loaded => handleRefreshedContent(key, loaded))
+            .catch(() => { /* keep what is shown */ });
+    }, [refreshKey, stage, fullRequested, fetchDiff, wantsEditor, loadEditorContent, handleRefreshedContent]);
 
     const handleAddComment = useCallback(
         (selection: DiffCommentSelection, selectedText: string, position: { top: number; left: number }) => {
@@ -438,6 +521,30 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                             Save failed: {saveError}
                         </div>
                     )}
+                    {showDiskChangedBanner && (
+                        <div
+                            className="flex items-center gap-2 px-3 py-1 text-xs bg-[#fff3cd] dark:bg-[#3a3000]"
+                            data-testid="working-tree-file-diff-disk-changed"
+                        >
+                            <span className="flex-1">File changed on disk.</span>
+                            <button
+                                onClick={reloadFromDisk}
+                                title="Drop your edits and load the file from disk"
+                                className="px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                                data-testid="working-tree-file-diff-reload-btn"
+                            >
+                                Reload
+                            </button>
+                            <button
+                                onClick={keepMine}
+                                title="Keep your edits; the next save overwrites the disk file"
+                                className="px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                                data-testid="working-tree-file-diff-keep-mine-btn"
+                            >
+                                Keep mine
+                            </button>
+                        </div>
+                    )}
                     {stage === 'staged' && editorSides && !diskMatchesIndex && (
                         <div className="px-3 py-1 text-xs text-[#616161] dark:text-[#999]" data-testid="working-tree-file-diff-staged-readonly-note">
                             File has unstaged changes — edit it in the Unstaged diff.
@@ -471,6 +578,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                         </div>
                     ) : editorSides ? (
                         <MonacoFileDiffViewer
+                            key={editorGeneration}
                             ref={monacoViewerRef}
                             workspaceId={workspaceId}
                             relativePath={relativePath}
@@ -500,7 +608,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                     ) : error ? (
                         <div className="flex items-center gap-2" data-testid="working-tree-file-diff-error">
                             <span className="text-xs text-[#d32f2f] dark:text-[#f48771]">{error}</span>
-                            <Button variant="secondary" size="sm" onClick={fetchDiff} data-testid="working-tree-file-diff-retry-btn">Retry</Button>
+                            <Button variant="secondary" size="sm" onClick={() => fetchDiff()} data-testid="working-tree-file-diff-retry-btn">Retry</Button>
                         </div>
                     ) : diff ? (
                         <>

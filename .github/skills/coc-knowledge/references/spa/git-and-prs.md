@@ -137,6 +137,10 @@ dirty; a failed save keeps the prompt and the buffer. It also forwards the same
 reports to `useSplitGitPanel`'s `onDetailDirtyChange` / `onDetailRegisterSave`, which
 reach the panel's Git tab through the dirty bridge in `unifiedGitTabHost`, so the Git
 tab shows a dirty dot and closing it prompts (`DIRTY_CLOSE_KINDS` includes `git`).
+`RepoGitDetailPane` passes `workingChangesRefreshKey` as `refreshKey`; each bump
+re-reads the diff and both sides quietly. A clean view reloads; unsaved edits are
+never replaced — when the disk text changed, a "File changed on disk" banner offers
+Reload (drop edits) or Keep mine (dismiss; the next save overwrites).
 
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.

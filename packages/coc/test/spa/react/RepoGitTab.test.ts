@@ -635,7 +635,12 @@ describe('RepoGitTab', () => {
         });
 
         it('destructures the split-workspace props (default-absent ⇒ no-op)', () => {
-            expect(source).toContain("function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true }: RepoGitTabProps)");
+            expect(source).toContain("function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps)");
+        });
+
+        it('passes the working-tree refresh key to the detail pane (editable diff refresh)', () => {
+            expect(source).toContain('workingChangesRefreshKey={data.workingChangesRefreshKey}');
+            expect(source.split('workingChangesRefreshKey={data.workingChangesRefreshKey}').length - 1).toBe(2);
         });
 
         it('derives isSplitWorkspace from the layout prop', () => {

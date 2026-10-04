@@ -42,6 +42,8 @@ export interface RepoGitDetailPaneProps {
     /** An edited working-tree diff reports unsaved edits and its save function here. */
     onDetailDirtyChange?: (isDirty: boolean) => void;
     onDetailRegisterSave?: (save: (() => Promise<boolean>) | null) => void;
+    /** Bumped by every working-tree refresh; re-reads the shown working-tree diff. */
+    workingChangesRefreshKey?: number;
     onAllBranchCommentsClick: () => void;
     onBranchAskAI: (mode: 'ask' | 'task') => void;
     onCommitClassified: () => void;
@@ -51,7 +53,7 @@ export function RepoGitDetailPane({
     workspaceId, view, commits, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
-    onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
+    onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
     if (view?.type === 'commit') {
         return (
@@ -139,6 +141,7 @@ export function RepoGitDetailPane({
                 onFileMissing={onWorkingTreeFileMissing}
                 onDirtyChange={onDetailDirtyChange}
                 onRegisterSave={onDetailRegisterSave}
+                refreshKey={workingChangesRefreshKey}
             />
         );
     }

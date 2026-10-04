@@ -1,6 +1,6 @@
 /**
  * Editing the modified (disk) side of a working-tree diff in the Monaco engine
- * (editable-working-tree-diff AC-01, AC-02): which stages open for editing, and that
+ * (editable-working-tree-diff AC-01, AC-02, AC-04, AC-05): which stages open for editing, and that
  * Ctrl/Cmd+S writes the edited text to disk through the explorer blob API,
  * keyed by the diff's own workspace. The editor is the owned test adapter.
  */
@@ -292,6 +292,106 @@ describe('WorkingTreeFileDiff — save button, dirty marker, save registration (
         await renderDiff({ stage: 'staged', onRegisterSave });
         expect(screen.queryByTestId('working-tree-file-diff-save-btn')).toBeNull();
         expect(onRegisterSave.mock.calls.every(([fn]) => fn === null)).toBe(true);
+    });
+});
+
+describe('WorkingTreeFileDiff — disk changes while editing (AC-05)', () => {
+    const setDisk = (modified: string) =>
+        clients['ws-a'].git.getWorkingTreeFileContent.mockResolvedValue(content('a\n', modified));
+    async function refresh(view: ReturnType<typeof render>, refreshKey: number) {
+        await act(async () => {
+            view.rerender(
+                <WorkingTreeFileDiff
+                    workspaceId="ws-a"
+                    filePath="/repo/src/a.ts"
+                    repoRoot="/repo"
+                    stage="unstaged"
+                    createDiffEditor={createDiffEditor}
+                    refreshKey={refreshKey}
+                />,
+            );
+        });
+        await act(async () => {});
+    }
+    const latest = () => fakes[fakes.length - 1];
+
+    it('a clean view reloads both sides silently on refresh', async () => {
+        const view = await renderDiff({ refreshKey: 0 });
+        const diffCalls = clients['ws-a'].git.getWorkingTreeFileDiff.mock.calls.length;
+        setDisk('c\n');
+        await refresh(view, 1);
+        expect(latest().modifiedText).toBe('c\n');
+        expect(clients['ws-a'].git.getWorkingTreeFileDiff.mock.calls.length).toBe(diffCalls + 1);
+        expect(screen.queryByTestId('working-tree-file-diff-disk-changed')).toBeNull();
+        expect(screen.queryByTestId('working-tree-file-diff-loading')).toBeNull();
+    });
+
+    it('an unchanged refresh keeps the editor as is', async () => {
+        const view = await renderDiff({ refreshKey: 0 });
+        const models = fakes[0].models.length;
+        await refresh(view, 1);
+        expect(fakes).toHaveLength(1);
+        expect(fakes[0].models).toHaveLength(models);
+    });
+
+    it('never replaces unsaved edits; shows the disk-changed banner instead', async () => {
+        const view = await renderDiff({ refreshKey: 0 });
+        act(() => fakes[0].type('b\nmine\n'));
+        const models = fakes[0].models.length;
+        setDisk('c\n');
+        await refresh(view, 1);
+        expect(screen.getByTestId('working-tree-file-diff-disk-changed').textContent).toContain('File changed on disk');
+        expect(fakes).toHaveLength(1);
+        expect(fakes[0].models).toHaveLength(models);
+        expect(fakes[0].modifiedText).toBe('b\nmine\n');
+        expect(screen.getByTestId('working-tree-file-diff-dirty')).toBeTruthy();
+    });
+
+    it('a dirty refresh with the disk unchanged shows no banner', async () => {
+        const view = await renderDiff({ refreshKey: 0 });
+        act(() => fakes[0].type('b\nmine\n'));
+        await refresh(view, 1);
+        expect(screen.queryByTestId('working-tree-file-diff-disk-changed')).toBeNull();
+        expect(fakes[0].modifiedText).toBe('b\nmine\n');
+    });
+
+    it('Reload drops the edits and loads the disk file', async () => {
+        const view = await renderDiff({ refreshKey: 0 });
+        act(() => fakes[0].type('b\nmine\n'));
+        setDisk('c\n');
+        await refresh(view, 1);
+        await act(async () => { screen.getByTestId('working-tree-file-diff-reload-btn').click(); });
+        await act(async () => {});
+        expect(screen.queryByTestId('working-tree-file-diff-disk-changed')).toBeNull();
+        expect(screen.queryByTestId('working-tree-file-diff-dirty')).toBeNull();
+        expect(latest().modifiedText).toBe('c\n');
+        expect(writeBlob).not.toHaveBeenCalled();
+    });
+
+    it('Keep mine dismisses the banner, keeps the edits, and the next save overwrites', async () => {
+        const view = await renderDiff({ refreshKey: 0 });
+        act(() => fakes[0].type('b\nmine\n'));
+        setDisk('c\n');
+        await refresh(view, 1);
+        act(() => { screen.getByTestId('working-tree-file-diff-keep-mine-btn').click(); });
+        expect(screen.queryByTestId('working-tree-file-diff-disk-changed')).toBeNull();
+        expect(fakes[0].modifiedText).toBe('b\nmine\n');
+        expect(screen.getByTestId('working-tree-file-diff-dirty')).toBeTruthy();
+        // The same disk change on a later refresh stays dismissed.
+        await refresh(view, 2);
+        expect(screen.queryByTestId('working-tree-file-diff-disk-changed')).toBeNull();
+        await act(async () => { fakes[0].pressSave(); });
+        expect(writeBlob).toHaveBeenCalledWith('ws-a', 'src/a.ts', 'b\nmine\n');
+    });
+
+    it('a clean refresh that reverts to the shown text still replaces a saved buffer', async () => {
+        const view = await renderDiff({ refreshKey: 0 });
+        act(() => fakes[0].type('b\nsaved\n'));
+        await act(async () => { fakes[0].pressSave(); });
+        // Disk goes back to the text the editor was opened with.
+        await refresh(view, 1);
+        expect(latest().modifiedText).toBe('b\n');
+        expect(screen.queryByTestId('working-tree-file-diff-dirty')).toBeNull();
     });
 });
 
