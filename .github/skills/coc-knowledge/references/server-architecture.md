@@ -229,19 +229,26 @@ re-sorts its bounded page by that activity time, so `select topic <n>` picks the
 ### Messaging ask_user question relay
 
 `messaging/ask-user-relay.ts` (`AskUserQuestionRelayHub`) is the executor's
-`getAskUserQuestionRelay` capability. Each connector registers a
-`QuestionTransport` (`createWhatsAppQuestionTransport`,
-`TeamsAnswerRelay.questionTransport()`) that locates the request receipt by
-`(processId, relayRequestId | taskId)` and posts one question at a time
-(WhatsApp: quoted under the request; Teams: thread reply, relay flag required),
-formatted by `formatWhatsAppQuestion` / `formatTeamsQuestion`. `tryAnswer` runs
-before command routing: a reply to the question answers it; a plain message
-answers only when exactly one question is pending in that chat.
-`parseQuestionReply` handles numbers/option text, `1,3`, yes/no, text and
-`skip`. First answer wins through the tool's pending map; a failed post resolves
-`unavailable`; turn `cancelAll` clears pending questions. Pending state is in
-memory; question IDs persist in WhatsApp receipt `questionIds` and Teams root
-receipt `sentMessageIds`. Approvals stay dashboard-only.
+`getAskUserQuestionRelay` capability. Connector `QuestionTransport`s locate
+Ask/sentinel request receipts by `(processId, relayRequestId | taskId)`.
+Handed-off jobs supply `metadata.messagingOrigin` on every turn, independent
+of mode or receipt: WhatsApp posts to the saved group; Teams replies under
+its saved `threadId`, or posts top-level when unknown. Selection changes do
+not redirect job questions. Origins persist on the process and in the
+per-repo completion-notice ledger.
+
+Questions post one at a time using `formatWhatsAppQuestion` / `formatTeamsQuestion`.
+`tryAnswer` runs before command routing: a question reply answers it; plain text
+answers only when exactly one question is pending. Ambiguous thread-root replies
+leave both questions pending and ask for a specific question or dashboard answer.
+`parseQuestionReply` handles
+numbers, option text, `1,3`, yes/no, text and `skip`. The tool's pending map lets
+the first answer win; dashboard answers produce the existing already-answered
+reply on the phone. Disconnected job questions remain dashboard-only without
+re-posting; failed sends resolve `unavailable`; turn `cancelAll` clears pending
+questions. Pending state is in memory, so restart requires dashboard resolution.
+Direct request question IDs persist in WhatsApp receipt `questionIds` and Teams
+root receipt `sentMessageIds`. Approvals stay dashboard-only.
 
 ### Teams connection routing and consent
 

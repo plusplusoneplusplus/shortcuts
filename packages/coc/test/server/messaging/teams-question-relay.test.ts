@@ -8,6 +8,8 @@ import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/tea
 import { TeamsMessagingManager, TeamsMessageNotSentError } from '../../../src/server/messaging/teams-messaging-manager';
 import { registerTeamsMessagingRoutes } from '../../../src/server/messaging/teams-messaging-handler';
 import { AskUserQuestionRelayHub, QUESTION_RELAY_TEXT } from '../../../src/server/messaging/ask-user-relay';
+import { teamsQuestionChatKey } from '../../../src/server/messaging/teams-answer-relay';
+import type { MessagingJobOrigin } from '../../../src/server/messaging/job-notices';
 import { formatTeamsQuestion } from '../../../src/server/messaging/teams-outbound-format';
 import { createAskUserTool, type AskUserQuestion, type AskUserResponse } from '../../../src/server/llm-tools/ask-user-tool';
 
@@ -87,7 +89,7 @@ describe('Teams ask_user question relay', () => {
         return { processId: toQueueProcessId(taskId), requestId: taskId };
     }
 
-    function ask(request: { processId: string; requestId: string }, questions: AskUserQuestion[]) {
+    function ask(request: { processId: string; requestId: string; origin?: MessagingJobOrigin }, questions: AskUserQuestion[]) {
         const emitted: string[] = [];
         const tool = createAskUserTool({
             computeTurnIndex: () => 1,
@@ -101,6 +103,62 @@ describe('Teams ask_user question relay', () => {
     }
 
     const questionCalls = () => sendMessage.mock.calls.filter(([, , source]) => source === 'html');
+
+    const jobRequest = (threadId?: string) => ({
+        processId: 'handed-off-job', requestId: 'job-turn',
+        origin: { connector: 'teams' as const, chatKey: teamsQuestionChatKey(teamId, channelId), threadId },
+    });
+
+    it('records the dispatcher thread root in the hand-off origin', async () => {
+        const request = await startRequest();
+        expect(hub.locateOrigin(request)).toEqual(jobRequest('root').origin);
+    });
+
+    it.each(['dispatcher-root', undefined])('relays jobs without receipts to their origin root (%s)', async threadId => {
+        const { result } = ask(jobRequest(threadId), [{ question: 'Color?', type: 'text' }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        expect(questionCalls()[0][1]).toBe(threadId);
+        await handle(inbound('select', 'select repo Alpha', 'another-thread'));
+        await handle(inbound('answer', 'blue', threadId));
+        expect((await result)[0].answer).toBe('blue');
+        expect(tasks.size).toBe(0);
+        expect(followUps).toEqual([]);
+    });
+
+    it('does not guess a job for an ambiguous thread reply; question ids route each answer', async () => {
+        const a = ask(jobRequest('root'), [{ question: 'Color A?', type: 'text' }]);
+        const b = ask({ ...jobRequest('root'), processId: 'job-b' }, [{ question: 'Color B?', type: 'text' }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(2));
+        await handle(inbound('ambiguous', 'blue', 'root'));
+        expect(sendMessage).toHaveBeenLastCalledWith(QUESTION_RELAY_TEXT.ambiguous, 'root');
+        expect(hub.pendingCount()).toBe(2);
+        await handle(inbound('answer-b', 'blue', 'sent-2'));
+        await handle(inbound('answer-a', 'red', 'sent-1'));
+        expect((await b.result)[0].answer).toBe('blue');
+        expect((await a.result)[0].answer).toBe('red');
+        expect(tasks.size).toBe(0);
+        expect(followUps).toEqual([]);
+    });
+
+    it('keeps a disabled job question in the dashboard', async () => {
+        relayEnabled = false;
+        const { tool, result, emitted } = ask(jobRequest('root'), [{ question: 'Color?', type: 'text' }]);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(questionCalls()).toEqual([]);
+        tool.answerQuestion(emitted[0], 'blue');
+        expect((await result)[0].answer).toBe('blue');
+    });
+
+    it('reports a job question answered in the dashboard as already answered', async () => {
+        const { tool, result, emitted } = ask(jobRequest('dispatcher-root'), [{ question: 'Color?', type: 'text' }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        tool.answerQuestion(emitted[0], 'blue');
+        await result;
+        await handle(inbound('late', 'red', 'dispatcher-root'));
+        expect(sendMessage).toHaveBeenLastCalledWith(QUESTION_RELAY_TEXT.alreadyAnswered, 'dispatcher-root');
+        expect(followUps).toEqual([]);
+        expect(tasks.size).toBe(0);
+    });
 
     it('posts each question in the request thread and takes thread replies as answers, one at a time', async () => {
         const request = await startRequest();

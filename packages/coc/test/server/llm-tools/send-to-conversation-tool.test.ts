@@ -1070,7 +1070,8 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 describe('createSendToConversationTool — messaging completion notices', () => {
     const origin = { connector: 'whatsapp' as const, chatKey: 'group@g.us' };
 
-    it('records a connector turn origin on a local create-mode chat and tracks it', async () => {
+    it.each([origin, { connector: 'teams' as const, chatKey: 'channel', threadId: 'dispatcher-root' }])(
+        'records a connector turn origin on a local create-mode chat and tracks it (%j)', async origin => {
         const trackMessagingJob = vi.fn();
         const { tool, captured } = makeTool({ runtime: { messagingOrigin: () => origin, trackMessagingJob } });
 

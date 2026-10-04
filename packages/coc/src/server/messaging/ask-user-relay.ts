@@ -1,5 +1,5 @@
 /**
- * Relays `ask_user` questions from an Ask chat that came from WhatsApp or
+ * Relays `ask_user` questions from a chat or handed-off job that came from WhatsApp or
  * Teams back to the originating group/thread, one question at a time, and
  * turns replies there into answers.
  *
@@ -121,12 +121,20 @@ export interface QuestionTarget {
     threadId?: string;
 }
 
+export interface QuestionRelayLocation {
+    processId: string;
+    /** Connector request id, or the question batch id for a handed-off job. */
+    requestId: string;
+    /** Durable origin of a handed-off job, independent of the selected dispatcher. */
+    origin?: MessagingJobOrigin;
+}
+
 export interface QuestionTransport {
     readonly platform: 'whatsapp' | 'teams';
     /** The request's origin, or undefined when this connector did not start it. */
-    locate(request: { processId: string; requestId: string }): QuestionTarget | undefined;
+    locate(request: QuestionRelayLocation): QuestionTarget | undefined;
     /** Post one question; resolves to its message id. Throws when the connector is unreachable. */
-    post(target: QuestionTarget, layout: QuestionLayout, request: { processId: string; requestId: string }): Promise<string>;
+    post(target: QuestionTarget, layout: QuestionLayout, request: QuestionRelayLocation): Promise<string>;
     /** A question message id from an earlier turn (persisted receipt). */
     isPastQuestion?(messageId: string): boolean;
 }
@@ -141,10 +149,7 @@ export interface QuestionReplyInbound {
     acknowledge: () => Promise<void>;
 }
 
-export interface AskUserQuestionRelayRequest {
-    processId: string;
-    /** Relay request id of the turn (first turn: the queue task id). */
-    requestId: string;
+export interface AskUserQuestionRelayRequest extends QuestionRelayLocation {
     questions: AskUserSSEPayload[];
     control: AskUserEmitControl;
 }
@@ -154,10 +159,11 @@ export interface AskUserQuestionRelay {
     /** Returns true when a connector owns the request and is relaying it. */
     relay(request: AskUserQuestionRelayRequest): boolean;
     /** The connector and group/channel a turn came from; undefined for dashboard turns. */
-    locateOrigin?(request: { processId: string; requestId: string }): MessagingJobOrigin | undefined;
+    locateOrigin?(request: QuestionRelayLocation): MessagingJobOrigin | undefined;
 }
 
 interface Entry {
+    origin?: MessagingJobOrigin;
     transport: QuestionTransport;
     requestId: string;
     platform: QuestionTransport['platform'];
@@ -174,6 +180,7 @@ interface Entry {
 export const QUESTION_RELAY_TEXT = {
     alreadyAnswered: 'This question was already answered.',
     inactive: 'This question is no longer active.',
+    ambiguous: 'Multiple questions are waiting in this thread. Reply to a specific question or answer in the dashboard.',
 } as const;
 
 const MAX_REMEMBERED = 2_000;
@@ -204,13 +211,16 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
         return true;
     }
 
-    locateOrigin(request: { processId: string; requestId: string }): MessagingJobOrigin | undefined {
+    locateOrigin(request: QuestionRelayLocation): MessagingJobOrigin | undefined {
         const located = this.locate(request);
-        return located ? { connector: located.transport.platform, chatKey: located.target.chatKey } : undefined;
+        return located ? { connector: located.transport.platform, chatKey: located.target.chatKey,
+            ...(located.target.threadId ? { threadId: located.target.threadId } : {}),
+        } : undefined;
     }
 
-    private locate(request: { processId: string; requestId: string }): { transport: QuestionTransport; target: QuestionTarget } | undefined {
+    private locate(request: QuestionRelayLocation): { transport: QuestionTransport; target: QuestionTarget } | undefined {
         for (const transport of this.transports) {
+            if (request.origin && request.origin.connector !== transport.platform) continue;
             try {
                 const target = transport.locate(request);
                 if (target) return { transport, target };
@@ -252,7 +262,7 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
                 continue;
             }
             const entry: Entry = {
-                transport, requestId: request.requestId,
+                transport, requestId: request.requestId, origin: request.origin,
                 platform: transport.platform, target, processId: request.processId, question,
                 hint: layout.hint, messageId, control, state: 'pending',
             };
@@ -280,7 +290,7 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
         if (this.handled.has(handledKey)) return true;
         for (const entry of this.entries) {
             if (entry.platform !== platform || entry.target.chatKey !== inbound.chatKey) continue;
-            const target = entry.transport.locate({ processId: entry.processId, requestId: entry.requestId });
+            const target = entry.transport.locate({ processId: entry.processId, requestId: entry.requestId, origin: entry.origin });
             if (target?.chatKey === entry.target.chatKey && target.threadId === entry.target.threadId) continue;
             this.entries.delete(entry);
             remember(this.cleared, `${entry.platform}:${entry.messageId}`);
@@ -291,7 +301,13 @@ export class AskUserQuestionRelayHub implements AskUserQuestionRelay {
         const byMessage = replyTo ? own.filter(e => e.messageId === replyTo) : [];
         const byThread = replyTo ? own.filter(e => e.target.threadId === replyTo) : [];
         const pending = (list: Entry[]) => list.filter(e => e.state === 'pending');
-        let entry = pending(byMessage)[0] ?? pending(byThread)[0];
+        const direct = pending(byMessage)[0];
+        if (!direct && pending(byThread).length > 1) {
+            remember(this.handled, handledKey);
+            await inbound.reply(QUESTION_RELAY_TEXT.ambiguous);
+            return true;
+        }
+        let entry = direct ?? pending(byThread)[0];
         if (!entry && !replyTo && pending(own).length === 1) entry = pending(own)[0];
         if (!entry) {
             const late = byMessage.length > 0 || byThread.some(e => e.answeredElsewhere)

@@ -62,6 +62,7 @@ import { buildMemoryV2Addon } from './memory-v2-addon';
 import type { MemoryV2Addon } from './memory-v2-addon';
 import { resolveAutoFolderContext, suppressesAutoFolder, suppressesPlanSaveGuidance } from './auto-folder-utils';
 import { buildChatTurnContext } from './chat-turn-context-builder';
+import { isMessagingJobOrigin } from '../messaging/job-notices';
 import type { AskUserToolDeps } from '../llm-tools/ask-user-tool';
 import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
@@ -706,9 +707,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             isInteractive?: () => boolean;
             ralphGrillPlanningState?: { plan?: RalphGrillQuestionPlanningResult };
             /**
-             * Relay request id of an Ask turn, read when questions are emitted.
-             * A connector-originated request also posts its questions to that
-             * WhatsApp group / Teams thread; approvals never leave the dashboard.
+             * Connector request id, read when questions are emitted. Handed-off
+             * jobs use their persisted messagingOrigin even without a request
+             * receipt; approvals never leave the dashboard.
              */
             questionRelayRequestId?: () => string | undefined;
         },
@@ -728,10 +729,13 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
                             askUser: questionPayload,
                         });
                     }
-                    const requestId = opts.questionRelayRequestId?.();
+                    const process = await this.store.getProcess(processId);
+                    const origin = isMessagingJobOrigin(process?.metadata?.messagingOrigin)
+                        ? process.metadata.messagingOrigin : undefined;
+                    const requestId = opts.questionRelayRequestId?.() ?? (origin ? enrichedQuestionPayloads[0]?.batchId : undefined);
                     const questions = enrichedQuestionPayloads.filter(question => !question.approval);
                     if (requestId && questions.length > 0) {
-                        this.runtime.getAskUserQuestionRelay?.()?.relay({ processId, requestId, questions, control });
+                        this.runtime.getAskUserQuestionRelay?.()?.relay({ processId, requestId, origin, questions, control });
                     }
                 },
                 computeTurnIndex: opts.computeTurnIndex,

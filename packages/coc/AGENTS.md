@@ -211,11 +211,14 @@ references before editing. Paths are package-relative.
   `formatTopicList` (status emoji, ≤40-char escaped title, relative age; ids only with
   `-v`; no Markdown list syntax so Teams keeps the numbering). `listRecentTopics` sorts
   its bounded page by last activity and `resolveTopic` indexes that same order.
-- Ask turns started from WhatsApp/Teams (first and connector follow-ups) relay
+- Ask/sentinel turns started from WhatsApp/Teams and jobs carrying
+  `metadata.messagingOrigin` (every turn, including autopilot) relay
   `ask_user` questions one at a time to the originating group/thread through
   `src/server/messaging/ask-user-relay.ts`, wired at emit time via the late-bound
   `getAskUserQuestionRelay` capability. A reply (or a plain message while exactly
-  one is pending) answers; unpostable questions resolve `unavailable`; turn end
+  one is pending) answers. Job questions use the saved group/thread even after repo
+  selection changes; Teams origins retain `threadId` when known. Disconnected job
+  questions stay dashboard-only; failed posts resolve `unavailable`; turn end
   clears pending ones; approvals stay dashboard-only.
 - Chats handed off by `send_to_conversation` create mode from a WhatsApp/Teams turn
   (origin via the ask_user relay's `locateOrigin`; local targets only, not Ralph) get

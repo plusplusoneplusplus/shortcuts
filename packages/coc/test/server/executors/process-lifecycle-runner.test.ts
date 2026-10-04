@@ -874,7 +874,7 @@ describe('ProcessLifecycleRunner — parentProcessId from context.spawnedFromPro
     });
 
     it('records a valid messaging origin on metadata and drops a malformed one', async () => {
-        const origin = { connector: 'teams', chatKey: 'team\u0000channel' };
+        const origin = { connector: 'teams', chatKey: 'team\u0000channel', threadId: 'dispatcher-root' };
         const task = makeTask({
             payload: { kind: 'chat', prompt: 'Job', workspaceId: 'ws-abc', context: { messagingOrigin: origin } } as any,
         });

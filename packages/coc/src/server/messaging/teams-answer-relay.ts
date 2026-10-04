@@ -1228,6 +1228,12 @@ export class TeamsAnswerRelay {
         return {
             platform: 'teams',
             locate: request => {
+                if (request.origin) {
+                    const target = this.deps.target();
+                    return !this.disposed && this.deps.isEnabled() && target.connected && target.teamId && target.channelId
+                        && teamsQuestionChatKey(target.teamId, target.channelId) === request.origin.chatKey
+                        ? { chatKey: request.origin.chatKey, threadId: request.origin.threadId } : undefined;
+                }
                 const binding = find(request);
                 return binding
                     ? { chatKey: teamsQuestionChatKey(binding.teamId, binding.channelId), threadId: binding.rootId }
@@ -1236,13 +1242,13 @@ export class TeamsAnswerRelay {
             post: async (target, layout, request) => {
                 const current = this.deps.target();
                 const binding = find(request);
-                if (!binding || binding.rootId !== target.threadId
-                    || teamsQuestionChatKey(binding.teamId, binding.channelId) !== target.chatKey
+                if ((!request.origin && (!binding || binding.rootId !== target.threadId
+                    || teamsQuestionChatKey(binding.teamId, binding.channelId) !== target.chatKey))
                     || this.disposed || !this.deps.isEnabled() || !current.connected || !current.teamId || !current.channelId
                     || teamsQuestionChatKey(current.teamId, current.channelId) !== target.chatKey) {
                     throw new TeamsMessageNotSentError();
                 }
-                return this.deps.send(formatTeamsQuestion(layout), target.threadId!);
+                return this.deps.send(formatTeamsQuestion(layout), target.threadId);
             },
         };
     }

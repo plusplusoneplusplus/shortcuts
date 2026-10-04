@@ -28,13 +28,16 @@ export type MessagingConnector = 'whatsapp' | 'teams';
 export interface MessagingJobOrigin {
     connector: MessagingConnector;
     chatKey: string;
+    /** Original Teams thread root for questions; completion notices remain top-level. */
+    threadId?: string;
 }
 
 export function isMessagingJobOrigin(value: unknown): value is MessagingJobOrigin {
     const origin = value as Partial<MessagingJobOrigin> | null;
     return !!origin && typeof origin === 'object'
         && (origin.connector === 'whatsapp' || origin.connector === 'teams')
-        && typeof origin.chatKey === 'string' && !!origin.chatKey;
+        && typeof origin.chatKey === 'string' && !!origin.chatKey
+        && (origin.threadId === undefined || (typeof origin.threadId === 'string' && !!origin.threadId));
 }
 
 export interface JobNotice {

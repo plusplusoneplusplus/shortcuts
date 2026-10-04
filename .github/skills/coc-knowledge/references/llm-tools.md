@@ -98,7 +98,7 @@ result's `openLink` is the dashboard clone route `#repos/<encoded clone key>/cha
 Post mode with a `remote:` processId is rejected as not supported yet.
 
 When the invoking turn came from WhatsApp/Teams, local (non-Ralph) create mode records the
-turn's origin (`{ connector, chatKey }`, from the per-turn `runtime.messagingOrigin` the
+turn's origin (`{ connector, chatKey, threadId? }`, from the per-turn `runtime.messagingOrigin` the
 executor binds via the ask_user relay's `locateOrigin`) as `payload.context.messagingOrigin`
 (→ `metadata.messagingOrigin`) and calls `runtime.trackMessagingJob` for completion notices
 (see server-architecture "Messaging job completion notices"). Remote targets and dashboard
@@ -280,8 +280,9 @@ opt in based on `options.tools`; no executor changes are needed. See
   resume the stored SDK session). `ChatBaseExecutor.buildAskUserWiring()` is the single
   construction point for ask, autopilot, and follow-up turns.
 - **Interactivity, not mode:** `AskUserToolDeps.isInteractive` is evaluated at call time, so the
-  schema stays constant. `FollowUpExecutor` wires it to `turnSource === undefined` — a
-  machine-triggered turn (cron / wakeup / trigger) has nobody to answer, so the handler resolves
+  schema stays constant. `FollowUpExecutor` allows human turns and handed-off jobs — a
+  machine-triggered turn (cron / wakeup / trigger) without a messaging job origin has nobody
+  to answer, so the handler resolves
   on the same tick with `{ skipped: true, reason: 'unavailable', guidance }` per question instead
   of blocking. There is no timer fallback; Codex pins the MCP tool timeout to 365 days.
   `ExecutorRegistry.getAskUserHandles()` searches the chat, follow-up, and autopilot executors.
@@ -290,8 +291,12 @@ opt in based on `options.tools`; no executor changes are needed. See
   `onCancelAll`). After the dashboard emit, `buildAskUserWiring` hands non-approval questions to
   the late-bound `getAskUserQuestionRelay` runtime capability when the turn supplies
   `questionRelayRequestId` — Ask/sentinel first turns (`payload.relayRequestId ?? task.id`) and
-  Ask/sentinel follow-ups carrying `FollowUpTurnOptions.relayRequestId`. Autopilot turns, dashboard follow-ups
-  and approvals stay dashboard-only; registration never varies.
+  Ask/sentinel follow-ups carrying `FollowUpTurnOptions.relayRequestId` — or the process has
+  `metadata.messagingOrigin`. Handed-off jobs use that durable origin on every turn in every
+  mode, with the question batch id as fallback request id. Teams origins include the original
+  `threadId` when known. Disconnected job questions stay in the dashboard without reconnect
+  re-posting. Dashboard jobs without an origin and approvals stay dashboard-only; registration
+  never varies.
 - **Ralph grill exception:** the grill terminal round strips `ask_user` from the already-built
   array to end the questioning phase. It is the one path that mutates the tool block mid-turn.
   Because it runs after the system message is assembled, the Codex discovery block below can

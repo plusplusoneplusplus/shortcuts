@@ -2,10 +2,8 @@
  * ask_user → WhatsApp/Teams question relay wiring.
  *
  * The relay is a late-bound runtime capability looked up when questions are
- * emitted. Only Ask and sentinel turns that carry a relay request id hand questions to it;
- * autopilot turns, dashboard follow-ups and approval prompts stay
- * dashboard-only. Registration of `ask_user` is untouched (see
- * mode-invariant-tool-block.test.ts).
+ * emitted. Ask/sentinel connector requests and handed-off jobs relay questions;
+ * dashboard jobs without an origin and approval prompts stay dashboard-only.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -109,9 +107,39 @@ describe('ask_user question relay wiring', () => {
         expect(relayed[0]).toMatchObject({ processId: 'queue_t2', requestId: 't2' });
     });
 
-    it('never relays an autopilot first turn', async () => {
+    it('keeps a dashboard autopilot first turn without a job origin dashboard-only', async () => {
         await new AutopilotExecutor(createMockProcessStore(), makeOptions()).execute(chatTask('autopilot', 't3', 'req-3'), 'Hello');
         expect(relayed).toEqual([]);
+    });
+
+    it.each(['whatsapp', 'teams'] as const)('relays an autopilot first turn carrying a %s job origin', async connector => {
+        const task = chatTask('autopilot', `job-${connector}`);
+        const origin = { connector, chatKey: 'phone-thread', ...(connector === 'teams' ? { threadId: 'root' } : {}) };
+        (task.payload as any).context = { messagingOrigin: origin };
+        // ProcessLifecycleRunner persists context.messagingOrigin before invoking the executor.
+        const process = existingProcess(`queue_job-${connector}`, 'autopilot');
+        process.metadata = { ...process.metadata, messagingOrigin: origin };
+        const store = createMockProcessStore({ initialProcesses: [process] });
+        await new AutopilotExecutor(store, makeOptions()).execute(task, 'Hello');
+        expect(relayed).toHaveLength(1);
+        expect(relayed[0]).toMatchObject({ processId: `queue_job-${connector}`, origin });
+        expect(relayed[0].requestId).toBeTruthy();
+    });
+
+    it('relays every handed-off job follow-up from its stored origin, including notice replies and wakeups', async () => {
+        const store = createMockProcessStore();
+        const process = existingProcess('job', 'autopilot');
+        const origin = { connector: 'teams', chatKey: 'phone-thread', threadId: 'dispatcher-root' };
+        process.metadata = { ...process.metadata, messagingOrigin: origin };
+        await store.addProcess(process);
+        const executor = new FollowUpExecutor(store, makeOptions());
+        await executor.executeFollowUp('job', 'next', undefined, 'autopilot');
+        await executor.executeFollowUp('job', 'next', undefined, 'autopilot', undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, { relayRequestId: 'notice-reply' });
+        await executor.executeFollowUp('job', 'next', undefined, 'autopilot', undefined, undefined, undefined, undefined,
+            { type: 'wakeup', id: 'wakeup-1' } as any);
+        expect(relayed).toHaveLength(3);
+        for (const request of relayed) expect(request).toMatchObject({ processId: 'job', origin });
     });
 
     it('relays an Ask follow-up only when it carries a relay request id', async () => {

@@ -9,6 +9,7 @@
  * Must NOT create new processes — it appends to an existing one.
  */
 
+import { isMessagingJobOrigin } from '../messaging/job-notices';
 import * as os from 'os';
 import * as path from 'path';
 import type {
@@ -517,12 +518,12 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 // Registered regardless of `currentMode` so toggling the mode
                 // pill mid-chat leaves the tool block byte-identical and the
                 // resumed session keeps its prefix cache. A machine-triggered
-                // turn (cron / wakeup / trigger) has nobody to answer, so it
-                // short-circuits at call time instead of at registration time.
+                // turn (cron / wakeup / trigger) can ask its phone origin when
+                // handed off; other unattended turns short-circuit at call time.
                 onLlmToolApprovalDecision: (record) => this.recordLlmToolApproval(processId, record),
                 askUser: this.buildAskUserWiring(processId, {
                     computeTurnIndex: () => process.conversationTurns?.length ?? 0,
-                    isInteractive: () => turnSource === undefined,
+                    isInteractive: () => turnSource === undefined || isMessagingJobOrigin(process.metadata?.messagingOrigin),
                     questionRelayRequestId: () => interactiveTurn ? options?.relayRequestId : undefined,
                 }),
             });
