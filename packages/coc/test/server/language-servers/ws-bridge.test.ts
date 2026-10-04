@@ -488,6 +488,24 @@ describe('language-server WebSocket bridge', () => {
         expect(params.diagnostics[0].message).toContain('file://');
     });
 
+    it('relays a server semantic tokens refresh request to the browser', async () => {
+        const harness = await createHarness();
+        const client = await harness.connect();
+        const attached = await client.attach('src/notes.txt');
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready');
+
+        const response = await client.request(attached.attachmentId, 'q1', 'ask', {
+            method: 'workspace/semanticTokens/refresh',
+        });
+
+        expect(response.result).toEqual({ value: null, error: null });
+        const notification = await client.next(
+            'lsp-notification',
+            (msg) => msg.method === 'workspace/semanticTokens/refresh',
+        );
+        expect(notification.sessionKey).toBe(attached.sessionKey);
+    });
+
     it('refuses a notification naming a foreign document without sending it', async () => {
         const harness = await createHarness();
         const client = await harness.connect();

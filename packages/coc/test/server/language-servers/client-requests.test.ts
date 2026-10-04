@@ -169,6 +169,29 @@ describe('LanguageServerClientRequests', () => {
         expect(await handlers.get('window/workDoneProgress/create')!({ token: 'x' })).toBeNull();
     });
 
+    it('answers a semantic tokens refresh and relays it', async () => {
+        let refreshes = 0;
+        const handlers = new LanguageServerClientRequests({
+            workspaceFolders: () => [],
+            onSemanticTokensRefresh: () => { refreshes += 1; },
+        }).handlers();
+        expect(await handlers.get('workspace/semanticTokens/refresh')!(undefined)).toBeNull();
+        expect(refreshes).toBe(1);
+        // Without a listener the request is still answered.
+        expect(await clientRequests().handlers().get('workspace/semanticTokens/refresh')!(undefined)).toBeNull();
+    });
+
+    it('advertises semantic tokens with refresh support and no deltas', () => {
+        const capabilities = DEFAULT_CLIENT_CAPABILITIES as {
+            workspace: { semanticTokens: unknown };
+            textDocument: { semanticTokens: { requests: unknown; formats: unknown; tokenTypes: string[] } };
+        };
+        expect(capabilities.workspace.semanticTokens).toEqual({ refreshSupport: true });
+        expect(capabilities.textDocument.semanticTokens.requests).toEqual({ range: true, full: { delta: false } });
+        expect(capabilities.textDocument.semanticTokens.formats).toEqual(['relative']);
+        expect(capabilities.textDocument.semanticTokens.tokenTypes).toEqual(expect.arrayContaining(['class', 'type', 'method']));
+    });
+
     it('clears registrations on reset, notifying only when something was held', () => {
         const changes: number[] = [];
         const requests = new LanguageServerClientRequests({
@@ -255,6 +278,17 @@ describe('LanguageServerSession client requests', () => {
         const reply = await ask(session, 'window/workDoneProgress/create', { token: 'after-restart' });
         expect(reply.error).toBeNull();
         expect(reply.value).toBeNull();
+    });
+
+    it('delivers a semantic tokens refresh request to notification subscribers', async () => {
+        const session = createSession(fixtureDefinition());
+        const received: unknown[] = [];
+        session.onNotification('workspace/semanticTokens/refresh', (params) => received.push(params));
+        await session.start();
+        const reply = await ask(session, 'workspace/semanticTokens/refresh');
+        expect(reply.error).toBeNull();
+        expect(reply.value).toBeNull();
+        expect(received).toEqual([undefined]);
     });
 
     it('still refuses a request nothing handles', async () => {

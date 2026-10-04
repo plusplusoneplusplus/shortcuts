@@ -51,6 +51,8 @@ const FORWARDED_NOTIFICATIONS = [
     'window/showMessage',
     'window/logMessage',
     '$/progress',
+    // Relayed by the session from the server's refresh request.
+    'workspace/semanticTokens/refresh',
 ];
 
 /**

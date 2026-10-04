@@ -11,6 +11,7 @@ import { conf as tsConf, language as tsLanguage } from 'monaco-editor/esm/vs/bas
 import { conf as jsConf, language as jsLanguage } from 'monaco-editor/esm/vs/basic-languages/javascript/javascript.js';
 import { registerShadowLanguages, type ShadowMonaco } from '../../language-servers/shadowLanguage';
 import { installLanguageEditorOpener, type NavigationMonaco } from '../../language-servers/editorNavigation';
+import { installSemanticTokenThemes, type SemanticThemeMonaco } from '../../language-servers/semanticTokens';
 import { monacoWorkerUrl } from './monacoWorkerUrls';
 
 // Use the locally bundled Monaco instead of CDN
@@ -30,6 +31,10 @@ registerShadowLanguages(monaco as unknown as ShadowMonaco, {
 // pane started the navigation. The side-effect import above supplies Monaco's
 // Ctrl/Cmd-click gesture; panes register themselves against their model.
 installLanguageEditorOpener(monaco as unknown as NavigationMonaco);
+
+// Language-server semantic tokens are colored by rules added to the built-in
+// `vs` and `vs-dark` themes, so every editor keeps its existing theme name.
+installSemanticTokenThemes(monaco as unknown as SemanticThemeMonaco);
 
 window.MonacoEnvironment = {
     getWorkerUrl(_moduleId: string, label: string) {

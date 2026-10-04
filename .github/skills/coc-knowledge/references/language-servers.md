@@ -234,6 +234,31 @@ project root, so mixed multi-root outcomes remain visible. Runtime payloads use
 workspace-relative root labels and opaque session IDs; host paths, environment
 values, capabilities, and internal session keys stay server-side.
 
+### Semantic highlighting
+
+The default client capabilities advertise semantic tokens (full and range, no
+deltas, relative format) with refresh support. `semanticTokens.ts` reads a
+session's `semanticTokensProvider` capability or its dynamic
+`textDocument/semanticTokens` registration, decodes the server's data against
+that server's legend, and re-encodes only the styled standard types
+(namespace, types, parameters, variables, properties, enum members, functions,
+methods, macros, decorators, plus the `readonly` modifier) against a fixed
+`lsp.*` legend. Monaco styles every token it receives, so unknown types,
+operators, and malformed replies are dropped and keep their Monarch colors.
+`monaco-setup.ts` redefines the built-in `vs` and `vs-dark` themes with
+inherited `lsp.*` rules, and the explorer and diff editors set
+`semanticHighlighting.enabled`; there is no user setting.
+
+`registerLanguageProviders` registers one semantic provider per document from
+the first attachment, in host preference order, that advertises tokens. It
+prefers the full-document request and uses the range request when it is the only
+mode. Requests are skipped when the Monaco model text differs from the document
+buffer. A failed request reports Monaco's `busy` signal so painted colors stay;
+replacing or losing the server re-registers or removes the provider, which
+clears them. A relayed refresh request or a replay to a restarted server fires
+the provider's `onDidChange`. When two registrations share a model URI, only
+the oldest live one requests tokens and hands over on dispose.
+
 ### Diff documents
 
 `MonacoFileDiffViewer` shares the explorer's reference-counted

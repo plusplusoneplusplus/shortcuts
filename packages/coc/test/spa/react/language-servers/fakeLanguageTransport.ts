@@ -192,12 +192,14 @@ export class FakeAttachment {
         }
     }
 
-    notify(method: string, params: unknown): void {
-        if (!this.info) {
+    /** Delivers a server notification, from the first server unless one is named. */
+    notify(method: string, params: unknown, definitionId?: string): void {
+        const info = definitionId === undefined ? this.info : this.infos.get(definitionId) ?? null;
+        if (!info) {
             return;
         }
         for (const listener of [...this.notificationListeners]) {
-            listener(method, params, this.info);
+            listener(method, params, info);
         }
     }
 

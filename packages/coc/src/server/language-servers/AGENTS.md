@@ -44,7 +44,10 @@ and transport code stays generic.
   `symbol-index.sqlite` with `--database`. The resolved path and the database
   path are argv only; labels carry the plain binary name.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
-  the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
+  the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`. A
+  `workspace/semanticTokens/refresh` request is answered there and relayed by
+  the session to its notification subscribers, so the bridge forwards it to the
+  browser like a notification.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
   registered from `src/server/routes/index.ts`, which supplies the workspace-root
   resolver that lets a read seed a never-configured workspace.
