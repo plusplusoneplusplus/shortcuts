@@ -22,6 +22,10 @@ import {
     type MessagingCompactor, type MessagingQuotaSource,
 } from './messaging-commands';
 import { formatTopicList, localTopicListFooter, RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
+import type { MessagingHandOff } from './job-handoff';
+import type { MessagingJobOrigin } from './job-notices';
+
+const EMPTY_CHAT_REPLY = 'Send a message to start a chat.';
 
 const TEAMS_FORMAT = {
     strong: (text: string) => `**${escapeTeamsMarkdown(text)}**`,
@@ -60,6 +64,10 @@ export interface TeamsCommandRouterDeps {
     compact?: MessagingCompactor;
     /** Local + remote repo directory for read-only `list remotes` / `list topics <ref>`. */
     remotes?: MessagingRemoteDirectory;
+    /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
+    handOff?: MessagingHandOff;
+    /** Where a job handed off from `msg` reports back; undefined while the channel is unknown. */
+    handOffOrigin?: (msg: InboundTeamsMessage) => MessagingJobOrigin | undefined;
     /** Send a reply back to Teams. */
     sendReply: (text: string, replyToId?: string) => Promise<void>;
     /** Data directory for persisting user state. */
@@ -144,10 +152,16 @@ export class TeamsCommandRouter {
                 // A thread is already bound to its target, so `[id]` text is part of the question.
                 const mode = command.mode;
                 const message = command.type === 'chat' ? command.args
-                    : msg.text.trim().replace(/^\/autopilot\s+/i, '');
+                    : msg.text.trim().replace(/^\/(?:autopilot|ask|ralph|sentinel)\s+/i, '');
                 if (!message) {
+                    if (mode && !this.deps.hasThreadCommand?.(msg)) {
+                        this.deps.recordThreadCommand?.(msg);
+                        await this.deps.sendReply(`❌ ${EMPTY_CHAT_REPLY}`, msg.replyToMessageId);
+                    }
                     return;
                 }
+                const threadTarget = binding.process?.id ?? (binding.taskId ? toQueueProcessId(binding.taskId) : undefined);
+                if (await this.tryHandOff(msg, threadTarget, message, mode, observe)) return;
                 const newChat = !binding.process && !binding.taskId;
                 const admission: { duplicate: boolean; taskId?: string } | null | undefined = binding.process
                     ? await this.deps.admitFollowUp?.(msg, binding.process, message, mode)
@@ -336,6 +350,7 @@ export class TeamsCommandRouter {
             await this.deps.sendReply(`❌ Chat "${chatId}" not found.`, msg.messageId);
             return;
         }
+        if (await this.tryHandOff(msg, process.id, message, mode, observe)) return;
 
         if (this.deps.admitFollowUp) {
             const admission = await this.deps.admitFollowUp(msg, process, message, mode);
@@ -351,7 +366,10 @@ export class TeamsCommandRouter {
     }
 
     private async handleChat(userKey: string, message: string, mode: MessagingChatMode | undefined, msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
-        if (!message) return;
+        if (!message) {
+            if (mode) await this.deps.sendReply(`❌ ${EMPTY_CHAT_REPLY}`, msg.messageId);
+            return;
+        }
 
         const state = this.userState.get(userKey);
 
@@ -364,6 +382,8 @@ export class TeamsCommandRouter {
             targetProcess = await this.deps.store.getProcess(targetId)
                 ?? (!targetId.startsWith('queue_')
                     ? await this.deps.store.getProcess(toQueueProcessId(targetId)) : undefined);
+            const handOffTarget = targetProcess?.id ?? (targetId.startsWith('queue_') ? targetId : toQueueProcessId(targetId));
+            if (await this.tryHandOff(msg, handOffTarget, message, mode, observe)) return;
             if (targetProcess) {
                 targetId = targetProcess.id;
             } else {
@@ -411,6 +431,29 @@ export class TeamsCommandRouter {
                 msg, () => this.deps.acknowledgeNewChat?.(taskId),
             );
         }
+    }
+
+    /**
+     * A mode-prefixed message to a sentinel starts a separate job instead of a
+     * sentinel turn; true when it did. The thread's selection is unchanged.
+     */
+    private async tryHandOff(
+        msg: InboundTeamsMessage, targetProcessId: string | undefined, message: string,
+        mode: MessagingChatMode | undefined, observe?: (type: TeamsEventType) => void,
+    ): Promise<boolean> {
+        const target = await this.deps.handOff?.resolve(targetProcessId, mode);
+        if (!target) return false;
+        const origin = this.deps.handOffOrigin?.(msg);
+        if (!origin) throw new Error('Teams hand-off origin is unavailable');
+        // Bound-thread replies are deduplicated by message id, like thread commands.
+        if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
+            if (this.deps.hasThreadCommand?.(msg)) return true;
+            this.deps.recordThreadCommand?.(msg);
+        }
+        await this.deps.handOff!.start(target, message, origin);
+        observe?.('dispatch-queued');
+        await this.sendAcceptance(`🚀 Started a separate ${target.mode} job. A notice follows when it finishes.`, msg, () => undefined);
+        return true;
     }
 
     private async sendAcceptance(text: string, msg: InboundTeamsMessage, settle: () => Promise<void> | undefined): Promise<void> {

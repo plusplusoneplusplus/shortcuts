@@ -1,6 +1,7 @@
 /**
  * Completion notices for jobs a WhatsApp/Teams-started turn handed off with
- * `send_to_conversation` create mode.
+ * `send_to_conversation` create mode, or that a mode-prefixed message to a
+ * sentinel started directly (`job-handoff.ts`).
  *
  * Platform-neutral: the per-repo notice ledger, terminal-event matching, the
  * notice wording and failure-text rules live here. Each connector registers a

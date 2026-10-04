@@ -32,6 +32,7 @@ import type { BotControlMetadata } from '@plusplusoneplusplus/forge/ai';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
 import { admitBotControlledFollowUp } from './bot-control-admission';
 import type { MessagingJobNotices } from './job-notices';
+import type { MessagingHandOff } from './job-handoff';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 
 function attemptSummary(attempt: TeamsAttempt) {
@@ -84,6 +85,8 @@ export interface TeamsMessagingRoutesOptions {
     questionRelay?: Pick<AskUserQuestionRelayHub, 'register' | 'tryAnswer'>;
     /** Completion notices for handed-off jobs; posted as job-bound thread roots. */
     jobNotices?: Pick<MessagingJobNotices, 'register' | 'reconcile'>;
+    /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
+    handOff?: MessagingHandOff;
 }
 
 export function registerTeamsMessagingRoutes(
@@ -241,6 +244,14 @@ export function registerTeamsMessagingRoutes(
             getQuota: opts.getQuota,
             compact: opts.compact,
             remotes: opts.remotes,
+            handOff: opts.handOff,
+            handOffOrigin: msg => {
+                const teamId = manager.getStatus().teamId;
+                return teamId ? {
+                    connector: 'teams', chatKey: teamsQuestionChatKey(teamId, msg.channelId),
+                    threadId: msg.replyToMessageId || msg.messageId,
+                } : undefined;
+            },
             sendReply: async (text, replyToId) => {
                 manager.recordEvent('reply-attempt');
                 try {

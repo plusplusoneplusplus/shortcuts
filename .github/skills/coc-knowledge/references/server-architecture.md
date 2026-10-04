@@ -215,6 +215,13 @@ mode; plain text has none, so a follow-up keeps the chat's mode and a new chat r
 `sentinel` (the dispatcher) even when `sentinel.enabled` is off — that flag only gates the
 dashboard picker. Older threads bound to Ask chats stay Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
 first turn lends its queued mode) at every Teams/WhatsApp enqueue site.
+When the target is a sentinel (persisted or still queued), `/ask`, `/autopilot`, and `/ralph`
+hand off instead: `messaging/job-handoff.ts` `createMessagingHandOff` (one instance in
+`routes/index.ts`, passed to both routers) resolves the sentinel's workspace, enqueues a
+separate job with `context.spawnedFromProcessId` + `context.messagingOrigin`, and calls
+`MessagingJobNotices.track`, so it gets notices and `ask_user` relay like a model hand-off.
+No sentinel turn runs and selection is unchanged; `/sentinel` or no prefix reaches the
+sentinel. An empty mode prefix replies "Send a message to start a chat.".
 `list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
 `list topics <n.m|name@server> [-v]` (10 most recent remote chats, read-only footer) are
 answered by `messaging/remote-browse.ts` over the route-layer `WorkspaceDirectory`

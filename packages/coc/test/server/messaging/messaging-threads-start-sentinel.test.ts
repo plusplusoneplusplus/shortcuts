@@ -96,4 +96,22 @@ describe('phone threads start chats in sentinel mode', () => {
             });
         });
     }
+
+    it('both connectors share one hand-off that queues a tracked job from a queued sentinel', { timeout: 20_000 }, async () => {
+        await start(false);
+        expect(captured.teams.handOff).toBe(captured.whatsapp.handOff);
+        const sentinelId = 'wa-sentinel';
+        await captured.whatsapp.enqueue(GLOBAL, 'hi', undefined, toQueueProcessId(sentinelId), sentinelId);
+        const target = await captured.whatsapp.handOff.resolve(toQueueProcessId(sentinelId), 'autopilot');
+        expect(target).toEqual({ mode: 'autopilot', workspaceId: GLOBAL, parentProcessId: toQueueProcessId(sentinelId) });
+
+        const origin = { connector: 'whatsapp', chatKey: 'group@g.us' };
+        const jobId = await captured.whatsapp.handOff.start(target, 'fix it', origin);
+        const res = await fetch(`${server!.url}/api/queue/${encodeURIComponent(jobId.replace(/^queue_/, ''))}`);
+        const body = await res.json() as { task?: { payload?: Record<string, unknown> } };
+        expect(body.task?.payload).toMatchObject({ mode: 'autopilot', prompt: 'fix it',
+            context: { spawnedFromProcessId: toQueueProcessId(sentinelId), messagingOrigin: origin } });
+        const ledger = JSON.parse(fs.readFileSync(path.join(dataDir!, 'repos', GLOBAL, 'messaging-job-notices.json'), 'utf8'));
+        expect(ledger).toEqual([expect.objectContaining({ processId: jobId, origin })]);
+    });
 });

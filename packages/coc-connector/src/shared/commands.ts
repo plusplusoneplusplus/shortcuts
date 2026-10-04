@@ -96,7 +96,8 @@ export function parseMessagingCommand(text: string): MessagingCommand {
     if (modeCommand) {
         const message = (modeCommand[2] ?? '').trim();
         const mode = modeCommand[1].toLowerCase() as MessagingChatMode;
-        return message ? parseChat(message, mode) : { type: 'invalid', args: value };
+        // An empty body stays a chat so callers can ask for the message.
+        return message ? parseChat(message, mode) : { type: 'chat', args: '', mode };
     }
     if (value.startsWith('/') || COMMAND_LIKE_PATTERN.test(body)) return { type: 'invalid', args: value };
     return parseChat(value);

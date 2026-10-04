@@ -173,6 +173,7 @@ import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
 import { WhatsAppAnswerRelay, createWhatsAppNoticeTransport, createWhatsAppQuestionTransport } from '../messaging/whatsapp-answer-relay';
 import { MessagingJobNotices } from '../messaging/job-notices';
+import { createMessagingHandOff } from '../messaging/job-handoff';
 import { AskUserQuestionRelayHub, type AskUserQuestionRelay } from '../messaging/ask-user-relay';
 import { registerContainerSessionRoutes } from '../container-sessions/container-session-handler';
 import { ContainerSessionStore } from '../container-sessions/container-session-store';
@@ -860,6 +861,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             ...messagingChatInput(workspaceId, message, taskId, true, await resolveMessagingChatMode(undefined, mode)),
             botControl,
         });
+    // Mode-prefixed phone messages to a sentinel start a separate tracked job.
+    const messagingHandOff = createMessagingHandOff({ store, queue: queueFacade, enqueue: enqueueWithResolvedDefaults, jobNotices });
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
     // Container default agent session routes (feature-flagged)
@@ -901,6 +904,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         dataDir,
         questionRelay,
         jobNotices,
+        handOff: messagingHandOff,
         getObservabilityEnabled: () => (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsBridgeObservability === true,
         getAnswerRelayEnabled: () => ((opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.teamsAiAnswerRelay
             ?? DEFAULT_CONFIG.features.teamsAiAnswerRelay) === true,
@@ -998,6 +1002,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         compact: (proc, instructions) => compactProcess(store, proc, instructions),
         remotes: workspaceDirectory,
         questions: questionRelay,
+        handOff: messagingHandOff,
         getTask: taskId => queueFacade.getTask(taskId),
         enqueue: async (workspaceId, message, mode, processId, taskId, botControl) => {
             const followUp = processId !== toQueueProcessId(taskId);

@@ -65,9 +65,9 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/list nonsense', { type: 'invalid', args: '/list nonsense' }],
     ['/unknown', { type: 'invalid', args: '/unknown' }],
     ['/Unknown thing', { type: 'invalid', args: '/Unknown thing' }],
-    ['/autopilot', { type: 'invalid', args: '/autopilot' }],
-    ['/autopilot   ', { type: 'invalid', args: '/autopilot' }],
-    ['/ask', { type: 'invalid', args: '/ask' }],
+    ['/autopilot', { type: 'chat', args: '', mode: 'autopilot' }],
+    ['/autopilot   ', { type: 'chat', args: '', mode: 'autopilot' }],
+    ['/ask', { type: 'chat', args: '', mode: 'ask' }],
     ['/asking for help', { type: 'invalid', args: '/asking for help' }],
     ['/help me', { type: 'invalid', args: '/help me' }],
 ];
@@ -90,7 +90,8 @@ describe('parseMessagingCommand', () => {
         expect(parseMessagingCommand(`/${mode}Extra body`)).toEqual({
             type: 'invalid', args: `/${mode}Extra body`,
         });
-        expect(parseMessagingCommand(`/${mode}  `)).toEqual({ type: 'invalid', args: `/${mode}` });
+        // An empty body is a chat with no message, so routers can ask for one.
+        expect(parseMessagingCommand(`/${mode}  `)).toEqual({ type: 'chat', args: '', mode });
         expect(MESSAGING_HELP_TEXT).toContain(`/${mode} <message>`);
     });
 

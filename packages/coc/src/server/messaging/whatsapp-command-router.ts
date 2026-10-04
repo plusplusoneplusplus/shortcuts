@@ -10,6 +10,7 @@ import { handleMessagingCommand, invalidCommandReply, NO_CHAT_WORKSPACE_REPLY, t
 import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 import { admitBotControlledFollowUp } from './bot-control-admission';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
+import type { MessagingHandOff } from './job-handoff';
 
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess' | 'updateProcess'>;
@@ -28,6 +29,8 @@ export interface WhatsAppRouterDeps {
     /** Relayed ask_user questions; a matching reply is an answer, not a request. */
     questions?: Pick<AskUserQuestionRelayHub, 'tryAnswer'>;
     getBotManagedConversationsEnabled?: () => boolean;
+    /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
+    handOff?: MessagingHandOff;
 }
 
 function matchesBinding(task: QueuedTask | undefined, binding: WhatsAppBinding): task is QueuedTask {
@@ -125,6 +128,22 @@ export class WhatsAppCommandRouter {
                     }
                 }
             }
+            const react = async () => {
+                try {
+                    await this.deps.react(msg.messageId);
+                } catch (error) {
+                    console.error('[whatsapp-messaging] Reaction failed:', error);
+                }
+            };
+            const handOff = await this.deps.handOff?.resolve(targetId, command.mode);
+            if (handOff) {
+                await this.deps.handOff!.start(handOff, command.args, { connector: 'whatsapp', chatKey: msg.chatJid });
+                admitted = true;
+                // No receipt: the job reports through notices. Remember the inbound id so a redelivery is ignored.
+                this.deps.bindings.recordOutbound(msg.messageId);
+                await react();
+                return;
+            }
             const taskId = randomUUID();
             const processId = targetId ?? toQueueProcessId(taskId);
             const binding: WhatsAppBinding = {
@@ -154,11 +173,7 @@ export class WhatsAppCommandRouter {
             admitted = true;
             if (!keepSelection) this.deps.bindings.selectTopic(workspaceId, processId);
             this.deps.queued?.(binding);
-            try {
-                await this.deps.react(msg.messageId);
-            } catch (error) {
-                console.error('[whatsapp-messaging] Reaction failed:', error);
-            }
+            await react();
         } catch (error) {
             console.error('[whatsapp-messaging] Unable to handle inbound message:', error);
             await reply(admitted

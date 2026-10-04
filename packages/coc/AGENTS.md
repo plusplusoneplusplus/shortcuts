@@ -202,6 +202,14 @@ references before editing. Paths are package-relative.
   via `src/server/messaging/messaging-chat-mode.ts`, never a hard-coded default at the enqueue site.
   Sentinel follow-ups relay `ask_user` and keep the dangerous-command guard like Ask
   (`follow-up-executor.ts` keys both on the interactive agent mode).
+  When the target (selected, quoted, `[chatid]`, or bound thread; persisted or still queued)
+  is a sentinel, `/ask`, `/autopilot`, and `/ralph` skip the sentinel turn:
+  `src/server/messaging/job-handoff.ts` (`createMessagingHandOff`, shared by both routers)
+  enqueues a separate job in the sentinel's workspace with `spawnedFromProcessId` +
+  `messagingOrigin` and tracks it in the notice ledger; selection is unchanged. WhatsApp
+  reacts 👍 and records the inbound id against redelivery; Teams replies in the thread and
+  dedupes bound-thread replies like thread commands. An empty prefix replies
+  "Send a message to start a chat."
   `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
   `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`
   (`listRemoteChats` → remote `GET /api/processes`, 10 cap). `n.m` numbering is kept in
