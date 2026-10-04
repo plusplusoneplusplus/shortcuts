@@ -94,6 +94,8 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
+- Copilot decisions use a two-minute deadline per initial/repair attempt.
+  Preserve caller cancellation and explicit backend timeout overrides.
 - First/follow-up turns share context/system/policy/runner/settlement helpers
   under `src/server/executors/`; lifecycle owns persistence.
   Mode directives/style belong in user turns, not the system prefix.
