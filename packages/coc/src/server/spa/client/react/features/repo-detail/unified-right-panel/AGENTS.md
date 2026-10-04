@@ -532,6 +532,12 @@ modal dialogs / the tab menu) is shared with HTML pages via
 system browser (`openUrlInSystemBrowser`, `window.open` noopener) instead of
 embedded browsing.
 
+In the desktop app a plain click on an http(s) link in a chat bubble opens a new
+browser tab: `file-path-preview.ts` sends `coc-open-browser-url`
+(`requestPanelBrowserTab`), and the mounted panel claims it with the dock target
+as owner and opens the dock. Modifier clicks, URLs an enabled link handler owns
+(Teams, OneNote, …), the web app, and an unclaimed event keep the default.
+
 ## AI canvas updates (`unifiedCanvasEvents.ts`)
 
 Split in two. **Routing** goes through `openUnifiedPanelTab`, so a later update

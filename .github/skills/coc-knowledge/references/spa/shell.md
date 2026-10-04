@@ -104,6 +104,7 @@ navigation policy in `html-page-policy.ts`.
 ## Desktop browser views
 
 `window.cocDesktop.browser` hosts general web pages for right-panel browser tabs
+(also opened by a plain click on a chat http(s) link via `coc-open-browser-url`)
 (`browser-view-host.ts` + pure `browser-view-policy.ts`). `open(viewId, url, sessionKey)`
 accepts only absolute http(s) URLs (`{ ok: false, reason }` otherwise); reopening a live
 `viewId` with the same key keeps its history and re-pushes state. `navigate`, `nav(viewId,
