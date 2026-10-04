@@ -153,7 +153,9 @@ references before editing. Paths are package-relative.
   Schedule writes serialize per repo; runtime keys are `(repoId, scheduleId)`. Await
   writes/reloads; retain
   state on scan failure. Wakeups persist before arming.
-- Sentinel chats have no workspace ownership or scan cron; any number may coexist.
+- Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
+  the mode directive (`chat-mode-directive.ts`); `send_to_conversation` create mode from a
+  sentinel defaults to `autopilot`. No workspace ownership or scan cron; any number may coexist.
   Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
 - Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
   Commit-mode conflicts abort; the active checkout/HEAD never moves. Worktree execution

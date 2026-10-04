@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SENTINEL_DISPATCHER_DIRECTIVE, buildChatModeDirective } from '../../../src/server/executors/chat-mode-directive';
 import { extractInjectedBlocks, parseSelectedSkillNames, projectChatModeContextForDisplay } from '../../../src/server/spa/client/react/features/chat/conversation/injectedBlocks';
 
 const CHAT_STYLE_BLOCK = [
@@ -204,6 +205,18 @@ describe('projectChatModeContextForDisplay', () => {
 
         expect(projected).toContain('<coc-read-only-mode>');
         expect(projected).not.toContain('PRIVATE-REPO-INSTRUCTIONS');
+    });
+
+    it('keeps a sentinel marker\'s dispatcher block but still drops the repo instructions', () => {
+        // Built by the server so a renamed dispatcher tag breaks this test.
+        const marker = buildChatModeDirective({ mode: 'sentinel', modeInstructions: 'PRIVATE-REPO-INSTRUCTIONS' })!;
+
+        const projected = projectChatModeContextForDisplay(marker)!;
+
+        expect(projected).toContain('<coc-read-only-mode>');
+        expect(projected).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(projected).not.toContain('PRIVATE-REPO-INSTRUCTIONS');
+        expect(projected).toBe(buildChatModeDirective({ mode: 'sentinel' }));
     });
 
     it('returns undefined for a missing marker so the caller falls back to stored content', () => {

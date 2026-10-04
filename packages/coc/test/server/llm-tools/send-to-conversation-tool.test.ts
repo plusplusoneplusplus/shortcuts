@@ -496,6 +496,51 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         await tool.handler({ content: 'hi' }, invocationStub);
         expect(payloadOf(captured.input!).mode).toBe('ask');
     });
+
+    it('mode defaults to autopilot when called from a sentinel (dispatcher) chat', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', mode: 'sentinel' } as ParentMeta & { mode?: string },
+        });
+        await tool.handler({ content: 'rename X to Y' }, invocationStub);
+        expect(payloadOf(captured.input!).mode).toBe('autopilot');
+    });
+
+    it('an explicit mode still wins from a sentinel chat', async () => {
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', mode: 'sentinel' } as ParentMeta & { mode?: string },
+        });
+        await tool.handler({ content: 'look around', mode: 'ask' }, invocationStub);
+        expect(payloadOf(captured.input!).mode).toBe('ask');
+    });
+
+    it('a non-sentinel parent mode is never inherited as the default', async () => {
+        for (const mode of ['ask', 'autopilot', 'ralph']) {
+            const { tool, captured } = makeTool({
+                parentMeta: { provider: 'claude', mode } as ParentMeta & { mode?: string },
+            });
+            await tool.handler({ content: 'hi' }, invocationStub);
+            expect(payloadOf(captured.input!).mode).toBe('ask');
+        }
+    });
+
+    it('falls back to ask when the parent cannot be read', async () => {
+        const store = {
+            getWorkspaces: vi.fn().mockResolvedValue([{ id: 'ws-1', name: 'ws-1', rootPath: '/repo/ws-1' }]),
+            // Only the default-mode lookup fails; the provider inheritance read succeeds.
+            getProcess: vi.fn()
+                .mockRejectedValueOnce(new Error('boom'))
+                .mockResolvedValue({ id: 'queue_p1', metadata: { provider: 'claude', mode: 'sentinel' } }),
+        } as unknown as ProcessStore;
+        const captured: { input?: CreateTaskInput } = {};
+        const { tool } = createSendToConversationTool({
+            store,
+            workspaceId: 'ws-1',
+            enqueueChat: async input => { captured.input = input; return 'task-1'; },
+            parentProcessId: 'queue_p1',
+        });
+        await tool.handler({ content: 'hi' }, invocationStub);
+        expect(payloadOf(captured.input!).mode).toBe('ask');
+    });
 });
 
 describe('createSendToConversationTool — post mode (processId provided)', () => {

@@ -34,6 +34,9 @@ interface Chip {
  * (including older or hand-written blocks) falls back to a plain label.
  */
 function chatModeLabel(block: string): string {
+    if (block.includes('<coc-sentinel-dispatcher>')) {
+        return 'Sentinel';
+    }
     if (block.includes('<coc-read-only-mode>')) {
         return 'Ask';
     }

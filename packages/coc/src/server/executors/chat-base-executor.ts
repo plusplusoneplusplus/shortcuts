@@ -44,8 +44,8 @@ import {
     toQueueProcessId,
 } from '@plusplusoneplusplus/forge';
 import { advanceActiveProviderSession, activeProviderSessionUpdate, turnProviderAttribution } from '../processes/active-provider-session';
-import type { ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
-import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatModeOrDefault } from '../tasks/task-types';
+import type { ChatMode, ChatPayload, ChatProvider, PrClassificationPayload } from '../tasks/task-types';
+import { getForEachContext, getMapReduceContext, isForEachGenerationContext, isMapReduceGenerationContext, normalizeChatMode, normalizeChatModeOrDefault } from '../tasks/task-types';
 import { saveImagesToTempFiles, cleanupTempDir, rehydrateImagesIfNeeded } from './image-store';
 import { BaseExecutor } from './base-executor';
 import {
@@ -957,9 +957,12 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // the plan-file exception those rules already carve out. Grilling turns
         // and artifact-bound chats resolve to `undefined` so the model never
         // holds two competing save targets.
+        // A sentinel chat runs on the ask path (same permissions and tools) but
+        // its directive adds the dispatcher rules, so it names its own mode.
+        const directiveMode: ChatMode = isAsk && normalizeChatMode(payload.mode) === 'sentinel' ? 'sentinel' : mode;
         const modeDirective = buildChatModeDirective({
-            mode,
-            modeInstructions: await loadChatModeInstructions(workingDirectory, mode),
+            mode: directiveMode,
+            modeInstructions: await loadChatModeInstructions(workingDirectory, directiveMode),
             planSaveContext: suppressesPlanSaveGuidance({ payload: task.payload })
                 ? undefined
                 : autoFolderContext,

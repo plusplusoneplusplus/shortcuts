@@ -56,7 +56,8 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 ### send_to_conversation
 
 Create mode omits `processId` and enqueues a brand-new visible chat through the same
-in-process queue path as `POST /api/queue`. It defaults to the caller workspace and Ask mode,
+in-process queue path as `POST /api/queue`. It defaults to the caller workspace and Ask mode
+(Autopilot when the calling chat is a `sentinel` dispatcher; an explicit `mode` always wins),
 can target another registered workspace, links spawned chats via
 `payload.context.spawnedFromProcessId`, and accepts a concrete `provider` (`copilot`, `codex`,
 `claude`, `opencode`) plus optional `effortTier` (`very-low`…`high`). An explicit create-mode
