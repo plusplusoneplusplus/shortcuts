@@ -191,7 +191,7 @@ describe('CommitDetail — diff view toggle wiring', () => {
         });
         await waitFor(() => expect(screen.getByTestId('diff-content')).toBeTruthy());
 
-        fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
         expect(screen.getByTestId('diff-content').getAttribute('data-viewer')).toBe('split');
     });
 
@@ -201,10 +201,10 @@ describe('CommitDetail — diff view toggle wiring', () => {
         });
         await waitFor(() => expect(screen.getByTestId('diff-content')).toBeTruthy());
 
-        fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
         expect(screen.getByTestId('diff-content').getAttribute('data-viewer')).toBe('split');
 
-        fireEvent.click(screen.getByTestId('diff-view-toggle-unified'));
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
         expect(screen.getByTestId('diff-content').getAttribute('data-viewer')).toBe('unified');
     });
 });
@@ -222,7 +222,7 @@ describe('FileDiffPanel — diff view toggle wiring', () => {
         await waitFor(() => expect(screen.getByTestId('file-diff-content')).toBeTruthy());
         expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('unified');
 
-        fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
         expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('split');
     });
 
@@ -230,8 +230,8 @@ describe('FileDiffPanel — diff view toggle wiring', () => {
         render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
         await waitFor(() => expect(screen.getByTestId('file-diff-content')).toBeTruthy());
 
-        fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
-        fireEvent.click(screen.getByTestId('diff-view-toggle-unified'));
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
         expect(screen.getByTestId('file-diff-content').getAttribute('data-viewer')).toBe('unified');
     });
 
@@ -265,7 +265,7 @@ describe('WorkingTreeFileDiff — diff view toggle wiring', () => {
         await waitFor(() => expect(screen.getByTestId('working-tree-file-diff-content')).toBeTruthy());
         expect(screen.getByTestId('working-tree-file-diff-content').getAttribute('data-viewer')).toBe('unified');
 
-        fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
         expect(screen.getByTestId('working-tree-file-diff-content').getAttribute('data-viewer')).toBe('split');
     });
 });
@@ -277,7 +277,7 @@ describe('DiffViewMode — localStorage persistence', () => {
         render(<FileDiffPanel workspaceId="ws1" filePath="src/app.ts" source={branchSource} />);
         await waitFor(() => expect(screen.getByTestId('diff-view-toggle')).toBeTruthy());
 
-        fireEvent.click(screen.getByTestId('diff-view-toggle-split'));
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
         expect(localStorage.getItem('coc-diff-view-mode')).toBe('split');
     });
 

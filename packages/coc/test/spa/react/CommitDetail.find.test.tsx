@@ -230,7 +230,7 @@ describe('CommitDetail — Ctrl+F find widget', () => {
     it('works in split view mode', async () => {
         const { container } = await renderDetail();
         // DiffViewToggle persists the mode; flip to split.
-        await act(async () => { fireEvent.click(screen.getByTestId('diff-view-toggle-split')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-view-toggle')); });
 
         await openFind();
         fireEvent.change(screen.getByTestId('diff-find-input'), { target: { value: 'needle' } });

@@ -206,10 +206,10 @@ describe('WorkingTreeFileDiff — comments in the editor', () => {
     it('switching to Classic removes every zone; switching back re-adds each thread once', async () => {
         const view = await renderEditor();
         const firstEditor = fake();
-        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle-legacy')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
         expect(firstEditor.zones.size).toBe(0);
         expect(firstEditor.disposals).toBe(1);
-        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle-monaco')); });
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
         await act(async () => {});
         await act(async () => { fake().finishDiff(CHANGES); });
         expect(fake()).not.toBe(firstEditor);
