@@ -15,6 +15,12 @@
  *     diagnostics would land on the wrong lines of the diff;
  *   - the host must not have refused the document (no server, capacity).
  * Otherwise the result is null and the diff is a plain read-only diff.
+ *
+ * On an editable diff the buffer follows the editor: while the buffer still
+ * holds what the editor showed, each edit is sent as `didChange`, and once the
+ * editor text matches disk again (a successful save, or edits dropped) the
+ * buffer is marked saved. A buffer that diverged elsewhere (an unsaved
+ * explorer edit) is never written by the diff.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -44,10 +50,14 @@ export interface UseDiffLanguageFeaturesOptions {
     /** Injected in tests; defaults to the per-workspace store. */
     store?: LanguageDocumentStore;
     onNavigate?: DiffDefinitionNavigate;
+    /** The editor's text after the latest edit; null/undefined = unedited. */
+    editedText?: string | null;
+    /** What the last successful save wrote; null/undefined = `models.modified.text`. */
+    savedText?: string | null;
 }
 
 export function useDiffLanguageFeatures(options: UseDiffLanguageFeaturesOptions): DiffLanguageFeatures | null {
-    const { workspaceId, relativePath, stage, models, enabled = true, store, onNavigate } = options;
+    const { workspaceId, relativePath, stage, models, enabled = true, store, onNavigate, editedText, savedText } = options;
     const target = resolveDiffLanguageTarget({ workspaceId, relativePath, stage, models });
     const text = models.modified.text;
     const language = models.modified.language;
@@ -73,9 +83,34 @@ export function useDiffLanguageFeatures(options: UseDiffLanguageFeaturesOptions)
         return view.onText(next => setBufferText(next));
     }, [view]);
 
-    const inSync = view !== null && bufferText === text && view.getText() === text;
+    // Keep the buffer on the editor's text. Runs after useLanguageDocument's
+    // disk-text effect, so a clean refresh is already applied here.
+    const live = editedText ?? text;
+    const disk = savedText ?? text;
+    const shownRef = useRef(live);
+    useEffect(() => {
+        const shown = shownRef.current;
+        shownRef.current = live;
+        if (!view || view.getText() !== shown) return;
+        if (live === disk) {
+            if (view.isDirty() || view.getText() !== live) view.markSaved(live);
+        } else if (view.getText() !== live) {
+            view.update(live);
+        }
+    }, [view, live, disk]);
+    // Leaving with unsaved edits (Discard, switch away) puts disk back into a
+    // buffer the explorer may still share.
+    const diskRef = useRef(disk);
+    diskRef.current = disk;
+    useEffect(() => () => {
+        if (view && view.getText() === shownRef.current && shownRef.current !== diskRef.current) {
+            view.markSaved(diskRef.current);
+        }
+    }, [view]);
+
+    const inSync = view !== null && bufferText === live && view.getText() === live;
     const refused = document.status === 'unavailable';
-    const live = inSync && !refused && target.eligible;
+    const active = inSync && !refused && target.eligible;
 
     // Read through a ref so a host that rebuilds its callback every render
     // does not tear the providers down with it.
@@ -97,7 +132,7 @@ export function useDiffLanguageFeatures(options: UseDiffLanguageFeaturesOptions)
     const uri = target.eligible ? target.uri : null;
     const { markers } = document;
     return useMemo(
-        () => (live && uri ? { uri, mount, markers } : null),
-        [live, uri, mount, markers],
+        () => (active && uri ? { uri, mount, markers } : null),
+        [active, uri, mount, markers],
     );
 }

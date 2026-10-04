@@ -143,6 +143,11 @@ never replaced — when the disk text changed, a "File changed on disk" banner o
 Reload (drop edits) or Keep mine (dismiss; the next save overwrites). A successful
 save calls `onSaved` (`onWorkingTreeFileSaved` → `data.bumpWorkingChanges`), so the
 change list and the diff refresh; a saved staged edit then appears under Unstaged.
+The host passes `editedText` / `savedText` to the viewer so `useDiffLanguageFeatures`
+keeps the shared language document on the editor's text: edits go out as
+`didChange`, the buffer is marked saved once the editor matches disk again (save or
+dropped edits), and unmounting with unsaved edits puts disk text back. A buffer that
+diverged elsewhere (unsaved explorer edit) is never written; features stay off.
 
 Both surfaces portal `CommentCard` through `MonacoDiffCommentLayer`, with placement
 and selection conversion owned by `monacoCommentThreads` and `diffCoords`.

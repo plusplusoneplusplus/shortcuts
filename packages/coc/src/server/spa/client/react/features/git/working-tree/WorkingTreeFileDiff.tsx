@@ -592,6 +592,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                             modifiedMatchesWorkingCopy={stage === 'staged' ? diskMatchesIndex : undefined}
                             onModifiedChange={setEditedText}
                             onSave={() => { void handleSaveEdits(); }}
+                            editedText={editedText}
+                            savedText={savedText}
                             original={editorSides.base.content}
                             modified={editorSides.head.content}
                             viewMode={viewMode}
