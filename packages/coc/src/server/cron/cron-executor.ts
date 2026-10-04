@@ -11,14 +11,13 @@
  */
 
 import * as crypto from 'crypto';
-import type { AIProcess, ProcessStore, TaskQueueManager, QueuedTask } from '@plusplusoneplusplus/forge';
+import type { ProcessStore, TaskQueueManager, QueuedTask } from '@plusplusoneplusplus/forge';
 import { toTaskId, toQueueProcessId, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ScheduleTimerRegistry } from '../schedule/schedule-timer-registry';
 import { PeriodicEntryScheduler } from '../schedule/periodic-entry-scheduler';
 import type { CronStore } from './cron-store';
 import type { CronEntry, CronChangeEvent } from './cron-types';
 import {
-    DEFAULT_CRON_TTL_MS,
     MAX_CONSECUTIVE_FAILURES,
     MAX_CONSECUTIVE_WAKEUPS_PER_PROCESS,
 } from './cron-types';
@@ -42,12 +41,6 @@ export interface CronExecutorDeps {
     emit: CronEventEmit;
     /** Resolve the repo/workspace ID for a given processId. */
     resolveWorkspaceId: (processId: string) => Promise<string | undefined>;
-    /** Classify the workspace before enqueueing a Sentinel follow-up. */
-    runSentinelTick?: (
-        process: AIProcess,
-        workspaceId: string,
-        cron: CronEntry,
-    ) => Promise<void>;
 }
 
 // ============================================================================
@@ -197,7 +190,6 @@ export class CronExecutor {
         }
 
         const proc = await this.deps.processStore.getProcess(cron.processId);
-        this.refreshSentinelExpiry(cron, proc);
 
         // TTL check
         if (this.isExpired(cron)) {
@@ -238,15 +230,6 @@ export class CronExecutor {
         // Enqueue follow-up
         try {
             this.inflight.add(cron.processId);
-            if (proc?.metadata?.mode === 'sentinel' && this.deps.runSentinelTick) {
-                const workspaceId = cron.workspaceId
-                    ?? (typeof proc.metadata.workspaceId === 'string' ? proc.metadata.workspaceId : undefined)
-                    ?? await this.deps.resolveWorkspaceId(cron.processId);
-                if (!workspaceId) {
-                    throw new Error(`Cannot resolve workspace for Sentinel process ${cron.processId}`);
-                }
-                await this.deps.runSentinelTick(proc, workspaceId, cron);
-            }
             this.wakeupCounts.set(cron.processId, wakeupCount + 1);
             await this.enqueueFollowUp(cron);
         } catch (err) {
@@ -364,15 +347,6 @@ export class CronExecutor {
 
     private isExpired(cron: CronEntry): boolean {
         return Date.now() >= new Date(cron.expiresAt).getTime();
-    }
-
-    private refreshSentinelExpiry(cron: CronEntry, process: AIProcess | undefined): void {
-        if (process?.metadata?.mode !== 'sentinel') return;
-
-        const rollingExpiry = Date.now() + DEFAULT_CRON_TTL_MS;
-        const currentExpiry = new Date(cron.expiresAt).getTime();
-        cron.expiresAt = new Date(Math.max(currentExpiry, rollingExpiry)).toISOString();
-        this.deps.store.update(cron);
     }
 
     /**

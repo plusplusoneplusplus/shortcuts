@@ -17,7 +17,7 @@ references before editing. Paths are package-relative.
 | Dashboard routing | [Shell](../../.github/skills/coc-knowledge/references/spa/shell.md), [clones](../../.github/skills/coc-knowledge/references/spa/clone-routing.md) |
 | Chat | [Conversation](../../.github/skills/coc-knowledge/references/spa/chat-conversation.md) |
 | Git, PRs, work items | [Git/PRs](../../.github/skills/coc-knowledge/references/spa/git-and-prs.md), [work items](../../.github/skills/coc-knowledge/references/spa/work-items.md) |
-| Notes and Sentinel | [Notes](../../.github/skills/coc-knowledge/references/spa/notes.md), `src/server/sentinel/` |
+| Notes | [Notes](../../.github/skills/coc-knowledge/references/spa/notes.md) |
 | Canvas/Kusto | [Canvas](../../.github/skills/coc-knowledge/references/spa/canvas.md) |
 | Ralph and worktrees | [Ralph](../../.github/skills/coc-knowledge/references/ralph.md) (launch/lifecycle links) |
 | MCP, tools, cron, memory, workflows, LSP, remote hosts, sync | [Knowledge index](../../.github/skills/coc-knowledge/SKILL.md#architecture-index) |
@@ -130,7 +130,7 @@ references before editing. Paths are package-relative.
   Task roots are opaque/protected, never user-root config or counted against its limit.
   Native Notes I/O owns containment/symlinks, atomic writes, sidecars, and order.
   See `src/server/notes/notes-write-handler.ts` and native instructions.
-- Protect managed `Plans`/`Sentinel` roots. Retarget Notes chats through the validated
+- Protect the managed `Plans` root. Retarget Notes chats through the validated
   `/api/processes/:id/note` route and enforce bound-section containment.
   Keep Tiptap dependencies at one exact version and bump the entire set together.
 - Canvas mutations use revision-checked `queue.runExclusive`, never direct writes.
@@ -153,10 +153,8 @@ references before editing. Paths are package-relative.
   Schedule writes serialize per repo; runtime keys are `(repoId, scheduleId)`. Await
   writes/reloads; retain
   state on scan failure. Wakeups persist before arming.
-- Sentinel ownership is exclusive/workspace-scoped: admission grace/exact-owner
-  replacement; cancel the prior cron. Preserve optimistic Board writes, approval/budget/
-  backoff, workspace-only classification, and descendant exclusion.
-  See `src/server/sentinel/sentinel-ownership.ts` and adjacent `sentinel-nudge.ts`.
+- Sentinel chats have no workspace ownership or scan cron; any number may coexist.
+  Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
 - Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
   Commit-mode conflicts abort; the active checkout/HEAD never moves. Worktree execution
   uses owning-server committed objects, fails before queueing, performs no implicit

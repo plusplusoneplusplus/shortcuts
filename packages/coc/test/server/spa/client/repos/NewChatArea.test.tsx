@@ -5,7 +5,6 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
-import { CocApiError } from '@plusplusoneplusplus/coc-client';
 
 // ---------------------------------------------------------------------------
 // Mocks – declared before importing component under test
@@ -466,75 +465,21 @@ describe('NewChatArea – queue_ prefix in handleSend', () => {
         expect(mockQueueDispatch).not.toHaveBeenCalled();
     });
 
-    it('offers to open the existing Sentinel when workspace admission conflicts', async () => {
+    it('creates a Sentinel chat directly without a replace payload', async () => {
         mockSentinelEnabled = true;
-        mockEnqueueTask.mockRejectedValueOnce(new CocApiError({
-            status: 409,
-            statusText: 'Conflict',
-            url: '/api/queue',
-            message: 'A Sentinel is already active in this workspace',
-            code: 'SENTINEL_ALREADY_EXISTS',
-            body: {
-                code: 'SENTINEL_ALREADY_EXISTS',
-                existingProcessId: 'queue_existing-sentinel',
-                actions: ['open', 'replace'],
-            },
-        }));
+        mockEnqueueTask.mockResolvedValueOnce({ task: { id: 'new-sentinel' } });
 
         renderNewChatArea();
         fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
         fireEvent.click(screen.getByTestId('workflow-mode-option-sentinel'));
-        typeInInput('Watch this workspace');
+        typeInInput('Dispatch for me');
         await clickSend();
 
-        await waitFor(() => expect(screen.getByText('Sentinel already active')).toBeTruthy());
-        fireEvent.click(screen.getByTestId('sentinel-open-existing'));
-
-        expect(mockQueueDispatch).toHaveBeenCalledWith({
-            type: 'SELECT_QUEUE_TASK',
-            id: 'queue_existing-sentinel',
-            repoId: 'ws-1',
-        });
-        expect(mockEnqueueTask).toHaveBeenCalledOnce();
-    });
-
-    it('confirms replacement with the exact existing owner and selects the new Sentinel', async () => {
-        mockSentinelEnabled = true;
-        mockEnqueueTask
-            .mockRejectedValueOnce(new CocApiError({
-                status: 409,
-                statusText: 'Conflict',
-                url: '/api/queue',
-                message: 'A Sentinel is already active in this workspace',
-                code: 'SENTINEL_ALREADY_EXISTS',
-                body: {
-                    code: 'SENTINEL_ALREADY_EXISTS',
-                    existingProcessId: 'queue_existing-sentinel',
-                    actions: ['open', 'replace'],
-                },
-            }))
-            .mockResolvedValueOnce({ task: { id: 'new-sentinel' } });
-
-        renderNewChatArea();
-        fireEvent.click(screen.getByTestId('workflow-mode-trigger'));
-        fireEvent.click(screen.getByTestId('workflow-mode-option-sentinel'));
-        typeInInput('Watch this workspace');
-        await clickSend();
-        await waitFor(() => expect(screen.getByTestId('sentinel-replace')).toBeTruthy());
-        fireEvent.click(screen.getByTestId('sentinel-replace'));
-
-        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledTimes(2));
-        expect(mockEnqueueTask.mock.calls[1][0].payload).toEqual({
-            ...mockEnqueueTask.mock.calls[0][0].payload,
-            replaceSentinelProcessId: 'queue_existing-sentinel',
-        });
-        await waitFor(() => expect(mockQueueDispatch).toHaveBeenCalledWith({
-            type: 'SELECT_QUEUE_TASK',
-            id: 'queue_new-sentinel',
-            repoId: 'ws-1',
-        }));
+        await waitFor(() => expect(mockEnqueueTask).toHaveBeenCalledOnce());
+        const payload = mockEnqueueTask.mock.calls[0][0].payload;
+        expect(payload.mode).toBe('sentinel');
+        expect(payload).not.toHaveProperty('replaceSentinelProcessId');
         expect(screen.queryByText('Sentinel already active')).toBeNull();
-        expect((screen.getByTestId('new-chat-input') as HTMLInputElement).value).toBe('');
     });
 
     it('includes provider=copilot in enqueue payload by default', async () => {

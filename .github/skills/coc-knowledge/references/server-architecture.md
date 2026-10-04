@@ -39,7 +39,7 @@ This table locates boundaries, not individual implementation classes.
 | `schedule/`, `cron/`, `triggers/` | Scheduled work and event-driven execution; [cron](cron.md) |
 | `tasks/`, `templates/` | Task/plan files, comments and reusable templates; [task comments](task-comments.md) |
 | `workflows/` | Workflow files and server adapters; [workflow engine](workflow-engine.md) |
-| `notes/`, `sync/`, `sentinel/` | Scoped notes, synchronization and monitoring; [notes](spa/notes.md), [sync](sync.md) |
+| `notes/`, `sync/` | Scoped notes and synchronization; [notes](spa/notes.md), [sync](sync.md) |
 | `skills/`, `prompts/`, `llm-tools/` | Instructions, prompt resources and tools; [LLM tools](llm-tools.md) |
 | `providers/`, `agent-providers/` | Provider selection, quota/status and model catalogs; [SDK](sdk-wrapper.md) |
 | `mcp-oauth/` | Interactive MCP authorization; [MCP settings](mcp-settings.md) |

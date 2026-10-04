@@ -96,7 +96,6 @@ export interface QueueRouteContext {
     resolveDefaultProvider?: (options?: ResolveDefaultProviderOptions) => Promise<AutoProviderResolutionResult>;
     isAutoProviderRoutingActive?: () => boolean;
     getEffortTiersForProvider?: (provider: ChatProvider) => StoredEffortTiersMap | undefined;
-    cancelSentinelCron?: (processId: string) => void;
     /** Throws when a provider is disabled or unavailable on this server. */
     validateProvider?: (provider: ChatProvider) => Promise<void>;
     botManagedConversationsEnabled?: () => boolean;

@@ -159,9 +159,8 @@ export function normalizeChatModeOrDefault(value: unknown, fallback: ChatMode = 
  *
  * `sentinel` stores its workflow identity in `metadata.mode` itself (unlike
  * ralph / for-each / map-reduce, which keep identity in a separate context
- * object), and the whole sentinel machinery — classifier, workspace ownership,
- * cron routing — keys off `metadata.mode === 'sentinel'`. A per-turn mode
- * switch would therefore silently dismantle the sentinel, so it is refused.
+ * object). A per-turn mode switch would therefore silently turn the
+ * dispatcher into an ordinary chat, so it is refused.
  */
 const TERMINAL_CHAT_MODES: ReadonlySet<ChatMode> = new Set(['sentinel']);
 

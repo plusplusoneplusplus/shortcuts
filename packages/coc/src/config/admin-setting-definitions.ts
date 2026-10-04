@@ -623,7 +623,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'sentinel.enabled', default: false, runtime: 'live', runtimeFlag: 'sentinelEnabled',
         ui: {
             tab: 'ai', group: 'aiModes', order: 32, label: 'Sentinel Mode', badge: 'experimental',
-            hint: 'Monitor recent workspace chats and draft follow-ups for approval. Disabled by default.',
+            hint: 'Show the Sentinel dispatcher mode in the dashboard chat picker. Phone threads always use it. Disabled by default.',
             testId: 'toggle-sentinel-enabled',
         },
     }),
