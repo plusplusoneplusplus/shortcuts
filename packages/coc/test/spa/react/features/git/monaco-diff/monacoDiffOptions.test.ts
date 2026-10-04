@@ -154,9 +154,18 @@ describe('editable modified side', () => {
         expect(isEditableDiff(true, 'staged', buildDiffModels({ ...base, stage: 'staged' }))).toBe(false);
     });
 
+    it('a staged diff whose disk equals the index edits the real document; the HEAD side stays ref-backed', () => {
+        const models = buildDiffModels({ ...base, stage: 'staged', modifiedMatchesWorkingCopy: true });
+        expect(models.modified).toMatchObject({ uri: browserDocumentUri(base.workspaceId, base.relativePath), isWorkingCopy: true });
+        expect(isDiffRefUri(models.original.uri)).toBe(true);
+        expect(isEditableDiff(true, 'staged', models)).toBe(true);
+        expect(buildDiffEditorOptions('split', isEditableDiff(true, 'staged', models)))
+            .toMatchObject({ readOnly: false, originalEditable: false });
+    });
+
     it('commit / PR snapshots stay read-only', () => {
         for (const stage of ['unstaged', 'staged'] as const) {
-            const models = buildDiffModels({ ...base, stage, modelIdentity: 'commit:abc' });
+            const models = buildDiffModels({ ...base, stage, modelIdentity: 'commit:abc', modifiedMatchesWorkingCopy: true });
             expect(isEditableDiff(true, stage, models)).toBe(false);
         }
     });

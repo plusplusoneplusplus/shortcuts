@@ -1,6 +1,6 @@
 /**
  * Editing the modified (disk) side of a working-tree diff in the Monaco engine
- * (editable-working-tree-diff AC-01): which stages open for editing, and that
+ * (editable-working-tree-diff AC-01, AC-02): which stages open for editing, and that
  * Ctrl/Cmd+S writes the edited text to disk through the explorer blob API,
  * keyed by the diff's own workspace. The editor is the owned test adapter.
  */
@@ -78,7 +78,7 @@ vi.mock('../../../../../../src/server/spa/client/react/repos/cloneRouting', () =
     useCocClient: (workspaceId: string) => clients[workspaceId],
 }));
 
-import { WorkingTreeFileDiff } from '../../../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
+import { WorkingTreeFileDiff, stagedDiskMatchesIndex } from '../../../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
 import {
     DIFF_ENGINE_STORAGE_KEY,
     __resetDiffEngineForTesting,
@@ -173,9 +173,71 @@ describe('WorkingTreeFileDiff — editable unstaged diff', () => {
         expect(screen.queryByTestId('working-tree-file-diff-save-error')).toBeNull();
     });
 
-    it('a staged diff stays read-only', async () => {
+});
+
+describe('WorkingTreeFileDiff — editable staged diff (disk == index)', () => {
+    /** Staged sides HEAD → index; unstaged sides index → disk. */
+    function stagedClient(index: string, disk: string, workspaceId = 'ws-a') {
+        const client = clients[workspaceId];
+        client.git.getWorkingTreeFileContent.mockImplementation(async (_ws: string, _p: string, stage: string) =>
+            stage === 'staged'
+                ? content('head\n', index, { head: { content: index, ref: 'INDEX', exists: true } })
+                : content(index, disk));
+        return client;
+    }
+
+    it('is editable when the disk file equals the index, and uses the real document URI', async () => {
+        stagedClient('b\n', 'b\n');
+        await renderDiff({ stage: 'staged' });
+        expect(fakes[0].options[0]).toMatchObject({ readOnly: false, originalEditable: false });
+        expect(fakes[0].saveCommands.size).toBe(1);
+        expect(fakes[0].models[0].modified.uri).not.toMatch(/^coc-diff-ref:/);
+        expect(fakes[0].models[0].original.uri).toMatch(/^coc-diff-ref:/);
+        expect(screen.queryByTestId('working-tree-file-diff-staged-readonly-note')).toBeNull();
+    });
+
+    it('save writes only the disk file of the diff\'s own workspace', async () => {
+        const client = stagedClient('b\n', 'b\n', 'ws-b');
+        await renderDiff({ stage: 'staged', workspaceId: 'ws-b' });
+        act(() => fakes[0].type('b\nedit\n'));
+        await act(async () => { fakes[0].pressSave(); });
+        expect(writeBlob).toHaveBeenCalledTimes(1);
+        expect(writeBlob).toHaveBeenCalledWith('ws-b', 'src/a.ts', 'b\nedit\n');
+        // No git calls beyond reading the two content views (never stages).
+        expect(Object.keys(client.git).sort()).toEqual(['getWorkingTreeFileContent', 'getWorkingTreeFileDiff']);
+    });
+
+    it('stays read-only with a note when the disk file has unstaged changes', async () => {
+        stagedClient('b\n', 'c\n');
         await renderDiff({ stage: 'staged' });
         expect(fakes[0].options[0]).toMatchObject({ readOnly: true });
         expect(fakes[0].saveCommands.size).toBe(0);
+        expect(fakes[0].models[0].modified.uri).toMatch(/^coc-diff-ref:/);
+        expect(screen.getByTestId('working-tree-file-diff-staged-readonly-note').textContent)
+            .toContain('File has unstaged changes');
+    });
+
+    it('stays read-only when the disk check fails', async () => {
+        const client = clients['ws-a'];
+        client.git.getWorkingTreeFileContent.mockImplementation(async (_ws: string, _p: string, stage: string) => {
+            if (stage === 'staged') return content('a\n', 'b\n');
+            throw new Error('boom');
+        });
+        await renderDiff({ stage: 'staged' });
+        expect(fakes[0].options[0]).toMatchObject({ readOnly: true });
+    });
+});
+
+describe('stagedDiskMatchesIndex', () => {
+    const staged = (index: string, exists = true) =>
+        content('h\n', index, { head: { content: index, ref: 'INDEX', exists } }) as never;
+    it('matches only an existing, identical, loadable disk file', () => {
+        expect(stagedDiskMatchesIndex(staged('x'), content('x', 'x') as never)).toBe(true);
+        expect(stagedDiskMatchesIndex(staged('x'), content('x', 'y') as never)).toBe(false);
+        expect(stagedDiskMatchesIndex(staged('x'), null)).toBe(false);
+        expect(stagedDiskMatchesIndex(staged('x'), content('x', 'x', { binary: true }) as never)).toBe(false);
+        expect(stagedDiskMatchesIndex(staged('x'), content('x', 'x', { tooLarge: true }) as never)).toBe(false);
+        // Staged deletion: no index file, so nothing to edit.
+        expect(stagedDiskMatchesIndex(staged('', false), content('', '', { head: { content: '', ref: 'WORKTREE', exists: false } }) as never)).toBe(false);
     });
 });

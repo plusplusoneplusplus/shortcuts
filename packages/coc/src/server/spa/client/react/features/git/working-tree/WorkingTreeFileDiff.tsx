@@ -14,7 +14,9 @@
  *
  * In the editor engine the modified (disk) side of an unstaged diff is
  * editable; Ctrl/Cmd+S writes it to disk through the explorer blob API,
- * keyed by this diff's own workspace.
+ * keyed by this diff's own workspace. A staged diff is editable only while the
+ * disk file equals the index (checked by also loading the unstaged sides);
+ * saving it writes the disk file and never touches the index.
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo, type RefObject } from 'react';
@@ -72,6 +74,18 @@ export interface WorkingTreeFileDiffProps {
     createDiffEditor?: DiffEditorFactory;
 }
 
+/**
+ * Whether the disk file equals the index for a staged diff, so its index side
+ * can be edited as the disk file. `disk` is the unstaged (index → disk) content.
+ */
+export function stagedDiskMatchesIndex(
+    staged: GitWorkingTreeFileContentResponse,
+    disk: GitWorkingTreeFileContentResponse | null,
+): boolean {
+    if (!disk || disk.binary || disk.tooLarge) return false;
+    return staged.head.exists && disk.head.exists && disk.head.content === staged.head.content;
+}
+
 const STAGE_LABEL: Record<string, string> = {
     staged: 'Staged diff',
     unstaged: 'Unstaged diff',
@@ -87,7 +101,7 @@ type PopupState = {
 /** Both file sides for the Monaco engine, keyed by the request that loaded them. */
 type EditorContentState =
     | { key: string; status: 'loading' }
-    | { key: string; status: 'loaded'; content: GitWorkingTreeFileContentResponse }
+    | { key: string; status: 'loaded'; content: GitWorkingTreeFileContentResponse; diskMatchesIndex: boolean }
     | { key: string; status: 'failed' };
 
 export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor }: WorkingTreeFileDiffProps) {
@@ -135,8 +149,15 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
         if (!wantsEditor) return;
         let cancelled = false;
         setEditorContent({ key: contentKey, status: 'loading' });
-        cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage as 'staged' | 'unstaged')
-            .then(content => { if (!cancelled) setEditorContent({ key: contentKey, status: 'loaded', content }); })
+        const load = async () => {
+            const content = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, stage as 'staged' | 'unstaged');
+            if (stage !== 'staged') return { content, diskMatchesIndex: false };
+            // The unstaged head is the disk file; a failed check keeps the diff read-only.
+            const disk = await cloneClient.git.getWorkingTreeFileContent(workspaceId, filePath, 'unstaged').catch(() => null);
+            return { content, diskMatchesIndex: stagedDiskMatchesIndex(content, disk) };
+        };
+        load()
+            .then(loaded => { if (!cancelled) setEditorContent({ key: contentKey, status: 'loaded', ...loaded }); })
             .catch(() => { if (!cancelled) setEditorContent({ key: contentKey, status: 'failed' }); });
         return () => { cancelled = true; };
     }, [wantsEditor, contentKey, workspaceId, filePath, stage, cloneClient]);
@@ -164,7 +185,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     // Editing the modified (disk) side. `savedText` is what the last successful
     // save wrote; `editedText` the editor's text after the latest edit.
     const relativePath = repoRoot ? repoRelative(filePath, repoRoot) : filePath;
-    const editable = stage === 'unstaged';
+    const diskMatchesIndex = currentContent?.status === 'loaded' && currentContent.diskMatchesIndex;
+    const editable = stage === 'unstaged' || (stage === 'staged' && diskMatchesIndex);
     const [editedText, setEditedText] = useState<string | null>(null);
     const [savedText, setSavedText] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -373,6 +395,11 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                             Save failed: {saveError}
                         </div>
                     )}
+                    {stage === 'staged' && editorSides && !diskMatchesIndex && (
+                        <div className="px-3 py-1 text-xs text-[#616161] dark:text-[#999]" data-testid="working-tree-file-diff-staged-readonly-note">
+                            File has unstaged changes — edit it in the Unstaged diff.
+                        </div>
+                    )}
                     {fallbackReason && (
                         <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
                     )}
@@ -405,6 +432,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                             relativePath={relativePath}
                             stage={stage as 'staged' | 'unstaged'}
                             editable={editable}
+                            modifiedMatchesWorkingCopy={stage === 'staged' ? diskMatchesIndex : undefined}
                             onModifiedChange={setEditedText}
                             onSave={() => { void handleSaveEdits(); }}
                             original={editorSides.base.content}
