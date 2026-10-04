@@ -54,7 +54,7 @@ describe('CopilotDecisionBackend', () => {
         expect(options).toMatchObject({
             model: 'gpt-5.4-mini',
             cwd: '/repo/one',
-            timeoutMs: 30_000,
+            timeoutMs: 120_000,
             loadDefaultMcpConfig: false,
         });
         expect(options.signal).toBeInstanceOf(AbortSignal);
@@ -121,7 +121,62 @@ describe('CopilotDecisionBackend', () => {
         await expectDecisionError(new CopilotDecisionBackend(throwing).evaluate(request, context), 'DECISION_UPSTREAM_FAILED', 502);
     });
 
-    it('times out with 504 and aborts the in-flight transform', async () => {
+    it.each([1, 2])('allows slow decisions with %i attempt(s), each within its own two-minute deadline', async attempts => {
+        vi.useFakeTimers();
+        try {
+            let calls = 0;
+            const service = createService(async () => {
+                calls++;
+                await new Promise<void>(resolve => setTimeout(resolve, 65_000));
+                return ok(attempts === 2 && calls === 1 ? 'invalid output' : validText);
+            });
+            const result = new CopilotDecisionBackend(service).evaluate(request, context)
+                .then(response => ({ response }), error => ({ error }));
+
+            await vi.advanceTimersByTimeAsync(30_001);
+            expect(service.transform.mock.calls[0][1]?.signal?.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(65_000 * attempts - 30_001);
+
+            expect(await result).toMatchObject({
+                response: { metadata: { attempts }, answers: { greet: { type: 'noul', value: 0.9 } } },
+            });
+            expect(service.transform).toHaveBeenCalledTimes(attempts);
+            for (const [, options] of service.transform.mock.calls) {
+                expect(options?.timeoutMs).toBe(120_000);
+                expect(options?.signal?.aborted).toBe(false);
+            }
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('times out at the default two-minute deadline and aborts the in-flight transform', async () => {
+        vi.useFakeTimers();
+        try {
+            let seenSignal: AbortSignal | undefined;
+            const service = createService((_prompt, options) => {
+                seenSignal = options?.signal;
+                return new Promise(() => {});
+            });
+            const result = expectDecisionError(
+                new CopilotDecisionBackend(service).evaluate(request, context), 'DECISION_TIMEOUT', 504,
+            );
+
+            await vi.advanceTimersByTimeAsync(119_999);
+            expect(seenSignal?.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+
+            expect((await result).message).toBe('Copilot decision call timed out after 120000ms.');
+            expect(seenSignal?.aborted).toBe(true);
+            expect(service.transform).toHaveBeenCalledTimes(1);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('honors an explicit timeout override with 504 and aborts the in-flight transform', async () => {
         let seenSignal: AbortSignal | undefined;
         const service = createService((_prompt, options) => {
             seenSignal = options?.signal;

@@ -18,7 +18,7 @@ import { parseDecisionOutput } from './decision-validation';
 
 /** Fixed decision model. Intentionally absent from the user-facing model registry. */
 export const COPILOT_DECISION_MODEL = 'gpt-5.4-mini';
-export const COPILOT_DECISION_TIMEOUT_MS = 30_000;
+export const COPILOT_DECISION_TIMEOUT_MS = 120_000;
 /** Initial prompt plus at most one repair attempt. */
 export const COPILOT_DECISION_MAX_ATTEMPTS = 2;
 

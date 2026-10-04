@@ -313,7 +313,7 @@ Always registered; evaluates caller-supplied state without repository reads, ind
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/workspaces/:id/decisions/evaluate` | Noul/Choice/Score evaluation; isolated fixed-model Copilot, no MCP/tools/permissions, 30s timeout/disconnect abort. ≤256 KiB/64 questions, unsafe keys rejected; `typesafe` → `501`, failure/unavailable/timeout → `502`/`503`/`504` |
+| POST | `/api/workspaces/:id/decisions/evaluate` | Noul/Choice/Score evaluation; isolated fixed-model Copilot, no MCP/tools/permissions, 120s timeout per initial/repair attempt and disconnect abort. ≤256 KiB/64 questions, unsafe keys rejected; `typesafe` → `501`, failure/unavailable/timeout → `502`/`503`/`504` |
 
 ## Schedules
 
