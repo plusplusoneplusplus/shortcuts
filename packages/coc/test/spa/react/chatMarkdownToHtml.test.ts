@@ -7,6 +7,7 @@ import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { MarkdownView } from '../../../src/server/spa/client/react/shared/MarkdownView';
 import { chatMarkdownToHtml, toContentHtml, normalizeMarkdownLinkUrls, parseExcalidrawLink, parseCanvasEmbedLink } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
+import { getLocalFileLinkKind } from '../../../src/server/spa/client/react/features/chat/conversation/markdownHtml';
 
 afterEach(() => {
     cleanup();
@@ -740,5 +741,40 @@ describe('chatMarkdownToHtml — canvas embeds', () => {
         expect(matches).toHaveLength(2);
         expect(html).toContain('data-canvas-id="a-1"');
         expect(html).toContain('data-canvas-id="b-2"');
+    });
+});
+
+describe('chatMarkdownToHtml — local file link icons', () => {
+    it('marks local source links with the source icon class', () => {
+        const html = chatMarkdownToHtml('See [file.ts:42](src/file.ts:42).');
+        expect(html).toContain('<a href="src/file.ts:42" class="md-local-file-link md-local-file-link--source">file.ts:42</a>');
+    });
+
+    it('marks local HTML links with the html icon class', () => {
+        const html = chatMarkdownToHtml('Open [report](/tmp/report/index.html#top).');
+        expect(html).toContain('class="md-local-file-link md-local-file-link--html"');
+    });
+
+    it('marks absolute Windows and file:// links as local', () => {
+        expect(chatMarkdownToHtml('[a](C:/repo/a.ts)')).toContain('md-local-file-link--source');
+        expect(chatMarkdownToHtml('[b](file:///tmp/b.htm)')).toContain('md-local-file-link--html');
+    });
+
+    it('leaves external, in-page, and other-scheme links without the icon class', () => {
+        for (const md of ['[x](https://example.com/a.html)', '[x](mailto:a@b.c)', '[x](#section)', '[x](vscode://file/a.ts)']) {
+            expect(chatMarkdownToHtml(md)).not.toContain('md-local-file-link');
+        }
+    });
+});
+
+describe('getLocalFileLinkKind', () => {
+    it('classifies hrefs', () => {
+        expect(getLocalFileLinkKind('src/a.ts')).toBe('source');
+        expect(getLocalFileLinkKind('./page.HTML?x=1')).toBe('html');
+        expect(getLocalFileLinkKind('D:\\repo\\a.ts')).toBe('source');
+        expect(getLocalFileLinkKind('http://x/a.ts')).toBeNull();
+        expect(getLocalFileLinkKind('#L1')).toBeNull();
+        expect(getLocalFileLinkKind('')).toBeNull();
+        expect(getLocalFileLinkKind(undefined)).toBeNull();
     });
 });
