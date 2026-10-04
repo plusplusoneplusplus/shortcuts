@@ -77,6 +77,23 @@ describe('parseMessagingCommand', () => {
         expect(parseMessagingCommand(input)).toEqual(expected);
     });
 
+    it.each(['ask', 'autopilot', 'ralph', 'sentinel'] as const)('parses the %s prefix without changing its body', mode => {
+        expect(parseMessagingCommand(` /${mode.toUpperCase()}  first line\nsecond line `)).toEqual({
+            type: 'chat', args: 'first line\nsecond line', mode,
+        });
+        expect(parseMessagingCommand(`/${mode} [job-in-another-repo] continue`)).toEqual({
+            type: 'chat-explicit', chatId: 'job-in-another-repo', args: 'continue', mode,
+        });
+        expect(parseMessagingCommand(`${mode} is mentioned in ordinary text`)).toEqual({
+            type: 'chat', args: `${mode} is mentioned in ordinary text`, mode: undefined,
+        });
+        expect(parseMessagingCommand(`/${mode}Extra body`)).toEqual({
+            type: 'invalid', args: `/${mode}Extra body`,
+        });
+        expect(parseMessagingCommand(`/${mode}  `)).toEqual({ type: 'invalid', args: `/${mode}` });
+        expect(MESSAGING_HELP_TEXT).toContain(`/${mode} <message>`);
+    });
+
     it('leaves plain chat mode undefined so follow-ups keep the chat mode', () => {
         expect(parseMessagingCommand('keep going')).toHaveProperty('mode', undefined);
         expect(parseMessagingCommand('[abc] keep going')).toHaveProperty('mode', undefined);

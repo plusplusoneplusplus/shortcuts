@@ -203,15 +203,15 @@ remain connector-specific.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
-`compact [instructions]`, `[chatid]`, `/autopilot`, `/ask`; unknown `/word` → "Unknown
+`compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
 command" + the generated `MESSAGING_HELP_TEXT`, never sent to the AI).
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
 `AgentProvidersQuotaCache`) and compact for both routers via a `MessagingSelection`
 adapter; routers keep platform state and transport. `compact` targets the quoted
 WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
 and calls `processes/compact-process.ts` `compactProcess` (shared with
-`POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. `/autopilot <msg>` and `/ask <msg>` set the
-turn's mode; plain text has none, so a follow-up keeps the chat's mode and a new chat runs in
+`POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. `/ask`, `/autopilot`, `/ralph`, and `/sentinel` parse an explicit
+mode; plain text has none, so a follow-up keeps the chat's mode and a new chat runs in
 `sentinel` (the dispatcher) even when `sentinel.enabled` is off — that flag only gates the
 dashboard picker. Older threads bound to Ask chats stay Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued
 first turn lends its queued mode) at every Teams/WhatsApp enqueue site.

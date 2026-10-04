@@ -21,6 +21,8 @@ describe('createMessagingChatModeResolver', () => {
         expect(await resolve(undefined)).toBe('sentinel');
         expect(await resolve(undefined, 'autopilot')).toBe('autopilot');
         expect(await resolve(undefined, 'ask')).toBe('ask');
+        expect(await resolve(undefined, 'ralph')).toBe('ralph');
+        expect(await resolve(undefined, 'sentinel')).toBe('sentinel');
     });
 
     it('keeps an existing ask chat in ask for plain text (only new chats become sentinel)', async () => {
@@ -55,6 +57,9 @@ describe('createMessagingChatModeResolver', () => {
     it('keeps a sentinel chat in sentinel', async () => {
         await addChat('queue_s', 'sentinel');
         expect(await resolve('queue_s', 'ask')).toBe('sentinel');
+        expect(await resolve('queue_s', 'autopilot')).toBe('sentinel');
+        expect(await resolve('queue_s', 'ralph')).toBe('sentinel');
+        expect(await resolve('queue_s', 'sentinel')).toBe('sentinel');
         expect(await resolve('queue_s')).toBe('sentinel');
     });
 });
