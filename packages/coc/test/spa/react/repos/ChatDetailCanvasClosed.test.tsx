@@ -59,6 +59,7 @@ const { mockState } = vi.hoisted(() => ({
         clearAttachments: vi.fn(),
         richTextValue: '',
         richTextSetValueCalls: [] as Array<[string, number?]>,
+        richTextFocusCalls: 0,
         // Captured SSE options so a test can fire onCanvasUpdated.
         sseOpts: null as any,
         // When set, every fetch waits on it — lets a test hold the chat in its
@@ -267,7 +268,7 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
                     mockState.richTextSetValueCalls.push([text, cursorPos]);
                     mockState.richTextValue = text;
                 },
-                focus: () => {},
+                focus: () => { mockState.richTextFocusCalls++; },
             }), []);
             return R.createElement('div', {
                 'data-testid': props['data-testid'] ?? 'activity-chat-input',
@@ -1228,6 +1229,29 @@ describe('ChatDetail — publishing canvas chat actions for the shared panel', (
 
         // Prefilled and focused, never sent.
         expect(mockState.richTextSetValueCalls.at(-1)?.[0]).toBe('Rewrite this section');
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('inserts a draft into an empty composer and focuses it without sending', async () => {
+        renderChat('task-A');
+        await waitFor(() => expect(getUnifiedChatCanvasActions('task-A')).not.toBeNull());
+        mockState.richTextSetValueCalls.length = 0;
+        mockState.richTextFocusCalls = 0;
+        act(() => { getUnifiedChatCanvasActions('task-A')!.insertDraft('Resolve c1'); });
+        expect(mockState.richTextSetValueCalls.at(-1)).toEqual(['Resolve c1', 'Resolve c1'.length]);
+        expect(mockState.richTextFocusCalls).toBeGreaterThan(0);
+        expect(mockState.sendFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('appends a draft after a blank line, keeping what the user typed', async () => {
+        renderChat('task-A');
+        await waitFor(() => expect(getUnifiedChatCanvasActions('task-A')).not.toBeNull());
+        act(() => { fireEvent.input(screen.getByTestId('activity-chat-input'), { target: { textContent: 'my notes\n' } }); });
+        act(() => { getUnifiedChatCanvasActions('task-A')!.insertDraft('Resolve c1'); });
+        expect(mockState.richTextSetValueCalls.at(-1)?.[0]).toBe('my notes\n\nResolve c1');
+        // A second card appends after the first prompt, not over it.
+        act(() => { getUnifiedChatCanvasActions('task-A')!.insertDraft('Resolve c2'); });
+        expect(mockState.richTextSetValueCalls.at(-1)?.[0]).toBe('my notes\n\nResolve c1\n\nResolve c2');
         expect(mockState.sendFollowUp).not.toHaveBeenCalled();
     });
 

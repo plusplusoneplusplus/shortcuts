@@ -12,8 +12,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
 
+import { UnifiedPanelHostProvider, type UnifiedPanelHost } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import {
     clearUnifiedChatCanvasActions,
+    useCurrentChatInsertDraft,
     getUnifiedChatCanvasActions,
     publishUnifiedChatCanvasActions,
     useUnifiedChatCanvasActions,
@@ -24,6 +26,7 @@ import {
 function actions(overrides: Partial<UnifiedChatCanvasActions> = {}): UnifiedChatCanvasActions {
     return {
         askAi: vi.fn(),
+        insertDraft: vi.fn(),
         sendToAi: vi.fn().mockResolvedValue(undefined),
         ...overrides,
     };
@@ -112,5 +115,44 @@ describe('useUnifiedChatCanvasActions', () => {
         publishUnifiedChatCanvasActions('chat-a', actions());
         render(<Probe chatId={null} />);
         expect(screen.getByTestId('probe').getAttribute('data-available')).toBe('no');
+    });
+});
+
+describe('useCurrentChatInsertDraft', () => {
+    function DraftProbe() {
+        const insert = useCurrentChatInsertDraft();
+        return <button data-testid="draft" disabled={!insert} onClick={() => insert?.('prompt')} />;
+    }
+    const hosted = (host: UnifiedPanelHost | null) => (
+        <UnifiedPanelHostProvider host={host}><DraftProbe /></UnifiedPanelHostProvider>
+    );
+    const button = () => screen.getByTestId('draft') as HTMLButtonElement;
+
+    it('targets the chat the panel shows and follows a chat switch', () => {
+        const a = actions();
+        const b = actions();
+        publishUnifiedChatCanvasActions('chat-a', a);
+        publishUnifiedChatCanvasActions('chat-b', b);
+        const { rerender } = render(hosted({ workspaceId: 'group-1', chatId: 'chat-a' }));
+        act(() => { button().click(); });
+        expect(a.insertDraft).toHaveBeenCalledWith('prompt');
+        rerender(hosted({ workspaceId: 'group-1', chatId: 'chat-b' }));
+        act(() => { button().click(); });
+        expect(b.insertDraft).toHaveBeenCalledTimes(1);
+        expect(a.insertDraft).toHaveBeenCalledTimes(1);
+    });
+
+    it('is unavailable without a panel, a shown chat, or a mounted chat', () => {
+        publishUnifiedChatCanvasActions('chat-a', actions());
+        const { rerender } = render(hosted(null));
+        expect(button().disabled).toBe(true);
+        rerender(hosted({ workspaceId: 'ws-a', chatId: null }));
+        expect(button().disabled).toBe(true);
+        rerender(hosted({ workspaceId: 'ws-a', chatId: 'chat-unmounted' }));
+        expect(button().disabled).toBe(true);
+        rerender(hosted({ workspaceId: 'ws-a', chatId: 'chat-a' }));
+        expect(button().disabled).toBe(false);
+        act(() => { withdrawUnifiedChatCanvasActions('chat-a'); });
+        expect(button().disabled).toBe(true);
     });
 });

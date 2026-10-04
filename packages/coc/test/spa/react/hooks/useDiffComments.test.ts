@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useDiffComments } from '../../../../src/server/spa/client/react/features/git/hooks/useDiffComments';
+import { formatDiffCommentPrompt } from '../../../../src/server/spa/client/react/utils/diffCommentPrompt';
 import type { DiffCommentContext, DiffCommentSelection, DiffComment } from '../../../../src/server/spa/client/comments/diff-comment-types';
 
 // ============================================================================
@@ -520,6 +521,23 @@ describe('useDiffComments', () => {
         expect(writeTextMock).toHaveBeenCalledOnce();
         const prompt: string = writeTextMock.mock.calls[0][0];
         expect(prompt).toContain('working tree changes');
+    });
+
+    it('copyAllCommentsAsPrompt for one comment matches the single-comment card prompt', async () => {
+        const writeTextMock = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { clipboard: { writeText: writeTextMock } });
+
+        const only = makeComment({ id: 'c1', context: mockContextA });
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ comments: [only] }) });
+
+        const { result } = renderHook(() => useDiffComments('ws-1', mockContextA));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+
+        act(() => {
+            result.current.copyAllCommentsAsPrompt();
+        });
+
+        expect(writeTextMock.mock.calls[0][0]).toBe(formatDiffCommentPrompt(only));
     });
 
     // ── 15. updateComment updates the comment in state ─────────────────

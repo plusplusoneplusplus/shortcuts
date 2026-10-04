@@ -5,7 +5,7 @@
  * with tooltip titles for discoverability.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn, Button } from '../../ui';
 import { CommentReply } from './CommentReply';
 import { MarkdownView } from '../../shared/MarkdownView';
@@ -32,6 +32,13 @@ export interface CommentCardProps {
     isResolving?: boolean;
     isDeleting?: boolean;
     showFilePath?: boolean;
+    /** Builds this comment's resolve prompt; when set, the card offers Copy resolve prompt. */
+    getResolvePrompt?: () => string;
+    /**
+     * Drafts the resolve prompt into the current chat's composer. With
+     * `getResolvePrompt` set and this unset, Send to current chat shows disabled.
+     */
+    onSendResolvePrompt?: (prompt: string) => void;
 }
 
 export function CommentCard({
@@ -49,12 +56,31 @@ export function CommentCard({
     isResolving,
     isDeleting,
     showFilePath = false,
+    getResolvePrompt,
+    onSendResolvePrompt,
 }: CommentCardProps) {
     const [editing, setEditing] = useState(false);
     const [editText, setEditText] = useState(comment.comment);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [showAllReplies, setShowAllReplies] = useState(false);
     const [aiExpanded, setAiExpanded] = useState(false);
+    const [promptFeedback, setPromptFeedback] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!promptFeedback) return;
+        const timer = setTimeout(() => setPromptFeedback(null), 2000);
+        return () => clearTimeout(timer);
+    }, [promptFeedback]);
+
+    const handleCopyPrompt = async () => {
+        if (!getResolvePrompt) return;
+        try {
+            await navigator.clipboard.writeText(getResolvePrompt());
+            setPromptFeedback('Prompt copied');
+        } catch {
+            setPromptFeedback('Copy failed');
+        }
+    };
 
     const isResolved = comment.status === 'resolved';
     const replies = comment.replies || [];
@@ -202,6 +228,34 @@ export function CommentCard({
                     </>
                 ) : (
                     <button className={ACTION_BTN} onClick={() => setConfirmDelete(true)} disabled={isDeleting} title="Delete" aria-label="Delete">🗑️</button>
+                )}
+                {getResolvePrompt && (
+                    <button
+                        className={ACTION_BTN}
+                        onClick={() => { void handleCopyPrompt(); }}
+                        title="Copy resolve prompt"
+                        aria-label="Copy resolve prompt"
+                        data-testid="comment-copy-prompt"
+                    >
+                        📋
+                    </button>
+                )}
+                {getResolvePrompt && (
+                    <button
+                        className={`${ACTION_BTN} disabled:opacity-40 disabled:cursor-not-allowed`}
+                        onClick={() => onSendResolvePrompt?.(getResolvePrompt())}
+                        disabled={!onSendResolvePrompt}
+                        title={onSendResolvePrompt ? 'Send to current chat' : 'Send to current chat (no chat open)'}
+                        aria-label="Send to current chat"
+                        data-testid="comment-send-prompt"
+                    >
+                        💬
+                    </button>
+                )}
+                {promptFeedback && (
+                    <span className="ml-1 text-[10px] text-[#848484]" role="status" data-testid="comment-prompt-feedback">
+                        {promptFeedback}
+                    </span>
                 )}
             </div>
 

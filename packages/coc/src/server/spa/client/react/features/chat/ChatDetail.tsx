@@ -1591,7 +1591,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
 
     // A canvas tab in the shared right panel keeps two chat-directed actions:
     // "Ask AI" prefills this chat's composer with a selection prompt (never
-    // sending), and "Send comments" submits through the normal follow-up path,
+    // sending; diff comment cards append to the draft via `insertDraft`), and
+    // "Send comments" submits through the normal follow-up path,
     // so a busy AI receives the batch at the next turn boundary. The tab lives
     // outside this subtree and may be showing THIS chat while another one is
     // selected, so the handlers are published under this chat's id instead of
@@ -1604,6 +1605,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         askAi: (prompt: string) => {
             canvasChatActionsRef.current.setFollowUpInput(prompt);
             richTextRef.current?.setValue(prompt, prompt.length);
+            richTextRef.current?.focus();
+        },
+        insertDraft: (text: string) => {
+            const draft = followUpInputRef.current;
+            const next = draft.trim() ? `${draft.trimEnd()}\n\n${text}` : text;
+            followUpInputRef.current = next;
+            canvasChatActionsRef.current.setFollowUpInput(next);
+            richTextRef.current?.setValue(next, next.length);
             richTextRef.current?.focus();
         },
         sendToAi: async (message: string) => {

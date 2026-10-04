@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { CommentCard } from '../../../../src/server/spa/client/react/tasks/comments/CommentCard';
 import type { TaskComment } from '../../../../src/server/spa/client/comments/task-comments-types';
 
@@ -493,5 +493,87 @@ describe('CommentCard', () => {
             expect(screen.getByLabelText('Resolve')).toHaveProperty('disabled', false);
             expect(screen.getByLabelText('Delete')).toHaveProperty('disabled', false);
         });
+    });
+});
+
+describe('CommentCard — copy resolve prompt', () => {
+    const renderCard = (getResolvePrompt?: () => string) => render(
+        <CommentCard
+            comment={makeComment()}
+            onResolve={noop} onUnresolve={noop} onEdit={noop}
+            onDelete={noop} onAskAI={noop} onClick={noop}
+            getResolvePrompt={getResolvePrompt}
+        />
+    );
+
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it('hides the action when no prompt builder is given', () => {
+        renderCard();
+        expect(screen.queryByTestId('comment-copy-prompt')).toBeNull();
+    });
+
+    it('is a labelled button and copies the prompt with success feedback', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal('navigator', { clipboard: { writeText } });
+        const onClick = vi.fn();
+        render(
+            <CommentCard
+                comment={makeComment()}
+                onResolve={noop} onUnresolve={noop} onEdit={noop}
+                onDelete={noop} onAskAI={noop} onClick={onClick}
+                getResolvePrompt={() => 'the prompt'}
+            />
+        );
+        const button = screen.getByRole('button', { name: 'Copy resolve prompt' });
+        expect(button.getAttribute('title')).toBe('Copy resolve prompt');
+        await act(async () => { fireEvent.click(button); });
+        expect(writeText).toHaveBeenCalledWith('the prompt');
+        expect(screen.getByRole('status').textContent).toBe('Prompt copied');
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('reports a clipboard failure', async () => {
+        vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+        renderCard(() => 'the prompt');
+        await act(async () => { fireEvent.click(screen.getByTestId('comment-copy-prompt')); });
+        expect(screen.getByRole('status').textContent).toBe('Copy failed');
+    });
+});
+
+describe('CommentCard — send resolve prompt to current chat', () => {
+    const renderCard = (props: { getResolvePrompt?: () => string; onSendResolvePrompt?: (p: string) => void; onClick?: () => void }) => render(
+        <CommentCard
+            comment={makeComment()}
+            onResolve={noop} onUnresolve={noop} onEdit={noop}
+            onDelete={noop} onAskAI={noop} onClick={props.onClick ?? noop}
+            getResolvePrompt={props.getResolvePrompt}
+            onSendResolvePrompt={props.onSendResolvePrompt}
+        />
+    );
+
+    it('hides the action when no prompt builder is given', () => {
+        renderCard({ onSendResolvePrompt: vi.fn() });
+        expect(screen.queryByTestId('comment-send-prompt')).toBeNull();
+    });
+
+    it('hands the prompt to the current chat without touching the card', () => {
+        const onSend = vi.fn();
+        const onClick = vi.fn();
+        renderCard({ getResolvePrompt: () => 'the prompt', onSendResolvePrompt: onSend, onClick });
+        const button = screen.getByRole('button', { name: 'Send to current chat' }) as HTMLButtonElement;
+        expect(button.disabled).toBe(false);
+        expect(button.getAttribute('title')).toBe('Send to current chat');
+        fireEvent.click(button);
+        expect(onSend).toHaveBeenCalledWith('the prompt');
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('is disabled with an explanatory tooltip when no chat is available', () => {
+        renderCard({ getResolvePrompt: () => 'the prompt' });
+        const button = screen.getByRole('button', { name: 'Send to current chat' }) as HTMLButtonElement;
+        expect(button.disabled).toBe(true);
+        expect(button.getAttribute('title')).toBe('Send to current chat (no chat open)');
+        expect((screen.getByRole('button', { name: 'Copy resolve prompt' }) as HTMLButtonElement).disabled).toBe(false);
     });
 });

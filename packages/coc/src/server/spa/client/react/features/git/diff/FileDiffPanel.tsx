@@ -22,6 +22,7 @@ import { useDiffFindShortcut } from './useDiffFindShortcut';
 import { useDiffComments } from '../hooks/useDiffComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
 import { CommentCard } from '../../../tasks/comments/CommentCard';
+import { formatDiffCommentPrompt } from '../../../utils/diffCommentPrompt';
 import { CommentPopover } from '../../../tasks/comments/CommentPopover';
 import { InlineCommentPopup } from '../../../tasks/comments/InlineCommentPopup';
 import { useQueue } from '../../../contexts/QueueContext';
@@ -45,6 +46,7 @@ import type { DiffEditorFactory } from './monacoDiffEditorAdapter';
 import { resolveDiffEngineSelection, type DiffContentLoadState, type DiffEngineResolution } from './diffEngineResolution';
 import { DiffEngineFallbackBanner } from './DiffEngineFallbackBanner';
 import { useUnifiedPanelHost } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { useCurrentChatInsertDraft } from '../../repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { openUnifiedPanelTab } from '../../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { explorerFileTabInput } from '../../repo-detail/unified-right-panel/unifiedExplorerFiles';
 
@@ -404,6 +406,7 @@ export function FileDiffPanel({
         setTimeout(() => el.classList.remove('ring-2', 'ring-yellow-400'), 1500);
     }, [showEditor]);
 
+    const insertDraftIntoCurrentChat = useCurrentChatInsertDraft();
     const renderCommentThread = useCallback((comment: DiffComment) => (
         <CommentCard
             comment={comment}
@@ -419,8 +422,10 @@ export function FileDiffPanel({
             onClearAiError={() => clearAiError(comment.id)}
             isResolving={resolvingIds.has(comment.id)}
             isDeleting={deletingIds.has(comment.id)}
+            getResolvePrompt={() => formatDiffCommentPrompt(comment)}
+            onSendResolvePrompt={insertDraftIntoCurrentChat}
         />
-    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, handleFixWithAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds]);
+    ), [resolveComment, unresolveComment, updateComment, deleteComment, handleAskAI, handleFixWithAI, aiLoadingIds, aiErrors, clearAiError, resolvingIds, deletingIds, insertDraftIntoCurrentChat]);
 
     // ── Ctrl/Cmd+click the path: open the file in its own right-panel tab ──
     const panelHost = useUnifiedPanelHost();

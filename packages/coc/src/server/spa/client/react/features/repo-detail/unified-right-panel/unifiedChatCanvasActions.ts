@@ -24,11 +24,17 @@
  */
 
 import { useCallback, useSyncExternalStore } from 'react';
+import { useUnifiedPanelHost } from './unifiedPanelHost';
 
 /** What a mounted chat offers a canvas tab that belongs to it. */
 export interface UnifiedChatCanvasActions {
     /** Prefill this chat's composer with a prompt and focus it. Never sends. */
     askAi: (prompt: string) => void;
+    /**
+     * Add text to this chat's composer draft and focus it. Never sends. An
+     * existing draft is kept and the text follows it after a blank line.
+     */
+    insertDraft: (text: string) => void;
     /** Send a message through this chat's normal follow-up path. */
     sendToAi: (message: string) => Promise<void>;
 }
@@ -110,4 +116,14 @@ export function useUnifiedChatCanvasActions(chatId: string | null): UnifiedChatC
         useCallback(() => (chatId ? entries.get(chatId) ?? null : null), [chatId]),
         () => null,
     );
+}
+
+/**
+ * Draft text into the chat the hosting panel is showing right now — the chat
+ * beside a diff, not the chat a resource came from. Undefined when no panel
+ * hosts this subtree, it shows no chat, or that chat is not mounted.
+ */
+export function useCurrentChatInsertDraft(): ((text: string) => void) | undefined {
+    const host = useUnifiedPanelHost();
+    return useUnifiedChatCanvasActions(host?.chatId ?? null)?.insertDraft;
 }
