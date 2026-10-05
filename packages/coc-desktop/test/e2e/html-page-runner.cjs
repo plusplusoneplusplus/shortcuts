@@ -40,13 +40,14 @@ const brokenPath = path.join(fixtureDir, 'broken.html');
 fs.writeFileSync(path.join(fixtureDir, 'style.css'), 'body { background-color: rgb(1, 2, 3); }\n');
 fs.writeFileSync(indexPath, '<!doctype html><html><head><link rel="stylesheet" href="style.css"></head>'
     + '<body><h1 id="title">Fixture</h1></body></html>');
-fs.writeFileSync(otherPath, '<!doctype html><html><body><h1>Other</h1></body></html>');
+fs.writeFileSync(otherPath, '<!doctype html><html><body><h1>Other</h1><div style="height:3000px"></div></body></html>');
 fs.writeFileSync(brokenPath, '<!doctype html><html><body>will be deleted</body></html>');
 
 /** Stand-in SPA: a right-panel placeholder the page view should cover. */
 const spaHtml = '<!doctype html><html><body style="margin:0">'
     + '<div id="slot" style="position:absolute;left:400px;top:50px;width:300px;height:200px"></div>'
     + '<script>window.__states = []; window.cocDesktop.htmlPage.onState(function (s) { window.__states.push(s); });'
+    + 'window.__browserStates = []; window.cocDesktop.browser.onState(function (s) { window.__browserStates.push(s); });'
     + 'window.__place = function (id) { var r = document.getElementById("slot").getBoundingClientRect();'
     + ' window.cocDesktop.htmlPage.setBounds(id, { x: r.x, y: r.y, width: r.width, height: r.height }); };'
     + '</script></body></html>';
@@ -183,7 +184,7 @@ app.whenReady().then(async () => {
     await pageWc.executeJavaScript(`window.open('https://example.com/popup'); 1`);
     await sleep(300);
     const afterExternalUrl = pageWc.getURL();
-    await pageWc.executeJavaScript(`location.href = 'other.html'`);
+    await pageWc.executeJavaScript(`location.href = 'other.html'`, true); // a user-gesture click keeps index.html in back history
     await sleep(800);
     emit('navigate', {
         externalCalls: externalCalls.slice(),
@@ -196,6 +197,39 @@ app.whenReady().then(async () => {
     await spa(`window.cocDesktop.htmlPage.openExternal('p1')`);
     await sleep(200);
     emit('open-external', { last: externalCalls[externalCalls.length - 1] });
+
+    // 7b. A full SPA reload keeps the preview (page, history, scroll) for the
+    //     reloaded SPA to reattach, while a url browser view closes.
+    await pageWc.executeJavaScript('window.scrollTo(0, 400); window.__inPage = "kept"; 1');
+    await spa(`window.cocDesktop.browser.open('site2', ${JSON.stringify(siteUrl)}, 'workspace-a')`);
+    await sleep(800);
+    const siteWc = main.contentView.children.find((v) => v !== view && v.webContents.getURL().startsWith('http:')).webContents;
+    const pageWcId = pageWc.id;
+    main.webContents.reload();
+    await new Promise((resolve) => main.webContents.once('did-finish-load', resolve));
+    await sleep(500);
+    const hiddenAfterReload = !view.getVisible();
+    const viewsAfterReload = main.contentView.children.length;
+    const reattach = await spa(`window.cocDesktop.htmlPage.open('p1', ${JSON.stringify(indexPath)})`);
+    await spa(`window.__place('p1')`);
+    await sleep(300);
+    const replayedStates = await spa('window.__states');
+    const replayedBrowser = (await spa('window.__browserStates')).filter((s) => s.viewId === 'html-page:p1');
+    const kept = await pageWc.executeJavaScript('({ scrollY: window.scrollY, inPage: window.__inPage, url: location.href })');
+    await spa(`window.cocDesktop.browser.nav('html-page:p1', 'back')`);
+    await sleep(800);
+    emit('reload', {
+        hiddenAfterReload,
+        viewsAfterReload,
+        siteClosed: siteWc.isDestroyed(),
+        reattach,
+        replayed: replayedStates.map((s) => s.status),
+        canGoBack: replayedBrowser.length > 0 && replayedBrowser[0].canGoBack,
+        sameView: !pageWc.isDestroyed() && pageWc.id === pageWcId,
+        visible: view.getVisible(),
+        ...kept,
+        afterBackUrl: pageWc.getURL(),
+    });
 
     // 8. A load failure is reported so the tab can show its error state.
     await spa(`window.cocDesktop.htmlPage.open('p2', ${JSON.stringify(brokenPath)})`);

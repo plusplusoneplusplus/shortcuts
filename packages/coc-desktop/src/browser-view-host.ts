@@ -29,9 +29,10 @@ function wireOwner(window: BrowserWindow): void {
     const id = window.webContents.id;
     if (owners.has(id)) { return; }
     owners.set(id, window);
-    const close = () => { void manager?.closeOwner(id).catch(error => console.error('[coc-desktop] Browser cleanup failed:', error)); };
-    window.webContents.on('did-navigate', close);
-    window.once('closed', () => { close(); owners.delete(id); });
+    const failed = (error: unknown) => console.error('[coc-desktop] Browser cleanup failed:', error);
+    // A full SPA reload keeps file previews for the reloaded SPA to reattach; closing the window ends every view.
+    window.webContents.on('did-navigate', () => { void manager?.reloadOwner(id).catch(failed); });
+    window.once('closed', () => { void manager?.closeOwner(id).catch(failed); owners.delete(id); });
 }
 
 export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {

@@ -165,15 +165,27 @@ describe('unifiedPanelTabsModel — ownership', () => {
             expect(activeTabId(second, CHAT_2)).toBe(first.workspaceTabs[0].id);
         });
 
-        it('does not restore a native view or a dangling selection from storage', () => {
+        it('round-trips a page tab with its view id and selection so a reload can reattach it', () => {
             const state = open(EMPTY_UNIFIED_PANEL, {
                 kind: 'html-page', resourceId: path, label: 'index.html',
                 chatId: CHAT_1, htmlPageId: 'view-1',
             });
-            const serialized = serializeUnifiedPanelState(state);
-            expect(serialized).not.toContain('html-page');
-            expect(serialized).not.toContain('view-1');
-            expect(parseUnifiedPanelState(serialized)).toEqual(EMPTY_UNIFIED_PANEL);
+            const restored = parseUnifiedPanelState(serializeUnifiedPanelState(state));
+            expect(restored.workspaceTabs).toEqual(state.workspaceTabs.map(({ revealNonce: _nonce, ...tab }) => tab));
+            expect(restored.workspaceTabs[0].htmlPageId).toBe('view-1');
+            expect(activeTabId(restored, CHAT_1)).toBe(state.workspaceTabs[0].id);
+        });
+
+        it('drops a stored page tab without a view id', () => {
+            const state = open(EMPTY_UNIFIED_PANEL, {
+                kind: 'html-page', resourceId: path, label: 'index.html',
+                chatId: CHAT_1, htmlPageId: 'view-1',
+            });
+            const raw = JSON.parse(serializeUnifiedPanelState(state)) as { workspaceTabs: Record<string, unknown>[] };
+            delete raw.workspaceTabs[0].htmlPageId;
+            expect(parseUnifiedPanelState(JSON.stringify(raw)).workspaceTabs).toEqual([]);
+            raw.workspaceTabs[0].htmlPageId = '';
+            expect(parseUnifiedPanelState(JSON.stringify(raw)).workspaceTabs).toEqual([]);
         });
     });
 

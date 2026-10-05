@@ -44,7 +44,7 @@ it.
 resource id is the opaque capability the owning member's host issued, it has no
 entry in the "+" menu, and it is never persisted. `html-page` carries an absolute
 local path and an Electron view id, dedupes across chats in its panel scope, and is
-also excluded from storage. `paste` descriptors use `unifiedPasteTabs.ts` for a
+persisted with its view id so a reload reattaches the live view. `paste` descriptors use `unifiedPasteTabs.ts` for a
 stable content hash and character-count title; matching content dedupes within
 the same chat and concrete owner. Paste descriptors and active selections are
 ephemeral and have no `+` menu action. `openUnifiedPasteTab` captures raw text
@@ -412,8 +412,9 @@ takes the opens — not only when its own `explorerEditorTabs` flag is on.
 ## Persistence and migration (codec v4)
 
 The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION = 4`). It persists
-concrete owner routes, preview bits, and panel-local Notes selection. Native
-`html-page`, `browser`, `paste`, and external capability tabs stay in memory only; their active
+concrete owner routes, preview bits, panel-local Notes selection, and each
+`html-page` tab's `htmlPageId` (a restored descriptor without one is dropped).
+Native `browser`, `paste`, and external capability tabs stay in memory only; their active
 selection is omitted from storage too. Older supported payloads retain their
 stable bare-workspace ids when a concrete route is absent. An old `explorer`
 descriptor opens the tree column during `migrateUnifiedPanelState` rather than
@@ -520,13 +521,15 @@ picks the page API: the merged `cocDesktop.browser` `file` source (view
 `file`, else the older `cocDesktop.htmlPage` (no history, so Back/Forward stay
 disabled). The tab updates bounds on resize, scroll,
 and layout changes, hides while inactive/collapsed or covered by DOM content,
-and closes the view on tab close or unmount. Its toolbar shows the file path
+and closes the view on tab close or unmount (a full page reload runs no unmount). Its toolbar shows the file path
 read-only, goes back/forward, reloads
 the page, opens the file in the system browser, or requests the read-only source
 canvas (`forceSourceViewer` bypasses editable unified file tabs). Load errors
-surface inline with the same source fallback. The view is ephemeral: the tab
-model omits it from serialized state, and the main process tears it down with
-the window. `file-path-preview.ts` calls the owning local server's
+surface inline with the same source fallback. The view survives a full SPA
+reload: the main process hides it on reload, the restored tab reopens the same
+`htmlPageId`, and the desktop replays its page, history and scroll. Views not
+reopened before the next reload, and every view when the window closes, are
+destroyed. `file-path-preview.ts` calls the owning local server's
 `files/html/resolve` route before opening the native view, so paths outside a repo
 can open only from the server's canonical HTML allowlist and a remote path can
 never be handed to the local Electron process.
