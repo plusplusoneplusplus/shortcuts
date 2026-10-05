@@ -15,9 +15,11 @@ import { popOutOpened } from '../../../utils/popOutWindow';
 export interface CommitStripProps {
     commits: DetectedCommit[];
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
 }
 
-export function CommitStrip({ commits, workspaceId }: CommitStripProps) {
+export function CommitStrip({ commits, workspaceId, sourceSelectionId, sourceBaseUrl }: CommitStripProps) {
     const { markPoppedOut } = useGitReviewPopOut();
 
     if (commits.length === 0) return null;
@@ -34,7 +36,9 @@ export function CommitStrip({ commits, workspaceId }: CommitStripProps) {
         e.stopPropagation();
         if (!workspaceId) return;
         const hash = commit.fullHash || commit.shortHash;
-        const url = buildGitReviewPopOutUrl(workspaceId, hash, lookupCloneBaseUrl(workspaceId));
+        const cloneBaseUrl = sourceBaseUrl ?? (sourceSelectionId === workspaceId
+            ? undefined : lookupCloneBaseUrl(sourceSelectionId ?? workspaceId));
+        const url = buildGitReviewPopOutUrl(workspaceId, hash, cloneBaseUrl, sourceSelectionId);
         const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
         if (popOutOpened(win)) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));

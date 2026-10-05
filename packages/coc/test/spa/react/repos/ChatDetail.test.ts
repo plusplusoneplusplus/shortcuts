@@ -1010,10 +1010,7 @@ describe('ChatDetail', () => {
         });
 
         it('ConversationTurnBubble render includes both taskId and wsId props', () => {
-            const bubbleCall = CONVERSATION_AREA_SOURCE.substring(
-                CONVERSATION_AREA_SOURCE.indexOf('<ConversationTurnBubble'),
-                CONVERSATION_AREA_SOURCE.indexOf('<ConversationTurnBubble') + 400,
-            );
+            const bubbleCall = CONVERSATION_AREA_SOURCE.match(/<ConversationTurnBubble[\s\S]*?\/>/)![0];
             expect(bubbleCall).toContain('taskId={taskId}');
             expect(bubbleCall).toContain('wsId={wsId}');
         });

@@ -2788,6 +2788,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     ) : (
                     <>
                     <ConversationArea
+                        sourceSelectionId={sourceSelectionId}
+                        sourceBaseUrl={sourceBaseUrl}
                         loading={loading}
                         error={error}
                         turns={turns}

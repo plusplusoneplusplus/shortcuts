@@ -88,6 +88,8 @@ export interface WhisperCollapsedGroupProps {
     isStreaming?: boolean;
     groupSingleLineMessages: boolean;
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
     renderToolTree: (toolId: string, depth: number) => React.ReactNode;
     /**
      * Opens the transient read-only diff panel for a clicked changed file, or
@@ -537,13 +539,15 @@ function MemoryHoverSpan({ text, actions, testId }: MemoryHoverSpanProps) {
 interface CommitHoverPopoverProps {
     commits: DetectedCommit[];
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
     anchorRef: React.RefObject<HTMLSpanElement | null>;
     popoverRef: React.RefObject<HTMLDivElement | null>;
     onMouseEnter: () => void;
     onMouseLeave: () => void;
 }
 
-function CommitHoverPopover({ commits, workspaceId, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: CommitHoverPopoverProps) {
+function CommitHoverPopover({ commits, workspaceId, sourceSelectionId, sourceBaseUrl, anchorRef, popoverRef, onMouseEnter, onMouseLeave }: CommitHoverPopoverProps) {
     const { markPoppedOut } = useGitReviewPopOut();
 
     if (!anchorRef.current) return null;
@@ -554,7 +558,9 @@ function CommitHoverPopover({ commits, workspaceId, anchorRef, popoverRef, onMou
         e.stopPropagation();
         if (!workspaceId) return;
         const hash = commit.fullHash || commit.shortHash;
-        const url = buildGitReviewPopOutUrl(workspaceId, hash, lookupCloneBaseUrl(workspaceId));
+        const cloneBaseUrl = sourceBaseUrl ?? (sourceSelectionId === workspaceId
+            ? undefined : lookupCloneBaseUrl(sourceSelectionId ?? workspaceId));
+        const url = buildGitReviewPopOutUrl(workspaceId, hash, cloneBaseUrl, sourceSelectionId);
         const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
         if (popOutOpened(win)) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));
@@ -813,16 +819,18 @@ interface CommitHoverSpanProps {
     text: string;
     commits: DetectedCommit[];
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
     testId?: string;
 }
 
-function CommitHoverSpan({ text, commits, workspaceId, testId }: CommitHoverSpanProps) {
+function CommitHoverSpan({ text, commits, workspaceId, sourceSelectionId, sourceBaseUrl, testId }: CommitHoverSpanProps) {
     return (
         <HoverSummarySpan
             text={text}
             testId={testId}
             hasContent={commits.length > 0}
-            renderPopover={(anchor) => <CommitHoverPopover commits={commits} workspaceId={workspaceId} {...anchor} />}
+            renderPopover={(anchor) => <CommitHoverPopover commits={commits} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} {...anchor} />}
         />
     );
 }
@@ -1025,6 +1033,8 @@ export function WhisperCollapsedGroup({
     isStreaming,
     groupSingleLineMessages,
     workspaceId,
+    sourceSelectionId,
+    sourceBaseUrl,
     renderToolTree,
     onOpenFileDiff,
 }: WhisperCollapsedGroupProps) {
@@ -1081,15 +1091,15 @@ export function WhisperCollapsedGroup({
         if (idx > 0) headerElements.push(<span key={`sep-${idx}`}> · </span>);
         if (part.kind === 'commit' && summary.commits && summary.commits.length > 0) {
             headerElements.push(
-                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.commits} workspaceId={workspaceId} testId="whisper-commit-hover" />,
+                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.commits} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} testId="whisper-commit-hover" />,
             );
         } else if (part.kind === 'amend' && summary.amendCommits && summary.amendCommits.length > 0) {
             headerElements.push(
-                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.amendCommits} workspaceId={workspaceId} testId="whisper-amend-hover" />,
+                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.amendCommits} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} testId="whisper-amend-hover" />,
             );
         } else if (part.kind === 'fixup' && summary.fixupCommits && summary.fixupCommits.length > 0) {
             headerElements.push(
-                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.fixupCommits} workspaceId={workspaceId} testId="whisper-fixup-hover" />,
+                <CommitHoverSpan key={`part-${idx}`} text={part.text} commits={summary.fixupCommits} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} testId="whisper-fixup-hover" />,
             );
         } else if (part.kind === 'pr' && summary.pullRequests && summary.pullRequests.length > 0) {
             headerElements.push(
@@ -1196,7 +1206,7 @@ export function WhisperCollapsedGroup({
                                             nodes.push(
                                                 <React.Fragment key={chunk.key + '-with-commit'}>
                                                     {toolNode}
-                                                    <CommitStrip commits={commits} workspaceId={workspaceId} />
+                                                    <CommitStrip commits={commits} workspaceId={workspaceId} sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} />
                                                 </React.Fragment>
                                             );
                                             continue;

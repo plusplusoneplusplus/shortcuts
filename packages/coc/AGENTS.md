@@ -102,6 +102,8 @@ references before editing. Paths are package-relative.
   ownership changes with that destination while validation keeps the raw workspace id.
   Chat pop-out URLs preserve sourceSelectionId through both header and Activity-row
   openers; their shell forwards it to ChatDetail and registers its concrete clone key.
+  ConversationArea and normal/pinned turn bubbles preserve that source owner and
+  optional endpoint through commit-strip and whisper-popover Git review openers.
   Working-tree untracked previews pass the concrete owner into PreviewPane for
   selection context and file I/O; local owners use an explicit null route.
   Fallback seeds retain that destination, and drains preserve other owners’ items.

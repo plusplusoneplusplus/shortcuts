@@ -8,6 +8,13 @@ tool calls. Chat list and lens: [chat.md](chat.md). Composer:
 
 ### ConversationTurnBubble
 
+Git review openers retain the chat's concrete source owner and optional endpoint.
+`ChatDetail` threads `sourceSelectionId` and `sourceBaseUrl` through
+`ConversationArea`, pinned and normal turn bubbles, commit strips and whisper
+commit popovers. Review URLs keep the owner separate from raw workspace metadata;
+explicit endpoints take precedence, and explicit local owners stay on the page
+origin.
+
 Persisted turn `provider` and `segmentId` attribution flows unchanged through history
 loading and SSE snapshots. `ConversationTurnBubble` prefers the turn provider for its
 assistant avatar, provider label, and model metadata, falling back to the active

@@ -89,6 +89,8 @@ interface ConversationTurnBubbleProps {
     processType?: string;
     /** Workspace ID — stamped as data-ws-id so file-path click handlers can route to the right workspace. */
     wsId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
     /** Index of this turn in the conversation, emitted as data-turn-index for snapshot selection. */
     turnIndex?: number;
     /** Called when user selects "Attach as context" from the right-click menu. */
@@ -1233,7 +1235,7 @@ function InterruptedTurnBanner({ reason, onContinue, action }: { reason?: string
     );
 }
 
-export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, sourceSelectionId, sourceBaseUrl, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
     const isUser = turn.role === 'user';
     const assistantProvider = turn.provider ?? provider;
     const assistantProviderLabel = getProviderLabel(assistantProvider);
@@ -1981,7 +1983,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                         nodes.push(
                                             <React.Fragment key={chunk.key + '-with-commit'}>
                                                 {toolNode}
-                                                <CommitStrip commits={commits} workspaceId={wsId} />
+                                                <CommitStrip commits={commits} workspaceId={wsId} sourceSelectionId={sourceSelectionId} sourceBaseUrl={sourceBaseUrl} />
                                             </React.Fragment>
                                         );
                                         continue;
@@ -2014,6 +2016,8 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                                 const wg = chunk as unknown as WhisperGroupChunk;
                                 nodes.push(
                                     <WhisperCollapsedGroup
+                                        sourceSelectionId={sourceSelectionId}
+                                        sourceBaseUrl={sourceBaseUrl}
                                         key={wg.key}
                                         precedingChunks={wg.precedingChunks}
                                         summary={wg.summary}
