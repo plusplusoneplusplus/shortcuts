@@ -4,8 +4,8 @@
  * Owns settings sub-tab parsing, tab labels/icons/descriptions, sidebar nav
  * group construction, active-key derivation, breadcrumb group, page
  * description, and mobile <select> option shaping. Everything here is a pure
- * function of its inputs — container mode and `serversEnabled` are passed in
- * explicitly rather than read from module-level globals — so the routing
+ * function of its inputs — container mode, `serversEnabled`, and the desktop
+ * shell flag are passed in explicitly rather than read from module-level globals — so the routing
  * policy can be unit-tested without mounting `AdminPanel`.
  */
 import type { AdminSubTab, DashboardTab } from '../types/dashboard';
@@ -205,16 +205,20 @@ export function toolNavItem(tab: DashboardTab): AdminNavItem {
 export interface AdminNavContext {
     isContainer: boolean;
     serversEnabled: boolean;
+    /** True inside the Electron desktop shell; the Browser page is desktop-only. */
+    isDesktop: boolean;
 }
 
 /**
  * Builds the sidebar nav groups for the given runtime context. The Servers row
  * is gated by the dashboard runtime config (independent of the editable
  * `serversEnabled` Features form state), and the Agents/Messaging placement
- * depends on container mode. Empty groups are dropped.
+ * depends on container mode. The Browser row only shows in the desktop shell.
+ * Empty groups are dropped.
  */
-export function buildAdminNavGroups({ isContainer, serversEnabled }: AdminNavContext): AdminNavGroup[] {
+export function buildAdminNavGroups({ isContainer, serversEnabled, isDesktop }: AdminNavContext): AdminNavGroup[] {
     const serversNavItems = serversEnabled ? [toolNavItem('servers')] : [];
+    const browserNavItems = isDesktop ? [adminNavItem('browser', isContainer)] : [];
     // Container mode keeps WhatsApp + Teams in one Messaging section; normal
     // CoC gives each connector its own row.
     const messagingNavItems = isContainer
@@ -235,7 +239,7 @@ export function buildAdminNavGroups({ isContainer, serversEnabled }: AdminNavCon
                     action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
                 },
                 ...nonContainerAgentsNavItem,
-                adminNavItem('browser', isContainer),
+                ...browserNavItems,
                 ...serversNavItems,
             ],
         },

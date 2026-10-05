@@ -220,6 +220,13 @@ export function AdminPanel() {
     // controls there until a desktop-side supervisor is wired up. The plumbing
     // (handleRestart / admin.restart) stays intact for the web/CLI-served path.
     const isDesktop = isDesktopShell();
+    // The Browser page is desktop-only. A `#admin/browser` deep link in the web
+    // dashboard falls back to the default admin page, like an unknown tab.
+    useEffect(() => {
+        if (activeTab === 'browser' && !isDesktop) {
+            handleTabChange('settings');
+        }
+    }, [activeTab, isDesktop, handleTabChange]);
 
     // Version info
     const [versionInfo, setVersionInfo] = useState<{ version: string; commit: string } | null>(null);
@@ -358,7 +365,7 @@ export function AdminPanel() {
 
     // Sidebar nav groups are pure policy — container mode and the runtime
     // `serversEnabled` gate are passed as explicit inputs (see adminNavigation).
-    const navGroups = buildAdminNavGroups({ isContainer: isContainerMode(), serversEnabled: isServersEnabled() });
+    const navGroups = buildAdminNavGroups({ isContainer: isContainerMode(), serversEnabled: isServersEnabled(), isDesktop });
 
     const handleNavItemClick = useCallback((item: AdminNavItem) => {
         switch (item.action.kind) {
@@ -754,7 +761,7 @@ export function AdminPanel() {
                                 </div>
                             )}
 
-                            {activeTab === 'browser' && <DesktopBrowserPreferences />}
+                            {activeTab === 'browser' && isDesktop && <DesktopBrowserPreferences />}
 
                             {/* ── Data tab ── */}
                             {activeTab === 'data' && (

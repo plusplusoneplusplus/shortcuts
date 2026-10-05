@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
+import { AppProvider, useApp } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { AdminPanel } from '../../../src/server/spa/client/react/admin/AdminPanel';
 import {
     applyRuntimeConfigPatch,
@@ -1949,5 +1950,36 @@ describe('AdminPanel — Browser page (desktop shell)', () => {
         await act(async () => { renderWithProviders(); });
         await gotoSettingsSubTab('appearance');
         expect(screen.queryByTestId('desktop-browser-preferences')).toBeNull();
+    });
+});
+
+describe('AdminPanel — Browser page (web dashboard)', () => {
+    // Simulates a `#admin/browser` deep link: the router sets the admin sub-tab
+    // before AdminPanel mounts.
+    function OpenBrowserTab() {
+        const { dispatch } = useApp();
+        React.useLayoutEffect(() => { dispatch({ type: 'SET_ADMIN_SUB_TAB', tab: 'browser' }); }, [dispatch]);
+        return null;
+    }
+
+    beforeEach(() => {
+        delete (window as { cocDesktop?: unknown }).cocDesktop;
+        mockFetch.mockImplementation(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+    });
+
+    it('hides the Browser row outside the desktop shell', async () => {
+        await act(async () => { renderWithProviders(); });
+        await waitFor(() => expect(screen.getByTestId('settings-nav-configure')).toBeDefined());
+        expect(screen.queryByTestId('admin-tab-browser')).toBeNull();
+    });
+
+    it('redirects a #admin/browser deep link to the default admin page', async () => {
+        window.location.hash = '#admin/browser';
+        await act(async () => {
+            render(<AppProvider><OpenBrowserTab /><AdminPanel /></AppProvider>);
+        });
+        await waitFor(() => expect(window.location.hash).toBe('#admin/settings'));
+        expect(screen.queryByTestId('desktop-browser-preferences')).toBeNull();
+        expect(screen.getByTestId('settings-nav-configure')).toBeDefined();
     });
 });
