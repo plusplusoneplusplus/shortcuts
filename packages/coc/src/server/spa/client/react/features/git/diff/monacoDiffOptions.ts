@@ -168,8 +168,10 @@ export function isEditableDiff(requested: boolean, stage: MonacoDiffStage, model
  * The overview ruler stands in for the classic mini-map; whitespace is not
  * ignored so the hunks match `git diff`.
  */
-export function buildDiffEditorOptions(viewMode: DiffViewMode, editable = false): DiffEditorOptions {
+export function buildDiffEditorOptions(viewMode: DiffViewMode, editable = false, wordWrap = false): DiffEditorOptions {
     return {
+        wordWrap: wordWrap ? 'on' : 'off',
+        diffWordWrap: wordWrap ? 'on' : 'off',
         renderSideBySide: viewMode === 'split',
         useInlineViewWhenSpaceIsLimited: false,
         readOnly: !editable,

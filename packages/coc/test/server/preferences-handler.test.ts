@@ -143,6 +143,18 @@ describe('readPreferences / writePreferences', () => {
         expect(result.lastModel).toBe('claude-sonnet-4.6');
     });
 
+    it('persists global diff word wrap while preserving preferences for multiple workspaces', () => {
+        writeRepoPreferences(tmpDir, 'repo-a', { lastModel: 'model-a' });
+        writeRepoPreferences(tmpDir, 'repo-b', { lastModel: 'model-b' });
+        for (const diffWordWrap of [true, false]) {
+            const result = applyGlobalPreferencesPatch(readGlobalPreferences(tmpDir), { diffWordWrap });
+            writePreferences(tmpDir, { global: result.preferences });
+            expect(readGlobalPreferences(tmpDir).diffWordWrap).toBe(diffWordWrap);
+            expect(readRepoPreferences(tmpDir, 'repo-a').lastModel).toBe('model-a');
+            expect(readRepoPreferences(tmpDir, 'repo-b').lastModel).toBe('model-b');
+        }
+    });
+
     it('round-trips global HTML embed preference', () => {
         writePreferences(tmpDir, { global: { htmlEmbed: { enabled: true } } });
         const result = readPreferences(tmpDir);
@@ -1570,6 +1582,15 @@ describe('validateGlobalPreferences', () => {
     });
 
     // -- diffEngine field --
+
+    it('validates diff word wrap without changing other global preferences', () => {
+        for (const diffWordWrap of [true, false]) {
+            expect(validateGlobalPreferences({ theme: 'dark', diffWordWrap })).toEqual({ theme: 'dark', diffWordWrap });
+        }
+        for (const diffWordWrap of ['on', 1, null]) {
+            expect(validateGlobalPreferences({ diffWordWrap })).toEqual({});
+        }
+    });
 
     it('accepts diffEngine legacy and monaco', () => {
         expect(validateGlobalPreferences({ diffEngine: 'legacy' })).toEqual({ diffEngine: 'legacy' });
