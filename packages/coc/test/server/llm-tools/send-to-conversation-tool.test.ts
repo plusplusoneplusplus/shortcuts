@@ -125,7 +125,7 @@ describe('createSendToConversationTool — shape & description', () => {
         expect(Object.keys(props).sort()).toEqual(
             ['content', 'deliveryMode', 'effortTier', 'mode', 'model', 'priority', 'processId', 'provider', 'title', 'workspaceId'].sort(),
         );
-        expect(props.provider).toMatchObject({ type: 'string', enum: ['copilot', 'codex', 'claude', 'opencode'] });
+        expect(props.provider).toMatchObject({ type: 'string', enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'] });
         expect(props.effortTier).toMatchObject({ type: 'string', enum: ['very-low', 'low', 'medium', 'high'] });
     });
 
@@ -294,7 +294,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
 
     it('errors on an invalid provider value', async () => {
         const { tool, enqueueChat } = makeTool();
-        const result = await tool.handler({ content: 'hi', provider: 'auto' as never }, invocationStub);
+        const result = await tool.handler({ content: 'hi', provider: 'invalid' as never }, invocationStub);
         expect('error' in result && result.error).toMatch(/invalid provider/i);
         expect(enqueueChat).not.toHaveBeenCalled();
     });
@@ -307,6 +307,44 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
     });
 
     // ---- parent inheritance ----------------------------------------------
+
+    it.each(['ask', 'autopilot'] as const)('explicit Auto in %s mode inherits no parent AI settings', async mode => {
+        const validateProvider = vi.fn();
+        const getEffortTiersForProvider = vi.fn();
+        const { tool, captured } = makeTool({
+            parentMeta: { provider: 'claude', model: 'opus', reasoningEffort: 'high' },
+            storeWorkspaces: ['ws-1', 'ws-2'],
+            runtime: { validateProvider, getEffortTiersForProvider },
+        });
+        asSuccess(await tool.handler({ content: 'work', provider: 'auto', workspaceId: 'ws-2', mode }, invocationStub));
+        expect(payloadOf(captured.input!)).toMatchObject({
+            workspaceId: 'ws-2', mode,
+            context: { spawnedFromProcessId: DEFAULT_PARENT_ID, autoProviderRouting: { requested: true } },
+        });
+        expect(payloadOf(captured.input!).provider).toBeUndefined();
+        expect(payloadOf(captured.input!).model).toBeUndefined();
+        expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+        expect(validateProvider).not.toHaveBeenCalled();
+        expect(getEffortTiersForProvider).not.toHaveBeenCalled();
+    });
+
+    it('explicit Auto works without parent context', async () => {
+        const { tool, captured } = makeTool({ parentProcessId: null });
+        asSuccess(await tool.handler({ content: 'work', provider: 'auto' }, invocationStub));
+        expect(payloadOf(captured.input!).context).toEqual({ autoProviderRouting: { requested: true } });
+    });
+
+    it.each([
+        { model: 'opus', effortTier: 'high' as const },
+        { effortTier: 'high' as const },
+    ])('preserves explicit Auto overrides %j for target resolution', async overrides => {
+        const { tool, captured } = makeTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'low' } });
+        asSuccess(await tool.handler({ content: 'work', provider: 'auto', ...overrides }, invocationStub));
+        expect(captured.input!.config?.model).toBe(overrides.model);
+        expect(captured.input!.config?.effortTier).toBe(overrides.model ? undefined : 'high');
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+    });
 
     it('inherits provider/model/reasoningEffort from the parent for { content } only', async () => {
         const { tool, captured } = makeTool({
@@ -604,6 +642,14 @@ describe('createSendToConversationTool — post mode (processId provided)', () =
         );
     });
 
+    it('ignores Auto in post mode and resolves effort against the existing provider', async () => {
+        const sendMessage = vi.fn().mockResolvedValue({ turnIndex: 3 });
+        const { tool } = makeTool({ sendMessage, extraProcesses: { queue_existing: { id: 'queue_existing', metadata: { provider: 'claude' } } } });
+        asSuccess(await tool.handler({ content: 'continue', processId: 'queue_existing', provider: 'auto', effortTier: 'medium' }, invocationStub));
+        expect(sendMessage.mock.calls[0][0]).toMatchObject({ model: 'opus', effort: 'medium' });
+        expect(sendMessage.mock.calls[0][0].provider).toBeUndefined();
+    });
+
     it('resolves post-mode effortTier against the existing conversation provider', async () => {
         const sendMessage = vi.fn(async () => ({ turnIndex: 1 }));
         const { tool } = makeTool({
@@ -822,6 +868,22 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
         expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'copilot', config: {} });
     });
 
+    it('launches Auto Ralph with target routing and only explicit overrides', async () => {
+        const launchRalph = makeLaunch();
+        const { tool } = makeTool({
+            launchRalph, storeWorkspaces: ['ws-1', 'ws-2'],
+            parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' },
+        });
+        for (const overrides of [{}, { model: 'opus' }, { effortTier: 'medium' as const }]) {
+            asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', provider: 'auto', workspaceId: 'ws-2', ...overrides }, invocationStub));
+            expect(launchRalph.mock.lastCall![0]).toMatchObject({
+                workspaceId: 'ws-2', spawnedFromProcessId: DEFAULT_PARENT_ID,
+                aiSelection: { autoProviderRouting: true, config: overrides },
+            });
+            expect(launchRalph.mock.lastCall![0].aiSelection).toEqual({ autoProviderRouting: true, config: overrides });
+        }
+    });
+
     it('passes an explicit effortTier through the AI selection config', async () => {
         const launchRalph = makeLaunch();
         const { tool } = makeTool({ launchRalph, parentMeta: { provider: 'copilot', model: 'gpt-5', reasoningEffort: 'low' } });
@@ -983,6 +1045,22 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         expect(directory.list).not.toHaveBeenCalled();
     });
 
+    it.each(['ask', 'autopilot', 'ralph'] as const)('forwards explicit Auto %s to remote routing without parent selections', async mode => {
+        const { tool, directory } = makeTargetTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' } });
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w-web', effortTier: 'medium' }, invocationStub));
+        const call = (directory.startRemoteChat as any).mock.calls[0][0];
+        expect(call.kind).toBe(mode === 'ralph' ? 'ralph' : 'queue');
+        expect(call.body.config).toEqual({ effortTier: 'medium' });
+        if (mode === 'ralph') {
+            expect(call.body.autoProviderRouting).toBe(true);
+            expect(call.body.provider).toBeUndefined();
+        } else {
+            expect(call.body.payload.context).toEqual({ autoProviderRouting: { requested: true } });
+            expect(call.body.payload.provider).toBeUndefined();
+            expect(call.body.payload.model).toBeUndefined();
+        }
+    });
+
     it('passes an explicit provider with model/effortTier through to the remote', async () => {
         const { tool, directory } = makeTargetTool();
 
@@ -991,6 +1069,14 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         const body = (directory.startRemoteChat as any).mock.calls[0][0].body;
         expect(body.payload.provider).toBe('codex');
         expect(body.config).toEqual({ effortTier: 'high' });
+    });
+
+    it.each(['ask', 'autopilot', 'ralph'] as const)('forwards explicit Auto model overrides in remote %s without a tier', async mode => {
+        const { tool, directory } = makeTargetTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' } });
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', model: 'opus', effortTier: 'high', mode, workspaceId: 'remote:srv-1:w-web' }, invocationStub));
+        const { body } = (directory.startRemoteChat as any).mock.calls[0][0];
+        expect(body.config).toEqual({ model: 'opus' });
+        expect(mode === 'ralph' ? body.autoProviderRouting : body.payload.context.autoProviderRouting.requested).toBe(true);
     });
 
     it('launches remote ralph through the remote Ralph launch API', async () => {
@@ -1049,6 +1135,27 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
         expect(init.method).toBe('POST');
         expect(JSON.parse(init.body)).toMatchObject({ type: 'chat', workspaceId: 'w1', payload: { prompt: 'hi', mode: 'ask' } });
         expect(result.processId).toBe('queue_t-9');
+    });
+
+    it.each(['ask', 'autopilot', 'ralph'] as const)('POSTs Auto %s and explicit models to the target server API', async mode => {
+        const fetchImpl = vi.fn(async () => new Response(JSON.stringify(
+            mode === 'ralph' ? { processId: 'queue_t-9', sessionId: 'r-1' } : { task: { id: 't-9' } },
+        ), { status: 201 })) as unknown as typeof fetch;
+        const workspaceDirectory = createWorkspaceDirectory({
+            store: makeStore([]),
+            remoteServers: { list: () => [{ id: 'srv-1', label: 'vm', kind: 'url', effectiveUrl: 'http://vm:4000', status: 'online' } as any] },
+            fetchImpl,
+        });
+        const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory } });
+        asSuccess(await tool.handler({ content: 'goal', workspaceId: 'remote:srv-1:w1', provider: 'auto', mode, model: 'opus' }, invocationStub));
+        const [url, init] = (fetchImpl as any).mock.calls[0];
+        expect(url).toBe(`http://vm:4000/api/${mode === 'ralph' ? 'ralph-launch' : 'queue'}`);
+        const body = JSON.parse(init.body);
+        expect(body.workspaceId).toBe('w1');
+        expect(body.config).toEqual({ model: 'opus' });
+        expect(mode === 'ralph' ? body.autoProviderRouting : body.payload.context.autoProviderRouting.requested).toBe(true);
+        expect(mode === 'ralph' ? body.provider : body.payload.provider).toBeUndefined();
+        expect(enqueueChat).not.toHaveBeenCalled();
     });
 
     it('reports a remote rejection without falling back locally', async () => {

@@ -92,6 +92,9 @@ export const SENTINEL_DISPATCHER_DIRECTIVE = tagBlock(SENTINEL_DISPATCHER_TAG, [
         '`send_to_conversation` in create mode (omit `processId`) with `mode: "autopilot"`, a short `title`, the ' +
         'target `workspaceId` when it is not this one, and a self-contained `content` prompt that does not rely on ' +
         'this chat\'s history.',
+    '- Prefer `provider: "auto"` for delegation unless the user requests a particular provider/model. Auto uses ' +
+        'the target workspace/server routing rules; do not carry over this chat\'s provider, model, or effort. ' +
+        'Honor explicit user provider/model/effort overrides.',
     '- After a hand-off, reply with one short line saying what was handed off and where (repo + title).',
     '- Do not try to edit files yourself; this chat is read-only.',
 ].join('\n'));

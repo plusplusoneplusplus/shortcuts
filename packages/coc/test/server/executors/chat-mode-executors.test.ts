@@ -655,6 +655,8 @@ describe('ChatExecutor system message content', () => {
         expect(call.mode).toBe('interactive');
         expect(call.prompt).toContain(READ_ONLY_SYSTEM_MESSAGE.trim());
         expect(call.prompt).toContain(SENTINEL_DISPATCHER_DIRECTIVE);
+        expect(call.prompt).toContain('Prefer `provider: "auto"`');
+        expect(call.prompt).toContain('unless the user requests a particular provider/model');
         expect(call.prompt).not.toContain('<chosen-folder>');
         expect(call.systemMessage?.content ?? '').not.toContain(SENTINEL_DISPATCHER_DIRECTIVE);
     });

@@ -1926,6 +1926,22 @@ describe('ProcessLifecycleRunner — effort tier resolved against the Auto-selec
         expect(task.config.model).toBe('opus');
     });
 
+    it.each([
+        { model: 'opus' },
+        { afterEffortTier: 'medium' },
+    ])('rejects incompatible Auto overrides %j before executing', async config => {
+        const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
+        const executeByTypeFn = vi.fn();
+        const task = makeAutoTask(config);
+        await expect(runner.run(task, makeOpts({
+            resolveDefaultProvider: autoResolverFor('codex'),
+            getEffortTiersForProvider: () => ({ medium: { model: 'opus', reasoningEffort: 'high' } }),
+            executeByTypeFn,
+        }))).rejects.toThrow(/not compatible with Auto-selected provider 'codex'/);
+        expect(executeByTypeFn).not.toHaveBeenCalled();
+        expect(await store.getProcess(`queue_${task.id}`)).toBeUndefined();
+    });
+
     it('leaves a task with no tier untouched', async () => {
         const runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn(), 'copilot');
         const task = makeAutoTask({});

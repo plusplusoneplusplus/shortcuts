@@ -28,8 +28,8 @@
  *
  * NOTE on `model` validation: legacy calls that only supply the existing `model`
  * argument keep the queue path's pass-through/coercion behavior. Calls that also
- * select a new explicit provider or effort tier validate provider compatibility
- * before enqueueing so the tool never falls back to a different provider.
+ * select a concrete provider or inherited-provider effort tier validate compatibility
+ * before enqueueing. Auto defers compatibility until the target selects a provider.
  */
 
 import { defineTool } from '@plusplusoneplusplus/coc-agent-sdk';
@@ -59,8 +59,8 @@ export type SendToConversationMode = SendToConversationChatMode | 'ralph';
 /** Delivery modes for post mode (an existing conversation). */
 export type SendToConversationDeliveryMode = 'immediate' | 'enqueue' | 'steer';
 
-/** Concrete providers this tool accepts; `auto` and registry aliases are excluded. */
-export type SendToConversationProvider = ChatProvider;
+/** Provider selection; `auto` requests the target server's automatic routing. */
+export type SendToConversationProvider = ChatProvider | 'auto';
 
 /** Provider-scoped effort tiers accepted by this tool. */
 export type SendToConversationEffortTier = 'very-low' | 'low' | 'medium' | 'high';
@@ -88,8 +88,8 @@ export interface SendToConversationArgs {
     /** Overrides the AI model (both modes). */
     model?: string;
     /**
-     * Create mode: explicit concrete provider. Post mode: accepted but ignored;
-     * the existing conversation provider remains authoritative.
+     * Create mode: explicit concrete provider or target-server Auto routing.
+     * Post mode: accepted but ignored; the existing provider stays authoritative.
      */
     provider?: SendToConversationProvider;
     /**
@@ -126,10 +126,10 @@ export type SendMessageFn = (input: {
 }) => Promise<{ turnIndex: number }>;
 
 /** Validate a concrete provider before an explicit create-mode selection enqueues. */
-export type ValidateSendToConversationProviderFn = (provider: SendToConversationProvider) => Promise<void> | void;
+export type ValidateSendToConversationProviderFn = (provider: ChatProvider) => Promise<void> | void;
 
 /** Read stored provider-specific effort-tier overrides; defaults are merged by the tool. */
-export type GetSendToConversationEffortTiersFn = (provider: SendToConversationProvider) => StoredEffortTiersMap | undefined;
+export type GetSendToConversationEffortTiersFn = (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 
 export interface SendToConversationRuntimeOptions {
     validateProvider?: ValidateSendToConversationProviderFn;
@@ -242,7 +242,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'Create mode with `mode: "ralph"` launches an autonomous Ralph session straight into iteration 1 ' +
             '(no clarifying questions) with `content` as a self-contained goal spec and returns ' +
             '`{ processId, sessionId, openLink }`; use it for long, multi-step build-until-done goals that write ' +
-            'to the repo. `ralph` is rejected in post mode; `plan` is not supported.',
+            'to the repo. `ralph` is rejected in post mode; `plan` is not supported. Prefer `provider: "auto"` for delegation ' +
+            'unless the user requests a particular provider/model. Auto uses target workspace/server routing rules ' +
+            'without inheriting parent provider, model, or effort. Omitted provider keeps existing inheritance.',
         parameters: {
             type: 'object',
             properties: {
@@ -284,8 +286,10 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 },
                 provider: {
                     type: 'string',
-                    enum: ['copilot', 'codex', 'claude', 'opencode'],
-                    description: 'Create mode: concrete AI provider for the new conversation.',
+                    enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'],
+                    description: 'Create mode: prefer `auto` for target workspace/server routing unless the user requests ' +
+                        'a particular provider/model. Auto inherits no parent AI settings; omitted provider inherits as usual. ' +
+                        'Post mode ignores this selection and keeps the existing provider.',
                 },
                 effortTier: {
                     type: 'string',
@@ -324,11 +328,11 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
 
             // --- provider (create only; accepted+ignored in post mode) ----------
             const provider = args.provider;
-            if (provider !== undefined && (typeof provider !== 'string' || !VALID_CHAT_PROVIDERS.has(provider as ChatProvider))) {
+            if (provider !== undefined && (typeof provider !== 'string' || (provider !== 'auto' && !VALID_CHAT_PROVIDERS.has(provider as ChatProvider)))) {
                 return {
                     error:
                         `Invalid provider: '${String(args.provider)}'. ` +
-                        `Valid providers: ${[...VALID_CHAT_PROVIDERS].join(', ')}. ` +
+                        `Valid providers: auto, ${[...VALID_CHAT_PROVIDERS].join(', ')}. ` +
                         'Note: provider only applies when creating a new conversation; in post mode the existing ' +
                         'conversation provider is unchanged.',
                 };
@@ -585,13 +589,14 @@ async function createNewConversation(params: {
     const parentEffort =
         typeof parent?.metadata?.reasoningEffort === 'string' ? parent.metadata.reasoningEffort : undefined;
 
-    const resolvedProvider = explicitProvider ?? parentProvider;
+    const autoRequested = explicitProvider === 'auto';
+    const resolvedProvider = autoRequested ? undefined : explicitProvider ?? parentProvider;
     const resolvedModel = model ?? (explicitProvider || effortTier ? undefined : parentModel);
     const resolvedEffort = explicitProvider || effortTier ? undefined : parentEffort;
 
-    // Only a missing provider is fatal. A resolvable parent whose model /
-    // reasoningEffort are absent falls back to provider defaults below.
-    if (!resolvedProvider) {
+    // Omitted provider requires parent context; explicit Auto can route without it.
+    // Absent inherited model/effort use provider defaults.
+    if (!resolvedProvider && !autoRequested) {
         return {
             error:
                 'Cannot determine a provider for the new conversation: no parent chat ' +
@@ -599,7 +604,7 @@ async function createNewConversation(params: {
         };
     }
 
-    if (explicitProvider && validateProvider) {
+    if (explicitProvider && explicitProvider !== 'auto' && validateProvider) {
         try {
             await validateProvider(explicitProvider);
         } catch (err) {
@@ -608,7 +613,7 @@ async function createNewConversation(params: {
         }
     }
 
-    if (explicitProvider || effortTier) {
+    if (resolvedProvider && (explicitProvider || effortTier)) {
         const compatibility = validateRequestedModelAndTier({
             provider: resolvedProvider,
             model: resolvedModel,
@@ -628,6 +633,7 @@ async function createNewConversation(params: {
             title,
             parentProcessId,
             provider: resolvedProvider,
+            autoProviderRouting: autoRequested,
             model: resolvedModel,
             reasoningEffort: resolvedEffort,
             effortTier,
@@ -639,9 +645,10 @@ async function createNewConversation(params: {
 
     // --- build + validate the task spec, then enqueue in-process ----------
     // Setting `payload.provider` makes the enqueue path treat the provider as
-    // explicit, so inherited/selected providers suppress global default-provider
-    // auto-routing. Resolved model goes onto `config.model` (with the existing
-    // `payload.model` mirror), inherited effort onto `config.reasoningEffort`,
+    // explicit, so inherited/selected concrete providers suppress Auto routing.
+    // Explicit Auto omits the provider and carries the existing routing marker.
+    // Resolved model goes onto `config.model` (with the `payload.model` mirror),
+    // inherited effort onto `config.reasoningEffort`,
     // and an explicit tier onto `config.effortTier` for queue preparation.
     const taskSpec = buildChatTaskSpec({
         workspaceId: requestedWorkspaceId,
@@ -650,6 +657,7 @@ async function createNewConversation(params: {
         priority,
         title,
         provider: resolvedProvider,
+        autoProviderRouting: autoRequested,
         model: resolvedModel,
         reasoningEffort: resolvedEffort,
         effortTier,
@@ -692,14 +700,15 @@ function buildChatTaskSpec(params: {
     content: string;
     priority: string;
     title?: string;
-    provider?: SendToConversationProvider;
+    provider?: ChatProvider;
+    autoProviderRouting?: boolean;
     model?: string;
     reasoningEffort?: string;
     effortTier?: SendToConversationEffortTier;
     spawnedFromProcessId?: string;
     messagingOrigin?: MessagingJobOrigin;
 }): Record<string, unknown> {
-    const { workspaceId, mode, content, priority, title, provider, model, reasoningEffort, effortTier, spawnedFromProcessId, messagingOrigin } = params;
+    const { workspaceId, mode, content, priority, title, provider, autoProviderRouting, model, reasoningEffort, effortTier, spawnedFromProcessId, messagingOrigin } = params;
     const config: Record<string, unknown> = {
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
@@ -718,8 +727,9 @@ function buildChatTaskSpec(params: {
             ...(provider ? { provider } : {}),
             ...(title ? { customTitle: title } : {}),
             ...(model ? { model } : {}),
-            ...(spawnedFromProcessId || messagingOrigin ? {
+            ...(spawnedFromProcessId || messagingOrigin || autoProviderRouting ? {
                 context: {
+                    ...(autoProviderRouting ? { autoProviderRouting: { requested: true } } : {}),
                     ...(spawnedFromProcessId ? { spawnedFromProcessId } : {}),
                     ...(messagingOrigin ? { messagingOrigin } : {}),
                 },
@@ -823,7 +833,7 @@ async function createRemoteConversation(params: {
         ? {
             goalSpec: content.trim(),
             workspaceId: target.workspaceId,
-            ...(explicitProvider ? { provider: explicitProvider } : {}),
+            ...(explicitProvider === 'auto' ? { autoProviderRouting: true } : explicitProvider ? { provider: explicitProvider } : {}),
             config: {
                 ...(model ? { model } : {}),
                 ...(effortTier ? { effortTier } : {}),
@@ -836,7 +846,8 @@ async function createRemoteConversation(params: {
             content,
             priority,
             title,
-            provider: explicitProvider,
+            provider: explicitProvider === 'auto' ? undefined : explicitProvider,
+            autoProviderRouting: explicitProvider === 'auto',
             model,
             effortTier,
         });
@@ -867,12 +878,13 @@ async function launchRalphConversation(params: {
     workspaceId: string;
     title?: string;
     parentProcessId?: string;
-    provider: SendToConversationProvider;
+    provider?: ChatProvider;
+    autoProviderRouting?: boolean;
     model?: string;
     reasoningEffort?: string;
     effortTier?: SendToConversationEffortTier;
 }): Promise<SendToConversationResult> {
-    const { launchRalph, goalSpec, workspaceId, title, parentProcessId, provider, model, reasoningEffort, effortTier } = params;
+    const { launchRalph, goalSpec, workspaceId, title, parentProcessId, provider, autoProviderRouting, model, reasoningEffort, effortTier } = params;
     if (!launchRalph) {
         return {
             error: "Launching a Ralph session is not available in this context (no Ralph launch capability was wired).",
@@ -884,7 +896,8 @@ async function launchRalphConversation(params: {
             goalSpec: goalSpec.trim(),
             workspaceId,
             aiSelection: {
-                provider,
+                ...(provider ? { provider } : {}),
+                ...(autoProviderRouting ? { autoProviderRouting: true } : {}),
                 config: {
                     ...(model ? { model } : {}),
                     ...(reasoningEffort ? { reasoningEffort } : {}),
@@ -942,7 +955,7 @@ async function resolvePostModeEffortTier(params: {
 }
 
 function validateRequestedModelAndTier(params: {
-    provider: SendToConversationProvider;
+    provider: ChatProvider;
     model?: string;
     effortTier?: SendToConversationEffortTier;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
@@ -972,7 +985,7 @@ function validateRequestedModelAndTier(params: {
 }
 
 function resolveTierForProvider(
-    provider: SendToConversationProvider,
+    provider: ChatProvider,
     effortTier: SendToConversationEffortTier,
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn,
 ) {
@@ -989,9 +1002,9 @@ async function resolveProcessForTool(store: ProcessStore, processId: string): Pr
     return undefined;
 }
 
-function normalizeProcessProvider(proc: AIProcess): SendToConversationProvider {
+function normalizeProcessProvider(proc: AIProcess): ChatProvider {
     const provider = proc.metadata?.provider;
     return typeof provider === 'string' && VALID_CHAT_PROVIDERS.has(provider as ChatProvider)
-        ? (provider as SendToConversationProvider)
+        ? (provider as ChatProvider)
         : 'copilot';
 }

@@ -16,7 +16,7 @@ Users reach this skill either through plain language ("hand this off to a new ch
 
 | Input | Outcome |
 | --- | --- |
-| `/delegate Review the plan` | Delegate the review in `ask` mode, inheriting the provider as usual. |
+| `/delegate Review the plan` | Delegate the review in `ask` mode with `provider: "auto"`. |
 | `/delegate claude Review the plan` | Delegate the review to Claude using its defaults. |
 | `/delegate claude Review the plan with high effort` | Delegate to Claude at its High effort tier. |
 | `/delegate Submit the outgoing commits as a PR` | Delegate in `autopilot` mode, since the job must push and open a PR. |
@@ -31,16 +31,17 @@ Return the created chat link plus a one-line summary of the task and the chosen 
 
 ## Choosing a provider
 
-Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched case-insensitively; whether one is usable depends on the server's enabled providers. `auto` is not a value this tool accepts.
+Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched case-insensitively; whether one is usable depends on the server's enabled providers. `auto` uses the target workspace/server's existing routing rules at execution time.
 
-- Omit `provider` when the user did not name one, so the tool's existing parent inheritance of provider, model, and effort applies.
-- An explicit provider selects that provider's own defaults, including when it matches the parent. Do not carry over the parent's model or effort.
+- Prefer `provider: "auto"` unless the user requests a particular provider/model. Auto does not inherit the parent's provider, model, or effort.
+- Honor explicit user provider/model/effort requests through supported options. If only a model is requested, omit `provider` to keep the parent provider; an explicit model wins over `effortTier`. Omitted provider keeps ordinary local parent inheritance of provider, model, and effort.
+- An explicit concrete provider selects that provider's own defaults, including when it matches the parent. Do not carry over the parent's model or effort.
 - Apply clear natural-language overrides such as effort through the tool's supported options.
 - Pick `mode` from what the job does. Use `ask` for read-only jobs: review, research, analysis, questions, and planning. Use `autopilot` for jobs that change files, the repo, or external state: implementing or fixing code, committing, pushing, opening PRs, and editing docs or skills. When it is unclear whether the job writes, ask one short question.
 - Use `ralph` (create mode only) for long, multi-step build-until-done goals that write to the repo. It starts an autonomous Ralph loop with no clarifying questions, so write `content` as a self-contained goal spec: goal, acceptance criteria, constraints, and references by path. It shares the autopilot queue and returns a `sessionId` with the chat link.
 - An explicit user request for a mode wins. Autopilot jobs share one execution queue and may wait, so mention that when the current chat is waiting on the result.
 - The destination defaults to the current workspace. Honor an explicit request for another repo by passing its name as `workspaceId` (use `name@server` when the same name exists on several servers), or call `list_workspaces` to find its id. Ask when the destination is ambiguous.
-- Remote repos (on another registered CoC server) work in create mode: pass their `remote:<serverId>:<workspaceId>` id or `name@server`. The remote server's own provider defaults apply unless the user names a provider. Posting into an existing remote conversation is not supported.
+- Remote repos (on another registered CoC server) work in create mode: pass their `remote:<serverId>:<workspaceId>` id or `name@server`. Auto uses the remote server's routing rules. Only explicit provider/model/effort overrides travel to the remote; omitted selections use its defaults. Posting into an existing remote conversation is not supported.
 
 ## Ambiguity and failure
 

@@ -150,7 +150,10 @@ describe('SKILL.md metadata', () => {
         expect(body).toContain('at most 80 characters');
         expect(body).toContain('visible custom title across AI title generation and restarts');
         // Omitting the provider must preserve the tool's inheritance.
-        expect(body).toMatch(/Omit `provider`/);
+        expect(body).toContain('Omitted provider keeps ordinary local parent inheritance');
+        expect(body).toContain('Prefer `provider: "auto"` unless the user requests a particular provider/model');
+        expect(body).toContain('Auto does not inherit the parent\'s provider, model, or effort');
+        expect(body).not.toContain('`auto` is not a value this tool accepts');
         // Mode follows the job: read-only work stays in ask, writing work uses autopilot.
         expect(body).not.toContain('even when the parent runs in Autopilot');
         expect(body).toContain('Use `ask` for read-only jobs');

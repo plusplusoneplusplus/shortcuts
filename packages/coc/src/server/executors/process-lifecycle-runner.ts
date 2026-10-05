@@ -339,7 +339,7 @@ async function resolveExecutionProvider(
         throw new Error('Auto provider routing was requested, but no execution-time provider resolver is configured.');
     }
 
-    const resolution = await opts.resolveDefaultProvider();
+    const resolution = await opts.resolveDefaultProvider({ forceAuto: true });
     if (!isConcreteProvider(resolution.provider)) {
         throw new Error(resolution.error ?? 'Execution-time Auto provider routing did not select a concrete provider.');
     }
@@ -677,6 +677,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         applyEffortTierForProvider(task, taskProvider, opts);
         const providerModel = resolveModelForProvider(taskProvider, task.config.model);
         if (providerModel.coerced) {
+            if (isChatPayload(task.payload) && isAutoProviderRoutingRequested(task.payload)) {
+                throw new Error(`Model '${providerModel.requestedModel}' is not compatible with Auto-selected provider '${taskProvider}'.`);
+            }
             logger.warn(
                 LogCategory.AI,
                 `[QueueExecutor] Dropping model '${providerModel.requestedModel}' for task ${task.id} because provider '${taskProvider}' does not support it; using provider default.`,
