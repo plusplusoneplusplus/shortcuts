@@ -18,7 +18,7 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import * as path from 'path';
 import type { Duplex } from 'stream';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { getServerLogger } from '../logging/server-logger';
 import type { LanguageServerManager, LanguageServerHandle, LanguageServerUnavailableReason } from './manager';
@@ -39,8 +39,10 @@ import {
     ExternalSourceRegistry,
     canonicalizeExternalFile,
     describeExternalSourceFailure,
+    externalSemanticTokensRequest,
     readExternalSource,
 } from './external-sources';
+import type { ExternalSemanticTokensFailure, ExternalSourceGrant } from './external-sources';
 
 /** Exported so a teardown test can identify this interval among all timers. */
 export const HEARTBEAT_INTERVAL_MS = 60_000;
@@ -51,6 +53,8 @@ const FORWARDED_NOTIFICATIONS = [
     'window/showMessage',
     'window/logMessage',
     '$/progress',
+    // Relayed by the session from the server's refresh request.
+    'workspace/semanticTokens/refresh',
 ];
 
 /**
@@ -83,6 +87,7 @@ export type LanguageServerClientMessage =
     | { type: 'lsp-notify'; attachmentId: string; method: string; params?: unknown }
     | { type: 'lsp-restart'; attachmentId: string }
     | { type: 'lsp-external-source'; requestId: string; attachmentId: string; resourceId: string }
+    | { type: 'lsp-external-semantic-tokens'; requestId: string; attachmentId: string; resourceId: string }
     | { type: 'ping' };
 
 export type LanguageServerServerMessage =
@@ -112,6 +117,13 @@ export type LanguageServerServerMessage =
           displayName?: string;
           languageHint?: string;
           error?: { code: string; message: string };
+      }
+    | {
+          type: 'lsp-external-semantic-tokens-result';
+          requestId: string;
+          /** The server's own encoding; the browser decodes it against the session's legend. */
+          data?: number[];
+          error?: { code: ExternalSemanticTokensFailure; message: string };
       }
     | { type: 'lsp-error'; message: string }
     | { type: 'pong' };
@@ -162,6 +174,12 @@ export class LanguageServerWebSocketServer {
     private readonly workspaces: WorkspaceLookup;
     private readonly manager: LanguageServerManager;
     private readonly unsubscribeClosed: () => void;
+    /**
+     * External files currently opened for a token request, keyed by session
+     * and URI, so two requests for one header take turns instead of opening it
+     * twice and closing it under each other.
+     */
+    private readonly externalDocuments = new Map<string, Promise<void>>();
     /** In-flight user-initiated restarts, keyed by session. */
     private readonly restarting = new Map<string, Promise<void>>();
     private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -327,6 +345,9 @@ export class LanguageServerWebSocketServer {
                 return;
             case 'lsp-external-source':
                 await this.sendExternalSource(client, message);
+                return;
+            case 'lsp-external-semantic-tokens':
+                await this.sendExternalSemanticTokens(client, message);
                 return;
             default:
                 return;
@@ -570,13 +591,7 @@ export class LanguageServerWebSocketServer {
         message: { requestId: string; attachmentId: string; resourceId: string },
     ): Promise<void> {
         const requestId = String(message.requestId ?? '');
-        const attachment = client.attachments.get(String(message.attachmentId ?? ''));
-        const grant = attachment
-            ? client.externalSources.resolve(String(message.resourceId ?? ''), {
-                attachmentId: attachment.id,
-                workspaceId: client.workspaceId,
-            })
-            : undefined;
+        const { attachment, grant } = this.resolveExternalGrant(client, message);
         if (!attachment || !grant) {
             this.send(client.socket, {
                 type: 'lsp-external-source-result',
@@ -604,6 +619,152 @@ export class LanguageServerWebSocketServer {
                 });
         } finally {
             client.externalReads.delete(controller);
+        }
+    }
+
+    /** The attachment and grant a message names, only when the grant is that attachment's own. */
+    private resolveExternalGrant(
+        client: BridgeClient,
+        message: { attachmentId: string; resourceId: string },
+    ): { attachment?: Attachment; grant?: ExternalSourceGrant } {
+        const attachment = client.attachments.get(String(message.attachmentId ?? ''));
+        const grant = attachment
+            ? client.externalSources.resolve(String(message.resourceId ?? ''), {
+                attachmentId: attachment.id,
+                workspaceId: client.workspaceId,
+            })
+            : undefined;
+        return { attachment, grant };
+    }
+
+    /**
+     * Semantic tokens for one external file the browser holds a capability
+     * for. The lifecycle is one request long: the file is read through the
+     * grant, opened in the issuing attachment's own session with exactly that
+     * text, asked for tokens, and closed again — nothing stays open for the
+     * browser to own. A detach or disconnect aborts it and still closes.
+     */
+    private async sendExternalSemanticTokens(
+        client: BridgeClient,
+        message: { requestId: string; attachmentId: string; resourceId: string },
+    ): Promise<void> {
+        const requestId = String(message.requestId ?? '');
+        const fail = (code: ExternalSemanticTokensFailure, detail?: string) => {
+            this.send(client.socket, {
+                type: 'lsp-external-semantic-tokens-result',
+                requestId,
+                error: {
+                    code,
+                    message: detail ?? (code === 'unsupported' || code === 'in-use' || code === 'failed'
+                        ? 'Semantic tokens are unavailable for that definition source.'
+                        : describeExternalSourceFailure(code)),
+                },
+            });
+        };
+        const { attachment, grant } = this.resolveExternalGrant(client, message);
+        if (!attachment || !grant) {
+            fail('unknown-resource');
+            return;
+        }
+        const session = attachment.handle.session;
+        const controller = new AbortController();
+        const pendingKey = `external-semantic-tokens:${requestId}`;
+        attachment.pending.set(pendingKey, controller);
+        client.externalReads.add(controller);
+        try {
+            const read = await readExternalSource(grant, controller.signal);
+            if (!read.ok) {
+                fail(read.reason);
+                return;
+            }
+            const request = externalSemanticTokensRequest(session.getState(), read.content);
+            if (!request) {
+                fail('unsupported');
+                return;
+            }
+            const uri = pathToFileURL(grant.canonicalPath).href;
+            const result = await this.withExternalDocument(
+                attachment,
+                uri,
+                read.content,
+                controller.signal,
+                () => session.sendRequest<{ data?: unknown } | null>(
+                    request.method,
+                    { textDocument: { uri }, ...request.params },
+                    { signal: controller.signal },
+                ),
+            );
+            if (result === 'in-use') {
+                fail('in-use');
+                return;
+            }
+            const data = result?.data;
+            if (!Array.isArray(data)) {
+                fail('failed');
+                return;
+            }
+            this.send(client.socket, { type: 'lsp-external-semantic-tokens-result', requestId, data });
+        } catch (err) {
+            if (controller.signal.aborted) {
+                fail('cancelled');
+                return;
+            }
+            fail('failed', err instanceof Error ? err.message : undefined);
+        } finally {
+            attachment.pending.delete(pendingKey);
+            client.externalReads.delete(controller);
+        }
+    }
+
+    /**
+     * Runs `run` with `uri` open in the attachment's session holding `text`,
+     * and closes it afterwards whatever happened. Requests for one file on one
+     * session queue behind each other. A file some attached document already
+     * holds open is left alone: its text there may not be the bytes on disk.
+     */
+    private async withExternalDocument<T>(
+        attachment: Attachment,
+        uri: string,
+        text: string,
+        signal: AbortSignal,
+        run: () => Promise<T>,
+    ): Promise<T | 'in-use'> {
+        const session = attachment.handle.session;
+        const key = `${attachment.handle.key}\0${documentUriIdentity(uri)}`;
+        const previous = this.externalDocuments.get(key) ?? Promise.resolve();
+        let finish!: () => void;
+        const turn = new Promise<void>((resolve) => { finish = resolve; });
+        const chained = previous.then(() => turn);
+        this.externalDocuments.set(key, chained);
+        try {
+            await previous;
+            if (signal.aborted) {
+                throw new LanguageServerRequestError('cancelled', 'textDocument/didOpen', 'Request cancelled');
+            }
+            const generation = session.getState().generation;
+            if (this.hasOtherOpenDocument(attachment, uri, generation) || sameDocumentUri(attachment.openDocumentUri, uri)) {
+                return 'in-use';
+            }
+            await session.start();
+            const opened = session.sendNotification('textDocument/didOpen', {
+                textDocument: { uri, languageId: attachment.handle.languageId, version: 1, text },
+            });
+            if (!opened) {
+                throw new LanguageServerRequestError('closed', 'textDocument/didOpen', 'Language server is not running');
+            }
+            const openedGeneration = session.getState().generation;
+            try {
+                return await run();
+            } finally {
+                if (session.getState().generation === openedGeneration) {
+                    session.sendNotification('textDocument/didClose', { textDocument: { uri } });
+                }
+            }
+        } finally {
+            finish();
+            if (this.externalDocuments.get(key) === chained) {
+                this.externalDocuments.delete(key);
+            }
         }
     }
 
@@ -712,6 +873,12 @@ export class LanguageServerWebSocketServer {
         for (const method of FORWARDED_NOTIFICATIONS) {
             disposers.push(
                 session.onNotification(method, (params) => {
+                    // Diagnostics for a file outside the workspace — an
+                    // external source opened for its tokens — would hand the
+                    // browser a host path and name no document it has.
+                    if (method === 'textDocument/publishDiagnostics' && isOutsideWorkspace(client, params)) {
+                        return;
+                    }
                     const translated = translateUris(params, (uri) =>
                         toBrowserUri(uri, client.workspaceId, client.workspaceRoot),
                     );
@@ -864,6 +1031,13 @@ export class LanguageServerWebSocketServer {
         }, HEARTBEAT_INTERVAL_MS);
         this.heartbeatTimer.unref?.();
     }
+}
+
+function isOutsideWorkspace(client: BridgeClient, params: unknown): boolean {
+    const uri = (params as { uri?: unknown } | null)?.uri;
+    return typeof uri === 'string'
+        && uri.startsWith('file:')
+        && toBrowserUri(uri, client.workspaceId, client.workspaceRoot) === uri;
 }
 
 function parseClientMessage(raw: Buffer | string): LanguageServerClientMessage | undefined {

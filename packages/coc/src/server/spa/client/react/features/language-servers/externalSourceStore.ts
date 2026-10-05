@@ -11,6 +11,10 @@
  *
  * A published record nobody retains is kept briefly and then dropped, which
  * covers the gap between Peek loading a source and the user choosing it.
+ *
+ * Semantic tokens ride on the same record for the same reason: they are asked
+ * for through the attachment that is about to go away, so the tab colors from
+ * what Peek received, and falls back to basic syntax colors when nothing came.
  */
 
 import type { ExternalSourceContent } from './externalSource';
@@ -26,6 +30,8 @@ export interface ExternalSourceRecord extends ExternalSourceContent {
      * `content` carries the same text for the Peek model.
      */
     failure?: string;
+    /** Semantic tokens for `content`, already in CoC's legend. */
+    semanticTokens?: Uint32Array;
 }
 
 interface Entry {
@@ -35,6 +41,11 @@ interface Entry {
 }
 
 const entries = new Map<string, Entry>();
+const listeners = new Map<string, Set<() => void>>();
+
+function notify(resourceId: string): void {
+    for (const listener of [...(listeners.get(resourceId) ?? [])]) listener();
+}
 
 function clearOrphanTimer(entry: Entry): void {
     if (entry.timer) {
@@ -58,13 +69,46 @@ function scheduleOrphanDrop(resourceId: string, entry: Entry): void {
 export function publishExternalSource(record: ExternalSourceRecord): void {
     const existing = entries.get(record.resourceId);
     if (existing) {
-        existing.record = record;
+        // Tokens describe text; they survive a republish of the same text only.
+        const carried = !record.semanticTokens && existing.record.content === record.content && !record.failure
+            ? existing.record.semanticTokens
+            : undefined;
+        existing.record = carried ? { ...record, semanticTokens: carried } : record;
         if (existing.refCount === 0) scheduleOrphanDrop(record.resourceId, existing);
+        notify(record.resourceId);
         return;
     }
     const entry: Entry = { record, refCount: 0, timer: null };
     entries.set(record.resourceId, entry);
     scheduleOrphanDrop(record.resourceId, entry);
+    notify(record.resourceId);
+}
+
+/**
+ * Attach semantic tokens to a loaded record. Dropped when the record is gone
+ * or failed, or when its text is no longer the text they were computed for.
+ */
+export function publishExternalSemanticTokens(resourceId: string, content: string, tokens: Uint32Array): void {
+    const entry = entries.get(resourceId);
+    if (!entry || entry.record.failure || entry.record.content !== content) return;
+    entry.record = { ...entry.record, semanticTokens: tokens };
+    notify(resourceId);
+}
+
+/** Called whenever the record for `resourceId` is published or gains tokens. */
+export function onExternalSourceChange(resourceId: string, listener: () => void): () => void {
+    let set = listeners.get(resourceId);
+    if (!set) {
+        set = new Set();
+        listeners.set(resourceId, set);
+    }
+    set.add(listener);
+    return () => {
+        const current = listeners.get(resourceId);
+        if (!current) return;
+        current.delete(listener);
+        if (current.size === 0) listeners.delete(resourceId);
+    };
 }
 
 /** The record for `resourceId`, or undefined once it has been released. */
@@ -96,4 +140,5 @@ export function retainExternalSource(resourceId: string): () => void {
 export function resetExternalSourceStoreForTests(): void {
     for (const entry of entries.values()) clearOrphanTimer(entry);
     entries.clear();
+    listeners.clear();
 }

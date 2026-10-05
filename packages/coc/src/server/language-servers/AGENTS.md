@@ -44,7 +44,10 @@ and transport code stays generic.
   `symbol-index.sqlite` with `--database`. The resolved path and the database
   path are argv only; labels carry the plain binary name.
 - `client-requests.ts` — the client half of the protocol: built-in answers to
-  the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`.
+  the requests a server sends back, plus `DEFAULT_CLIENT_CAPABILITIES`. A
+  `workspace/semanticTokens/refresh` request is answered there and relayed by
+  the session to its notification subscribers, so the bridge forwards it to the
+  browser like a notification.
 - `routes.ts` — `GET`/`PUT`/`PATCH /api/workspaces/:id/language-servers`,
   registered from `src/server/routes/index.ts`, which supplies the workspace-root
   resolver that lets a read seed a never-configured workspace.
@@ -323,10 +326,11 @@ and transport code stays generic.
   `src/server/streaming/websocket.ts`, which routes the path to this server.
 - Client messages: `lsp-attach`, `lsp-attach-workspace`, `lsp-detach`,
   `lsp-request`, `lsp-cancel`,
-  `lsp-notify`, `lsp-restart`, `lsp-external-source`, `ping`. Server messages:
+  `lsp-notify`, `lsp-restart`, `lsp-external-source`,
+  `lsp-external-semantic-tokens`, `ping`. Server messages:
   `lsp-welcome`, `lsp-attached`, `lsp-unavailable`, `lsp-response`,
   `lsp-notification`, `lsp-status`, `lsp-detached`, `lsp-external-source-result`,
-  `lsp-error`, `pong`. This shape is the transport contract a
+  `lsp-external-semantic-tokens-result`, `lsp-error`, `pong`. This shape is the transport contract a
   container relay implements, so the editor client does not change when the
   server moves off this host.
 - One browser document may have several attachments on one socket, one per
@@ -374,6 +378,17 @@ and transport code stays generic.
   the bridge never accepts a path or URI from the browser. The reply carries the
   content, the safe display basename, and a language hint (the file extension,
   falling back to the session's language id).
+- `lsp-external-semantic-tokens` takes the same attachment id and resource id.
+  The bridge reads the file through the grant, picks `semanticTokens/full` (else
+  `range` over the whole file) from the session's capabilities or dynamic
+  registration (`externalSemanticTokensRequest`), opens the canonical file in
+  the attachment's own session with exactly that text, requests tokens, and
+  closes it in a `finally`. Requests for one file on one session are serialized;
+  a file some attachment already holds open is refused as `in-use`. Detach and
+  socket cleanup abort it. The reply carries the server's raw `data`; the
+  browser decodes it with that session's legend. `publishDiagnostics` for any
+  `file:` URI outside the workspace is dropped, so the transient open never
+  sends a host path to the browser.
 - The socket subscribes to `session.onStateChange` and forwards every
   transition as an `lsp-status`, so the browser's status display sees
   `starting`, `indexing`, `reconnecting` and `failed` rather than only `ready`.

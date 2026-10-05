@@ -28,6 +28,13 @@
  *   - The default URI resolver drops results outside this workspace. A
  *     repo-group host supplies an owner-aware resolver that accepts live members
  *     and represents rejected targets with an unavailable in-memory model.
+ *   - Semantic tokens come from exactly one server per document: the first in
+ *     host preference order that advertises them. Its data is re-encoded
+ *     against CoC's own legend (`semanticTokens.ts`). The full-document request
+ *     is preferred; the range request is used when it is the only mode. A
+ *     server refresh request or a replay re-fetches; a failure while the
+ *     server is still attached keeps the colors already shown, and losing the
+ *     server removes the provider, which clears them.
  *   - The preferred semantic server is authoritative for definitions. The
  *     `coc-symbols` attachment is queried alongside it, but its answer is used
  *     only when the semantic server has no locations. Mixing the two is what
@@ -43,6 +50,14 @@ import { SYMBOL_CANDIDATE_FRAGMENT } from './editorNavigation';
 import { EXTERNAL_URI_SCHEME } from './externalSource';
 import type { LanguageServerSessionStateView } from './languageServerClient';
 import { toLspPosition, type MonacoPosition, type MonacoRange } from './monacoBridge';
+import {
+    COC_SEMANTIC_TOKENS_LEGEND,
+    readSemanticTokensSupport,
+    semanticTokensFingerprint,
+    translateSemanticTokens,
+    type SemanticTokensLegend,
+    type SemanticTokensSupport,
+} from './semanticTokens';
 import {
     toCompletionList,
     toHover,
@@ -69,6 +84,8 @@ export interface ProviderModel {
     uri: ProviderUri;
     /** Monaco's word range at the cursor, used as the completion fallback range. */
     getWordUntilPosition(position: MonacoPosition): { startColumn: number; endColumn: number };
+    /** The model's text; semantic tokens are only requested when it matches the document. */
+    getValue?(): string;
 }
 
 export interface ProviderCancellationToken {
@@ -108,6 +125,14 @@ export interface ProviderCompletionList {
     suggestions: MonacoCompletionItem[];
     incomplete: boolean;
 }
+
+export interface ProviderSemanticTokens {
+    data: Uint32Array;
+    resultId?: string;
+}
+
+/** Monaco's `IEvent<void>`: subscribe, get a disposable back. */
+export type ProviderEvent = (listener: () => void) => ProviderDisposable;
 
 export interface MonacoLanguagesLike {
     registerHoverProvider(
@@ -164,6 +189,32 @@ export interface MonacoLanguagesLike {
                 token: ProviderCancellationToken,
                 context: ProviderSignatureHelpContext,
             ): Promise<ProviderSignatureHelpResult | null>;
+        },
+    ): ProviderDisposable;
+    /** Optional so a Monaco build without semantic tokens simply skips them. */
+    registerDocumentSemanticTokensProvider?(
+        languageId: string,
+        provider: {
+            onDidChange?: ProviderEvent;
+            getLegend(): SemanticTokensLegend;
+            provideDocumentSemanticTokens(
+                model: ProviderModel,
+                lastResultId: string | null,
+                token: ProviderCancellationToken,
+            ): Promise<ProviderSemanticTokens | null>;
+            releaseDocumentSemanticTokens(resultId: string | undefined): void;
+        },
+    ): ProviderDisposable;
+    registerDocumentRangeSemanticTokensProvider?(
+        languageId: string,
+        provider: {
+            onDidChange?: ProviderEvent;
+            getLegend(): SemanticTokensLegend;
+            provideDocumentRangeSemanticTokens(
+                model: ProviderModel,
+                range: MonacoRange,
+                token: ProviderCancellationToken,
+            ): Promise<ProviderSemanticTokens | null>;
         },
     ): ProviderDisposable;
 }
@@ -355,6 +406,73 @@ function waitsForContent(uri: string, resultCount: number): boolean {
     return resultCount > 1 || uri.startsWith(`${EXTERNAL_URI_SCHEME}:`);
 }
 
+export interface SemanticTokensServer {
+    definitionId: string;
+    sessionKey: string;
+    support: SemanticTokensSupport;
+}
+
+/**
+ * The one server whose semantic tokens color this document: the first live
+ * attachment, in host preference order, that advertises usable tokens.
+ */
+export function selectSemanticTokensServer(view: LanguageDocumentView): SemanticTokensServer | null {
+    for (const info of view.getServerInfos()) {
+        const support = readSemanticTokensSupport(info.state);
+        if (support) {
+            return { definitionId: info.definitionId, sessionKey: info.sessionKey, support };
+        }
+    }
+    return null;
+}
+
+const SEMANTIC_TOKENS_REFRESH = 'workspace/semanticTokens/refresh';
+
+interface SemanticTokensClaimant {
+    /** The claim just passed to this registration; it should re-fetch. */
+    promote(): void;
+}
+
+/**
+ * Two diff viewers can share one Monaco model, and each mounts its own
+ * providers. Only the oldest live registration for a model URI answers
+ * semantic tokens, so a shared model costs one request, not one per viewer.
+ */
+const semanticTokenClaims = new Map<string, SemanticTokensClaimant[]>();
+
+function claimSemanticTokens(modelUri: string, claimant: SemanticTokensClaimant): {
+    owns(): boolean;
+    release(): void;
+} {
+    const claimants = semanticTokenClaims.get(modelUri) ?? [];
+    claimants.push(claimant);
+    semanticTokenClaims.set(modelUri, claimants);
+    return {
+        owns: () => semanticTokenClaims.get(modelUri)?.[0] === claimant,
+        release: () => {
+            const current = semanticTokenClaims.get(modelUri);
+            const index = current?.indexOf(claimant) ?? -1;
+            if (!current || index === -1) {
+                return;
+            }
+            current.splice(index, 1);
+            if (current.length === 0) {
+                semanticTokenClaims.delete(modelUri);
+            } else if (index === 0) {
+                current[0].promote();
+            }
+        },
+    };
+}
+
+/**
+ * Monaco treats an error whose message mentions `busy` as "temporarily not
+ * available": it keeps the colors already painted and retries on the next edit.
+ */
+function semanticTokensBusy(): Error {
+    return new Error('Semantic tokens busy');
+}
+
 /**
  * Registers the selected language features for one model and returns a single
  * disposable. Dispose it with the document: a provider outliving its buffer
@@ -403,6 +521,108 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
     }));
 
     let registrations: ProviderDisposable[] = [];
+
+    // Monaco re-fetches tokens when the provider fires `onDidChange`. Listeners
+    // live for the whole registration, so a refresh reaches whichever provider
+    // is current.
+    const semanticListeners = new Set<() => void>();
+    const onSemanticTokensChange: ProviderEvent = (listener) => {
+        semanticListeners.add(listener);
+        return { dispose: () => { semanticListeners.delete(listener); } };
+    };
+    const fireSemanticTokensChange = (): void => {
+        for (const listener of [...semanticListeners]) {
+            listener();
+        }
+    };
+    const semanticClaim = claimSemanticTokens(modelUri, { promote: fireSemanticTokensChange });
+    // Bumped on every re-registration, so an answer from a replaced server is
+    // never painted onto the model.
+    let semanticGeneration = 0;
+
+    const requestSemanticTokens = async (
+        server: SemanticTokensServer,
+        target: ProviderModel,
+        method: string,
+        extra: Record<string, unknown>,
+        token: ProviderCancellationToken,
+    ): Promise<ProviderSemanticTokens | null> => {
+        if (!owns(target) || !semanticClaim.owns() || token.isCancellationRequested) {
+            return null;
+        }
+        // Tokens computed for other text would land on the wrong characters,
+        // e.g. a diff whose model is not the buffer the server holds.
+        if (typeof target.getValue === 'function' && target.getValue() !== view.getText()) {
+            return null;
+        }
+        const generation = semanticGeneration;
+        const controller = new AbortController();
+        const subscription = token.onCancellationRequested(() => controller.abort());
+        let result: unknown;
+        try {
+            result = await view.sendRequestTo(
+                server.definitionId,
+                method,
+                view.documentParams(extra),
+                { signal: controller.signal },
+            );
+        } catch {
+            if (generation !== semanticGeneration) {
+                return null;
+            }
+            throw semanticTokensBusy();
+        } finally {
+            if (subscription && typeof subscription.dispose === 'function') {
+                subscription.dispose();
+            }
+        }
+        if (generation !== semanticGeneration || token.isCancellationRequested) {
+            return null;
+        }
+        const data = translateSemanticTokens(
+            (result as { data?: unknown } | null | undefined)?.data,
+            server.support.legend,
+        );
+        return data ? { data } : null;
+    };
+
+    const registerSemanticTokens = (server: SemanticTokensServer): ProviderDisposable | null => {
+        const languages = monaco.languages;
+        if (server.support.full && languages.registerDocumentSemanticTokensProvider) {
+            return languages.registerDocumentSemanticTokensProvider(languageId, {
+                onDidChange: onSemanticTokensChange,
+                getLegend: () => COC_SEMANTIC_TOKENS_LEGEND,
+                provideDocumentSemanticTokens: (target, _lastResultId, token) => requestSemanticTokens(
+                    server,
+                    target,
+                    'textDocument/semanticTokens/full',
+                    {},
+                    token,
+                ),
+                // Deltas are not requested, so there is no result to release.
+                releaseDocumentSemanticTokens: () => {},
+            });
+        }
+        if (server.support.range && languages.registerDocumentRangeSemanticTokensProvider) {
+            return languages.registerDocumentRangeSemanticTokensProvider(languageId, {
+                onDidChange: onSemanticTokensChange,
+                getLegend: () => COC_SEMANTIC_TOKENS_LEGEND,
+                provideDocumentRangeSemanticTokens: (target, range, token) => requestSemanticTokens(
+                    server,
+                    target,
+                    'textDocument/semanticTokens/range',
+                    {
+                        range: {
+                            start: toLspPosition({ lineNumber: range.startLineNumber, column: range.startColumn }),
+                            end: toLspPosition({ lineNumber: range.endLineNumber, column: range.endColumn }),
+                        },
+                    },
+                    token,
+                ),
+            });
+        }
+        return null;
+    };
 
     const register = (state: LanguageServerSessionStateView | null): void => {
         const next: ProviderDisposable[] = [];
@@ -602,22 +822,34 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
                 },
             }));
         }
+        const semantic = selectSemanticTokensServer(view);
+        if (semantic) {
+            const registration = registerSemanticTokens(semantic);
+            if (registration) {
+                next.push(registration);
+            }
+        }
         registrations = next;
     };
 
     const disposeRegistrations = (): void => {
+        semanticGeneration += 1;
         for (const registration of registrations) {
             registration.dispose();
         }
         registrations = [];
     };
 
-    const registrationFingerprint = (): string => [
-        capabilityFingerprint(view.getSnapshot().state),
-        ...view.getServerInfos().map(info => (
-            `${info.definitionId}:${capabilityFingerprint(info.state)}`
-        )),
-    ].join('|server:');
+    const registrationFingerprint = (): string => {
+        const semantic = selectSemanticTokensServer(view);
+        return [
+            capabilityFingerprint(view.getSnapshot().state),
+            ...view.getServerInfos().map(info => (
+                `${info.definitionId}:${capabilityFingerprint(info.state)}`
+            )),
+            `semantic:${semantic?.sessionKey ?? ''}:${semanticTokensFingerprint(semantic?.support ?? null)}`,
+        ].join('|server:');
+    };
 
     let fingerprint = registrationFingerprint();
     register(view.getSnapshot().state);
@@ -633,6 +865,18 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
         disposeRegistrations();
         register(snapshot.state);
     });
+    // A server that asks for a refresh, or a fresh process that just received
+    // the buffer again, may now color the document differently.
+    const unsubscribeNotifications = view.onNotification((method, _params, info) => {
+        if (method === SEMANTIC_TOKENS_REFRESH && info.sessionKey === selectSemanticTokensServer(view)?.sessionKey) {
+            fireSemanticTokensChange();
+        }
+    });
+    const unsubscribeSynchronized = view.onSynchronized((info) => {
+        if (info.sessionKey === selectSemanticTokensServer(view)?.sessionKey) {
+            fireSemanticTokensChange();
+        }
+    });
 
     let disposed = false;
     return {
@@ -642,7 +886,11 @@ export function registerLanguageProviders(options: RegisterLanguageProvidersOpti
             }
             disposed = true;
             unsubscribe();
+            unsubscribeNotifications();
+            unsubscribeSynchronized();
             disposeRegistrations();
+            semanticClaim.release();
+            semanticListeners.clear();
         },
     };
 }

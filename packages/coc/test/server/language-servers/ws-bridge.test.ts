@@ -12,6 +12,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as http from 'http';
 import { AddressInfo } from 'net';
+import { pathToFileURL } from 'url';
 import { WebSocket } from 'ws';
 import { LanguageServerManager } from '../../../src/server/language-servers/manager';
 import { LanguageServerWebSocketServer } from '../../../src/server/language-servers/ws-bridge';
@@ -41,6 +42,16 @@ function tempDir(prefix: string): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
     tempDirs.push(dir);
     return dir;
+}
+
+async function waitFor(check: () => Promise<boolean>, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!(await check())) {
+        if (Date.now() > deadline) {
+            throw new Error('Timed out waiting for condition');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+    }
 }
 
 function echoDefinition(overrides: Partial<LanguageServerDefinition> = {}): LanguageServerDefinition {
@@ -129,6 +140,11 @@ class Client {
     async readExternal(attachmentId: string, requestId: string, resourceId: string): Promise<any> {
         this.send({ type: 'lsp-external-source', requestId, attachmentId, resourceId });
         return await this.next('lsp-external-source-result', (msg) => msg.requestId === requestId);
+    }
+
+    async externalTokens(attachmentId: string, requestId: string, resourceId: string): Promise<any> {
+        this.send({ type: 'lsp-external-semantic-tokens', requestId, attachmentId, resourceId });
+        return await this.next('lsp-external-semantic-tokens-result', (msg) => msg.requestId === requestId);
     }
 
     async close(): Promise<void> {
@@ -486,6 +502,24 @@ describe('language-server WebSocket bridge', () => {
         expect(params.uri).toBe(attached.documentUri);
         // Only URI fields are translated: free text keeps whatever the server wrote.
         expect(params.diagnostics[0].message).toContain('file://');
+    });
+
+    it('relays a server semantic tokens refresh request to the browser', async () => {
+        const harness = await createHarness();
+        const client = await harness.connect();
+        const attached = await client.attach('src/notes.txt');
+        await client.next('lsp-status', (msg) => msg.state.status === 'ready');
+
+        const response = await client.request(attached.attachmentId, 'q1', 'ask', {
+            method: 'workspace/semanticTokens/refresh',
+        });
+
+        expect(response.result).toEqual({ value: null, error: null });
+        const notification = await client.next(
+            'lsp-notification',
+            (msg) => msg.method === 'workspace/semanticTokens/refresh',
+        );
+        expect(notification.sessionKey).toBe(attached.sessionKey);
     });
 
     it('refuses a notification naming a foreign document without sending it', async () => {
@@ -946,6 +980,145 @@ describe('language-server WebSocket bridge', () => {
             const response = await client.request(attachmentId, 'e1', 'locate', { paths: [header] });
 
             expect((response.result as { uri: string }[])[0].uri.startsWith('file:')).toBe(true);
+        });
+    });
+    describe('external definition semantic tokens', () => {
+        function semanticDefinition(mode: 'full' | 'range' = 'full'): LanguageServerDefinition {
+            return echoDefinition({ args: [FIXTURE_SERVER, '--semantic-tokens', mode] });
+        }
+
+        /** A harness, an attached document, and a capability for one external header. */
+        async function issue(headerText: string, options: { mode?: 'full' | 'range'; plain?: boolean } = {}) {
+            const harness = await createHarness({
+                definitions: [options.plain ? echoDefinition() : semanticDefinition(options.mode)],
+            });
+            fs.mkdirSync(path.join(harness.workspaceRoot, 'src'), { recursive: true });
+            fs.writeFileSync(path.join(harness.workspaceRoot, 'src', 'notes.txt'), 'hello\n', 'utf-8');
+            const client = await harness.connect();
+            const { attachmentId } = await client.attach('src/notes.txt');
+            const external = tempDir('coc-lsp-external-');
+            const header = path.join(external, 'widget.hpp');
+            fs.writeFileSync(header, headerText, 'utf-8');
+            const response = await client.definition(attachmentId, 'd1', [header]);
+            const resourceId = parseExternalResourceUri((response.result as { uri: string }[])[0].uri)!.resourceId;
+            return { harness, client, attachmentId, external, header, resourceId };
+        }
+
+        it('returns tokens for exactly the authorized file and closes it again', async () => {
+            const { client, attachmentId, external, resourceId } = await issue('class A;\n\nint b;\n');
+
+            const result = await client.externalTokens(attachmentId, 't1', resourceId);
+
+            // One token per non-empty line, sized from the text the server was opened with.
+            expect(result.data).toEqual([0, 0, 8, 1, 0, 2, 0, 6, 1, 0]);
+            expect(result.error).toBeUndefined();
+            const open = await client.request(attachmentId, 'o1', 'getOpenDocuments');
+            expect(open.result).toEqual([]);
+            // The transient open's diagnostics name a host path; none reaches the browser.
+            expect(JSON.stringify(client.received)).not.toContain(external);
+        });
+
+        it('asks for the whole file by range when the server offers only ranges', async () => {
+            const { client, attachmentId, resourceId } = await issue('class A;\nint b;', { mode: 'range' });
+
+            const result = await client.externalTokens(attachmentId, 't1', resourceId);
+
+            expect(result.data).toEqual([0, 0, 8, 1, 0, 1, 0, 6, 1, 0]);
+        });
+
+        it('makes no server request when the server has no semantic tokens', async () => {
+            const { client, attachmentId, resourceId } = await issue('class A;\n', { plain: true });
+
+            expect(await client.externalTokens(attachmentId, 't1', resourceId))
+                .toMatchObject({ error: { code: 'unsupported' } });
+            const open = await client.request(attachmentId, 'o1', 'getOpenDocuments');
+            expect(open.result).toEqual([]);
+        });
+
+        it('refuses a forged id, a raw host path, another attachment and another socket', async () => {
+            const { harness, client, attachmentId, header, resourceId } = await issue('class A;\n');
+            fs.writeFileSync(path.join(harness.workspaceRoot, 'src', 'other.txt'), 'x\n', 'utf-8');
+            const second = await client.attach('src/other.txt');
+            const otherSocket = await harness.connect();
+            const otherAttachment = await otherSocket.attach('src/notes.txt');
+
+            for (const [owner, id, candidate] of [
+                [client, attachmentId, 'forged'],
+                [client, attachmentId, header],
+                [client, attachmentId, pathToFileURL(header).href],
+                [client, second.attachmentId, resourceId],
+                [otherSocket, otherAttachment.attachmentId, resourceId],
+            ] as const) {
+                expect(await owner.externalTokens(id, `t-${candidate}`, candidate))
+                    .toMatchObject({ error: { code: 'unknown-resource' } });
+            }
+            const open = await client.request(attachmentId, 'o1', 'getOpenDocuments');
+            expect(open.result).toEqual([]);
+        });
+
+        it('refuses a capability whose attachment detached', async () => {
+            const { client, attachmentId, resourceId } = await issue('class A;\n');
+            client.send({ type: 'lsp-detach', attachmentId });
+            await client.next('lsp-detached', (msg) => msg.attachmentId === attachmentId);
+
+            expect(await client.externalTokens(attachmentId, 't1', resourceId))
+                .toMatchObject({ error: { code: 'unknown-resource' } });
+        });
+
+        it.skipIf(process.platform === 'win32')('refuses a file replaced by a symlink after issuance', async () => {
+            const { client, attachmentId, external, header, resourceId } = await issue('class A;\n');
+            const decoy = path.join(external, 'decoy.hpp');
+            fs.writeFileSync(decoy, 'class Secret;\n', 'utf-8');
+            fs.rmSync(header);
+            fs.symlinkSync(decoy, header);
+
+            expect(await client.externalTokens(attachmentId, 't1', resourceId))
+                .toMatchObject({ error: { code: 'moved' } });
+        });
+
+        it('reports a server that cannot analyze the file and still closes it', async () => {
+            const { client, attachmentId, resourceId } = await issue('SEMANTIC_FAIL\n');
+
+            expect(await client.externalTokens(attachmentId, 't1', resourceId))
+                .toMatchObject({ error: { code: 'failed' } });
+            const open = await client.request(attachmentId, 'o1', 'getOpenDocuments');
+            expect(open.result).toEqual([]);
+        });
+
+        it('cancels an in-flight request on detach and closes the file', async () => {
+            const { harness, client, attachmentId, resourceId } = await issue('SEMANTIC_SLOW\n');
+            const observer = await harness.connect();
+            const watcher = await observer.attach('src/notes.txt');
+
+            client.send({ type: 'lsp-external-semantic-tokens', requestId: 't1', attachmentId, resourceId });
+            await waitFor(async () => {
+                const open = await observer.request(watcher.attachmentId, `o-${Math.random()}`, 'getOpenDocuments');
+                return (open.result as string[]).length === 1;
+            });
+            client.send({ type: 'lsp-detach', attachmentId });
+
+            expect(await client.next('lsp-external-semantic-tokens-result', (msg) => msg.requestId === 't1'))
+                .toMatchObject({ error: { code: 'cancelled' } });
+            await waitFor(async () => {
+                const open = await observer.request(watcher.attachmentId, `o-${Math.random()}`, 'getOpenDocuments');
+                return (open.result as string[]).length === 0;
+            });
+        });
+
+        it('lets two requests for one file take turns', async () => {
+            const { client, attachmentId, resourceId } = await issue('class A;\n');
+
+            client.send({ type: 'lsp-external-semantic-tokens', requestId: 't1', attachmentId, resourceId });
+            client.send({ type: 'lsp-external-semantic-tokens', requestId: 't2', attachmentId, resourceId });
+            const [first, second] = await Promise.all([
+                client.next('lsp-external-semantic-tokens-result', (msg) => msg.requestId === 't1'),
+                client.next('lsp-external-semantic-tokens-result', (msg) => msg.requestId === 't2'),
+            ]);
+
+            expect(first.data).toEqual([0, 0, 8, 1, 0]);
+            expect(second.data).toEqual([0, 0, 8, 1, 0]);
+            const open = await client.request(attachmentId, 'o1', 'getOpenDocuments');
+            expect(open.result).toEqual([]);
         });
     });
 });

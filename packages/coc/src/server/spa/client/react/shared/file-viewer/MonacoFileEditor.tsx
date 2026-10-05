@@ -278,6 +278,9 @@ export const EXPLORER_EDITOR_OPTIONS: monacoEditor.IStandaloneEditorConstruction
         verticalScrollbarSize: 8,
         horizontalScrollbarSize: 8,
     },
+    // The built-in themes leave semantic coloring off. Only a model with a
+    // language-server semantic tokens provider is affected.
+    'semanticHighlighting.enabled': true,
 };
 
 export function MonacoFileEditor({

@@ -31,6 +31,7 @@ import {
 import { parseRemoteCloneKey } from '../../repos/cloneIdentity';
 import { getEditingSessionId } from './editingSession';
 import type { ExternalSourceContent } from './externalSource';
+import { readSemanticTokensSupport, translateSemanticTokens } from './semanticTokens';
 
 // ============================================================================
 // Wire protocol (mirror of the server's ws-bridge types)
@@ -139,8 +140,19 @@ type ServerMessage =
           languageHint?: string;
           error?: { code: string; message: string };
       }
+    | {
+          type: 'lsp-external-semantic-tokens-result';
+          requestId: string;
+          data?: number[];
+          error?: { code: string; message: string };
+      }
     | { type: 'lsp-error'; message: string }
     | { type: 'pong' };
+
+type ExternalResultMessage = Extract<
+    ServerMessage,
+    { type: 'lsp-external-source-result' | 'lsp-external-semantic-tokens-result' }
+>;
 
 // ============================================================================
 // Public surface
@@ -201,6 +213,14 @@ export interface LanguageServerAttachment {
         resourceId: string,
         options?: { signal?: AbortSignal },
     ): Promise<ExternalSourceContent>;
+    /**
+     * Semantic tokens for that same external source, in CoC's legend, or null
+     * when the server cannot provide them.
+     */
+    readExternalSemanticTokens(
+        resourceId: string,
+        options?: { signal?: AbortSignal },
+    ): Promise<Uint32Array | null>;
     /** Dropped when the attachment is not live; the next attach replays instead. */
     sendNotification(method: string, params?: unknown): void;
     sendNotificationTo(attachmentId: string, method: string, params?: unknown): void;
@@ -249,9 +269,9 @@ export interface LanguageServerClientOptions {
 
 const OPEN = 1;
 
-/** An in-flight external-source read, correlated by its own request id. */
+/** An in-flight external-source read or token request, correlated by its own request id. */
 interface PendingExternalRead {
-    resolve: (value: ExternalSourceContent) => void;
+    resolve: (value: ExternalResultMessage) => void;
     reject: (error: Error) => void;
     cleanup: () => void;
 }
@@ -721,25 +741,15 @@ export class LanguageServerClient {
                 }
                 return;
             }
-            case 'lsp-external-source-result': {
+            case 'lsp-external-source-result':
+            case 'lsp-external-semantic-tokens-result': {
                 const pending = this.pendingExternalReads.get(message.requestId);
                 if (!pending) {
                     return;
                 }
                 this.pendingExternalReads.delete(message.requestId);
                 pending.cleanup();
-                if (message.error || typeof message.content !== 'string') {
-                    pending.reject(new LanguageServerClientError(
-                        message.error?.code ?? 'unavailable',
-                        message.error?.message ?? 'Definition source unavailable.',
-                    ));
-                } else {
-                    pending.resolve({
-                        content: message.content,
-                        displayName: message.displayName ?? 'source',
-                        ...(message.languageHint ? { languageHint: message.languageHint } : {}),
-                    });
-                }
+                pending.resolve(message);
                 return;
             }
             case 'lsp-notification': {
@@ -938,6 +948,8 @@ export class LanguageServerClient {
             ) => client.request(record, method, params, options, definitionId) as Promise<T>,
             readExternalSource: (resourceId: string, options?: { signal?: AbortSignal }) =>
                 client.requestExternalSource(record, resourceId, options),
+            readExternalSemanticTokens: (resourceId: string, options?: { signal?: AbortSignal }) =>
+                client.requestExternalSemanticTokens(record, resourceId, options),
             sendNotification: (method: string, params?: unknown) => {
                 for (const info of record.infos.values()) {
                     client.send({ type: 'lsp-notify', attachmentId: info.attachmentId, method, params });
@@ -992,20 +1004,64 @@ export class LanguageServerClient {
         }
     }
 
-    /**
-     * Ask the owning host for the content behind one issued capability.
-     *
-     * The read rides this attachment's own socket, so a definition produced by
-     * a remote clone is read from that clone rather than from whichever server
-     * the page happens to be served by. A capability belongs to a live
-     * attachment on a live connection: if either is gone the read fails and the
-     * recovery is a fresh Go to Definition, not a retry with the same id.
-     */
-    private requestExternalSource(
+    /** The content behind one issued capability. */
+    private async requestExternalSource(
         record: AttachmentRecord,
         resourceId: string,
         options?: { signal?: AbortSignal },
     ): Promise<ExternalSourceContent> {
+        const message = await this.sendExternal(record, 'lsp-external-source', resourceId, options);
+        if (message.type !== 'lsp-external-source-result' || message.error || typeof message.content !== 'string') {
+            throw new LanguageServerClientError(
+                message.error?.code ?? 'unavailable',
+                message.error?.message ?? 'Definition source unavailable.',
+            );
+        }
+        return {
+            content: message.content,
+            displayName: message.displayName ?? 'source',
+            ...(message.languageHint ? { languageHint: message.languageHint } : {}),
+        };
+    }
+
+    /**
+     * Semantic tokens for one external source, through the same capability and
+     * attachment as its read, already re-encoded against CoC's legend. Null —
+     * and no request at all — when that server has no semantic tokens; null
+     * too when it could not analyze the file, since basic syntax colors are
+     * the answer either way.
+     */
+    private async requestExternalSemanticTokens(
+        record: AttachmentRecord,
+        resourceId: string,
+        options?: { signal?: AbortSignal },
+    ): Promise<Uint32Array | null> {
+        const support = readSemanticTokensSupport(firstInfo(record)?.state);
+        if (!support) {
+            return null;
+        }
+        const message = await this.sendExternal(record, 'lsp-external-semantic-tokens', resourceId, options);
+        if (message.type !== 'lsp-external-semantic-tokens-result' || message.error) {
+            return null;
+        }
+        return translateSemanticTokens(message.data, support.legend);
+    }
+
+    /**
+     * Ask the owning host about one issued capability.
+     *
+     * The request rides this attachment's own socket, so a definition produced
+     * by a remote clone is served by that clone rather than by whichever server
+     * the page happens to be served by. A capability belongs to a live
+     * attachment on a live connection: if either is gone the request fails and
+     * the recovery is a fresh Go to Definition, not a retry with the same id.
+     */
+    private sendExternal(
+        record: AttachmentRecord,
+        type: 'lsp-external-source' | 'lsp-external-semantic-tokens',
+        resourceId: string,
+        options?: { signal?: AbortSignal },
+    ): Promise<ExternalResultMessage> {
         if (record.released) {
             return Promise.reject(new LanguageServerClientError('released', 'Document was closed'));
         }
@@ -1019,7 +1075,7 @@ export class LanguageServerClient {
             );
         }
         const requestId = `ext-${this.generation}-${++this.requestCounter}`;
-        return new Promise<ExternalSourceContent>((resolve, reject) => {
+        return new Promise<ExternalResultMessage>((resolve, reject) => {
             const onAbort = () => {
                 const pending = this.pendingExternalReads.get(requestId);
                 if (!pending) {
@@ -1034,7 +1090,7 @@ export class LanguageServerClient {
             };
             options?.signal?.addEventListener('abort', onAbort, { once: true });
             this.pendingExternalReads.set(requestId, { resolve, reject, cleanup });
-            if (!this.send({ type: 'lsp-external-source', requestId, attachmentId: info.attachmentId, resourceId })) {
+            if (!this.send({ type, requestId, attachmentId: info.attachmentId, resourceId })) {
                 this.pendingExternalReads.delete(requestId);
                 cleanup();
                 reject(new LanguageServerClientError('disconnected', 'Language-server connection lost'));

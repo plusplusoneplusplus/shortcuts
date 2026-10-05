@@ -191,12 +191,18 @@ export interface LanguageDocumentView {
      * workspace, through the attachment that was issued the capability.
      */
     readExternalSource(resourceId: string, options?: { signal?: AbortSignal }): Promise<ExternalSourceContent>;
+    /** Semantic tokens for that same external source, in CoC's legend; null when unavailable. */
+    readExternalSemanticTokens(resourceId: string, options?: { signal?: AbortSignal }): Promise<Uint32Array | null>;
     /** `{ textDocument: { uri }, position }` with the URI filled in. */
     documentParams<T extends Record<string, unknown>>(params?: T): T & { textDocument: { uri: string } };
 
     onDiagnostics(listener: (diagnostics: LspDiagnostic[]) => void): () => void;
     onText(listener: (text: string, version: number) => void): () => void;
     onStatus(listener: (snapshot: LanguageDocumentSnapshot) => void): () => void;
+    /** Session-wide server notifications from any of this document's servers. */
+    onNotification(
+        listener: (method: string, params: unknown, info: LanguageServerAttachedInfo) => void,
+    ): () => void;
     /** Fires after each replay, i.e. whenever a fresh host session is ready. */
     onSynchronized(listener: (info: LanguageServerAttachedInfo) => void): () => void;
 
@@ -259,6 +265,7 @@ interface DocumentRecord {
     diagnosticListeners: Set<(diagnostics: LspDiagnostic[]) => void>;
     textListeners: Set<(text: string, version: number) => void>;
     statusListeners: Set<(snapshot: LanguageDocumentSnapshot) => void>;
+    notificationListeners: Set<(method: string, params: unknown, info: LanguageServerAttachedInfo) => void>;
     synchronizedListeners: Set<(info: LanguageServerAttachedInfo) => void>;
 }
 
@@ -347,6 +354,7 @@ export class LanguageDocumentStore {
             diagnosticListeners: new Set(),
             textListeners: new Set(),
             statusListeners: new Set(),
+            notificationListeners: new Set(),
             synchronizedListeners: new Set(),
         };
 
@@ -371,6 +379,9 @@ export class LanguageDocumentStore {
             }),
             attachment.onNotification((method, params, info) => {
                 this.handleNotification(record, info.attachmentId, method, params);
+                for (const listener of [...record.notificationListeners]) {
+                    listener(method, params, info);
+                }
             }),
             attachment.onStatus((state, info) => {
                 const server = record.servers.get(info.attachmentId);
@@ -632,6 +643,8 @@ export class LanguageDocumentStore {
             ) => record.attachment.sendRequestTo<T>(definitionId, method, params, options),
             readExternalSource: (resourceId, options) =>
                 record.attachment.readExternalSource(resourceId, options),
+            readExternalSemanticTokens: (resourceId, options) =>
+                record.attachment.readExternalSemanticTokens(resourceId, options),
             documentParams: <T extends Record<string, unknown>>(params?: T) =>
                 ({ ...(params ?? ({} as T)), textDocument: { uri: record.uri } }) as T & {
                     textDocument: { uri: string };
@@ -639,6 +652,7 @@ export class LanguageDocumentStore {
             onDiagnostics: (listener) => subscribe(record.diagnosticListeners, listener),
             onText: (listener) => subscribe(record.textListeners, listener),
             onStatus: (listener) => subscribe(record.statusListeners, listener),
+            onNotification: (listener) => subscribe(record.notificationListeners, listener),
             onSynchronized: (listener) => subscribe(record.synchronizedListeners, listener),
             restart: () => {
                 if (record.closed) {
@@ -688,6 +702,7 @@ export class LanguageDocumentStore {
         record.diagnosticListeners.clear();
         record.textListeners.clear();
         record.statusListeners.clear();
+        record.notificationListeners.clear();
         record.synchronizedListeners.clear();
     }
 }

@@ -5,10 +5,15 @@ import {
     type ExternalSourceContent,
 } from './externalSource';
 import {
+    publishExternalSemanticTokens,
     publishExternalSource,
     readExternalSourceRecord,
     type ExternalSourceRecord,
 } from './externalSourceStore';
+import {
+    registerExternalSemanticTokens,
+    type ExternalSemanticTokensMonaco,
+} from './externalSemanticTokens';
 
 const ORPHAN_MODEL_TIMEOUT_MS = 30_000;
 
@@ -36,6 +41,7 @@ export interface DefinitionPreviewUri {
 export interface DefinitionPreviewModel {
     uri: DefinitionPreviewUri;
     setValue(value: string): void;
+    getValue?(): string;
     getLanguageId?(): string;
     dispose?(): void;
     isAttachedToEditor?(): boolean;
@@ -61,6 +67,7 @@ export interface DefinitionPreviewMonaco {
         /** Set once the external read reveals what the file actually is. */
         setModelLanguage?: (model: DefinitionPreviewModel, languageId: string) => void;
     };
+    languages?: ExternalSemanticTokensMonaco['languages'];
 }
 
 export interface DefinitionPreviewSource {
@@ -82,6 +89,8 @@ interface PreviewModelRecord {
     loading?: Promise<void>;
     /** What was last published, so the store can be refilled after it drops it. */
     published?: ExternalSourceRecord;
+    /** Removes the semantic-token provider registered for an owned external model. */
+    disposeSemanticTokens?: () => void;
     /**
      * False for a model another surface created: every open pane registers its
      * own source against the one Monaco registry, so loading through a foreign
@@ -109,6 +118,11 @@ export function registerDefinitionPreviewSource(options: {
      * through to the unavailable model.
      */
     readExternalSource?: (resourceId: string, signal: AbortSignal) => Promise<ExternalSourceContent>;
+    /**
+     * Semantic tokens for an external source, through the same attachment as
+     * its read. Absent, null or failed leaves basic syntax colors.
+     */
+    readExternalSemanticTokens?: (resourceId: string, signal: AbortSignal) => Promise<Uint32Array | null>;
     /** Monaco language for a file name; used to highlight an external source. */
     languageForFileName?: (fileName: string) => string;
     showUnavailableForRejectedTarget?: boolean;
@@ -119,9 +133,10 @@ export function registerDefinitionPreviewSource(options: {
     let disposed = false;
 
     const disposeModels = () => {
-        for (const { model, attachment, controller, owned } of models.values()) {
+        for (const { model, attachment, controller, owned, disposeSemanticTokens } of models.values()) {
             controller?.abort();
             attachment?.dispose();
+            disposeSemanticTokens?.();
             if (owned) model.dispose?.();
         }
         models.clear();
@@ -176,6 +191,7 @@ export function registerDefinitionPreviewSource(options: {
             controller.abort();
             if (models.get(uri) !== record) return;
             record.attachment?.dispose();
+            record.disposeSemanticTokens?.();
             if (record.owned) record.model.dispose?.();
             models.delete(uri);
         };
@@ -201,6 +217,7 @@ export function registerDefinitionPreviewSource(options: {
                     }
                 }
                 model.setValue(source.content);
+                if (external) loadSemanticTokens(record, external.resourceId, source.content, controller.signal);
                 setTimeout(() => {
                     if (!live()) return;
                     for (const candidate of options.monaco.editor.getEditors?.() ?? []) {
@@ -234,6 +251,42 @@ export function registerDefinitionPreviewSource(options: {
             });
         record.loading = loading;
         return loading;
+    };
+
+    /**
+     * Fetch tokens for a loaded external source and keep them on the store
+     * record, which the tab that Peek's result opens colors from as well. Only
+     * a model this source created gets a provider; a foreign model's own pane
+     * registered one.
+     */
+    const loadSemanticTokens = (
+        record: PreviewModelRecord,
+        resourceId: string,
+        content: string,
+        signal: AbortSignal,
+    ): void => {
+        const { model } = record;
+        const languageId = model.getLanguageId?.();
+        if (record.owned && languageId && typeof model.getValue === 'function' && options.monaco.languages) {
+            record.disposeSemanticTokens?.();
+            record.disposeSemanticTokens = registerExternalSemanticTokens({
+                monaco: { languages: options.monaco.languages },
+                languageId,
+                model: model as { getValue(): string },
+                resourceId,
+            });
+        }
+        const read = options.readExternalSemanticTokens;
+        if (!read) return;
+        read(resourceId, signal)
+            .then((tokens) => {
+                if (!tokens || signal.aborted || disposed) return;
+                publishExternalSemanticTokens(resourceId, content, tokens);
+                const published = readExternalSourceRecord(resourceId);
+                if (published && published.content === content) record.published = published;
+            })
+            // A server that cannot analyze the file leaves basic syntax colors.
+            .catch(() => {});
     };
 
     return {

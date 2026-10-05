@@ -33,6 +33,8 @@ export interface ClientRequestOptions {
     workspaceFolders: () => WorkspaceFolder[];
     /** Called when the registration set changes, for status reporting. */
     onRegistrationsChanged?: (registrations: DynamicRegistration[]) => void;
+    /** The server asked every client to re-fetch semantic tokens. */
+    onSemanticTokensRefresh?: () => void;
 }
 
 /**
@@ -115,6 +117,12 @@ export class LanguageServerClientRequests {
         // but CoC has no progress surface for it yet. Refusing the create
         // request makes some servers withhold results entirely.
         handlers.set('window/workDoneProgress/create', () => null);
+        // Answered here and relayed to the browser, which owns the editors
+        // whose colors are now stale.
+        handlers.set('workspace/semanticTokens/refresh', () => {
+            this.options.onSemanticTokensRefresh?.();
+            return null;
+        });
         return handlers;
     }
 
@@ -192,6 +200,7 @@ export const DEFAULT_CLIENT_CAPABILITIES: JsonValue = {
         workspaceFolders: true,
         didChangeConfiguration: { dynamicRegistration: true },
         didChangeWatchedFiles: { dynamicRegistration: true },
+        semanticTokens: { refreshSupport: true },
     },
     window: {
         workDoneProgress: true,
@@ -214,6 +223,24 @@ export const DEFAULT_CLIENT_CAPABILITIES: JsonValue = {
         signatureHelp: {
             dynamicRegistration: true,
             signatureInformation: { documentationFormat: ['markdown', 'plaintext'] },
+        },
+        // The browser re-encodes tokens against its own legend, so any type or
+        // modifier is accepted here; unknown ones keep their syntax color.
+        semanticTokens: {
+            dynamicRegistration: true,
+            requests: { range: true, full: { delta: false } },
+            tokenTypes: [
+                'namespace', 'type', 'class', 'enum', 'interface', 'struct', 'typeParameter', 'parameter',
+                'variable', 'property', 'enumMember', 'event', 'function', 'method', 'macro', 'keyword',
+                'modifier', 'comment', 'string', 'number', 'regexp', 'operator', 'decorator',
+            ],
+            tokenModifiers: [
+                'declaration', 'definition', 'readonly', 'static', 'deprecated', 'abstract', 'async',
+                'modification', 'documentation', 'defaultLibrary',
+            ],
+            formats: ['relative'],
+            overlappingTokenSupport: false,
+            multilineTokenSupport: false,
         },
     },
 };

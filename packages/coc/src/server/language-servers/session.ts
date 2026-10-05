@@ -128,6 +128,8 @@ export interface LanguageServerSessionOptions {
  * the request itself. Only these are worth priming for: everything else either
  * carries its own document or needs no project at all.
  */
+const SEMANTIC_TOKENS_REFRESH = 'workspace/semanticTokens/refresh';
+
 const PRIME_BEFORE_REQUESTS = new Set(['workspace/symbol']);
 
 const DEFAULT_START_TIMEOUT_MS = 20_000;
@@ -179,6 +181,13 @@ export class LanguageServerSession {
             settings: this.definition.settings,
             workspaceFolders: () => [this.workspaceFolder()],
             onRegistrationsChanged: (registrations) => this.setState({ dynamicRegistrations: registrations }),
+            // A server request, delivered to subscribers like a notification
+            // so the bridge can forward it to every attached browser.
+            onSemanticTokensRefresh: () => {
+                for (const handler of [...(this.notificationHandlers.get(SEMANTIC_TOKENS_REFRESH) ?? [])]) {
+                    handler(undefined);
+                }
+            },
         });
         this.state = {
             status: 'disabled',

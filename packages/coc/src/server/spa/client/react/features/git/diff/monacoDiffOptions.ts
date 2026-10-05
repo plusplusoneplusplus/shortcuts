@@ -192,6 +192,9 @@ export function buildDiffEditorOptions(viewMode: DiffViewMode, editable = false)
         lineDecorationsWidth: 8,
         lineNumbersMinChars: 3,
         scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+        // Colors the working-copy side when it has a language document; the
+        // original side never registers a semantic tokens provider.
+        'semanticHighlighting.enabled': true,
     };
 }
 

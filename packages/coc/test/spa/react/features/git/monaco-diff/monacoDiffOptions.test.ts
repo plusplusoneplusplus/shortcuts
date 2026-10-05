@@ -127,6 +127,10 @@ describe('buildDiffEditorOptions', () => {
         // Hosts the add-comment widget (AC-05).
         expect(options.glyphMargin).toBe(true);
     });
+
+    it('turns semantic coloring on, which only a provider-backed model uses', () => {
+        expect(buildDiffEditorOptions('split')['semanticHighlighting.enabled']).toBe(true);
+    });
 });
 
 describe('editable modified side', () => {

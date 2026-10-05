@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ExternalSourcePane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExternalSourcePane';
 import {
+    publishExternalSemanticTokens,
     publishExternalSource,
     readExternalSourceRecord,
     resetExternalSourceStoreForTests,
@@ -69,6 +70,38 @@ describe('ExternalSourcePane', () => {
         expect(props.onChange).toBeUndefined();
         expect(props.onSave).toBeUndefined();
         expect(props.onModelMount).toEqual(expect.any(Function));
+    });
+
+    it('colors the read-only model from the tokens Peek stored, and unlocks and unregisters on unmount', () => {
+        const content = 'class widget;';
+        publishExternalSource({ resourceId: 'cap-1', content, displayName: 'widget.hpp' });
+        publishExternalSemanticTokens('cap-1', content, Uint32Array.from([0, 6, 6, 2, 0]));
+        render(<ExternalSourcePane resourceId="cap-1" name="widget.hpp" />);
+        const registrations: { languageId: string; provider: any; disposed: boolean }[] = [];
+        const editor = { updateOptions: vi.fn() };
+        const model = { getValue: () => content };
+        const monaco = {
+            languages: {
+                registerDocumentSemanticTokensProvider: (languageId: string, provider: unknown) => {
+                    const entry = { languageId, provider, disposed: false };
+                    registrations.push(entry);
+                    return { dispose: () => { entry.disposed = true; } };
+                },
+            },
+        };
+
+        const onModelMount = editors.mounted.at(-1)!.onModelMount as (context: unknown) => () => void;
+        const cleanup = onModelMount({ editor, monaco, model });
+
+        expect(editor.updateOptions).toHaveBeenLastCalledWith({ readOnly: true });
+        expect(registrations).toHaveLength(1);
+        expect(registrations[0].languageId).toBe('cpp');
+        expect(Array.from(registrations[0].provider.provideDocumentSemanticTokens(model).data))
+            .toEqual([0, 6, 6, 2, 0]);
+
+        cleanup();
+        expect(registrations[0].disposed).toBe(true);
+        expect(editor.updateOptions).toHaveBeenLastCalledWith({ readOnly: false });
     });
 
     it('holds the source alive while it is open and releases it on close', () => {

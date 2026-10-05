@@ -37,6 +37,7 @@ export function inertAttachment(path: string): LanguageServerAttachment {
         sendRequest: async () => undefined as never,
         sendRequestTo: async () => undefined as never,
         readExternalSource: () => Promise.reject(new Error('inert attachment: no language server is attached')),
+        readExternalSemanticTokens: async () => null,
         sendNotification: () => {},
         sendNotificationTo: () => {},
         restart: () => {},
