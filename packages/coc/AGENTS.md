@@ -186,8 +186,9 @@ references before editing. Paths are package-relative.
   relay raw exceptions or partial output, or borrow another request's error. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
 - Teams/WhatsApp command grammar is one spec table in
-  `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`, generated
-  `MESSAGING_HELP_TEXT`); unknown `/word` or malformed list/select/create replies
+  `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`,
+  `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp
+  bold or Teams Markdown converted to safe HTML by the manager; unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
   answers selection, help, quota and `compact [instructions]` for both routers via a
   `MessagingSelection` adapter. With no selected repo (or a removed one), plain messages

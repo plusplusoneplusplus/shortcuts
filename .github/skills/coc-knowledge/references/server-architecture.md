@@ -204,7 +204,11 @@ remain connector-specific.
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
 `compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
-command" + the generated `MESSAGING_HELP_TEXT`, never sent to the AI).
+command" + generated help, never sent to the AI).
+`formatMessagingHelp` derives grouped help from the command/mode specs. Routers
+use native WhatsApp bold or Teams Markdown rendered by the manager as safe HTML;
+`MESSAGING_HELP_TEXT` is the plain-text fallback. Container Teams keeps its own
+command grammar and renders its specs with `formatMessagingHelpCommands` as HTML.
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
 `AgentProvidersQuotaCache`) and compact for both routers via a `MessagingSelection`
 adapter; routers keep platform state and transport. `compact` targets the quoted

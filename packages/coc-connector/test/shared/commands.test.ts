@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    MESSAGING_COMMAND_SPECS, MESSAGING_HELP_TEXT, isMessagingControlCommand, parseMessagingCommand,
+    MESSAGING_COMMAND_SPECS, MESSAGING_HELP_TEXT, MESSAGING_MODE_SPECS, formatMessagingHelp, isMessagingControlCommand, parseMessagingCommand,
     type MessagingCommand,
 } from '../../src';
 
@@ -109,18 +109,34 @@ describe('parseMessagingCommand', () => {
         expect(isMessagingControlCommand(parseMessagingCommand('[id] hi'))).toBe(false);
     });
 
-    it('generates help from the spec table so every command is documented', () => {
+    it('documents every command and mode from the parser specs', () => {
         for (const spec of MESSAGING_COMMAND_SPECS) {
-            expect(MESSAGING_HELP_TEXT).toContain(`${spec.usage} — ${spec.summary}`);
-            expect(parseMessagingCommand(spec.usage.replace(/<[^>]+>/g, 'x')).type).toBe(spec.type);
+            expect(MESSAGING_HELP_TEXT).toContain(`${spec.usage}\n${spec.summary}`);
+            const sample = spec.usage.replace(/\[[^\]]+\]/g, '').replace(/<[^>]+>/g, 'x');
+            expect(parseMessagingCommand(sample).type).toBe(spec.type);
+            if (spec.example) {
+                expect(MESSAGING_HELP_TEXT).toContain(`Example: ${spec.example}`);
+                expect(parseMessagingCommand(spec.example).type).toBe(spec.type);
+            }
         }
-        expect(MESSAGING_HELP_TEXT).toContain('/autopilot <message>');
-        expect(MESSAGING_HELP_TEXT).toContain('/ask <message>');
-        expect(MESSAGING_HELP_TEXT).toContain('[chatid] <message>');
-        expect(MESSAGING_HELP_TEXT).toContain('Unknown command');
-        expect(MESSAGING_HELP_TEXT).toContain('compact [instructions] — ');
-        expect(MESSAGING_HELP_TEXT).toContain('list remotes — ');
-        expect(MESSAGING_HELP_TEXT).toContain('repo@server');
-        expect(MESSAGING_HELP_TEXT).toContain('-v for ids');
+        for (const spec of MESSAGING_MODE_SPECS) {
+            expect(MESSAGING_HELP_TEXT).toContain(`/${spec.mode} <message> — ${spec.summary}`);
+        }
+        expect(parseMessagingCommand('/ask [chatid] What changed?')).toEqual({
+            type: 'chat-explicit', chatId: 'chatid', args: 'What changed?', mode: 'ask',
+        });
+    });
+
+    it('keeps plain help grouped, compact and free of tables or formatting markers', () => {
+        expect(MESSAGING_HELP_TEXT).toBe(formatMessagingHelp());
+        for (const group of ['Repos', 'Topics', 'Tools', 'Chat', 'Modes (/ required)']) {
+            expect(MESSAGING_HELP_TEXT).toContain(`\n\n${group}\n`);
+        }
+        expect(MESSAGING_HELP_TEXT.length).toBeLessThan(3000);
+        expect(MESSAGING_HELP_TEXT).not.toMatch(/[`*]|<br>|\| *---/);
+        expect(MESSAGING_HELP_TEXT).toContain('n.m or repo@server (read-only)');
+        expect(MESSAGING_HELP_TEXT).toContain('replied-to chat, else selected topic');
+        expect(MESSAGING_HELP_TEXT).toContain('current mode');
+        expect(MESSAGING_HELP_TEXT).toContain('Unknown /commands');
     });
 });

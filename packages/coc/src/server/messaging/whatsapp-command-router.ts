@@ -12,6 +12,8 @@ import { admitBotControlledFollowUp } from './bot-control-admission';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
 import type { MessagingHandOff } from './job-handoff';
 
+const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*` };
+
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess' | 'updateProcess'>;
     bindings: WhatsAppBindings;
@@ -60,11 +62,12 @@ export class WhatsAppCommandRouter {
                 chatKey: msg.chatJid, messageId: msg.messageId, replyToId: msg.quotedMessageId, text: msg.text,
                 reply, acknowledge: () => this.deps.react(msg.messageId),
             })) return;
-            if (command.type === 'invalid') { await reply(invalidCommandReply()); return; }
+            if (command.type === 'invalid') { await reply(invalidCommandReply(WHATSAPP_HELP_FORMAT)); return; }
             if (isMessagingControlCommand(command)) {
                 const bindings = this.deps.bindings;
                 await reply(await handleMessagingCommand(command, {
                     store: this.deps.store,
+                    helpFormat: WHATSAPP_HELP_FORMAT,
                     getQuota: this.deps.getQuota,
                     compact: this.deps.compact,
                     remotes: this.deps.remotes,

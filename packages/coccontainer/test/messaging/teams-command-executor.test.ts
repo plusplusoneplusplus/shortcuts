@@ -205,7 +205,18 @@ describe('TeamsCommandExecutor', () => {
     it('shows help', async () => {
         const result = await executor.tryExecute(makeMsg('/help'));
         expect(result.handled).toBe(true);
-        expect(result.response).toContain('Available Commands');
+        expect(result.response).toContain('<strong>CoC help</strong>');
+        for (const group of ['Repos', 'Topics', 'Tools', 'Chat']) {
+            expect(result.response).toContain(`<strong>${group}</strong>`);
+        }
+        for (const syntax of ['/list agents', '/list repos', '/select repo &lt;name|#&gt;',
+            '/list topics', '/create topic', '/select topic &lt;id|#&gt;', '/help']) {
+            expect(result.response).toContain(`<code>${syntax}</code>`);
+        }
+        expect(result.response).toContain('Example: <code>/select repo 2</code>');
+        expect(result.response).not.toMatch(/`|\*\*|<table|<name|<id/);
+        // The container has its own grammar; do not advertise server-only commands.
+        expect(result.response).not.toMatch(/list remotes|quota|compact|autopilot/);
         expect(result.response).toContain('/list agents');
         expect(result.response).toContain('/select repo');
     });

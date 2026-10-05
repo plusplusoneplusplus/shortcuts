@@ -8,6 +8,7 @@
  * Per-user state (selected repo, selected topic) is tracked in memory.
  */
 
+import { formatMessagingHelpCommands, type MessagingHelpCommandSpec } from '@plusplusoneplusplus/coc-connector';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import type { AgentManager, InboundAgent } from '../inbound/agent-manager';
 import type { AgentStore, Agent } from '../store/agent-store';
@@ -57,15 +58,17 @@ interface CommandResult {
 // Command patterns
 // ============================================================================
 
-const COMMAND_PATTERNS: Array<{ pattern: RegExp; type: string }> = [
-    { pattern: /^\/list\s+agents?\s*$/i, type: 'list-agents' },
-    { pattern: /^\/list\s+repos?\s*$/i, type: 'list-repos' },
-    { pattern: /^\/select\s+repos?\s+(.+)$/i, type: 'select-repo' },
-    { pattern: /^\/list\s+(?:chat\s+)?topics?\s*$/i, type: 'list-topics' },
-    { pattern: /^\/create\s+(?:chat\s+)?topic\s*$/i, type: 'create-topic' },
-    { pattern: /^\/select\s+(?:chat\s+)?topic\s+(.+)$/i, type: 'select-topic' },
-    { pattern: /^\/help\s*$/i, type: 'help' },
+const COMMAND_PATTERNS: Array<MessagingHelpCommandSpec & { pattern: RegExp; type: string }> = [
+    { pattern: /^\/list\s+agents?\s*$/i, type: 'list-agents', group: 'Repos', usage: '/list agents', summary: 'Show connected agents' },
+    { pattern: /^\/list\s+repos?\s*$/i, type: 'list-repos', group: 'Repos', usage: '/list repos', summary: 'Show repos across all agents' },
+    { pattern: /^\/select\s+repos?\s+(.+)$/i, type: 'select-repo', group: 'Repos', usage: '/select repo <name|#>', summary: 'Choose a repo for chats', example: '/select repo 2' },
+    { pattern: /^\/list\s+(?:chat\s+)?topics?\s*$/i, type: 'list-topics', group: 'Topics', usage: '/list topics', summary: 'Show recent chats' },
+    { pattern: /^\/create\s+(?:chat\s+)?topic\s*$/i, type: 'create-topic', group: 'Topics', usage: '/create topic', summary: 'Next message starts a new chat' },
+    { pattern: /^\/select\s+(?:chat\s+)?topic\s+(.+)$/i, type: 'select-topic', group: 'Topics', usage: '/select topic <id|#>', summary: 'Continue an existing chat', example: '/select topic 1' },
+    { pattern: /^\/help\s*$/i, type: 'help', group: 'Tools', usage: '/help', summary: 'Show this help' },
 ];
+
+const escapeHelpHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // ============================================================================
 // Executor
@@ -310,18 +313,20 @@ export class TeamsCommandExecutor {
 
     private handleHelp(): string {
         return [
-            '**Available Commands:**',
-            '`/list agents` — list connected agents',
-            '`/list repos` — list repos across all agents',
-            '`/select repo <name|#>` — set target repo for chats',
-            '`/list topics` — list recent chat sessions',
-            '`/create topic` — start a new chat (next message creates it)',
-            '`/select topic <id|#>` — resume an existing chat',
-            '`/help` — show this help',
+            '<strong>CoC help</strong>',
+            'Commands ignore case; leading / is required.',
+            '&lt;...&gt; required · # = list number',
             '',
-            '**Chat:**',
-            'Any message without `/` is sent to the selected topic (or creates a new one).',
-            'Use `[processId] message` to target a specific chat.',
-        ].join('<br>');
+            formatMessagingHelpCommands(COMMAND_PATTERNS, {
+                strong: text => `<strong>${escapeHelpHtml(text)}</strong>`,
+                code: text => `<code>${escapeHelpHtml(text)}</code>`,
+                escape: escapeHelpHtml,
+            }),
+            '',
+            '<strong>Chat</strong>',
+            'Send plain text to continue the selected topic or start a new chat.',
+            '<code>[processId] message</code>',
+            'Send to a specific chat.',
+        ].join('\n').replace(/\n/g, '<br>');
     }
 }

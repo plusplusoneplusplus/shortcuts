@@ -10,7 +10,7 @@
 import { toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import {
-    MESSAGING_HELP_TEXT, isMessagingControlCommand, parseMessagingCommand,
+    formatMessagingHelp, isMessagingControlCommand, parseMessagingCommand,
     type MessagingChatMode, type MessagingCommand, type MessagingControlCommand,
 } from '@plusplusoneplusplus/coc-connector';
 import { TeamsUserStateStore } from './teams-user-state';
@@ -135,7 +135,7 @@ export class TeamsCommandRouter {
                 if (command.type === 'invalid') {
                     if (this.deps.hasThreadCommand?.(msg)) return;
                     this.deps.recordThreadCommand?.(msg);
-                    await this.deps.sendReply(`❌ ${invalidCommandReply()}`, msg.replyToMessageId);
+                    await this.deps.sendReply(`❌ ${invalidCommandReply(TEAMS_FORMAT)}`, msg.replyToMessageId);
                     return;
                 }
                 if (isMessagingControlCommand(command)) {
@@ -193,7 +193,7 @@ export class TeamsCommandRouter {
             const userKey = msg.senderAadId ?? msg.senderName ?? 'anonymous';
             if (command.type !== 'chat' && command.type !== 'chat-explicit') observe?.('dispatch-command');
             if (command.type === 'invalid') {
-                await this.deps.sendReply(`❌ ${invalidCommandReply()}`, msg.messageId);
+                await this.deps.sendReply(`❌ ${invalidCommandReply(TEAMS_FORMAT)}`, msg.messageId);
             } else if (command.type === 'chat-explicit') {
                 await this.handleExplicitChat(userKey, command, msg, observe);
             } else if (command.type === 'chat') {
@@ -228,6 +228,7 @@ export class TeamsCommandRouter {
             store: this.deps.store,
             getQuota: this.deps.getQuota,
             ...TEAMS_FORMAT,
+            helpFormat: TEAMS_FORMAT,
             compact: this.deps.compact,
             remotes: this.deps.remotes,
             remoteRefs: this.remoteRefs.slot(chatKey),
@@ -256,7 +257,7 @@ export class TeamsCommandRouter {
         const remoteBrowse = command.type === 'list-remotes' || (command.type === 'list-topics' && !!command.args);
         if (command.type === 'list-repos' || command.type === 'help' || command.type === 'quota' || remoteBrowse) {
             this.deps.recordThreadCommand?.(msg);
-            await this.deps.sendReply(command.type === 'help' ? MESSAGING_HELP_TEXT
+            await this.deps.sendReply(command.type === 'help' ? formatMessagingHelp(TEAMS_FORMAT)
                 : command.type === 'quota' ? await readQuotaReply(this.deps.getQuota)
                     : await this.handleControlCommand('', command, `${msg.channelId}\0${root}`), root);
             return;

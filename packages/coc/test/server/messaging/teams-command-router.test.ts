@@ -427,7 +427,14 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('help'));
         for (const [reply] of sendReplySpy.mock.calls) {
             expect(reply).toContain('select repo <n|name|id>');
-            expect(reply).toContain('quota — show AI provider quota');
+            expect(reply).toContain('`quota`\nShow AI provider quota');
+            const html = formatTeamsOutbound(String(reply), 'markdown');
+            for (const group of ['Repos', 'Topics', 'Tools', 'Chat', 'Modes (/ required)']) {
+                expect(html).toContain(`<strong>${group}</strong>`);
+            }
+            expect(html).toContain('<code>select repo &lt;n|name|id&gt;</code>');
+            expect(html).toContain('<code>/ask [chatid] What changed?</code>');
+            expect(html).not.toMatch(/<table|<pre|`|\*\*|&lt;br/);
             expect(reply).toContain('/autopilot <message>');
         }
         expect(deps.enqueueChat).not.toHaveBeenCalled();
@@ -644,7 +651,11 @@ describe('TeamsCommandRouter', () => {
             await router.handle(msg('/nope'));
             await router.handle(msg('/autopilot ship it'));
             expect(sendReplySpy.mock.calls.map(([, root]) => root)).toEqual(['root-a', 'root-a', 'root-a']);
-            expect(sendReplySpy.mock.calls[0][0]).toContain('Commands (case-insensitive');
+            expect(sendReplySpy.mock.calls[0][0]).toContain('**CoC help**');
+            expect(sendReplySpy.mock.calls[2][0]).toContain(sendReplySpy.mock.calls[0][0]);
+            const html = formatTeamsOutbound(sendReplySpy.mock.calls[0][0], 'markdown');
+            expect(html).toContain('<strong>Topics</strong>');
+            expect(html).toContain('<code>list topics [ref] [-v]</code>');
             expect(sendReplySpy.mock.calls[1][0]).toBe('copilot: no quota data');
             expect(sendReplySpy.mock.calls[2][0]).toContain('Unknown command');
             expect(recordThreadCommand).toHaveBeenCalledTimes(3);

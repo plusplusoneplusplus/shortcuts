@@ -8,7 +8,7 @@
 
 import type { AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
 import { getQuotaPercent, getTightestFiniteQuotaType, getUnlimitedQuotaTypes } from '@plusplusoneplusplus/coc-client';
-import { MESSAGING_HELP_TEXT, type MessagingControlCommand } from '@plusplusoneplusplus/coc-connector';
+import { formatMessagingHelp, type MessagingHelpFormat, type MessagingControlCommand } from '@plusplusoneplusplus/coc-connector';
 import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { APIError } from '../errors';
@@ -38,6 +38,7 @@ export interface MessagingSelection {
 }
 
 export interface MessagingCommandContext {
+    helpFormat?: MessagingHelpFormat;
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess'>;
     selection: MessagingSelection;
     /** Inline styling for names and ids; plain text by default. */
@@ -88,8 +89,8 @@ export async function readQuotaReply(getQuota: MessagingQuotaSource | undefined)
 }
 
 /** Reply text for an unknown or malformed command. */
-export function invalidCommandReply(): string {
-    return `Unknown command or invalid argument.\n\n${MESSAGING_HELP_TEXT}`;
+export function invalidCommandReply(format?: MessagingHelpFormat): string {
+    return `Unknown command or invalid argument.\n\n${formatMessagingHelp(format)}`;
 }
 
 function formatTokens(value: number): string {
@@ -137,7 +138,7 @@ export async function compactChatReply(
 export async function handleMessagingCommand(command: MessagingControlCommand, ctx: MessagingCommandContext): Promise<string> {
     const strong = ctx.strong ?? plain;
     const code = ctx.code ?? plain;
-    if (command.type === 'help') return MESSAGING_HELP_TEXT;
+    if (command.type === 'help') return formatMessagingHelp(ctx.helpFormat);
     if (command.type === 'quota') return readQuotaReply(ctx.getQuota);
     // Remote browsing is read-only and independent of the selected repo.
     const format = { strong, code, escape: ctx.escape ?? plain };
