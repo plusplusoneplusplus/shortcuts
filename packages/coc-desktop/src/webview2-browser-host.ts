@@ -121,6 +121,13 @@ export class WebView2BrowserHost implements BrowserEngineHost {
         if (entry.fullscreen && !entry.wasFullscreen && !entry.window.isDestroyed()) { entry.window.setFullScreen(false); }
     }
 
+    async focusOwner(ownerId: number): Promise<void> {
+        const entry = [...this.views.values()].find(view => view.request.ownerId === ownerId && view.bounds);
+        if (entry && this.process.running) {
+            await this.process.request('focus-host', { viewId: entry.nativeId });
+        }
+    }
+
     private viewFailure(entry: NativeEntry, error: unknown): void {
         if (this.views.get(entry.nativeId) !== entry) { return; }
         entry.state = { ...entry.state, loading: false, errorCode: 'runtime-crashed', error: error instanceof Error ? error.message : String(error) };
@@ -155,7 +162,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             };
             if (!validateBrowserUrl(url).ok) { report(false, 'Only HTTP(S) downloads are supported.'); }
             else { void shell.openExternal(url).then(() => report(true), error => report(false, error instanceof Error ? error.message : String(error))); }
-        } else if (message.event === 'focus-host' && !entry.window.isDestroyed()) { entry.window.webContents.focus(); }
+        } else if (message.event === 'focus-host' && !entry.window.isDestroyed()) {
+            entry.window.webContents.focus();
+            void this.focusOwner(entry.request.ownerId).catch(error => this.viewFailure(entry, error));
+        }
         else if (message.event === 'fullscreen' && typeof message.fullscreen === 'boolean' && !entry.window.isDestroyed()) {
             if (message.fullscreen && !entry.fullscreen) { entry.wasFullscreen = entry.window.isFullScreen(); }
             entry.fullscreen = message.fullscreen;

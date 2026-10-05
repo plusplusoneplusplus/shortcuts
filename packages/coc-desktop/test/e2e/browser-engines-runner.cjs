@@ -1,6 +1,7 @@
 'use strict';
 const { app, BrowserWindow, dialog, shell } = require('electron');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
@@ -11,6 +12,8 @@ const userData = process.env.COC_BROWSER_E2E_USER_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE || 'electron';
 const restart = process.argv.includes('--restart-check');
 const afterClear = process.argv.includes('--after-clear');
+const focusCheck = process.argv.includes('--focus-check');
+const execFileAsync = promisify(execFile);
 app.setPath('userData', path.join(userData, 'shell'));
 const externalCalls = [];
 shell.openExternal = async url => { externalCalls.push(url); };
@@ -29,11 +32,13 @@ const key = new URL(location.href).searchParams.get('tab') || 'main';
 async function report(extra = {}) {
     fetch('/report?tab='+encodeURIComponent(key), {method:'POST', body: JSON.stringify({
         cookie:document.cookie, storage:localStorage.getItem('fixture'), bridge:typeof window.cocDesktop,
-        require:typeof require, title:document.title, focused:document.hasFocus(), ...extra
+        require:typeof require, title:document.title, focused:document.hasFocus(),
+        input:document.getElementById('input').value, ...extra
     })});
 }
 window.addEventListener('message',event=>report({popupMessage:event.data}));
 window.addEventListener('focus',()=>report({focusEvent:true}));
+document.addEventListener('input',()=>report());
 report();
 setInterval(async()=>{
     const action = await (await fetch('/command?tab='+encodeURIComponent(key))).text();
@@ -46,6 +51,7 @@ setInterval(async()=>{
     if (action==='permission') navigator.geolocation.getCurrentPosition(()=>report({permission:'allowed'}),()=>report({permission:'denied'}));
     if (action==='unsafe') location.href='file:///blocked.html';
     if (action==='report') report();
+    if (action==='focus-input') { document.getElementById('input').focus(); report({inputFocused:true}); }
 },80);
 </script>`;
 function handle(req, res) {
@@ -89,8 +95,9 @@ app.whenReady().then(async () => {
     const windows = [];
     const makeWindow = async () => {
         const win = new BrowserWindow({ width: 900, height: 650, show: true, webPreferences: { preload: path.join(dist, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
-        await win.loadURL('data:text/html,' + encodeURIComponent(`<body><script>
+        await win.loadURL('data:text/html,' + encodeURIComponent(`<body><textarea id="composer" style="position:absolute;left:10px;top:10px;width:250px;height:40px"></textarea><input id="address" style="position:absolute;left:10px;top:70px"><script>
             window.states=[];window.newTabs=[];window.downloads=[];window.closedViews=[];
+            document.addEventListener('pointerdown',e=>window.lastPointer={x:e.clientX,y:e.clientY,target:e.target.id});
             const b=window.cocDesktop.browser;
             b.onState(s=>window.states.push(s));b.onNewTab(e=>window.newTabs.push(e));
             b.onDownload(e=>window.downloads.push(e));b.onClosed(e=>window.closedViews.push(e));
@@ -111,7 +118,62 @@ app.whenReady().then(async () => {
     const home = await settled(main, 'main', s => s.title === 'Home');
     await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
     await waitFor(() => reports.get('main'), 'fixture page report');
-    if (restart) {
+    if (focusCheck) {
+        main.focus();
+        const handle = main.getNativeWindowHandle();
+        const hwnd = handle.length === 8 ? handle.readBigUInt64LE().toString() : String(handle.readUInt32LE());
+        const nativeInput = (...args) => execFileAsync('powershell.exe', [
+            '-NoProfile', '-NonInteractive', '-File', path.join(__dirname, 'browser-focus-input.ps1'),
+            '-WindowHandle', hwnd, ...args,
+        ], { windowsHide: true });
+        const click = (x, y) => {
+            main.webContents.focus();
+            main.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+            main.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+        };
+        await call(main, 'focus', 'main');
+        command('main', 'focus-input');
+        await waitFor(() => reports.get('main')?.inputFocused, 'browser input focus');
+        await nativeInput();
+        await waitFor(() => reports.get('main')?.input === '/', 'browser native keyboard input');
+        emit('browser-keyboard', { value: reports.get('main').input });
+        command('main', 'report');
+        await waitFor(() => reports.get('main')?.focused, 'browser native focus');
+        click(30, 30);
+        await waitFor(() => spa('document.activeElement.id === "composer"'), 'composer DOM focus');
+        const keyboard = await nativeInput();
+        await delay(150);
+        emit('composer-click', {
+            value: await spa('document.getElementById("composer").value'),
+            active: await spa('document.activeElement.id'),
+            focused: await spa('document.hasFocus()'),
+            pointer: await spa('window.lastPointer'),
+            nativeFocus: keyboard.stdout.trim(),
+        });
+        await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
+        await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 421, height: 320 });
+        await nativeInput();
+        await delay(150);
+        reports.delete('main');
+        command('main', 'report');
+        await waitFor(() => reports.get('main')?.input !== undefined, 'browser input report');
+        emit('composer-layout', {
+            value: await spa('document.getElementById("composer").value'),
+            browserInput: reports.get('main').input,
+        });
+        await call(main, 'focus', 'main');
+        click(30, 30);
+        await nativeInput();
+        await waitFor(() => spa('document.getElementById("composer").value === "///"'), 'repeat composer click');
+        if (engine === 'webview2') {
+            await spa('document.getElementById("address").focus()');
+            await call(main, 'focus', 'main');
+            await spa('document.getElementById("composer").focus()');
+            await nativeInput();
+            await waitFor(() => spa('document.getElementById("composer").value === "////"'), 'programmatic composer focus');
+        }
+        emit('composer-refocus', { value: await spa('document.getElementById("composer").value') });
+    } else if (restart) {
         emit('restart', { engine: home.engine, history: home.canGoBack, report: reports.get('main'), preference: pref.defaultEngine });
         if (!afterClear) {
             const otherWindow = await makeWindow();

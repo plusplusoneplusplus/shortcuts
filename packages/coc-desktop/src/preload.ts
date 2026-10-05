@@ -64,6 +64,14 @@ const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-cha
 const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
 const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
+const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
+
+// Chromium's DOM focus does not release the separate WebView2 process's native focus.
+if (typeof document !== 'undefined') {
+    const focusHost = () => ipcRenderer.send(BROWSER_HOST_FOCUS_CHANNEL);
+    document.addEventListener('pointerdown', focusHost, true);
+    document.addEventListener('focusin', focusHost, true);
+}
 
 /** Shape of an Electron `found-in-page` result, as relayed to the renderer. */
 interface FindResult {

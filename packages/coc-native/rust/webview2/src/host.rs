@@ -19,7 +19,7 @@ use windows::{
             GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
         },
         System::{Com::*, Threading::*},
-        UI::{HiDpi::*, WindowsAndMessaging::*},
+        UI::{HiDpi::*, Input::KeyboardAndMouse::SetFocus, WindowsAndMessaging::*},
     },
 };
 
@@ -555,6 +555,7 @@ fn dispatch(state: &State, command: Command) {
                 view.layout(command.bounds.filter(|bounds| bounds.width > 0 && bounds.height > 0))
             }
             "focus" => view.controller.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC),
+            "focus-host" => SetFocus(Some(view.parent)).map(|_| ()),
             _ => Err(windows::core::Error::from(E_INVALIDARG)),
         }
     };

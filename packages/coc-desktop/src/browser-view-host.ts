@@ -11,6 +11,7 @@ import {
     BROWSER_VIEW_HIDE_CHANNEL, BROWSER_VIEW_NAV_CHANNEL, BROWSER_VIEW_NAVIGATE_CHANNEL,
     BROWSER_VIEW_OPEN_CHANNEL, BROWSER_VIEW_SET_BOUNDS_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
+    BROWSER_HOST_FOCUS_CHANNEL,
     isBrowserEngine, isBrowserNavAction, validateBrowserUrl,
 } from './browser-view-policy';
 
@@ -33,10 +34,11 @@ function wireOwner(window: BrowserWindow): void {
 
 export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     if (manager) { return; }
+    const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'));
     manager = new BrowserHostManager({
         hosts: {
             electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron')),
-            webview2: new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2')),
+            webview2,
         },
         getDefault: () => readBrowserEngine(dataDir),
         saveDefault: engine => writeBrowserEngine(dataDir, engine),
@@ -70,6 +72,13 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     });
     ipcMain.on(BROWSER_VIEW_FOCUS_CHANNEL, (event, id: unknown) => {
         if (ownWindow(event.sender)) { void manager!.command(event.sender.id, id, view => view.focus()); }
+    });
+    ipcMain.on(BROWSER_HOST_FOCUS_CHANNEL, event => {
+        const window = ownWindow(event.sender);
+        if (window) {
+            window.webContents.focus();
+            void webview2.focusOwner(event.sender.id).catch(error => console.error('[coc-desktop] Browser focus handoff failed:', error));
+        }
     });
     ipcMain.on(BROWSER_VIEW_CLOSE_CHANNEL, (event, id: unknown) => {
         if (ownWindow(event.sender)) { void manager!.close(event.sender.id, id).catch(error => console.error('[coc-desktop] Browser close failed:', error)); }

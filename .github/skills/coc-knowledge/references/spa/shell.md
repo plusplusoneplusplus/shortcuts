@@ -114,6 +114,7 @@ Electron uses sandboxed `WebContentsView`s; WebView2 uses a Windows x64 Rust STA
 Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile and downloads go to the system browser.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
 WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
+The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
 
 `UnifiedBrowserTab` hides on unmount and closes with its tab. Window teardown/SPA reload closes views; entry-point `onClosed` reaches inactive stores via `closeBrowserPanelView`.
 Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.

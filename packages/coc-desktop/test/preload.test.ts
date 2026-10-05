@@ -12,7 +12,7 @@
  * the real exported constants.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -74,6 +74,7 @@ import {
     BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_VIEW_CLOSED_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
+    BROWSER_HOST_FOCUS_CHANNEL,
 } from '../src/browser-view-policy';
 
 const exposeInMainWorld = vi.fn();
@@ -113,13 +114,23 @@ describe('preload bridge', () => {
     beforeEach(async () => {
         vi.clearAllMocks();
         vi.resetModules();
+        vi.stubGlobal('document', new EventTarget());
         await import('../src/preload');
     });
+    afterEach(() => vi.unstubAllGlobals());
 
     function exposedApi(): any {
         expect(exposeInMainWorld).toHaveBeenCalledWith('cocDesktop', expect.anything());
         return exposeInMainWorld.mock.calls[0][1];
     }
+
+    it('returns native keyboard focus to the host on pointer and DOM focus changes, without intercepting keys', () => {
+        document.dispatchEvent(new Event('pointerdown'));
+        document.dispatchEvent(new Event('focusin'));
+        expect(send.mock.calls).toEqual([[BROWSER_HOST_FOCUS_CHANNEL], [BROWSER_HOST_FOCUS_CHANNEL]]);
+        document.dispatchEvent(new Event('keydown'));
+        expect(send).toHaveBeenCalledTimes(2);
+    });
 
     it('routes local browser preferences, confirmed cleanup, focus and broadcasts through the desktop bridge', async () => {
         const api = exposedApi().browser;

@@ -152,6 +152,7 @@ export const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferen
 export const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
 export const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 export const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
+export const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
 
 export type BrowserEngine = 'electron' | 'webview2';
 export function isBrowserEngine(value: unknown): value is BrowserEngine {

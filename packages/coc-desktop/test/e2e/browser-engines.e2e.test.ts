@@ -39,6 +39,16 @@ async function scenario(engine: string, userData: string, ...args: string[]) {
 afterEach(() => { temporary.forEach(dir => rmSync(dir, { recursive: true, force: true })); temporary.length = 0; });
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
+    it.skipIf(process.platform !== 'win32')('keeps native keyboard input in the composer after clicking away from the browser and updating layout', async () => {
+        const directory = mkdtempSync(path.join(os.tmpdir(), 'coc-browser-focus-'));
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--focus-check');
+        expect(steps.get('browser-keyboard')?.value).toBe('/');
+        expect(steps.get('composer-click'), JSON.stringify([...steps])).toMatchObject({ value: '/', active: 'composer', focused: true });
+        expect(steps.get('composer-layout')).toMatchObject({ value: '//', browserInput: '/' });
+        expect(steps.get('composer-refocus')?.value).toBe(engine === 'webview2' ? '////' : '///');
+    }, 90_000);
+
     it('supports navigation, popups, security policy, profiles, mixed engines and explicit cleanup', async () => {
         const directory = mkdtempSync(path.join(os.tmpdir(), 'coc-browser-engines-'));
         temporary.push(directory);

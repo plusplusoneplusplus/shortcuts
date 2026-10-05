@@ -136,6 +136,9 @@ thread. The helper-process boundary isolates this lifecycle from Electron's
 Node event loop and from server N-API capabilities.
 Visible embedded views raise their child HWND above Electron's renderer without
 activation; null bounds hide them for inactive tabs and SPA overlays.
+Renderer pointer/focus events and browser tab-out requests send `focus-host` through the desktop host;
+the helper calls Win32 `SetFocus` on that view's parent HWND. DOM focus alone does
+not transfer keyboard input away from the cross-process WebView2 controller.
 
 `src/webview2.ts` resolves `COC_WEBVIEW2_PATH`, the local executable, then the
 Windows x64 prebuilt, rewriting ASAR paths to unpacked paths. Server imports
