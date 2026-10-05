@@ -46,6 +46,12 @@ refresh, and the two layouts. Everything else lives here.
   only through the injected `selection` bridge, and decides *what* to select via
   the pure `reconcileSelectionAfterRefresh`. `changed: false` means "leave the
   view alone" — distinct from `next: null`, which clears it.
+- **Selection attachment ownership.** `RepoGitTab.sourceSelectionId` identifies
+  the concrete source clone. The detail pane forwards it as
+  `attachmentDestinationId` to file-diff and working-tree viewers; their payloads
+  retain the raw workspace id. Repo-group hosts derive the member clone key from
+  their server-qualified group selection. Never read global clone selection to
+  choose the attachment destination.
 - **Page owner and data owner are separate.** `workspaceId` is the git data
   (every request, cache, preference, websocket subscription and pop-out) and
   `routeWorkspaceId` is the page the hash addresses. A repo group passes its own

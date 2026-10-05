@@ -47,7 +47,7 @@ function SideSelectionPill({ editor, side, source, diff, modelsVersion }: {
             className="absolute inset-0 pointer-events-none"
             onMouseDownCapture={event => { event.preventDefault(); event.stopPropagation(); }}
         >
-            <MonacoSelectionAttachPill editor={editor} workspaceId={source.workspaceId} buildPayload={buildPayload} />
+            <MonacoSelectionAttachPill editor={editor} workspaceId={source.workspaceId} destinationId={source.destinationId} buildPayload={buildPayload} />
         </div>
     );
 }

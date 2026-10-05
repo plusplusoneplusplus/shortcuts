@@ -782,6 +782,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     }
                                     gitList={isGitRepo ? (
                                         <RepoGitTab
+                                            sourceSelectionId={sourceSelectionId}
                                             key={`${ws.id}-split-git`}
                                             workspaceId={ws.id}
                                             layout="split-workspace"

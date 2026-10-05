@@ -89,12 +89,16 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDeta
     CommitDetail: () => <div data-testid="stub-commit-detail" />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({
-    FileDiffPanel: () => <div data-testid="stub-file-diff" />,
+    FileDiffPanel: (props: any) => <div data-testid="stub-file-diff" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} />,
+}));
+vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff', () => ({
+    WorkingTreeFileDiff: (props: any) => <div data-testid="stub-working-diff" data-workspace={props.workspaceId} data-destination={props.attachmentDestinationId} />,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', () => ({
     GitPanelHeader: () => <div data-testid="stub-git-header" />,
 }));
 
+import { RepoGitDetailPane } from '../../../../src/server/spa/client/react/features/git/repoGitTab/RepoGitDetailPane';
 import { RepoGitTab } from '../../../../src/server/spa/client/react/features/git/RepoGitTab';
 import {
     registerCloneBaseUrls,
@@ -140,4 +144,34 @@ describe('RepoGitTab — remote route resolving after first render', () => {
         expect(remoteClient.git.listCommits).toHaveBeenCalledTimes(1);
         expect(originClient.git.listCommits).not.toHaveBeenCalled();
     });
+});
+
+it.each(['ws-remote-1', 'remote:one:ws-remote-1', 'remote:two:ws-remote-1'])('threads source destination %s from the Git controller to its real detail pane', async sourceSelectionId => {
+    registerCloneBaseUrls([{ workspaceId: WS, baseUrl: REMOTE_URL }]);
+    const host = document.createElement('div');
+    document.body.append(host);
+    const props = { workspaceId: WS, sourceSelectionId, detailContainer: host, detailActive: true,
+        restoreView: { type: 'commit-file' as const, hash: 'abc123', filePath: 'src/a.ts' } };
+    const view = render(<RepoGitTab {...props} />);
+    await waitFor(() => expect(screen.getByTestId('stub-file-diff').getAttribute('data-destination')).toBe(sourceSelectionId));
+    expect(screen.getByTestId('stub-file-diff').getAttribute('data-workspace')).toBe(WS);
+    view.rerender(<RepoGitTab {...props} sourceSelectionId="remote:next:ws-remote-1" />);
+    expect(screen.getByTestId('stub-file-diff').getAttribute('data-destination')).toBe('remote:next:ws-remote-1');
+    view.unmount();
+    host.remove();
+});
+
+it.each([
+    { type: 'commit-file', hash: 'abc123', filePath: 'src/a.ts' },
+    { type: 'branch-file', filePath: 'src/a.ts' },
+    { type: 'working-tree-file', filePath: 'src/a.ts', stage: 'unstaged' },
+] as const)('preserves the concrete selection destination in $type detail views', selectedView => {
+    render(<RepoGitDetailPane workspaceId={WS} attachmentDestinationId="remote:one:ws-remote-1"
+        view={selectedView} commits={[]} unpushedCount={0} branchRangeData={null} branchRangeFiles={[]}
+        baseMode="default-branch" onBaseModeChange={vi.fn()} repoRoot="/repo" hunkTarget={undefined}
+        onBranchFileSelect={vi.fn()} onNavigateToBranchFile={vi.fn()} onNavigateToCommitFile={vi.fn()}
+        onNavigateToWorkingTreeFile={vi.fn()} onAllBranchCommentsClick={vi.fn()} onBranchAskAI={vi.fn()} onCommitClassified={vi.fn()} />);
+    const target = screen.getByTestId(selectedView.type === 'working-tree-file' ? 'stub-working-diff' : 'stub-file-diff');
+    expect(target.getAttribute('data-destination')).toBe('remote:one:ws-remote-1');
+    expect(target.getAttribute('data-workspace')).toBe(WS);
 });

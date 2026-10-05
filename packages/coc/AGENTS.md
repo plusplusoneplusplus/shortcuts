@@ -312,7 +312,10 @@ references before editing. Paths are package-relative.
 
 - Repository file previews opt into `MonacoSelectionAttachPill`; diff viewers use
   side-local `MonacoDiffSelectionAttachPill` portals and the existing diff-selection
-  builder. Keep payloads scoped to the owner workspace and read live model text.
+  builder. Git hosts forward their concrete source clone through the detail pane
+  to both file-diff and working-tree pills; group hosts derive the member clone
+  key from the group server. Keep payloads scoped to the raw owner workspace,
+  use repo-relative paths, and read live model text.
   Composer routing and context formatting are documented in the
   [composer reference](../../.github/skills/coc-knowledge/references/spa/chat-composer.md).
 

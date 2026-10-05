@@ -48,6 +48,11 @@ vi.mock('../../../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ preferences: { getGlobal, patchGlobal } }),
 }));
 
+const selectionPill = vi.fn();
+vi.mock('../../../../../../src/server/spa/client/react/features/git/diff/MonacoDiffSelectionAttachPill', () => ({
+    MonacoDiffSelectionAttachPill: (props: any) => { selectionPill(props.source); return null; },
+}));
+
 type Content = {
     path: string; fileName: string; language: string; binary: boolean; tooLarge: boolean;
     base: { content: string; ref: string; exists: boolean };
@@ -214,4 +219,12 @@ describe('WorkingTreeFileDiff — diff engine', () => {
         fireEvent.click(screen.getByTestId('hunk-next'));
         expect(fakes[0].adapter.revealModifiedLine).toHaveBeenCalled();
     });
+});
+
+it.each(['ws-a', 'remote:one:ws-a', 'remote:two:ws-a'])('forwards working-tree selection destination %s with raw workspace identity', async destinationId => {
+    const view = await renderDiff({ attachmentDestinationId: destinationId });
+    expect(selectionPill).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceId: 'ws-a', filePath: 'src/a.ts', destinationId, ref: { type: 'working-tree' } }));
+    view.rerender(<WorkingTreeFileDiff workspaceId="ws-a" attachmentDestinationId="remote:next:ws-a"
+        filePath="/repo/src/a.ts" stage="unstaged" repoRoot="/repo" createDiffEditor={createDiffEditor} />);
+    expect(selectionPill).toHaveBeenLastCalledWith(expect.objectContaining({ workspaceId: 'ws-a', destinationId: 'remote:next:ws-a' }));
 });

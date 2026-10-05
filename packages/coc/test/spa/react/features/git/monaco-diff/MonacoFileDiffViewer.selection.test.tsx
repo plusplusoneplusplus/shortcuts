@@ -11,7 +11,7 @@ vi.mock('../../../../../../src/server/spa/client/react/features/chat/activeChatA
 beforeEach(() => { state.enabled = true; vi.clearAllMocks(); });
 afterEach(cleanup);
 const source = { workspaceId: 'repo-A', filePath: 'src/a.ts', ref: { type: 'working-tree' as const, stage: 'unstaged' as const } };
-async function mount(viewMode: 'split' | 'unified' = 'split') {
+async function mount(viewMode: 'split' | 'unified' = 'split', destinationId?: string) {
     const fake = createFakeDiffEditor();
     const sides = Object.fromEntries(['original', 'modified'].map(side => {
         const host = document.createElement('div');
@@ -36,7 +36,7 @@ async function mount(viewMode: 'split' | 'unified' = 'split') {
     fake.adapter.getSelectionEditor = side => sides[side].editor as any;
     render(<MonacoFileDiffViewer workspaceId="repo-A" relativePath="src/a.ts" stage="unstaged"
         original={'one\nold'} modified={'one\nnew'} viewMode={viewMode} languageFeatures={false}
-        diffSelectionDragSource={source} createEditor={async host => {
+        diffSelectionDragSource={{ ...source, destinationId }} createEditor={async host => {
             host.append(sides.original.host, sides.modified.host); return fake.adapter;
         }} />);
     await act(flush);
@@ -70,4 +70,15 @@ it('hides on collapse, scroll out of view, model change, and blur in unified vie
 it('hides with the feature disabled', async () => {
     state.enabled = false; const h = await mount(); h.select('modified');
     expect(screen.queryByText('Attach as context')).toBeNull(); expect(state.route).not.toHaveBeenCalled();
+});
+
+it.each(['repo-A', 'remote:one:repo-A', 'remote:two:repo-A'])('keeps destination %s separate from the diff payload workspace on both sides', async destinationId => {
+    const h = await mount('split', destinationId);
+    for (const side of ['original', 'modified']) {
+        h.select(side);
+        fireEvent.click(screen.getByRole('button', { name: 'Attach as context' }));
+        expect(state.route).toHaveBeenLastCalledWith(destinationId, expect.objectContaining({
+            sourceWorkspaceId: 'repo-A', kind: 'coc.diff-selection-context', filePath: 'src/a.ts',
+        }));
+    }
 });

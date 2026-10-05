@@ -119,6 +119,13 @@ User-selected Classic and patch-only sources render without a fallback reason.
 Monaco supplies find, syntax, overview markers, unified/split layout, and hunk navigation while full-context
 and truncation controls stay specific to Classic.
 
+Selection pills receive a concrete attachment destination separately from the
+raw payload workspace id. RepoDetail passes its source clone identity through
+RepoGitTab and RepoGitDetailPane to FileDiffPanel and WorkingTreeFileDiff. Group
+Git hosts derive the member clone key from the group server. Working-tree
+selection sources use the repo-relative path and reach the Monaco viewer as well
+as Classic drag handlers.
+
 Editing: `MonacoFileDiffViewer`'s `editable` prop opens only the modified side, and
 only when `isEditableDiff` holds (working-tree stage, modified model is the real
 on-disk document); the original side, ref-backed sides, commit/PR snapshots, and

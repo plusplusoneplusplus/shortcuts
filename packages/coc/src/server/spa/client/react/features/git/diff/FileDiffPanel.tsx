@@ -52,6 +52,8 @@ import { explorerFileTabInput } from '../../repo-detail/unified-right-panel/unif
 
 export interface FileDiffPanelProps {
     workspaceId: string;
+    /** Concrete repo owner for selection attachments. */
+    attachmentDestinationId?: string;
     filePath: string;
     source: DiffSource;
     /** Called when cross-file nav requests switching to a different file. */
@@ -98,6 +100,7 @@ type EditorContentState =
 
 export function FileDiffPanel({
     workspaceId,
+    attachmentDestinationId,
     filePath,
     source,
     onNavigateToFile,
@@ -118,8 +121,8 @@ export function FileDiffPanel({
 
     const diffSelectionRef = source.diffSelectionRef;
     const diffSelectionDragSource = useMemo<DiffSelectionDragSource | undefined>(
-        () => (diffSelectionRef ? { workspaceId, ref: diffSelectionRef, filePath } : undefined),
-        [workspaceId, diffSelectionRef, filePath],
+        () => (diffSelectionRef ? { workspaceId, destinationId: attachmentDestinationId, ref: diffSelectionRef, filePath } : undefined),
+        [workspaceId, attachmentDestinationId, diffSelectionRef, filePath],
     );
 
     // ── Diff fetching ──

@@ -32,7 +32,7 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/useLa
     }),
 }));
 
-vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
+vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor', () => ({
     MonacoFileEditor: ({ value, readOnly, onChange, onSave }: any) => {
         mockMonaco.onSave = onSave;
         return (
