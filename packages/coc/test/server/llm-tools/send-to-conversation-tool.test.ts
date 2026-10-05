@@ -92,7 +92,7 @@ function makeTool(opts?: MakeToolOpts) {
         sendMessage: opts?.sendMessage,
         launchRalph: opts?.launchRalph,
         parentProcessId: parentProcessId ?? undefined,
-        runtime: opts?.runtime,
+        runtime: { isAutoProviderRoutingAvailable: () => true, ...opts?.runtime },
     });
     return { tool, enqueueChat, captured };
 }
@@ -973,6 +973,8 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
     function makeDirectory() {
         return {
             list: vi.fn().mockResolvedValue({ entries, servers: [] }),
+            isRemoteAutoProviderRoutingAvailable: vi.fn().mockResolvedValue(true),
+            validateRemoteProvider: vi.fn(),
             startRemoteChat: vi.fn().mockResolvedValue({ processId: 'queue_remote-task' }),
         };
     }
@@ -1138,8 +1140,8 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
     });
 
     it.each(['ask', 'autopilot', 'ralph'] as const)('POSTs Auto %s and explicit models to the target server API', async mode => {
-        const fetchImpl = vi.fn(async () => new Response(JSON.stringify(
-            mode === 'ralph' ? { processId: 'queue_t-9', sessionId: 'r-1' } : { task: { id: 't-9' } },
+        const fetchImpl = vi.fn(async (url: string) => new Response(JSON.stringify(
+            url.endsWith('/api/config/runtime') ? { features: { autoAgentProviderRoutingEnabled: true } } : mode === 'ralph' ? { processId: 'queue_t-9', sessionId: 'r-1' } : { task: { id: 't-9' } },
         ), { status: 201 })) as unknown as typeof fetch;
         const workspaceDirectory = createWorkspaceDirectory({
             store: makeStore([]),
@@ -1148,7 +1150,7 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
         });
         const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory } });
         asSuccess(await tool.handler({ content: 'goal', workspaceId: 'remote:srv-1:w1', provider: 'auto', mode, model: 'opus' }, invocationStub));
-        const [url, init] = (fetchImpl as any).mock.calls[0];
+        const [url, init] = (fetchImpl as any).mock.calls[1];
         expect(url).toBe(`http://vm:4000/api/${mode === 'ralph' ? 'ralph-launch' : 'queue'}`);
         const body = JSON.parse(init.body);
         expect(body.workspaceId).toBe('w1');
@@ -1206,6 +1208,8 @@ describe('createSendToConversationTool — messaging completion notices', () => 
                 entries: [{ id: 'remote:srv-1:w-api', name: 'api', type: 'repo', server: 'dev-vm', serverKind: 'devtunnel', online: true }],
                 servers: [],
             }),
+            isRemoteAutoProviderRoutingAvailable: vi.fn().mockResolvedValue(true),
+            validateRemoteProvider: vi.fn(),
             startRemoteChat: vi.fn().mockResolvedValue({ processId: 'queue_remote-task' }),
         };
         const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory: directory, messagingOrigin, trackMessagingJob } });
@@ -1216,5 +1220,128 @@ describe('createSendToConversationTool — messaging completion notices', () => 
         expect(enqueueChat).not.toHaveBeenCalled();
         expect(JSON.stringify(directory.startRemoteChat.mock.calls[0][0])).not.toContain('messagingOrigin');
         expect(trackMessagingJob).not.toHaveBeenCalled();
+    });
+});
+
+describe('Auto delegation capability fallback', () => {
+    it.each(['ask', 'autopilot', 'ralph'] as const)('inherits parent settings for disabled local Auto %s across workspaces', async mode => {
+        const launchRalph = vi.fn().mockResolvedValue({ ok: true, processId: 'queue_r', sessionId: 'r' });
+        const validateProvider = vi.fn();
+        const { tool, captured } = makeTool({ storeWorkspaces: ['ws-1', 'ws-2'], launchRalph,
+            parentMeta: { provider: 'claude', model: 'sonnet', reasoningEffort: 'high' },
+            runtime: { isAutoProviderRoutingAvailable: () => false, validateProvider },
+        });
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', workspaceId: 'ws-2', mode }, invocationStub));
+        expect(validateProvider).toHaveBeenCalledExactlyOnceWith('claude');
+        if (mode === 'ralph') {
+            expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'claude', config: { model: 'sonnet', reasoningEffort: 'high' } });
+        } else {
+            expect(payloadOf(captured.input!).provider).toBe('claude');
+            expect((payloadOf(captured.input!).context as any).autoProviderRouting).toBeUndefined();
+            expect(captured.input!.config).toMatchObject({ model: 'sonnet', reasoningEffort: 'high' });
+        }
+    });
+
+    it.each([
+        [{}, { model: 'sonnet', reasoningEffort: 'high' }],
+        [{ model: 'opus' }, { model: 'opus', reasoningEffort: 'high' }],
+        [{ effortTier: 'medium' }, { effortTier: 'medium' }],
+        [{ model: 'opus', effortTier: 'medium' }, { model: 'opus', reasoningEffort: 'high' }],
+    ])('honors explicit overrides %j during fallback', async (overrides, expected) => {
+        const { tool, captured } = makeTool({ parentMeta: { provider: 'claude', model: 'sonnet', reasoningEffort: 'high' },
+            runtime: { isAutoProviderRoutingAvailable: () => false },
+        });
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', ...overrides } as any, invocationStub));
+        expect(captured.input!.config).toMatchObject(expected);
+        if ('effortTier' in expected) {
+            expect(captured.input!.config?.model).toBeUndefined();
+            expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+        } else {
+            expect(captured.input!.config?.effortTier).toBeUndefined();
+        }
+    });
+
+    it.each([{}, { provider: 'auto' }, { provider: 'unknown' }])('rejects absent/invalid parent provider %j', async parentMeta => {
+        const { tool, enqueueChat } = makeTool({ parentMeta, runtime: { isAutoProviderRoutingAvailable: () => false } });
+        expect(await tool.handler({ content: 'goal', provider: 'auto' }, invocationStub)).toMatchObject({ error: expect.stringMatching(/Cannot determine a provider/) });
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('missing capability falls back to the concrete parent provider', async () => {
+        const { tool, captured } = makeTool({ parentMeta: { provider: 'codex' },
+            runtime: { isAutoProviderRoutingAvailable: undefined },
+        });
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto' }, invocationStub));
+        expect(payloadOf(captured.input!).provider).toBe('codex');
+    });
+
+    it.each(['auto', 'claude'] as const)('rejects unavailable %s provider without substituting', async provider => {
+        const validateProvider = vi.fn().mockRejectedValue(new Error('Claude is disabled'));
+        const { tool, enqueueChat } = makeTool({ parentMeta: { provider: 'claude' }, runtime: {
+            isAutoProviderRoutingAvailable: () => false, validateProvider,
+        } });
+        expect(await tool.handler({ content: 'goal', provider }, invocationStub)).toMatchObject({ error: expect.stringContaining('Claude is disabled') });
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('rejects incompatible explicit model during fallback', async () => {
+        const { tool, enqueueChat } = makeTool({ parentMeta: { provider: 'codex' }, runtime: { isAutoProviderRoutingAvailable: () => false } });
+        expect(await tool.handler({ content: 'goal', provider: 'auto', model: 'opus' }, invocationStub)).toMatchObject({ error: expect.stringContaining('not compatible') });
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it.each(['auto', 'claude'] as const)('does not retry %s dispatch errors', async provider => {
+        const { tool, enqueueChat } = makeTool();
+        enqueueChat.mockRejectedValue(new Error('quota/runtime failure'));
+        await expect(tool.handler({ content: 'goal', provider }, invocationStub)).rejects.toThrow('quota/runtime failure');
+        expect(enqueueChat).toHaveBeenCalledTimes(1);
+    });
+
+    it('post mode ignores Auto without consulting create-mode capabilities', async () => {
+        const isAutoProviderRoutingAvailable = vi.fn(() => { throw new Error('must not check'); });
+        const sendMessage = vi.fn().mockResolvedValue({ turnIndex: 1 });
+        const { tool } = makeTool({ sendMessage, runtime: { isAutoProviderRoutingAvailable } });
+        asSuccess(await tool.handler({ content: 'continue', processId: 'queue_existing', provider: 'auto' }, invocationStub));
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(isAutoProviderRoutingAvailable).not.toHaveBeenCalled();
+    });
+
+    it.each(['ask', 'autopilot', 'ralph'] as const)('preflights disabled remote Auto %s using destination capabilities/defaults', async mode => {
+        const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
+            if (url.endsWith('/api/config/runtime')) return new Response(JSON.stringify({ features: { autoAgentProviderRoutingEnabled: false } }));
+            if (url.endsWith('/api/agent-providers')) return new Response(JSON.stringify({ providers: [{ id: 'codex', enabled: true, available: true }] }));
+            return new Response(JSON.stringify(mode === 'ralph' ? { processId: 'queue_r', sessionId: 'r' } : { task: { id: 'child' } }), { status: 201 });
+        });
+        const workspaceDirectory = createWorkspaceDirectory({ store: makeStore([]),
+            remoteServers: { list: () => [{ id: 'srv-1', kind: 'url', effectiveUrl: 'http://vm:4000' } as any] }, fetchImpl: fetchImpl as typeof fetch,
+        });
+        const validateProvider = vi.fn().mockRejectedValue(new Error('Local Codex disabled'));
+        const { tool, enqueueChat } = makeTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' }, runtime: { workspaceDirectory, validateProvider } });
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w1', effortTier: 'medium' }, invocationStub));
+        expect(fetchImpl).toHaveBeenCalledTimes(3);
+        const body = JSON.parse(fetchImpl.mock.calls[2][1]!.body as string);
+        expect(mode === 'ralph' ? body.provider : body.payload.provider).toBe('codex');
+        expect(mode === 'ralph' ? body.autoProviderRouting : body.payload.context).toBeUndefined();
+        expect(body.config).toEqual({ effortTier: 'medium' });
+        expect(JSON.stringify(body)).not.toContain(DEFAULT_PARENT_ID);
+        expect(validateProvider).not.toHaveBeenCalled();
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it.each(['missing-endpoint', 'disabled-provider', 'capability-error', 'no-parent', 'bad-model', 'dispatch-error', 'auto-dispatch-error'] as const)('handles remote %s without blind retries', async scenario => {
+        const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
+            if (url.endsWith('/api/config/runtime')) return new Response(JSON.stringify({ features: { autoAgentProviderRoutingEnabled: scenario === 'auto-dispatch-error' } }), { status: scenario === 'missing-endpoint' ? 404 : scenario === 'capability-error' ? 503 : 200 });
+            if (url.endsWith('/api/agent-providers')) return new Response(JSON.stringify({ providers: [{ id: 'codex', enabled: scenario !== 'disabled-provider', available: true }] }));
+            return new Response(JSON.stringify(scenario.endsWith('dispatch-error') ? { error: 'quota exhausted' } : { task: { id: 'child' } }), { status: scenario.endsWith('dispatch-error') ? 429 : 201 });
+        });
+        const workspaceDirectory = createWorkspaceDirectory({ store: makeStore([]),
+            remoteServers: { list: () => [{ id: 'srv-1', kind: 'url', effectiveUrl: 'http://vm:4000' } as any] }, fetchImpl: fetchImpl as typeof fetch,
+        });
+        const { tool, enqueueChat } = makeTool({ parentProcessId: scenario === 'no-parent' ? null : DEFAULT_PARENT_ID, parentMeta: { provider: 'codex' }, runtime: { workspaceDirectory } });
+        const result = await tool.handler({ content: 'goal', provider: 'auto', workspaceId: 'remote:srv-1:w1', model: scenario === 'bad-model' ? 'opus' : 'gpt-5.5' }, invocationStub);
+        if (scenario === 'missing-endpoint') asSuccess(result);
+        else expect(result).toHaveProperty('error');
+        expect(fetchImpl.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(scenario === 'missing-endpoint' || scenario.endsWith('dispatch-error') ? 1 : 0);
+        expect(enqueueChat).not.toHaveBeenCalled();
     });
 });

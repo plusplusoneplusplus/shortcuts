@@ -568,6 +568,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // register their transports below.
     const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade });
     opts.setSendToConversationRuntime?.({
+        isAutoProviderRoutingAvailable: () => isAutoProviderRoutingActive() && !!agentProvidersQuotaCache,
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,
         workspaceDirectory,

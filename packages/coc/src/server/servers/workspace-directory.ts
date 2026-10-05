@@ -17,6 +17,7 @@
  * reachability. No paths, URLs, hosts, tunnel IDs or credentials.
  */
 
+import type { ChatProvider } from '../tasks/task-types';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
 import { toQueueProcessId } from '@plusplusoneplusplus/forge';
 import { createCache, type CacheHandle } from '../cache';
@@ -91,6 +92,8 @@ export interface RemoteChatSummary {
 
 export interface WorkspaceDirectory {
     list(): Promise<WorkspaceDirectoryListing>;
+    isRemoteAutoProviderRoutingAvailable?(serverId: string): Promise<boolean>;
+    validateRemoteProvider?(serverId: string, provider: ChatProvider): Promise<void>;
     /**
      * Most recent chats of one remote repo (remote store order). Throws
      * {@link RemoteServerOfflineError} when the server is unregistered or
@@ -170,7 +173,9 @@ function getSharedLastKnownCache(): CacheHandle<WorkspaceDirectoryEntry[]> {
     return sharedLastKnown;
 }
 
-class RemoteRejectedError extends Error {}
+class RemoteRejectedError extends Error {
+    constructor(message: string, readonly status: number) { super(message); }
+}
 
 /** The remote server has no reachable endpoint or did not answer in time. */
 export class RemoteServerOfflineError extends Error {
@@ -223,7 +228,7 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
             }
             if (!res.ok) {
                 const message = typeof body?.error === 'string' && body.error ? body.error : `HTTP ${res.status}`;
-                throw new RemoteRejectedError(message);
+                throw new RemoteRejectedError(message, res.status);
             }
             return body;
         } finally {
@@ -330,6 +335,36 @@ export function createWorkspaceDirectory(options: WorkspaceDirectoryOptions): Wo
                     ...(typeof p.lastEventAt === 'string' ? { lastEventAt: p.lastEventAt } : {}),
                     ...(typeof p.startTime === 'string' ? { startTime: p.startTime } : {}),
                 }));
+        },
+
+        async isRemoteAutoProviderRoutingAvailable(serverId) {
+            const server = options.remoteServers?.list().find(s => s.id === serverId);
+            if (!server?.effectiveUrl) {
+                throw new RemoteServerOfflineError(server ? serverName(server) : serverId);
+            }
+            try {
+                const config = await requestJson(`${server.effectiveUrl}/api/config/runtime`, listTimeoutMs);
+                return config?.features?.autoAgentProviderRoutingEnabled === true;
+            } catch (err) {
+                // Older servers may lack the capability endpoint. Other HTTP or
+                // transport failures do not prove that Auto is disabled.
+                if (err instanceof RemoteRejectedError && err.status === 404) {
+                    return false;
+                }
+                throw err;
+            }
+        },
+
+        async validateRemoteProvider(serverId, provider) {
+            const server = options.remoteServers?.list().find(s => s.id === serverId);
+            if (!server?.effectiveUrl) {
+                throw new RemoteServerOfflineError(server ? serverName(server) : serverId);
+            }
+            const body = await requestJson(`${server.effectiveUrl}/api/agent-providers`, listTimeoutMs);
+            const status = body?.providers?.find((p: { id: string }) => p.id === provider);
+            if (status?.enabled !== true || status?.available !== true) {
+                throw new Error(`Provider '${provider}' is not available on remote server "${serverName(server)}".`);
+            }
         },
 
         async startRemoteChat(request) {

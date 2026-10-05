@@ -33,7 +33,7 @@ Return the created chat link plus a one-line summary of the task and the chosen 
 
 Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched case-insensitively; whether one is usable depends on the server's enabled providers. `auto` uses the target workspace/server's existing routing rules at execution time.
 
-- Prefer `provider: "auto"` unless the user requests a particular provider/model. Auto does not inherit the parent's provider, model, or effort.
+- Prefer `provider: "auto"` unless the user requests a particular provider/model. Enabled Auto does not inherit the parent's provider, model, or effort. When Auto is disabled or unavailable, the tool uses the invoking conversation's concrete provider after target validation. Local fallback inherits model/effort normally, honoring explicit overrides; remote fallback uses destination model/effort defaults.
 - Honor explicit user provider/model/effort requests through supported options. If only a model is requested, omit `provider` to keep the parent provider; an explicit model wins over `effortTier`. Omitted provider keeps ordinary local parent inheritance of provider, model, and effort.
 - An explicit concrete provider selects that provider's own defaults, including when it matches the parent. Do not carry over the parent's model or effort.
 - Apply clear natural-language overrides such as effort through the tool's supported options.
@@ -41,11 +41,11 @@ Concrete providers are `copilot`, `codex`, `claude`, and `opencode`, matched cas
 - Use `ralph` (create mode only) for long, multi-step build-until-done goals that write to the repo. It starts an autonomous Ralph loop with no clarifying questions, so write `content` as a self-contained goal spec: goal, acceptance criteria, constraints, and references by path. It shares the autopilot queue and returns a `sessionId` with the chat link.
 - An explicit user request for a mode wins. Autopilot jobs share one execution queue and may wait, so mention that when the current chat is waiting on the result.
 - The destination defaults to the current workspace. Honor an explicit request for another repo by passing its name as `workspaceId` (use `name@server` when the same name exists on several servers), or call `list_workspaces` to find its id. Ask when the destination is ambiguous.
-- Remote repos (on another registered CoC server) work in create mode: pass their `remote:<serverId>:<workspaceId>` id or `name@server`. Auto uses the remote server's routing rules. Only explicit provider/model/effort overrides travel to the remote; omitted selections use its defaults. Posting into an existing remote conversation is not supported.
+- Remote repos (on another registered CoC server) work in create mode: pass their `remote:<serverId>:<workspaceId>` id or `name@server`. Auto uses the remote server's routing rules. Disabled/unavailable Auto uses the parent's concrete provider if the remote supports it. Only that fallback provider and explicit provider/model/effort overrides travel; destination model/effort defaults apply. Posting into an existing remote conversation is not supported.
 
 ## Ambiguity and failure
 
 - Treat an unambiguous leading provider name as provider selection. Keep provider mentions inside ordinary task text as task text. For wording like "Claude integration review," ask whether Claude is the provider or the subject. An unknown first word is not a provider — clarify an apparent typo or unsupported provider.
 - With a bare `/delegate` or a provider alone, proceed only when the conversation clearly identifies one task and outcome. Otherwise ask one focused question first.
-- If a provider is unavailable or an override is incompatible, explain the specific problem and offer the known alternatives. Never silently substitute a provider, model, or effort.
+- If a provider is unavailable or an override is incompatible, explain the specific problem and offer the known alternatives. Explicit provider/model/effort failures never trigger substitution. Auto's capability fallback is resolved before dispatch; quota/runtime and dispatch errors do not trigger fallback or retries.
 - If dispatch is rejected, report the reason and correct the request before retrying. If the result is uncertain or timed out, do not dispatch again — check existing conversation state, return the child link if creation is confirmed, and otherwise say creation is unconfirmed.

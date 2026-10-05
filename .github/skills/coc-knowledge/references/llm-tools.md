@@ -72,12 +72,16 @@ in-process queue path as `POST /api/queue`. It defaults to the caller workspace 
 can target another registered workspace, links spawned chats via
 `payload.context.spawnedFromProcessId`, and accepts `provider: "auto"` or a concrete provider
 (`copilot`, `codex`, `claude`,
-`opencode`) plus optional `effortTier` (`very-low`…`high`). Explicit Auto carries
+`opencode`) plus optional `effortTier` (`very-low`…`high`). Enabled Auto carries
 `context.autoProviderRouting.requested` without a concrete provider or inherited model/effort;
 the target server selects the provider at execution using its existing routing rules.
 
 Explicit models survive queue validation; tiers expand against the selected provider, and
-incompatible overrides fail before SDK execution. Auto requires the existing routing feature.
+incompatible overrides fail before SDK execution. Auto uses a capability check before dispatch:
+when routing is disabled or unavailable, local create mode validates and inherits the invoking
+conversation's concrete provider and ordinary model/effort settings, honoring explicit overrides.
+Missing or unavailable parent providers fail. Enabled Auto never inherits parent AI settings;
+quota, routing/runtime, explicit provider/model, and dispatch failures never trigger substitution.
 Omitted provider preserves local parent inheritance. Explicit concrete providers use their own
 defaults without parent model/effort; incompatible provider/model/tier combinations fail.
 
@@ -112,10 +116,13 @@ or a repo name matched case-insensitively over the workspace directory (exact na
 `id (server)`; no match errors and points at `list_workspaces`. A remote target is started on
 that server's own `POST /api/queue` (Ralph: `POST /api/ralph-launch`, which accepts `title`) at its
 effective URL via `WorkspaceDirectory.startRemoteChat`, with no local fallback for offline or
-unreachable servers. Explicit Auto becomes the remote queue routing marker
+unreachable servers. Enabled Auto becomes the remote queue routing marker
 (Ralph: `autoProviderRouting: true`).
-Only explicit concrete `provider`, `model`, or `effortTier` overrides travel; parent
-selections are not inherited, so the remote's defaults apply, and no spawn link is set. The
+Remote Auto preflights `/api/config/runtime`; a disabled/missing routing flag or a 404
+capability endpoint selects the local parent's concrete provider, validated through the remote's
+`/api/agent-providers`. Other capability request failures abort. Only that fallback provider and
+explicit provider/model/tier overrides travel; remote defaults own model/effort, and no local
+spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once. The
 result's `openLink` is the dashboard clone route `#repos/<encoded clone key>/chats/<processId>`.
 Post mode with a `remote:` processId is rejected as not supported yet.
 

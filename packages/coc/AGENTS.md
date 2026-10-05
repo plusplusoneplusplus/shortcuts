@@ -186,7 +186,10 @@ references before editing. Paths are package-relative.
 - Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
   the mode directive (`chat-mode-directive.ts`); `send_to_conversation` create mode from a
   sentinel defaults to `autopilot`. Delegation prefers explicit `provider: "auto"` unless the user
-  requests a particular provider/model; Auto uses target routing without parent AI inheritance.
+  requests a particular provider/model. Enabled Auto uses target routing without parent AI
+  inheritance. Disabled/unavailable Auto uses the parent's concrete provider after target
+  validation; local model/effort inherit normally, remote defaults stay destination-owned.
+  Explicit override, quota/runtime, and dispatch failures never trigger substitution.
   Omitted provider keeps ordinary inheritance. No workspace ownership or scan cron; any number may coexist.
   Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
 - Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
