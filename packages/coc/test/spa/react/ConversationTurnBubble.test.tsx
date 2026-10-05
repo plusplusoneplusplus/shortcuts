@@ -8,6 +8,8 @@ import { ConversationTurnBubble } from '../../../src/server/spa/client/react/fea
 import { mergeConsecutiveContentChunks, inferParentToolCalls, splitLargePasteTurnContent } from '../../../src/server/spa/client/react/features/chat/conversation/ConversationTurnBubble';
 import type { ClientConversationTurn } from '../../../src/server/spa/client/react/types/dashboard';
 import * as formatUtils from '../../../src/server/spa/client/react/utils/format';
+import { UnifiedPanelHostProvider } from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import * as panelOpen from '../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 
 // Mock useDisplaySettings — module-level cache, no provider needed
 vi.mock('../../../src/server/spa/client/react/hooks/preferences/useDisplaySettings', () => ({
@@ -331,6 +333,59 @@ describe('ConversationTurnBubble — large pasted content card', () => {
         expect(screen.getByText(`Large pasted content (${pastedContent.length} chars)`, { exact: false })).toBeTruthy();
         expect(screen.queryByTestId('paste-externalized-badge')).toBeNull();
         expect(screen.queryByText('fourth line stays hidden until expand')).toBeNull();
+    });
+
+    it.each([
+        ['ws-one', 'ws-one', undefined],
+        ['ws-two', 'ws-two', undefined],
+        ['group-one', 'member-one', 'remote:server-one:member-one'],
+    ])('opens the full payload in panel scope %s with owner %s', (scope, owner, sourceSelectionId) => {
+        const open = vi.spyOn(panelOpen, 'openUnifiedPasteTab').mockReturnValue('paste-tab');
+        const pastedContent = makeLargePaste();
+        render(
+            <UnifiedPanelHostProvider host={{ workspaceId: scope, chatId: 'chat-one' }}>
+                <ConversationTurnBubble
+                    wsId={owner}
+                    sourceSelectionId={sourceSelectionId}
+                    taskId="chat-one"
+                    turn={makeTurn({ content: `Inspect this\n\n${pastedContent}`, pasteExternalized: true })}
+                />
+            </UnifiedPanelHostProvider>,
+        );
+
+        fireEvent.click(screen.getByTestId('large-paste-card-open'));
+
+        expect(open).toHaveBeenCalledExactlyOnceWith(scope, pastedContent, {
+            ownerWorkspaceId: owner,
+            ownerRoutingRef: sourceSelectionId ?? owner,
+            chatId: 'chat-one',
+        });
+        expect(screen.queryByTestId('large-paste-card-full-content')).toBeNull();
+    });
+
+    it.each([
+        [null, 'chat-one', 'ws-one'],
+        [{ workspaceId: 'ws-one', chatId: 'other-chat' }, 'chat-one', 'ws-one'],
+        [{ workspaceId: 'ws-one', chatId: 'chat-one' }, undefined, 'ws-one'],
+        [{ workspaceId: 'ws-one', chatId: 'chat-one' }, 'chat-one', undefined],
+    ])('keeps inline actions when no matching panel or owner is available (%j)', (host, taskId, wsId) => {
+        const open = vi.spyOn(panelOpen, 'openUnifiedPasteTab').mockReturnValue('paste-tab');
+        const pastedContent = makeLargePaste();
+        render(
+            <UnifiedPanelHostProvider host={host}>
+                <ConversationTurnBubble
+                    wsId={wsId}
+                    taskId={taskId}
+                    turn={makeTurn({ content: pastedContent, pasteExternalized: true })}
+                />
+            </UnifiedPanelHostProvider>,
+        );
+
+        expect(screen.queryByTestId('large-paste-card-open')).toBeNull();
+        expect(screen.getByTestId('large-paste-card-copy')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('large-paste-card-toggle'));
+        expect(screen.getByTestId('large-paste-card-full-content').textContent).toBe(pastedContent);
+        expect(open).not.toHaveBeenCalled();
     });
 
     it('shows the first three preview lines while collapsed', () => {

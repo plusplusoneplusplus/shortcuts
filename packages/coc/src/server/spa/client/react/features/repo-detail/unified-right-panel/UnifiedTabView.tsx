@@ -51,6 +51,7 @@ import { UnifiedCanvasTab } from './UnifiedCanvasTab';
 import { UnifiedDiffTab } from './UnifiedDiffTab';
 import { UnifiedGitTab } from './UnifiedGitTab';
 import { UnifiedNoteTab } from './UnifiedNoteTab';
+import { UnifiedPasteTab } from './UnifiedPasteTab';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 import { DASHBOARD_CONFIG_UPDATED_EVENT, isFeatureEnabled } from '../../../utils/config';
 
@@ -186,6 +187,8 @@ export function UnifiedTabView({
         [onNotesSelectionChange, tab.id],
     );
     switch (tab.kind) {
+        case 'paste':
+            return <UnifiedPasteTab scopeWorkspaceId={scopeWorkspaceId} resourceId={tab.resourceId} />;
         case 'terminal':
             return <TerminalView workspaceId={tab.ownerWorkspaceId} onSessionsChange={handleTerminalSessions} />;
         case 'notes':

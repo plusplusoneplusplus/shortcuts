@@ -552,6 +552,25 @@ describe('ChatDetail', () => {
         expect(screen.queryByTestId('bot-management-badge')).toBeNull();
     });
 
+    it('does not resurrect an answered ask_user batch when a process-updated event arrives', async () => {
+        const pendingAskUser = [{
+            batchId: 'batch-1', questionId: 'q-1', question: 'Pick one?', type: 'select',
+            options: [{ value: 'a', label: 'A' }], turnIndex: 1, index: 0, batchSize: 1,
+        }];
+        setupStandardFetch(makeTask({ status: 'running' }), makeProcess({ status: 'running', pendingAskUser }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('ask-user-inline')).toBeTruthy());
+
+        fireEvent.click(screen.getByTestId('ask-user-skip-all-btn'));
+        await waitFor(() => expect(screen.queryByTestId('ask-user-inline')).toBeNull());
+        expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/ask-user'))).toBe(true);
+
+        act(() => window.dispatchEvent(new CustomEvent('coc-local-ws-message', {
+            detail: { type: 'process-updated', process: { id: 'proc-1', workspaceId: 'ws-1' } },
+        })));
+        expect(screen.queryByTestId('ask-user-inline')).toBeNull();
+    });
+
     // ── Rendering ──────────────────────────────────────────────────────────
 
     describe('rendering', () => {

@@ -26,14 +26,14 @@ import { NOTES_CODE_LANGUAGES } from './notesLowlight';
  * NodeView for a fenced code block. Renders the language picker + the editable
  * code content. Exported for unit testing the picker behaviour in isolation.
  */
-export function CodeBlockLanguageView({ node, updateAttributes }: NodeViewProps) {
+export function CodeBlockLanguageView({ node, updateAttributes, editor }: NodeViewProps) {
     // `node.attrs.language` is the highlight.js grammar name, or null for a plain
     // block. Empty-string is the "Plain text" option's value.
     const language: string = node.attrs.language ?? '';
 
     return (
         <NodeViewWrapper className="notes-code-block">
-            <select
+            {editor?.isEditable !== false && <select
                 className="notes-code-block-lang"
                 contentEditable={false}
                 aria-label="Code block language"
@@ -54,7 +54,7 @@ export function CodeBlockLanguageView({ node, updateAttributes }: NodeViewProps)
                         {lang.label}
                     </option>
                 ))}
-            </select>
+            </select>}
             <pre>
                 <NodeViewContent as="code" />
             </pre>

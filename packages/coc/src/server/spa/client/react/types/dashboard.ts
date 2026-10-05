@@ -65,7 +65,7 @@ export const WIKI_ADMIN_TAB_VALUES = ['generate', 'seeds', 'config', 'delete'] a
 export type WikiAdminTab = typeof WIKI_ADMIN_TAB_VALUES[number];
 export type MemorySubTab = 'facts' | 'review' | 'episodes' | 'settings';
 export type SkillsSubTab = 'installed' | 'gallery' | 'config';
-export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database' | 'agents' | 'messaging' | 'whatsapp';
+export type AdminSubTab = 'settings' | 'providers' | 'data' | 'server' | 'prompts' | 'database' | 'agents' | 'messaging' | 'whatsapp' | 'browser';
 
 export type PrDetailTab = 'overview' | 'files' | 'commits' | 'checks';
 

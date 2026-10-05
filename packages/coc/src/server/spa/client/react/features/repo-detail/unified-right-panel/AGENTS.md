@@ -29,13 +29,13 @@ Three different workspace ids, kept apart on purpose:
   scoped to the repo they were fetched from.
 
 Tabs are scoped by kind: `terminal | notes | note | git | html-page | browser` are workspace-owned,
-`file | canvas | diff | external` belong to the selected chat (`scopeForKind`).
+`file | canvas | diff | external | paste` belong to the selected chat (`scopeForKind`).
 Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
 Display grouping is separate from ownership: `displayGroupForKind` puts
-`canvas` with the workspace kinds as `tools` and `file | diff | external` in
+`canvas` with the workspace kinds as `tools` and `file | diff | external | paste` in
 `resources`. `visibleTabs` shows workspace tabs, then the chat's canvases, then
 its resources, keeping stored order inside each group; the strip draws its
 divider at the tools→resources boundary, and `moveTab` / Alt+Arrow never cross
@@ -44,7 +44,17 @@ it.
 resource id is the opaque capability the owning member's host issued, it has no
 entry in the "+" menu, and it is never persisted. `html-page` carries an absolute
 local path and an Electron view id, dedupes across chats in its panel scope, and is
-also excluded from storage. `browser` is a session-only web tab (see "Browser
+persisted with its view id so a reload reattaches the live view. `paste` descriptors use `unifiedPasteTabs.ts` for a
+stable content hash and character-count title; matching content dedupes within
+the same chat and concrete owner. Paste descriptors and active selections are
+ephemeral and have no `+` menu action. `openUnifiedPasteTab` captures raw text
+in a panel-scope/resource-id memory map before opening the descriptor. Every
+panel-state write prunes snapshots without a referencing paste tab; draft/chat
+copies share a snapshot until the last copy closes. Clearing panel state releases
+its snapshots. `UnifiedPasteTab` reads the panel-scope snapshot and hydrates
+`RichEditorCore` in read-only mode using Markdown conversion without note I/O.
+Its copy action uses the raw snapshot; it registers no dirty or save handlers.
+`browser` is a session-only web tab (see "Browser
 tabs"); every open mints a fresh resource id, so it never dedupes. `unifiedTabId`
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the
@@ -75,6 +85,7 @@ from same-id clones never merge into one tab.
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
 | `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns the editable address bar with inline rejection and an Open in system browser fallback. |
+| `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame for native desktop views (browser and HTML page tabs): toolbar slot, the placeholder the view is kept over, and Back/Forward/Reload(Stop) buttons. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | The one Git tab per panel scope (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu). Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
 | `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
@@ -401,8 +412,9 @@ takes the opens — not only when its own `explorerEditorTabs` flag is on.
 ## Persistence and migration (codec v4)
 
 The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION = 4`). It persists
-concrete owner routes, preview bits, and panel-local Notes selection. Native
-`html-page` tabs and external capability tabs stay in memory only; their active
+concrete owner routes, preview bits, panel-local Notes selection, and each
+`html-page` tab's `htmlPageId` (a restored descriptor without one is dropped).
+Native `browser`, `paste`, and external capability tabs stay in memory only; their active
 selection is omitted from storage too. Older supported payloads retain their
 stable bare-workspace ids when a concrete route is absent. An old `explorer`
 descriptor opens the tree column during `migrateUnifiedPanelState` rather than
@@ -500,15 +512,24 @@ sidebar for AI canvases.
 
 ## Desktop HTML pages
 
-`UnifiedHtmlPageTab` keeps a native `WebContentsView` over a DOM placeholder
-through the preload's `htmlPage` bridge. It updates bounds on resize, scroll,
+`UnifiedHtmlPageTab` and `UnifiedBrowserTab` both render through
+`NativeViewTab.tsx`: `NativeViewTab` owns the placeholder and its placement
+(`useNativeViewPlacement`), and `NativeViewNavButtons` the Back/Forward/Reload
+(Stop) controls. `desktopHtmlPageBridge()` (`shared/file-path/html-page-bridge.ts`)
+picks the page API: the merged `cocDesktop.browser` `file` source (view
+`html-page:<pageId>`, session `html-page`) when `browser.sources` includes
+`file`, else the older `cocDesktop.htmlPage` (no history, so Back/Forward stay
+disabled). The tab updates bounds on resize, scroll,
 and layout changes, hides while inactive/collapsed or covered by DOM content,
-and closes the view on tab close or unmount. Its toolbar reloads
+and closes the view on tab close or unmount (a full page reload runs no unmount). Its toolbar shows the file path
+read-only, goes back/forward, reloads
 the page, opens the file in the system browser, or requests the read-only source
 canvas (`forceSourceViewer` bypasses editable unified file tabs). Load errors
-surface inline with the same source fallback. The view is ephemeral: the tab
-model omits it from serialized state, and the main process tears it down with
-the window. `file-path-preview.ts` calls the owning local server's
+surface inline with the same source fallback. The view survives a full SPA
+reload: the main process hides it on reload, the restored tab reopens the same
+`htmlPageId`, and the desktop replays its page, history and scroll. Views not
+reopened before the next reload, and every view when the window closes, are
+destroyed. `file-path-preview.ts` calls the owning local server's
 `files/html/resolve` route before opening the native view, so paths outside a repo
 can open only from the server's canonical HTML allowlist and a remote path can
 never be handed to the local Electron process.
@@ -537,8 +558,8 @@ with the opener's owner and `browserEngine`; the desktop default affects only
 new views. Desktop Preferences lives in Admin Appearance and uses local IPC.
 The SPA entry point subscribes to `onClosed` and removes target-engine tabs
 from every cached workspace via `closeBrowserPanelView`, including unmounted
-panels. Placement over the placeholder is shared with HTML pages via
-`useNativeViewPlacement`. Native views paint above all DOM, so the hook hides
+panels. The frame, placement, and history buttons are shared with HTML pages via
+`NativeViewTab` (see Desktop HTML pages). Native views paint above all DOM, so the hook hides
 the view while a modal dialog or the tab menu is open, or while a 5x5
 `elementFromPoint` hit test (inset 12px from the edges, so splitters don't count)
 finds any other element above the placeholder — dropdowns, popovers, and

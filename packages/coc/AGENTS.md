@@ -106,6 +106,10 @@ references before editing. Paths are package-relative.
   openers; their shell forwards it to ChatDetail and registers its concrete clone key.
   ConversationArea and normal/pinned turn bubbles preserve that source owner and
   optional endpoint through commit-strip and whisper-popover Git review openers.
+  Sent paste cards and follow-up paste chips open full payload snapshots only in a
+  matching chat panel, using its scope and the conversation's workspace/source
+  selection as tab owner. Both ChatDetail composer layouts pass raw paste content;
+  replacing or dismissing the chip preserves open snapshots.
   Working-tree untracked previews pass the concrete owner into PreviewPane for
   selection context and file I/O; local owners use an explicit null route.
   Fallback seeds retain that destination, and drains preserve other owners’ items.

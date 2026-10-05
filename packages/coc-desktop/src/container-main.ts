@@ -55,7 +55,6 @@ import {
 } from './devtunnel-modal';
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput } from './app-menu';
 import { disposeBrowserViews, registerBrowserViewIpc } from './browser-view-host';
-import { registerHtmlPageIpc } from './html-page-host';
 
 const APP_NAME = 'CoCContainer';
 const DEFAULT_PORT = 5000;
@@ -139,7 +138,6 @@ function closeSplash(): void {
 function showSplashError(message: string): void {
     if (!splashWindow || splashWindow.isDestroyed()) {
         registerBrowserViewIpc();
-        registerHtmlPageIpc();
         splashWindow = createSplashWindow();
     }
     void splashWindow.loadURL(splashDataUrl({ phase: 'error', message }, APP_NAME));

@@ -564,7 +564,7 @@ export function parseCopilotSection(hash: string): SettingsSection {
     return parseSettingsSection(hash);
 }
 
-export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents', 'whatsapp']);
+export const VALID_ADMIN_SUB_TABS: Set<string> = new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents', 'whatsapp', 'browser']);
 
 /** Container-only admin sub-tabs (not included in the base set). */
 const CONTAINER_ADMIN_SUB_TABS: Set<string> = new Set(['messaging']);

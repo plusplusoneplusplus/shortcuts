@@ -1856,7 +1856,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // and clears it on answer/skip/cancel, so we mirror that state directly.
     useEffect(() => {
         setPendingAskUserBatch(prev => hydrateAskUserBatch(processDetails?.pendingAskUser, prev));
-    }, [processDetails]);
+    }, [processDetails?.pendingAskUser]);
 
     // Load task + conversation on mount / taskId change
     useEffect(() => {
@@ -2797,7 +2797,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         backgroundTasks={backgroundTasks}
                         pendingAskUserBatch={pendingAskUserBatch}
                         ralphGrillPlanningProgress={ralphGrillPlanningProgress}
-                        onAskUserAnswered={() => setPendingAskUserBatch(null)}
+                        onAskUserAnswered={() => {
+                            // Clear the snapshot too (mirrors the server's clear); otherwise any
+                            // later processDetails spread re-hydrates the answered batch.
+                            setPendingAskUserBatch(null);
+                            setProcessDetails((prev: any) => prev?.pendingAskUser ? { ...prev, pendingAskUser: undefined } : prev);
+                        }}
                         workspaceId={workspaceId}
                         isScrolledUp={isScrolledUp}
                         scrollRef={conversationContainerRef}
@@ -2986,6 +2991,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             onAttachmentFiles={addFromFileInput}
                             attachmentError={attachmentError}
                             pastePreview={{
+                                pastedContent: textPaste.pastedContent,
                                 charCount: textPaste.charCount,
                                 previewLines: textPaste.previewLines,
                                 onTextPaste: textPaste.addFromPaste,
@@ -3135,6 +3141,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     onAttachmentFiles={addFromFileInput}
                     attachmentError={attachmentError}
                     pastePreview={{
+                        pastedContent: textPaste.pastedContent,
                         charCount: textPaste.charCount,
                         previewLines: textPaste.previewLines,
                         onTextPaste: textPaste.addFromPaste,

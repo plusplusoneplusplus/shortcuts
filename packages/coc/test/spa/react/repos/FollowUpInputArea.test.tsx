@@ -63,6 +63,10 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     }),
 }));
 
+import { UnifiedPanelHostProvider } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
+import * as panelOpen from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
+import { clearUnifiedPanelState, readUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { readPasteSnapshot } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPasteTabs';
 import { FollowUpInputArea } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { FollowUpInputAreaProps } from '../../../../src/server/spa/client/react/features/chat/FollowUpInputArea';
 import type { RichTextInputHandle } from '../../../../src/server/spa/client/react/shared/RichTextInput';
@@ -713,5 +717,95 @@ describe('FollowUpInputArea — Explorer file-path drops (AC-02/AC-03)', () => {
         });
 
         expect(tracker.calls).toEqual([]);
+    });
+});
+
+
+describe('FollowUpInputArea paste panel snapshots', () => {
+    const fullContent = '# Pasted heading\n' + 'Full raw content with trailing spaces  \n'.repeat(600);
+    const preview = (content = fullContent) => ({
+        pastedContent: content,
+        charCount: content.length,
+        previewLines: ['# Pasted heading', 'truncated preview…'],
+        onTextPaste: vi.fn(),
+        clearPaste: vi.fn(),
+    });
+
+    beforeEach(() => {
+        clearUnifiedPanelState();
+        localStorage.clear();
+    });
+    afterEach(() => {
+        clearUnifiedPanelState();
+        localStorage.clear();
+    });
+
+    it.each([
+        ['ws-1', 'ws-1', 'ws-1'],
+        ['ws-2', 'ws-2', 'ws-2'],
+        ['group-scope', 'remote-workspace', 'clone:remote:remote-workspace'],
+    ])('opens full content in %s with owner %s', (scope, owner, route) => {
+        const open = vi.spyOn(panelOpen, 'openUnifiedPasteTab');
+        render(<UnifiedPanelHostProvider host={{ workspaceId: scope, chatId: 'current-process' }}>
+            <FollowUpInputArea {...makeProps({ workspaceId: owner, attachmentDestinationId: route, pastePreview: preview() })} />
+        </UnifiedPanelHostProvider>);
+        fireEvent.click(screen.getByTestId('paste-preview-open'));
+        expect(open).toHaveBeenCalledWith(scope, fullContent, {
+            ownerWorkspaceId: owner, ownerRoutingRef: route, chatId: 'current-process',
+        });
+        const tab = readUnifiedPanelState(scope).chatTabs['current-process'][0];
+        expect(tab.ownerWorkspaceId).toBe(owner);
+        expect(tab.ownerRoutingRef).toBe(route);
+        expect(readPasteSnapshot(scope, tab.resourceId)).toBe(fullContent);
+    });
+
+    it('preserves opened snapshots through paste replacement and dismissal, and refocuses the same content', () => {
+        const open = vi.spyOn(panelOpen, 'openUnifiedPasteTab');
+        const props = makeProps({ pastePreview: preview() });
+        const view = (pastePreview: FollowUpInputAreaProps['pastePreview']) => (
+            <UnifiedPanelHostProvider host={{ workspaceId: 'ws-1', chatId: 'current-process' }}>
+                <FollowUpInputArea {...props} pastePreview={pastePreview} />
+            </UnifiedPanelHostProvider>
+        );
+        const { rerender } = render(view(props.pastePreview));
+        fireEvent.click(screen.getByTestId('paste-preview-open'));
+        const originalTab = readUnifiedPanelState('ws-1').chatTabs['current-process'][0];
+        const editedContent = fullContent + 'later edit';
+        rerender(view(preview(editedContent)));
+        expect(readPasteSnapshot('ws-1', originalTab.resourceId)).toBe(fullContent);
+        fireEvent.click(screen.getByTestId('paste-preview-open'));
+        expect(open).toHaveBeenLastCalledWith('ws-1', editedContent, expect.any(Object));
+        const editedTab = readUnifiedPanelState('ws-1').chatTabs['current-process'][1];
+        const clearPaste = vi.fn();
+        rerender(view({ ...preview(editedContent), clearPaste }));
+        fireEvent.click(screen.getByTestId('paste-preview-dismiss'));
+        expect(clearPaste).toHaveBeenCalledOnce();
+        rerender(view(null));
+        expect(screen.queryByTestId('paste-preview')).toBeNull();
+        expect(readPasteSnapshot('ws-1', originalTab.resourceId)).toBe(fullContent);
+        expect(readPasteSnapshot('ws-1', editedTab.resourceId)).toBe(editedContent);
+        // The sent card uses the same owner/content seam after send.
+        act(() => { panelOpen.openUnifiedPasteTab('ws-1', fullContent, {
+            ownerWorkspaceId: 'ws-1', ownerRoutingRef: 'ws-1', chatId: 'current-process',
+        }); });
+        const state = readUnifiedPanelState('ws-1');
+        expect(state.chatTabs['current-process']).toHaveLength(2);
+        expect(state.activeByScope['current-process']).toBe(originalTab.id);
+    });
+
+    it.each([
+        [null, 'ws-1', 'current-process', fullContent],
+        [{ workspaceId: 'ws-1', chatId: 'other-chat' }, 'ws-1', 'current-process', fullContent],
+        [{ workspaceId: 'ws-1', chatId: null }, 'ws-1', null, fullContent],
+        [{ workspaceId: 'ws-1', chatId: 'current-process' }, undefined, 'current-process', fullContent],
+        [{ workspaceId: 'ws-1', chatId: 'current-process' }, 'ws-1', 'current-process', undefined],
+    ])('keeps inline preview when a matching panel or full payload is unavailable (%j)', (host, owner, chat, content) => {
+        render(<UnifiedPanelHostProvider host={host}>
+            <FollowUpInputArea {...makeProps({ workspaceId: owner, currentProcessId: chat,
+                pastePreview: { ...preview(), pastedContent: content } })} />
+        </UnifiedPanelHostProvider>);
+        expect(screen.queryByTestId('paste-preview-open')).toBeNull();
+        fireEvent.click(screen.getByTestId('paste-preview-toggle'));
+        expect(screen.getByTestId('paste-preview-content').textContent).toContain('truncated preview');
     });
 });

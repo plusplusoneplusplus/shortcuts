@@ -26,6 +26,8 @@ async function setup(options: {
     groupPreview?: { path: string; resolvedWorkspaceId: string };
     resolvedPath?: string;
     panel?: boolean;
+    /** Desktop exposes the merged `browser` API with a `file` source. */
+    merged?: boolean;
 } = {}) {
     const path = options.path ?? htmlPath;
     document.body.innerHTML = `<div class="chat-message assistant" data-ws-id="${options.groupPreview ? 'group-one' : 'ws-local'}">
@@ -33,9 +35,15 @@ async function setup(options: {
     </div>`;
     const open = vi.fn().mockResolvedValue(options.response ?? { ok: true });
     const close = vi.fn();
+    const browser = {
+        sources: ['url', 'file'],
+        open: vi.fn().mockResolvedValue(options.response ?? { ok: true, engine: 'electron', sourceKind: 'file' }),
+        close: vi.fn(),
+        openViewExternal: vi.fn(),
+    };
     if (options.desktop !== false) {
         Object.defineProperty(window, 'cocDesktop', {
-            value: { isDesktop: true, htmlPage: { open, close } },
+            value: { isDesktop: true, htmlPage: { open, close }, ...(options.merged ? { browser } : {}) },
             configurable: true,
         });
     }
@@ -69,7 +77,7 @@ async function setup(options: {
     await vi.waitFor(() => expect(events.length).toBeGreaterThanOrEqual(options.panel === false ? 2 : 1));
     window.removeEventListener('coc-open-html-page', collect);
     window.removeEventListener('coc-open-source-canvas', collect);
-    return { events, open, close, fetch };
+    return { events, open, close, fetch, browser };
 }
 
 describe('assistant HTML link routing', () => {
@@ -121,6 +129,20 @@ describe('assistant HTML link routing', () => {
         });
         expect(open).toHaveBeenCalledWith('page-id', `${root}/pages/index.htm`);
         expect(events[0].detail.wsId).toBe('ws-local');
+    });
+
+    it('opens the page through the merged browser file source when the desktop advertises it', async () => {
+        const { events, open, browser } = await setup({ merged: true });
+        expect(open).not.toHaveBeenCalled();
+        expect(browser.open).toHaveBeenCalledWith('html-page:page-id', { kind: 'file', path: htmlPath }, 'html-page');
+        expect(events[0].type).toBe('coc-open-html-page');
+        expect(events[0].detail.pageId).toBe('page-id');
+    });
+
+    it('falls back to the source viewer when the merged file source refuses the page', async () => {
+        const { events, browser } = await setup({ merged: true, response: { ok: false, reason: 'missing' } });
+        expect(browser.open).toHaveBeenCalledOnce();
+        expect(events[0].type).toBe('coc-open-source-canvas');
     });
 
     it('keeps the source viewer in the browser', async () => {

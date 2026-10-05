@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.join(here, '..', '..');
 const runnerPath = path.join(here, 'html-page-runner.cjs');
-const distHost = path.join(pkgRoot, 'dist', 'html-page-host.js');
+const distHost = path.join(pkgRoot, 'dist', 'file-preview-host.js');
 
 // Under plain Node, require('electron') resolves to the binary's path string.
 // Resolved lazily (inside runScenario) rather than at import time: on CI without
@@ -89,7 +89,7 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
     it('runs the full scenario to completion', () => {
         expect(exitCode, raw).toBe(0);
         expect([...steps.keys()]).toEqual(
-            ['reject', 'open', 'reuse', 'resize', 'hide', 'navigate', 'open-external', 'failure', 'close', 'quit'],
+            ['reject', 'open', 'isolation', 'source', 'reuse', 'resize', 'hide', 'navigate', 'open-external', 'reload', 'failure', 'close', 'quit'],
         );
     });
 
@@ -115,6 +115,25 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
 
     it('gives the page no CoC bridge and no Node', () => {
         expect(steps.get('open')).toMatchObject({ hasBridge: false, hasRequire: false, hasProcess: false });
+    });
+
+    it('never shares browser-profile cookies or storage with the preview', () => {
+        const isolation = steps.get('isolation')!;
+        expect(isolation.browserOpen).toEqual({ ok: true, engine: 'electron', sourceKind: 'url' });
+        expect(isolation.profileCookieCount).toBe(1);
+        expect(isolation.previewCookieNames).not.toContain('coc_profile_probe');
+        expect(isolation.previewDocumentCookie).toBe('');
+        expect(isolation).toMatchObject({ sameSession: false, previewPersistent: false, previewPartitionMatches: true });
+    });
+
+    it('opens file sources through the merged browser API in the isolated file host only', () => {
+        expect(steps.get('source')).toMatchObject({
+            sources: ['url', 'file'],
+            fileSource: { ok: true, engine: 'electron', sourceKind: 'file' },
+            fileUrlAsUrl: { ok: false },
+            addedViews: 1,
+            filePartitionMatches: true,
+        });
     });
 
     it('reuses the view when the same page is opened again', () => {
@@ -144,6 +163,17 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
 
     it('opens the current file:// URL in the system browser', () => {
         expect(steps.get('open-external')!.last).toMatch(/^file:\/\/.*other\.html$/);
+    });
+
+    it('keeps the preview live across a full SPA reload and reattaches it', () => {
+        const reload = steps.get('reload')!;
+        expect(reload).toMatchObject({
+            hiddenAfterReload: true, viewsAfterReload: 1, siteClosed: true,
+            reattach: { ok: true }, replayed: ['loaded'], canGoBack: true,
+            sameView: true, visible: true, scrollY: 400, inPage: 'kept',
+        });
+        expect(reload.url).toMatch(/other\.html$/);
+        expect(reload.afterBackUrl).toMatch(/index\.html$/);
     });
 
     it('reports a load failure so the tab can show an error', () => {

@@ -3,6 +3,7 @@ import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine } from './browser-preferences';
 import { BrowserHostManager } from './browser-host-manager';
 import { ElectronBrowserHost } from './electron-browser-host';
+import { ElectronFilePreviewHost } from './file-preview-host';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
 import {
@@ -12,6 +13,7 @@ import {
     BROWSER_VIEW_OPEN_CHANNEL, BROWSER_VIEW_SET_BOUNDS_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
     BROWSER_HOST_FOCUS_CHANNEL,
+    BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL,
     isBrowserEngine, isBrowserNavAction, validateBrowserUrl,
 } from './browser-view-policy';
 
@@ -27,9 +29,10 @@ function wireOwner(window: BrowserWindow): void {
     const id = window.webContents.id;
     if (owners.has(id)) { return; }
     owners.set(id, window);
-    const close = () => { void manager?.closeOwner(id).catch(error => console.error('[coc-desktop] Browser cleanup failed:', error)); };
-    window.webContents.on('did-navigate', close);
-    window.once('closed', () => { close(); owners.delete(id); });
+    const failed = (error: unknown) => console.error('[coc-desktop] Browser cleanup failed:', error);
+    // A full SPA reload keeps file previews for the reloaded SPA to reattach; closing the window ends every view.
+    window.webContents.on('did-navigate', () => { void manager?.reloadOwner(id).catch(failed); });
+    window.once('closed', () => { void manager?.closeOwner(id).catch(failed); owners.delete(id); });
 }
 
 export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
@@ -40,11 +43,13 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron')),
             webview2,
         },
+        fileHost: new ElectronFilePreviewHost(),
         getDefault: () => readBrowserEngine(dataDir),
         saveDefault: engine => writeBrowserEngine(dataDir, engine),
         send: (id, channel, payload) => {
             const window = owners.get(id);
-            if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) { window.webContents.send(channel, payload); }
+            if (!window || window.isDestroyed() || window.webContents.isDestroyed()) { return; }
+            window.webContents.send(channel, payload);
         },
         changed: () => {
             for (const window of owners.values()) {
@@ -52,11 +57,11 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             }
         },
     });
-    ipcMain.handle(BROWSER_VIEW_OPEN_CHANNEL, (event, id: unknown, url: unknown, sessionKey: unknown, engine: unknown) => {
+    ipcMain.handle(BROWSER_VIEW_OPEN_CHANNEL, (event, id: unknown, source: unknown, sessionKey: unknown, engine: unknown) => {
         const window = ownWindow(event.sender);
         if (!window) { return { ok: false, reason: 'no-window' }; }
         wireOwner(window);
-        return manager!.open(event.sender.id, id, url, sessionKey, engine);
+        return manager!.openSource(event.sender.id, id, source, sessionKey, engine);
     });
     ipcMain.handle(BROWSER_VIEW_NAVIGATE_CHANNEL, (event, id: unknown, url: unknown) =>
         ownWindow(event.sender) ? manager!.navigate(event.sender.id, id, url) : { ok: false, reason: 'no-window' });
@@ -88,6 +93,9 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         if (!ownWindow(event.sender) || !check.ok) { return false; }
         try { await shell.openExternal(check.url); return true; }
         catch (error) { console.error('[coc-desktop] Browser external-open failed:', error); return false; }
+    });
+    ipcMain.on(BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL, (event, id: unknown) => {
+        if (ownWindow(event.sender)) { void manager!.openExternal(event.sender.id, id, url => shell.openExternal(url)); }
     });
     ipcMain.handle(BROWSER_PREFERENCES_GET_CHANNEL, event => {
         const window = ownWindow(event.sender);

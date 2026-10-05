@@ -260,13 +260,25 @@ describe('UnifiedRightPanel', () => {
             }
         });
 
-        it('does not claim pages for another panel scope or persist a page tab', () => {
+        it('does not claim pages for another panel scope', () => {
             renderPanel({ chatId: 'chat-1' });
             expect(openPage(filePath, 'page-1', 'group-other').handled).toBe(false);
             expect(screen.queryAllByRole('tab')).toHaveLength(0);
+        });
+
+        it('persists a page tab and reattaches its view by page id after a reload', async () => {
+            renderPanel({ chatId: 'chat-1' });
             openPage();
-            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
-            expect(localStorage.getItem(`unified-right-panel:${WS}:tabs`)).not.toContain('html-page');
+            const stored = localStorage.getItem(`unified-right-panel:${WS}:tabs`)!;
+            expect(stored).toContain('html-page');
+            expect(stored).toContain('page-1');
+            cleanup();
+            localStorage.setItem(`unified-right-panel:${WS}:tabs`, stored);
+            vi.clearAllMocks();
+            renderPanel({ chatId: 'chat-1' });
+            expect(readUnifiedPanelState(WS).workspaceTabs[0]).toMatchObject({ kind: 'html-page', htmlPageId: 'page-1', resourceId: filePath });
+            expect(screen.getByTestId(`unified-panel-tab-${tabId}`).getAttribute('aria-selected')).toBe('true');
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith('page-1', filePath));
         });
 
         it('accepts a group-scoped page owned by a local member repo', () => {

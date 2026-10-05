@@ -97,3 +97,21 @@ describe('PastePreview', () => {
         expect(el.classList.contains('my-class')).toBe(true);
     });
 });
+
+describe('PastePreview panel action', () => {
+    it('hides the panel action without an opener', () => {
+        render(<PastePreview charCount={20000} previewLines={['preview']} onDismiss={vi.fn()} />);
+        expect(screen.queryByTestId('paste-preview-open')).toBeNull();
+    });
+
+    it('opens without expanding or dismissing the chip', () => {
+        const onOpenInPanel = vi.fn();
+        const onDismiss = vi.fn();
+        render(<PastePreview charCount={20000} previewLines={['preview']}
+            onDismiss={onDismiss} onOpenInPanel={onOpenInPanel} />);
+        fireEvent.click(screen.getByTestId('paste-preview-open'));
+        expect(onOpenInPanel).toHaveBeenCalledOnce();
+        expect(onDismiss).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('paste-preview-content')).toBeNull();
+    });
+});

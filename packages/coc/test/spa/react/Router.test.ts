@@ -2581,7 +2581,7 @@ describe('memory sub-tab deep-link parsing', () => {
 
 describe('admin sub-tab deep-link parsing', () => {
     it('VALID_ADMIN_SUB_TABS contains all 8 tabs', () => {
-        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents', 'whatsapp']));
+        expect(VALID_ADMIN_SUB_TABS).toEqual(new Set(['settings', 'providers', 'data', 'server', 'prompts', 'database', 'agents', 'whatsapp', 'browser']));
     });
 
     it('returns "settings" for #admin/settings', () => {
@@ -2634,6 +2634,7 @@ describe('admin sub-tab deep-link parsing', () => {
 
     it('returns "whatsapp" for #admin/whatsapp', () => {
         expect(parseAdminSubTab('#admin/whatsapp')).toBe('whatsapp');
+        expect(parseAdminSubTab('#admin/browser')).toBe('browser');
     });
 });
 

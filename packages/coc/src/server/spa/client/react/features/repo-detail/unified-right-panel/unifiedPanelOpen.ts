@@ -27,6 +27,7 @@
  * without revealing the dock, so submitting a collapsed draft keeps it collapsed.
  */
 
+import { pasteOpenInput, storePasteSnapshot } from './unifiedPasteTabs';
 import { openWorkspaceDock } from '../WorkspaceDockToggle';
 import { readUnifiedPanelState, writeUnifiedPanelState } from './unifiedPanelStore';
 import {
@@ -73,6 +74,17 @@ export function openUnifiedPanelTab(
     updateUnifiedPanelState(workspaceId, prev => openTab(prev, input));
     if (options.reveal !== false) openWorkspaceDock(workspaceId);
     return id;
+}
+
+/** Capture the exact text before publishing its ephemeral descriptor. */
+export function openUnifiedPasteTab(
+    workspaceId: string,
+    content: string,
+    context: Pick<OpenUnifiedTabInput, 'ownerWorkspaceId' | 'ownerRoutingRef' | 'chatId' | 'repoLabel'>,
+): string {
+    const input = pasteOpenInput(content, context);
+    storePasteSnapshot(workspaceId, input.resourceId, content);
+    return openUnifiedPanelTab(workspaceId, input);
 }
 
 /**
@@ -124,6 +136,7 @@ export function unifiedTabIdFor(input: OpenUnifiedTabInput): string {
     return unifiedTabId({
         kind: input.kind,
         ownerWorkspaceId: input.ownerWorkspaceId,
+        ownerRoutingRef: input.ownerRoutingRef,
         chatId: input.chatId,
         resourceId: input.resourceId,
     });

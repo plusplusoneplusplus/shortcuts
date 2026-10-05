@@ -49,13 +49,10 @@ import {
 } from '../src/popout-chrome';
 import { MENU_COPY_CHANNEL, MENU_COPY_HANDLED_CHANNEL } from '../src/terminal-copy';
 import {
-    HTML_PAGE_OPEN_CHANNEL,
-    HTML_PAGE_SET_BOUNDS_CHANNEL,
-    HTML_PAGE_HIDE_CHANNEL,
-    HTML_PAGE_CLOSE_CHANNEL,
-    HTML_PAGE_RELOAD_CHANNEL,
-    HTML_PAGE_OPEN_EXTERNAL_CHANNEL,
-    HTML_PAGE_STATE_CHANNEL,
+    HTML_PAGE_SESSION_KEY,
+    HTML_PAGE_VIEW_PREFIX,
+    toHtmlPageLoadState,
+    toHtmlPageOpenResult,
 } from '../src/html-page-policy';
 import {
     BROWSER_VIEW_OPEN_CHANNEL,
@@ -75,6 +72,8 @@ import {
     BROWSER_VIEW_CLOSED_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
     BROWSER_HOST_FOCUS_CHANNEL,
+    BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL,
+    BROWSER_SOURCE_KINDS,
 } from '../src/browser-view-policy';
 
 const exposeInMainWorld = vi.fn();
@@ -320,33 +319,66 @@ describe('preload bridge', () => {
         unsubscribe();
         expect(removeListener).toHaveBeenCalledWith(POPOUT_STATE_CHANNEL, expect.any(Function));
     });
-    it('htmlPage methods use the real html-page channels', async () => {
+    it('htmlPage is a thin wrapper that drives prefixed file views over the browser channels', async () => {
         const api = exposedApi();
-        invoke.mockResolvedValue({ ok: true });
+        const view = HTML_PAGE_VIEW_PREFIX + 'p1';
+        invoke.mockResolvedValue({ ok: true, engine: 'electron', sourceKind: 'file' });
         await expect(api.htmlPage.open('p1', '/w/index.html')).resolves.toEqual({ ok: true });
-        expect(invoke).toHaveBeenCalledWith(HTML_PAGE_OPEN_CHANNEL, 'p1', '/w/index.html');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_CHANNEL, view, { kind: 'file', path: '/w/index.html' }, HTML_PAGE_SESSION_KEY, undefined);
         const rect = { x: 1, y: 2, width: 3, height: 4 };
         api.htmlPage.setBounds('p1', rect);
-        expect(send).toHaveBeenCalledWith(HTML_PAGE_SET_BOUNDS_CHANNEL, 'p1', rect);
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_SET_BOUNDS_CHANNEL, view, rect);
         api.htmlPage.hide('p1');
-        expect(send).toHaveBeenCalledWith(HTML_PAGE_HIDE_CHANNEL, 'p1');
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_HIDE_CHANNEL, view);
         api.htmlPage.reload('p1');
-        expect(send).toHaveBeenCalledWith(HTML_PAGE_RELOAD_CHANNEL, 'p1');
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_NAV_CHANNEL, view, 'reload');
         api.htmlPage.openExternal('p1');
-        expect(send).toHaveBeenCalledWith(HTML_PAGE_OPEN_EXTERNAL_CHANNEL, 'p1');
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL, view);
         api.htmlPage.close('p1');
-        expect(send).toHaveBeenCalledWith(HTML_PAGE_CLOSE_CHANNEL, 'p1');
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_CLOSE_CHANNEL, view);
     });
 
-    it('htmlPage.onState relays state and unsubscribes', () => {
+    it.each([
+        { ok: true, engine: 'electron', sourceKind: 'file' },
+        ...['invalid', 'not-absolute', 'not-html', 'missing', 'not-file', 'bad-id', 'busy', 'bad-session', 'no-window']
+            .map(reason => ({ ok: false, reason, message: 'detail', engine: 'electron' })),
+    ])('htmlPage.open keeps its reply shape for %o (in sync with html-page-policy)', async (result) => {
+        invoke.mockResolvedValue(result);
+        await expect(exposedApi().htmlPage.open('p1', '/w/index.html')).resolves.toEqual(toHtmlPageOpenResult(result));
+    });
+
+    it('htmlPage.onState maps only prefixed view states (in sync with html-page-policy) and unsubscribes', () => {
         const cb = vi.fn();
         const unsubscribe = exposedApi().htmlPage.onState(cb);
-        const listener = on.mock.calls.find((c) => c[0] === HTML_PAGE_STATE_CHANNEL)![1];
-        const state = { pageId: 'p1', status: 'failed', error: 'ERR_FILE_NOT_FOUND' };
-        listener({ sender: 'ignored' }, state);
-        expect(cb).toHaveBeenCalledWith(state);
+        const listener = on.mock.calls.find((c) => c[0] === BROWSER_VIEW_STATE_CHANNEL)![1];
+        const base = { engine: 'electron', sourceKind: 'file', url: 'file:///w/index.html', title: 'A', canGoBack: false, canGoForward: false, loading: false };
+        const states = [
+            { ...base, loading: true },
+            base,
+            { ...base, error: 'ERR_FILE_NOT_FOUND', errorCode: 'navigation-failed' },
+            { ...base, url: '' },
+        ];
+        for (const state of states) { listener({ sender: 'ignored' }, { ...state, viewId: HTML_PAGE_VIEW_PREFIX + 'p1' }); }
+        listener({ sender: 'ignored' }, { ...base, sourceKind: 'url', viewId: 'b1', url: 'https://a.test/' });
+        expect(cb.mock.calls.map(c => c[0])).toEqual(states.map(state => toHtmlPageLoadState('p1', state)));
         unsubscribe();
-        expect(removeListener).toHaveBeenCalledWith(HTML_PAGE_STATE_CHANNEL, expect.any(Function));
+        expect(removeListener).toHaveBeenCalledWith(BROWSER_VIEW_STATE_CHANNEL, listener);
+    });
+
+    it('browser advertises the source kinds this build supports', () => {
+        expect(exposedApi().browser.sources).toEqual(BROWSER_SOURCE_KINDS);
+        expect(exposedApi().browser.sources).toEqual(['url', 'file']);
+    });
+
+    it('browser.open passes url and file sources through unchanged', async () => {
+        const api = exposedApi();
+        invoke.mockResolvedValue({ ok: true, engine: 'electron', sourceKind: 'file' });
+        await expect(api.browser.open('f1', { kind: 'file', path: '/w/index.html' }, 'ws-1')).resolves.toEqual({ ok: true, engine: 'electron', sourceKind: 'file' });
+        expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_CHANNEL, 'f1', { kind: 'file', path: '/w/index.html' }, 'ws-1', undefined);
+        await api.browser.open('b1', { kind: 'url', url: 'https://example.com/' }, 'ws-1', 'webview2');
+        expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_CHANNEL, 'b1', { kind: 'url', url: 'https://example.com/' }, 'ws-1', 'webview2');
+        api.browser.openViewExternal('f1');
+        expect(send).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL, 'f1');
     });
 
     it('browser methods use the real browser-view channels', async () => {

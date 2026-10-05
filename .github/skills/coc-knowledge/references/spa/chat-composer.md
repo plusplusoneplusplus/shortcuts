@@ -20,6 +20,18 @@ the plain flavor modulo escapes and whitespace), absent HTML, or conversion fail
 back to `text/plain`. Chained `onPaste` hooks (attachments, the >16 KB large-paste chip)
 run first and veto via `preventDefault()`.
 
+### Large-paste panel snapshots
+
+`useTextPaste` retains the full raw payload separately from truncated preview lines.
+Both `ChatDetail` follow-up layouts pass that payload to `FollowUpInputArea`.
+`PastePreview` accepts an optional panel opener; the composer supplies it only with
+full content, a workspace owner, and a matching chat panel host. Opening captures
+an immutable snapshot through `openUnifiedPasteTab`, using the host's panel scope
+and the composer's workspace and attachment destination as concrete owner.
+Replacement or dismissal preserves open snapshots; equal content shares the
+sent-card tab identity. Panel storage and read-only rendering are covered in
+[shell.md](shell.md).
+
 ### Initial-chat toolbar
 
 `NewChatArea` / `InitialChatComposer` use `settingsLayout="responsive"`. At desktop

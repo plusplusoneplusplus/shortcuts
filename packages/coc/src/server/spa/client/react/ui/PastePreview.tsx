@@ -7,6 +7,8 @@ export interface PastePreviewProps {
     previewLines: string[];
     /** Called to dismiss the preview and clear paste state */
     onDismiss: () => void;
+    /** Opens the full paste snapshot when a panel is available. */
+    onOpenInPanel?: () => void;
     className?: string;
     'data-testid'?: string;
 }
@@ -17,7 +19,7 @@ function formatCharCount(count: number): string {
     return `${count}`;
 }
 
-export function PastePreview({ charCount, previewLines, onDismiss, className, ...props }: PastePreviewProps) {
+export function PastePreview({ charCount, previewLines, onDismiss, onOpenInPanel, className, ...props }: PastePreviewProps) {
     const [expanded, setExpanded] = useState(false);
 
     if (charCount === 0) return null;
@@ -44,6 +46,16 @@ export function PastePreview({ charCount, previewLines, onDismiss, className, ..
                     Large content pasted ({formatCharCount(charCount)} chars)
                     <span className="ml-1 text-[10px] text-[#848484]">{expanded ? '▾' : '▸'}</span>
                 </button>
+                {onOpenInPanel && (
+                    <button
+                        type="button"
+                        onClick={onOpenInPanel}
+                        className="shrink-0 bg-transparent border-none p-0 text-xs text-[#848484] hover:underline cursor-pointer"
+                        data-testid="paste-preview-open"
+                    >
+                        Open in panel
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={onDismiss}

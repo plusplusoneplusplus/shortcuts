@@ -41,13 +41,8 @@ const POPOUT_COPY_URL_CHANNEL = 'coc-desktop:popout-copy-url';
 const POPOUT_STATE_CHANNEL = 'coc-desktop:popout-state';
 const MENU_COPY_CHANNEL = 'coc-desktop:menu-copy';
 const MENU_COPY_HANDLED_CHANNEL = 'coc-desktop:menu-copy-handled';
-const HTML_PAGE_OPEN_CHANNEL = 'coc-desktop:html-page-open';
-const HTML_PAGE_SET_BOUNDS_CHANNEL = 'coc-desktop:html-page-set-bounds';
-const HTML_PAGE_HIDE_CHANNEL = 'coc-desktop:html-page-hide';
-const HTML_PAGE_CLOSE_CHANNEL = 'coc-desktop:html-page-close';
-const HTML_PAGE_RELOAD_CHANNEL = 'coc-desktop:html-page-reload';
-const HTML_PAGE_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:html-page-open-external';
-const HTML_PAGE_STATE_CHANNEL = 'coc-desktop:html-page-state';
+const HTML_PAGE_VIEW_PREFIX = 'html-page:';
+const HTML_PAGE_SESSION_KEY = 'html-page';
 const BROWSER_VIEW_OPEN_CHANNEL = 'coc-desktop:browser-view-open';
 const BROWSER_VIEW_NAVIGATE_CHANNEL = 'coc-desktop:browser-view-navigate';
 const BROWSER_VIEW_NAV_CHANNEL = 'coc-desktop:browser-view-nav';
@@ -65,6 +60,8 @@ const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
 const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
+const BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-view-open-external';
+const BROWSER_SOURCE_KINDS = ['url', 'file'] as const;
 
 // Chromium's DOM focus does not release the separate WebView2 process's native focus.
 if (typeof document !== 'undefined') {
@@ -130,7 +127,10 @@ interface HtmlPageRect {
 
 /** Reply to `browser.open` / `browser.navigate` (mirrors `BrowserOpenResult` in browser-view-policy.ts). */
 type BrowserEngine = 'electron' | 'webview2';
-type BrowserOpenResult = { ok: true; engine: BrowserEngine } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
+type BrowserSourceKind = typeof BROWSER_SOURCE_KINDS[number];
+type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSourceKind } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
+/** What `browser.open` loads (mirrors `BrowserSource`); a bare string is a `url` source. */
+type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
 interface BrowserPreferences {
     defaultEngine: BrowserEngine;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
@@ -141,6 +141,7 @@ interface BrowserPreferences {
 interface BrowserViewState {
     viewId: string;
     engine: BrowserEngine;
+    sourceKind?: BrowserSourceKind;
     url: string;
     title: string;
     canGoBack: boolean;
@@ -165,12 +166,69 @@ interface BrowserDownloadEvent {
     error?: string;
 }
 
+const HTML_PAGE_OPEN_REASONS = ['invalid', 'not-absolute', 'not-html', 'missing', 'not-file', 'bad-id'];
+
+/** Mirrors `toHtmlPageOpenResult` in html-page-policy.ts. */
+function toHtmlPageOpenResult(result: BrowserOpenResult): HtmlPageOpenResult {
+    if (result.ok) { return { ok: true }; }
+    return { ok: false, reason: HTML_PAGE_OPEN_REASONS.includes(result.reason) ? result.reason : 'no-window' };
+}
+
+/** Mirrors `toHtmlPageLoadState` in html-page-policy.ts. */
+function toHtmlPageLoadState(pageId: string, state: BrowserViewState): HtmlPageLoadState {
+    const status = state.error ? 'failed' : state.loading ? 'loading' : 'loaded';
+    return { pageId, status, url: state.url || undefined, ...(state.error ? { error: state.error } : {}) };
+}
+
 /** Subscribe `callback` to a main → SPA channel; returns the unsubscribe function. */
 function subscribe<T>(channel: string, callback: (payload: T) => void): () => void {
     const listener = (_event: unknown, payload: T) => callback(payload);
     ipcRenderer.on(channel, listener);
     return () => ipcRenderer.removeListener(channel, listener);
 }
+
+/**
+ * Browser tab bridge (see browser-view-host.ts). The SPA picks an opaque
+ * `viewId` per tab and opens it with a source — `{ kind: 'url', url }`
+ * (http(s), or a bare URL string) or `{ kind: 'file', path }` (a local
+ * `.html`/`.htm` preview, always in the isolated Electron file host) — and
+ * the tab's concrete owner `sessionKey`. `sources` lists the supported
+ * source kinds so the SPA can feature-detect file previews. Sign-ins persist
+ * installation-wide in separate engine profiles. It keeps the view over its placeholder with `setBounds` (null
+ * hides it) / `hide`, drives history with `nav`, and tears it down with
+ * `close`. `onState` streams url/title/history/loading/error, `onNewTab`
+ * asks the SPA to open a new-window link as another tab, and `onDownload`
+ * reports downloads handed to the system browser.
+ */
+const browser = {
+    sources: BROWSER_SOURCE_KINDS,
+    open: (viewId: string, source: BrowserSource | string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
+        ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, source, sessionKey, relatedEngine),
+    navigate: (viewId: string, url: string): Promise<BrowserOpenResult> =>
+        ipcRenderer.invoke(BROWSER_VIEW_NAVIGATE_CHANNEL, viewId, url),
+    nav: (viewId: string, action: 'back' | 'forward' | 'reload' | 'stop') =>
+        ipcRenderer.send(BROWSER_VIEW_NAV_CHANNEL, viewId, action),
+    setBounds: (viewId: string, rect: HtmlPageRect | null) =>
+        ipcRenderer.send(BROWSER_VIEW_SET_BOUNDS_CHANNEL, viewId, rect),
+    hide: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_HIDE_CHANNEL, viewId),
+    close: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_CLOSE_CHANNEL, viewId),
+    focus: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_FOCUS_CHANNEL, viewId),
+    openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke(BROWSER_OPEN_EXTERNAL_CHANNEL, url),
+    /** Open the view's current page in the system browser (http(s) pages, or the previewed `file:` page). */
+    openViewExternal: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL, viewId),
+    onState: (callback: (state: BrowserViewState) => void) => subscribe(BROWSER_VIEW_STATE_CHANNEL, callback),
+    onNewTab: (callback: (request: BrowserNewTabRequest) => void) =>
+        subscribe(BROWSER_VIEW_NEW_TAB_CHANNEL, callback),
+    onDownload: (callback: (event: BrowserDownloadEvent) => void) =>
+        subscribe(BROWSER_VIEW_DOWNLOAD_CHANNEL, callback),
+    getPreferences: (): Promise<BrowserPreferences> => ipcRenderer.invoke(BROWSER_PREFERENCES_GET_CHANNEL),
+    setDefaultEngine: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
+        ipcRenderer.invoke(BROWSER_PREFERENCES_SET_CHANNEL, engine),
+    clearData: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
+        ipcRenderer.invoke(BROWSER_CLEAR_DATA_CHANNEL, engine),
+    onPreferencesChanged: (callback: () => void) => subscribe(BROWSER_PREFERENCES_CHANGED_CHANNEL, callback),
+    onClosed: (callback: (event: { viewId: string; engine: BrowserEngine }) => void) => subscribe(BROWSER_VIEW_CLOSED_CHANNEL, callback),
+};
 
 const api = {
     /** Identifies the host so the SPA can tell it is running inside the desktop shell. */
@@ -311,64 +369,26 @@ const api = {
         },
     },
     /**
-     * HTML page tab bridge (see html-page-host.ts). The SPA picks an opaque
-     * `pageId` per tab, asks `open` to host a local `.html`/`.htm` file (the
-     * main process validates the path and replies `{ ok: false }` when it
-     * refuses, so the SPA can fall back to the source viewer), then keeps the
-     * view over its placeholder with `setBounds` (null hides it) / `hide`, and
-     * tears it down with `close`. `onState` reports loading / loaded / failed.
+     * HTML page tab bridge — compatibility wrapper for SPAs that predate `file`
+     * sources on {@link browser}. Each `pageId` maps to the browser view
+     * `html-page:<pageId>`; `open` opens it as a `file` source and narrows the
+     * reply to `{ ok: true } | { ok: false, reason }` (a refusal lets the SPA
+     * fall back to the source viewer), and `onState` reports loading / loaded /
+     * failed for those views only. All view logic lives behind `browser`.
      */
     htmlPage: {
-        open: (pageId: string, filePath: string): Promise<HtmlPageOpenResult> =>
-            ipcRenderer.invoke(HTML_PAGE_OPEN_CHANNEL, pageId, filePath),
-        setBounds: (pageId: string, rect: HtmlPageRect | null) =>
-            ipcRenderer.send(HTML_PAGE_SET_BOUNDS_CHANNEL, pageId, rect),
-        hide: (pageId: string) => ipcRenderer.send(HTML_PAGE_HIDE_CHANNEL, pageId),
-        close: (pageId: string) => ipcRenderer.send(HTML_PAGE_CLOSE_CHANNEL, pageId),
-        reload: (pageId: string) => ipcRenderer.send(HTML_PAGE_RELOAD_CHANNEL, pageId),
-        openExternal: (pageId: string) => ipcRenderer.send(HTML_PAGE_OPEN_EXTERNAL_CHANNEL, pageId),
-        onState: (callback: (state: HtmlPageLoadState) => void) => {
-            const listener = (_event: unknown, state: HtmlPageLoadState) => callback(state);
-            ipcRenderer.on(HTML_PAGE_STATE_CHANNEL, listener);
-            return () => ipcRenderer.removeListener(HTML_PAGE_STATE_CHANNEL, listener);
-        },
+        open: async (pageId: string, filePath: string): Promise<HtmlPageOpenResult> =>
+            toHtmlPageOpenResult(await browser.open(HTML_PAGE_VIEW_PREFIX + pageId, { kind: 'file', path: filePath }, HTML_PAGE_SESSION_KEY)),
+        setBounds: (pageId: string, rect: HtmlPageRect | null) => browser.setBounds(HTML_PAGE_VIEW_PREFIX + pageId, rect),
+        hide: (pageId: string) => browser.hide(HTML_PAGE_VIEW_PREFIX + pageId),
+        close: (pageId: string) => browser.close(HTML_PAGE_VIEW_PREFIX + pageId),
+        reload: (pageId: string) => browser.nav(HTML_PAGE_VIEW_PREFIX + pageId, 'reload'),
+        openExternal: (pageId: string) => browser.openViewExternal(HTML_PAGE_VIEW_PREFIX + pageId),
+        onState: (callback: (state: HtmlPageLoadState) => void) => browser.onState(state => {
+            if (state.viewId.startsWith(HTML_PAGE_VIEW_PREFIX)) { callback(toHtmlPageLoadState(state.viewId.slice(HTML_PAGE_VIEW_PREFIX.length), state)); }
+        }),
     },
-    /**
-     * Browser tab bridge (see browser-view-host.ts). The SPA picks an opaque
-     * `viewId` per tab and opens it with an http(s) URL and the tab's concrete
-     * owner `sessionKey`. Sign-ins persist installation-wide in separate engine
-     * profiles. It keeps the view over its placeholder with `setBounds` (null
-     * hides it) / `hide`, drives history with `nav`, and tears it down with
-     * `close`. `onState` streams url/title/history/loading/error, `onNewTab`
-     * asks the SPA to open a new-window link as another tab, and `onDownload`
-     * reports downloads handed to the system browser.
-     */
-    browser: {
-        open: (viewId: string, url: string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
-            ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, url, sessionKey, relatedEngine),
-        navigate: (viewId: string, url: string): Promise<BrowserOpenResult> =>
-            ipcRenderer.invoke(BROWSER_VIEW_NAVIGATE_CHANNEL, viewId, url),
-        nav: (viewId: string, action: 'back' | 'forward' | 'reload' | 'stop') =>
-            ipcRenderer.send(BROWSER_VIEW_NAV_CHANNEL, viewId, action),
-        setBounds: (viewId: string, rect: HtmlPageRect | null) =>
-            ipcRenderer.send(BROWSER_VIEW_SET_BOUNDS_CHANNEL, viewId, rect),
-        hide: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_HIDE_CHANNEL, viewId),
-        close: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_CLOSE_CHANNEL, viewId),
-        focus: (viewId: string) => ipcRenderer.send(BROWSER_VIEW_FOCUS_CHANNEL, viewId),
-        openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke(BROWSER_OPEN_EXTERNAL_CHANNEL, url),
-        onState: (callback: (state: BrowserViewState) => void) => subscribe(BROWSER_VIEW_STATE_CHANNEL, callback),
-        onNewTab: (callback: (request: BrowserNewTabRequest) => void) =>
-            subscribe(BROWSER_VIEW_NEW_TAB_CHANNEL, callback),
-        onDownload: (callback: (event: BrowserDownloadEvent) => void) =>
-            subscribe(BROWSER_VIEW_DOWNLOAD_CHANNEL, callback),
-        getPreferences: (): Promise<BrowserPreferences> => ipcRenderer.invoke(BROWSER_PREFERENCES_GET_CHANNEL),
-        setDefaultEngine: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
-            ipcRenderer.invoke(BROWSER_PREFERENCES_SET_CHANNEL, engine),
-        clearData: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
-            ipcRenderer.invoke(BROWSER_CLEAR_DATA_CHANNEL, engine),
-        onPreferencesChanged: (callback: () => void) => subscribe(BROWSER_PREFERENCES_CHANGED_CHANNEL, callback),
-        onClosed: (callback: (event: { viewId: string; engine: BrowserEngine }) => void) => subscribe(BROWSER_VIEW_CLOSED_CHANNEL, callback),
-    },
+    browser,
 } as const;
 
 contextBridge.exposeInMainWorld('cocDesktop', api);

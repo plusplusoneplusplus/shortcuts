@@ -56,6 +56,8 @@ import {
 } from '../hooks/useAttachedContext';
 import { chatMarkdownToHtml, toContentHtml } from './markdownHtml';
 import { ChatRenderContextProvider, type ChatRenderContextValue } from './ChatRenderContext';
+import { useUnifiedPanelHostForChat } from '../../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openUnifiedPasteTab } from '../../repo-detail/unified-right-panel/unifiedPanelOpen';
 
 export {
     chatMarkdownToHtml,
@@ -611,7 +613,7 @@ export function splitLargePasteTurnContent(content: string): LargePasteParts {
     return { promptContent: '', pasteContent: content };
 }
 
-function LargePasteCard({ content }: { content: string }) {
+function LargePasteCard({ content, onOpenInPanel }: { content: string; onOpenInPanel?: () => void }) {
     const [expanded, setExpanded] = useState(false);
     const [copiedFullContent, setCopiedFullContent] = useState(false);
     const previewLines = useMemo(() => getPastePreviewLines(content), [content]);
@@ -651,6 +653,16 @@ function LargePasteCard({ content }: { content: string }) {
                 >
                     {copiedFullContent ? 'Copied' : 'Copy full content'}
                 </button>
+                {onOpenInPanel && (
+                    <button
+                        type="button"
+                        className="shrink-0 rounded border border-[#d0d0d0] dark:border-[#3c3c3c] px-2 py-0.5 text-[11px] text-[#616161] dark:text-[#c8c8c8] hover:bg-[#eeeeee] dark:hover:bg-[#333333]"
+                        onClick={onOpenInPanel}
+                        data-testid="large-paste-card-open"
+                    >
+                        Open in panel
+                    </button>
+                )}
             </div>
             {expanded ? (
                 <pre
@@ -1236,6 +1248,7 @@ function InterruptedTurnBanner({ reason, onContinue, action }: { reason?: string
 }
 
 export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterrupted, interruptedAction, processType, wsId, sourceSelectionId, sourceBaseUrl, turnIndex, onAttachContext, onPinTurn, onArchiveTurn, onRewindTurn, onEditTurn, editTurnDisabledReason, inlineEditor, noteEdits, processId, openNotePath, provider, rewindProvider, activeProviderSegment, sidenotes, onCreateSidenote, onRetrySidenote, onDeleteSidenote, onCopySidenote, onFollowUpSidenote, onRetrySidenoteTurn }: ConversationTurnBubbleProps) {
+    const unifiedPanelHost = useUnifiedPanelHostForChat(taskId);
     const isUser = turn.role === 'user';
     const assistantProvider = turn.provider ?? provider;
     const assistantProviderLabel = getProviderLabel(assistantProvider);
@@ -1895,7 +1908,16 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
                         />
                     )}
                     {isUser && !showRaw && largePasteParts && (
-                        <LargePasteCard content={largePasteParts.pasteContent} />
+                        <LargePasteCard
+                            content={largePasteParts.pasteContent}
+                            onOpenInPanel={unifiedPanelHost && wsId ? () => {
+                                openUnifiedPasteTab(unifiedPanelHost.workspaceId, largePasteParts.pasteContent, {
+                                    ownerWorkspaceId: wsId,
+                                    ownerRoutingRef: sourceSelectionId ?? wsId,
+                                    chatId: taskId,
+                                });
+                            } : undefined}
+                        />
                     )}
                     {isUser && showRaw && (
                         <div className="raw-content-view rounded border border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#ffffff] dark:bg-[#1e1e1e] overflow-auto max-h-[600px]">

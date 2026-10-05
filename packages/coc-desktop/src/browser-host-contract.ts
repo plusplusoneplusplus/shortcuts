@@ -8,6 +8,14 @@ export interface BrowserViewRequest {
     url: string;
 }
 
+/** A local HTML preview: `path` is validated by `validateHtmlPagePath` before it gets here. */
+export interface FileViewRequest {
+    ownerId: number;
+    viewId: string;
+    sessionKey: string;
+    path: string;
+}
+
 export interface BrowserEventSink {
     state(state: BrowserViewState): void;
     newTab(url: string): void;
@@ -28,6 +36,12 @@ export interface BrowserEngineHost {
     availability(): Promise<BrowserAvailability>;
     create(request: BrowserViewRequest, sink: BrowserEventSink): Promise<BrowserHostedView>;
     clearData(): Promise<void>;
+    dispose(): Promise<void>;
+}
+
+/** Electron-only host for local HTML previews: its own in-memory partition, never an engine profile. */
+export interface FilePreviewHost {
+    create(request: FileViewRequest, sink: BrowserEventSink): Promise<BrowserHostedView>;
     dispose(): Promise<void>;
 }
 

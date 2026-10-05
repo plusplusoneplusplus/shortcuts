@@ -47,6 +47,13 @@ afterEach(() => cleanup());
 // ── Language picker ────────────────────────────────────────────────────────
 
 describe('CodeBlockLanguageView language picker', () => {
+    it('hides formatting controls in a read-only editor', () => {
+        const { props, updateAttributes } = makeProps('python');
+        render(<CodeBlockLanguageView {...props} editor={{ isEditable: false } as any} />);
+        expect(screen.queryByLabelText('Code block language')).toBeNull();
+        expect(updateAttributes).not.toHaveBeenCalled();
+    });
+
     it('lists "Plain text" plus the 16 supported languages', () => {
         const { props } = makeProps(null);
         render(<CodeBlockLanguageView {...props} />);

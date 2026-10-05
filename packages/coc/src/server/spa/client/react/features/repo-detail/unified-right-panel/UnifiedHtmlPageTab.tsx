@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     desktopHtmlPageBridge,
     type HtmlPageLoadState,
 } from '../../../shared/file-path/html-page-bridge';
-import { useNativeViewPlacement } from './useNativeViewPlacement';
+import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 
 export interface UnifiedHtmlPageTabProps {
     tabId: string;
@@ -15,13 +15,14 @@ export interface UnifiedHtmlPageTabProps {
     onErrorChange: (id: string, hasError: boolean) => void;
 }
 
-const toolbarButton = 'rounded px-2 py-1 hover:bg-[#e8e8e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc] dark:hover:bg-[#37373d]';
-
+/**
+ * A local HTML file in a sandboxed desktop view. The toolbar shows the file
+ * path read-only; back/forward need the merged desktop browser API.
+ */
 export function UnifiedHtmlPageTab({
     tabId, pageId, filePath, wsId, active, visible, onErrorChange,
 }: UnifiedHtmlPageTabProps) {
     const bridge = desktopHtmlPageBridge();
-    const placeholder = useRef<HTMLDivElement>(null);
     const [loadState, setLoadState] = useState<HtmlPageLoadState | null>(null);
 
     useEffect(() => {
@@ -53,37 +54,52 @@ export function UnifiedHtmlPageTab({
         };
     }, [bridge, filePath, onErrorChange, pageId, tabId]);
 
-    const placement = useMemo(() => bridge ? {
-        setBounds: (rect: { x: number; y: number; width: number; height: number }) => bridge.setBounds(pageId, rect),
-        hide: () => bridge.hide(pageId),
-    } : null, [bridge, pageId]);
-    useNativeViewPlacement(placeholder, active && visible && loadState?.status !== 'failed', placement);
-
+    const failed = loadState?.status === 'failed';
     const viewSource = () => {
         window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
             detail: { filePath, wsId, forceSourceViewer: true },
         }));
     };
+    const nav = (action: 'back' | 'forward' | 'reload' | 'stop') => {
+        if (action === 'reload') bridge?.reload(pageId);
+        else if (action !== 'stop') bridge?.nav?.(pageId, action);
+    };
+
+    const toolbar = (
+        <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto whitespace-nowrap border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]">
+            <NativeViewNavButtons
+                canGoBack={Boolean(bridge?.nav && loadState?.canGoBack)}
+                canGoForward={Boolean(bridge?.nav && loadState?.canGoForward)}
+                onNav={nav}
+                testIdPrefix="html-page"
+            />
+            <span
+                className="min-w-0 flex-1 truncate px-1 text-[#616161] dark:text-[#9d9d9d]"
+                title={filePath}
+                data-testid="html-page-path"
+            >
+                {filePath}
+            </span>
+            <button className={toolbarButton} type="button" onClick={viewSource}>View source</button>
+            <button className={toolbarButton} type="button" onClick={() => bridge?.openExternal(pageId)}>Open in system browser</button>
+        </div>
+    );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col bg-white text-[#1f1f1f] dark:bg-[#1e1e1e] dark:text-[#cccccc]">
-            <div className="flex flex-shrink-0 items-center gap-1 overflow-x-auto whitespace-nowrap border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]">
-                <button className={toolbarButton} type="button" onClick={() => bridge?.reload(pageId)}>Reload</button>
-                <button className={toolbarButton} type="button" onClick={viewSource}>View source</button>
-                <button className={toolbarButton} type="button" onClick={() => bridge?.openExternal(pageId)}>Open in system browser</button>
-            </div>
-            {loadState?.status === 'failed' && (
+        <NativeViewTab
+            bridge={bridge}
+            viewId={pageId}
+            shown={active && visible && !failed}
+            surfaceHidden={failed}
+            placeholderTestId="html-page-placeholder"
+            toolbar={toolbar}
+        >
+            {failed && (
                 <div role="alert" className="p-4 text-sm">
-                    <p>Could not load page: {loadState.error ?? 'Unknown error'}</p>
+                    <p>Could not load page: {loadState?.error ?? 'Unknown error'}</p>
                     <button className={toolbarButton} type="button" onClick={viewSource}>View source</button>
                 </div>
             )}
-            <div
-                ref={placeholder}
-                className="min-h-0 flex-1"
-                style={{ display: loadState?.status === 'failed' ? 'none' : undefined }}
-                data-testid="html-page-placeholder"
-            />
-        </div>
+        </NativeViewTab>
     );
 }

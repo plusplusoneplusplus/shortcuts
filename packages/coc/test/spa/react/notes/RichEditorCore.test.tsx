@@ -200,6 +200,19 @@ import {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('RichEditorCore', () => {
+    it('blocks paste and drop overrides and change callbacks in read-only mode', () => {
+        const paste = vi.fn();
+        const drop = vi.fn();
+        const change = vi.fn();
+        render(<RichEditorCore readOnly handlePaste={paste} handleDrop={drop} onChange={change} />);
+        expect(capturedEditorProps.handlePaste({}, {})).toBe(true);
+        expect(capturedEditorProps.handleDrop({}, {})).toBe(true);
+        capturedOnUpdate?.({ editor: mockEditor });
+        expect(paste).not.toHaveBeenCalled();
+        expect(drop).not.toHaveBeenCalled();
+        expect(change).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
         mockSetContent.mockReset();
         mockClearContent.mockReset();

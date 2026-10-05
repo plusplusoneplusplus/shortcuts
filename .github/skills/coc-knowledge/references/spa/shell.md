@@ -87,24 +87,21 @@ focuses an existing window in both hosts. Desktop pop-outs expose no handle to p
 handle-dependent focus (`features/canvas/canvasPopOut.ts` tracking live handles) degrades
 there to re-issuing the named open, which focuses the existing window.
 
-## Desktop HTML page views
+## Desktop browser and HTML page views
 
-`window.cocDesktop.htmlPage` (`packages/coc-desktop/src/preload.ts`) hosts local `.html`/`.htm` files using Electron `WebContentsView`s (`html-page-host.ts`), independent of the browser engine preference.
-The SPA picks a per-panel-path `pageId` and calls `open(pageId, absPath)`. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
+`window.cocDesktop.browser` (`packages/coc-desktop/src/preload.ts`) is the one desktop view API, backed by `browser-host-manager.ts`. `open(viewId, source, sessionKey, relatedEngine?)` takes `{ kind: 'url', url }` (or a bare URL string) or `{ kind: 'file', path }`, validates HTTP(S)/file policy and ownership, and replays a live view's state and history; only `file` sources load `file:`. `browser.sources` (`['url', 'file']`) lets the SPA feature-detect file previews, and `openViewExternal(viewId)` opens a view's current page in the system browser.
+Results/state identify the retained engine and `sourceKind`; `sessionKey` identifies routing ownership, not a profile. `setBounds(viewId, getBoundingClientRect())` aligns a view in CSS px; `null`/`hide()` hides it and `close()` destroys it.
 
-`setBounds(pageId, getBoundingClientRect())` aligns the view in CSS px; `null`/`hide()` hides it and `close()` destroys it.
-`reload`, `openExternal` and `onState` (`loading`/`loaded`/`failed`) back the toolbar. Opening a live view replays its load state.
+### HTML page (file) views
 
-Views have no preload, use a separate sandboxed partition, close on full SPA reload, and follow `html-page-policy.ts`.
+Local `.html`/`.htm` previews are `file` sources hosted in Electron `WebContentsView`s created by `file-preview-host.ts`, independent of the engine preference and `relatedEngine`, and never closed by browser-data cleanup. They have no preload, use a separate in-memory sandboxed partition, and follow `html-page-policy.ts`. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
+`window.cocDesktop.htmlPage` is a compatibility wrapper for SPAs without `file` sources: it maps each `pageId` to view `html-page:<pageId>` (session key `html-page`) over the browser channels and narrows replies/states (`loading`/`loaded`/`failed`); it has no view logic of its own.
 
-## Desktop browser views
-
-`window.cocDesktop.browser` uses desktop `browser-host-manager.ts`. `open(viewId, url, sessionKey, relatedEngine?)` validates HTTP(S)/ownership and replays live history.
-Results/state identify the retained engine; `sessionKey` identifies routing ownership, not a profile.
+SPA side: `desktopHtmlPageBridge()` (`shared/file-path/html-page-bridge.ts`) adapts the `file` source to the page API (view `html-page:<pageId>`) when `browser.sources` includes `file`, else returns the older `htmlPage`; web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab` (placeholder + placement) and `NativeViewNavButtons`; the HTML toolbar shows the file path read-only, with Back/Forward only on the merged API.
 
 ### Browser profiles and preferences
 
-`desktop-browser.json` stores the default (Electron). Admin Appearance's Desktop Preferences uses local IPC, not workspace-server APIs.
+`desktop-browser.json` stores the default (Electron). The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 The Windows desktop helper enables OS-account SSO by default at environment creation without an environment flag. Profiles remain separate from Edge. SSO does not guarantee Conditional Access compliance; clearing site data does not disconnect Windows accounts.
 
@@ -116,7 +113,7 @@ Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML pr
 WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
 
-`UnifiedBrowserTab` hides on unmount and closes with its tab. Window teardown/SPA reload closes views; entry-point `onClosed` reaches inactive stores via `closeBrowserPanelView`.
+Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores via `closeBrowserPanelView`. Window teardown closes every view. A full SPA reload (`manager.reloadOwner`) closes `url` views but only hides `file` views: the persisted `html-page` tab reopens the same view id and gets the live page, history and scroll back. A file view not reopened before the next reload closes then.
 Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.
 
 Pop-out buttons draw the SVG `PopOutIcon` (`features/canvas/components/icons.tsx`),
@@ -324,7 +321,14 @@ dock target. The Search/Explorer pair moves between the file toolbar and tab str
 and the navigator open state persists per panel scope. The
 docked Explorer omits its internal Files/Search switch; the standalone Explorer
 page retains it. Tab descriptors (never document bodies, terminal output, or
-credentials) persist per panel scope in localStorage. The full contract lives in
+credentials) persist per panel scope in localStorage. Chat-owned `paste`
+descriptors use a stable content hash, dedupe by chat and concrete owner, and
+are excluded from storage and the `+` menu. `openUnifiedPasteTab` captures raw
+text in a panel-scope/resource-id memory map. Panel writes release snapshots
+when their last referencing tab closes; inherited draft/chat tabs share them.
+Clearing a panel releases its snapshots. `UnifiedPasteTab` reads its snapshot by
+panel scope and renders Markdown through read-only `RichEditorCore`, with a raw-text
+copy action and no save or dirty-state registration. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the
