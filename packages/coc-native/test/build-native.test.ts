@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
     BINDINGS_FILE,
     buildArgs,
+    cleanArgs,
     napiCli,
     nativeBinaryName as scriptBinaryName,
     renderBindings,
@@ -208,6 +209,21 @@ describe('driving @napi-rs/cli', () => {
     it('spawns the entry point the installed CLI declares as its bin', () => {
         const declared = JSON.parse(fs.readFileSync(cliPackageJson, 'utf-8')).bin.napi;
         expect(napiCli()).toBe(path.resolve(path.dirname(cliPackageJson), declared));
+    });
+
+    describe('cleanArgs', () => {
+        it.each(['debug', 'release'])('recompiles wrapper and core DTO macros for %s', profile => {
+            const args = cleanArgs({ profile, target: undefined });
+            expect(args.filter((_: string, i: number) => args[i - 1] === '-p'))
+                .toEqual(['coc-native', 'coc-native-core']);
+            expect(args.includes('--release')).toBe(profile === 'release');
+            expect(args).not.toContain('--target');
+        });
+
+        it('cleans the requested cross-compilation target', () => {
+            const args = cleanArgs({ profile: 'release', target: 'aarch64-apple-darwin' });
+            expect(args[args.indexOf('--target') + 1]).toBe('aarch64-apple-darwin');
+        });
     });
 
     describe('buildArgs', () => {

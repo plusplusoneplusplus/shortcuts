@@ -89,12 +89,14 @@ function main() {
     const dts = `.napi-dts-${process.pid}.d.ts`;
 
     // The type definitions are emitted by the proc macro *while compiling*, so
-    // a cached crate produces none. Clean the thin wrapper — the logic crate,
-    // which is the slow one, stays cached. The profile has to be named or this
-    // cleans `debug` while the build below reads `release`.
-    const clean = ['clean', '--manifest-path', path.join(cargoCwd, 'Cargo.toml'), '-p', 'coc-native'];
-    if (profile === 'release') clean.push('--release');
-    if (target) clean.push('--target', target);
+    // a cached crate produces none. Clean both the wrapper and core DTOs.
+    // Name the profile so a release build does not clean debug artifacts.
+    // napi builds with an explicit target even for the host, so clean that
+    // target rather than Cargo's separate untargeted output directory.
+    const buildTarget = target ?? execFileSync('rustc', ['-vV'], { encoding: 'utf-8' })
+        .match(/^host: (.+)$/m)?.[1];
+    if (!buildTarget) throw new Error('Could not determine the Rust host target');
+    const clean = cleanArgs({ profile, target: buildTarget });
     execFileSync('cargo', clean, { cwd: packageRoot, stdio: 'inherit' });
 
     const args = buildArgs({ profile, target, dts });
@@ -149,6 +151,15 @@ function main() {
     // ends up with both, and neither can quietly lag the other.
     buildSymbolsLsp({ profile, target });
     buildWebView2({ profile, target });
+}
+
+/** Recompile every crate whose N-API macros contribute type definitions. */
+export function cleanArgs({ profile, target }) {
+    const args = ['clean', '--manifest-path', path.join(cargoCwd, 'Cargo.toml'),
+        '-p', 'coc-native', '-p', 'coc-native-core'];
+    if (profile === 'release') args.push('--release');
+    if (target) args.push('--target', target);
+    return args;
 }
 
 /**
