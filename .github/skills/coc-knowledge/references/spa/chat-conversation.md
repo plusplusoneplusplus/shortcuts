@@ -48,7 +48,11 @@ escaped and never injected); the raw toggle shows literal source. Local markdown
 (relative, absolute, Windows, `file:`) get `md-local-file-link--html|--source`, which CSS
 renders as a trailing browser/code icon; external and other-scheme links stay plain. Turns with
 `pasteExternalized: true` keep the typed prompt visible and render the payload as an
-in-bubble card, with no extra persisted display state.
+in-bubble card, with no extra persisted display state. `LargePasteCard` opens the
+exact payload through `openUnifiedPasteTab` when `useUnifiedPanelHostForChat`
+matches the turn's chat and its workspace is known. The tab uses the host's panel
+scope and the conversation's workspace/source selection as owner; chats without a
+matching panel retain inline expand and copy.
 
 For rendered user-message text, `extractInjectedBlocks` removes complete leading
 `<coc-chat-mode>`, `<chat-style>` and `<selected_skills>` prefixes in any order and any
