@@ -83,11 +83,9 @@ describe('gatherDetectedPrsFromTurns', () => {
                 toolCalls: [
                     toolCall({
                         id: 'item_1',
-                        toolName: 'bash',
-                        args: {
-                            command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123',
-                        },
-                        result: 'JSON: {"pr_url": "https://github.com/plusplusoneplusplus/shortcuts/pull/642", "status": "done"}',
+                        toolName: 'create_pull_request',
+                        args: { title: 'Fix association', commits: ['abc123'], autoMerge: true },
+                        result: JSON.stringify({ success: true, url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/642', id: 642, provider: 'github' }),
                     }),
                 ],
             }),

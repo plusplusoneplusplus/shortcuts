@@ -53,6 +53,17 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `create-pull-request-tool.ts` | `create_pull_request` | Opens a GitHub/ADO PR for the chat's own repo via the shared `git/create-pull-request-service.ts` (commits mode in a temp worktree, or current branch) and writes the chat ↔ PR binding. Autopilot/Ralph write turns only — ask mode and Ralph final-check never receive it (the one intentional ask/autopilot tool-block difference). |
 | `tavily-web-search-tool.ts` | `tavily_web_search` | Live web search via Tavily. Key from `~/.coc/providers.json`. Disabled by default. |
 
+### create_pull_request
+
+The `submit-commits-as-pr` skill calls this tool with a nonempty exact commit SHA
+array, oldest first, and explicit `autoMerge: true` unless the user disables it.
+Invoking the skill authorizes that default; general tool calls still default to
+false. Commit-mode submission uses an isolated worktree and aborts conflicts
+without moving the active branch/HEAD. A successful result with `bound: false`
+means the PR exists but its chat binding was not written. Auto-merge warnings do
+not undo creation. Before retrying uncertain creation, inspect branches and PR
+state in the owning workspace to avoid duplicate submissions.
+
 ### send_to_conversation
 
 Create mode omits `processId` and enqueues a brand-new visible chat through the same

@@ -116,10 +116,10 @@ unverified-upper-bound caution when only the baseline exists; else a startedAt/c
 time window cross-checked against `progress.md`. `deriveSubmitCommitRange`
 (`enqueue-submit.ts`) derives `endSha` from the last completed iteration's `headSha` and
 `excludeShas` from the union of `submits[*].commitShas`. Whole-session scope including
-gap-fix loops; invoke the
-`submit-commits-as-pr` skill with an explicit comma-separated SHA list; PR title/body from
+gap-fix loops; call the
+`create_pull_request` tool with a nonempty explicit SHA array, oldest first; PR title/body from
 the goal plus a journal summary, auto-merge on, not draft; never resolve cherry-pick
-conflicts (the skill aborts); end with a `RALPH_SUBMIT_RESULT` JSON block
+conflicts (the tool aborts); end with a `RALPH_SUBMIT_RESULT` JSON block
 `{ status: 'submitted'|'failed', prUrl?, prNumber?, commitShas?, error? }`.
 
 On completion the queue bridge routes `context.ralph.submit` to `handleSubmitCompletion` →

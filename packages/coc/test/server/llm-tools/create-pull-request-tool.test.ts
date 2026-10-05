@@ -75,6 +75,20 @@ describe('create_pull_request tool', () => {
         expect(rows()).toEqual([{ workspace_id: ORIGIN_ID, pr_id: '77', task_id: BARE_TASK_ID }]);
     });
 
+    it.each([true, false, undefined])('forwards authorized autoMerge=%s without changing the general default', async autoMerge => {
+        const service = vi.fn(async (_input: CreatePullRequestInput) => RESULT);
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID, store, createPullRequest: service });
+
+        await invoke(tool, { title: 'Submit exact commits', body: 'Reviewed change', base: 'develop',
+            commits: ['abc1234', 'def5678'], draft: true, mergeMethod: 'rebase',
+            ...(autoMerge === undefined ? {} : { autoMerge }) });
+
+        expect(service).toHaveBeenCalledWith({ repoRoot: '/repos/shortcuts', title: 'Submit exact commits',
+            body: 'Reviewed change', base: 'develop', commits: ['abc1234', 'def5678'],
+            draft: true, mergeMethod: 'rebase', ...(autoMerge === undefined ? {} : { autoMerge }) });
+        expect(tool.parameters?.properties?.autoMerge.description).toContain('including invoking a skill');
+    });
+
     it('falls back to the workspace root and current-branch mode when no working dir / commits', async () => {
         const service = vi.fn(async (_input: CreatePullRequestInput) => RESULT);
         const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID, store, createPullRequest: service });

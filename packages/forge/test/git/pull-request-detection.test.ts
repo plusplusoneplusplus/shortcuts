@@ -22,6 +22,16 @@ const CREATED_PR = {
 const MCP_CREATED_PR = { content: [{ type: 'text', text: JSON.stringify(CREATED_PR) }], isError: false };
 
 describe('detectPullRequestsInToolGroup', () => {
+    it('does not treat arbitrary script output or recovered status lines as PR creation', () => {
+        const calls = [
+            { id: 'script', name: 'bash', args: { command: 'python tools/publish.py' },
+                result: '$ gh pr create --fill\nhttps://github.com/org/repo/pull/99\nJSON: {"pr_url":"https://github.com/org/repo/pull/99","status":"done"}\nFull output at /tmp/output.txt' },
+            { id: 'log', name: 'bash', args: { command: 'tail /tmp/output.txt' },
+                result: 'JSON: {"pr_url":"https://github.com/org/repo/pull/99","status":"done"}' },
+        ];
+        expect(detectPullRequestsInToolGroup(calls)).toEqual([]);
+    });
+
     describe('create_pull_request results', () => {
         it.each([
             'create_pull_request',
@@ -358,173 +368,8 @@ describe('detectPullRequestsInToolGroup', () => {
         });
     });
 
-    it('detects PR URLs from wrapper command transcripts that ran gh pr create', () => {
-        const pullRequests = detectPullRequestsInToolGroup([
-            {
-                id: 'tool-1',
-                toolName: 'powershell',
-                args: {
-                    command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start 7c911464',
-                },
-                result: [
-                    '$ git push -u origin pr/feature',
-                    "remote: Create a pull request for 'pr/feature' on GitHub by visiting:",
-                    'remote:      https://github.com/org/repo/pull/new/pr/feature',
-                    '$ gh pr create --base main --head pr/feature --fill',
-                    'https://github.com/org/repo/pull/101',
-                    'JSON: {"pr_url": "https://github.com/org/repo/pull/101", "status": "done"}',
-                ].join('\n'),
-            },
-        ]);
-
-        expect(pullRequests).toHaveLength(1);
-        expect(pullRequests[0]).toMatchObject({
-            number: 101,
-            url: 'https://github.com/org/repo/pull/101',
-            owner: 'org',
-            repo: 'repo',
-            toolCallId: 'tool-1',
-        });
-    });
-
-    it('detects a wrapper PR from a quieted successful submit (breadcrumbs kept, child output dropped)', () => {
-        // Post-fix shape: submit_commits_as_pr.py quiets child stdout/stderr on
-        // success, so a normal submit stays small and the trailing `JSON: {…}`
-        // line survives the harness output cap. The result keeps the `$ <cmd>`
-        // breadcrumbs (including `$ gh pr create …`) but NOT the bare PR-URL echo
-        // that git/gh printed, so the only URL evidence is inside the JSON line.
-        const pullRequests = detectPullRequestsInToolGroup([
-            {
-                id: 'tool-1',
-                toolName: 'bash',
-                args: {
-                    command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123',
-                },
-                result: [
-                    '$ git checkout -b pr/abc123-fix origin/main',
-                    '$ git cherry-pick abc123',
-                    '$ git rebase origin/main',
-                    '$ git push -u origin pr/abc123-fix',
-                    '$ gh pr create --base main --head pr/abc123-fix --fill',
-                    '$ git checkout main',
-                    'JSON: {"commits_count": 1, "commits_submitted": ["abc123"], "new_branch": "pr/abc123-fix", "original_branch": "main", "pr_url": "https://github.com/org/repo/pull/601", "status": "done"}',
-                ].join('\n'),
-            },
-        ]);
-
-        expect(pullRequests).toHaveLength(1);
-        expect(pullRequests[0]).toMatchObject({
-            number: 601,
-            url: 'https://github.com/org/repo/pull/601',
-            provider: 'github',
-            owner: 'org',
-            repo: 'repo',
-            toolCallId: 'tool-1',
-        });
-    });
-
-    it('detects a wrapper PR from structured success output with no gh pr create echo (idempotent resume)', () => {
-        // Real-world repro: an idempotent / resumed wrapper run (commits_count: 0)
-        // does not re-run `gh pr create`, so the only PR-creation evidence is the
-        // wrapper's structured success line.
-        const pullRequests = detectPullRequestsInToolGroup([
-            {
-                id: 'tool-1',
-                toolName: 'bash',
-                args: {
-                    command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start 7c911464',
-                },
-                result: [
-                    'PR already exists for this branch; nothing to push.',
-                    'JSON: {"commits_count": 0, "commits_submitted": [], "new_branch": "pr/fix-detection", "original_branch": "main", "pr_url": "https://github.com/plusplusoneplusplus/shortcuts/pull/371", "status": "done"}',
-                ].join('\n'),
-            },
-        ]);
-
-        expect(pullRequests).toHaveLength(1);
-        expect(pullRequests[0]).toMatchObject({
-            number: 371,
-            url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/371',
-            provider: 'github',
-            owner: 'plusplusoneplusplus',
-            repo: 'shortcuts',
-            toolCallId: 'tool-1',
-        });
-    });
-
-    it('detects a wrapper PR when the gh pr create echo is truncated under a large dump', () => {
-        // On the first run the `gh pr create` echo can be lost when a large
-        // `git rev-list` dump truncates the captured output, leaving only the
-        // structured success line and the URL.
-        const revListDump = Array.from({ length: 50 }, (_, i) => `${'a'.repeat(40)}${i}`).join('\n');
-        const pullRequests = detectPullRequestsInToolGroup([
-            {
-                id: 'tool-1',
-                toolName: 'bash',
-                args: {
-                    command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123',
-                },
-                result: [
-                    '$ git rev-list --reverse main..HEAD',
-                    revListDump,
-                    'JSON: {"commits_count": 3, "commits_submitted": ["abc123"], "new_branch": "pr/big", "original_branch": "main", "pr_url": "https://github.com/org/repo/pull/371", "status": "done"}',
-                ].join('\n'),
-            },
-        ]);
-
-        expect(pullRequests).toHaveLength(1);
-        expect(pullRequests[0]).toMatchObject({
-            number: 371,
-            url: 'https://github.com/org/repo/pull/371',
-            toolCallId: 'tool-1',
-        });
-    });
-
-    it('detects a wrapper PR recovered by grepping THIS run\'s persisted stdout', () => {
-        // Real-world repro (PR #374): the wrapper's own 269KB output was truncated
-        // to a head preview — a large `git rev-list` dump — so the trailing success
-        // line never reached the captured result. The model recovered it by
-        // grepping the persisted stdout file, leaving a bare `JSON: {...}` success
-        // line under a (non-creating, non-wrapper) grep command.
-        //
-        // The recovery is accepted only because the grepped path is the one this
-        // chat's own wrapper run named in its truncation notice.
-        const pullRequests = detectPullRequestsInToolGroup([
-            {
-                id: 'tool-0',
-                toolName: 'Bash',
-                args: { command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123' },
-                result: [
-                    '$ git rev-list --reverse main..HEAD',
-                    'aaaaaaa bbbbbbb ccccccc',
-                    '[output truncated — full output at /tmp/tool-results/byixuxzao.txt]',
-                ].join('\n'),
-            },
-            {
-                id: 'tool-1',
-                toolName: 'Bash',
-                args: { command: 'grep -a "JSON:" /tmp/tool-results/byixuxzao.txt | tail -20' },
-                result: 'JSON: {"commits_count": 0, "commits_submitted": [], "new_branch": "pr/x", "original_branch": "main", "pr_url": "https://github.com/plusplusoneplusplus/shortcuts/pull/374", "status": "done"}',
-            },
-        ]);
-
-        expect(pullRequests).toHaveLength(1);
-        expect(pullRequests[0]).toMatchObject({
-            number: 374,
-            url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/374',
-            provider: 'github',
-            owner: 'plusplusoneplusplus',
-            repo: 'shortcuts',
-            toolCallId: 'tool-1',
-        });
-    });
-
     it('does not detect a structured pr_url/status line embedded in source-search output', () => {
-        // A `rg`/`cat` over source can surface the wrapper's success line from a
-        // test fixture, but there it is indented inside a string literal or behind a
-        // `path:line:` prefix — never at the start of a line. The line-start anchor
-        // (which runs before the command checks) keeps these out, so the result is
-        // not detected even though it contains `pr_url` + `status: "done"`.
+        // Source-search results supply no creation-command evidence.
         const pullRequests = detectPullRequestsInToolGroup([
             {
                 id: 'tool-1',
@@ -837,7 +682,7 @@ describe('detectPullRequestsInToolGroup', () => {
     // did not create reach the composer banner.
     describe('rejects PRs this chat did not create', () => {
         const WRAPPER_CMD =
-            'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123';
+            'python tools/publish.py';
 
         interface RejectCase {
             name: string;
@@ -952,8 +797,7 @@ describe('detectPullRequestsInToolGroup', () => {
 
     describe('attaches only the pull request that was actually created', () => {
         it('takes the last PR URL from a gh pr create dump, not every URL in it', () => {
-            // `submit_commits_as_pr.py` dumps a `git rev-list`/log; PR URLs quoted
-            // in those commit messages used to ride along as separate detections.
+            // PR URLs in quoted commit messages are not creation evidence.
             const pullRequests = detectPullRequestsInToolGroup([
                 {
                     id: 'tool-1',
@@ -970,37 +814,6 @@ describe('detectPullRequestsInToolGroup', () => {
 
             expect(pullRequests).toHaveLength(1);
             expect(pullRequests[0]).toMatchObject({ number: 12, toolCallId: 'tool-1' });
-        });
-
-        it('takes the wrapper success line’s pr_url, not other URLs in the dump', () => {
-            const pullRequests = detectPullRequestsInToolGroup([
-                {
-                    id: 'tool-1',
-                    toolName: 'bash',
-                    args: {
-                        command:
-                            'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123',
-                    },
-                    result: [
-                        '$ git log --oneline main..HEAD',
-                        'abc123 fix: as discussed in https://github.com/org/repo/pull/10',
-                        'def456 chore: revert https://github.com/org/repo/pull/11',
-                        '$ gh pr create --base main --fill',
-                        'JSON: {"commits_count": 2, "pr_url": "https://github.com/org/repo/pull/12", "status": "done"}',
-                    ].join('\n'),
-                },
-            ]);
-
-            expect(pullRequests).toEqual<DetectedPullRequest[]>([
-                {
-                    number: 12,
-                    url: 'https://github.com/org/repo/pull/12',
-                    provider: 'github',
-                    owner: 'org',
-                    repo: 'repo',
-                    toolCallId: 'tool-1',
-                },
-            ]);
         });
 
         it('keeps a PR created in the chat’s own repo when repo scoping is on', () => {
@@ -1065,8 +878,8 @@ describe('collectToolCallsFromTurns', () => {
     it('detects a PR when a Copilot completion has output but only its start has the command', () => {
         const turns: ToolCallBearingTurn[] = [{
             timeline: [
-                { toolCall: { id: 'created-pr', name: 'bash', args: { command: 'python3 .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start HEAD' }, status: 'running' } },
-                { toolCall: { id: 'created-pr', name: 'bash', args: {}, status: 'completed', result: 'JSON: {"pr_url": "https://github.com/org/repo/pull/99", "status": "done"}' } },
+                { toolCall: { id: 'created-pr', name: 'bash', args: { command: 'gh pr create --fill' }, status: 'running' } },
+                { toolCall: { id: 'created-pr', name: 'bash', args: {}, status: 'completed', result: 'https://github.com/org/repo/pull/99' } },
             ],
         }];
 

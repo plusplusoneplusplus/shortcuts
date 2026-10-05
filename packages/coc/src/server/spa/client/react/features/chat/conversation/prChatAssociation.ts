@@ -243,10 +243,10 @@ export function authoredJoinKeys(commits: readonly AuthoredCommitLike[]): {
  *
  * Two independent matches, either of which is sufficient:
  *
- * - **Branch name.** `submit_commits_as_pr.py` names its branch
+ * - **Branch name.** The CoC create-PR service names its branch
  *   `pr/<shortSha>-<slug>` from the first submitted commit, so the PR's
  *   `sourceBranch` often literally contains one of the chat's short hashes.
- * - **Commit subject.** The submit script cherry-picks, so the SHAs on the PR
+ * - **Commit subject.** The create-PR service cherry-picks, so the SHAs on the PR
  *   are new and hash matching fails; the subject line survives verbatim.
  *   Matching is on the whole normalized subject so a generic `fix tests` in two
  *   chats does not cross-link them.

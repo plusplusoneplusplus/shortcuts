@@ -79,7 +79,7 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 body: { type: 'string', description: 'PR description (markdown).' },
                 base: { type: 'string', description: 'Target branch. Defaults to the repo\'s default branch.' },
                 draft: { type: 'boolean', description: 'Open as a draft PR. Default false.' },
-                autoMerge: { type: 'boolean', description: 'Turn on auto-merge. Default false — only set when the user asks.' },
+                autoMerge: { type: 'boolean', description: 'Turn on auto-merge. Default false. Set true only when authorized by the user, including invoking a skill with a documented auto-merge default; pass false when the user disables it.' },
                 mergeMethod: { type: 'string', enum: [...MERGE_METHODS], description: 'Auto-merge method. Default "merge".' },
                 commits: {
                     type: 'array',
