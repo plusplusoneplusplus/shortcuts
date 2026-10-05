@@ -17,7 +17,7 @@ import { RepoGitTab } from '../git/RepoGitTab';
 import { RepoWikiTab } from './RepoWikiTab';
 import { SplitWorkspacePanel } from './SplitWorkspacePanel';
 import { useWorkspaceDock } from './useWorkspaceDock';
-import { WorkspaceDockToggle } from './WorkspaceDockToggle';
+import { WorkspaceDockToggle, useWorkspaceDockExpanded } from './WorkspaceDockToggle';
 import { StatusActions } from '../../layout/StatusActions';
 import { RepoSettingsTab } from '../repo-settings/RepoSettingsTab';
 import { ExplorerPanel } from './explorer/ExplorerPanel';
@@ -171,6 +171,8 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
     // open and mode stores.
     const dock = useWorkspaceDock(ws.id);
     const dockAvailable = !isMobile;
+    // An expanded panel covers the whole content row; the content stays mounted.
+    const dockExpanded = useWorkspaceDockExpanded(ws.id) && dock.isOpen && dockAvailable;
     // The dock slot renders the one resource-tabbed panel — same availability
     // gate, same controller, so the header toggle and the persisted width all
     // hang off `useWorkspaceDock` above.
@@ -744,7 +746,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                 every sub-tab so its terminal/explorer session survives tab changes. */}
             <div className="flex flex-row flex-1 min-h-0 min-w-0 overflow-hidden">
             {/* Sub-tab content */}
-            <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")}>
+            <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")} style={dockExpanded ? { display: 'none' } : undefined}>
                 {activeSubTab === 'work-items' ? (
                     <WorkItemsTab key={ws.id} workspaceId={ws.id} originId={workItemOriginId} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : activeSubTab === 'tasks' ? (

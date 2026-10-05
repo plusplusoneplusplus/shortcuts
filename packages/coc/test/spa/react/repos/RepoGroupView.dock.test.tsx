@@ -96,7 +96,11 @@ vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () =
 }));
 
 import { RepoGroupView, repoGroupDockTargets, REPO_GROUP_ROOT_TARGET_LABEL } from '../../../../src/server/spa/client/react/repos/RepoGroupView';
-import { workspaceDockOpenStorageKey } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
+import {
+    setWorkspaceDockExpanded,
+    setWorkspaceDockOpen,
+    workspaceDockOpenStorageKey,
+} from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
 import { openUnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
 import { unifiedTabId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 
@@ -109,6 +113,7 @@ const MEMBERS = [
 
 beforeEach(() => {
     cleanup();
+    setWorkspaceDockExpanded(GROUP_ID, false);
     localStorage.clear();
     mockDispatch.mockReset();
     mockGetRepoGroup.mockReset();
@@ -250,6 +255,36 @@ describe('RepoGroupView right panel', () => {
     // Mobile has no right panel — but it does mount the merged Workspace panel,
     // whose git half is hosted against a member repo, so the members read still
     // happens there. Only the panel is gone.
+    it('hides the group content while the panel is expanded, keeping it mounted', () => {
+        renderOpen();
+        act(() => { openUnifiedPanelTab(GROUP_ID, {
+            kind: 'notes', ownerWorkspaceId: GROUP_ID, chatId: null, resourceId: 'notes', label: 'Notes',
+        }); });
+        const content = screen.getByTestId('repo-group-content');
+        expect(content.style.display).toBe('');
+
+        act(() => { fireEvent.click(screen.getByTestId('unified-panel-expand-toggle')); });
+        expect(content.style.display).toBe('none');
+        expect(screen.getByTestId('repo-group-content')).toBe(content);
+        expect(screen.getByTestId('unified-right-panel').dataset.expanded).toBe('true');
+
+        act(() => { fireEvent.click(screen.getByTestId('unified-panel-expand-toggle')); });
+        expect(content.style.display).toBe('');
+    });
+
+    it('shows the group content again when an expanded panel closes', () => {
+        renderOpen();
+        act(() => { openUnifiedPanelTab(GROUP_ID, {
+            kind: 'notes', ownerWorkspaceId: GROUP_ID, chatId: null, resourceId: 'notes', label: 'Notes',
+        }); });
+        act(() => { fireEvent.click(screen.getByTestId('unified-panel-expand-toggle')); });
+        expect(screen.getByTestId('repo-group-content').style.display).toBe('none');
+
+        act(() => { setWorkspaceDockOpen(GROUP_ID, false); });
+        expect(screen.getByTestId('repo-group-content').style.display).toBe('');
+        expect(screen.getByTestId('unified-right-panel').dataset.expanded).toBe('false');
+    });
+
     it('omits the panel on mobile', () => {
         mockBreakpoint = 'mobile';
         render(<RepoGroupView workspaceId={GROUP_ID} />);
