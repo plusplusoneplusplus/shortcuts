@@ -213,6 +213,17 @@ function fileSelection(workspaceId = 'ws-1', start = 24, end = 35) {
 }
 
 describe('activeChatAttach channel', () => {
+    it('keeps a member selection on its member destination rather than a visible group chat', () => {
+        const group = vi.fn(() => true);
+        subscribeActiveChatAttach('remote:one:group-demo', group);
+        const payload = fileSelection('ws-1');
+        expect(attachSelectionToChat('remote:one:ws-1', payload)).toBe('new-chat');
+        expect(group).not.toHaveBeenCalled();
+        expect(drainNewChatSeedContext('remote:one:group-demo')).toEqual([]);
+        expect(drainNewChatSeedContext('remote:two:ws-1')).toEqual([]);
+        expect(drainNewChatSeedContext('remote:one:ws-1')).toEqual([payload]);
+    });
+
     it('falls back to the new-chat seed buffer when no chat is subscribed', () => {
         const payload = fileSelection();
         expect(attachSelectionToChat('ws-1', payload)).toBe('new-chat');

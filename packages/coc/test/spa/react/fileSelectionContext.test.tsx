@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * File-editor selection context (AC-03): the payload builder only accepts
- * repo-relative paths and real selections, the chip item caps the snippet,
+ * repo-relative paths and real selections, payloads and chip items cap snippets,
  * formatAttachedContext emits a `<context from="file-selection">` block that
  * parses back into a chip, and duplicate selections are rejected.
  */
@@ -59,6 +59,23 @@ function makeTurn(content: string): ClientConversationTurn {
 }
 
 describe('createFileSelectionContextPayload', () => {
+    it.each([3999, 4000, 4001])('caps %i characters before routing and preserves truncation through validation', size => {
+        const payload = makePayload({ snippet: 'x'.repeat(size) });
+        expect(payload.snippet).toHaveLength(Math.min(size, DIFF_SELECTION_TEXT_SIZE_LIMIT));
+        expect(payload.truncated === true).toBe(size > DIFF_SELECTION_TEXT_SIZE_LIMIT);
+        const normalized = createFileSelectionContextPayload(payload);
+        expect(normalized).toEqual(payload);
+        const item = createFileSelectionContextItem(normalized!, 'ctx-capped');
+        expect(item.truncated).toBe(size > DIFF_SELECTION_TEXT_SIZE_LIMIT);
+        const parsed = parseAttachedSessionContextBlocks(formatAttachedContext([item]));
+        expect(parsed.fileSelectionContexts[0].snippet).toBe(payload.snippet);
+        expect(parsed.fileSelectionContexts[0].truncated).toBe(item.truncated);
+    });
+
+    it('rejects malformed truncation metadata', () => {
+        expect(createFileSelectionContextPayload({ ...makePayload(), truncated: 'true' })).toBeNull();
+    });
+
     it('builds a payload with a path:start-end label', () => {
         expect(makePayload()).toEqual({
             kind: FILE_SELECTION_CONTEXT_KIND,
@@ -208,6 +225,13 @@ describe('file-selection context format + parse round-trip', () => {
 
 describe('file-selection duplicate + workspace validation', () => {
     const base = { featureEnabled: true, activeWorkspaceId: 'ws-1', currentProcessId: null, canRetrieveConversations: true };
+
+    it('preserves snippet-based validation for an explicitly targeted group composer', () => {
+        const payload = makePayload();
+        expect(validateSessionContextDrop({
+            ...base, activeWorkspaceId: 'group-demo', payload, existingItems: [],
+        })).toEqual({ ok: true, payload });
+    });
 
     it('accepts a first selection and rejects the exact same file+range again', () => {
         expect(validateSessionContextDrop({ ...base, payload: makePayload(), existingItems: [] })).toEqual({ ok: true, payload: makePayload() });

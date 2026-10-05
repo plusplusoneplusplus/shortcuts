@@ -251,7 +251,9 @@ Visible, feature-enabled consumers retain the destination while capability
 resolution is pending and discard stale-owner items. File and diff seeds focus
 the input after validation, including duplicate feedback. Consumers retry on
 render so owner and panel visibility changes can make them eligible. Generic
-file viewers and trusted absolute paths do not opt in. File-selection blocks
+file viewers and trusted absolute paths do not opt in. File-selection payloads
+cap text at the shared 4000-character limit before routing, retaining truncation
+through normalization and chip creation. Their blocks
 include a repo-relative path, line range and a capped fenced snippet; user-turn
 parsing restores their context cards. `MonacoFileDiffViewer` mounts
 `MonacoDiffSelectionAttachPill` in each side editor via the adapter's

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import {
     DIFF_SELECTION_CONTEXT_DRAG_KIND,
+    DIFF_SELECTION_TEXT_SIZE_LIMIT,
     FILE_SELECTION_CONTEXT_KIND,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
     GIT_RANGE_CONTEXT_DRAG_KIND,
@@ -161,8 +162,7 @@ export type AttachedContextItem =
     | AttachedFileSelectionContextItem;
 
 const PREVIEW_LENGTH = 100;
-/** Same cap as note text references (useNoteReferences TEXT_SIZE_LIMIT). */
-export const DIFF_SELECTION_TEXT_SIZE_LIMIT = 4000;
+export { DIFF_SELECTION_TEXT_SIZE_LIMIT } from '../sessionContextDrag';
 const ATTACHED_CONTEXT_BLOCK_PATTERN = /<attached_session_context\s+version="1">[\s\S]*?<\/attached_session_context>|<attached_ralph_session_context\s+version="1">[\s\S]*?<\/attached_ralph_session_context>|<attached_pointer_context\s+version="1">[\s\S]*?<\/attached_pointer_context>|<context\s+from="diff-selection"[^>]*>\r?\n(?<fence>`{3,})diff\r?\n[\s\S]*?\r?\n\k<fence>\r?\n<\/context>|<context\s+from="file-selection"[^>]*>\r?\n(?<fileFence>`{3,})\r?\n[\s\S]*?\r?\n\k<fileFence>\r?\n<\/context>/g;
 // The `<instruction>` element is no longer emitted, but stays optional here so blocks
 // already persisted in older messages still parse back into a session chip.
@@ -568,7 +568,7 @@ export function createDiffSelectionContextItem(source: DiffSelectionContextDragP
  * to DIFF_SELECTION_TEXT_SIZE_LIMIT characters and flagging the cut.
  */
 export function createFileSelectionContextItem(source: FileSelectionContextPayload, id: string): AttachedFileSelectionContextItem {
-    const truncated = source.snippet.length > DIFF_SELECTION_TEXT_SIZE_LIMIT;
+    const truncated = source.truncated === true || source.snippet.length > DIFF_SELECTION_TEXT_SIZE_LIMIT;
     const snippet = truncated ? source.snippet.slice(0, DIFF_SELECTION_TEXT_SIZE_LIMIT) : source.snippet;
     return {
         kind: 'file-selection',

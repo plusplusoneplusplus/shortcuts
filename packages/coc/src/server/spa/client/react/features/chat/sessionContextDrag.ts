@@ -38,6 +38,7 @@ export const DIFF_SELECTION_CONTEXT_DRAG_KIND = 'coc.diff-selection-context';
  * from the editor's "Attach as context" pill, never dragged.
  */
 export const FILE_SELECTION_CONTEXT_KIND = 'coc.file-selection-context';
+export const DIFF_SELECTION_TEXT_SIZE_LIMIT = 4000;
 
 export type SessionContextSourceStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type RalphSessionContextPhase = 'grilling' | 'executing' | 'awaiting-input' | 'complete' | 'failed';
@@ -150,8 +151,9 @@ export interface FileSelectionContextPayload {
     filePath: string;
     /** 1-based, inclusive line range of the selection. */
     range: DiffSelectionLineRange;
-    /** Selected text, verbatim (uncapped; the chip item applies the size cap). */
+    /** Selected text, capped at DIFF_SELECTION_TEXT_SIZE_LIMIT. */
     snippet: string;
+    truncated?: boolean;
     label: string;
 }
 
@@ -767,6 +769,7 @@ export function createFileSelectionContextPayload(source: {
     filePath?: unknown;
     range?: unknown;
     snippet?: unknown;
+    truncated?: unknown;
 }): FileSelectionContextPayload | null {
     const sourceWorkspaceId = typeof source.sourceWorkspaceId === 'string' ? source.sourceWorkspaceId.trim() : '';
     const filePath = typeof source.filePath === 'string' ? source.filePath.trim().replace(/^\.\/+/, '') : '';
@@ -774,15 +777,18 @@ export function createFileSelectionContextPayload(source: {
     if (!sourceWorkspaceId || looksLikeLocalPath(sourceWorkspaceId)) return null;
     if (!filePath || looksLikeLocalPath(filePath)) return null;
     if (!snippet.trim()) return null;
+    if (source.truncated !== undefined && typeof source.truncated !== 'boolean') return null;
     if (!isValidLineRange(source.range) || source.range.start < 1) return null;
     const range = { start: source.range.start, end: source.range.end };
+    const truncated = source.truncated === true || snippet.length > DIFF_SELECTION_TEXT_SIZE_LIMIT;
     return {
         kind: FILE_SELECTION_CONTEXT_KIND,
         version: 1,
         sourceWorkspaceId,
         filePath,
         range,
-        snippet,
+        snippet: snippet.slice(0, DIFF_SELECTION_TEXT_SIZE_LIMIT),
+        ...(truncated ? { truncated: true } : {}),
         label: buildFileSelectionLabel(filePath, range),
     };
 }

@@ -98,6 +98,8 @@ references before editing. Paths are package-relative.
   new-chat input in their workspace. Hidden or inert composers decline before
   changing state or focus. Attachment channels accept a destination identity
   separate from the payload workspace id; remote callers use concrete clone keys.
+  File-selection payloads cap snippets at 4000 characters before routing and
+  retain truncation through validation, chip creation and sent-message parsing.
   ChatDetail forwards its sourceSelectionId to both follow-up layouts; subscription
   ownership changes with that destination while validation keeps the raw workspace id.
   Chat pop-out URLs preserve sourceSelectionId through both header and Activity-row
