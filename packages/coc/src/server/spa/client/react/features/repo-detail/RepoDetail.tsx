@@ -746,7 +746,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")}>
                 {activeSubTab === 'work-items' ? (
-                    <WorkItemsTab key={ws.id} workspaceId={ws.id} originId={workItemOriginId} onNavigateToTasksTab={handleNavigateToTask} />
+                    <WorkItemsTab key={ws.id} workspaceId={ws.id} attachmentDestinationId={sourceSelectionId} originId={workItemOriginId} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : activeSubTab === 'tasks' ? (
                     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                         <TasksPanel

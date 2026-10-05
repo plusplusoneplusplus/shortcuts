@@ -11,6 +11,7 @@ export interface WorkItemCommitFile {
 
 export interface WorkItemCommitReviewPaneProps {
     workspaceId: string;
+    attachmentDestinationId?: string;
     selectedCommitHash: string;
     selectedCommitFile: string | null;
     commitFiles: WorkItemCommitFile[];
@@ -25,6 +26,7 @@ export interface WorkItemCommitReviewPaneProps {
 
 export function WorkItemCommitReviewPane({
     workspaceId,
+    attachmentDestinationId,
     selectedCommitHash,
     selectedCommitFile,
     commitFiles,
@@ -93,6 +95,7 @@ export function WorkItemCommitReviewPane({
                                 files: commitFilePaths,
                             })}
                             workspaceId={workspaceId}
+                            attachmentDestinationId={attachmentDestinationId}
                             filePath={selectedCommitFile}
                             onNavigateToFile={onNavigateToFile}
                             initialHunkTarget={hunkTarget}

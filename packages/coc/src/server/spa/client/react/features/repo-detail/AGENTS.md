@@ -48,7 +48,10 @@ visual layer.
 
 `RepoDetail.tsx` runs its workspace-scoped calls (work-items badge, queue seed,
 Resume Queue) through `getCocClientForWorkspace(ws.id)` so a remote clone hits its
-own server. `/chat/launch-terminal` deliberately stays on the local-origin
+own server. Work-item commit reviews receive the repo’s concrete selection id
+through `WorkItemsTab` and `WorkItemCommitReviewPane` as
+`attachmentDestinationId`; diff payloads keep the plain workspace id.
+`/chat/launch-terminal` deliberately stays on the local-origin
 `fetchApi` — it spawns a terminal on whichever machine runs the server. The queue
 store is still fed by the LOCAL websocket only, so remote-sourced rows can be
 overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fix.

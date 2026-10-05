@@ -142,7 +142,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTa
 vi.mock('../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({ ExplorerPanel: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab', () => ({ PullRequestsTab: (props: any) => <div data-testid="repo-pr-owner" data-destination={props.attachmentDestinationId} data-workspace={props.workspaceId} /> }));
-vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemsTab', () => ({ WorkItemsTab: () => null }));
+vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemsTab', () => ({ WorkItemsTab: (props: any) => <div data-testid="repo-work-item-owner" data-destination={props.attachmentDestinationId} data-workspace={props.workspaceId} /> }));
 vi.mock('../../../../src/server/spa/client/react/processes/dag', () => ({ WorkflowDetailView: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({ TerminalView: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({ NotesView: () => null }));
@@ -215,6 +215,13 @@ describe('RepoDetail queue — remote-clone request routing', () => {
         renderDetail(REMOTE_WS, serverId);
         expect(screen.getByTestId('repo-pr-owner')).toHaveAttribute('data-destination', serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
         expect(screen.getByTestId('repo-pr-owner')).toHaveAttribute('data-workspace', REMOTE_WS);
+    });
+
+    it.each([undefined, 'one', 'two'])('passes repo owner %s to work-item reviews', serverId => {
+        activeSubTab = 'work-items';
+        renderDetail(REMOTE_WS, serverId);
+        expect(screen.getByTestId('repo-work-item-owner')).toHaveAttribute('data-destination', serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
+        expect(screen.getByTestId('repo-work-item-owner')).toHaveAttribute('data-workspace', REMOTE_WS);
     });
 
     const queueSeedUrls = (list: string[], wsId: string) =>
