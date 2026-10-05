@@ -277,7 +277,9 @@ revision, because the content arrives after the editor does and a second hit in
 an already-open file has no mount to piggyback on.
 
 `PreviewPane` opts into `MonacoFileEditor.selectionContext` with its owner
-workspace and repo-relative path. The shared `MonacoSelectionAttachPill` reads
+workspace, repo-relative path and concrete clone route as `destinationId`.
+Right-panel tabs supply their persisted owner route; payloads keep the plain
+server workspace id. The shared `MonacoSelectionAttachPill` reads
 selected text from the live model and routes it through `activeChatAttach` when
 session-context attachments are enabled. Trusted absolute paths and shared
 viewer hosts do not opt in; right-panel file tabs use the same preview host.

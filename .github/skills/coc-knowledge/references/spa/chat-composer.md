@@ -214,7 +214,12 @@ the row's grab handle. The review-chat drop target that rebinds an existing chat
 [chat.md](chat.md).
 
 Repository `PreviewPane` hosts opt into the shared Monaco editor's
-`selectionContext` prop. `shared/monaco/MonacoSelectionAttachPill` observes cursor
+`selectionContext` prop with the plain workspace id, repo-relative path and
+`destinationId` taken from the pane's concrete clone route (the workspace id for
+local panes). Right-panel tabs forward their persisted owner route through
+`PreviewPane`. The editor passes this destination separately from the payload
+to the pill; payloads retain the plain server workspace id.
+`shared/monaco/MonacoSelectionAttachPill` observes cursor
 selection, layout, scroll and blur, reads the live model, and routes file-selection
 payloads through `activeChatAttach`. The last-focused visible workspace subscriber
 in `FollowUpInputArea` validates, adds the chip and focuses its input. Composers in

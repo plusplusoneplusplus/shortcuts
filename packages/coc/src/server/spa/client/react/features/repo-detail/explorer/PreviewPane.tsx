@@ -580,7 +580,11 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             ) : displayBlob ? (
                 showRendered ? <RenderedMarkdown content={displayBlob.content} /> :
                 <FileViewer
-                    selectionContext={isTrusted ? undefined : { workspaceId: repoId, filePath: actualPath }}
+                    selectionContext={isTrusted ? undefined : {
+                        workspaceId: repoId,
+                        filePath: actualPath,
+                        destinationId: routingRef ?? repoId,
+                    }}
                     blob={displayBlob}
                     fileName={fileName}
                     onChange={handleEditorChange}

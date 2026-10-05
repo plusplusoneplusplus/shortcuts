@@ -41,7 +41,7 @@ beforeEach(() => {
         position: { top: 60, left: 120, height: 18 }, events: {}, disposals: [], snippet: 'unsaved text\nmore' });
 });
 afterEach(cleanup);
-async function mount(Component = MonacoFileEditor, selectionContext?: { workspaceId: string; filePath: string }) {
+async function mount(Component = MonacoFileEditor, selectionContext?: { workspaceId: string; filePath: string; destinationId?: string }) {
     const view = render(<Component value="disk text" language="rust" selectionContext={selectionContext} />);
     await act(async () => { await Promise.resolve(); }); return view;
 }
@@ -49,6 +49,18 @@ const context = { workspaceId: 'repo-A', filePath: 'src/status.rs' };
 function select() { act(() => { stub.empty = false; stub.events.selection(); }); }
 
 describe.each([['shared', MonacoFileEditor], ['explorer shim', ExplorerEditor]] as const)('%s file selection pill', (_, Component) => {
+    it('routes to the concrete clone owner while keeping the raw workspace in the payload', async () => {
+        const destinationId = 'remote:server-a:repo-A';
+        const view = await mount(Component, { ...context, destinationId });
+        select(); fireEvent.click(screen.getByRole('button'));
+        expect(stub.route).toHaveBeenLastCalledWith(destinationId, expect.objectContaining({ sourceWorkspaceId: 'repo-A' }));
+
+        const nextDestinationId = 'remote:server-b:repo-A';
+        view.rerender(<Component value="disk text" language="rust" selectionContext={{ ...context, destinationId: nextDestinationId }} />);
+        select(); fireEvent.click(screen.getByRole('button'));
+        expect(stub.route).toHaveBeenLastCalledWith(nextDestinationId, expect.objectContaining({ sourceWorkspaceId: 'repo-A' }));
+        expect(stub.route).toHaveBeenCalledTimes(2);
+    });
     it('shows below selection, preserves selection, attaches live text and stays dismissed on scroll', async () => {
         await mount(Component, context);
         expect(screen.queryByRole('button')).toBeNull(); select();

@@ -98,7 +98,21 @@ describe('PreviewPane', () => {
 
         await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
         expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-language')).toBe('typescript');
-        expect(JSON.parse(screen.getByTestId('mock-monaco-editor').getAttribute('data-selection-context')!)).toEqual({ workspaceId: 'r1', filePath: 'src/app.ts' });
+        expect(JSON.parse(screen.getByTestId('mock-monaco-editor').getAttribute('data-selection-context')!)).toEqual({ workspaceId: 'r1', filePath: 'src/app.ts', destinationId: 'r1' });
+    });
+
+    it('keeps attachment destinations separate for file panes sharing a server workspace id', async () => {
+        mockExplorerApi.readBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
+        const owners = ['r1', 'remote:server-a:r1', 'remote:server-b:r1'];
+        render(<>{owners.map(owner => <section key={owner} data-testid={owner}>
+            <PreviewPane repoId="r1" routingRef={owner} filePath="src/app.ts" fileName="app.ts" />
+        </section>)}</>);
+        for (const owner of owners) {
+            const editor = await within(screen.getByTestId(owner)).findByTestId('mock-monaco-editor');
+            expect(JSON.parse(editor.getAttribute('data-selection-context')!)).toEqual({
+                workspaceId: 'r1', filePath: 'src/app.ts', destinationId: owner,
+            });
+        }
     });
 
     it('renders markdown files in Monaco editor (not as rendered HTML)', async () => {

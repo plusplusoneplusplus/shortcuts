@@ -57,11 +57,12 @@ vi.mock('../../../../src/server/spa/client/react/features/language-servers/langu
 const editor = vi.hoisted(() => ({ markers: undefined as any }));
 
 vi.mock('../../../../src/server/spa/client/react/shared/file-viewer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, markers }: any) => {
+    MonacoFileEditor: ({ value, markers, selectionContext }: any) => {
         editor.markers = markers;
         return (
             <textarea
                 data-testid="mock-monaco-textarea"
+                data-selection-context={JSON.stringify(selectionContext)}
                 data-marker={markers.map((marker: { message: string }) => marker.message).join('|')}
                 value={value}
                 readOnly
@@ -241,6 +242,19 @@ describe('right panel — language routing by tab owner (AC-04)', () => {
             SHARED_MEMBER, PATH, expect.anything(), SHARED_ROUTE_B,
         );
         expect(attachmentA).not.toBe(attachmentB);
+
+        const selectionContextOf = (container: HTMLElement) => JSON.parse(
+            container.querySelector('textarea')!.getAttribute('data-selection-context')!,
+        );
+        expect(selectionContextOf(first.container)).toEqual({
+            workspaceId: SHARED_MEMBER, filePath: PATH, destinationId: SHARED_ROUTE_A,
+        });
+        expect(selectionContextOf(second.container)).toEqual({
+            workspaceId: SHARED_MEMBER, filePath: PATH, destinationId: SHARED_ROUTE_B,
+        });
+        first.rerender(<UnifiedTabView tab={fileTab(SHARED_MEMBER, SHARED_ROUTE_A)}
+            scopeWorkspaceId="group-b" onClose={() => undefined} />);
+        expect(selectionContextOf(first.container).destinationId).toBe(SHARED_ROUTE_A);
 
         first.unmount();
         await waitFor(() => expect(attachmentA.released).toBe(true));

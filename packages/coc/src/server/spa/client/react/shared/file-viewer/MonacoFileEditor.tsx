@@ -156,7 +156,7 @@ export interface EditorHighlightRange {
 
 export interface MonacoFileEditorProps {
     /** Only repository preview hosts opt into selection attachments. */
-    selectionContext?: { workspaceId: string; filePath: string };
+    selectionContext?: { workspaceId: string; filePath: string; destinationId?: string };
     value: string;
     language: string | null;
     /**
@@ -550,6 +550,7 @@ export function MonacoFileEditor({
                 <MonacoSelectionAttachPill
                     editor={mounted?.editor ?? null}
                     workspaceId={selectionContext.workspaceId}
+                    destinationId={selectionContext.destinationId}
                     buildPayload={buildSelectionPayload}
                 />
             )}

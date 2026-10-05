@@ -7,11 +7,13 @@ import { isSessionContextAttachmentsEnabled } from '../../utils/config';
 export interface MonacoSelectionAttachPillProps {
     editor: MonacoEditor.ICodeEditor | null;
     workspaceId: string;
+    /** Concrete owner route, independent of the payload's server workspace ID. */
+    destinationId?: string;
     buildPayload: (selection: Selection, model: MonacoEditor.ITextModel) => SessionContextAttachmentDragPayload | null;
 }
 
 /** Overlay coordinates are relative to the editor's positioned wrapper. */
-export function MonacoSelectionAttachPill({ editor, workspaceId, buildPayload }: MonacoSelectionAttachPillProps) {
+export function MonacoSelectionAttachPill({ editor, workspaceId, destinationId = workspaceId, buildPayload }: MonacoSelectionAttachPillProps) {
     const buttonRef = useRef<HTMLButtonElement>(null);
     const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
     const dismissRef = useRef<() => void>(() => {});
@@ -56,7 +58,7 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, buildPayload }:
         dismissRef.current = dismiss;
         update();
         return () => { listeners.forEach(listener => listener.dispose()); dismissRef.current = () => {}; };
-    }, [editor, workspaceId, buildPayload, enabled]);
+    }, [editor, workspaceId, destinationId, buildPayload, enabled]);
 
     if (!enabled || !position) return null;
     return (
@@ -74,7 +76,7 @@ export function MonacoSelectionAttachPill({ editor, workspaceId, buildPayload }:
                 const payload = buildPayload(selection, model);
                 if (!payload) return;
                 dismissRef.current();
-                attachSelectionToChat(workspaceId, payload);
+                attachSelectionToChat(destinationId, payload);
             }}
         >Attach as context</button>
     );
