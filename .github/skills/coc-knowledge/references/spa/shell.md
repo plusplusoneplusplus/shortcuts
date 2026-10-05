@@ -324,7 +324,9 @@ dock target. The Search/Explorer pair moves between the file toolbar and tab str
 and the navigator open state persists per panel scope. The
 docked Explorer omits its internal Files/Search switch; the standalone Explorer
 page retains it. Tab descriptors (never document bodies, terminal output, or
-credentials) persist per panel scope in localStorage. The full contract lives in
+credentials) persist per panel scope in localStorage. Chat-owned `paste`
+descriptors use a stable content hash, dedupe by chat and concrete owner, and
+are excluded from storage and the `+` menu. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the

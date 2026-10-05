@@ -85,6 +85,13 @@ const KIND_ICONS: Readonly<Record<UnifiedTabKind, JSX.Element>> = {
             <line x1="6" y1="10.6" x2="10.5" y2="10.6" />
         </svg>
     ),
+    paste: (
+        <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 3H3v11h10V3h-2" />
+            <rect x="5" y="1.5" width="6" height="3" rx="1" />
+            <path d="M5 8h6M5 11h4" />
+        </svg>
+    ),
     file: (
         <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 2.2h5.4L12.5 5.3v8.5H4z" />

@@ -67,14 +67,14 @@ export interface PersistedNotesView {
  * owning host issued — never a path — so it has no entry in the "+" menu and is
  * never persisted: the capability dies with the language-server connection.
  */
-export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser';
+export type UnifiedTabKind = 'terminal' | 'notes' | 'file' | 'note' | 'canvas' | 'diff' | 'git' | 'external' | 'html-page' | 'browser' | 'paste';
 
 /** Which set a tab belongs to: the workspace's, or one chat's. */
 export type UnifiedTabScope = 'workspace' | 'chat';
 
-/** Every kind, in the order the "+" menu and default strip present them. */
+/** Kinds recognized by the descriptor codec; the "+" menu has its own action list. */
 export const ALL_UNIFIED_TAB_KINDS: readonly UnifiedTabKind[] = [
-    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser',
+    'terminal', 'notes', 'file', 'note', 'canvas', 'diff', 'git', 'html-page', 'browser', 'paste',
 ];
 
 /** The fixed resource id of a workspace's one Git tab. */
@@ -85,7 +85,7 @@ export const GIT_TAB_RESOURCE_ID = 'git';
  * capability that expires with its connection, so a restored tab could only
  * show "unavailable"; running Go to Definition again is the real recovery.
  */
-const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'html-page', 'browser']);
+const EPHEMERAL_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['external', 'html-page', 'browser', 'paste']);
 
 /** Kinds that belong to the workspace and survive a chat switch. */
 const WORKSPACE_KINDS: ReadonlySet<UnifiedTabKind> = new Set<UnifiedTabKind>(['terminal', 'notes', 'note', 'git', 'html-page', 'browser']);

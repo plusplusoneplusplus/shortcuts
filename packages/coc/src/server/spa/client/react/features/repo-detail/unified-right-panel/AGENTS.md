@@ -29,13 +29,13 @@ Three different workspace ids, kept apart on purpose:
   scoped to the repo they were fetched from.
 
 Tabs are scoped by kind: `terminal | notes | note | git | html-page | browser` are workspace-owned,
-`file | canvas | diff | external` belong to the selected chat (`scopeForKind`).
+`file | canvas | diff | external | paste` belong to the selected chat (`scopeForKind`).
 Chat-owned tabs opened while no chat is selected belong to the draft
 `@workspace` scope. When that draft creates a chat, its tabs are copied into the
 new chat in strip order with rebuilt ids and the same active/preview state; the
 draft originals remain available for the next new conversation.
 Display grouping is separate from ownership: `displayGroupForKind` puts
-`canvas` with the workspace kinds as `tools` and `file | diff | external` in
+`canvas` with the workspace kinds as `tools` and `file | diff | external | paste` in
 `resources`. `visibleTabs` shows workspace tabs, then the chat's canvases, then
 its resources, keeping stored order inside each group; the strip draws its
 divider at the tools→resources boundary, and `moveTab` / Alt+Arrow never cross
@@ -44,7 +44,10 @@ it.
 resource id is the opaque capability the owning member's host issued, it has no
 entry in the "+" menu, and it is never persisted. `html-page` carries an absolute
 local path and an Electron view id, dedupes across chats in its panel scope, and is
-also excluded from storage. `browser` is a session-only web tab (see "Browser
+also excluded from storage. `paste` descriptors use `unifiedPasteTabs.ts` for a
+stable content hash and character-count title; matching content dedupes within
+the same chat and concrete owner. Paste descriptors and active selections are
+ephemeral and have no `+` menu action. `browser` is a session-only web tab (see "Browser
 tabs"); every open mints a fresh resource id, so it never dedupes. `unifiedTabId`
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the
@@ -402,7 +405,7 @@ takes the opens — not only when its own `explorerEditorTabs` flag is on.
 
 The tab codec is versioned (`UNIFIED_PANEL_STATE_VERSION = 4`). It persists
 concrete owner routes, preview bits, and panel-local Notes selection. Native
-`html-page` tabs and external capability tabs stay in memory only; their active
+`html-page`, `browser`, `paste`, and external capability tabs stay in memory only; their active
 selection is omitted from storage too. Older supported payloads retain their
 stable bare-workspace ids when a concrete route is absent. An old `explorer`
 descriptor opens the tree column during `migrateUnifiedPanelState` rather than

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { pasteOpenInput, pasteResourceId } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPasteTabs';
+import { openMenuActions } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpenMenuModel';
 import {
     EMPTY_UNIFIED_PANEL,
     GIT_TAB_RESOURCE_ID,
@@ -36,6 +38,78 @@ import {
 const WS = 'repo-a';
 const CHAT_1 = 'chat-1';
 const CHAT_2 = 'chat-2';
+
+describe('paste tabs', () => {
+    const content = '# Pasted heading\n\nFull content — including Unicode 📝';
+    const input = pasteOpenInput(content, { ownerWorkspaceId: WS, chatId: CHAT_1 });
+
+    it('builds a stable content identity and character-count title without raw content', () => {
+        expect(input).toEqual({
+            kind: 'paste', ownerWorkspaceId: WS, chatId: CHAT_1,
+            resourceId: pasteResourceId(content), label: `Pasted text (${content.length} chars)`,
+        });
+        expect(pasteResourceId(content)).toBe(pasteResourceId(content.slice()));
+        expect(pasteResourceId('Aa')).not.toBe(pasteResourceId('BB'));
+        expect(pasteResourceId(content)).not.toBe(pasteResourceId(`${content}\n`));
+        expect(pasteResourceId('')).toBe('paste:0:cbf29ce484222325');
+        expect(JSON.stringify(input)).not.toContain(content);
+    });
+
+    it('belongs to its chat and appears in the resource group', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, input);
+        expect(scopeForKind('paste')).toBe('chat');
+        expect(displayGroupForKind('paste')).toBe('resources');
+        expect(state.workspaceTabs).toEqual([]);
+        expect(visibleTabs(state, CHAT_1)).toHaveLength(1);
+        expect(visibleTabs(state, CHAT_2)).toEqual([]);
+        expect(visibleTabs(state, null)).toEqual([]);
+    });
+
+    it('focuses the same content in the same chat while keeping other chats and owners separate', () => {
+        const first = openTab(EMPTY_UNIFIED_PANEL, input);
+        const originalId = activeTabId(first, CHAT_1);
+        let state = openTab(first, pasteOpenInput('Other text', input));
+        state = openTab(state, pasteOpenInput(content, input));
+        expect(visibleTabs(state, CHAT_1)).toHaveLength(2);
+        expect(activeTabId(state, CHAT_1)).toBe(originalId);
+        expect(openTab(state, input)).toBe(state);
+        state = openTab(state, { ...input, chatId: CHAT_2 });
+        expect(visibleTabs(state, CHAT_2)).toHaveLength(1);
+        expect(activeTabId(state, CHAT_2)).not.toBe(originalId);
+        state = openTab(state, { ...input, ownerWorkspaceId: 'repo-b' });
+        state = openTab(state, { ...input, ownerRoutingRef: 'remote-clone' });
+        expect(visibleTabs(state, CHAT_1)).toHaveLength(4);
+    });
+
+    it('supports draft scope and preserves concrete owner routing for repo-group panels', () => {
+        const draft = pasteOpenInput(content, {
+            ownerWorkspaceId: 'group-member', ownerRoutingRef: 'remote-member',
+            chatId: null, repoLabel: 'Member repo',
+        });
+        const state = openTab(EMPTY_UNIFIED_PANEL, draft);
+        expect(state.chatTabs[WORKSPACE_SCOPE_KEY][0]).toMatchObject(draft);
+        expect(visibleTabs(state, CHAT_1)).toEqual([]);
+        const inherited = inheritDraftTabs(state, CHAT_1);
+        expect(visibleTabs(inherited, CHAT_1)[0]).toMatchObject({ ...draft, chatId: CHAT_1 });
+    });
+
+    it('omits paste descriptors and active selections from storage and rejects injected restore entries', () => {
+        const state = openTab(EMPTY_UNIFIED_PANEL, input);
+        const serialized = serializeUnifiedPanelState(state);
+        expect(JSON.parse(serialized)).toMatchObject({ chatTabs: {}, activeByScope: {} });
+        expect(serialized).not.toContain(input.resourceId);
+        expect(parseUnifiedPanelState(serialized)).toEqual(EMPTY_UNIFIED_PANEL);
+        const injected = JSON.stringify({ version: UNIFIED_PANEL_STATE_VERSION, ...state });
+        expect(parseUnifiedPanelState(injected)).toEqual(EMPTY_UNIFIED_PANEL);
+    });
+
+    it('has no action in the plus menu', () => {
+        for (const chatId of [null, CHAT_1]) {
+            expect(openMenuActions({ targetWorkspaceId: WS, chatId, chatHasChanges: true })
+                .map(action => action.id)).not.toContain('paste');
+        }
+    });
+});
 
 function open(state: UnifiedPanelState, input: Partial<OpenUnifiedTabInput> & Pick<OpenUnifiedTabInput, 'kind' | 'resourceId'>): UnifiedPanelState {
     return openTab(state, {
