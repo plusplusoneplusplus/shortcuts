@@ -311,7 +311,7 @@ const api = {
         },
     },
     /**
-     * HTML page tab bridge (see html-page-host.ts). The SPA picks an opaque
+     * HTML page tab bridge (see file-preview-host.ts). The SPA picks an opaque
      * `pageId` per tab, asks `open` to host a local `.html`/`.htm` file (the
      * main process validates the path and replies `{ ok: false }` when it
      * refuses, so the SPA can fall back to the source viewer), then keeps the

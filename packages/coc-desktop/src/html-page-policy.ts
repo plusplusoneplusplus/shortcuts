@@ -3,7 +3,7 @@
  *
  * A local `.html`/`.htm` file clicked in a chat response can be opened as a
  * real rendered page in the SPA's right panel. The main process hosts it in a
- * `WebContentsView` loaded over `file://` (see `html-page-host.ts`). Everything
+ * `WebContentsView` loaded over `file://` (see `file-preview-host.ts`). Everything
  * decidable without Electron lives here so it is unit-testable under plain Node,
  * the same split as `popout-chrome.ts` / `popout-window-host.ts`.
  *
@@ -24,6 +24,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import type { BrowserViewState } from './browser-view-policy';
 
 /** File extensions the HTML page tab accepts (lower-case, with the dot). */
 export const HTML_PAGE_EXTENSIONS: readonly string[] = ['.html', '.htm'];
@@ -203,6 +204,20 @@ export interface HtmlPageLoadState {
     url?: string;
     /** Chromium's error description when `status` is `failed`. */
     error?: string;
+}
+
+/**
+ * `htmlPage` previews live in the shared browser manager under this view-id
+ * prefix, so a page id can never collide with a browser tab's view id.
+ */
+export const HTML_PAGE_VIEW_PREFIX = 'html-page:';
+/** Session key for `htmlPage` previews, which carry no workspace owner. */
+export const HTML_PAGE_SESSION_KEY = 'html-page';
+
+/** The `htmlPage` load state for a manager view state. */
+export function toHtmlPageLoadState(pageId: string, state: BrowserViewState): HtmlPageLoadState {
+    const status = state.error ? 'failed' : state.loading ? 'loading' : 'loaded';
+    return { pageId, status, url: state.url || undefined, ...(state.error ? { error: state.error } : {}) };
 }
 
 /** Page ids are SPA-chosen opaque keys; keep them short and printable. */

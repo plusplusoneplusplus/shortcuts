@@ -88,7 +88,6 @@ import {
 } from './report-issue';
 import { isPopOutChildUrl } from './popout-chrome';
 import { createPopOutWindow, registerPopOutIpc } from './popout-window-host';
-import { registerHtmlPageIpc } from './html-page-host';
 import { disposeBrowserViews, registerBrowserViewIpc } from './browser-view-host';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
@@ -1136,7 +1135,6 @@ async function bootstrap(): Promise<void> {
 
     // HTML page tabs: the SPA asks the main process to host a local .html file
     // in a WebContentsView over its right panel.
-    registerHtmlPageIpc();
     registerBrowserViewIpc();
 
     // AC-01: bind the global screenshot-capture accelerator on app ready, so the

@@ -1,16 +1,20 @@
-import { BrowserHostError, type BrowserEngineHost, type BrowserHostedView } from './browser-host-contract';
+import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type FilePreviewHost } from './browser-host-contract';
 import {
     BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
     isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, validateBrowserUrl,
     type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
+    type BrowserSourceKind, type BrowserViewState,
 } from './browser-view-policy';
-import type { HtmlPageBounds } from './html-page-policy';
+import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 
 interface Entry {
     ownerId: number;
     viewId: string;
     sessionKey: string;
     engine: BrowserEngine;
+    sourceKind: BrowserSourceKind;
+    /** Validated file for `file` views; a different path replaces the view. */
+    path?: string;
     closed: boolean;
     ready: Promise<BrowserHostedView>;
     view?: BrowserHostedView;
@@ -24,6 +28,8 @@ function throwRejected(results: PromiseSettledResult<unknown>[]): void {
 
 export interface BrowserManagerOptions {
     hosts: Record<BrowserEngine, BrowserEngineHost>;
+    /** Local HTML previews: always Electron, isolated from every engine profile and never cleared with them. */
+    fileHost: FilePreviewHost;
     getDefault(): BrowserEngine;
     saveDefault(engine: BrowserEngine): void;
     send(ownerId: number, channel: string, payload: unknown): void;
@@ -65,8 +71,9 @@ export class BrowserHostManager {
         const check = validateBrowserUrl(url);
         if (!check.ok) { return check; }
         if (relatedEngine !== undefined && !isBrowserEngine(relatedEngine)) { return { ok: false, reason: 'bad-engine' }; }
-        let entry = this.entry(ownerId, viewId);
+        const entry = this.entry(ownerId, viewId);
         if (entry && entry.sessionKey !== sessionKey) { return { ok: false, reason: 'bad-session' }; }
+        if (entry && entry.sourceKind !== 'url') { return { ok: false, reason: 'bad-id' }; }
         let engine: BrowserEngine;
         try {
             engine = entry?.engine ?? (isBrowserEngine(relatedEngine) ? relatedEngine : this.options.getDefault());
@@ -74,19 +81,48 @@ export class BrowserHostManager {
             return this.failure(error, 'startup-failed');
         }
         if (this.disposed || this.clearing.has(engine)) { return { ok: false, engine, reason: 'busy', message: 'Browser data is being cleared. Try again when cleanup finishes.' }; }
-        if (!entry) {
-            let entries = this.owners.get(ownerId);
-            if (!entries) { entries = new Map(); this.owners.set(ownerId, entries); }
-            entry = { ownerId, viewId, sessionKey, engine, closed: false, ready: Promise.resolve().then(() => this.create(entry!, check.url)) };
-            entries.set(viewId, entry);
-        } else if (entry.startupFailed) {
+        const create = (e: Entry) => this.createUrl(e, check.url);
+        return this.attach(entry ?? this.add({ ownerId, viewId, sessionKey, engine, sourceKind: 'url' }, create), create);
+    }
+
+    /** Open a local HTML preview in the file host. The engine preference and cleanup never apply. */
+    async openFile(ownerId: number, viewId: unknown, filePath: unknown, sessionKey: unknown): Promise<BrowserOpenResult> {
+        if (!isValidBrowserViewId(viewId)) { return { ok: false, reason: 'bad-id' }; }
+        if (!isValidBrowserSessionKey(sessionKey)) { return { ok: false, reason: 'bad-session' }; }
+        const check = validateHtmlPagePath(filePath);
+        if (!check.ok) { return check; }
+        let entry = this.entry(ownerId, viewId);
+        if (entry && entry.sessionKey !== sessionKey) { return { ok: false, reason: 'bad-session' }; }
+        if (entry && entry.sourceKind !== 'file') { return { ok: false, reason: 'bad-id' }; }
+        if (this.disposed) { return { ok: false, engine: 'electron', reason: 'busy', message: 'The desktop browser is shutting down.' }; }
+        if (entry && entry.path !== check.path) {
+            await this.closeEntry(entry);
+            entry = undefined;
+        }
+        const create = (e: Entry) => this.start(e, sink => this.options.fileHost.create({ ownerId, viewId: e.viewId, sessionKey, path: check.path }, sink));
+        return this.attach(entry ?? this.add({ ownerId, viewId, sessionKey, engine: 'electron', sourceKind: 'file', path: check.path }, create), create);
+    }
+
+    private add(init: Pick<Entry, 'ownerId' | 'viewId' | 'sessionKey' | 'engine' | 'sourceKind' | 'path'>, create: (entry: Entry) => Promise<BrowserHostedView>): Entry {
+        let entries = this.owners.get(init.ownerId);
+        if (!entries) { entries = new Map(); this.owners.set(init.ownerId, entries); }
+        const entry = { ...init, closed: false } as Entry;
+        entry.ready = Promise.resolve().then(() => create(entry));
+        entries.set(init.viewId, entry);
+        return entry;
+    }
+
+    /** Start a new or failed view, or replay a live one's state. */
+    private async attach(entry: Entry, create: (entry: Entry) => Promise<BrowserHostedView>): Promise<BrowserOpenResult> {
+        const engine = entry.engine;
+        if (entry.startupFailed) {
             entry.startupFailed = false;
-            entry.ready = Promise.resolve().then(() => this.create(entry!, check.url));
+            entry.ready = Promise.resolve().then(() => create(entry));
         }
         try {
             const view = await entry.ready;
             if (entry.closed) { return { ok: false, engine, reason: 'not-found' }; }
-            this.options.send(ownerId, BROWSER_VIEW_STATE_CHANNEL, view.snapshot());
+            this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, view.snapshot()));
             return { ok: true, engine };
         } catch (error) {
             // Failed startup keeps its selected engine but permits an explicit open retry.
@@ -95,13 +131,22 @@ export class BrowserHostManager {
         }
     }
 
-    private async create(entry: Entry, url: string): Promise<BrowserHostedView> {
+    private state(entry: Entry, state: BrowserViewState): BrowserViewState {
+        return { ...state, engine: entry.engine, viewId: entry.viewId, sourceKind: entry.sourceKind };
+    }
+
+    private async createUrl(entry: Entry, url: string): Promise<BrowserHostedView> {
         if (entry.closed) { throw new BrowserHostError('not-found', 'Browser tab closed during startup.'); }
         const host = this.options.hosts[entry.engine];
         const availability = await host.availability();
         if (!availability.available) { throw new BrowserHostError(availability.reason ?? 'startup-failed', availability.message ?? 'Browser engine unavailable.'); }
-        const view = await host.create({ ownerId: entry.ownerId, viewId: entry.viewId, sessionKey: entry.sessionKey, url }, {
-            state: state => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, { ...state, engine: entry.engine, viewId: entry.viewId }); } },
+        return this.start(entry, sink => host.create({ ownerId: entry.ownerId, viewId: entry.viewId, sessionKey: entry.sessionKey, url }, sink));
+    }
+
+    private async start(entry: Entry, create: (sink: BrowserEventSink) => Promise<BrowserHostedView>): Promise<BrowserHostedView> {
+        if (entry.closed) { throw new BrowserHostError('not-found', 'Browser tab closed during startup.'); }
+        const view = await create({
+            state: state => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, state)); } },
             newTab: target => {
                 if (!entry.closed && validateBrowserUrl(target).ok) { this.options.send(entry.ownerId, BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: entry.viewId, engine: entry.engine, url: target }); }
             },
@@ -118,6 +163,8 @@ export class BrowserHostManager {
     async navigate(ownerId: number, viewId: unknown, url: unknown): Promise<BrowserOpenResult> {
         const entry = this.entry(ownerId, viewId);
         if (!entry || entry.closed) { return { ok: false, reason: 'not-found' }; }
+        // Previews only move by in-page links that pass the file policy.
+        if (entry.sourceKind !== 'url') { return { ok: false, reason: 'unsupported', engine: entry.engine }; }
         const check = validateBrowserUrl(url);
         if (!check.ok) { return { ...check, engine: entry.engine }; }
         try {
@@ -134,7 +181,7 @@ export class BrowserHostManager {
             if (!entry.closed) { await command(view); }
         } catch (error) {
             if (!entry.closed) { this.options.send(ownerId, BROWSER_VIEW_STATE_CHANNEL, {
-                viewId: entry.viewId, engine: entry.engine, url: entry.view?.snapshot().url ?? '', title: '',
+                viewId: entry.viewId, engine: entry.engine, sourceKind: entry.sourceKind, url: entry.view?.snapshot().url ?? '', title: '',
                 canGoBack: false, canGoForward: false, loading: false,
                 error: error instanceof Error ? error.message : String(error), errorCode: this.failure(error, 'runtime-crashed').reason,
             }); }
@@ -182,7 +229,7 @@ export class BrowserHostManager {
         this.clearing.add(engine);
         this.options.changed();
         try {
-            const entries = [...this.owners.values()].flatMap(entries => [...entries.values()]).filter(entry => entry.engine === engine);
+            const entries = [...this.owners.values()].flatMap(entries => [...entries.values()]).filter(entry => entry.engine === engine && entry.sourceKind === 'url');
             const results = await Promise.allSettled(entries.map(entry => this.close(entry.ownerId, entry.viewId, true)));
             throwRejected(results);
             await this.options.hosts[engine].clearData();
@@ -194,7 +241,7 @@ export class BrowserHostManager {
     async dispose(): Promise<void> {
         this.disposed = true;
         const closed = await Promise.allSettled([...this.owners.keys()].map(id => this.closeOwner(id)));
-        const disposed = await Promise.allSettled(Object.values(this.options.hosts).map(host => host.dispose()));
+        const disposed = await Promise.allSettled([...Object.values(this.options.hosts), this.options.fileHost].map(host => host.dispose()));
         throwRejected([...closed, ...disposed]);
     }
 

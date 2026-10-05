@@ -3,8 +3,13 @@ import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine } from './browser-preferences';
 import { BrowserHostManager } from './browser-host-manager';
 import { ElectronBrowserHost } from './electron-browser-host';
+import { ElectronFilePreviewHost } from './file-preview-host';
 import { WebView2BrowserHost } from './webview2-browser-host';
-import { toHtmlPageViewBounds } from './html-page-policy';
+import {
+    HTML_PAGE_CLOSE_CHANNEL, HTML_PAGE_HIDE_CHANNEL, HTML_PAGE_OPEN_CHANNEL, HTML_PAGE_OPEN_EXTERNAL_CHANNEL,
+    HTML_PAGE_RELOAD_CHANNEL, HTML_PAGE_SESSION_KEY, HTML_PAGE_SET_BOUNDS_CHANNEL, HTML_PAGE_STATE_CHANNEL, HTML_PAGE_VIEW_PREFIX,
+    isValidHtmlPageId, toHtmlPageLoadState, toHtmlPageViewBounds, type HtmlPageOpenResult,
+} from './html-page-policy';
 import {
     BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_PREFERENCES_GET_CHANNEL, BROWSER_PREFERENCES_SET_CHANNEL, BROWSER_VIEW_CLOSE_CHANNEL,
@@ -12,7 +17,8 @@ import {
     BROWSER_VIEW_OPEN_CHANNEL, BROWSER_VIEW_SET_BOUNDS_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
     BROWSER_HOST_FOCUS_CHANNEL,
-    isBrowserEngine, isBrowserNavAction, validateBrowserUrl,
+    BROWSER_VIEW_STATE_CHANNEL,
+    isBrowserEngine, isBrowserNavAction, validateBrowserUrl, type BrowserViewState,
 } from './browser-view-policy';
 
 let manager: BrowserHostManager | undefined;
@@ -40,11 +46,18 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron')),
             webview2,
         },
+        fileHost: new ElectronFilePreviewHost(),
         getDefault: () => readBrowserEngine(dataDir),
         saveDefault: engine => writeBrowserEngine(dataDir, engine),
         send: (id, channel, payload) => {
             const window = owners.get(id);
-            if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) { window.webContents.send(channel, payload); }
+            if (!window || window.isDestroyed() || window.webContents.isDestroyed()) { return; }
+            const state = payload as BrowserViewState;
+            if (channel === BROWSER_VIEW_STATE_CHANNEL && state.viewId.startsWith(HTML_PAGE_VIEW_PREFIX)) {
+                window.webContents.send(HTML_PAGE_STATE_CHANNEL, toHtmlPageLoadState(state.viewId.slice(HTML_PAGE_VIEW_PREFIX.length), state));
+                return;
+            }
+            window.webContents.send(channel, payload);
         },
         changed: () => {
             for (const window of owners.values()) {
@@ -89,6 +102,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
         try { await shell.openExternal(check.url); return true; }
         catch (error) { console.error('[coc-desktop] Browser external-open failed:', error); return false; }
     });
+    registerHtmlPageIpc();
     ipcMain.handle(BROWSER_PREFERENCES_GET_CHANNEL, event => {
         const window = ownWindow(event.sender);
         if (!window) { throw new Error('Browser preferences require a desktop window.'); }
@@ -109,6 +123,36 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
             buttons: ['Cancel', 'Close tabs and clear data'], defaultId: 0, cancelId: 0, noLink: true,
         });
         return response === 1 ? manager!.clear(engine) : { ok: false, reason: 'cancelled' };
+    });
+}
+
+/** `htmlPage` channels: previews hosted by the shared manager under {@link HTML_PAGE_VIEW_PREFIX}. */
+function registerHtmlPageIpc(): void {
+    const id = (pageId: unknown) => isValidHtmlPageId(pageId) ? HTML_PAGE_VIEW_PREFIX + pageId : undefined;
+    ipcMain.handle(HTML_PAGE_OPEN_CHANNEL, async (event, pageId: unknown, filePath: unknown): Promise<HtmlPageOpenResult> => {
+        const window = ownWindow(event.sender);
+        if (!isValidHtmlPageId(pageId)) { return { ok: false, reason: 'bad-id' }; }
+        if (!window) { return { ok: false, reason: 'no-window' }; }
+        wireOwner(window);
+        const result = await manager!.openFile(event.sender.id, id(pageId), filePath, HTML_PAGE_SESSION_KEY);
+        if (result.ok) { return { ok: true }; }
+        const reason = result.reason;
+        return { ok: false, reason: reason === 'invalid' || reason === 'not-absolute' || reason === 'not-html' || reason === 'missing' || reason === 'not-file' || reason === 'bad-id' ? reason : 'no-window' };
+    });
+    ipcMain.on(HTML_PAGE_SET_BOUNDS_CHANNEL, (event, pageId: unknown, rect: unknown) => {
+        if (ownWindow(event.sender)) { void manager!.bounds(event.sender.id, id(pageId), toHtmlPageViewBounds(rect, event.sender.getZoomFactor())); }
+    });
+    ipcMain.on(HTML_PAGE_HIDE_CHANNEL, (event, pageId: unknown) => {
+        if (ownWindow(event.sender)) { void manager!.bounds(event.sender.id, id(pageId), null); }
+    });
+    ipcMain.on(HTML_PAGE_CLOSE_CHANNEL, (event, pageId: unknown) => {
+        if (ownWindow(event.sender)) { void manager!.close(event.sender.id, id(pageId)).catch(error => console.error('[coc-desktop] Preview close failed:', error)); }
+    });
+    ipcMain.on(HTML_PAGE_RELOAD_CHANNEL, (event, pageId: unknown) => {
+        if (ownWindow(event.sender)) { void manager!.nav(event.sender.id, id(pageId), 'reload'); }
+    });
+    ipcMain.on(HTML_PAGE_OPEN_EXTERNAL_CHANNEL, (event, pageId: unknown) => {
+        if (ownWindow(event.sender)) { void manager!.command(event.sender.id, id(pageId), view => shell.openExternal(view.snapshot().url)); }
     });
 }
 

@@ -4,7 +4,7 @@
  * The SPA's right panel can host general web pages in "browser" tabs. The main
  * process routes each view to its engine (see `browser-view-host.ts`).
  * Everything decidable without Electron lives here so it is unit-testable
- * under plain Node, the same split as `html-page-policy.ts` / `html-page-host.ts`.
+ * under plain Node, the same split as `html-page-policy.ts` / `file-preview-host.ts`.
  *
  * SECURITY — remote pages never carry the CoC preload and run with
  * `contextIsolation` + `sandbox` + normal TLS validation. This module is the gate for:
@@ -162,7 +162,14 @@ export function isBrowserEngine(value: unknown): value is BrowserEngine {
 export type BrowserFailureReason =
     | 'unsupported-platform' | 'missing-runtime' | 'native-unavailable'
     | 'profile-locked' | 'startup-failed' | 'runtime-crashed' | 'navigation-failed' | 'cleanup-failed' | 'busy'
-    | 'invalid' | 'unsupported' | 'bad-id' | 'bad-session' | 'bad-engine' | 'no-window' | 'not-found';
+    | 'invalid' | 'unsupported' | 'bad-id' | 'bad-session' | 'bad-engine' | 'no-window' | 'not-found'
+    | 'not-absolute' | 'not-html' | 'missing' | 'not-file';
+
+/**
+ * What a view shows: a web page (`url`, routed to the engine preference) or a
+ * local HTML preview (`file`, always the isolated Electron file host).
+ */
+export type BrowserSourceKind = 'url' | 'file';
 
 export interface BrowserAvailability {
     engine: BrowserEngine;
@@ -199,6 +206,7 @@ export type BrowserOpenResult =
 export interface BrowserViewState {
     viewId: string;
     engine: BrowserEngine;
+    sourceKind?: BrowserSourceKind;
     url: string;
     title: string;
     canGoBack: boolean;

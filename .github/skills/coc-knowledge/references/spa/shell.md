@@ -89,7 +89,7 @@ there to re-issuing the named open, which focuses the existing window.
 
 ## Desktop HTML page views
 
-`window.cocDesktop.htmlPage` (`packages/coc-desktop/src/preload.ts`) hosts local `.html`/`.htm` files using Electron `WebContentsView`s (`html-page-host.ts`), independent of the browser engine preference.
+`window.cocDesktop.htmlPage` (`packages/coc-desktop/src/preload.ts`) hosts local `.html`/`.htm` files using Electron `WebContentsView`s created by `file-preview-host.ts` and owned by `browser-host-manager.ts`, independent of the browser engine preference and never closed by browser-data cleanup.
 The SPA picks a per-panel-path `pageId` and calls `open(pageId, absPath)`. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
 
 `setBounds(pageId, getBoundingClientRect())` aligns the view in CSS px; `null`/`hide()` hides it and `close()` destroys it.

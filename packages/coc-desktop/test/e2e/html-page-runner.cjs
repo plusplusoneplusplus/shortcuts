@@ -3,7 +3,9 @@
  * process (spawned by html-page.e2e.test.ts). Writes a fixture folder
  * (index.html + sibling style.css + other.html), loads a stand-in SPA document
  * with the real preload, and drives `window.cocDesktop.htmlPage` from it
- * exactly like the SPA will. Emits one `E2E::{json}` line per step; the vitest
+ * exactly like the SPA will. Previews are hosted by the shared browser manager
+ * (`registerBrowserViewIpc`), next to a real Electron browser tab used to prove
+ * the preview cannot see browser-profile cookies. Emits one `E2E::{json}` line per step; the vitest
  * side parses and asserts them.
  *
  * Kept as plain CommonJS: Electron loads it directly as an app main script.
@@ -11,12 +13,15 @@
 'use strict';
 
 const fs = require('fs');
+const http = require('http');
 const os = require('os');
 const path = require('path');
 const { app, BrowserWindow, shell } = require('electron');
 
 const distDir = path.join(__dirname, '..', '..', 'dist');
-const { registerHtmlPageIpc } = require(path.join(distDir, 'html-page-host.js'));
+const { registerBrowserViewIpc, disposeBrowserViews } = require(path.join(distDir, 'browser-view-host.js'));
+const { HTML_PAGE_PARTITION } = require(path.join(distDir, 'file-preview-host.js'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-html-page-e2e-data-'));
 
 const emit = (step, data) => console.log('E2E::' + JSON.stringify({ step, ...data }));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -46,8 +51,17 @@ const spaHtml = '<!doctype html><html><body style="margin:0">'
     + ' window.cocDesktop.htmlPage.setBounds(id, { x: r.x, y: r.y, width: r.width, height: r.height }); };'
     + '</script></body></html>';
 
+/** Local site that sets a cookie in whichever session loads it. */
+const cookieServer = http.createServer((req, res) => {
+    res.setHeader('Set-Cookie', 'coc_profile_probe=signed-in; Path=/; Max-Age=3600');
+    res.setHeader('Content-Type', 'text/html');
+    res.end('<!doctype html><title>Signed in</title>');
+});
+
 app.whenReady().then(async () => {
-    registerHtmlPageIpc();
+    registerBrowserViewIpc(dataDir);
+    await new Promise((resolve) => cookieServer.listen(0, '127.0.0.1', resolve));
+    const siteUrl = `http://127.0.0.1:${cookieServer.address().port}/`;
 
     const main = new BrowserWindow({
         width: 900,
@@ -97,6 +111,26 @@ app.whenReady().then(async () => {
         states: (await spa('window.__states')).map((s) => s.status),
         ...probe,
     });
+
+    // 2b. Sign in to a site in a browser tab: its cookie lands in the
+    //     browser/electron profile and must stay invisible to the preview.
+    const browserOpen = await spa(`window.cocDesktop.browser.open('site', ${JSON.stringify(siteUrl)}, 'workspace-a')`);
+    await sleep(1000);
+    const siteView = main.contentView.children.find((v) => v.webContents.getURL().startsWith('http:'));
+    const profileCookies = siteView ? await siteView.webContents.session.cookies.get({ name: 'coc_profile_probe' }) : [];
+    const previewCookies = await pageWc.session.cookies.get({});
+    const previewDocumentCookie = await pageWc.executeJavaScript('document.cookie');
+    emit('isolation', {
+        browserOpen,
+        profileCookieCount: profileCookies.length,
+        previewCookieNames: previewCookies.map((c) => c.name),
+        previewDocumentCookie,
+        sameSession: !!siteView && siteView.webContents.session === pageWc.session,
+        previewPersistent: pageWc.session.isPersistent(),
+        previewPartitionMatches: pageWc.session === require('electron').session.fromPartition(HTML_PAGE_PARTITION),
+    });
+    await spa(`window.cocDesktop.browser.close('site')`);
+    await sleep(300);
 
     // 3. Opening the same id + path again reuses the view.
     const stateCount = (await spa('window.__states')).length;
@@ -169,6 +203,7 @@ app.whenReady().then(async () => {
     await sleep(500);
     const liveViews = main.contentView.children.length;
     fs.rmSync(fixtureDir, { recursive: true, force: true });
+    cookieServer.close();
     app.on('will-quit', () => emit('quit', { liveViews }));
     setTimeout(() => {
         emit('quit-hung', { liveViews });
