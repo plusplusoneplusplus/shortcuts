@@ -135,7 +135,7 @@ describe('WhatsApp ask_user question relay', () => {
             options: [{ value: 'pg', label: 'Postgres' }, { value: 'lite', label: 'SQLite' }],
         }]);
         await vi.waitFor(() => expect(send).toHaveBeenCalledWith(
-            '*Which database?*\n1. Postgres\n2. SQLite\n\nReply: 1-2 or "skip"', 'request'));
+            '*Which database?*\n1. Postgres\n2. SQLite\n\nReply: 1-2, your own answer, or "skip"', 'request'));
         await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
         expect(bindings.isKnownMessage('sent-1')).toBe(true);
         const receipts = JSON.parse(fs.readFileSync(getRepoDataPath(dir, 'ws-a', 'whatsapp-bindings.json'), 'utf8'));
@@ -145,6 +145,26 @@ describe('WhatsApp ask_user question relay', () => {
         expect((await result)[0].answer).toBe('lite');
         expect(react).toHaveBeenCalledWith('answer');
         expect(enqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['select', 'multi-select', 'yes-no', 'confirm'] as const)('delivers a clarification for %s once without enqueueing a turn', async type => {
+        const clarification = "i need you to explain this, i don't think we have cloud or local";
+        const { tool, result, emitted } = await askFromRequest([{
+            question: 'How should we transcribe?', type,
+            ...(type === 'select' || type === 'multi-select' ? { options: [
+                { value: 'cloud', label: 'Cloud' }, { value: 'local', label: 'Local' }, { value: 'both', label: 'Both' },
+            ] } : {}),
+        }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        const reply = inbound(`  ${clarification}  `, 'clarification', 'sent-1');
+        await router.handle(reply);
+        expect((await result)[0]).toMatchObject({ answer: clarification, skipped: false });
+        expect(tool.answerQuestion(emitted[0], 'cloud')).toBe(false);
+        await router.handle(reply);
+        expect(react.mock.calls.filter(([id]) => id === 'clarification')).toHaveLength(1);
+        expect(send).toHaveBeenCalledTimes(1);
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        expect(hub.pendingCount()).toBe(0);
     });
 
     it.each(['releasing', 'released'] as const)('does not answer a pending question after its binding is %s', async releaseState => {
@@ -167,7 +187,7 @@ describe('WhatsApp ask_user question relay', () => {
         ]);
         await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
         await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
-        expect(send.mock.calls[0][0]).toBe('(Question 1 of 2)\n*Proceed?*\n\nReply: yes / no or "skip"');
+        expect(send.mock.calls[0][0]).toBe('(Question 1 of 2)\n*Proceed?*\n\nReply: yes / no, your own answer, or "skip"');
         await router.handle(inbound('y', 'a1'));
         await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
         await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
@@ -187,8 +207,8 @@ describe('WhatsApp ask_user question relay', () => {
         const { tool } = await askFromRequest([{ question: 'Proceed?', type: 'confirm' }]);
         await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
         await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
-        await router.handle(inbound('later', 'bad', 'sent-1'));
-        expect(send).toHaveBeenLastCalledWith('Please reply yes or no.\nReply: yes / no or "skip"', 'bad');
+        await router.handle(inbound('   ', 'bad', 'sent-1'));
+        expect(send).toHaveBeenLastCalledWith('Please reply with your answer.\nReply: yes / no, your own answer, or "skip"', 'bad');
         expect(tool.hasPending()).toBe(true);
         tool.cancelAll();
     });

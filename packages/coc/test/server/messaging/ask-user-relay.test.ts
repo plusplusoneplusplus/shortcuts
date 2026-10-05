@@ -9,14 +9,19 @@ const select = { type: 'select' as const, options: [{ value: 'pg', label: 'Postg
 const multi = { type: 'multi-select' as const, options: [
     { value: 'a', label: 'Alpha' }, { value: 'b', label: 'Beta' }, { value: 'c', label: 'Gamma' },
 ] };
+const clarification = "i need you to explain this, i don't think we have cloud or local";
+const transcription = { type: 'select' as const, options: [
+    { value: 'cloud', label: 'Cloud' }, { value: 'local', label: 'Local' }, { value: 'both', label: 'Both' },
+] };
+const ordinaryQuestions = [select, multi, { type: 'yes-no' as const }, { type: 'confirm' as const }, { type: 'text' as const }];
 
 describe('parseQuestionReply', () => {
     it('parses select by number or option text, case-insensitively', () => {
         expect(parseQuestionReply(select, '2')).toEqual({ kind: 'answer', value: 'lite' });
         expect(parseQuestionReply(select, ' postgres ')).toEqual({ kind: 'answer', value: 'pg' });
         expect(parseQuestionReply(select, 'LITE')).toEqual({ kind: 'answer', value: 'lite' });
-        expect(parseQuestionReply(select, '3')).toMatchObject({ kind: 'invalid' });
-        expect(parseQuestionReply(select, 'mysql')).toMatchObject({ kind: 'invalid' });
+        expect(parseQuestionReply(select, '3')).toEqual({ kind: 'answer', value: '3' });
+        expect(parseQuestionReply(select, 'mysql')).toEqual({ kind: 'answer', value: 'mysql' });
     });
 
     it('parses multi-select from comma or space separated numbers', () => {
@@ -24,7 +29,8 @@ describe('parseQuestionReply', () => {
         expect(parseQuestionReply(multi, '1 3 1')).toEqual({ kind: 'answer', value: ['a', 'c'] });
         expect(parseQuestionReply(multi, '2, 3')).toEqual({ kind: 'answer', value: ['b', 'c'] });
         expect(parseQuestionReply(multi, 'beta')).toEqual({ kind: 'answer', value: ['b'] });
-        expect(parseQuestionReply(multi, '1,4')).toMatchObject({ kind: 'invalid' });
+        expect(parseQuestionReply(multi, 'C')).toEqual({ kind: 'answer', value: ['c'] });
+        expect(parseQuestionReply(multi, '1,4')).toEqual({ kind: 'answer', value: '1,4' });
     });
 
     it('parses yes-no and confirm as booleans', () => {
@@ -33,16 +39,37 @@ describe('parseQuestionReply', () => {
             expect(parseQuestionReply({ type }, 'yes')).toEqual({ kind: 'answer', value: true });
             expect(parseQuestionReply({ type }, 'n')).toEqual({ kind: 'answer', value: false });
             expect(parseQuestionReply({ type }, 'NO')).toEqual({ kind: 'answer', value: false });
-            expect(parseQuestionReply({ type }, 'maybe')).toEqual({ kind: 'invalid', error: 'Please reply yes or no.' });
+            expect(parseQuestionReply({ type }, 'maybe')).toEqual({ kind: 'answer', value: 'maybe' });
         }
     });
 
     it('accepts any text for text questions and skip for every type', () => {
         expect(parseQuestionReply({ type: 'text' }, '  use port 8080 ')).toEqual({ kind: 'answer', value: 'use port 8080' });
         expect(parseQuestionReply({ type: 'text' }, '   ')).toMatchObject({ kind: 'invalid' });
-        for (const q of [select, multi, { type: 'yes-no' as const }, { type: 'confirm' as const }, { type: 'text' as const }]) {
-            expect(parseQuestionReply(q, 'Skip')).toEqual({ kind: 'skip' });
+        for (const q of ordinaryQuestions) {
+            expect(parseQuestionReply(q, ' Skip ')).toEqual({ kind: 'skip' });
+            expect(parseQuestionReply(q, ' \n\t ')).toEqual({ kind: 'invalid', error: 'Please reply with your answer.' });
+            expect(parseQuestionReply(q, 'skip this question')).toEqual({ kind: 'answer', value: 'skip this question' });
         }
+    });
+
+    it.each(ordinaryQuestions)('preserves natural-language replies for $type', question => {
+        expect(parseQuestionReply(question, `  ${clarification}\n`)).toEqual({ kind: 'answer', value: clarification });
+        expect(parseQuestionReply(question, 'yes, but explain first\nplease')).toEqual({
+            kind: 'answer', value: 'yes, but explain first\nplease',
+        });
+    });
+
+    it('accepts the transcription clarification without selecting an option', () => {
+        expect(parseQuestionReply(transcription, clarification)).toEqual({ kind: 'answer', value: clarification });
+    });
+
+    it.each(['0', '999', '-1', '1,2', '1.5'])('preserves unrecognized numeric select reply %s', reply => {
+        expect(parseQuestionReply(select, reply)).toEqual({ kind: 'answer', value: reply });
+    });
+
+    it.each(['0', '999', '-1', '1,4', '1,explain', '1.5'])('preserves unrecognized numeric multi-select reply %s', reply => {
+        expect(parseQuestionReply(multi, reply)).toEqual({ kind: 'answer', value: reply });
     });
 });
 
@@ -58,7 +85,7 @@ describe('buildQuestionLayout', () => {
             progress: '(Question 2 of 3)',
             question: 'Which database?',
             options: ['1. Postgres — server', '2. SQLite'],
-            hint: 'Reply: 1-2 or "skip"',
+            hint: 'Reply: 1-2, your own answer, or "skip"',
         });
     });
 
@@ -66,9 +93,14 @@ describe('buildQuestionLayout', () => {
         expect(buildQuestionLayout(payload({}), 0, 1)).toEqual({
             question: 'Which database?', options: [], hint: 'Reply: your answer or "skip"',
         });
-        expect(buildQuestionLayout(payload(multi), 0, 1).hint).toBe('Reply: 1,2 or "skip"');
-        expect(buildQuestionLayout(payload({ type: 'yes-no' }), 0, 1).hint).toBe('Reply: yes / no or "skip"');
-        expect(buildQuestionLayout(payload({ type: 'confirm' }), 0, 1).hint).toBe('Reply: yes / no or "skip"');
+        expect(buildQuestionLayout(payload(multi), 0, 1).hint).toBe('Reply: 1,2, your own answer, or "skip"');
+        expect(buildQuestionLayout(payload({ type: 'yes-no' }), 0, 1).hint).toBe('Reply: yes / no, your own answer, or "skip"');
+        expect(buildQuestionLayout(payload({ type: 'confirm' }), 0, 1).hint).toBe('Reply: yes / no, your own answer, or "skip"');
+        for (const type of ['select', 'multi-select'] as const) {
+            expect(buildQuestionLayout(payload({ type, options: [select.options[0]] }), 0, 1).hint)
+                .toBe('Reply: 1, your own answer, or "skip"');
+            expect(buildQuestionLayout(payload({ type, options: [] }), 0, 1).hint).toBe('Reply: your answer or "skip"');
+        }
     });
 });
 
@@ -158,11 +190,59 @@ describe('AskUserQuestionRelayHub', () => {
         const result = t.ask([{ question: 'Ok?', type: 'yes-no' }]);
         await vi.waitFor(() => expect(t.posted).toHaveLength(1));
         await vi.waitFor(() => expect(t.hub.pendingCount()).toBe(1));
-        expect(await t.answer('perhaps', 'bad', 'question-1')).toBe(true);
-        expect(t.replies).toEqual(['Please reply yes or no.\nReply: yes / no or "skip"']);
+        expect(await t.answer('   ', 'bad', 'question-1')).toBe(true);
+        expect(t.replies).toEqual(['Please reply with your answer.\nReply: yes / no, your own answer, or "skip"']);
         expect(t.tool.hasPending()).toBe(true);
         expect(await t.answer('skip', 'good', 'question-1')).toBe(true);
         expect((await result)[0]).toMatchObject({ skipped: true, reason: 'user-skipped' });
+    });
+
+    it.each(ordinaryQuestions)('delivers clarification once for $type and lets messaging win', async question => {
+        const t = setup();
+        const result = t.ask([{ question: 'Please choose', ...question }]);
+        await vi.waitFor(() => expect(t.hub.pendingCount()).toBe(1));
+        expect(await t.answer(`  ${clarification}  `, 'reply', 'question-1')).toBe(true);
+        expect((await result)[0]).toMatchObject({ answer: clarification, skipped: false });
+        expect(t.tool.answerQuestion(t.emitted[0].questionId, true)).toBe(false);
+        expect(await t.answer(clarification, 'reply', 'question-1')).toBe(true);
+        expect(t.acks).toEqual(['reply']);
+        expect(t.replies).toEqual([]);
+        expect(t.store.updateProcess).toHaveBeenCalledTimes(1);
+        expect(t.store.updateProcess).toHaveBeenLastCalledWith('proc', { pendingAskUser: undefined });
+        expect(await t.answer(clarification, 'late', 'question-1')).toBe(true);
+        expect(t.replies).toEqual([QUESTION_RELAY_TEXT.alreadyAnswered]);
+    });
+
+    it('does not apply a duplicate plain clarification to the next question in a batch', async () => {
+        const t = setup();
+        const result = t.ask([
+            { question: 'Transcription?', ...transcription },
+            { question: 'Proceed?', type: 'confirm' },
+        ]);
+        await vi.waitFor(() => expect(t.hub.pendingCount()).toBe(1));
+        expect(await t.answer(clarification, 'reply')).toBe(true);
+        await vi.waitFor(() => expect(t.posted).toHaveLength(2));
+        await vi.waitFor(() => expect(t.hub.pendingCount()).toBe(1));
+        expect(await t.answer(clarification, 'reply')).toBe(true);
+        expect(t.hub.pendingCount()).toBe(1);
+        expect(t.acks).toEqual(['reply']);
+        expect(await t.answer('yes', 'next')).toBe(true);
+        expect((await result).map(r => r.answer)).toEqual([clarification, true]);
+    });
+
+    it.each(['dangerous-command', 'llm-tool'] as const)('keeps %s approvals dashboard-only and denies natural text', async kind => {
+        const t = setup();
+        const request = kind === 'llm-tool'
+            ? { kind, toolName: 'write_canvas', label: 'Canvas', argsJson: '{}', argsTruncated: false }
+            : { kind, command: 'rm -rf /', ruleId: 'r', description: 'd', matchedSegment: 'rm' };
+        const decision = t.tool.askApproval(request);
+        await flush();
+        expect(t.posted).toEqual([]);
+        expect(t.hub.pendingCount()).toBe(0);
+        expect(await t.answer('yes, go ahead', 'approval')).toBe(false);
+        expect(t.tool.hasPending()).toBe(true);
+        expect(t.tool.answerQuestion(t.emitted[0].questionId, 'yes, go ahead')).toBe(true);
+        expect(await decision).toBe('deny');
     });
 
     it('lets the dashboard win and tells a later connector reply it was already answered', async () => {

@@ -230,7 +230,9 @@ references before editing. Paths are package-relative.
   one is pending) answers. Job questions use the saved group/thread even after repo
   selection changes; Teams origins retain `threadId` when known. Disconnected job
   questions stay dashboard-only; failed posts resolve `unavailable`; turn end
-  clears pending ones; approvals stay dashboard-only.
+  clears pending ones; approvals stay dashboard-only. Ordinary replies preserve
+  recognized choice/boolean/array mappings and pass other non-empty text to the
+  AI unchanged apart from trimming. Only exact `skip` skips; empty replies reject.
 - Chats handed off by `send_to_conversation` create mode from a WhatsApp/Teams turn
   (origin via the ask_user relay's `locateOrigin`; local targets only, not Ralph) get
   `metadata.messagingOrigin` and a direct notice `<repo> · <title> · ✅/❌/⏹` per

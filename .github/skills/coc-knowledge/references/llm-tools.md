@@ -296,7 +296,8 @@ opt in based on `options.tools`; no executor changes are needed. See
   mode, with the question batch id as fallback request id. Teams origins include the original
   `threadId` when known. Disconnected job questions stay in the dashboard without reconnect
   re-posting. Dashboard jobs without an origin and approvals stay dashboard-only; registration
-  never varies.
+  never varies. Ordinary reply parsing and free-text fallback are owned by the
+  [server messaging relay](server-architecture.md#messaging-ask_user-question-relay).
 - **Ralph grill exception:** the grill terminal round strips `ask_user` from the already-built
   array to end the questioning phase. It is the one path that mutates the tool block mid-turn.
   Because it runs after the system message is assembled, the Codex discovery block below can

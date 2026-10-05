@@ -252,8 +252,11 @@ Questions post one at a time using `formatWhatsAppQuestion` / `formatTeamsQuesti
 `tryAnswer` runs before command routing: a question reply answers it; plain text
 answers only when exactly one question is pending. Ambiguous thread-root replies
 leave both questions pending and ask for a specific question or dashboard answer.
-`parseQuestionReply` handles
-numbers, option text, `1,3`, yes/no, text and `skip`. The tool's pending map lets
+`parseQuestionReply` maps recognized numbers, option labels/values, `1,3`, and
+yes/no to structured answers. Every other non-empty ordinary reply passes through
+as trimmed text, including clarifications and out-of-range numbers; only exact
+case-insensitive `skip` skips, and empty replies are rejected. Reply hints advertise
+structured choices, free text, and skip. The tool's pending map lets
 the first answer win; dashboard answers produce the existing already-answered
 reply on the phone. Disconnected job questions remain dashboard-only without
 re-posting; failed sends resolve `unavailable`; turn `cancelAll` clears pending
