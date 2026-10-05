@@ -100,7 +100,7 @@ describe('Pin & Archive REST API', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    async function addProcess(id: string) {
+    async function addProcess(id: string, workspaceId = wsId, parentProcessId?: string) {
         await store.addProcess({
             id,
             type: 'ai',
@@ -109,13 +109,40 @@ describe('Pin & Archive REST API', () => {
             status: 'completed',
             startTime: new Date('2024-01-01T00:00:00Z'),
             endTime: new Date('2024-01-01T00:01:00Z'),
-            metadata: { type: 'ai', workspaceId: wsId },
+            parentProcessId,
+            metadata: { type: 'ai', workspaceId },
         });
     }
 
     // ── Pin tests ──────────────────────────────────────────────────────
 
     describe('PATCH /api/processes/:id/pin', () => {
+        it('persists independent parent and child pins without crossing workspaces or changing their relationship', async () => {
+            await addProcess('parent');
+            await addProcess('child', wsId, 'parent');
+            await addProcess('other-parent', 'ws-other');
+            for (const id of ['parent', 'child', 'other-parent']) {
+                const response = await patchJSON(`${baseUrl}/api/processes/${id}/pin`, { pinned: true });
+                expect(response.status).toBe(200);
+            }
+
+            // A fresh database reader sees durable pins, independently of UI state.
+            const restored = new SqliteProcessStore({ dbPath: path.join(tmpDir, 'test.db') });
+            try {
+                expect(restored.getPinnedProcesses(wsId).map(p => p.id).sort()).toEqual(['child', 'parent']);
+                expect(restored.getPinnedProcesses('ws-other').map(p => p.id)).toEqual(['other-parent']);
+                expect((await restored.getProcess('child'))?.parentProcessId).toBe('parent');
+            } finally {
+                restored.close();
+            }
+
+            const response = await patchJSON(`${baseUrl}/api/processes/parent/pin`, { pinned: false });
+            expect(response.status).toBe(200);
+            expect(store.getPinnedProcesses(wsId).map(p => p.id)).toEqual(['child']);
+            expect((await store.getProcess('child'))?.parentProcessId).toBe('parent');
+            expect(store.getPinnedProcesses('ws-other').map(p => p.id)).toEqual(['other-parent']);
+        });
+
         it('pins a process and returns pinnedAt timestamp', async () => {
             await addProcess('p1');
             const res = await patchJSON(`${baseUrl}/api/processes/p1/pin`, { pinned: true });
