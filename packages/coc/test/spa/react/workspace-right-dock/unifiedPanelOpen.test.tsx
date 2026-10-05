@@ -18,6 +18,7 @@ import {
     inheritDraftPanelTabs,
     openUnifiedPanelPreviewTab,
     openUnifiedPanelTab,
+    openUnifiedPasteTab,
     unifiedTabIdFor,
     updateUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelOpen';
@@ -36,6 +37,8 @@ import {
     useDockOpen,
     workspaceDockOpenStorageKey,
 } from '../../../../src/server/spa/client/react/features/repo-detail/WorkspaceDockToggle';
+
+import { pasteResourceId, readPasteSnapshot } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPasteTabs';
 
 const WS = 'ws-open';
 const CHAT = 'chat-a';
@@ -96,6 +99,13 @@ describe('unifiedPanelOpen', () => {
         // Same descriptor, same id — that is what lets an entry point ask
         // "is my tab still there?" without holding a handle.
         expect(unifiedTabIdFor(fileInput('src/app.ts'))).toBe(id);
+    });
+
+    it('returns the stored id for each concrete remote owner', () => {
+        const first = openUnifiedPanelTab(WS, { ...fileInput('src/a.ts'), ownerRoutingRef: 'remote:one:ws-open' });
+        const second = openUnifiedPanelTab(WS, { ...fileInput('src/a.ts'), ownerRoutingRef: 'remote:two:ws-open' });
+        expect(first).not.toBe(second);
+        expect(readUnifiedPanelState(WS).chatTabs[CHAT]?.map(tab => tab.id)).toEqual([first, second]);
     });
 
     it('reveals a collapsed dock, and never collapses an open one', () => {
@@ -278,5 +288,104 @@ describe('unifiedPanelOpen', () => {
 
         expect(setItem).not.toHaveBeenCalled();
         expect(renders).toBe(before);
+    });
+});
+
+describe('paste snapshot lifecycle', () => {
+    beforeEach(() => {
+        clearUnifiedPanelState();
+        localStorage.clear();
+    });
+    afterEach(() => {
+        clearUnifiedPanelState();
+        localStorage.clear();
+    });
+
+    const context = { ownerWorkspaceId: WS, chatId: CHAT };
+    const content = '# Snapshot\n\nOriginal pasted text';
+
+    it('captures raw content in memory, reveals the dock, and refocuses matching text', () => {
+        const id = openUnifiedPasteTab(WS, content, context);
+        const resourceId = pasteResourceId(content);
+        expect(readPasteSnapshot(WS, resourceId)).toBe(content);
+        expect(isDockOpen(WS)).toBe(true);
+        expect(readUnifiedPanelState(WS).chatTabs[CHAT]?.[0]).toMatchObject({
+            id, kind: 'paste', label: `Pasted text (${content.length} chars)`, resourceId,
+        });
+        const second = openUnifiedPasteTab(WS, 'edited text', context);
+        expect(second).not.toBe(id);
+        expect(openUnifiedPasteTab(WS, content, context)).toBe(id);
+        expect(readUnifiedPanelState(WS).chatTabs[CHAT]).toHaveLength(2);
+        expect(readUnifiedPanelState(WS).activeByScope[CHAT]).toBe(id);
+        expect(readPasteSnapshot(WS, resourceId)).toBe(content);
+        const stored = localStorage.getItem(unifiedPanelStorageKey(WS))!;
+        expect(stored).not.toContain(content);
+        expect(stored).not.toContain(resourceId);
+        expect(stored).not.toContain(id);
+    });
+
+    it('keeps equal pastes separate by chat and concrete owner in a repo group', () => {
+        const group = 'group-acme';
+        const first = openUnifiedPasteTab(group, content, {
+            ...context, ownerRoutingRef: 'remote:one:ws-open', repoLabel: 'One',
+        });
+        const second = openUnifiedPasteTab(group, content, {
+            ...context, ownerRoutingRef: 'remote:two:ws-open', repoLabel: 'Two',
+        });
+        const otherChat = openUnifiedPasteTab(group, content, { ...context, chatId: 'chat-b' });
+        const state = readUnifiedPanelState(group);
+        expect(state.chatTabs[CHAT]?.map(tab => tab.id)).toEqual([first, second]);
+        expect(state.chatTabs['chat-b']?.[0].id).toBe(otherChat);
+        expect(readPasteSnapshot(WS, pasteResourceId(content))).toBeUndefined();
+        updateUnifiedPanelState(group, prev => closeTab(closeTab(prev, first), second));
+        expect(readPasteSnapshot(group, pasteResourceId(content))).toBe(content);
+        updateUnifiedPanelState(group, prev => closeTab(prev, otherChat));
+        expect(readPasteSnapshot(group, pasteResourceId(content))).toBeUndefined();
+    });
+
+    it('frees a snapshot on close without affecting another workspace or content', () => {
+        const id = openUnifiedPasteTab(WS, content, context);
+        openUnifiedPasteTab('ws-b', content, context);
+        const other = openUnifiedPasteTab(WS, 'other text', context);
+        updateUnifiedPanelState(WS, prev => closeTab(prev, id));
+        expect(readPasteSnapshot(WS, pasteResourceId(content))).toBeUndefined();
+        expect(readPasteSnapshot('ws-b', pasteResourceId(content))).toBe(content);
+        expect(readPasteSnapshot(WS, pasteResourceId('other text'))).toBe('other text');
+        updateUnifiedPanelState(WS, prev => closeTab(prev, other));
+        expect(readPasteSnapshot(WS, pasteResourceId('other text'))).toBeUndefined();
+        expect(openUnifiedPasteTab(WS, content, context)).toBe(id);
+        expect(readPasteSnapshot(WS, pasteResourceId(content))).toBe(content);
+    });
+
+    it('retains inherited draft content until both draft and chat tabs close', () => {
+        const draft = openUnifiedPasteTab(WS, content, { ...context, chatId: null });
+        inheritDraftPanelTabs(WS, CHAT);
+        const inherited = readUnifiedPanelState(WS).chatTabs[CHAT]![0].id;
+        expect(inherited).not.toBe(draft);
+        updateUnifiedPanelState(WS, prev => closeTab(prev, draft));
+        expect(readPasteSnapshot(WS, pasteResourceId(content))).toBe(content);
+        updateUnifiedPanelState(WS, prev => closeTab(prev, inherited));
+        expect(readPasteSnapshot(WS, pasteResourceId(content))).toBeUndefined();
+    });
+
+    it('clears only the requested panel scope, including empty-string snapshots', () => {
+        openUnifiedPasteTab(WS, '', context);
+        openUnifiedPasteTab('ws-b', content, context);
+        expect(readPasteSnapshot(WS, pasteResourceId(''))).toBe('');
+        clearUnifiedPanelState(WS);
+        expect(readPasteSnapshot(WS, pasteResourceId(''))).toBeUndefined();
+        expect(readPasteSnapshot('ws-b', pasteResourceId(content))).toBe(content);
+        clearUnifiedPanelState();
+        expect(readPasteSnapshot('ws-b', pasteResourceId(content))).toBeUndefined();
+    });
+
+    it('drops paste tabs and content when a reload restores the persisted layout', () => {
+        openUnifiedPasteTab(WS, content, context);
+        openUnifiedPanelTab(WS, fileInput('src/kept.ts'));
+        const saved = localStorage.getItem(unifiedPanelStorageKey(WS))!;
+        clearUnifiedPanelState();
+        localStorage.setItem(unifiedPanelStorageKey(WS), saved);
+        expect(readUnifiedPanelState(WS).chatTabs[CHAT]?.map(tab => tab.kind)).toEqual(['file']);
+        expect(readPasteSnapshot(WS, pasteResourceId(content))).toBeUndefined();
     });
 });

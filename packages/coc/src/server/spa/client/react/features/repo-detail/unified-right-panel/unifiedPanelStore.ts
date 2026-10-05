@@ -32,6 +32,7 @@ import {
 } from './unifiedPanelTabsModel';
 import { readUnifiedTreeState, writeUnifiedTreeState } from './unifiedPanelTree';
 import { clearUnifiedPanelNavigationHistory } from './unifiedPanelNavigationStore';
+import { clearPasteSnapshots, prunePasteSnapshots } from './unifiedPasteTabs';
 
 const listeners = new Map<string, Set<() => void>>();
 
@@ -79,6 +80,7 @@ export function writeUnifiedPanelState(workspaceId: string, next: UnifiedPanelSt
 }
 
 function writeState(storageKey: string, next: UnifiedPanelState): void {
+    prunePasteSnapshots(storageKey, next);
     const raw = serializeUnifiedPanelState(next);
     try {
         localStorage.setItem(storageKey, raw);
@@ -169,6 +171,7 @@ export function useUnifiedPanelState(
  */
 export function clearUnifiedPanelState(workspaceId?: string): void {
     clearUnifiedPanelNavigationHistory(workspaceId);
+    clearPasteSnapshots(workspaceId);
     const keys = workspaceId === undefined
         ? [...snapshotCache.keys(), ...listeners.keys()]
         : [unifiedPanelStorageKey(workspaceId)];
