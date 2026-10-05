@@ -36,7 +36,11 @@ async function scenario(engine: string, userData: string, ...args: string[]) {
     });
 }
 
-afterEach(() => { temporary.forEach(dir => rmSync(dir, { recursive: true, force: true })); temporary.length = 0; });
+afterEach(() => {
+    // Browser subprocesses can release profile handles just after Electron exits.
+    temporary.forEach(dir => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+    temporary.length = 0;
+});
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
     it.skipIf(process.platform !== 'win32')('keeps native keyboard input in the composer after clicking away from the browser and updating layout', async () => {

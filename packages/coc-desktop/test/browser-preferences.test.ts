@@ -15,18 +15,20 @@ afterEach(() => { directories.forEach(dir => fs.rmSync(dir, { recursive: true, f
 describe('desktop browser preferences', () => {
     it('defaults to Electron and persists a Windows choice atomically', () => {
         const dir = directory();
-        expect(readBrowserEngine(dir, 'win32')).toBe('electron');
+        expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('electron');
         writeBrowserEngine(dir, 'webview2');
-        expect(readBrowserEngine(dir, 'win32')).toBe('webview2');
+        expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('webview2');
         expect(fs.readdirSync(dir)).toEqual([BROWSER_PREFERENCES_FILENAME]);
     });
 
     it('uses Electron on other platforms without modifying a copied Windows preference', () => {
         const dir = directory();
         writeBrowserEngine(dir, 'webview2');
-        for (const platform of ['linux', 'darwin']) expect(readBrowserEngine(dir, platform)).toBe('electron');
+        for (const platform of ['linux', 'darwin']) {
+            for (const arch of ['x64', 'arm64']) expect(readBrowserEngine(dir, platform, arch)).toBe('electron');
+        }
         expect(readBrowserEngine(dir, 'win32', 'arm64')).toBe('electron');
-        expect(readBrowserEngine(dir, 'win32')).toBe('webview2');
+        expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('webview2');
     });
 
     it('defaults invalid saved values and malformed JSON to Electron', () => {
@@ -34,7 +36,7 @@ describe('desktop browser preferences', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         for (const raw of ['null', '{}', '{"defaultEngine":"unknown"}', '{broken']) {
             fs.writeFileSync(path.join(dir, BROWSER_PREFERENCES_FILENAME), raw);
-            expect(readBrowserEngine(dir, 'win32')).toBe('electron');
+            expect(readBrowserEngine(dir, 'win32', 'x64')).toBe('electron');
         }
         expect(warn).toHaveBeenCalled();
     });
