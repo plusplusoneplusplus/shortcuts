@@ -187,6 +187,46 @@ export function useDockOpen(storageKey: string): [boolean, () => void] {
 }
 
 /**
+ * Cross-tree "expanded" flag per workspace: the open panel fills the whole
+ * workspace row, covering the chat and left column. The panel's own button sets
+ * it, and RepoDetail / RepoGroupView hide their main content while it is on.
+ * Session-only on purpose (in memory, never localStorage), so a reload always
+ * brings the chat back.
+ */
+const expandedDocks = new Set<string>();
+const dockExpandedListeners = new Map<string, Set<() => void>>();
+
+function subscribeDockExpanded(workspaceId: string, listener: () => void): () => void {
+    let listeners = dockExpandedListeners.get(workspaceId);
+    if (!listeners) {
+        listeners = new Set();
+        dockExpandedListeners.set(workspaceId, listeners);
+    }
+    listeners.add(listener);
+    return () => {
+        listeners!.delete(listener);
+        if (listeners!.size === 0) dockExpandedListeners.delete(workspaceId);
+    };
+}
+
+/** Set a workspace dock's expanded flag. A no-op when it already has that value. */
+export function setWorkspaceDockExpanded(workspaceId: string, expanded: boolean): void {
+    if (expandedDocks.has(workspaceId) === expanded) return;
+    if (expanded) expandedDocks.add(workspaceId);
+    else expandedDocks.delete(workspaceId);
+    dockExpandedListeners.get(workspaceId)?.forEach(listener => listener());
+}
+
+/** Whether a workspace dock is expanded over the workspace row. */
+export function useWorkspaceDockExpanded(workspaceId: string): boolean {
+    return useSyncExternalStore(
+        useCallback(listener => subscribeDockExpanded(workspaceId, listener), [workspaceId]),
+        () => expandedDocks.has(workspaceId),
+        () => false,
+    );
+}
+
+/**
  * Lightweight controller for dock visibility and selected mode. The header uses
  * its visibility action, and `useWorkspaceDock` passes its mode actions into the
  * panel without pulling the view/width machinery into this module.

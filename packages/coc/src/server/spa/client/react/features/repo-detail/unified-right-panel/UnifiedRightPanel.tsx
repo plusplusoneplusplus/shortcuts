@@ -59,7 +59,9 @@ import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
 import {
     DOCK_MIN_WIDTH,
     SearchIcon,
+    setWorkspaceDockExpanded,
     setWorkspaceDockOpen,
+    useWorkspaceDockExpanded,
     type DockTarget,
 } from '../WorkspaceDockToggle';
 import type { WorkspaceDockController } from '../useWorkspaceDock';
@@ -98,6 +100,7 @@ import { UnifiedPanelTabStrip } from './UnifiedPanelTabStrip';
 import { compressedCanvasTabs, UnifiedPanelCanvasStack } from './UnifiedPanelCanvasStack';
 import { UnifiedPanelToolbar } from './UnifiedPanelToolbar';
 import { UnifiedPanelTreeToggle } from './UnifiedPanelTreeToggle';
+import { UnifiedPanelExpandToggle } from './UnifiedPanelExpandToggle';
 import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
@@ -225,6 +228,14 @@ export function UnifiedRightPanel({
     useEffect(() => {
         setWorkspaceDockOpen(workspaceId, hasVisibleTabsRef.current);
     }, [workspaceId, chatId]);
+
+    // Expanded covers the workspace row; only an open panel can be expanded, and
+    // closing the panel drops the flag so the next open starts at its own width.
+    const expandedFlag = useWorkspaceDockExpanded(workspaceId);
+    const expanded = isOpen && expandedFlag;
+    useEffect(() => {
+        if (!isOpen) setWorkspaceDockExpanded(workspaceId, false);
+    }, [isOpen, workspaceId]);
 
     // Views mounted so far, by tab id. A tab enters this set when it first
     // becomes active and stays until it is closed — that is the keep-alive that
@@ -1486,15 +1497,20 @@ export function UnifiedRightPanel({
     return (
         <div
             ref={panelRootRef}
-            className="unified-right-panel flex h-full flex-shrink-0 border-l border-[#e5e5e5] dark:border-[#333]"
+            className={cn(
+                'unified-right-panel flex h-full border-l border-[#e5e5e5] dark:border-[#333]',
+                expanded ? 'min-w-0 flex-1' : 'flex-shrink-0',
+            )}
             // Collapsed hides the column without unmounting it: tabs, drafts,
             // and terminal sessions all survive a collapse/reopen cycle.
             style={{ display: isOpen ? undefined : 'none' }}
             data-testid="unified-right-panel"
             data-open={isOpen ? 'true' : 'false'}
+            data-expanded={expanded ? 'true' : 'false'}
         >
-            {/* Left-edge resize handle — drag left to widen the right-anchored panel. */}
-            <div
+            {/* Left-edge resize handle — drag left to widen the right-anchored panel.
+                Hidden while expanded: there is nothing left of the panel to resize against. */}
+            {!expanded && <div
                 className={cn(
                     'group relative flex w-2 flex-shrink-0 cursor-col-resize items-center justify-center border-x border-[#e0e0e0] dark:border-[#333]',
                     'hover:bg-[#007acc]/15 active:bg-[#007acc]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc]/40 transition-colors',
@@ -1512,11 +1528,11 @@ export function UnifiedRightPanel({
                 tabIndex={0}
             >
                 <span className="h-full w-px bg-[#c8c8c8] dark:bg-[#5a5a5a] group-hover:w-[2px] group-hover:bg-[#007acc] transition-all" />
-            </div>
+            </div>}
 
             <div
-                className="relative flex min-h-0 flex-col overflow-hidden"
-                style={{ width }}
+                className={cn('relative flex min-h-0 flex-col overflow-hidden', expanded && 'min-w-0 flex-1')}
+                style={expanded ? undefined : { width }}
                 data-testid="unified-panel-body"
             >
                 <UnifiedPanelTabStrip
@@ -1540,6 +1556,12 @@ export function UnifiedRightPanel({
                         />
                     )}
                     trailing={toolbar === null ? navigatorControls('strip') : undefined}
+                    endControls={(
+                        <UnifiedPanelExpandToggle
+                            expanded={expanded}
+                            onToggle={() => setWorkspaceDockExpanded(workspaceId, !expanded)}
+                        />
+                    )}
                 />
 
                 {menuOpen && (

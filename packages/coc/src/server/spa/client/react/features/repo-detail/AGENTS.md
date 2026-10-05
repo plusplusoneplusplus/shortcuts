@@ -136,6 +136,12 @@ it calls `toggleWorkspaceDockOpen` for the selected workspace, matches
 `e.code === 'Backslash'` so non-US layouts work, is skipped while typing in an
 input. The button's tooltip names
 the shortcut; its `aria-label` stays plain. My Work / My Life have no panel.
+The panel's strip ends with an expand toggle. `WorkspaceDockToggle.tsx` keeps
+the expanded flag per workspace in memory only (never localStorage, so a reload
+restores the normal layout). While the dock is open and expanded, `RepoDetail`
+and `RepoGroupView` hide their main content with `display:none`, keeping chats
+mounted, and the panel fills the row with no resize handle. Closing the panel
+clears the flag; the persisted width is untouched.
 Search and Explorer are peer navigator controls inside the panel; selecting one
 opens or switches the navigator, and selecting the active one collapses it
 without closing the resource panel.
