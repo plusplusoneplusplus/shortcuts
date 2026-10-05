@@ -38,44 +38,98 @@ export type MessagingCommand =
 
 export type MessagingControlCommand = Extract<MessagingCommand, { type: 'list-repos' | 'list-remotes' | 'list-topics' | 'create-topic' | 'help' | 'quota' | 'select-repo' | 'select-topic' | 'compact' }>;
 
-interface CommandSpec {
+export interface MessagingHelpCommandSpec {
+    group: string;
+    usage: string;
+    summary: string;
+    example?: string;
+}
+
+interface CommandSpec extends MessagingHelpCommandSpec {
     type: MessagingControlCommand['type'];
     /**
      * Matched against the text after an optional leading `/`; group 1 is the
      * argument, group 2 (list-topics only) the `-v` flag.
      */
     pattern: RegExp;
-    usage: string;
-    summary: string;
 }
 
 export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
-    { type: 'list-repos', pattern: /^list\s+(?:repos?|agents?)$/i, usage: 'list repos', summary: 'list registered repos (alias: list agents)' },
-    { type: 'select-repo', pattern: /^select\s+repos?\s+(.+)$/i, usage: 'select repo <n|name|id>', summary: 'choose the repo for new chats' },
-    { type: 'list-remotes', pattern: /^list\s+remotes?$/i, usage: 'list remotes', summary: 'list remote servers and their repos' },
-    { type: 'list-topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?(\s+-v)?$/i, usage: 'list topics', summary: 'list recent chats (add -v for ids); add n.m or repo@server for a remote repo (read-only)' },
-    { type: 'create-topic', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'your next message starts a new chat' },
-    { type: 'select-topic', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'continue an existing chat' },
-    { type: 'compact', pattern: /^compact(?:\s+(.+))?$/is, usage: 'compact [instructions]', summary: "compact the chat's context (quoted reply's chat, else selected topic)" },
-    { type: 'help', pattern: /^help$/i, usage: 'help', summary: 'show this help' },
-    { type: 'quota', pattern: /^quota$/i, usage: 'quota', summary: 'show AI provider quota' },
+    { type: 'list-repos', group: 'Repos', pattern: /^list\s+(?:repos?|agents?)$/i, usage: 'list repos', summary: 'Show repos (alias: list agents)' },
+    { type: 'select-repo', group: 'Repos', pattern: /^select\s+repos?\s+(.+)$/i, usage: 'select repo <n|name|id>', summary: 'Choose a repo; next message starts a new chat', example: 'select repo 2' },
+    { type: 'list-remotes', group: 'Repos', pattern: /^list\s+remotes?$/i, usage: 'list remotes', summary: 'Show remote servers and repos' },
+    { type: 'list-topics', group: 'Topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?(\s+-v)?$/i, usage: 'list topics [ref] [-v]', summary: 'Show chats; -v adds ids. Remote ref: n.m or repo@server (read-only)', example: 'list topics 1.2 -v' },
+    { type: 'create-topic', group: 'Topics', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'Next message starts a new chat' },
+    { type: 'select-topic', group: 'Topics', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'Continue an existing chat', example: 'select topic 1' },
+    { type: 'compact', group: 'Topics', pattern: /^compact(?:\s+(.+))?$/is, usage: 'compact [instructions]', summary: 'Summarize context: replied-to chat, else selected topic' },
+    { type: 'help', group: 'Tools', pattern: /^help$/i, usage: 'help', summary: 'Show this help' },
+    { type: 'quota', group: 'Tools', pattern: /^quota$/i, usage: 'quota', summary: 'Show AI provider quota' },
+];
+
+/** Mode names drive both parsing and help. */
+export const MESSAGING_MODE_SPECS: readonly { mode: MessagingChatMode; summary: string }[] = [
+    { mode: 'ask', summary: 'Read-only question' },
+    { mode: 'autopilot', summary: 'Run a task' },
+    { mode: 'ralph', summary: 'Work toward a goal' },
+    { mode: 'sentinel', summary: 'Use the dispatcher' },
 ];
 
 const EXPLICIT_CHAT_PATTERN = /^\[([^\]]+)\]\s*(.+)$/s;
-const MODE_PATTERN = /^\/(autopilot|ask|ralph|sentinel)(?:\s+(.*))?$/is;
+const MODE_PATTERN = new RegExp(`^/(${MESSAGING_MODE_SPECS.map(spec => spec.mode).join('|')})(?:\\s+(.*))?$`, 'is');
 const COMMAND_LIKE_PATTERN = /^(?:list|select|create)\s+(?:repos?|agents?|remotes?|(?:chat\s+)?topics?)\b|^(?:list|select|create)$/i;
 
-export const MESSAGING_HELP_TEXT = [
-    'Commands (case-insensitive, leading / optional):',
-    ...MESSAGING_COMMAND_SPECS.map(spec => `${spec.usage} — ${spec.summary}`),
-    '/autopilot <message> — run this one message in autopilot (/ required)',
-    '/ask <message> — run this one message in ask (read-only) mode (/ required)',
-    '/ralph <message> — run this message in ralph mode (/ required)',
-    '/sentinel <message> — chat in sentinel (dispatcher) mode (/ required)',
-    '[chatid] <message> — send to a specific chat',
-    '<message> — chat in the selected topic (keeps its mode), or start a sentinel (dispatcher) chat',
-    'Any other /word replies "Unknown command".',
-].join('\n');
+export interface MessagingHelpFormat {
+    strong?: (text: string) => string;
+    code?: (text: string) => string;
+    escape?: (text: string) => string;
+}
+
+/** Reusable grouped layout for consumers with their own command grammar. */
+export function formatMessagingHelpCommands(
+    specs: readonly MessagingHelpCommandSpec[], format: MessagingHelpFormat = {},
+): string {
+    const plain = (text: string) => text;
+    const escape = format.escape ?? plain;
+    const strong = format.strong ?? escape;
+    const code = format.code ?? escape;
+    return [...new Set(specs.map(spec => spec.group))].map(group => [
+        strong(group),
+        ...specs.filter(spec => spec.group === group).map(spec => [
+            code(spec.usage),
+            escape(spec.summary),
+            ...(spec.example ? [`Example: ${code(spec.example)}`] : []),
+        ].join('\n')),
+    ].join('\n\n')).join('\n\n');
+}
+
+/** Grouped help; Teams supplies Markdown styling, WhatsApp native bold headings. */
+export function formatMessagingHelp(format: MessagingHelpFormat = {}): string {
+    const plain = (text: string) => text;
+    const strong = format.strong ?? plain;
+    const code = format.code ?? plain;
+    const escape = format.escape ?? plain;
+    const sections = [
+        `${strong('CoC help')}\nCommands ignore case; leading / is optional.\n<...> required · [...] optional · n = list number`,
+        formatMessagingHelpCommands(MESSAGING_COMMAND_SPECS, format),
+        [
+            strong('Chat'),
+            'Send plain text to continue the selected chat in its current mode.',
+            'Without a topic, a new sentinel (dispatcher) chat starts.',
+            `${code('[chatid] <message>')}\nSend to a specific chat.`,
+        ].join('\n'),
+        [
+            strong('Modes (/ required)'),
+            ...MESSAGING_MODE_SPECS.map(spec => `${code(`/${spec.mode} <message>`)} — ${escape(spec.summary)}`),
+            'Set the mode for this message; prefixes can also target a chat.',
+            `Example: ${code('/ask [chatid] What changed?')}`,
+        ].join('\n'),
+        'Unknown /commands reply with this help.',
+    ];
+    return sections.join('\n\n');
+}
+
+/** Plain-text fallback for consumers without platform styling. */
+export const MESSAGING_HELP_TEXT = formatMessagingHelp();
 
 function parseChat(text: string, mode?: MessagingChatMode): MessagingCommand {
     const explicit = EXPLICIT_CHAT_PATTERN.exec(text);

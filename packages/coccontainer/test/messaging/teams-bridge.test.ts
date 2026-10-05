@@ -1155,6 +1155,24 @@ describe('TeamsBridge', () => {
         });
     });
 
+    it('delivers container help as Teams HTML without Markdown leaking', async () => {
+        const bridge = createBridge();
+        await bridge.start();
+        const bot = lastBot();
+        await bot.opts.onMessage({
+            channelId: 'channel-test', messageId: 'help-layout', text: '/help',
+            senderName: 'Alice <Admin>', senderAadId: 'aad-alice-123',
+        });
+        const call = bot.send.mock.calls.find((args: any[]) => args[1]?.includes('CoC help'));
+        expect(call).toBeDefined();
+        expect(call![1]).toContain('<strong>Alice &lt;Admin&gt;</strong>');
+        expect(call![1]).toContain('<strong>Topics</strong>');
+        expect(call![1]).toContain('<code>/select repo &lt;name|#&gt;</code>');
+        expect(call![1]).not.toMatch(/`|\*\*|<table/);
+        expect(call![2]?.mentions).toEqual([{ id: 'aad-alice-123', displayName: 'Alice <Admin>' }]);
+        await bridge.stop();
+    });
+
     describe('[chatId] prefix routing', () => {
         it('should route message to specific process when [chatId] prefix is used', async () => {
             const bridge = createBridge();

@@ -41,32 +41,27 @@ function optionByText(question: QuestionShape, text: string) {
 /** Parse a chat reply into an answer for `question`. */
 export function parseQuestionReply(question: QuestionShape, text: string): QuestionReply {
     const reply = text.trim();
+    if (!reply) return { kind: 'invalid', error: 'Please reply with your answer.' };
     if (/^skip$/i.test(reply)) return { kind: 'skip' };
     const options = question.options ?? [];
     if (question.type === 'yes-no' || question.type === 'confirm') {
         if (/^(y|yes)$/i.test(reply)) return { kind: 'answer', value: true };
         if (/^(n|no)$/i.test(reply)) return { kind: 'answer', value: false };
-        return { kind: 'invalid', error: 'Please reply yes or no.' };
     }
     if (hasOptions(question)) {
-        const range = `a number from 1 to ${options.length}`;
         if (question.type === 'select') {
-            if (/^\d+$/.test(reply)) {
-                const option = options[Number(reply) - 1];
-                return option ? { kind: 'answer', value: option.value } : { kind: 'invalid', error: `Please reply with ${range}.` };
-            }
+            const option = /^\d+$/.test(reply) ? options[Number(reply) - 1] : optionByText(question, reply);
+            if (option) return { kind: 'answer', value: option.value };
+        } else {
             const option = optionByText(question, reply);
-            return option ? { kind: 'answer', value: option.value } : { kind: 'invalid', error: `Please reply with ${range}.` };
+            if (option) return { kind: 'answer', value: [option.value] };
+            const parts = reply.split(/[\s,]+/).filter(Boolean);
+            if (parts.length && parts.every(part => /^\d+$/.test(part) && options[Number(part) - 1])) {
+                return { kind: 'answer', value: [...new Set(parts.map(part => options[Number(part) - 1].value))] };
+            }
         }
-        const option = optionByText(question, reply);
-        if (option) return { kind: 'answer', value: [option.value] };
-        const parts = reply.split(/[\s,]+/).filter(Boolean);
-        if (parts.length && parts.every(part => /^\d+$/.test(part) && options[Number(part) - 1])) {
-            return { kind: 'answer', value: [...new Set(parts.map(part => options[Number(part) - 1].value))] };
-        }
-        return { kind: 'invalid', error: `Please reply with numbers from 1 to ${options.length}, like 1,3.` };
     }
-    return reply ? { kind: 'answer', value: reply } : { kind: 'invalid', error: 'Please reply with your answer.' };
+    return { kind: 'answer', value: reply };
 }
 
 // ============================================================================
@@ -90,7 +85,7 @@ export function questionHint(question: QuestionShape): string {
         : hasOptions(question) && question.type === 'multi-select' ? (count > 1 ? '1,2' : '1')
             : hasOptions(question) ? (count > 1 ? `1-${count}` : '1')
                 : 'your answer';
-    return `Reply: ${example} or "skip"`;
+    return `Reply: ${example}${example === 'your answer' ? '' : ', your own answer,'} or "skip"`;
 }
 
 export function buildQuestionLayout(question: AskUserSSEPayload, index: number, total: number): QuestionLayout {

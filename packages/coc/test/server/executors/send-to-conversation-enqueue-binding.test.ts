@@ -44,6 +44,9 @@ import {
 import { prepareTaskForEnqueue } from '../../../src/server/routes/queue-enqueue';
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { ProcessLifecycleRunner } from '../../../src/server/executors/process-lifecycle-runner';
+import { writeRepoPreferences } from '../../../src/server/preferences-handler';
+import { resolveChatTurnModel } from '../../../src/server/executors/chat-turn-policy-resolver';
+import { launchRalphSession } from '../../../src/server/ralph/ralph-launch-service';
 import { TitleGenerationService } from '../../../src/server/executors/title-generator';
 
 const WS_ID = 'ws-spawn';
@@ -147,6 +150,79 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
 
         expect(result.error).toMatch(/Unknown workspaceId/);
         expect(bridge.createAggregateQueueFacade().getQueued()).toHaveLength(0);
+    });
+
+    it.each(['ask', 'autopilot', 'ralph'] as const)('executes explicit Auto %s in the target workspace with target selections', async mode => {
+        const { bridge, store } = setup();
+        const targetRoot = path.join(os.tmpdir(), 'coc-auto-target');
+        (store.getWorkspaces as any).mockResolvedValue([
+            { id: WS_ID, rootPath: ROOT }, { id: 'ws-target', rootPath: targetRoot },
+        ]);
+        await store.updateProcess(PARENT_PID, { metadata: {
+            provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'low', mode: 'sentinel',
+        } });
+        bridge.registerRepoId(WS_ID, ROOT);
+        bridge.registerRepoId('ws-target', targetRoot);
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-delegate-auto-'));
+        writeRepoPreferences(dataDir, WS_ID, { defaultModels: { ask: 'gpt-5.5', task: 'gpt-5.5' } });
+        writeRepoPreferences(dataDir, 'ws-target', { defaultModels: { ask: 'haiku', task: 'sonnet' } });
+        const prepare = (input: CreateTaskInput) => prepareTaskForEnqueue(input, {
+            getDefaultProvider: () => 'codex', isAutoProviderRoutingActive: () => true,
+        });
+        const { tool } = createSendToConversationTool({
+            store, workspaceId: WS_ID, parentProcessId: PARENT_PID,
+            enqueueChat: async input => {
+                await prepare(input);
+                return enqueueViaBridge(input, bridge, freshState(), ROOT, store);
+            },
+            launchRalph: input => launchRalphSession(input, {
+                store, dataDir,
+                bridge: { enqueue: async (task: CreateTaskInput) => {
+                    await prepare(task);
+                    return enqueueViaBridge(task, bridge, freshState(), ROOT, store);
+                } } as any,
+            }),
+        });
+        try {
+            for (const overrides of [{}, { effortTier: 'medium' as const }, { model: 'opus', effortTier: 'high' as const }]) {
+                const result = await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'ws-target', ...overrides });
+                if ('error' in result) throw new Error(result.error);
+                const task = bridge.getTask(result.processId.slice('queue_'.length))!;
+                expect(task.repoId).toBe('ws-target');
+                expect(task.payload.workingDirectory).toBe(targetRoot);
+                expect(task.payload.provider).toBeUndefined();
+                expect(task.config?.model).toBe(overrides.model);
+                expect(task.config?.reasoningEffort).toBeUndefined();
+                expect(task.payload.context).toMatchObject({
+                    spawnedFromProcessId: PARENT_PID, autoProviderRouting: { requested: true },
+                });
+                const resolveDefaultProvider = vi.fn().mockResolvedValue({
+                    provider: 'claude', selectedByAuto: true, fallbackUsed: false, warnings: [], decisions: [],
+                });
+                const executeByTypeFn = vi.fn().mockResolvedValue({ response: 'done' });
+                const runner = new ProcessLifecycleRunner(store, dataDir, vi.fn(), 'codex');
+                expect((await runner.run(task, {
+                    cancelledTasks: new Set(), executeFollowUpFn: vi.fn(), executeByTypeFn,
+                    getWorkingDirectoryFn: () => targetRoot, resolveDefaultProvider,
+                    getEffortTiersForProvider: provider => provider === 'claude'
+                        ? { medium: { model: 'opus', reasoningEffort: 'high' } } : undefined,
+                })).success).toBe(true);
+                expect(resolveDefaultProvider).toHaveBeenCalledExactlyOnceWith({ forceAuto: true });
+                expect(executeByTypeFn.mock.calls[0][0].payload.provider).toBe('claude');
+                expect(task.config?.model).toBe(overrides.model || (overrides.effortTier ? 'opus' : undefined));
+                expect(task.config?.reasoningEffort).toBe(!overrides.model && overrides.effortTier ? 'high' : undefined);
+                // The executor's shared policy reads the target workspace's mode defaults.
+                expect(resolveChatTurnModel({
+                    provider: 'claude', requestedModel: task.config?.model, dataDir,
+                    workspaceId: task.payload.workspaceId as string,
+                    defaultModelMode: mode === 'ask' ? 'ask' : 'task',
+                })).toBe(overrides.model || (overrides.effortTier ? 'opus' : mode === 'ask' ? 'haiku' : 'sonnet'));
+                expect((await store.getProcess(result.processId))?.metadata?.provider).toBe('claude');
+            }
+        } finally {
+            bridge.dispose();
+            fs.rmSync(dataDir, { recursive: true, force: true });
+        }
     });
 
     it('resolves an explicit provider effort tier through queue preparation without persisting raw effortTier', async () => {

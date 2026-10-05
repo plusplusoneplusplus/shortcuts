@@ -489,7 +489,16 @@ export function validateAndParseTask(taskSpec: any): TaskValidationResult {
         ? payload.provider
         : 'copilot';
     const rawModel = taskSpec.config?.model ?? (typeof payload.model === 'string' ? payload.model : undefined);
-    const resolvedModel = resolveModelForProvider(taskProvider, rawModel);
+    // Auto selects a concrete provider at execution; preserve explicit models
+    // until compatibility can be checked against that provider.
+    const deferAutoModel = payload.kind === 'chat'
+        && !payload.processId
+        && typeof rawModel === 'string'
+        && !VALID_CHAT_PROVIDERS.has(payload.provider)
+        && payload.context?.autoProviderRouting?.requested === true;
+    const resolvedModel = deferAutoModel
+        ? { model: rawModel.trim() || undefined, coerced: false, requestedModel: rawModel.trim() }
+        : resolveModelForProvider(taskProvider, rawModel);
     if (resolvedModel.coerced) {
         getLogger().warn(
             LogCategory.AI,

@@ -579,3 +579,24 @@ describe('validateAndParseTask – chat chatStyle', () => {
         expect(result.valid).toBe(true);
     });
 });
+
+
+describe('validateAndParseTask — Auto model compatibility is deferred', () => {
+    it.each(['opus', 'anthropic/claude-sonnet'])('preserves explicit %s until Auto selects its provider', model => {
+        const result = validateAndParseTask({
+            type: 'chat', config: { model },
+            payload: { kind: 'chat', prompt: 'work', context: { autoProviderRouting: { requested: true } } },
+        });
+        expect(result.valid).toBe(true);
+        expect(result.input?.config?.model).toBe(model);
+    });
+
+    it('keeps concrete provider compatibility when an Auto marker is also present', () => {
+        const result = validateAndParseTask({
+            type: 'chat', config: { model: 'opus' },
+            payload: { kind: 'chat', prompt: 'work', provider: 'codex', context: { autoProviderRouting: { requested: true } } },
+        });
+        expect(result.valid).toBe(true);
+        expect(result.input?.config?.model).toBeUndefined();
+    });
+});

@@ -774,10 +774,15 @@ describe('sentinel dispatcher directive', () => {
     });
 
     it('tells the model to hand off with send_to_conversation in autopilot and confirm in one line', () => {
+        const directive = buildChatModeDirective({ mode: 'sentinel' })!;
         expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('dispatcher');
         expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('`send_to_conversation` in create mode');
         expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('`mode: "autopilot"`');
         expect(SENTINEL_DISPATCHER_DIRECTIVE).toContain('one short line');
+        expect(directive).toContain('Prefer `provider: "auto"`');
+        expect(directive).toContain('unless the user requests a particular provider/model');
+        expect(directive).toContain('target workspace/server routing rules');
+        expect(directive).toContain('do not carry over this chat\'s provider, model, or effort');
     });
 
     it('is selected only by sentinel mode', () => {
@@ -822,6 +827,15 @@ describe('sentinel dispatcher directive', () => {
         expect(shouldInjectChatModeDirective({ ...base, turns })).toBe(false);
         // Prompt side, with authoritative (absent) instructions and plan context.
         expect(shouldInjectChatModeDirective({ ...base, turns, checkInstructionDrift: true, checkPlanContextDrift: true })).toBe(false);
+    });
+
+    it('re-injects Auto guidance into a resumed sentinel whose stored directive lacks it', () => {
+        const current = buildChatModeDirective({ mode: 'sentinel' })!;
+        const previous = current.split('\n').filter(line => !line.startsWith('- Prefer `provider: "auto"`')).join('\n');
+        expect(shouldInjectChatModeDirective({
+            mode: 'sentinel', previousMode: 'sentinel', canResumeSession: true,
+            turns: [{ role: 'user', content: 'Hi', timestamp: new Date(), chatModeContext: previous }] as any,
+        })).toBe(true);
     });
 
     it('re-injects once for a sentinel chat whose stored marker predates the dispatcher rules', () => {

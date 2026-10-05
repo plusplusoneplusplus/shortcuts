@@ -170,7 +170,7 @@ describe('Teams ask_user question relay', () => {
         await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
         expect(questionCalls()[0]).toEqual([formatTeamsQuestion({
             progress: '(Question 1 of 2)', question: 'Database?',
-            options: ['1. Postgres', '2. SQLite'], hint: 'Reply: 1-2 or "skip"',
+            options: ['1. Postgres', '2. SQLite'], hint: 'Reply: 1-2, your own answer, or "skip"',
         }), 'root', 'html']);
         await handle(inbound('r1', 'Postgres', 'root'));
         await vi.waitFor(() => expect(questionCalls()).toHaveLength(2));
@@ -191,6 +191,51 @@ describe('Teams ask_user question relay', () => {
         // Nothing pending: a top-level post is an ordinary request again.
         await handle(inbound('next', 'another question'));
         expect(String(sendMessage.mock.calls.at(-1)![0])).toMatch(/^💬 /);
+    });
+
+    it.each(['select', 'multi-select', 'yes-no', 'confirm'] as const)('delivers a thread clarification for %s once without a follow-up turn', async type => {
+        const clarification = "i need you to explain this, i don't think we have cloud or local";
+        const request = await startRequest();
+        const { tool, result, emitted } = ask(request, [{
+            question: 'How should we transcribe?', type,
+            ...(type === 'select' || type === 'multi-select' ? { options: [
+                { value: 'cloud', label: 'Cloud' }, { value: 'local', label: 'Local' }, { value: 'both', label: 'Both' },
+            ] } : {}),
+        }]);
+        await vi.waitFor(() => expect(hub.pendingCount()).toBe(1));
+        const reply = inbound('clarification', `  ${clarification}  `, 'root');
+        await handle(reply);
+        expect((await result)[0]).toMatchObject({ answer: clarification, skipped: false });
+        expect(tool.answerQuestion(emitted[0], 'cloud')).toBe(false);
+        const sends = sendMessage.mock.calls.length;
+        await handle(reply);
+        expect(react.mock.calls.filter(([msg]) => msg.messageId === 'clarification')).toHaveLength(1);
+        expect(sendMessage.mock.calls).toHaveLength(sends);
+        expect(tasks.size).toBe(1);
+        expect(followUps).toEqual([]);
+        expect(hub.pendingCount()).toBe(0);
+    });
+
+    it('keeps approval prompts in the dashboard and denies a clarification answer', async () => {
+        const request = await startRequest();
+        let questionId = '';
+        const tool = createAskUserTool({
+            computeTurnIndex: () => 1,
+            emitQuestions: (payloads, control) => {
+                questionId = payloads[0].questionId;
+                const questions = payloads.filter(p => !p.approval);
+                if (questions.length) hub.relay({ ...request, questions, control });
+            },
+        });
+        const decision = tool.askApproval({
+            kind: 'dangerous-command', command: 'rm -rf /', ruleId: 'r', description: 'd', matchedSegment: 'rm',
+        });
+        expect(questionCalls()).toEqual([]);
+        expect(hub.pendingCount()).toBe(0);
+        await handle(inbound('clarification', 'please explain before proceeding', 'root'));
+        expect(tool.hasPending()).toBe(true);
+        expect(tool.answerQuestion(questionId, 'please explain before proceeding')).toBe(true);
+        expect(await decision).toBe('deny');
     });
 
     it('locates a follow-up turn by its relay request id', async () => {
@@ -249,9 +294,9 @@ describe('formatTeamsQuestion', () => {
     it('renders escaped, phone-readable HTML', () => {
         expect(formatTeamsQuestion({
             progress: '(Question 2 of 3)', question: 'Use <b>x</b>?\nReally', options: ['1. A & B', '2. C'],
-            hint: 'Reply: 1-2 or "skip"',
+            hint: 'Reply: 1-2, your own answer, or "skip"',
         })).toBe('<p><em>(Question 2 of 3)</em></p><p><strong>Use &lt;b&gt;x&lt;/b&gt;?<br>Really</strong></p>'
-            + '<p>1. A &amp; B<br>2. C</p><p>Reply: 1-2 or &quot;skip&quot;</p>');
+            + '<p>1. A &amp; B<br>2. C</p><p>Reply: 1-2, your own answer, or &quot;skip&quot;</p>');
         expect(formatTeamsQuestion({ question: 'Name?', options: [], hint: 'Reply: your answer or "skip"' }))
             .toBe('<p><strong>Name?</strong></p><p>Reply: your answer or &quot;skip&quot;</p>');
     });

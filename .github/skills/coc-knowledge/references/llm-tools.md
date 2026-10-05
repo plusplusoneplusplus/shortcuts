@@ -59,10 +59,18 @@ Create mode omits `processId` and enqueues a brand-new visible chat through the 
 in-process queue path as `POST /api/queue`. It defaults to the caller workspace and Ask mode
 (Autopilot when the calling chat is a `sentinel` dispatcher; an explicit `mode` always wins),
 can target another registered workspace, links spawned chats via
-`payload.context.spawnedFromProcessId`, and accepts a concrete `provider` (`copilot`, `codex`,
-`claude`, `opencode`) plus optional `effortTier` (`very-low`…`high`). An explicit create-mode
-provider uses that provider's defaults instead of inheriting parent model/effort; incompatible
-provider/model/tier combinations fail without fallback. Optional create-mode `title` is
+`payload.context.spawnedFromProcessId`, and accepts `provider: "auto"` or a concrete provider
+(`copilot`, `codex`, `claude`,
+`opencode`) plus optional `effortTier` (`very-low`…`high`). Explicit Auto carries
+`context.autoProviderRouting.requested` without a concrete provider or inherited model/effort;
+the target server selects the provider at execution using its existing routing rules.
+
+Explicit models survive queue validation; tiers expand against the selected provider, and
+incompatible overrides fail before SDK execution. Auto requires the existing routing feature.
+Omitted provider preserves local parent inheritance. Explicit concrete providers use their own
+defaults without parent model/effort; incompatible provider/model/tier combinations fail.
+
+Optional create-mode `title` is
 trimmed, must be non-empty and at most 80 characters, and travels through canonical task
 validation as `displayName` and `payload.customTitle`. Queue SQLite serialization preserves
 the payload, and queue API serializers project its custom title into the canonical top-level
@@ -72,8 +80,9 @@ generation writes `title` while queue display-name sync prefers the current `cus
 supplied titles remain visible across turns and restarts. Omitting the title keeps automatic
 naming.
 
-The tool description asks agents for short, task-specific create-mode titles. The bundled
-`delegate` skill requires agents to include a title in its handoff calls; the JSON schema
+The tool and Sentinel mode directive prefer Auto delegation unless the user requests a
+particular provider/model. The tool description asks for short, task-specific create-mode titles.
+The bundled `delegate` skill requires agents to include a title in its handoff calls; the JSON schema
 keeps only `content` unconditionally required so untitled creation and post mode stay valid.
 
 Create mode with `mode: "ralph"` launches a Ralph session straight into iteration 1 (no
@@ -92,7 +101,9 @@ or a repo name matched case-insensitively over the workspace directory (exact na
 `id (server)`; no match errors and points at `list_workspaces`. A remote target is started on
 that server's own `POST /api/queue` (Ralph: `POST /api/ralph-launch`, which accepts `title`) at its
 effective URL via `WorkspaceDirectory.startRemoteChat`, with no local fallback for offline or
-unreachable servers. Only an explicit `provider`, `model`, or `effortTier` travels; parent
+unreachable servers. Explicit Auto becomes the remote queue routing marker
+(Ralph: `autoProviderRouting: true`).
+Only explicit concrete `provider`, `model`, or `effortTier` overrides travel; parent
 selections are not inherited, so the remote's defaults apply, and no spawn link is set. The
 result's `openLink` is the dashboard clone route `#repos/<encoded clone key>/chats/<processId>`.
 Post mode with a `remote:` processId is rejected as not supported yet.
@@ -296,7 +307,8 @@ opt in based on `options.tools`; no executor changes are needed. See
   mode, with the question batch id as fallback request id. Teams origins include the original
   `threadId` when known. Disconnected job questions stay in the dashboard without reconnect
   re-posting. Dashboard jobs without an origin and approvals stay dashboard-only; registration
-  never varies.
+  never varies. Ordinary reply parsing and free-text fallback are owned by the
+  [server messaging relay](server-architecture.md#messaging-ask_user-question-relay).
 - **Ralph grill exception:** the grill terminal round strips `ask_user` from the already-built
   array to end the questioning phase. It is the one path that mutates the tool block mid-turn.
   Because it runs after the system message is assembled, the Codex discovery block below can

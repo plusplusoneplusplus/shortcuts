@@ -188,6 +188,27 @@ describe('WhatsApp workspace command routing', () => {
         expect(bindings.findMessage('accepted')).toBeDefined();
     });
 
+    it('sends phone-friendly native WhatsApp help without changing workspace or topic', async () => {
+        bindings.selectRepo('ws-b');
+        bindings.selectTopic('ws-b', 'topic-b');
+        await router.handle(inbound('/help', 'styled-help'));
+        const help = send.mock.lastCall![0];
+        expect(help).toMatch(/^\*CoC help\*\n/);
+        for (const group of ['Repos', 'Topics', 'Tools', 'Chat', 'Modes (/ required)']) {
+            expect(help).toContain(`\n\n*${group}*\n`);
+        }
+        expect(help).toContain('select repo <n|name|id>\n');
+        expect(help).toContain('Example: list topics 1.2 -v');
+        expect(help).not.toMatch(/\*\*|`|<\/?(?:p|strong|code|br|table)\b/);
+        expect(help.length).toBeLessThan(4096);
+        await router.handle(inbound('/unknown', 'styled-invalid'));
+        expect(send.mock.lastCall).toEqual([`Unknown command or invalid argument.\n\n${help}`, 'styled-invalid']);
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('topic-b');
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(react).not.toHaveBeenCalled();
+    });
+
     it('answers help, list agents and quota without enqueueing, and records the replies as own messages', async () => {
         await router.handle(inbound('HELP', 'help'));
         expect(send).toHaveBeenLastCalledWith(expect.stringContaining('select topic <n|id>'), 'help');

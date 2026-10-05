@@ -157,7 +157,9 @@ references before editing. Paths are package-relative.
   state on scan failure. Wakeups persist before arming.
 - Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
   the mode directive (`chat-mode-directive.ts`); `send_to_conversation` create mode from a
-  sentinel defaults to `autopilot`. No workspace ownership or scan cron; any number may coexist.
+  sentinel defaults to `autopilot`. Delegation prefers explicit `provider: "auto"` unless the user
+  requests a particular provider/model; Auto uses target routing without parent AI inheritance.
+  Omitted provider keeps ordinary inheritance. No workspace ownership or scan cron; any number may coexist.
   Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
 - Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
   Commit-mode conflicts abort; the active checkout/HEAD never moves. Worktree execution
@@ -186,8 +188,9 @@ references before editing. Paths are package-relative.
   relay raw exceptions or partial output, or borrow another request's error. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
 - Teams/WhatsApp command grammar is one spec table in
-  `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`, generated
-  `MESSAGING_HELP_TEXT`); unknown `/word` or malformed list/select/create replies
+  `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`,
+  `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp
+  bold or Teams Markdown converted to safe HTML by the manager; unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
   answers selection, help, quota and `compact [instructions]` for both routers via a
   `MessagingSelection` adapter. With no selected repo (or a removed one), plain messages
@@ -229,7 +232,9 @@ references before editing. Paths are package-relative.
   one is pending) answers. Job questions use the saved group/thread even after repo
   selection changes; Teams origins retain `threadId` when known. Disconnected job
   questions stay dashboard-only; failed posts resolve `unavailable`; turn end
-  clears pending ones; approvals stay dashboard-only.
+  clears pending ones; approvals stay dashboard-only. Ordinary replies preserve
+  recognized choice/boolean/array mappings and pass other non-empty text to the
+  AI unchanged apart from trimming. Only exact `skip` skips; empty replies reject.
 - Chats handed off by `send_to_conversation` create mode from a WhatsApp/Teams turn
   (origin via the ask_user relay's `locateOrigin`; local targets only, not Ralph) get
   `metadata.messagingOrigin` and a direct notice `<repo> · <title> · ✅/❌/⏹` per

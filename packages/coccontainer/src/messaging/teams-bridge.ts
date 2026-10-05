@@ -795,7 +795,8 @@ export class TeamsBridge {
 
         // Format: sender name + command response
         const senderName = originalMsg.senderName ?? 'User';
-        const formatted = `**${senderName}** ${text}`;
+        const safeSenderName = senderName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const formatted = `<strong>${safeSenderName}</strong> ${text}`;
 
         try {
             const mentions = originalMsg.senderAadId && originalMsg.senderName
