@@ -108,6 +108,8 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
 
     const chatPanel = (hideEmptyHeader: boolean) => (
         <PrChatPanel
+            sourceSelectionId={attachmentDestinationId}
+            newChatSeedDestinationId={attachmentDestinationId ?? workspaceId}
             workspaceId={workspaceId}
             prId={prId}
             filePath={model.selectedFilePath ?? undefined}

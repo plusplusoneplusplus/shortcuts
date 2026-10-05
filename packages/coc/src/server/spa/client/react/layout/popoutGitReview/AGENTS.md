@@ -34,6 +34,11 @@ here.
   checks the concrete owner. The shell forwards it as `attachmentDestinationId`
   through every adapter to `FileDiffPanel`; omitted owners retain the panel's
   workspace fallback. Diff payloads and source factories keep raw workspace IDs.
+- Commit and PR adapters forward the same owner to review-chat panels and frames.
+  Empty review composers opt into `newChatSeedDestinationId` for that owner;
+  active chats receive `sourceSelectionId`. Closed, minimized or hidden review
+  composers leave seeds buffered until an eligible composer mounts or becomes
+  visible. Inline review hosts do not opt into this buffer.
 - Capabilities are opt-in via optional `progress` / `classification` arguments.
   Branch-range currently opts into neither, which is why its rail hides the
   priority and filter affordances.

@@ -108,7 +108,8 @@ references before editing. Paths are package-relative.
   selection context and file I/O; local owners use an explicit null route.
   Fallback seeds retain that destination, and drains preserve other owners’ items.
   Activity NewChatArea opts into buffered seeds with newChatSeedDestinationId;
-  shared notes/review composers leave it unset. Pending seeds retain their owner
+  pop-out commit/PR review composers opt in with their diff panel's owner.
+  Shared notes and inline review composers leave it unset. Pending seeds retain their owner
   through capability resolution and are discarded when that owner changes.
 - Copilot decisions use a two-minute deadline per initial/repair attempt.
   Preserve caller cancellation and explicit backend timeout overrides.

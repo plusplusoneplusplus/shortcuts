@@ -12,6 +12,8 @@ export type BindExistingChatFn = (processIdOrTaskId: string) => Promise<boolean>
 
 export interface CommitChatPanelProps {
     workspaceId: string;
+    sourceSelectionId?: string;
+    newChatSeedDestinationId?: string;
     commitHash: string;
     commitMessage?: string;
     onClose: () => void;
@@ -24,7 +26,7 @@ export interface CommitChatPanelProps {
     bindExistingChatRef?: MutableRefObject<BindExistingChatFn | null>;
 }
 
-export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClose, hideEmptyHeader = false, bindExistingChatRef }: CommitChatPanelProps) {
+export function CommitChatPanel({ workspaceId, sourceSelectionId, newChatSeedDestinationId, commitHash, commitMessage, onClose, hideEmptyHeader = false, bindExistingChatRef }: CommitChatPanelProps) {
     const { taskId, loading, error, createChat, startFreshChat, startingFresh, bindExistingChat } = useCommitChatBinding({ workspaceId, commitHash, commitMessage });
 
     useEffect(() => {
@@ -93,6 +95,8 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
             {!taskId && !loading && !error && (
                 <div className="min-h-0 flex-1">
                     <InitialChatComposer
+                        sourceSelectionId={sourceSelectionId}
+                        newChatSeedDestinationId={newChatSeedDestinationId}
                         workspaceId={workspaceId}
                         onSubmit={handleComposerSubmit}
                         heroTitle="Chat about this commit"
@@ -111,6 +115,7 @@ export function CommitChatPanel({ workspaceId, commitHash, commitMessage, onClos
             {taskId && !loading && (
                 <ChatPreferencesProvider workspaceId={workspaceId}>
                     <ChatDetail
+                        sourceSelectionId={sourceSelectionId}
                         taskId={taskId}
                         workspaceId={workspaceId}
                         variant="floating"

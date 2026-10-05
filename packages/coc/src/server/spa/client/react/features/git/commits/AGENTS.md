@@ -16,6 +16,15 @@ The review opener carries `attachmentDestinationId` as URL `sourceSelectionId`;
 endpoint lookup uses that concrete owner, with explicit local owners staying on
 the page origin. Omitted owners retain workspace-based lookup.
 
+## Review composer ownership
+
+`CommitChatPanel`, `PrChatPanel` and `CommitChatPlacementFrame` forward
+`sourceSelectionId` to active `ChatDetail` and empty `InitialChatComposer`.
+Buffered selection seeds require explicit `newChatSeedDestinationId` opt-in.
+Pop-out review adapters supply the same owner as their diff panels for both side
+and lens placements. Inline review hosts leave seed consumption unset, so they
+cannot drain Activity fallback selections.
+
 ## CommitList interaction kernel
 
 `CommitList.tsx` owns only the public prop contract and wiring. Behavior is

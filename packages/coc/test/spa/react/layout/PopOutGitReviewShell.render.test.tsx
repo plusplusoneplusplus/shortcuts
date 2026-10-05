@@ -169,6 +169,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
         commitHash: string;
         commitMessage?: string;
         hideEmptyHeader?: boolean;
+        sourceSelectionId?: string;
+        newChatSeedDestinationId?: string;
     }) => (
         <div
             data-testid="commit-chat-panel"
@@ -176,6 +178,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitChat
             data-commit-hash={props.commitHash}
             data-commit-message={props.commitMessage ?? ''}
             data-hide-empty-header={props.hideEmptyHeader ? 'true' : 'false'}
+            data-owner={props.sourceSelectionId}
+            data-seed-owner={props.newChatSeedDestinationId}
         />
     ),
 }));
@@ -188,6 +192,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/PrChatPane
         repoId?: string;
         prTitle?: string;
         hideEmptyHeader?: boolean;
+        sourceSelectionId?: string;
+        newChatSeedDestinationId?: string;
     }) => (
         <div
             data-testid="pr-chat-panel"
@@ -197,6 +203,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/PrChatPane
             data-repo-id={props.repoId ?? ''}
             data-pr-title={props.prTitle ?? ''}
             data-hide-empty-header={props.hideEmptyHeader ? 'true' : 'false'}
+            data-owner={props.sourceSelectionId}
+            data-seed-owner={props.newChatSeedDestinationId}
         />
     ),
 }));
@@ -411,7 +419,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
     it('opens commit popout chat as a desktop lens and pins back to the right column', async () => {
         mocks.isCommitChatLensEnabled.mockReturnValue(true);
-        window.history.pushState({}, '', '/?workspace=ws1#popout/git-review/abc123');
+        window.history.pushState({}, '', '/?workspace=ws1&sourceSelectionId=remote%3Aone%3Aws1&cloneBaseUrl=https%3A%2F%2Fone.example#popout/git-review/abc123');
         mocks.getCommit.mockResolvedValue({
             hash: 'abc123',
             shortHash: 'abc123',
@@ -431,6 +439,8 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-hash')).toBe('abc123');
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-commit-message')).toBe('Fix app');
         expect(screen.getByTestId('commit-chat-panel').getAttribute('data-hide-empty-header')).toBe('true');
+        expect(screen.getByTestId('commit-chat-panel').getAttribute('data-owner')).toBe('remote:one:ws1');
+        expect(screen.getByTestId('commit-chat-panel').getAttribute('data-seed-owner')).toBe('remote:one:ws1');
 
         fireEvent.click(screen.getByTestId('commit-chat-pin-btn'));
 
@@ -505,7 +515,7 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
 
     it('opens PR popout chat as a desktop lens and pins back to the right column', async () => {
         mocks.isCommitChatLensEnabled.mockReturnValue(true);
-        window.history.pushState({}, '', '/?workspace=ws1&repo=repo1#popout/git-review/pr/42');
+        window.history.pushState({}, '', '/?workspace=ws1&repo=repo1&sourceSelectionId=remote%3Aone%3Aws1&cloneBaseUrl=https%3A%2F%2Fone.example#popout/git-review/pr/42');
 
         render(<PopOutGitReviewShell />);
 
@@ -529,6 +539,8 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         expect(panel.getAttribute('data-repo-id')).toBe('repo1');
         expect(panel.getAttribute('data-pr-title')).toBe('Fix PR risk');
         expect(panel.getAttribute('data-hide-empty-header')).toBe('true');
+        expect(panel.getAttribute('data-owner')).toBe('remote:one:ws1');
+        expect(panel.getAttribute('data-seed-owner')).toBe('remote:one:ws1');
 
         fireEvent.click(screen.getByTestId('pr-chat-pin-btn'));
 

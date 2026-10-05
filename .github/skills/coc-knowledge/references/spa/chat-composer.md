@@ -242,8 +242,11 @@ each seed, defaulting to each payload's source workspace when omitted.
 `drainNewChatSeedContext(destinationId)` preserves other owners' seeds; an
 omitted destination drains all. `NewChatArea` opts the shared initial composer
 into seed consumption with `newChatSeedDestinationId` set to its
-`sourceSelectionId` or local workspace id. Notes and review adapters leave that
-prop unset. `ChatListPane` pushes with its concrete Activity routing target.
+`sourceSelectionId` or local workspace id. Pop-out commit/PR adapters pass their
+diff panel's owner through review panels and placement frames to both the
+initial seed consumer and active `ChatDetail`. Closed or hidden review composers
+preserve buffered selections until opened. Notes and inline review adapters
+leave seed consumption unset. `ChatListPane` pushes with its Activity routing target.
 Visible, feature-enabled consumers retain the destination while capability
 resolution is pending and discard stale-owner items. File and diff seeds focus
 the input after validation, including duplicate feedback. Consumers retry on

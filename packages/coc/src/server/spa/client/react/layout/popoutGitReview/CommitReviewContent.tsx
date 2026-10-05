@@ -124,6 +124,8 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
                         containerTestId="commit-popout-chat-container"
                         framed={(
                             <CommitChatPlacementFrame
+                                sourceSelectionId={attachmentDestinationId}
+                                newChatSeedDestinationId={attachmentDestinationId ?? workspaceId}
                                 workspaceId={workspaceId}
                                 commitHash={commitHash}
                                 commitMessage={commit?.subject}
@@ -134,6 +136,8 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
                         )}
                         plain={(
                             <CommitChatPanel
+                                sourceSelectionId={attachmentDestinationId}
+                                newChatSeedDestinationId={attachmentDestinationId ?? workspaceId}
                                 workspaceId={workspaceId}
                                 commitHash={commitHash}
                                 commitMessage={commit?.subject}
@@ -145,6 +149,8 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
             />
             <PopOutReviewChatLens chat={chat}>
                 <CommitChatPlacementFrame
+                    sourceSelectionId={attachmentDestinationId}
+                    newChatSeedDestinationId={attachmentDestinationId ?? workspaceId}
                     workspaceId={workspaceId}
                     commitHash={commitHash}
                     commitMessage={commit?.subject}
