@@ -513,6 +513,9 @@ export interface ProcessStore {
      * @param message - The pending message to append.
      * @returns The full pending-message array after the append, or undefined if the process was not found.
      */
+    /** Atomically remove one pending message without losing concurrent appends. */
+    removePendingMessage(processId: string, messageId: string): Promise<PendingMessage[] | undefined>;
+
     appendPendingMessage(
         processId: string,
         message: PendingMessage,

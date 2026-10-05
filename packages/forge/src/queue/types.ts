@@ -103,9 +103,13 @@ export interface PrGateChainMetadata {
 }
 
 export interface TaskExecutionConfig {
+    /** Durable admission dependency for tasks targeting the same conversation. */
+    processPredecessorId?: string;
     /** AI model to use */
     model?: string;
-    /** Timeout in milliseconds */
+    /** Whether an already running task can be cancelled; queued tasks remain cancellable. */
+    cancelRunning?: boolean;
+    /** Timeout in milliseconds; 0 waits for executor settlement. */
     timeoutMs?: number;
     /** Whether to retry on failure */
     retryOnFailure?: boolean;

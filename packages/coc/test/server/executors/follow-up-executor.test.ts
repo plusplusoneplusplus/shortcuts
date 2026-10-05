@@ -1423,6 +1423,21 @@ describe('FollowUpExecutor', () => {
     // turnSource — cron/wakeup follow-up user turn creation
     // -------------------------------------------------------------------------
 
+    it('does not duplicate an automated user turn already persisted by queue admission', async () => {
+        const turnSource = { source: 'wakeup' as const, wakeupId: 'queued-wakeup' };
+        const proc = makeProcess({ id: 'proc-queued-wakeup', conversationTurns: [
+            { role: 'user', content: 'Check status', timestamp: new Date(), turnIndex: 0, timeline: [], turnSource },
+        ] });
+        await store.addProcess(proc);
+        sdkMocks.mockSendMessage.mockResolvedValue({ success: true, response: 'Done', sessionId: 'sess-wakeup' });
+        await makeExecutor(store).executeFollowUp(proc.id, 'Check status', undefined, undefined, undefined,
+            undefined, undefined, undefined, turnSource, undefined, undefined,
+            { userTurnPersisted: true, historyCutoffTurnIndex: 0 });
+        const turns = store.processes.get(proc.id)?.conversationTurns ?? [];
+        expect(turns.filter(turn => turn.role === 'user')).toHaveLength(1);
+        expect(turns.at(-1)?.turnSource).toEqual(turnSource);
+    });
+
     it('creates user turn with turnSource for cron-triggered follow-ups', async () => {
         sdkMocks.mockSendMessage.mockResolvedValue({
             success: true,

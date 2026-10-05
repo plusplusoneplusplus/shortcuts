@@ -55,6 +55,11 @@ references before editing. Paths are package-relative.
 
 ## Runtime, Persistence, and Configuration
 
+- Conversation compaction shares process admission and durable queue dependencies.
+  Promote buffered turns before the boundary; later arrivals cannot steer across it.
+  Cancel removes queued compaction only. Running compaction never retries after restart.
+  Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
+
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.
   Native failures fail startup, without JavaScript persistence/index fallbacks.

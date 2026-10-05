@@ -12,13 +12,14 @@ import { formatMessagingHelp, type MessagingHelpFormat, type MessagingControlCom
 import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { APIError } from '../errors';
+import type { MessagingJobOrigin } from './job-notices';
 import type { CompactProcessOutcome } from '../processes/compact-process';
 import { listRecentTopics, resolveChatWorkspace, resolveTopic, resolveWorkspace } from './chat-target';
 import { formatTopicList, listRemotesReply, localTopicListFooter, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
 
 export type MessagingQuotaSource = () => Promise<AgentProvidersQuotaResponse | null | undefined>;
 /** Compacts a chat's provider session; throws `APIError` on guard failures. */
-export type MessagingCompactor = (process: AIProcess, customInstructions?: string) => Promise<CompactProcessOutcome>;
+export type MessagingCompactor = (process: AIProcess, customInstructions?: string, origin?: MessagingJobOrigin) => Promise<CompactProcessOutcome>;
 
 /** The chat a `compact` command acts on. */
 export interface MessagingCompactTarget {
@@ -46,6 +47,7 @@ export interface MessagingCommandContext {
     code?: (text: string) => string;
     getQuota?: MessagingQuotaSource;
     compact?: MessagingCompactor;
+    compactOrigin?: MessagingJobOrigin;
     /**
      * Chat that `compact` acts on before the selected topic, e.g. the quoted
      * answer's chat. Returning nothing falls back to the selected topic.
@@ -109,6 +111,7 @@ export async function compactChatReply(
     target: MessagingCompactTarget,
     customInstructions: string,
     escape: (text: string) => string = plain,
+    origin?: MessagingJobOrigin,
 ): Promise<string> {
     if (!compact) return 'Compaction is unavailable.';
     const { processId: id, workspaceId } = target;
@@ -118,8 +121,10 @@ export async function compactChatReply(
         if (!process || (workspaceId && process.metadata?.workspaceId !== workspaceId)) {
             return 'Chat not found. Use `list topics` to pick one.';
         }
-        const outcome = await compact(process, customInstructions || undefined);
+        const outcome = origin ? await compact(process, customInstructions || undefined, origin)
+            : await compact(process, customInstructions || undefined);
         const title = process.title ?? process.customTitle ?? process.id;
+        if (outcome.taskId) return `🗜️ Compaction ${outcome.result.state === 'running' ? 'already running' : 'queued'} for "${escape(title)}". Completion will be reported here.`;
         const tokens = outcome.tokensBefore != null && outcome.tokensAfter != null
             ? ` — context ${formatTokens(outcome.tokensBefore)} → ${formatTokens(outcome.tokensAfter)} tokens` : '';
         return `🗜️ Compacted "${escape(title)}"${tokens}`;
@@ -157,7 +162,7 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
             if (!repo || !processId) return COMPACT_NO_TARGET_REPLY;
             target = { processId, workspaceId: repo.id };
         }
-        return compactChatReply(ctx.store, ctx.compact, target, command.args, ctx.escape);
+        return compactChatReply(ctx.store, ctx.compact, target, command.args, ctx.escape, ctx.compactOrigin);
     }
     if (command.type === 'list-repos') {
         return workspaces.length

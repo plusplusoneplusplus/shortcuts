@@ -156,6 +156,8 @@ Disabled-by-default `features.gitWorktreeExecution`. The target server creates i
 | PATCH | `/api/processes/:id` | Partial update. `metadata` replaces the stored object; `metadataPatch: { set?: object, unset?: string[] }` merges into current metadata. The two are mutually exclusive |
 | DELETE | `/api/processes/:id` | Delete process |
 | POST | `/api/processes/:id/message` | Follow-up with delivery/AI/style overrides. Style changes buffer a new turn, never steer in-flight output. Provider switch requires idle (`409 PROVIDER_SWITCH_REQUIRES_IDLE`); cancelled chats require strict resumable SDK binding (`409 SESSION_NOT_RESUMABLE`), never fresh fallback |
+| POST | `/api/processes/:id/compact` | Idle provider result or durable `{ state: "queued" | "running", taskId }`; repeated pending requests retain the original instructions; execution validates the latest provider/session |
+| DELETE | `/api/processes/:id/compact` | Cancel queued compaction only; `409 COMPACTION_NOT_QUEUED` after execution starts; later messages continue |
 | POST | `/api/processes/:id/turns/:turnIndex/rewind` | Native-anchor rewind in active provider segment, serialized with admission. Earlier segment → `409 CROSS_PROVIDER_REWIND_UNAVAILABLE`; non-idle → `409 CONVERSATION_NOT_IDLE` |
 | POST | `/api/processes/:id/note` | Retarget Notes chat; normalized relative path must remain in workspace notes root and bound section (`400` otherwise). See [spa/notes.md](spa/notes.md) |
 | POST | `/api/processes/:id/ask-user-response` | Resolve batch with answered, skipped or needs-context-deferred answers |

@@ -26,7 +26,7 @@ describe('ConversationArea: compacting bubble wiring', () => {
 
     it('renders the CompactionBubble while compacting', () => {
         expect(CONVERSATION_AREA_SOURCE).toContain("import { CompactionBubble } from './CompactionBubble'");
-        expect(CONVERSATION_AREA_SOURCE).toMatch(/isCompacting && \(\s*<CompactionBubble/);
+        expect(CONVERSATION_AREA_SOURCE).toMatch(/\(isCompacting \|\| compactionQueued\) && \(\s*<CompactionBubble/);
     });
 
     it('suppresses the empty assistant streaming placeholder while compacting', () => {
@@ -55,8 +55,8 @@ describe('ChatDetail: compacting state wiring', () => {
         expect(CHAT_DETAIL_SOURCE).toContain('setCompacting: handleCompactingChange');
     });
 
-    it('disables the composer while compacting', () => {
-        expect(CHAT_DETAIL_SOURCE).toMatch(/const inputDisabled = [^;]*isCompacting/);
+    it('keeps the composer available while compacting', () => {
+        expect(CHAT_DETAIL_SOURCE).not.toMatch(/const inputDisabled = [^;]*isCompacting/);
     });
 });
 

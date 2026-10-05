@@ -7,7 +7,11 @@
  * delegated to each repo's QueueExecutor.
  */
 
+import { randomUUID } from 'crypto';
+import { pendingMessageTask } from '../processes/queued-pending-message';
+import { readActiveProviderSession } from '../processes/active-provider-session';
 import { EventEmitter } from 'events';
+import { processOperationAdmission } from '../processes/process-operation-admission';
 import * as path from 'path';
 import {
     RepoQueueRegistry,
@@ -98,6 +102,20 @@ export class MultiRepoQueueRouter extends EventEmitter {
         this.registry.on('queueChange', (repoPath: string, event: QueueChangeEvent) => {
             const repoId = this.getRepoIdForPath(repoPath);
             this.emit('queueChange', { repoPath, repoId, ...event });
+            const task = event.task;
+            if (task?.status === 'cancelled' && task.processId) {
+                void processOperationAdmission.runExclusive(task.processId, async () => {
+                    const deferred = task.payload.deferredMessage as { id: string } | undefined;
+                    if (deferred) await this.store.removePendingMessage(task.processId!, deferred.id);
+                    const proc = await this.store.getProcess(task.processId!);
+                    if (task.payload.kind === 'compact' && proc?.metadata?.compaction?.taskId === task.id
+                        && proc.metadata.compaction.state === 'queued') {
+                        await this.store.updateProcess(proc.id, { metadata: { ...proc.metadata, compaction: {
+                            ...proc.metadata.compaction, state: 'cancelled', completedAt: new Date().toISOString(),
+                        } } });
+                    }
+                }).catch(error => console.error('[Queue] Could not settle cancelled operation:', error));
+            }
             if (event.type === 'repo-gate-updated' || event.type === 'repo-gate-released') {
                 this.prMergeWatcher?.sync(repoId, this.registry.getQueueForRepo(repoPath));
             }
@@ -310,6 +328,13 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * Cancel a running process by aborting its live AI session.
      * Routes to the correct per-repo bridge via the process's workingDirectory.
      */
+    cancelQueuedTask(taskId: string): boolean {
+        for (const manager of this.registry.getAllQueues().values()) {
+            if (manager.getTask(taskId)?.status === 'queued') return manager.cancelTask(taskId);
+        }
+        return false;
+    }
+
     async cancelProcess(processId: string): Promise<void> {
         const proc = await this.store.getProcess(processId);
         const workingDirectory = (proc as any)?.workingDirectory as string | undefined;
@@ -345,6 +370,36 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * Searches across all per-repo bridges for the process.
      */
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void> {
+        const proc = await this.store.getProcess(processId);
+        if (proc) {
+            // Public direct follow-ups share queue admission; executor-internal follow-ups stay local.
+            const taskId = await processOperationAdmission.runExclusive(processId, async () => {
+                const current = await this.store.getProcess(processId) ?? proc;
+                const pending = { id: randomUUID(), content: message, createdAt: new Date().toISOString(),
+                    attachments, images, skillNames: selectedSkillNames, model, mode, reasoningEffort,
+                    provider: options?.requestedProvider ?? readActiveProviderSession(current).provider,
+                    ...(options?.relayRequestId ? { relayRequestId: options.relayRequestId } : {}),
+                    ...(turnSource ? { context: { ...turnSource } } : {}),
+                };
+                await this.store.appendPendingMessage(processId, pending);
+                const input = pendingMessageTask(current, pending);
+                input.payload.resumeSessionId = strictResumeSessionId;
+                input.payload.deliveryMode = deliveryMode;
+                return this.enqueueAdmitted(input);
+            });
+            await new Promise<void>((resolve, reject) => {
+                const check = (event?: QueueChangeEvent) => {
+                    const task = event?.task?.id === taskId ? event.task : this.getTask(taskId);
+                    if (!task || !['completed', 'failed', 'cancelled'].includes(task.status)) return;
+                    this.off('queueChange', check);
+                    if (task.status === 'completed') resolve();
+                    else reject(new Error(task.error ?? 'Follow-up cancelled'));
+                };
+                this.on('queueChange', check);
+                check();
+            });
+            return;
+        }
         const handled = await this.dispatchToOwnerBridge(
             (bridge) => bridge.isSessionAlive(processId),
             (bridge) => bridge.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort, strictResumeSessionId, options),
@@ -469,6 +524,14 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * therefore serialized per workspace (exclusiveConcurrency = 1).
      */
     async enqueue(input: CreateTaskInput): Promise<string> {
+        const processId = input.processId ?? input.payload.processId;
+        if (typeof processId === 'string') {
+            return processOperationAdmission.runExclusive(processId, () => this.enqueueAdmitted(input));
+        }
+        return this.enqueueAdmitted(input);
+    }
+
+    async enqueueAdmitted(input: CreateTaskInput): Promise<string> {
         let rootPath = (input.payload as any)?.workingDirectory as string | undefined;
 
         if (!rootPath) {
@@ -490,6 +553,18 @@ export class MultiRepoQueueRouter extends EventEmitter {
             input.repoId = this.getRepoIdForPath(rootPath);
         }
         const queueManager = this.registry.getQueueForRepo(rootPath);
+        // Pending turns predate this queue admission. Promote them first, keeping their durable IDs.
+        const processId = input.processId ?? input.payload.processId;
+        if (typeof processId === 'string') {
+            const proc = await this.store.getProcess(processId);
+            for (const message of proc?.pendingMessages ?? []) {
+                const pending = pendingMessageTask(proc!, message);
+                if (pending.id === input.id) break;
+                if (!queueManager.getTask(pending.id!)) {
+                    queueManager.enqueue({ ...pending, repoId: input.repoId });
+                }
+            }
+        }
         return queueManager.enqueue(input);
     }
 
@@ -497,6 +572,12 @@ export class MultiRepoQueueRouter extends EventEmitter {
      * Find a task by its processId across all per-repo queues.
      * Returns the task id, type, and status if found.
      */
+    findCompactionTask(processId: string): { id: string; status: string } | undefined {
+        return Array.from(this.registry.getAllQueues().values()).flatMap(queue => queue.getAll())
+            .find(task => task.processId === processId && task.payload.kind === 'compact'
+                && (task.status === 'queued' || task.status === 'running'));
+    }
+
     findTaskByProcessId(processId: string): { id: string; type: string; status: string } | undefined {
         for (const manager of this.registry.getAllQueues().values()) {
             for (const task of manager.getAll()) {

@@ -62,7 +62,7 @@ export interface TeamsMessagingRoutesOptions {
     /** Enqueue a new chat task. Returns the task ID. */
     enqueueChat?: (workspaceId: string, message: string, mode?: MessagingChatMode, taskId?: string, botControl?: BotControlMetadata) => Promise<string>;
     enqueueRelayChat?: (workspaceId: string, message: string, taskId: string, mode?: MessagingChatMode, botControl?: BotControlMetadata) => Promise<string>;
-    admitRelayFollowUp?: (process: AIProcess, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string) => Promise<{ taskId?: string }>;
+    admitRelayFollowUp?: (process: AIProcess, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string, admissionHeld?: boolean) => Promise<{ taskId?: string }>;
     enqueuePendingRelayFollowUp?: (workspaceId: string, processId: string, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string) => Promise<string>;
     relayQueue?: TeamsAnswerRelayDeps['queue'];
     getAnswerRelayEnabled?: () => boolean;
@@ -206,9 +206,10 @@ export function registerTeamsMessagingRoutes(
                     }
                     const taskId = randomUUID();
                     const admit = (requestId: string) => {
-                        const enqueue = async () => {
+                        const enqueue = async (admissionHeld = false) => {
                             try {
-                                const result = await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId);
+                                const result = admissionHeld ? await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId, true)
+                                    : await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId);
                                 if (result.taskId !== taskId) throw new Error('Queue returned a different task ID');
                                 return result;
                             } catch (error) {

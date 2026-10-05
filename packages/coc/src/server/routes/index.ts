@@ -442,13 +442,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
             getEffortTiersForProvider,
         });
     };
-    const enqueueWithResolvedDefaults = async (input: CreateTaskInput): Promise<string> => {
+    const enqueueWithResolvedDefaults = async (input: CreateTaskInput, admissionHeld = false): Promise<string> => {
         await prepareEnqueueTask(input);
-        return bridge.enqueue(input);
+        return admissionHeld ? bridge.enqueueAdmitted(input) : bridge.enqueue(input);
     };
     const bridgeWithResolvedDefaults = Object.create(bridge) as MultiRepoQueueRouter;
     Object.defineProperty(bridgeWithResolvedDefaults, 'enqueue', {
         value: enqueueWithResolvedDefaults,
+        configurable: true,
+        writable: true,
+    });
+    Object.defineProperty(bridgeWithResolvedDefaults, 'enqueueAdmitted', {
+        value: (input: CreateTaskInput) => enqueueWithResolvedDefaults(input, true),
         configurable: true,
         writable: true,
     });
@@ -914,11 +919,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
         enqueueRelayChat: enqueueTeamsChat,
-        admitRelayFollowUp: async (proc, message, requestId, mode, taskId) => {
+        admitRelayFollowUp: async (proc, message, requestId, mode, taskId, admissionHeld = false) => {
             const workspaceId = proc.metadata?.workspaceId;
             if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Teams conversation workspace is unavailable');
             return {
-                taskId: await bridge.enqueue({
+                taskId: await (admissionHeld ? bridge.enqueueAdmitted : bridge.enqueue).call(bridge, {
                     id: taskId, type: 'chat', repoId: workspaceId, processId: proc.id, priority: 'normal',
                     payload: {
                         kind: 'chat', mode: await resolveMessagingChatMode(proc.id, mode), processId: proc.id, prompt: message,
@@ -944,7 +949,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         executeFollowUp: async (processId, message, mode) =>
             bridge.executeFollowUp(processId, message, undefined, await resolveMessagingChatMode(processId, mode)),
         getQuota: getMessagingQuota,
-        compact: (proc, instructions) => compactProcess(store, proc, instructions),
+        compact: (proc, instructions, origin) => compactProcess(store, proc, instructions, bridge,
+            origin ? taskId => jobNotices.track({ processId: proc.id, workspaceId: proc.metadata!.workspaceId!, origin, taskId }) : undefined),
         remotes: workspaceDirectory,
     });
     const whatsappMessagingManager = registerWhatsAppMessagingRoutes(routes, { dataDir });
@@ -999,12 +1005,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         send: (text, quotedId) => whatsappMessagingManager.send(text, quotedId),
         react: messageId => whatsappMessagingManager.react(messageId),
         getQuota: getMessagingQuota,
-        compact: (proc, instructions) => compactProcess(store, proc, instructions),
+        compact: (proc, instructions, origin) => compactProcess(store, proc, instructions, bridge,
+            origin ? taskId => jobNotices.track({ processId: proc.id, workspaceId: proc.metadata!.workspaceId!, origin, taskId }) : undefined),
         remotes: workspaceDirectory,
         questions: questionRelay,
         handOff: messagingHandOff,
         getTask: taskId => queueFacade.getTask(taskId),
-        enqueue: async (workspaceId, message, mode, processId, taskId, botControl) => {
+        enqueue: async (workspaceId, message, mode, processId, taskId, botControl, admissionHeld = false) => {
             const followUp = processId !== toQueueProcessId(taskId);
             return enqueueWithResolvedDefaults({
                 ...messagingChatInput(workspaceId, message, taskId, true),
@@ -1017,7 +1024,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     ...(followUp ? { processId } : {}),
                     relayRequestId: taskId,
                 },
-            });
+            }, admissionHeld);
         },
         queued: binding => { void whatsappRelay.reconcileTask(binding.taskId).catch(error =>
             console.error('[whatsapp-answer-relay] Could not reconcile queued request:', error)); },

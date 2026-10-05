@@ -114,7 +114,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it.each([false, true])('releases the last binding and pending/persisted control durably (%s)', async persisted => {
-        enqueue();
+        await enqueue();
         if (persisted) await register();
         const binding = receipt();
         bindings.add(binding);
@@ -138,7 +138,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('retains control for another live binding and releases on the last follow-up receipt', async () => {
-        enqueue();
+        await enqueue();
         const origin = receipt();
         const followUp = receipt({ taskId: 'follow-up', inboundId: 'inbound-follow-up', outboundIds: [] });
         bindings.add(origin);
@@ -152,7 +152,7 @@ describe('WhatsApp authoritative binding removal', () => {
 
     it.each(['success', 'receipt-failure', 'process-crash'] as const)(
         'releases an adopted fork without touching its source authority across restart (%s)', async stage => {
-            enqueue();
+            await enqueue();
             await register();
             bindings.add(receipt());
             const original = await store.getProcess(processId);
@@ -166,7 +166,7 @@ describe('WhatsApp authoritative binding removal', () => {
             const router = new WhatsAppCommandRouter({
                 bindings, store, groupJid: () => 'test-group@g.us', getTask: id => queue.getTask(id),
                 getBotManagedConversationsEnabled: () => true, send, react: vi.fn(),
-                enqueue: async (workspaceId, prompt, mode, target, taskId, botControl) => queue.enqueue({
+                enqueue: async (workspaceId, prompt, mode, target, taskId, botControl, admissionHeld) => (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                     id: taskId, repoId: workspaceId, type: 'chat', processId: target,
                     priority: 'normal', config: {}, botControl,
                     payload: { kind: 'chat', workspaceId, processId: target, prompt, mode, relayRequestId: taskId },
@@ -211,7 +211,7 @@ describe('WhatsApp authoritative binding removal', () => {
     );
 
     it('does not release on selection, completion, relay disposal, or ordinary reload', async () => {
-        enqueue();
+        await enqueue();
         await register();
         const binding = receipt();
         bindings.add(binding);
@@ -231,7 +231,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('rejects an unowned receipt reference without recording a release intent', async () => {
-        enqueue();
+        await enqueue();
         const binding = receipt();
         bindings.add(binding);
         await expect(bindings.remove({ ...binding })).rejects.toThrow('target is unavailable');
@@ -240,7 +240,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('keeps exact ownership when the durable intent write fails', async () => {
-        enqueue();
+        await enqueue();
         await register();
         const binding = receipt();
         bindings.add(binding);
@@ -256,7 +256,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('compensates failed final receipt persistence and completes the durable intent on reload', async () => {
-        enqueue();
+        await enqueue();
         await register();
         const binding = receipt();
         bindings.add(binding);
@@ -275,7 +275,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it.each(['intent', 'queue', 'process'] as const)('recovers a crash after %s persistence without backfill', async stage => {
-        enqueue();
+        await enqueue();
         await register();
         const binding = receipt();
         bindings.add(binding);
@@ -298,7 +298,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('retains a retryable intent on queue persistence failure and blocks new admission', async () => {
-        enqueue();
+        await enqueue();
         const binding = receipt();
         bindings.add(binding);
         store.getDatabase().exec(`CREATE TRIGGER reject_release BEFORE INSERT ON queue_tasks
@@ -317,7 +317,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('does not remove another workspace or competing controller', async () => {
-        enqueue();
+        await enqueue();
         await register();
         const binding = receipt({ workspaceId: 'ws-b' });
         bindings.add(binding);
@@ -334,7 +334,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('reconciles other workspaces even when one durable release intent keeps failing', async () => {
-        enqueue();
+        await enqueue();
         const failed = receipt({ releaseState: 'releasing' });
         const other = receipt({ workspaceId: 'ws-b', processId: 'queue_other', taskId: 'other',
             inboundId: 'inbound-other', releaseState: 'releasing' });
@@ -344,7 +344,7 @@ describe('WhatsApp authoritative binding removal', () => {
         const otherFile = getRepoDataPath(dir, 'ws-b', 'whatsapp-bindings.json');
         fs.mkdirSync(path.dirname(otherFile), { recursive: true });
         fs.writeFileSync(otherFile, JSON.stringify([other]));
-        queue.enqueue({
+        await queue.enqueue({
             id: 'other', type: 'chat', processId: 'queue_other', repoId: 'ws-b', priority: 'normal', config: {},
             botControl: createBotControlMetadata('whatsapp'),
             payload: { kind: 'chat', prompt: 'request', workspaceId: 'ws-b' },
@@ -365,7 +365,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('does not let released tombstones erase an explicitly readmitted conversation', async () => {
-        enqueue();
+        await enqueue();
         await register();
         const origin = receipt();
         bindings.add(origin);
@@ -386,10 +386,10 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('preserves a different workspace live binding when releasing its own last binding', async () => {
-        enqueue();
+        await enqueue();
         const own = receipt();
         bindings.add(own);
-        queue.enqueue({
+        await queue.enqueue({
             id: 'other', type: 'chat', processId: 'queue_other', repoId: 'ws-b', priority: 'normal', config: {},
             botControl: createBotControlMetadata('whatsapp'),
             payload: { kind: 'chat', prompt: 'request', workspaceId: 'ws-b' },
@@ -404,7 +404,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('serializes concurrent removals, retaining control until the last live receipt', async () => {
-        enqueue();
+        await enqueue();
         const first = receipt();
         const second = receipt({ inboundId: 'second', taskId: 'second' });
         bindings.add(first);
@@ -416,7 +416,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it.each([true, false])('waits for an in-flight accepted/rejected admission before removing the last binding (%s)', async accepted => {
-        enqueue();
+        await enqueue();
         const origin = receipt();
         bindings.add(origin);
         const followUp = receipt({ inboundId: 'follow-up', taskId: 'follow-up' });
@@ -451,7 +451,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('deduplicates released inbound delivery and rejects quotes without admitting or sending answers', async () => {
-        enqueue();
+        await enqueue();
         await register();
         const binding = receipt({ status: 'queued', nextPart: 0 });
         bindings.add(binding);
@@ -485,7 +485,7 @@ describe('WhatsApp authoritative binding removal', () => {
     });
 
     it('stops an in-flight relay before sending if its binding is released during the process read', async () => {
-        enqueue();
+        await enqueue();
         await register();
         const binding = receipt({ status: 'queued', nextPart: 0 });
         bindings.add(binding);

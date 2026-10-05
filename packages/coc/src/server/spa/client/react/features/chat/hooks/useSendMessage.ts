@@ -264,6 +264,11 @@ export function useSendMessage({
                 customInstructions,
                 workspaceId ? { workspace: workspaceId } : undefined,
             );
+            if (result.state === 'queued' || result.state === 'running') {
+                notifyCompact?.(result.state === 'queued' ? 'Compaction queued.' : 'Compaction already running.', 'success');
+                await refreshConversation(pid);
+                return;
+            }
             const removed = result.messagesRemoved ?? 0;
             const freed = result.tokensRemoved ?? 0;
             notifyCompact?.(

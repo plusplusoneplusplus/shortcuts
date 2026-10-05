@@ -4,6 +4,8 @@ import { cn } from '../../ui/cn';
 export interface CompactionBubbleProps {
     /** Custom instructions typed after the `/compact` token, if any. */
     instructions?: string;
+    queued?: boolean;
+    onCancel?: () => void;
 }
 
 /**
@@ -18,7 +20,7 @@ export interface CompactionBubbleProps {
  * never enters the provider model history. Once compaction settles, the
  * persisted display-only result turn (AC-03) supersedes it.
  */
-export function CompactionBubble({ instructions }: CompactionBubbleProps) {
+export function CompactionBubble({ instructions, queued, onCancel }: CompactionBubbleProps) {
     const trimmed = instructions?.trim();
     return (
         <div className="flex justify-end py-1.5 chat-message user" data-testid="compaction-bubble">
@@ -41,7 +43,8 @@ export function CompactionBubble({ instructions }: CompactionBubbleProps) {
                     aria-live="polite"
                 >
                     <Spinner size="sm" />
-                    <span>Compacting context…</span>
+                    <span>{queued ? 'Compaction queued' : 'Compacting context…'}</span>
+                    {queued && onCancel && <button type="button" onClick={onCancel}>Cancel</button>}
                 </div>
             </div>
         </div>

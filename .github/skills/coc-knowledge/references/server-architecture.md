@@ -214,7 +214,11 @@ command grammar and renders its specs with `formatMessagingHelpCommands` as HTML
 adapter; routers keep platform state and transport. `compact` targets the quoted
 WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
 and calls `processes/compact-process.ts` `compactProcess` (shared with
-`POST /api/processes/:id/compact`); it never enqueues a turn or changes selection. `/ask`, `/autopilot`, `/ralph`, and `/sentinel` parse an explicit
+`POST /api/processes/:id/compact`). Busy compaction admits one durable queue operation
+through conversation admission, promoting earlier buffered messages first; later arrivals
+cannot steer across it. Idle compaction returns the provider result. Queued commands
+acknowledge admission and use the per-workspace job-notice ledger for completion,
+failure and cancellation at the captured destination; selection stays unchanged. `/ask`, `/autopilot`, `/ralph`, and `/sentinel` parse an explicit
 mode; plain text has none, so a follow-up keeps the chat's mode and a new chat runs in
 `sentinel` (the dispatcher) even when `sentinel.enabled` is off — that flag only gates the
 dashboard picker. Older threads bound to Ask chats stay Ask. `messaging/messaging-chat-mode.ts` resolves it via `resolveFollowUpMode` (a still-queued

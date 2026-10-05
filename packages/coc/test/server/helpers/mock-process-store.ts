@@ -149,6 +149,13 @@ export function createMockProcessStore(options?: MockProcessStoreOptions): MockP
             processes.set(processId, { ...existing, ...extraUpdates, conversationTurns: allTurns });
             return { turn, allTurns };
         }),
+        removePendingMessage: vi.fn(async (processId: string, messageId: string) => {
+            const current = processes.get(processId);
+            if (!current) return undefined;
+            const pendingMessages = (current.pendingMessages ?? []).filter(message => message.id !== messageId);
+            processes.set(processId, { ...current, pendingMessages });
+            return pendingMessages;
+        }),
         appendPendingMessage: vi.fn(async (processId: string, message: any) => {
             const existing = processes.get(processId);
             if (!existing) return undefined;

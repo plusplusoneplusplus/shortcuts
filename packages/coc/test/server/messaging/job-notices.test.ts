@@ -83,6 +83,22 @@ describe('MessagingJobNotices', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
+    it('notices only the admitted compaction and recovers its completion after restart', async () => {
+        const hub = makeHub();
+        hub.track({ processId: JOB, workspaceId: WS, origin: { connector: 'whatsapp', chatKey: GROUP }, taskId: 'compact' });
+        terminal(queue, 'other-turn', 'completed');
+        await flush();
+        expect(posted).toHaveLength(0);
+        job([], 'running', { metadata: { workspaceId: WS, compaction: { taskId: 'compact', state: 'failed' } } });
+        hub.dispose();
+        await makeHub().restore();
+        expect(posted).toHaveLength(1);
+        expect(posted[0].text).toContain('Compaction');
+        expect(posted[0].text).toContain('Later messages can continue');
+        await makeHub().restore();
+        expect(posted).toHaveLength(1);
+    });
+
     it('posts one notice per terminal status with the repo and title', async () => {
         const hub = makeHub();
         hub.track({ processId: JOB, workspaceId: WS, origin: { connector: 'whatsapp', chatKey: GROUP } });

@@ -439,9 +439,17 @@ export class FileProcessStore implements ProcessStore {
      * Atomically append a pending follow-up message inside the write queue, so
      * concurrent follow-ups cannot lose updates by reading the same array.
      */
-    async appendPendingMessage(
+    async appendPendingMessage(processId: string, message: PendingMessage): Promise<PendingMessage[] | undefined> {
+        return this.updatePendingMessages(processId, messages => [...messages, message]);
+    }
+
+    async removePendingMessage(processId: string, messageId: string): Promise<PendingMessage[] | undefined> {
+        return this.updatePendingMessages(processId, messages => messages.filter(message => message.id !== messageId));
+    }
+
+    private async updatePendingMessages(
         processId: string,
-        message: PendingMessage,
+        update: (messages: PendingMessage[]) => PendingMessage[],
     ): Promise<PendingMessage[] | undefined> {
         let result: PendingMessage[] | undefined;
         let updatedProcess: AIProcess | undefined;
@@ -454,7 +462,7 @@ export class FileProcessStore implements ProcessStore {
             if (!entry) { return; }
 
             const existing = deserializeProcess(entry.process);
-            const pendingMessages = [...(existing.pendingMessages ?? []), message];
+            const pendingMessages = update(existing.pendingMessages ?? []);
             const merged: AIProcess = { ...existing, pendingMessages, lastEventAt: new Date() };
 
             const newEntry: StoredProcessEntry = {

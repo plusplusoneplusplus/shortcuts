@@ -219,9 +219,10 @@ unauthorized links are omitted without discarding valid provenance.
   provider from the bridge's `inFlightTurns` registry first and skips the persisted session id
   when it belongs to the other provider.
 - **Pending messages** — `pendingMessages` in process metadata; append atomically with
-  `appendPendingMessage(processId, message)` (read-append-persist under the store write lock).
-  Never read-modify-write the array through `updateProcess` — concurrent follow-ups lose
-  updates.
+  `appendPendingMessage(processId, message)` and remove with `removePendingMessage(processId, messageId)`
+  under the store's atomic write boundary. Deferred queue tasks retain stable message IDs and
+  append their user turns only at execution. Never read-modify-write the array through
+  `updateProcess` — concurrent follow-ups lose updates.
 - **Prompt autocomplete** — `getBestPromptCompletion` and `getPromptAutocompleteContext` supply
   ghost text.
 - **Workspace ID re-keying** — `renameWorkspaceId(oldId, newId)` atomically rewrites physical
@@ -311,6 +312,13 @@ newly activated repo gate, emitting compensating removal/gate events before
 `taskAdded`. Existing gates and unrelated tasks remain intact; admission and
 compensation errors propagate together. Trusted bot adoption can then roll back
 its new process claim without leaving executable rejected work in the queue.
+
+Conversation tasks persist `config.processPredecessorId` to retain admission order across
+priority changes, reordering and restore. Queued cancellation rewires successors to the
+cancelled task's predecessor. Execution reservations retain conversation ownership until
+provider cleanup settles, including cancellation and timeout. Compaction uses a non-retrying
+queue task with provider-owned timeout and queued-only cancellation. Queued compactions
+recover on restart; interrupted running compactions settle as failed without replay.
 
 ## Process Lifecycle
 

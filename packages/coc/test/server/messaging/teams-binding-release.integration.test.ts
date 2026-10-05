@@ -88,7 +88,7 @@ describe('Teams authoritative binding release', () => {
             if (wait) await wait();
             if (!accepted) throw new Error('admission rejected');
             return admitBotControlledFollowUp(store, 'ws-a', processId, 'teams', async () => ({
-                taskId: await queue.enqueue({
+                taskId: await queue.enqueueAdmitted({
                     id, repoId: 'ws-a', type: 'chat', processId, priority: 'normal', config: {},
                     payload: { kind: 'chat', workspaceId: 'ws-a', processId, prompt: 'request', relayRequestId: requestId },
                 }),
@@ -212,7 +212,7 @@ describe('Teams authoritative binding release', () => {
             for (const id of ['fork-first', 'fork-last']) {
                 await relay.admitFollowUp(message(id), (await store.getProcess(fork.id))!, async requestId =>
                     admitBotControlledFollowUp(store, 'ws-a', fork.id, 'teams', async () => ({
-                        taskId: await queue.enqueue({
+                        taskId: await queue.enqueueAdmitted({
                             id, repoId: 'ws-a', type: 'chat', processId: fork.id, priority: 'normal', config: {},
                             payload: { kind: 'chat', workspaceId: 'ws-a', processId: fork.id,
                                 prompt: 'request', relayRequestId: requestId },
@@ -602,8 +602,8 @@ describe('Teams authoritative binding release', () => {
                 config: {}, priority: 'normal', payload: { kind: 'chat', workspaceId, prompt },
             }),
             executeFollowUp: vi.fn(),
-            admitRelayFollowUp: async (process, prompt, requestId, _mode, id) => ({
-                taskId: await queue.enqueue({ id, repoId: process.metadata!.workspaceId as string,
+            admitRelayFollowUp: async (process, prompt, requestId, _mode, id, admissionHeld) => ({
+                taskId: await (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, { id, repoId: process.metadata!.workspaceId as string,
                     type: 'chat', processId: process.id, config: {}, priority: 'normal',
                     payload: { kind: 'chat', processId: process.id, workspaceId: process.metadata!.workspaceId,
                         prompt, relayRequestId: requestId } }),

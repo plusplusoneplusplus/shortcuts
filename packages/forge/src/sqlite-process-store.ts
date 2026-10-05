@@ -1408,9 +1408,17 @@ export class SqliteProcessStore implements ProcessStore {
         return appendResult;
     }
 
-    async appendPendingMessage(
+    async appendPendingMessage(processId: string, message: PendingMessage): Promise<PendingMessage[] | undefined> {
+        return this.updatePendingMessages(processId, messages => [...messages, message]);
+    }
+
+    async removePendingMessage(processId: string, messageId: string): Promise<PendingMessage[] | undefined> {
+        return this.updatePendingMessages(processId, messages => messages.filter(message => message.id !== messageId));
+    }
+
+    private async updatePendingMessages(
         processId: string,
-        message: PendingMessage,
+        update: (messages: PendingMessage[]) => PendingMessage[],
     ): Promise<PendingMessage[] | undefined> {
         let result: PendingMessage[] | undefined;
 
@@ -1419,10 +1427,9 @@ export class SqliteProcessStore implements ProcessStore {
             if (!processRow) return;
 
             const currentProcess = rowToProcess(processRow);
-            const pendingMessages = [...(currentProcess.pendingMessages ?? []), message];
+            const pendingMessages = update(currentProcess.pendingMessages ?? []);
 
-            // Read-append-persist runs inside the same SQLite transaction, so two
-            // concurrent follow-ups cannot lose each other's pending messages.
+            // Read-update-persist shares one transaction with every pending-message mutation.
             this.applyProcessUpdatesInline(processId, { pendingMessages }, processRow);
 
             result = pendingMessages;

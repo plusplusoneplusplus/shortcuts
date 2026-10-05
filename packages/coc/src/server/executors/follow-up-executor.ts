@@ -107,6 +107,8 @@ export interface FollowUpTurnOptions {
     historyCutoffTurnIndex?: number;
     /** Connector request id (WhatsApp/Teams) this follow-up was admitted under. */
     relayRequestId?: string;
+    /** Queue admission already persisted the deferred user turn, including automated turns. */
+    userTurnPersisted?: boolean;
 }
 
 /** Log prefix for every line this executor writes. */
@@ -469,7 +471,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
             //
             // Exception: cron/wakeup-triggered follow-ups have no POST /message
             // route — the user turn must be created here.
-            if (turnSource) {
+            if (turnSource && !options?.userTurnPersisted) {
                 await this.store.appendConversationTurn(
                     processId,
                     (idx) => ({

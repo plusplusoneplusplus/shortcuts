@@ -1273,13 +1273,14 @@ export class TeamsAnswerRelay {
                 const { line, detail } = formatJobNotice(notice);
                 let id: string;
                 try {
-                    id = await this.deps.send(`<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`);
+                    const body = `<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`;
+                    id = notice.threadId ? await this.deps.send(body, notice.threadId) : await this.deps.send(body);
                 } catch (error) {
                     if (error instanceof TeamsMessageNotSentError || error instanceof TeamsMcpSendRejectedError) return undefined;
                     throw error;
                 }
                 if (!/^[A-Za-z0-9:_@.-]{1,256}$/.test(id)) throw new Error('Teams send confirmation missing');
-                this.saveThreadSelection(this.deps.target().channelId!, id, notice.workspaceId, notice.processId);
+                if (notice.operation !== 'compact') this.saveThreadSelection(this.deps.target().channelId!, id, notice.workspaceId, notice.processId);
                 return id;
             },
         };

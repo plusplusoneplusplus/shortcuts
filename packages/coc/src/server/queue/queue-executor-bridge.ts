@@ -4,6 +4,10 @@ import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils'
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
 import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { processOperationAdmission } from '../processes/process-operation-admission';
+import { compactProcess } from '../processes/compact-process';
+import { pendingMessageTask } from '../processes/queued-pending-message';
+import type { PendingMessage } from '@plusplusoneplusplus/forge';
 import { BaseExecutor } from '../executors/base-executor';
 import type { FollowUpTurnOptions } from '../executors/follow-up-executor';
 import { resolveSkillConfig } from '../executors/skill-config-resolver';
@@ -599,6 +603,65 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async execute(task: QueuedTask): Promise<TaskExecutionResult> {
         try {
+            if (task.payload.kind === 'compact') {
+                const proc = await processOperationAdmission.runExclusive(task.processId!, async () => {
+                    const current = await this.store.getProcess(task.processId!, task.payload.workspaceId as string | undefined);
+                    if (!current) throw new Error('Conversation is unavailable');
+                    if (current.metadata?.compaction?.taskId !== task.id || current.metadata.compaction.state !== 'queued') {
+                        throw new Error('Compaction admission was not completed');
+                    }
+                    return current;
+                });
+                try {
+                    // Later admitted messages are deferred queue tasks, not part of this operation's idle guard.
+                    const outcome = await compactProcess(this.store, { ...proc, status: proc.status === 'queued' ? 'completed' : proc.status, pendingMessages: [] }, task.payload.customInstructions as string | undefined);
+                    return { success: true, result: outcome.result, durationMs: 0 };
+                } catch (error) {
+                    const current = await this.store.getProcess(proc.id);
+                    if (current?.metadata?.compaction?.state !== 'failed') {
+                        await this.store.updateProcess(proc.id, { metadata: { ...current?.metadata!, compaction: {
+                            ...proc.metadata!.compaction!, state: 'failed', completedAt: new Date().toISOString(),
+                            error: error instanceof Error ? error.message : String(error),
+                        } } });
+                    }
+                    return { success: false, error: error instanceof Error ? error : new Error(String(error)), durationMs: 0 };
+                } finally {
+                    await this.drainPendingMessages(proc.id, task.id);
+                }
+            }
+            const deferred = task.payload.deferredMessage as PendingMessage | undefined;
+            if (deferred && task.processId) {
+                const shouldExecute = await processOperationAdmission.runExclusive(task.processId, async () => {
+                    const proc = await this.store.getProcess(task.processId!);
+                    if (!proc) throw new Error('Conversation is unavailable');
+                    const requestId = deferred.relayRequestId ?? `pending:${deferred.id}`;
+                    const existing = proc.conversationTurns?.find(turn => turn.role === 'user' && turn.relayRequestId === requestId);
+                    if (!existing && !proc.pendingMessages?.some(message => message.id === deferred.id)) return false;
+                    if (existing) {
+                        task.payload.historyCutoffTurnIndex = existing.turnIndex;
+                        await this.store.removePendingMessage(proc.id, deferred.id);
+                    } else {
+                        const binding = readActiveProviderSession(proc);
+                        const model = resolveModelForProvider(resolveChatProviderOrDefault(deferred.provider ?? proc.metadata?.provider), deferred.model).model;
+                        const source = deferred.context?.source;
+                        const appended = await this.store.appendConversationTurn(proc.id, index => ({
+                            role: 'user', content: deferred.displayContent ?? deferred.content,
+                            timestamp: new Date(deferred.createdAt), turnIndex: index, timeline: [],
+                            relayRequestId: requestId, images: deferred.images,
+                            ...(deferred.pasteExternalized ? { pasteExternalized: true } : {}),
+                            ...(model ? { model } : {}),
+                            ...(deferred.mode ? { mode: normalizeChatMode(deferred.mode) } : {}),
+                            ...(['cron', 'wakeup', 'trigger'].includes(String(source)) ? { turnSource: deferred.context as unknown as TurnSource } : {}),
+                            ...turnProviderAttribution(deferred.provider, deferred.provider === binding.provider ? binding.segmentId : undefined),
+                        }), { additionalUpdates: current => ({ pendingMessages: current.pendingMessages?.filter(message => message.id !== deferred.id) }) });
+                        task.payload.historyCutoffTurnIndex = appended?.turn.turnIndex;
+                    }
+                    // Correlation also makes restart replay reuse the already persisted user turn.
+                    task.payload.relayRequestId = requestId;
+                    return true;
+                });
+                if (!shouldExecute) return { success: true, result: 'Pending message removed', durationMs: 0 };
+            }
             const runTask = () => this.executors.runner.run(task, {
                 cancelledTasks: this.cancelledTasks,
                 executeFollowUpFn: (pid, msg, att, mode, dm, imgs, skills, mdl, ts, re, strictResumeSessionId, options) => this.executeFollowUp(pid, msg, att, mode as ChatMode | undefined, dm, imgs, skills, mdl, ts, re, strictResumeSessionId, options),
@@ -698,6 +761,9 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         try {
             const proc = await this.store.getProcess(processId);
             if (!proc) return false;
+            if (proc.metadata?.compaction?.state === 'queued' || proc.metadata?.compaction?.state === 'running') return false;
+            if (this.queueManager?.getAll().some(task => task.processId === processId
+                && task.payload.kind === 'compact' && ['queued', 'running'].includes(task.status))) return false;
             const binding = readActiveProviderSession(proc);
             if (!binding.sessionId) return false;
             // SDK steering targets the already-running session; it cannot change
@@ -874,92 +940,102 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      * requeueFromHistory which fails for running tasks.
      */
     private async drainPendingMessages(processId: string, _taskId: string): Promise<void> {
-        const proc = await this.store.getProcess(processId);
-        if (!proc?.pendingMessages?.length) return;
-        if (!this.queueManager) return;
-        const [nextMsg, ...rest] = proc.pendingMessages;
-        // The provider captured on the message wins over the conversation's
-        // current metadata: a message accepted for one provider must drain on
-        // that provider even if the conversation moved on in the meantime.
-        const sessionProvider = resolveChatProviderOrDefault(
-            nextMsg.provider ?? proc.metadata?.provider,
-        );
-        const binding = readActiveProviderSession(proc);
-        const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
-        if (resolvedModel.coerced) {
-            getLogger().warn(
-                LogCategory.AI,
-                `[QueueExecutor] Dropping buffered model '${resolvedModel.requestedModel}' for process ${processId} because provider '${sessionProvider}' does not support it; using provider default.`,
+        await processOperationAdmission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId);
+            if (!proc?.pendingMessages?.length) return;
+            if (!this.queueManager) return;
+            const nextMsg = proc.pendingMessages[0];
+            const deferred = pendingMessageTask(proc, nextMsg);
+            if (this.queueManager.getTask(deferred.id!)) return;
+            if (proc.metadata?.compaction?.state === 'queued' || proc.metadata?.compaction?.state === 'running'
+                || this.queueManager.getAll?.().some(task => task.processId === processId
+                    && task.payload.kind === 'compact' && ['queued', 'running'].includes(task.status))) {
+                this.queueManager.enqueue(deferred);
+                return;
+            }
+            // The provider captured on the message wins over the conversation's
+            // current metadata: a message accepted for one provider must drain on
+            // that provider even if the conversation moved on in the meantime.
+            const sessionProvider = resolveChatProviderOrDefault(
+                nextMsg.provider ?? proc.metadata?.provider,
             );
-        }
+            const binding = readActiveProviderSession(proc);
+            const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
+            if (resolvedModel.coerced) {
+                getLogger().warn(
+                    LogCategory.AI,
+                    `[QueueExecutor] Dropping buffered model '${resolvedModel.requestedModel}' for process ${processId} because provider '${sessionProvider}' does not support it; using provider default.`,
+                );
+            }
 
-        // Append the deferred user turn at the correct position (after the
-        // assistant response that just completed) before enqueuing the follow-up.
-        const turnContent = nextMsg.displayContent ?? nextMsg.content;
-        const appendedUserTurn = await this.store.appendConversationTurn(
-            processId,
-            (turnIndex) => ({
-                role: 'user' as const,
-                content: turnContent,
-                timestamp: new Date(nextMsg.createdAt),
-                turnIndex,
-                ...(nextMsg.relayRequestId !== undefined ? { relayRequestId: nextMsg.relayRequestId } : {}),
-                timeline: [],
-                ...(nextMsg.images ? { images: nextMsg.images } : {}),
-                ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
-                ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
-                ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
-                // Attribute the turn to the provider the message was accepted
-                // for. A message buffered before provider routing existed has
-                // none; leave it unattributed rather than guessing from the
-                // conversation's current metadata. Buffering is same-provider
-                // only, so a matching provider means the turn belongs to the
-                // segment that is already active.
-                ...turnProviderAttribution(
-                    nextMsg.provider,
-                    nextMsg.provider === binding.provider ? binding.segmentId : undefined,
-                ),
-            }),
-        );
-
-        // Enqueue follow-up first — only remove pending message after success
-        // to prevent data loss if enqueue fails. Per-turn reasoning-effort
-        // (captured when the message was buffered) is carried through to the
-        // replayed task so the follow-up executor honours it.
-        const pendingEffort = (nextMsg as { reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' }).reasoningEffort;
-        // Merge any carried follow-up context (e.g. trigger turnSource) with the
-        // skills context so an automated buffered message keeps its source tag.
-        const drainedContext: Record<string, unknown> = {
-            ...(nextMsg.context ?? {}),
-            ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { skills: nextMsg.skillNames } : {}),
-        };
-        this.queueManager.enqueue({
-            processId,
-            type: 'chat',
-            priority: 'normal',
-            payload: {
-                kind: 'chat' as const,
+            // Append the deferred user turn at the correct position (after the
+            // assistant response that just completed) before enqueuing the follow-up.
+            const turnContent = nextMsg.displayContent ?? nextMsg.content;
+            const appendedUserTurn = await this.store.appendConversationTurn(
                 processId,
-                prompt: nextMsg.content,
-                ...(nextMsg.relayRequestId ? { relayRequestId: nextMsg.relayRequestId } : {}),
-                ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
-                ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
-                ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
-                // Cutoff for a reconstructed continuation: the index the
-                // deferred user turn just landed on, so history is quoted
-                // strictly before the message being drained.
-                ...(appendedUserTurn ? { historyCutoffTurnIndex: appendedUserTurn.turn.turnIndex } : {}),
-                ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
-                ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
-                ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),
-                ...(nextMsg.images ? { images: nextMsg.images } : {}),
-                ...(nextMsg.fileAttachmentMeta ? { fileAttachmentMeta: nextMsg.fileAttachmentMeta } : {}),
-                ...(Object.keys(drainedContext).length > 0 ? { context: drainedContext } : {}),
-            },
-            config: pendingEffort ? { reasoningEffort: pendingEffort } : {},
-            displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),
+                (turnIndex) => ({
+                    role: 'user' as const,
+                    content: turnContent,
+                    timestamp: new Date(nextMsg.createdAt),
+                    turnIndex,
+                    ...(nextMsg.relayRequestId !== undefined ? { relayRequestId: nextMsg.relayRequestId } : {}),
+                    timeline: [],
+                    ...(nextMsg.images ? { images: nextMsg.images } : {}),
+                    ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
+                    ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
+                    ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
+                    // Attribute the turn to the provider the message was accepted
+                    // for. A message buffered before provider routing existed has
+                    // none; leave it unattributed rather than guessing from the
+                    // conversation's current metadata. Buffering is same-provider
+                    // only, so a matching provider means the turn belongs to the
+                    // segment that is already active.
+                    ...turnProviderAttribution(
+                        nextMsg.provider,
+                        nextMsg.provider === binding.provider ? binding.segmentId : undefined,
+                    ),
+                }),
+            );
+
+            // Enqueue follow-up first — only remove pending message after success
+            // to prevent data loss if enqueue fails. Per-turn reasoning-effort
+            // (captured when the message was buffered) is carried through to the
+            // replayed task so the follow-up executor honours it.
+            const pendingEffort = (nextMsg as { reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' }).reasoningEffort;
+            // Merge any carried follow-up context (e.g. trigger turnSource) with the
+            // skills context so an automated buffered message keeps its source tag.
+            const drainedContext: Record<string, unknown> = {
+                ...(nextMsg.context ?? {}),
+                ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { skills: nextMsg.skillNames } : {}),
+            };
+            this.queueManager.enqueue({
+                processId,
+                type: 'chat',
+                priority: 'normal',
+                payload: {
+                    kind: 'chat' as const,
+                    processId,
+                    prompt: nextMsg.content,
+                    ...(nextMsg.relayRequestId ? { relayRequestId: nextMsg.relayRequestId } : {}),
+                    ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
+                    ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
+                    ...(nextMsg.provider ? { provider: nextMsg.provider } : {}),
+                    // Cutoff for a reconstructed continuation: the index the
+                    // deferred user turn just landed on, so history is quoted
+                    // strictly before the message being drained.
+                    ...(appendedUserTurn ? { historyCutoffTurnIndex: appendedUserTurn.turn.turnIndex } : {}),
+                    ...(pendingEffort ? { reasoningEffort: pendingEffort } : {}),
+                    ...(nextMsg.attachments ? { attachments: nextMsg.attachments } : {}),
+                    ...(nextMsg.imageTempDir ? { imageTempDir: nextMsg.imageTempDir } : {}),
+                    ...(nextMsg.images ? { images: nextMsg.images } : {}),
+                    ...(nextMsg.fileAttachmentMeta ? { fileAttachmentMeta: nextMsg.fileAttachmentMeta } : {}),
+                    ...(Object.keys(drainedContext).length > 0 ? { context: drainedContext } : {}),
+                },
+                config: pendingEffort ? { reasoningEffort: pendingEffort } : {},
+                displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),
+            });
+            await this.store.removePendingMessage(processId, nextMsg.id);
         });
-        await this.store.updateProcess(processId, { pendingMessages: rest });
     }
 }
 
@@ -1002,6 +1078,7 @@ function isAutoProviderRoutingRequested(context: ChatPayload['context'] | undefi
  *   in the same workspace.
  */
 export function defaultIsExclusive(task: QueuedTask): boolean {
+    if (task.payload.kind === 'compact') return false;
     // Chat has mode-dependent exclusivity
     if (isChatPayload(task.payload)) {
         const mode = (task.payload as any).mode;

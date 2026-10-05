@@ -12,6 +12,18 @@ function emit(name: string, detail: unknown) {
 }
 
 describe('owning-server bot control updates', () => {
+    it('forwards compaction lifecycle only from the owning workspace and remote server', () => {
+        const update = vi.fn();
+        renderHook(() => useBotControlUpdates(remote, 'ws-example', update));
+        const compaction = { state: 'queued', taskId: 'compact', customInstructions: 'keep decisions' };
+        const compactMessage = { ...message, process: { ...process, compaction } };
+        emit('coc-local-ws-message', compactMessage);
+        emit('coc-remote-ws-message', { baseUrl: 'https://other.example.test', message: compactMessage });
+        expect(update).not.toHaveBeenCalled();
+        emit('coc-remote-ws-message', { baseUrl: remote, message: compactMessage });
+        expect(update).toHaveBeenCalledWith({ processId: process.id, workspaceId: process.workspaceId, control, compaction });
+    });
+
     it('observes local authoritative claims and omission releases, not automation messages', () => {
         const update = vi.fn();
         renderHook(() => useBotControlUpdates(undefined, 'ws-example', update));

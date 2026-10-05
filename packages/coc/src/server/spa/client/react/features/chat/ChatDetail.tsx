@@ -396,7 +396,8 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     // local flag (the compact POST is blocking); reloads and other tabs derive it
     // from the persisted process metadata fetched via processes.get.
     const persistedCompaction = metadataProcess?.metadata?.compaction as
-        { state?: string; customInstructions?: string } | undefined;
+        { state?: string; customInstructions?: string; error?: string } | undefined;
+    const compactionQueued = persistedCompaction?.state === 'queued';
     const isCompacting = compacting || persistedCompaction?.state === 'running';
     const compactInstructions = compacting ? localCompactInstructions : persistedCompaction?.customInstructions;
     const sessionModel = metadataProcess?.metadata?.model as string | undefined;
@@ -438,10 +439,16 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     } | undefined;
     const composerProvider: ConcreteChatProvider = pendingProvider ?? conversationProvider;
     const owningServerBaseUrl = sourceBaseUrl ?? (workspaceId ? lookupCloneBaseUrl(workspaceId) : undefined);
+    const compactionRefreshRef = useRef<(pid: string) => Promise<void>>(async () => {});
     useBotControlUpdates(owningServerBaseUrl, effectiveWorkspaceId, update => {
         if (update.processId !== processId) return;
         setTask((prev: any) => prev ? { ...prev, botControl: update.control } : prev);
-        setProcessDetails((prev: any) => prev ? { ...prev, botControl: update.control } : prev);
+        setProcessDetails((prev: any) => prev ? { ...prev, botControl: update.control,
+            ...(update.compaction ? { metadata: { ...prev.metadata, compaction: update.compaction } } : {}),
+        } : prev);
+        if (update.compaction && ['completed', 'failed', 'cancelled'].includes(update.compaction.state)) {
+            void compactionRefreshRef.current(update.processId);
+        }
     });
     const { models: activeProviderModels } = useModels(conversationProvider, owningServerBaseUrl);
     const { models: availableModels } = useModels(composerProvider, owningServerBaseUrl);
@@ -820,7 +827,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const nonRetryableFollowUpError = stoppedChatResumeUnavailableError ?? (cancelledWithoutResumeSession
         ? 'This stopped chat cannot be continued because no SDK session was saved. Start a new chat manually.'
         : null);
-    const inputDisabled = loading || isPending || isCancelling || sessionExpired || isCompacting || !!nonRetryableFollowUpError;
+    const inputDisabled = loading || isPending || isCancelling || sessionExpired || !!nonRetryableFollowUpError;
     const isCanonicalFork = typeof processDetails?.metadata?.forkSourceId === 'string';
     const noSessionForFollowUp = isTerminal
         && effectiveStatus !== 'cancelled'
@@ -1452,9 +1459,12 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         setLocalCompactInstructions(running ? instructions : undefined);
     }, []);
 
+    const conversationScopeRef = useRef({ processId, client });
+    conversationScopeRef.current = { processId, client };
     const refreshConversation = useCallback(async (pid: string) => {
         try {
             const data = await client.processes.get(pid);
+            if (conversationScopeRef.current.processId !== pid || conversationScopeRef.current.client !== client) return;
             setProcessDetails(data?.process || null);
             // Re-seed the context-window meter from the refreshed record. This is
             // the deterministic delivery channel for a post-`/compact` usage
@@ -1488,6 +1498,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             })));
         } catch { /* keep current turns */ }
     }, [client, setTurnsAndRef, seedSessionTokensFromProcess]);
+    compactionRefreshRef.current = refreshConversation;
 
     // When a task transitions out of `queued` (via WebSocket or polling), force
     // a one-shot conversation refresh. Without this hook, a fast `queued →
@@ -2852,6 +2863,15 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         postConversationContent={<>{restartLinks}{planReviewCards}</>}
                         restartAction={restartAction}
                         isCompacting={isCompacting}
+                        compactionQueued={compactionQueued}
+                        compactionError={persistedCompaction?.state === 'failed' ? persistedCompaction.error : undefined}
+                        onCancelCompaction={() => {
+                            if (!processId) return;
+                            void getCocClientForWorkspace(workspaceId).processes.cancelCompaction(processId,
+                                workspaceId ? { workspace: workspaceId } : undefined)
+                                .then(() => refreshConversation(processId))
+                                .catch(error => addToast(getSpaCocClientErrorMessage(error, 'Failed to cancel compaction.'), 'error'));
+                        }}
                         compactInstructions={compactInstructions}
                         searchHighlightQuery={searchHighlightQuery}
                     />

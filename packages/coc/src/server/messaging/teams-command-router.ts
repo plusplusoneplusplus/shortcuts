@@ -199,7 +199,7 @@ export class TeamsCommandRouter {
             } else if (command.type === 'chat') {
                 await this.handleChat(userKey, command.args, command.mode, msg, observe);
             } else {
-                await this.deps.sendReply(await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`), msg.messageId);
+                await this.deps.sendReply(await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, this.deps.handOffOrigin?.(msg) ? { ...this.deps.handOffOrigin(msg)!, threadId: msg.messageId } : undefined), msg.messageId);
             }
         } catch (err: any) {
             observe?.('dispatch-failed');
@@ -223,13 +223,14 @@ export class TeamsCommandRouter {
     }
 
     /** `chatKey` scopes the `list remotes` numbering: a bound thread, or a user in a channel. */
-    private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string): Promise<string> {
+    private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, compactOrigin?: MessagingJobOrigin): Promise<string> {
         return handleMessagingCommand(command, {
             store: this.deps.store,
             getQuota: this.deps.getQuota,
             ...TEAMS_FORMAT,
             helpFormat: TEAMS_FORMAT,
             compact: this.deps.compact,
+            compactOrigin,
             remotes: this.deps.remotes,
             remoteRefs: this.remoteRefs.slot(chatKey),
             // Compact the chat plain messages currently continue.
@@ -270,7 +271,7 @@ export class TeamsCommandRouter {
             const processId = binding?.process?.id ?? (binding?.taskId ? toQueueProcessId(binding.taskId) : undefined);
             await this.deps.sendReply(processId
                 ? await compactChatReply(this.deps.store, this.deps.compact,
-                    { processId, workspaceId: binding!.workspaceId }, command.args, escapeTeamsMarkdown)
+                    { processId, workspaceId: binding!.workspaceId }, command.args, escapeTeamsMarkdown, this.deps.handOffOrigin?.(msg) ? { ...this.deps.handOffOrigin(msg)!, threadId: root } : undefined)
                 : '❌ No topic selected in this thread. Use `/list topics`, then `/select topic <n>` here.', root);
             return;
         }

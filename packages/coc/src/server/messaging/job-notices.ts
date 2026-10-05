@@ -42,6 +42,8 @@ export function isMessagingJobOrigin(value: unknown): value is MessagingJobOrigi
 }
 
 export interface JobNotice {
+    operation?: 'compact';
+    threadId?: string;
     workspaceId: string;
     processId: string;
     repo: string;
@@ -56,7 +58,7 @@ const STATUS_EMOJI: Record<RelayTerminalStatus, string> = { completed: '✅', fa
 /** `<repo> · <title> · ✅`, plus the failure detail line. Each connector escapes/formats it. */
 export function formatJobNotice(notice: JobNotice): { line: string; detail?: string } {
     return {
-        line: `${notice.repo} · ${notice.title.slice(0, 80)} · ${STATUS_EMOJI[notice.status]}`,
+        line: `${notice.repo} · ${notice.title.slice(0, 80)}${notice.operation === 'compact' ? ' · Compaction' : ''} · ${STATUS_EMOJI[notice.status]}`,
         ...(notice.detail ? { detail: notice.detail } : {}),
     };
 }
@@ -74,6 +76,8 @@ export interface JobNoticeTransport {
 }
 
 interface NoticeJob {
+    /** A single compaction operation; ordinary jobs notice every turn. */
+    taskId?: string;
     processId: string;
     workspaceId: string;
     origin: MessagingJobOrigin;
@@ -119,13 +123,13 @@ export class MessagingJobNotices {
     }
 
     /** Start tracking a handed-off local job; every terminal turn of it is noticed. */
-    track(job: { processId: string; workspaceId: string; origin: MessagingJobOrigin }): void {
+    track(job: { processId: string; workspaceId: string; origin: MessagingJobOrigin; taskId?: string }): void {
         const rows = this.load(job.workspaceId);
-        if (rows.some(row => row.processId === job.processId)) return;
+        if (rows.some(row => row.processId === job.processId && row.taskId === job.taskId)) return;
         const cutoff = Date.now() - RETENTION_MS;
         const kept = rows.filter(row => Date.parse(row.createdAt) >= cutoff).slice(-(MAX_JOBS - 1));
         rows.splice(0, rows.length, ...kept, {
-            processId: job.processId, workspaceId: job.workspaceId, origin: job.origin,
+            processId: job.processId, workspaceId: job.workspaceId, origin: job.origin, ...(job.taskId ? { taskId: job.taskId } : {}),
             createdAt: new Date().toISOString(), done: [], pending: [], noticeIds: [],
         });
         this.save(job.workspaceId);
@@ -148,6 +152,17 @@ export class MessagingJobNotices {
                     changed = true;
                 }
                 if (job.done.length || job.pending.length) continue;
+                if (job.taskId) {
+                    const task = this.deps.queue.getAll?.().find(task => task.id === job.taskId);
+                    const process = await this.deps.store.getProcess(job.processId, job.workspaceId);
+                    const compact = process?.metadata?.compaction;
+                    const status = task?.status ?? (compact?.taskId === job.taskId ? compact.state : undefined);
+                    if (isTerminalStatus(status)) {
+                        job.pending.push({ taskId: job.taskId, status });
+                        changed = true;
+                    }
+                    continue;
+                }
                 const process = await this.deps.store.getProcess(job.processId, job.workspaceId);
                 const busy = this.deps.queue.getAll?.().some(task => (task.processId ?? toQueueProcessId(task.id)) === job.processId
                     && (task.status === 'queued' || task.status === 'running'));
@@ -175,7 +190,7 @@ export class MessagingJobNotices {
         if (!isTerminalStatus(task.status)) return;
         const processId = task.processId ?? toQueueProcessId(task.id);
         const rows = typeof task.repoId === 'string' && task.repoId ? this.load(task.repoId) : [...this.jobs.values()].flat();
-        const job = rows.find(row => row.processId === processId);
+        const job = rows.find(row => row.processId === processId && (row.taskId ? row.taskId === task.id : task.payload?.kind !== 'compact'));
         if (!job || job.done.includes(task.id) || job.sending === task.id
             || job.pending.some(entry => entry.taskId === task.id)) return;
         job.pending.push({ taskId: task.id, status: task.status });
@@ -236,7 +251,9 @@ export class MessagingJobNotices {
             repo: workspace?.name ?? job.workspaceId,
             title: process?.title ?? process?.customTitle ?? job.processId.slice(0, 8),
             status,
-            ...(status === 'failed' ? {
+            ...(job.taskId ? { operation: 'compact' as const, threadId: job.origin.threadId,
+                detail: status === 'completed' ? 'Context compacted.' : status === 'cancelled' ? 'Queued compaction cancelled.' : 'Compaction failed. Later messages can continue.' } : {}),
+            ...(!job.taskId && status === 'failed' ? {
                 detail: process
                     ? findRequestFailureText(turns, lastUser, process.status === 'failed' ? process.error : undefined)
                     : RELAY_ANSWER_TEXT.failed,

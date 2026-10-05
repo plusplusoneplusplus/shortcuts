@@ -330,9 +330,9 @@ export class ProcessesClient {
    * Compact (summarize) a conversation's live SDK session history to free model
    * context for the next turn. Optional `customInstructions` steer the summary;
    * an empty/omitted value sends a bare `{}` body. CoC's displayed transcript is
-   * NOT rewritten — the caller surfaces the `CompactResult` as a transient info
-   * message. Rejects (typed error) for unsupported providers (422) or a
-   * non-idle conversation (409).
+   * NOT rewritten. Busy conversations return a durable queued task; idle
+   * conversations return the provider result. Unsupported providers reject
+   * with 422 when executed.
    */
   compact(
     processId: string,
@@ -345,6 +345,10 @@ export class ProcessesClient {
       query,
       body: trimmed ? { customInstructions: trimmed } : {},
     });
+  }
+
+  cancelCompaction(processId: string, query?: Pick<ProcessListQuery, 'workspace'>): Promise<{ cancelled: boolean }> {
+    return this.transport.request(`/processes/${encodePathSegment(processId)}/compact`, { method: 'DELETE', query });
   }
 
   /**
