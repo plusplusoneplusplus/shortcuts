@@ -57,7 +57,7 @@ const typeClass = {
 
 export function ToastContainer({ toasts, removeToast }: ToastProps) {
     return ReactDOM.createPortal(
-        <div className="fixed bottom-5 right-5 z-[10001] flex flex-col gap-2 pointer-events-none">
+        <div className="fixed bottom-5 right-5 z-[10001] flex flex-col gap-2 pointer-events-none" data-native-view-passthrough>
             {toasts.map(t => (
                 <div
                     key={t.id}
