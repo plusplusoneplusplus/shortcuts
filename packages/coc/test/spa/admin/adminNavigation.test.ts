@@ -79,13 +79,13 @@ describe('buildAdminNavGroups', () => {
         const connections = groups.find(g => g.label === 'Connections')?.items ?? [];
         expect(connections.map(i => i.label)).toEqual(['Teams', 'WhatsApp']);
         expect(connections[1].testId).toBe('admin-tab-whatsapp');
-        expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:agents']);
+        expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'admin:browser']);
         expect(keys(groups, 'Configure')).not.toContain('tool:servers');
     });
 
     it('web + servers enabled: adds the servers tool row to Configure', () => {
         const groups = buildAdminNavGroups({ isContainer: false, serversEnabled: true });
-        expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'tool:servers']);
+        expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:agents', 'admin:browser', 'tool:servers']);
     });
 
     it('container: Connections group holds messaging + agents, Configure has no agents', () => {
@@ -93,9 +93,16 @@ describe('buildAdminNavGroups', () => {
         expect(labels(groups)).toContain('Connections');
         expect(keys(groups, 'Connections')).toEqual(['admin:messaging', 'admin:agents']);
         expect(keys(groups, 'Connections')).not.toContain('admin:whatsapp');
-        expect(keys(groups, 'Configure')).toEqual(['settings:configure']);
+        expect(keys(groups, 'Configure')).toEqual(['settings:configure', 'admin:browser']);
         const agents = groups.flatMap(g => g.items).find(i => i.key === 'admin:agents');
         expect(agents?.label).toBe('Agents');
+    });
+
+    it('Browser row follows AI Provider with its own label, icon, and test id', () => {
+        const configure = buildAdminNavGroups({ isContainer: false, serversEnabled: true }).find(g => g.label === 'Configure')?.items ?? [];
+        const browser = configure.find(i => i.key === 'admin:browser');
+        expect(configure.map(i => i.label)).toEqual(['Configure', 'AI Provider', 'Browser', 'Servers']);
+        expect(browser).toMatchObject({ label: 'Browser', icon: '◎', testId: 'admin-tab-browser', action: { kind: 'admin', tab: 'browser' } });
     });
 
     it('Knowledge group always lists memory, skills, dreams in order', () => {
@@ -113,6 +120,17 @@ describe('deriveActiveNav', () => {
         expect(d.activeNavKey).toBe('admin:whatsapp');
         expect(d.activeTabLabel).toBe('WhatsApp');
         expect(d.activeBreadcrumbGroup).toBe('Connections');
+    });
+
+    it('browser tab highlights its own row under Configure with a description', () => {
+        const d = deriveActiveNav({
+            isContainer: false, isToolEmbedded: false,
+            activeDashboardTab: 'admin', activeTab: 'browser', settingsSubTab: 'ai',
+        });
+        expect(d.activeNavKey).toBe('admin:browser');
+        expect(d.activeTabLabel).toBe('Browser');
+        expect(d.activeBreadcrumbGroup).toBe('Configure');
+        expect(d.activePageDescription).toBe('Browser engines and sign-ins for this desktop installation.');
     });
 
     it('settings sub-tab (non-advanced) highlights settings:configure', () => {

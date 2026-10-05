@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { AppProvider } from '../../../src/server/spa/client/react/contexts/AppContext';
 import { AdminPanel } from '../../../src/server/spa/client/react/admin/AdminPanel';
@@ -1918,5 +1918,36 @@ describe('AdminPanel', () => {
                 ],
             }));
         });
+    });
+});
+
+describe('AdminPanel — Browser page (desktop shell)', () => {
+    function installDesktopShell() {
+        const browser = {
+            getPreferences: vi.fn(async () => ({ defaultEngine: 'electron', engines: [{ engine: 'electron', available: true }], clearing: [] })),
+            onPreferencesChanged: vi.fn(() => () => { }),
+            setDefaultEngine: vi.fn(), clearData: vi.fn(),
+        };
+        (window as { cocDesktop?: unknown }).cocDesktop = { isDesktop: true, browser };
+    }
+
+    beforeEach(() => {
+        installDesktopShell();
+        mockFetch.mockImplementation(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+    });
+    afterEach(() => { delete (window as { cocDesktop?: unknown }).cocDesktop; });
+
+    it('clicking the Browser row opens #admin/browser with the engine card', async () => {
+        await act(async () => { renderWithProviders(); });
+        await act(async () => { fireEvent.click(screen.getByTestId('admin-tab-browser')); });
+        expect(window.location.hash).toBe('#admin/browser');
+        await waitFor(() => expect(screen.getByTestId('desktop-browser-preferences')).toBeDefined());
+        expect(await screen.findByLabelText('Default browser engine')).toBeDefined();
+    });
+
+    it('Appearance no longer renders the engine card', async () => {
+        await act(async () => { renderWithProviders(); });
+        await gotoSettingsSubTab('appearance');
+        expect(screen.queryByTestId('desktop-browser-preferences')).toBeNull();
     });
 });

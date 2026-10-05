@@ -655,7 +655,6 @@ export function AdminPanel() {
                                                         isDefaultValue={isDefaultValue}
                                                     />
                                                     {renderTabFeatures('appearance')}
-                                                    {isDesktop && <DesktopBrowserPreferences />}
                                                 </>
                                             )}
 
@@ -754,6 +753,8 @@ export function AdminPanel() {
                                     )}
                                 </div>
                             )}
+
+                            {activeTab === 'browser' && <DesktopBrowserPreferences />}
 
                             {/* ── Data tab ── */}
                             {activeTab === 'data' && (

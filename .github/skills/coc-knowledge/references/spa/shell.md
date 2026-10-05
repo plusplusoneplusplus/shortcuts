@@ -101,7 +101,7 @@ SPA side: `desktopHtmlPageBridge()` (`shared/file-path/html-page-bridge.ts`) ada
 
 ### Browser profiles and preferences
 
-`desktop-browser.json` stores the default (Electron). Admin Appearance's Desktop Preferences uses local IPC, not workspace-server APIs.
+`desktop-browser.json` stores the default (Electron). The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
 The Windows desktop helper enables OS-account SSO by default at environment creation without an environment flag. Profiles remain separate from Edge. SSO does not guarantee Conditional Access compliance; clearing site data does not disconnect Windows accounts.
 

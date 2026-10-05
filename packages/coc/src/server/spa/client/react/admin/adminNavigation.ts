@@ -65,6 +65,7 @@ const BASE_TAB_LABELS: Record<AdminSubTab, string> = {
     agents: 'AI Provider',
     messaging: 'Messaging',
     whatsapp: 'WhatsApp',
+    browser: 'Browser',
 };
 const BASE_TAB_ICONS: Record<AdminSubTab, string> = {
     settings: '⚙',
@@ -76,6 +77,7 @@ const BASE_TAB_ICONS: Record<AdminSubTab, string> = {
     agents: '◉',
     messaging: '✉',
     whatsapp: '☏',
+    browser: '◎',
 };
 const BASE_TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     settings: 'Default model, execution limits, timeout, and output format for AI tasks.',
@@ -87,6 +89,7 @@ const BASE_TAB_DESCRIPTIONS: Record<AdminSubTab, string> = {
     agents: '',
     messaging: 'Configure messaging connections.',
     whatsapp: 'Receive commands and chat messages in a selected WhatsApp group.',
+    browser: 'Browser engines and sign-ins for this desktop installation.',
 };
 
 export function getAdminTabLabel(tab: AdminSubTab, isContainer: boolean): string {
@@ -161,6 +164,7 @@ export const ADMIN_TAB_GROUP_LABELS: Partial<Record<AdminSubTab, string>> = {
     prompts: 'Developer / Internals',
     database: 'Developer / Internals',
     agents: 'Configure',
+    browser: 'Configure',
 };
 
 export function settingsNavItem(subTab: SettingsSubTab): AdminNavItem {
@@ -231,6 +235,7 @@ export function buildAdminNavGroups({ isContainer, serversEnabled }: AdminNavCon
                     action: { kind: 'settings', subTab: DEFAULT_SETTINGS_SUBTAB } as AdminNavAction,
                 },
                 ...nonContainerAgentsNavItem,
+                adminNavItem('browser', isContainer),
                 ...serversNavItems,
             ],
         },
