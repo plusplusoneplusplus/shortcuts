@@ -37,7 +37,7 @@ export interface ToolCallLike {
     toolName?: string;
     name?: string;
     args?: unknown;
-    result?: string;
+    result?: unknown;
     status?: string;
 }
 
@@ -52,10 +52,8 @@ export interface PullRequestDetectionOptions {
 }
 
 const SHELL_TOOL_NAMES = new Set(['powershell', 'shell', 'bash']);
-const GITHUB_PR_CREATION_TOOL_NAMES = new Set([
-    'github_create_pull_request',
-    'mcp__codex_apps__github___create_pull_request',
-]);
+// Providers qualify native/MCP names differently (mcp__server__, server., etc.).
+const PR_CREATION_TOOL_NAME_RE = /(?:^|[_.:/-])create_pull_request$/;
 
 const GITHUB_PR_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)/g;
 
@@ -243,8 +241,62 @@ function isReadOnlyPullRequestCommand(command: string): boolean {
     return READ_ONLY_PR_PATTERNS.some(re => re.test(command));
 }
 
-function isGitHubConnectorPullRequestCreation(toolName: string): boolean {
-    return GITHUB_PR_CREATION_TOOL_NAMES.has(toolName);
+/**
+ * Read only the creation result's identity fields, never args, bodies or prose.
+ * CoC returns {success, url, id, provider}; GitHub returns {url, number} or
+ * {html_url, number}. MCP/Claude may wrap either in structuredContent or JSON
+ * text blocks. Reject error envelopes and conflicting identities as a whole.
+ */
+function creationToolPrUrl(result: unknown, toolCallId: string): string | null {
+    const urls = new Set<string>();
+    let failed = false;
+    const visit = (value: unknown, depth: number): void => {
+        if (depth > 6) { failed = true; return; }
+        if (typeof value === 'string') {
+            try { visit(JSON.parse(value), depth + 1); } catch { /* not structured output */ }
+            return;
+        }
+        // Claude serializes tool_result.content as an array of text blocks.
+        if (Array.isArray(value)) {
+            for (const block of value) {
+                if (isRecord(block) && block.type === 'text') visit(block.text, depth + 1);
+            }
+            return;
+        }
+        if (!isRecord(value)) return;
+        if (('success' in value && value.success !== true) || value.isError === true || value.is_error === true
+            || value.error != null || (typeof value.status === 'string'
+                && UNSUCCESSFUL_TOOL_STATUSES.has(value.status.toLowerCase()))) {
+            failed = true;
+            return;
+        }
+        if ('structuredContent' in value) visit(value.structuredContent, depth + 1);
+        if (Array.isArray(value.content)) visit(value.content, depth + 1);
+
+        for (const key of ['url', 'html_url']) {
+            if (!(key in value)) continue;
+            const url = value[key];
+            // GitHub REST carries an API `url` alongside its browser html_url.
+            if (key === 'url' && typeof url === 'string' && url.startsWith('https://api.github.com/')
+                && typeof value.html_url === 'string') continue;
+            const pr = typeof url === 'string' ? parsePullRequestUrl(url, toolCallId) : null;
+            if (!pr || !Number.isSafeInteger(pr.number) || pr.number <= 0
+                || typeof url !== 'string' || !url.endsWith(`/${pr.number}`) || pr.owner === '.' || pr.owner === '..'
+                || pr.repo === '.' || pr.repo === '..') {
+                failed = true;
+                continue;
+            }
+            // GitHub REST's `id` is a database id, not the PR number. CoC's `id`
+            // is the PR number; its explicit success flag distinguishes it.
+            if ('number' in value && value.number !== pr.number) failed = true;
+            if (value.success === true && 'id' in value && value.id !== pr.number) failed = true;
+            if (value.provider !== undefined && value.provider !== pr.provider
+                && !(value.provider === 'ado' && pr.provider === 'azure-devops')) failed = true;
+            urls.add(pr.url);
+        }
+    };
+    visit(result, 0);
+    return !failed && urls.size === 1 ? [...urls][0] : null;
 }
 
 /**
@@ -422,7 +474,7 @@ function collectOwnLogPaths(command: string, result: string, into: Set<string>):
  * that it created it: the wrapper's structured `JSON: {… pr_url … status:"done"}`
  * success line (from its own run, or from a later grep/tail of a log path this
  * chat's own run named), a `gh pr create` / `az repos pr create` invocation that
- * did not fail, or the GitHub connector's create tool. Read-only PR commands,
+ * did not fail, or a structured create_pull_request result. Read-only PR commands,
  * unsuccessful tool calls, and shell output with no command metadata are ignored.
  *
  * Pass `options.remoteUrl` to additionally scope results to the chat's own repo.
@@ -448,14 +500,14 @@ export function detectPullRequestsInToolGroup(
     for (const tc of toolCalls) {
         const toolName = (tc.toolName || tc.name || '').toLowerCase();
 
-        if (isGitHubConnectorPullRequestCreation(toolName)) {
+        if (PR_CREATION_TOOL_NAME_RE.test(toolName)) {
             if (!tc.result || !isSuccessfulToolCall(tc)) continue;
-            append(lastPullRequestUrl(tc.result), tc);
+            append(creationToolPrUrl(tc.result, tc.id), tc);
             continue;
         }
 
         if (!SHELL_TOOL_NAMES.has(toolName)) continue;
-        if (!tc.result) continue;
+        if (typeof tc.result !== 'string' || !tc.result) continue;
 
         const command = getCommandString(tc.args);
         if (isReadOnlyPullRequestCommand(command)) continue;

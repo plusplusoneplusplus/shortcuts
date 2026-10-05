@@ -7,7 +7,123 @@ import {
     type ToolCallLike,
 } from '../../src/git/pull-request-detection';
 
+// Actual completed Claude result from shortcuts-2 chat queue_1791211886713-gui2hqq.
+const CREATED_PR = {
+    success: true,
+    url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/874',
+    id: 874,
+    provider: 'github',
+    branch: 'pr/aba433ae1-feat-coc-add-file-selection-attached-con',
+    base: 'main',
+    existing: false,
+    autoMerge: { requested: false, enabled: false },
+    bound: true,
+};
+const MCP_CREATED_PR = { content: [{ type: 'text', text: JSON.stringify(CREATED_PR) }], isError: false };
+
 describe('detectPullRequestsInToolGroup', () => {
+    describe('create_pull_request results', () => {
+        it.each([
+            'create_pull_request',
+            'mcp__coc_llm_tools__create_pull_request',
+            'mcp__codex_apps__github___create_pull_request',
+            'github_create_pull_request',
+            'functions.create_pull_request',
+            'MCP__GITHUB__CREATE_PULL_REQUEST',
+        ])('recognizes normalized provider name %s', name => {
+            expect(detectPullRequestsInToolGroup([{ id: 'created', name, result: JSON.stringify(CREATED_PR) }]))
+                .toEqual([expect.objectContaining({ number: 874, provider: 'github', url: CREATED_PR.url, toolCallId: 'created' })]);
+        });
+
+        it.each([
+            CREATED_PR,
+            JSON.stringify(CREATED_PR), // Claude flattens text content to this JSON.
+            MCP_CREATED_PR,
+            JSON.stringify(MCP_CREATED_PR),
+            JSON.stringify(MCP_CREATED_PR.content),
+            { structuredContent: CREATED_PR, ...MCP_CREATED_PR },
+            { url: CREATED_PR.url, number: 874, state: 'open' }, // GitHub connector.
+            { url: 'https://api.github.com/repos/plusplusoneplusplus/shortcuts/pulls/874', html_url: CREATED_PR.url, number: 874, id: 123456789, body: 'See https://github.com/other/repo/pull/1' },
+        ])('reads actual structured/serialized creation output %#', result => {
+            expect(detectPullRequestsInToolGroup([{ id: 'created', name: 'create_pull_request', result }]))
+                .toHaveLength(1);
+        });
+
+        it.each([
+            ['ado', 'https://dev.azure.com/contoso/My%20Project/_git/repo/pullrequest/874'],
+            ['ado', 'https://contoso.visualstudio.com/My%20Project/_git/repo/pullrequest/874'],
+        ])('supports the existing %s host contract %s', (provider, url) => {
+            const prs = detectPullRequestsInToolGroup([{ id: 'ado', name: 'create_pull_request',
+                result: JSON.stringify({ ...CREATED_PR, provider, url }) }],
+                { remoteUrl: 'https://dev.azure.com/contoso/My%20Project/_git/repo' });
+            expect(prs).toEqual([expect.objectContaining({ number: 874, provider: 'azure-devops', url })]);
+        });
+
+        it.each([
+            { ...CREATED_PR, success: false },
+            { ...CREATED_PR, success: 'false' },
+            { ...CREATED_PR, error: 'Command failed' },
+            { ...CREATED_PR, status: 'failed' },
+            { ...MCP_CREATED_PR, isError: true },
+            { ...MCP_CREATED_PR, is_error: true },
+            { structuredContent: CREATED_PR, content: [{ type: 'text', text: JSON.stringify({ success: false, error: 'Failed' }) }] },
+            { ...CREATED_PR, id: 875 },
+            { ...CREATED_PR, number: '874' },
+            { ...CREATED_PR, number: null },
+            { ...CREATED_PR, url: CREATED_PR.url.replace('/874', '/0874') },
+            { ...CREATED_PR, url: 'https://github.com/../repo/pull/874' },
+            { ...CREATED_PR, provider: 'ado' },
+            { ...CREATED_PR, url: 'https://github.com/plusplusoneplusplus/shortcuts/issues/874' },
+            { ...CREATED_PR, url: CREATED_PR.url + '/files' },
+            { ...CREATED_PR, url: CREATED_PR.url + '.evil.com' },
+            { ...CREATED_PR, url: CREATED_PR.url.replace('/874', '/0'), id: 0 },
+            { ...CREATED_PR, url: CREATED_PR.url.replace('/874', '/9007199254740992'), id: 9007199254740992 },
+            { content: [{ type: 'text', text: 'Error creating PR: ' + CREATED_PR.url }] },
+            { content: [{ type: 'text', text: '{"success":true,"url":"' + CREATED_PR.url }] },
+            { body: CREATED_PR.url },
+            { arguments: CREATED_PR },
+            { structuredContent: CREATED_PR, content: [{ type: 'text', text: JSON.stringify({ ...CREATED_PR, id: 875, url: CREATED_PR.url.replace('/874', '/875') }) }] },
+            'Created PR ' + CREATED_PR.url,
+            null,
+        ])('rejects errors, malformed identities and arbitrary mentions %#', result => {
+            expect(detectPullRequestsInToolGroup([{ id: 'bad', name: 'create_pull_request', args: CREATED_PR, result }]))
+                .toEqual([]);
+        });
+
+        it.each(['failed', 'pending', 'running', 'cancelled', 'error'])('rejects %s tool status', status => {
+            expect(detectPullRequestsInToolGroup([{ id: 'bad', name: 'create_pull_request', result: CREATED_PR, status }])).toEqual([]);
+        });
+
+        it.each(['get_pull_request', 'create_pull_request_preview', 'recreate_pull_request', 'bash'])('ignores non-creation tool %s', name => {
+            expect(detectPullRequestsInToolGroup([{ id: 'bad', name, result: JSON.stringify(CREATED_PR) }])).toEqual([]);
+        });
+
+        it('deduplicates matching MCP identities and scopes to the workspace remote', () => {
+            const calls = [{ id: 'a', name: 'create_pull_request', result: CREATED_PR },
+                { id: 'b', name: 'mcp__coc__create_pull_request', result: MCP_CREATED_PR }];
+            expect(detectPullRequestsInToolGroup(calls, { remoteUrl: 'git@github.com:plusplusoneplusplus/shortcuts.git' })).toHaveLength(1);
+            expect(detectPullRequestsInToolGroup(calls, { remoteUrl: 'https://github.com/other/repo' })).toEqual([]);
+        });
+
+        it('merges provider start/completion records without binding arguments', () => {
+            const calls = collectToolCallsFromTurns([{
+                timeline: [
+                    { toolCall: { id: 'native', name: 'mcp__coc__create_pull_request', status: 'running', args: CREATED_PR } },
+                    { toolCall: { id: 'native', status: 'completed', result: JSON.stringify(CREATED_PR) } },
+                ],
+                toolCalls: [{ id: 'native', name: 'create_pull_request', status: 'completed', result: JSON.stringify(CREATED_PR) }],
+            }]);
+            expect(detectPullRequestsInToolGroup(calls)).toEqual([expect.objectContaining({ number: 874 })]);
+            expect(detectPullRequestsInToolGroup([{ id: 'args-only', name: 'create_pull_request', args: CREATED_PR, status: 'completed' }])).toEqual([]);
+        });
+
+        it('accepts successful existing-PR results and auto-merge warnings', () => {
+            expect(detectPullRequestsInToolGroup([{ id: 'existing', name: 'create_pull_request',
+                result: { ...CREATED_PR, existing: true, bound: false,
+                    autoMerge: { requested: true, enabled: false, warning: 'Auto-merge unavailable' } } }])).toHaveLength(1);
+        });
+    });
+
     it('detects a GitHub pull request URL from gh pr create output', () => {
         const pullRequests = detectPullRequestsInToolGroup([
             {

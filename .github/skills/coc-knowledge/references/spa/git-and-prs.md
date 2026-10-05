@@ -261,7 +261,7 @@ commits it authored.
 The detector itself is shared by the SPA and the server:
 `@plusplusoneplusplus/forge/git/pull-request-detection` (`detectPullRequestsInToolGroup`,
 `collectToolCallsFromTurns`, `syntheticRemoteUrlForDetectedPr`). It is pure
-strings/regex — no React, no DOM, no Node built-ins — so one copy serves both.
+JSON/string parsing — no React, no DOM, no Node built-ins — so one copy serves both.
 
 `usePrChatStatusItems` unions PRs detected in loaded turns with persisted bindings
 looked up by `task_id` (`listChatBindingsForOrigin(originId, { taskId })`). It resolves
@@ -280,14 +280,20 @@ writes and reads), idempotent (`INSERT OR REPLACE`), and self-swallowing — a b
 failure never fails the task. Stores without `getDatabase`/`getConversationTurns` (e.g.
 `FileProcessStore`) are a clean no-op.
 
-Detection requires **positive evidence that this tool call created that PR**, because
+Detection requires **positive creation-tool evidence for that PR**, because
 each detection is written back as a binding and so is permanent. A tool call yields at
 most **one** PR — the specific created URL, not every PR URL in its output. Read-only
 PR commands, connector lookups, unsuccessful tool calls (`status` failed/pending/…),
-and output with **no command metadata** are ignored.
+and shell output with **no command metadata** are ignored.
 
 Accepted evidence:
-- the GitHub connector's create-pull-request tool;
+- tool names ending in a delimited `create_pull_request` (native CoC and
+  provider/MCP-qualified names): CoC `{success:true, url, id, provider}` results
+  support GitHub and Azure DevOps (`provider: 'ado'`); GitHub connector snapshots
+  use `{url, number}` and REST payloads use `{html_url, number}`. The detector reads
+  object/JSON results and MCP `structuredContent`/JSON text envelopes, validates one
+  canonical browser PR URL and matching identity fields, and rejects error flags,
+  malformed or conflicting identities. Arguments, bodies and prose supply no evidence;
 - a `gh pr create` / `az repos pr create` command, including inside a shell-interpreter
   wrapper (`bash -lc '…'`, `/bin/bash -c "…"`, `sh -c '…'`) whose quoted payload is
   unwrapped and scanned — the **last** PR URL in the result is the created one, and a

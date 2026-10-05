@@ -162,6 +162,8 @@ references before editing. Paths are package-relative.
   Omitted provider keeps ordinary inheritance. No workspace ownership or scan cron; any number may coexist.
   Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
 - Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.
+  Successful structured `create_pull_request` results use forge’s shared detector for
+  composer display and completion binding; preserve origin/workspace scoping.
   Commit-mode conflicts abort; the active checkout/HEAD never moves. Worktree execution
   uses owning-server committed objects, fails before queueing, performs no implicit
   network/branch switch, and removes without force/branch deletion.
