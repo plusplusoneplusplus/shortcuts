@@ -178,6 +178,9 @@ export function BranchChanges({ workspaceId, branchRangeData, initialFiles, onDe
     };
 
     if (onDefaultBranch || !rangeInfo) return null;
+    // Only a loaded range with both counts explicitly zero is empty.
+    if (rangeInfo.commitCount === 0 && rangeInfo.fileCount === 0
+        && !initialFiles?.length && !filesLoading && !filesError) return null;
 
     const baseShort = rangeInfo.baseRef.replace(/^origin\//, '');
     const branchLabel = rangeInfo.branchName || rangeInfo.headRef;

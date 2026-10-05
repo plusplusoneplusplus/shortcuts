@@ -317,6 +317,7 @@ export function CompactWorkingTreeSummary({ staged, modified, untracked }: { sta
 
 export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFilePath, refreshKey, onAllCommentsClick, compact }: WorkingTreeProps) {
     const [changes, setChanges] = useState<WorkingTreeChange[]>([]);
+    const [changesLoaded, setChangesLoaded] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
@@ -338,6 +339,8 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
         return cloneClient.git.getWorkingTreeChanges(workspaceId)
             .then(data => {
                 setChanges(data.changes ?? []);
+                setChangesLoaded(Array.isArray(data.changes));
+                setError(null);
                 setUntrackedTruncated(data.untrackedTruncated ?? false);
                 setUntrackedTotal(data.untrackedTotal ?? 0);
             })
@@ -551,6 +554,10 @@ export function WorkingTree({ workspaceId, onRefresh, onFileSelect, selectedFile
             </div>
         );
     }
+
+    // Keep fetching while hidden so refresh can restore the section. Errors
+    // and omitted change lists are not evidence of a clean working tree.
+    if (changesLoaded && totalCount === 0 && untrackedTotal === 0 && !actionError) return null;
 
     return (
         <section
