@@ -4,7 +4,8 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 
 const skillDir = path.resolve(__dirname, '../../../../.github/skills/submit-commits-as-pr');
-const content = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8');
+// Windows checkouts may convert to CRLF; multi-line assertions expect LF.
+const content = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
 
 describe('submit-commits-as-pr skill', () => {
     it('has valid discovery metadata and a bounded body', () => {
