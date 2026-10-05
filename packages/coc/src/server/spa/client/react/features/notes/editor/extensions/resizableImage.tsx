@@ -19,7 +19,7 @@ const MIN_WIDTH = 50;
 
 // ── React NodeView Component ────────────────────────────────────────────────
 
-function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps) {
+function ResizableImageView({ node, updateAttributes, selected, editor }: NodeViewProps) {
     const imgRef = useRef<HTMLImageElement>(null);
     const [dragging, setDragging] = useState(false);
     const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -30,8 +30,8 @@ function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps)
     const currentWidth = dragging ? dragWidth : width ? Number(width) : null;
 
     const handleDoubleClick = useCallback(() => {
-        updateAttributes({ width: null });
-    }, [updateAttributes]);
+        if (editor?.isEditable !== false) updateAttributes({ width: null });
+    }, [editor, updateAttributes]);
 
     const handleDragStart = useCallback(
         (e: React.MouseEvent, corner: string) => {
@@ -91,7 +91,7 @@ function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps)
     const displayHeight =
         currentWidth && naturalAspect ? Math.round(currentWidth * naturalAspect) : undefined;
 
-    const showHandles = hovered || selected || dragging;
+    const showHandles = editor?.isEditable !== false && (hovered || selected || dragging);
     const hasCustomWidth = width != null;
 
     return (

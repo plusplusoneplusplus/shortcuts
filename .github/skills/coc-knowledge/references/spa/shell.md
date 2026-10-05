@@ -329,7 +329,9 @@ descriptors use a stable content hash, dedupe by chat and concrete owner, and
 are excluded from storage and the `+` menu. `openUnifiedPasteTab` captures raw
 text in a panel-scope/resource-id memory map. Panel writes release snapshots
 when their last referencing tab closes; inherited draft/chat tabs share them.
-Clearing a panel releases its snapshots. The full contract lives in
+Clearing a panel releases its snapshots. `UnifiedPasteTab` reads its snapshot by
+panel scope and renders Markdown through read-only `RichEditorCore`, with a raw-text
+copy action and no save or dirty-state registration. The full contract lives in
 `features/repo-detail/unified-right-panel/AGENTS.md`.
 
 Ctrl/Cmd+F focuses the Explorer file filter only while focus is inside the

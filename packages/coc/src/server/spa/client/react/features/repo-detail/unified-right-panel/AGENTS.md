@@ -51,7 +51,10 @@ ephemeral and have no `+` menu action. `openUnifiedPasteTab` captures raw text
 in a panel-scope/resource-id memory map before opening the descriptor. Every
 panel-state write prunes snapshots without a referencing paste tab; draft/chat
 copies share a snapshot until the last copy closes. Clearing panel state releases
-its snapshots. `browser` is a session-only web tab (see "Browser
+its snapshots. `UnifiedPasteTab` reads the panel-scope snapshot and hydrates
+`RichEditorCore` in read-only mode using Markdown conversion without note I/O.
+Its copy action uses the raw snapshot; it registers no dirty or save handlers.
+`browser` is a session-only web tab (see "Browser
 tabs"); every open mints a fresh resource id, so it never dedupes. `unifiedTabId`
 folds kind, owner, scope key, and resource id into one id with `|` escaped, so a
 resource id cannot forge another tab's identity. The selected chat comes from the

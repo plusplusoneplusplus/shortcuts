@@ -67,6 +67,11 @@ load completes before Tiptap is ready, the latest loaded Markdown remains pendin
 until `onEditorReady`; starting another load clears that pending value so a prior
 note cannot hydrate the shared editor.
 
+`RichEditorCore` accepts `readOnly` (default false), setting Tiptap editability
+and suppressing change callbacks and paste/drop overrides. Code-block language
+controls and image resize controls respect editor editability. Standalone paste
+tabs hydrate Markdown without updates and have no note I/O, toolbar, or save host.
+
 ### Host seams
 
 `NoteEditor` publishes two optional props for a host that owns the note's close

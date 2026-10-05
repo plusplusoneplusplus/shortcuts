@@ -63,6 +63,8 @@ import './noteEditor.css';
 // ── Props ───────────────────────────────────────────────────────────────────
 
 export interface RichEditorCoreProps {
+    /** Render a selectable document without editing. Default: false. */
+    readOnly?: boolean;
     /** Placeholder text shown when the editor is empty. */
     placeholder?: string;
     /** Enable inline comment marks via CommentExtension. Default: false. */
@@ -125,6 +127,7 @@ export function getLinkHoverTitle(href: string, platform = globalThis.navigator?
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function RichEditorCore({
+    readOnly = false,
     placeholder = 'Start writing…',
     commentsEnabled = false,
     onCommentActivated,
@@ -159,6 +162,9 @@ export function RichEditorCore({
     // Stable callback refs — avoids editor recreation when parent re-renders
     const onCommentActivatedRef = useRef(onCommentActivated);
     onCommentActivatedRef.current = onCommentActivated;
+
+    const readOnlyRef = useRef(readOnly);
+    readOnlyRef.current = readOnly;
 
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
@@ -199,7 +205,7 @@ export function RichEditorCore({
     const [popupPaper, setPopupPaper] = useState<PaperLinkInfo | null>(null);
 
     const onUpdate = useCallback(({ editor: ed }: EditorEvents['update']) => {
-        onChangeRef.current?.(ed as Editor);
+        if (!readOnlyRef.current) onChangeRef.current?.(ed as Editor);
     }, []);
 
     // Stable resolver handed to the popout dialog + inline viewer. Referentially
@@ -212,6 +218,7 @@ export function RichEditorCore({
     }, []);
 
     const editor = useEditor({
+        editable: !readOnly,
         shouldRerenderOnTransaction: true,
         extensions: [
             MapBlock,
@@ -435,12 +442,14 @@ export function RichEditorCore({
                 },
             },
             handlePaste: (view, event) => {
+                if (readOnlyRef.current) return true;
                 if (handlePasteRef.current) {
                     return handlePasteRef.current(view, event as ClipboardEvent);
                 }
                 return false;
             },
             handleDrop: (view, event) => {
+                if (readOnlyRef.current) return true;
                 if (handleDropRef.current) {
                     return handleDropRef.current(view, event as DragEvent);
                 }
@@ -449,6 +458,10 @@ export function RichEditorCore({
         },
         onUpdate,
     });
+
+    useEffect(() => {
+        editor?.setEditable?.(!readOnly, false);
+    }, [editor, readOnly]);
 
     // Notify parent when editor becomes available
     useEffect(() => {
