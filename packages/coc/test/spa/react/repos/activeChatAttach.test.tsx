@@ -14,6 +14,7 @@ import {
     subscribeActiveChatAttach,
 } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
 import {
+    drainNewChatSeedContext,
     peekNewChatSeedContext,
     resetNewChatSeedContext,
 } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
@@ -239,6 +240,51 @@ describe('activeChatAttach channel', () => {
         expect(attachSelectionToChat('ws-1', fileSelection())).toBe('new-chat');
         expect(other).not.toHaveBeenCalled();
     });
+
+    it('isolates subscribers for remote clones sharing the same raw workspace id', () => {
+        const local = vi.fn(() => true);
+        const remoteA = vi.fn(() => true);
+        const remoteB = vi.fn(() => true);
+        const a = subscribeActiveChatAttach('remote:server-a:ws-1', remoteA);
+        subscribeActiveChatAttach('ws-1', local);
+        subscribeActiveChatAttach('remote:server-b:ws-1', remoteB);
+        const payload = fileSelection();
+
+        expect(attachSelectionToChat('remote:server-a:ws-1', payload)).toBe('active-chat');
+        expect(remoteA).toHaveBeenCalledWith(payload);
+        expect(local).not.toHaveBeenCalled();
+        expect(remoteB).not.toHaveBeenCalled();
+        expect(payload.sourceWorkspaceId).toBe('ws-1');
+        a.bump();
+        expect(attachSelectionToChat('remote:server-b:ws-1', payload)).toBe('active-chat');
+        expect(remoteB).toHaveBeenCalledWith(payload);
+        expect(remoteA).toHaveBeenCalledTimes(1);
+        a.unsubscribe();
+        expect(hasActiveChatAttachSubscriber('remote:server-a:ws-1')).toBe(false);
+        expect(hasActiveChatAttachSubscriber('remote:server-b:ws-1')).toBe(true);
+    });
+
+    it.each(['missing', 'declining', 'throwing'] as const)(
+        'retains a remote destination on %s-subscriber fallback', behavior => {
+            const local = vi.fn(() => true);
+            const other = vi.fn(() => true);
+            subscribeActiveChatAttach('ws-1', local);
+            subscribeActiveChatAttach('remote:server-b:ws-1', other);
+            if (behavior !== 'missing') {
+                subscribeActiveChatAttach('remote:server-a:ws-1', () => {
+                    if (behavior === 'throwing') throw new Error('unavailable composer');
+                    return false;
+                });
+            }
+            const payload = fileSelection();
+            expect(attachSelectionToChat('remote:server-a:ws-1', payload)).toBe('new-chat');
+            expect(local).not.toHaveBeenCalled();
+            expect(other).not.toHaveBeenCalled();
+            expect(drainNewChatSeedContext('ws-1')).toEqual([]);
+            expect(drainNewChatSeedContext('remote:server-b:ws-1')).toEqual([]);
+            expect(drainNewChatSeedContext('remote:server-a:ws-1')).toEqual([payload]);
+        },
+    );
 
     it('bump makes an older subscriber the target; declined handlers fall through', () => {
         const older = vi.fn(() => true);

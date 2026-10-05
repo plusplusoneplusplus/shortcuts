@@ -22,16 +22,30 @@ import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
 
 type SeedListener = () => void;
 
-let pending: SessionContextAttachmentDragPayload[] = [];
+interface PendingSeed {
+    destinationId: string;
+    payload: SessionContextAttachmentDragPayload;
+}
+
+let pending: PendingSeed[] = [];
 const listeners = new Set<SeedListener>();
 
 /**
  * Queue one or more dropped context payloads for the new-chat composer and
  * notify any mounted composer so it can drain immediately (append-keep).
+ * The destination is independent of the payload's server workspace id. Pass a
+ * concrete remote clone key for remote owners; omitted destinations use each
+ * payload's source workspace id for local callers.
  */
-export function pushNewChatSeedContext(payloads: SessionContextAttachmentDragPayload[]): void {
+export function pushNewChatSeedContext(
+    payloads: SessionContextAttachmentDragPayload[],
+    destinationId?: string,
+): void {
     if (payloads.length === 0) return;
-    pending = [...pending, ...payloads];
+    pending = [...pending, ...payloads.map(payload => ({
+        destinationId: destinationId ?? payload.sourceWorkspaceId,
+        payload,
+    }))];
     for (const listener of Array.from(listeners)) {
         try {
             listener();
@@ -41,21 +55,21 @@ export function pushNewChatSeedContext(payloads: SessionContextAttachmentDragPay
     }
 }
 
-/** Drain one workspace, preserving other workspaces; omitted id drains all. */
-export function drainNewChatSeedContext(workspaceId?: string): SessionContextAttachmentDragPayload[] {
+/** Drain one destination, preserving other owners; omitted id drains all. */
+export function drainNewChatSeedContext(destinationId?: string): SessionContextAttachmentDragPayload[] {
     if (pending.length === 0) return [];
-    const drained = workspaceId === undefined
+    const drained = destinationId === undefined
         ? pending
-        : pending.filter(payload => payload.sourceWorkspaceId === workspaceId);
-    pending = workspaceId === undefined
+        : pending.filter(seed => seed.destinationId === destinationId);
+    pending = destinationId === undefined
         ? []
-        : pending.filter(payload => payload.sourceWorkspaceId !== workspaceId);
-    return drained;
+        : pending.filter(seed => seed.destinationId !== destinationId);
+    return drained.map(seed => seed.payload);
 }
 
 /** Non-destructive peek at the buffered payloads (used by tests). */
 export function peekNewChatSeedContext(): SessionContextAttachmentDragPayload[] {
-    return pending;
+    return pending.map(seed => seed.payload);
 }
 
 /** Subscribe to buffer pushes. Returns an unsubscribe function. */

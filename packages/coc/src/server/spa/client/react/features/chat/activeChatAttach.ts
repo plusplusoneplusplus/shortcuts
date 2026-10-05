@@ -11,8 +11,9 @@
  * open for the workspace the payload falls back to the new-chat composer via
  * `pushNewChatSeedContext`.
  *
- * Subscriptions are keyed by workspace id so a selection never leaks into a
- * chat bound to another workspace or remote clone.
+ * Subscriptions use an opaque destination id: a local workspace id or a
+ * concrete remote clone key. Callers must pass the same owner identity to
+ * subscribe and attach; payload sourceWorkspaceId stays a plain workspace id.
  */
 
 import type { SessionContextAttachmentDragPayload } from './sessionContextDrag';
@@ -25,7 +26,7 @@ import { pushNewChatSeedContext } from './newChatSeedContext';
 export type ActiveChatAttachHandler = (payload: SessionContextAttachmentDragPayload) => boolean | void;
 
 interface Subscriber {
-    workspaceId: string;
+    destinationId: string;
     handler: ActiveChatAttachHandler;
 }
 
@@ -33,15 +34,15 @@ interface Subscriber {
 let subscribers: Subscriber[] = [];
 
 /**
- * Subscribe a chat composer for `workspaceId`. Returns an object with an
+ * Subscribe a chat composer for its concrete `destinationId`. Returns an
  * unsubscribe function and a `bump` function that marks this composer as the
  * most recent target (call it when the composer gains focus).
  */
 export function subscribeActiveChatAttach(
-    workspaceId: string,
+    destinationId: string,
     handler: ActiveChatAttachHandler,
 ): { unsubscribe: () => void; bump: () => void } {
-    const entry: Subscriber = { workspaceId, handler };
+    const entry: Subscriber = { destinationId, handler };
     subscribers = [...subscribers, entry];
     return {
         unsubscribe: () => {
@@ -58,14 +59,14 @@ export function subscribeActiveChatAttach(
 export type ActiveChatAttachTarget = 'active-chat' | 'new-chat';
 
 /**
- * Route `payload` to the chat composer for `workspaceId`. Falls back to the
- * new-chat composer seed buffer when no subscriber accepts it.
+ * Route `payload` to the chat composer for its concrete `destinationId`.
+ * Fall back to the same destination’s seed buffer when no subscriber accepts it.
  */
 export function attachSelectionToChat(
-    workspaceId: string,
+    destinationId: string,
     payload: SessionContextAttachmentDragPayload,
 ): ActiveChatAttachTarget {
-    const candidates = subscribers.filter(s => s.workspaceId === workspaceId).reverse();
+    const candidates = subscribers.filter(s => s.destinationId === destinationId).reverse();
     for (const candidate of candidates) {
         let accepted: boolean | void = false;
         try {
@@ -75,13 +76,13 @@ export function attachSelectionToChat(
         }
         if (accepted !== false) return 'active-chat';
     }
-    pushNewChatSeedContext([payload]);
+    pushNewChatSeedContext([payload], destinationId);
     return 'new-chat';
 }
 
-/** True when a chat composer for `workspaceId` is subscribed (used by tests). */
-export function hasActiveChatAttachSubscriber(workspaceId: string): boolean {
-    return subscribers.some(s => s.workspaceId === workspaceId);
+/** True when a chat composer for `destinationId` is subscribed (used by tests). */
+export function hasActiveChatAttachSubscriber(destinationId: string): boolean {
+    return subscribers.some(s => s.destinationId === destinationId);
 }
 
 /** Test helper — clear all subscribers. */

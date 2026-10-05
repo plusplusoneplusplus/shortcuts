@@ -96,7 +96,9 @@ references before editing. Paths are package-relative.
 
 - Monaco selection attachments target a visible follow-up composer or seed the
   new-chat input in their workspace. Hidden or inert composers decline before
-  changing state or focus; seed drains preserve items for other workspaces.
+  changing state or focus. Attachment channels accept a destination identity
+  separate from the payload workspace id; remote callers use concrete clone keys.
+  Fallback seeds retain that destination, and drains preserve other owners’ items.
 - Copilot decisions use a two-minute deadline per initial/repair attempt.
   Preserve caller cancellation and explicit backend timeout overrides.
 - First/follow-up turns share context/system/policy/runner/settlement helpers
