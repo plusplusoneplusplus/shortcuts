@@ -162,6 +162,8 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             };
             if (!validateBrowserUrl(url).ok) { report(false, 'Only HTTP(S) downloads are supported.'); }
             else { void shell.openExternal(url).then(() => report(true), error => report(false, error instanceof Error ? error.message : String(error))); }
+        } else if (message.event === 'close-requested' && entry.bounds) {
+            entry.sink.closeRequested();
         } else if (message.event === 'focus-host' && !entry.window.isDestroyed()) {
             entry.window.webContents.focus();
             void this.focusOwner(entry.request.ownerId).catch(error => this.viewFailure(entry, error));

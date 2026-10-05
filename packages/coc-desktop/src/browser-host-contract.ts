@@ -20,6 +20,7 @@ export interface BrowserEventSink {
     state(state: BrowserViewState): void;
     newTab(url: string): void;
     download(event: BrowserDownloadEvent): void;
+    closeRequested(): void;
 }
 
 export interface BrowserHostedView {

@@ -57,6 +57,7 @@ const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
 const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
 const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
+const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-close-requested';
 const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
@@ -227,6 +228,7 @@ const browser = {
     clearData: (engine: BrowserEngine): Promise<{ ok: boolean; reason?: string; message?: string }> =>
         ipcRenderer.invoke(BROWSER_CLEAR_DATA_CHANNEL, engine),
     onPreferencesChanged: (callback: () => void) => subscribe(BROWSER_PREFERENCES_CHANGED_CHANNEL, callback),
+    onCloseRequested: (callback: (event: { viewId: string }) => void) => subscribe(BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, callback),
     onClosed: (callback: (event: { viewId: string; engine: BrowserEngine }) => void) => subscribe(BROWSER_VIEW_CLOSED_CHANNEL, callback),
 };
 

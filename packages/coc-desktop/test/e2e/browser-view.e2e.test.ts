@@ -93,7 +93,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
     it('runs the full scenario to completion', () => {
         expect(exitCode, raw).toBe(0);
         expect([...steps.keys()]).toEqual([
-            'reject', 'open', 'navigate', 'history', 'stop-reload', 'failure', 'new-tab', 'popup',
+            'reject', 'open', 'close-shortcut', 'navigate', 'history', 'stop-reload', 'failure', 'new-tab', 'popup',
             'sessions', 'download', 'open-external', 'visibility', 'close', 'owner-reload',
         ]);
     });
@@ -117,6 +117,15 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
         expect(open.visible).toBe(true);
         expect(open).toMatchObject({ hasBridge: false, hasRequire: false, hasProcess: false, partitionPersistent: true });
         expect(open.userAgent).not.toMatch(/Electron\//);
+    });
+
+    it('forwards the native close shortcut from an editable page without closing the desktop window', () => {
+        const shortcut = steps.get('close-shortcut')!;
+        expect(shortcut).toMatchObject({
+            forwarded: [{ viewId: 'b1' }], beforeClose: 0,
+            afterHidden: 1, windowAlive: true, viewAlive: true,
+        });
+        expect(shortcut.pageCloseKeys).toBe(shortcut.beforePage);
     });
 
     it('follows links, redirects and in-page navigation', () => {

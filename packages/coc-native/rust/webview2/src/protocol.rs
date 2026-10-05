@@ -22,6 +22,10 @@ pub struct Command {
     pub action: Option<String>,
 }
 
+pub fn close_shortcut(key: u32, key_down: bool, control: bool, alt: bool) -> bool {
+    key == u32::from(b'W') && key_down && control && !alt
+}
+
 pub fn allowed_url(value: &str, allow_blank: bool) -> bool {
     if allow_blank && (value.is_empty() || value == "about:blank") {
         return true;
@@ -59,6 +63,15 @@ pub fn failure(id: u64, reason: &str, message: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn close_shortcut_preserves_other_keys_and_modifiers() {
+        assert!(close_shortcut(u32::from(b'W'), true, true, false));
+        assert!(!close_shortcut(u32::from(b'W'), false, true, false));
+        assert!(!close_shortcut(u32::from(b'W'), true, false, false));
+        assert!(!close_shortcut(u32::from(b'W'), true, true, true));
+        assert!(!close_shortcut(u32::from(b'F'), true, true, false));
+    }
 
     #[test]
     fn navigation_policy_is_http_only() {

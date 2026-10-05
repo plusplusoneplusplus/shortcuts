@@ -69,6 +69,7 @@ import {
     BROWSER_PREFERENCES_SET_CHANNEL,
     BROWSER_CLEAR_DATA_CHANNEL,
     BROWSER_PREFERENCES_CHANGED_CHANNEL,
+    BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL,
     BROWSER_VIEW_CLOSED_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
     BROWSER_HOST_FOCUS_CHANNEL,
@@ -405,6 +406,7 @@ describe('preload bridge', () => {
     });
 
     it.each([
+        ['onCloseRequested', BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, { viewId: 'b1' }],
         ['onState', BROWSER_VIEW_STATE_CHANNEL, { viewId: 'b1', url: 'https://a.test/', title: 'A', canGoBack: false, canGoForward: false, loading: false }],
         ['onNewTab', BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: 'b1', url: 'https://b.test/' }],
         ['onDownload', BROWSER_VIEW_DOWNLOAD_CHANNEL, { viewId: 'b1', url: 'https://a.test/f.zip', ok: true }],
