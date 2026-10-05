@@ -2991,6 +2991,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                             onAttachmentFiles={addFromFileInput}
                             attachmentError={attachmentError}
                             pastePreview={{
+                                pastedContent: textPaste.pastedContent,
                                 charCount: textPaste.charCount,
                                 previewLines: textPaste.previewLines,
                                 onTextPaste: textPaste.addFromPaste,
@@ -3140,6 +3141,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     onAttachmentFiles={addFromFileInput}
                     attachmentError={attachmentError}
                     pastePreview={{
+                        pastedContent: textPaste.pastedContent,
                         charCount: textPaste.charCount,
                         previewLines: textPaste.previewLines,
                         onTextPaste: textPaste.addFromPaste,

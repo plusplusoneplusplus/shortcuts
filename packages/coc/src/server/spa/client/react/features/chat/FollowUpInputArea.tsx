@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Button, SuggestionChips, QueueFollowUpButton } from '../../ui';
 import { AttachmentPreviews } from '../../ui/AttachmentPreviews';
 import { PastePreview } from '../../ui/PastePreview';
+import { useUnifiedPanelHostForChat } from '../repo-detail/unified-right-panel/unifiedPanelHost';
+import { openUnifiedPasteTab } from '../repo-detail/unified-right-panel/unifiedPanelOpen';
 import { AttachedContextPreviews } from '../../ui/AttachedContextPreviews';
 import { cn } from '../../ui/cn';
 import { RichTextInput } from '../../shared/RichTextInput';
@@ -110,6 +112,8 @@ export interface FollowUpInputAreaProps {
     onAttachmentFiles: (files: FileList) => void;
     attachmentError: string | null;
     pastePreview: {
+        /** Full raw text; preview lines are truncated and cannot open a snapshot. */
+        pastedContent?: string | null;
         charCount: number;
         previewLines: string[];
         onTextPaste: (e: React.ClipboardEvent) => void;
@@ -369,6 +373,8 @@ export function FollowUpInputArea({
     const rootRef = useRef<HTMLDivElement>(null);
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
+    const pastePanelHost = useUnifiedPanelHostForChat(activeProcessId);
+    const rawPasteContent = pastePreview?.pastedContent;
     // `#repo_name` mentions: only in a repo-group chat, and only once the
     // group's membership has resolved. Elsewhere `#` is ordinary text.
     const repoMentionsEnabled = isRepoGroupWorkspaceId(activeWorkspaceId);
@@ -1038,6 +1044,13 @@ export function FollowUpInputArea({
                     charCount={pastePreview.charCount}
                     previewLines={pastePreview.previewLines}
                     onDismiss={pastePreview.clearPaste}
+                    onOpenInPanel={pastePanelHost && activeWorkspaceId && rawPasteContent != null
+                        ? () => openUnifiedPasteTab(pastePanelHost.workspaceId, rawPasteContent, {
+                            ownerWorkspaceId: activeWorkspaceId,
+                            ownerRoutingRef: attachmentDestinationId ?? activeWorkspaceId,
+                            chatId: activeProcessId,
+                        })
+                        : undefined}
                 />
             )}
             {/* ── Stacked layout (the single follow-up-composer path shared by
