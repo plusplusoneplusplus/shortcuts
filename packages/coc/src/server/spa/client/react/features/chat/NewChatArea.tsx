@@ -155,6 +155,8 @@ export interface InitialChatComposerProps {
     sourceSelectionId?: string;
     /** Optional source clone URL for standalone/pop-out callers. */
     sourceBaseUrl?: string;
+    /** Activity owner whose buffered new-chat context this composer may consume. */
+    newChatSeedDestinationId?: string;
     workspaceRoot?: string;
     onBack?: () => void;
     onSubmit: (submission: InitialChatComposerSubmission) => Promise<string | null | void>;
@@ -297,6 +299,7 @@ export function NewChatArea({ workspaceId, sourceSelectionId, onBack }: NewChatA
         <InitialChatComposer
             workspaceId={workspaceId}
             sourceSelectionId={sourceSelectionId}
+            newChatSeedDestinationId={sourceSelectionId ?? workspaceId}
             workspaceRoot={getSelectedWorkspaceRoot()}
             onBack={onBack}
             onSubmit={handleSubmit}
@@ -310,6 +313,7 @@ export function InitialChatComposer({
     workspaceId,
     sourceSelectionId,
     sourceBaseUrl,
+    newChatSeedDestinationId,
     workspaceRoot,
     onBack,
     onSubmit,
@@ -343,7 +347,7 @@ export function InitialChatComposer({
     // be merged into this composer's attached-context (AC-01). Held in state so
     // the merge can retry once conversation-retrieval capability resolves for
     // session/Ralph kinds that need it.
-    const [pendingSeedContext, setPendingSeedContext] = useState<SessionContextAttachmentDragPayload[]>([]);
+    const [pendingSeedContext, setPendingSeedContext] = useState<{ destinationId: string; payload: SessionContextAttachmentDragPayload }[]>([]);
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [selectedProvider, setSelectedProvider] = useState<ChatProvider>(() => getSelectableComposerDefaultProvider([]));
     const [effortOverride, setEffortOverride] = useState<EffortLevel | null>(null);
@@ -1166,14 +1170,16 @@ export function InitialChatComposer({
     // Drain context items dropped onto the desktop "+ New chat" button (AC-01).
     // Pull on render to retry when the owner or panel visibility changes, and
     // subscribe for pushes onto an already-open composer (append-keep). Only
-    // this workspace is drained; other views retain their buffered items.
+    // the opted-in Activity owner is drained; other views retain their items.
     useEffect(() => {
         const pull = () => {
-            if (!workspaceId || !sessionContextAttachmentsEnabled
+            if (!workspaceId || !newChatSeedDestinationId || !sessionContextAttachmentsEnabled
                 || !isContextComposerVisible(composerRootRef.current)) return;
-            const drained = drainNewChatSeedContext(workspaceId);
+            const drained = drainNewChatSeedContext(newChatSeedDestinationId);
             if (drained.length > 0) {
-                setPendingSeedContext(prev => [...prev, ...drained]);
+                setPendingSeedContext(prev => [...prev, ...drained.map(payload => ({
+                    destinationId: newChatSeedDestinationId, payload,
+                }))]);
             }
         };
         pull();
@@ -1190,7 +1196,7 @@ export function InitialChatComposer({
             setPendingSeedContext([]);
             return;
         }
-        const stillPending: SessionContextAttachmentDragPayload[] = [];
+        const stillPending: typeof pendingSeedContext = [];
         let nextError: string | null = null;
         let attachedAny = false;
         let focusSelectionInput = false;
@@ -1200,14 +1206,15 @@ export function InitialChatComposer({
         // pass so a duplicate carried within the same batch is skipped instead of
         // being added twice (AC-03 dedupe).
         const seenThisPass = new Set<string>();
-        for (const payload of pendingSeedContext) {
-            // A composer can change workspace while capability resolution is pending.
-            if (payload.sourceWorkspaceId !== workspaceId) continue;
+        for (const seed of pendingSeedContext) {
+            const { payload, destinationId } = seed;
+            // A composer can change clone while capability resolution is pending.
+            if (destinationId !== newChatSeedDestinationId || payload.sourceWorkspaceId !== workspaceId) continue;
             const requiresRetrieval = payload.kind === SESSION_CONTEXT_DRAG_KIND
                 || payload.kind === RALPH_SESSION_CONTEXT_DRAG_KIND;
             if (requiresRetrieval && canRetrieveConversations === null) {
                 // Capability not resolved yet — keep and retry when it settles.
-                stillPending.push(payload);
+                stillPending.push(seed);
                 continue;
             }
             if (seenThisPass.has(getPayloadLogicalKey(payload))) {
@@ -1239,7 +1246,9 @@ export function InitialChatComposer({
         }
         if (focusSelectionInput) richTextRef.current?.focus();
         if (stillPending.length !== pendingSeedContext.length) {
-            setPendingSeedContext(stillPending);
+            // A pull earlier in this effect pass may have queued the new owner's seeds.
+            setPendingSeedContext(prev => prev.filter(seed =>
+                !pendingSeedContext.includes(seed) || stillPending.includes(seed)));
         }
     });
 

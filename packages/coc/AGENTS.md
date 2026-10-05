@@ -101,6 +101,9 @@ references before editing. Paths are package-relative.
   ChatDetail forwards its sourceSelectionId to both follow-up layouts; subscription
   ownership changes with that destination while validation keeps the raw workspace id.
   Fallback seeds retain that destination, and drains preserve other owners’ items.
+  Activity NewChatArea opts into buffered seeds with newChatSeedDestinationId;
+  shared notes/review composers leave it unset. Pending seeds retain their owner
+  through capability resolution and are discarded when that owner changes.
 - Copilot decisions use a two-minute deadline per initial/repair attempt.
   Preserve caller cancellation and explicit backend timeout overrides.
 - First/follow-up turns share context/system/policy/runner/settlement helpers

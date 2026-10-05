@@ -233,10 +233,14 @@ key while payload `sourceWorkspaceId` remains the plain server workspace id.
 `pushNewChatSeedContext(payloads, destinationId?)` stores that destination with
 each seed, defaulting to each payload's source workspace when omitted.
 `drainNewChatSeedContext(destinationId)` preserves other owners' seeds; an
-omitted destination drains all. Visible, feature-enabled initial composers drain
-their workspace's buffered items. File and diff seeds focus the input after
-validation, including duplicate feedback. Composers retry buffered seeds on
-render so workspace and panel visibility changes can make them eligible. Generic
+omitted destination drains all. `NewChatArea` opts the shared initial composer
+into seed consumption with `newChatSeedDestinationId` set to its
+`sourceSelectionId` or local workspace id. Notes and review adapters leave that
+prop unset. `ChatListPane` pushes with its concrete Activity routing target.
+Visible, feature-enabled consumers retain the destination while capability
+resolution is pending and discard stale-owner items. File and diff seeds focus
+the input after validation, including duplicate feedback. Consumers retry on
+render so owner and panel visibility changes can make them eligible. Generic
 file viewers and trusted absolute paths do not opt in. File-selection blocks
 include a repo-relative path, line range and a capped fenced snippet; user-turn
 parsing restores their context cards. `MonacoFileDiffViewer` mounts

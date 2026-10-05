@@ -1619,6 +1619,16 @@ describe('ChatListPane', () => {
             expect(btn.getAttribute('data-drop-active')).toBeNull();
         });
 
+        it.each(['remote:a:ws-1', 'remote:b:ws-1'])('buffers drops for the concrete Activity owner %s', (destination) => {
+            renderPane({ workspaceId: 'ws-1', quotaRoutingTarget: destination, onNewChat: vi.fn(), history: [makeHistoryTask()] });
+            fireEvent.drop(screen.getByTestId('toolbar-new-chat-btn'), {
+                dataTransfer: makeDropDataTransfer(commitPayload, POINTER_CONTEXT_DRAG_MIME),
+            });
+            expect(drainNewChatSeedContext('ws-1')).toEqual([]);
+            expect(drainNewChatSeedContext(destination === 'remote:a:ws-1' ? 'remote:b:ws-1' : 'remote:a:ws-1')).toEqual([]);
+            expect(drainNewChatSeedContext(destination)).toEqual([commitPayload]);
+        });
+
         it('falls back to onOpenDialog when no onNewChat handler is provided', () => {
             const onOpenDialog = vi.fn();
             renderPane({ workspaceId: 'ws-1', onNewChat: undefined, onOpenDialog, history: [makeHistoryTask()] });
