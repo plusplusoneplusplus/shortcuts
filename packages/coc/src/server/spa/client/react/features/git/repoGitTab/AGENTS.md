@@ -48,10 +48,12 @@ refresh, and the two layouts. Everything else lives here.
   view alone" — distinct from `next: null`, which clears it.
 - **Selection attachment ownership.** `RepoGitTab.sourceSelectionId` identifies
   the concrete source clone. The detail pane forwards it as
-  `attachmentDestinationId` to file-diff and working-tree viewers; their payloads
-  retain the raw workspace id. Repo-group hosts derive the member clone key from
-  their server-qualified group selection. Never read global clone selection to
-  choose the attachment destination.
+  `attachmentDestinationId` to file-diff, working-tree, commit and branch-range
+  viewers; their payloads retain the raw workspace id. Git review openers serialize
+  that identity as `sourceSelectionId` and resolve the endpoint from the explicit
+  owner. Explicit local owners never inherit an active remote endpoint. Repo-group
+  hosts derive the member clone key from their server-qualified group selection.
+  Never read global clone selection to choose the attachment destination.
 - **Page owner and data owner are separate.** `workspaceId` is the git data
   (every request, cache, preference, websocket subscription and pop-out) and
   `routeWorkspaceId` is the page the hash addresses. A repo group passes its own

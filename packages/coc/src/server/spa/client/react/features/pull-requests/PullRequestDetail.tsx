@@ -150,12 +150,14 @@ export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId
     // Explicit pop-out action for the Files tab. Inline (right-panel) diff is
     // now the default click path; this opens the separate review window.
     const handlePopOut = useCallback((_filePath: string) => {
-        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId, lookupCloneBaseUrl(workspaceId));
+        const cloneBaseUrl = attachmentDestinationId === workspaceId
+            ? undefined : lookupCloneBaseUrl(attachmentDestinationId ?? workspaceId);
+        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId, cloneBaseUrl, attachmentDestinationId);
         const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
         if (popOutOpened(win)) {
             markPoppedOut(gitReviewPrPopOutKey(workspaceId, String(prId)));
         }
-    }, [workspaceId, originId, repoId, prId, markPoppedOut]);
+    }, [workspaceId, attachmentDestinationId, originId, repoId, prId, markPoppedOut]);
 
     const switchTab = useCallback(
         (tab: PrDetailTab) => {
@@ -730,4 +732,3 @@ function tabCount(
             return counts.checks > 0 ? `${counts.checksPassing}/${counts.checks}` : null;
     }
 }
-

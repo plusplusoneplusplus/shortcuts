@@ -12,6 +12,9 @@ keyboard order. Header and classification-settings disclosures reset on
 workspace-scoped `useModalJobAiSelection`; disable selectors during classification.
 Review and view control groups wrap independently in narrow panes. Icon buttons
 need accessible names, and panel toggles expose their pressed state.
+The review opener carries `attachmentDestinationId` as URL `sourceSelectionId`;
+endpoint lookup uses that concrete owner, with explicit local owners staying on
+the page origin. Omitted owners retain workspace-based lookup.
 
 ## CommitList interaction kernel
 

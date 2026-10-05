@@ -61,6 +61,7 @@ export function RepoGitDetailPane({
     if (view?.type === 'commit') {
         return (
             <CommitDetail
+                attachmentDestinationId={attachmentDestinationId}
                 key={view.commit.hash}
                 workspaceId={workspaceId}
                 hash={view.commit.hash}
@@ -100,6 +101,7 @@ export function RepoGitDetailPane({
     if (view?.type === 'branch-range') {
         return (
             <BranchRangeOverview
+                attachmentDestinationId={attachmentDestinationId}
                 workspaceId={workspaceId}
                 range={branchRangeData!}
                 commits={commits}

@@ -405,12 +405,14 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
 
     const handleOpenAsPopup = useCallback((commit: GitCommitItem) => {
         closeContextMenu();
-        const url = buildGitReviewPopOutUrl(workspaceId, commit.hash, lookupCloneBaseUrl(workspaceId));
+        const cloneBaseUrl = sourceSelectionId === workspaceId
+            ? undefined : lookupCloneBaseUrl(sourceSelectionId ?? workspaceId);
+        const url = buildGitReviewPopOutUrl(workspaceId, commit.hash, cloneBaseUrl, sourceSelectionId);
         const win = window.open(url, `coc-git-review-${commit.hash}`, 'width=1200,height=800');
         if (popOutOpened(win)) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, commit.hash));
         }
-    }, [workspaceId, closeContextMenu, markPoppedOut]);
+    }, [workspaceId, sourceSelectionId, closeContextMenu, markPoppedOut]);
 
     const handleMobileSelectingChange = useCallback((selecting: boolean) => {
         setIsMobileSelecting(selecting);

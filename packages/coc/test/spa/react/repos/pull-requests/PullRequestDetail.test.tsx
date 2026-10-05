@@ -445,6 +445,61 @@ describe('back button', () => {
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 
 describe('tabs', () => {
+    it('opens reviews with the current concrete owner after mounted owner and PR changes', async () => {
+        const { registerCloneBaseUrls, setActiveCloneForRouting } = await import(
+            '../../../../../src/server/spa/client/react/repos/cloneRegistry'
+        );
+        registerCloneBaseUrls([
+            { workspaceId: 'repo-1', cloneKey: 'remote:one:repo-1', baseUrl: 'https://one.example' },
+            { workspaceId: 'repo-1', cloneKey: 'remote:two:repo-1', baseUrl: 'https://two.example' },
+        ]);
+        setActiveCloneForRouting('remote:two:repo-1');
+        const open = vi.spyOn(window, 'open').mockReturnValue(null);
+        mockFetchDetail(makePr(), [], SAMPLE_DIFF);
+        let result: Awaited<ReturnType<typeof renderDetail>>;
+        await act(async () => { result = await renderDetail({ attachmentDestinationId: 'remote:one:repo-1' }); });
+        await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-files'));
+        const { PullRequestDetail } = await import('../../../../../src/server/spa/client/react/features/pull-requests/PullRequestDetail');
+        const { QueueProvider } = await import('../../../../../src/server/spa/client/react/contexts/QueueContext');
+        for (const [owner, baseUrl] of [
+            ['remote:one:repo-1', 'https://one.example'],
+            ['remote:two:repo-1', 'https://two.example'],
+            ['repo-1', null],
+        ] as const) {
+            result!.rerender(<QueueProvider><PullRequestDetail repoId="repo-1" workspaceId="repo-1"
+                remoteUrl="https://github.com/octo/repo.git" prId={142} onBack={mockDispatch}
+                attachmentDestinationId={owner} /></QueueProvider>);
+            fireEvent.click(screen.getByTestId('pr-diff-popout'));
+            const url = new URL(String(open.mock.calls.at(-1)![0]), 'https://dashboard.example');
+            expect(url.searchParams.get('workspace')).toBe('repo-1');
+            expect(url.searchParams.get('sourceSelectionId')).toBe(owner);
+            expect(url.searchParams.get('cloneBaseUrl')).toBe(baseUrl);
+            expect(url.searchParams.get('origin')).toBe('gh_octo_repo');
+            expect(url.hash).toBe('#popout/git-review/pr/142');
+        }
+        global.fetch = vi.fn().mockImplementation((input: string | URL | Request) => {
+            const path = new URL(String(input), 'https://dashboard.example').pathname;
+            if (path.endsWith('/pull-requests/143')) return Promise.resolve(jsonResponse(makePr({ id: 143, number: 143 })));
+            if (path.endsWith('/143/threads')) return Promise.resolve(jsonResponse({ threads: [] }));
+            if (path.endsWith('/143/diff')) return Promise.resolve(textResponse(SAMPLE_DIFF));
+            if (path.endsWith('/143/commits')) return Promise.resolve(jsonResponse({ commits: [] }));
+            if (path.endsWith('/143/checks')) return Promise.resolve(jsonResponse({ checks: [] }));
+            return Promise.resolve(detailFallbackResponse(SAMPLE_DIFF, String(input)));
+        });
+        await act(async () => {
+            result!.rerender(<QueueProvider><PullRequestDetail repoId="repo-1" workspaceId="repo-1"
+                remoteUrl="https://github.com/octo/repo.git" prId={143} onBack={mockDispatch}
+                attachmentDestinationId="remote:one:repo-1" /></QueueProvider>);
+        });
+        await waitFor(() => expect(screen.getByTestId('pr-diff-popout')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('pr-diff-popout'));
+        const url = new URL(String(open.mock.calls.at(-1)![0]), 'https://dashboard.example');
+        expect(url.searchParams.get('sourceSelectionId')).toBe('remote:one:repo-1');
+        expect(url.hash).toBe('#popout/git-review/pr/143');
+        open.mockRestore();
+    });
+
     it.each(['repo-1', 'remote:one:repo-1', 'remote:two:repo-1'])('passes owner %s through the real Files panel', async destination => {
         mockFetchDetail(makePr(), [], SAMPLE_DIFF);
         await act(async () => { await renderDetail({ attachmentDestinationId: destination }); });

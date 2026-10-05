@@ -39,6 +39,7 @@ function loadUpperHeight(): number {
 
 export interface BranchRangeOverviewProps {
     workspaceId: string;
+    attachmentDestinationId?: string;
     range: BranchRangeInfo;
     commits?: GitCommitItem[];
     files?: BranchRangeFile[];
@@ -55,7 +56,7 @@ export interface BranchRangeOverviewProps {
     onBaseModeChange?: (mode: GitRangeBaseMode) => void;
 }
 
-export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, isPopOut, scrollToFilePath, baseMode = 'default-branch', onBaseModeChange }: BranchRangeOverviewProps) {
+export function BranchRangeOverview({ workspaceId, attachmentDestinationId, range, commits: rangeCommits, files: rangeFiles, unpushedCount, onFileSelect, onAllCommentsClick, onAskAI, isPopOut, scrollToFilePath, baseMode = 'default-branch', onBaseModeChange }: BranchRangeOverviewProps) {
     const [upperHeight, setUpperHeight] = useState(loadUpperHeight);
     const [isDragging, setIsDragging] = useState(false);
     const [branchCommentCount, setBranchCommentCount] = useState(0);
@@ -68,12 +69,14 @@ export function BranchRangeOverview({ workspaceId, range, commits: rangeCommits,
         : null;
 
     const handlePopOut = useCallback(() => {
-        const url = buildGitBranchRangePopOutUrl(workspaceId, lookupCloneBaseUrl(workspaceId), baseMode);
+        const cloneBaseUrl = attachmentDestinationId === workspaceId
+            ? undefined : lookupCloneBaseUrl(attachmentDestinationId ?? workspaceId);
+        const url = buildGitBranchRangePopOutUrl(workspaceId, cloneBaseUrl, baseMode, attachmentDestinationId);
         const win = window.open(url, `coc-git-review-branch-${workspaceId}`, 'width=1200,height=800');
         if (popOutOpened(win)) {
             markPoppedOut(gitReviewBranchPopOutKey(workspaceId));
         }
-    }, [workspaceId, markPoppedOut, baseMode]);
+    }, [workspaceId, attachmentDestinationId, markPoppedOut, baseMode]);
 
     const getMaxUpperHeight = useCallback(() => {
         if (!rangeContainerRef.current) return 400;

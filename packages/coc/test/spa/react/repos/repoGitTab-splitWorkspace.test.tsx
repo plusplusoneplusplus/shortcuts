@@ -32,6 +32,7 @@ const client = {
     queue: { enqueue: vi.fn() },
 };
 
+const lookupCloneBaseUrl = vi.hoisted(() => vi.fn());
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
     useCocClient: () => client,
     useCloneBaseUrl: () => undefined,
@@ -39,7 +40,7 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRouting', () => ({
 }));
 vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
     getCocClientForWorkspace: () => client,
-    lookupCloneBaseUrl: () => undefined,
+    lookupCloneBaseUrl,
 }));
 vi.mock('../../../../src/server/spa/client/react/hooks/useWebSocket', () => ({
     useWebSocket: () => {},
@@ -60,7 +61,9 @@ vi.mock('../../../../src/server/spa/client/react/contexts/GitReviewPopOutContext
 
 // Heavy children are irrelevant to the portal contract — stub them to markers.
 vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchChanges', () => ({
-    BranchChanges: () => <div data-testid="stub-branch-changes" />,
+    BranchChanges: ({ onBranchRangeSelect }: { onBranchRangeSelect?: () => void }) => (
+        <button data-testid="stub-branch-changes" onClick={onBranchRangeSelect}>branch range</button>
+    ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/WorkingTree', () => ({
     WorkingTree: () => <div data-testid="stub-working-tree" />,
@@ -71,11 +74,12 @@ vi.mock('../../../../src/server/spa/client/react/features/git/working-tree/Workt
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitList', () => ({
     // Exposes just enough to drive and observe selection: a button that selects
     // a commit, and the currently-selected hash reflected back into the DOM.
-    CommitList: ({ onSelect, selectedHash, selectedFile, onFileSelect }: {
+    CommitList: ({ onSelect, selectedHash, selectedFile, onFileSelect, onDoubleClick }: {
         onSelect?: (c: unknown) => void;
         selectedHash?: string;
         selectedFile?: { hash: string; filePath: string } | null;
         onFileSelect?: (hash: string, filePath: string) => void;
+        onDoubleClick?: (commit: { hash: string; subject: string; author: string; date: string; refs: string[] }) => void;
     }) => (
         <div
             data-testid="stub-commit-list"
@@ -90,12 +94,22 @@ vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitList
                 data-testid="stub-commit-file-select"
                 onClick={() => onFileSelect?.('abc123', 'src/a.ts')}
             >select commit file</button>
+            <button data-testid="stub-commit-popout"
+                onClick={() => onDoubleClick?.({ hash: 'abc123', subject: 'a commit', author: 'a', date: '', refs: [] })}
+            >pop out</button>
         </div>
     ),
     isTouchOnly: () => false,
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/commits/CommitDetail', () => ({
-    CommitDetail: ({ hash }: { hash: string }) => <div data-testid="stub-commit-detail" data-hash={hash} />,
+    CommitDetail: ({ hash, attachmentDestinationId }: { hash: string; attachmentDestinationId?: string }) => (
+        <div data-testid="stub-commit-detail" data-hash={hash} data-owner={attachmentDestinationId} />
+    ),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRangeOverview', () => ({
+    BranchRangeOverview: ({ attachmentDestinationId }: { attachmentDestinationId?: string }) => (
+        <div data-testid="stub-branch-range" data-owner={attachmentDestinationId} />
+    ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({
     // A file diff whose "next file" button walks to a fixed sibling, the way the
@@ -120,6 +134,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/GitPanelHeader', (
 }));
 
 import { RepoGitTab } from '../../../../src/server/spa/client/react/features/git/RepoGitTab';
+import { clearBranchRangeCache } from '../../../../src/server/spa/client/react/features/git/hooks/useBranchRangeCache';
 import {
     MobileWorkspacePaneProvider,
     useMobileWorkspacePaneState,
@@ -134,6 +149,8 @@ async function renderTab(props: Record<string, unknown>) {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    clearBranchRangeCache('ws-1');
+    lookupCloneBaseUrl.mockReturnValue(undefined);
     client.git.listCommits.mockResolvedValue({ commits: [], unpushedCount: 0 });
     client.git.getBranchRange.mockResolvedValue({ onDefaultBranch: true, branchName: 'main', baseRef: 'origin/main' });
     client.git.getRepoState.mockResolvedValue(null);
@@ -177,6 +194,43 @@ describe('RepoGitTab — member selector', () => {
 });
 
 describe('RepoGitTab — split-workspace layout', () => {
+    it('forwards mounted owners to nested review openers and its direct commit opener', async () => {
+        client.git.getBranchRange.mockResolvedValue({
+            onDefaultBranch: false, branchName: 'feature', baseRef: 'origin/main', headRef: 'HEAD',
+        });
+        const endpoints: Record<string, string> = {
+            'remote:one:ws-1': 'https://one.example',
+            'remote:two:ws-1': 'https://two.example',
+            'ws-1': 'https://two.example',
+        };
+        lookupCloneBaseUrl.mockImplementation((owner: string) => endpoints[owner]);
+        const open = vi.spyOn(window, 'open').mockReturnValue(null);
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const props = { layout: 'split-workspace' as const, detailContainer: container, detailActive: true };
+        const result = await renderTab({ ...props, sourceSelectionId: 'remote:one:ws-1' });
+        fireEvent.click(screen.getByTestId('stub-commit-select'));
+        for (const [owner, baseUrl] of [
+            ['remote:one:ws-1', 'https://one.example'],
+            ['remote:two:ws-1', 'https://two.example'],
+            ['ws-1', null],
+        ] as const) {
+            result.rerender(<RepoGitTab workspaceId="ws-1" {...props} sourceSelectionId={owner} />);
+            expect(screen.getByTestId('stub-commit-detail').getAttribute('data-owner')).toBe(owner);
+            fireEvent.click(screen.getByTestId('stub-commit-popout'));
+            const url = new URL(String(open.mock.calls.at(-1)![0]), 'https://dashboard.example');
+            expect(url.searchParams.get('workspace')).toBe('ws-1');
+            expect(url.searchParams.get('sourceSelectionId')).toBe(owner);
+            expect(url.searchParams.get('cloneBaseUrl')).toBe(baseUrl);
+            expect(url.hash).toBe('#popout/git-review/abc123');
+            fireEvent.click(screen.getByTestId('stub-branch-changes'));
+            expect(screen.getByTestId('stub-branch-range').getAttribute('data-owner')).toBe(owner);
+            fireEvent.click(screen.getByTestId('stub-commit-select'));
+        }
+        open.mockRestore();
+        container.remove();
+    });
+
     it('renders only the list in place, with no inline detail pane', async () => {
         await renderTab({ layout: 'split-workspace' });
         expect(screen.getByTestId('git-split-workspace-list')).toBeTruthy();

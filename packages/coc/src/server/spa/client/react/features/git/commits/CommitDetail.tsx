@@ -47,6 +47,7 @@ import { popOutOpened } from '../../../utils/popOutWindow';
 
 export interface CommitDetailProps {
     workspaceId: string;
+    attachmentDestinationId?: string;
     hash?: string;
     commit?: GitCommitItem;
     isPopOut?: boolean;
@@ -56,7 +57,7 @@ export interface CommitDetailProps {
     onClassified?: () => void;
 }
 
-export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFilePath, onClassified }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified }: CommitDetailProps) {
     const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
         () => ({ workspaceId, ref: { type: 'commit', commitHash: hash } }),
         [workspaceId, hash],
@@ -199,12 +200,14 @@ export function CommitDetail({ workspaceId, hash, commit, isPopOut, scrollToFile
 
     const handlePopOut = useCallback(() => {
         if (!hash) return;
-        const url = buildGitReviewPopOutUrl(workspaceId, hash, lookupCloneBaseUrl(workspaceId));
+        const cloneBaseUrl = attachmentDestinationId === workspaceId
+            ? undefined : lookupCloneBaseUrl(attachmentDestinationId ?? workspaceId);
+        const url = buildGitReviewPopOutUrl(workspaceId, hash, cloneBaseUrl, attachmentDestinationId);
         const win = window.open(url, `coc-git-review-${hash}`, 'width=1200,height=800');
         if (popOutOpened(win)) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, hash));
         }
-    }, [workspaceId, hash, markPoppedOut]);
+    }, [workspaceId, attachmentDestinationId, hash, markPoppedOut]);
 
     const handleResolveAllCommitWithAI = useCallback(() => {
         if (shouldSkipResolveDialog()) {

@@ -100,6 +100,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/format', () => ({
 
 import { CommitDetail } from '../../../../src/server/spa/client/react/features/git/commits/CommitDetail';
 import type { GitCommitItem } from '../../../../src/server/spa/client/react/features/git/commits/CommitList';
+import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const makeCommit = (overrides: Partial<GitCommitItem> = {}): GitCommitItem => ({
     hash: 'abc123def456abc123def456abc123def456abc1',
@@ -116,6 +117,7 @@ const makeCommit = (overrides: Partial<GitCommitItem> = {}): GitCommitItem => ({
 describe('CommitDetail — commit info header', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        registerCloneBaseUrls([]);
     });
 
     async function renderDetail(props: Record<string, unknown> = {}) {
@@ -123,6 +125,33 @@ describe('CommitDetail — commit info header', () => {
             render(<CommitDetail workspaceId="ws1" hash="abc123" {...(props as any)} />);
         });
     }
+
+    it('preserves mounted local and remote owners when opening a review', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws1', cloneKey: 'remote:one:ws1', baseUrl: 'https://one.example' },
+            { workspaceId: 'ws1', cloneKey: 'remote:two:ws1', baseUrl: 'https://two.example' },
+        ]);
+        setActiveCloneForRouting('remote:two:ws1');
+        const open = vi.spyOn(window, 'open').mockReturnValue(null);
+        const result = render(<CommitDetail workspaceId="ws1" hash="abc123" attachmentDestinationId="remote:one:ws1" />);
+        for (const [owner, baseUrl] of [
+            ['remote:one:ws1', 'https://one.example'],
+            ['remote:two:ws1', 'https://two.example'],
+            ['ws1', null],
+        ] as const) {
+            result.rerender(<CommitDetail workspaceId="ws1" hash="abc123" attachmentDestinationId={owner} />);
+            fireEvent.click(screen.getByTestId('commit-popout-btn'));
+            const url = new URL(String(open.mock.calls.at(-1)![0]), 'https://dashboard.example');
+            expect(url.searchParams.get('workspace')).toBe('ws1');
+            expect(url.searchParams.get('sourceSelectionId')).toBe(owner);
+            expect(url.searchParams.get('cloneBaseUrl')).toBe(baseUrl);
+            expect(url.hash).toBe('#popout/git-review/abc123');
+        }
+        result.rerender(<CommitDetail workspaceId="ws1" hash="def456" attachmentDestinationId="remote:one:ws1" />);
+        fireEvent.click(screen.getByTestId('commit-popout-btn'));
+        expect(String(open.mock.calls.at(-1)![0])).toContain('#popout/git-review/def456');
+        open.mockRestore();
+    });
 
     it('does not render header when commit prop is absent', async () => {
         await renderDetail();
