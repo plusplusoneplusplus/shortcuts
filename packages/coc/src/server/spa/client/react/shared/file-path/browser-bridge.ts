@@ -1,6 +1,8 @@
 /** Reply to `browser.open` / `browser.navigate`. */
 export type BrowserEngine = 'electron' | 'webview2';
-export type BrowserOpenResult = { ok: true; engine: BrowserEngine } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
+/** What `browser.open` loads; a bare string is a `url` source. */
+export type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
+export type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSource['kind'] } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
 export interface BrowserPreferences {
     defaultEngine: BrowserEngine;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
@@ -14,6 +16,7 @@ export const DESKTOP_BROWSER_PREFERENCES_HASH = '#admin/settings/appearance';
 export interface BrowserViewState {
     viewId: string;
     engine: BrowserEngine;
+    sourceKind?: BrowserSource['kind'];
     url: string;
     title: string;
     canGoBack: boolean;
@@ -40,7 +43,9 @@ export interface BrowserDownloadEvent {
 
 /** The desktop preload's browser tab API (see coc-desktop browser-view-host.ts). */
 export interface DesktopBrowserBridge {
-    open(viewId: string, url: string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult>;
+    /** Source kinds `open` accepts; absent on desktops that only open URLs. */
+    sources?: readonly string[];
+    open(viewId: string, source: string | BrowserSource, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult>;
     navigate(viewId: string, url: string): Promise<BrowserOpenResult>;
     nav(viewId: string, action: 'back' | 'forward' | 'reload' | 'stop'): void;
     setBounds(viewId: string, rect: { x: number; y: number; width: number; height: number } | null): void;
@@ -48,6 +53,8 @@ export interface DesktopBrowserBridge {
     close(viewId: string): void;
     focus(viewId: string): void;
     openExternal(url: string): Promise<boolean>;
+    /** Hand a view's current page to the system handler; present alongside `sources`. */
+    openViewExternal?(viewId: string): void;
     onState(callback: (state: BrowserViewState) => void): () => void;
     onNewTab(callback: (request: BrowserNewTabRequest) => void): () => void;
     onDownload(callback: (event: BrowserDownloadEvent) => void): () => void;

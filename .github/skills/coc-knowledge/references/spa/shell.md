@@ -97,6 +97,8 @@ Local `.html`/`.htm` previews are `file` sources of `window.cocDesktop.browser` 
 
 Views have no preload, use a separate sandboxed partition, close on full SPA reload, and follow `html-page-policy.ts`.
 
+SPA side: `desktopHtmlPageBridge()` (`shared/file-path/html-page-bridge.ts`) adapts the `file` source to the page API (view `html-page:<pageId>`) when `browser.sources` includes `file`, else returns the older `htmlPage`; web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab` (placeholder + placement) and `NativeViewNavButtons`; the HTML toolbar shows the file path read-only, with Back/Forward only on the merged API.
+
 ## Desktop browser views
 
 `window.cocDesktop.browser` uses desktop `browser-host-manager.ts`. `open(viewId, source, sessionKey, relatedEngine?)` takes `{ kind: 'url', url }` (or a bare URL string) or `{ kind: 'file', path }`, validates HTTP(S)/file policy and ownership, and replays live history; only `file` sources load `file:`. `browser.sources` (`['url', 'file']`) lets the SPA feature-detect file previews, and `openViewExternal(viewId)` opens a view's current page in the system browser.

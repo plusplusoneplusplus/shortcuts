@@ -85,6 +85,7 @@ from same-id clones never merge into one tab.
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
 | `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns the editable address bar with inline rejection and an Open in system browser fallback. |
+| `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame for native desktop views (browser and HTML page tabs): toolbar slot, the placeholder the view is kept over, and Back/Forward/Reload(Stop) buttons. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | The one Git tab per panel scope (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu). Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
 | `unifiedChatCanvasActions.ts` | The registry a `canvas` tab calls back into its owning chat through — "Ask AI" and "Send comments". Keyed by chat id alone. |
@@ -510,10 +511,17 @@ sidebar for AI canvases.
 
 ## Desktop HTML pages
 
-`UnifiedHtmlPageTab` keeps a native `WebContentsView` over a DOM placeholder
-through the preload's `htmlPage` bridge. It updates bounds on resize, scroll,
+`UnifiedHtmlPageTab` and `UnifiedBrowserTab` both render through
+`NativeViewTab.tsx`: `NativeViewTab` owns the placeholder and its placement
+(`useNativeViewPlacement`), and `NativeViewNavButtons` the Back/Forward/Reload
+(Stop) controls. `desktopHtmlPageBridge()` (`shared/file-path/html-page-bridge.ts`)
+picks the page API: the merged `cocDesktop.browser` `file` source (view
+`html-page:<pageId>`, session `html-page`) when `browser.sources` includes
+`file`, else the older `cocDesktop.htmlPage` (no history, so Back/Forward stay
+disabled). The tab updates bounds on resize, scroll,
 and layout changes, hides while inactive/collapsed or covered by DOM content,
-and closes the view on tab close or unmount. Its toolbar reloads
+and closes the view on tab close or unmount. Its toolbar shows the file path
+read-only, goes back/forward, reloads
 the page, opens the file in the system browser, or requests the read-only source
 canvas (`forceSourceViewer` bypasses editable unified file tabs). Load errors
 surface inline with the same source fallback. The view is ephemeral: the tab
@@ -547,8 +555,8 @@ with the opener's owner and `browserEngine`; the desktop default affects only
 new views. Desktop Preferences lives in Admin Appearance and uses local IPC.
 The SPA entry point subscribes to `onClosed` and removes target-engine tabs
 from every cached workspace via `closeBrowserPanelView`, including unmounted
-panels. Placement over the placeholder is shared with HTML pages via
-`useNativeViewPlacement`. Native views paint above all DOM, so the hook hides
+panels. The frame, placement, and history buttons are shared with HTML pages via
+`NativeViewTab` (see Desktop HTML pages). Native views paint above all DOM, so the hook hides
 the view while a modal dialog or the tab menu is open, or while a 5x5
 `elementFromPoint` hit test (inset 12px from the edges, so splitters don't count)
 finds any other element above the placeholder — dropdowns, popovers, and

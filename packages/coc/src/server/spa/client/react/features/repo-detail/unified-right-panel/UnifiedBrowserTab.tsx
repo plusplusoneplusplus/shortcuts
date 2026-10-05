@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
-import { useNativeViewPlacement } from './useNativeViewPlacement';
+import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import {
     desktopBrowserBridge,
     openUrlInSystemBrowser,
@@ -28,8 +28,6 @@ export interface UnifiedBrowserTabProps {
     onPageState: (id: string, page: { url: string; title: string }) => void;
 }
 
-const toolbarButton = 'rounded px-2 py-1 hover:bg-[#e8e8e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007acc] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent dark:hover:bg-[#37373d]';
-
 /**
  * A general web browser tab. The address field accepts an http(s) URL or a
  * bare domain; anything else is rejected inline and never searched.
@@ -43,7 +41,6 @@ export function UnifiedBrowserTab({
     tabId, viewId, sessionKey, url, relatedEngine, active, visible, onNavigate, onPageState,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
-    const placeholder = useRef<HTMLDivElement>(null);
     const [address, setAddress] = useState(url ?? '');
     const [error, setError] = useState<string | null>(null);
     const [page, setPage] = useState<BrowserViewState | null>(null);
@@ -105,11 +102,6 @@ export function UnifiedBrowserTab({
     }, [bridge, hasUrl, sessionKey, tabId, viewId, relatedEngine, retry]);
 
     const failed = Boolean(startupError || (page?.error && !page?.loading));
-    const placement = useMemo(() => bridge ? {
-        setBounds: (rect: { x: number; y: number; width: number; height: number }) => bridge.setBounds(viewId, rect),
-        hide: () => bridge.hide(viewId),
-    } : null, [bridge, viewId]);
-    useNativeViewPlacement(placeholder, opened && active && visible && !failed, placement);
 
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
@@ -140,85 +132,57 @@ export function UnifiedBrowserTab({
     };
     const nav = (action: 'back' | 'forward' | 'reload' | 'stop') => bridge?.nav(viewId, action);
 
-    return (
-        <div className="flex min-h-0 flex-1 flex-col bg-white text-[#1f1f1f] dark:bg-[#1e1e1e] dark:text-[#cccccc]">
-            <form
-                className="flex flex-shrink-0 items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
-                onSubmit={submit}
+    const toolbar = (
+        <form
+            className="flex flex-shrink-0 items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
+            onSubmit={submit}
+        >
+            {bridge && (
+                <>
+                    <NativeViewNavButtons
+                        canGoBack={Boolean(page?.canGoBack)}
+                        canGoForward={Boolean(page?.canGoForward)}
+                        loading={page?.loading}
+                        disabled={!opened}
+                        onNav={nav}
+                        testIdPrefix="browser"
+                    />
+                    {engine && <span className="flex-shrink-0 rounded bg-[#f0f0f0] px-1.5 py-0.5 text-[10px] text-[#616161] dark:bg-[#2d2d2d] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">{engine === 'electron' ? 'Electron' : 'WebView2'}</span>}
+                </>
+            )}
+            <input
+                type="text"
+                value={address}
+                onChange={event => { setAddress(event.target.value); setError(null); }}
+                placeholder="Enter a URL"
+                aria-label="Address"
+                aria-invalid={error !== null}
+                spellCheck={false}
+                autoFocus={!url}
+                className="min-w-0 flex-1 rounded border border-[#c8c8c8] bg-transparent px-2 py-1 outline-none focus:border-[#007acc] dark:border-[#3c3c3c]"
+                data-testid="browser-address"
+            />
+            <button
+                className={toolbarButton}
+                type="button"
+                disabled={!currentUrl}
+                onClick={openExternal}
+                data-testid="browser-open-external"
             >
-                {bridge && (
-                    <>
-                        <button
-                            className={toolbarButton}
-                            type="button"
-                            aria-label="Back"
-                            title="Back"
-                            disabled={!opened || !page?.canGoBack}
-                            onClick={() => nav('back')}
-                            data-testid="browser-back"
-                        >
-                            ←
-                        </button>
-                        <button
-                            className={toolbarButton}
-                            type="button"
-                            aria-label="Forward"
-                            title="Forward"
-                            disabled={!opened || !page?.canGoForward}
-                            onClick={() => nav('forward')}
-                            data-testid="browser-forward"
-                        >
-                            →
-                        </button>
-                        {page?.loading ? (
-                            <button
-                                className={toolbarButton}
-                                type="button"
-                                aria-label="Stop"
-                                title="Stop"
-                                onClick={() => nav('stop')}
-                                data-testid="browser-stop"
-                            >
-                                ✕
-                            </button>
-                        ) : (
-                            <button
-                                className={toolbarButton}
-                                type="button"
-                                aria-label="Reload"
-                                title="Reload"
-                                disabled={!opened}
-                                onClick={() => nav('reload')}
-                                data-testid="browser-reload"
-                            >
-                                ↻
-                            </button>
-                        )}
-                        {engine && <span className="flex-shrink-0 rounded bg-[#f0f0f0] px-1.5 py-0.5 text-[10px] text-[#616161] dark:bg-[#2d2d2d] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">{engine === 'electron' ? 'Electron' : 'WebView2'}</span>}
-                    </>
-                )}
-                <input
-                    type="text"
-                    value={address}
-                    onChange={event => { setAddress(event.target.value); setError(null); }}
-                    placeholder="Enter a URL"
-                    aria-label="Address"
-                    aria-invalid={error !== null}
-                    spellCheck={false}
-                    autoFocus={!url}
-                    className="min-w-0 flex-1 rounded border border-[#c8c8c8] bg-transparent px-2 py-1 outline-none focus:border-[#007acc] dark:border-[#3c3c3c]"
-                    data-testid="browser-address"
-                />
-                <button
-                    className={toolbarButton}
-                    type="button"
-                    disabled={!currentUrl}
-                    onClick={openExternal}
-                    data-testid="browser-open-external"
-                >
-                    Open in system browser
-                </button>
-            </form>
+                Open in system browser
+            </button>
+        </form>
+    );
+
+    return (
+        <NativeViewTab
+            bridge={bridge}
+            viewId={viewId}
+            shown={opened && active && visible && !failed}
+            surfaceHidden={failed || !url}
+            placeholderTestId="browser-placeholder"
+            toolbar={toolbar}
+        >
             {bridge && page?.title && (
                 <div
                     className="flex-shrink-0 truncate border-b border-[#e5e5e5] px-3 py-0.5 text-[11px] text-[#616161] dark:border-[#333] dark:text-[#9d9d9d]"
@@ -257,12 +221,6 @@ export function UnifiedBrowserTab({
                             <p>Enter a web address above.</p>
                         </div>
                     )}
-                    <div
-                        ref={placeholder}
-                        className="min-h-0 flex-1"
-                        style={{ display: failed || !url ? 'none' : undefined }}
-                        data-testid="browser-placeholder"
-                    />
                 </>
             ) : (
                 <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center text-xs text-[#616161] dark:text-[#9d9d9d]" data-testid="browser-web-fallback">
@@ -278,6 +236,6 @@ export function UnifiedBrowserTab({
                     )}
                 </div>
             )}
-        </div>
+        </NativeViewTab>
     );
 }
