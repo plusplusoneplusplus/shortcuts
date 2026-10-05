@@ -157,9 +157,10 @@ export function parseGitFileDeepLink(hash: string): { commitHash: string; filePa
 }
 
 /** Build a pop-out URL for git commit review. */
-export function buildGitReviewPopOutUrl(workspaceId: string, commitHash: string, cloneBaseUrl?: string): string {
+export function buildGitReviewPopOutUrl(workspaceId: string, commitHash: string, cloneBaseUrl?: string, sourceSelectionId?: string): string {
     const cloneParam = cloneBaseUrl ? `&cloneBaseUrl=${encodeURIComponent(cloneBaseUrl)}` : '';
-    return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}#popout/git-review/${encodeURIComponent(commitHash)}`;
+    const sourceParam = sourceSelectionId ? `&sourceSelectionId=${encodeURIComponent(sourceSelectionId)}` : '';
+    return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}${sourceParam}#popout/git-review/${encodeURIComponent(commitHash)}`;
 }
 
 /**
@@ -172,17 +173,20 @@ export function buildGitBranchRangePopOutUrl(
     workspaceId: string,
     cloneBaseUrl?: string,
     baseMode?: 'default-branch' | 'upstream',
+    sourceSelectionId?: string,
 ): string {
     const cloneParam = cloneBaseUrl ? `&cloneBaseUrl=${encodeURIComponent(cloneBaseUrl)}` : '';
     const baseParam = baseMode === 'upstream' ? '&base=upstream' : '';
-    return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}${baseParam}#popout/git-review/branch-range`;
+    const sourceParam = sourceSelectionId ? `&sourceSelectionId=${encodeURIComponent(sourceSelectionId)}` : '';
+    return `/?workspace=${encodeURIComponent(workspaceId)}${cloneParam}${baseParam}${sourceParam}#popout/git-review/branch-range`;
 }
 
 /** Build a pop-out URL for PR review. */
-export function buildGitPrPopOutUrl(workspaceId: string, repoId: string, prId: string | number, originId?: string, cloneBaseUrl?: string): string {
+export function buildGitPrPopOutUrl(workspaceId: string, repoId: string, prId: string | number, originId?: string, cloneBaseUrl?: string, sourceSelectionId?: string): string {
     const originParam = originId ? `&origin=${encodeURIComponent(originId)}` : '';
     const cloneParam = cloneBaseUrl ? `&cloneBaseUrl=${encodeURIComponent(cloneBaseUrl)}` : '';
-    return `/?workspace=${encodeURIComponent(workspaceId)}&repo=${encodeURIComponent(repoId)}${originParam}${cloneParam}#popout/git-review/pr/${encodeURIComponent(String(prId))}`;
+    const sourceParam = sourceSelectionId ? `&sourceSelectionId=${encodeURIComponent(sourceSelectionId)}` : '';
+    return `/?workspace=${encodeURIComponent(workspaceId)}&repo=${encodeURIComponent(repoId)}${originParam}${cloneParam}${sourceParam}#popout/git-review/pr/${encodeURIComponent(String(prId))}`;
 }
 
 export function parseWorkflowDeepLink(hash: string): { repoId: string; processId: string } | null {

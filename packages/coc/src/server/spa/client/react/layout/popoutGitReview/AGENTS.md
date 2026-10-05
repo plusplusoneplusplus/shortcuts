@@ -29,6 +29,11 @@ here.
 
 - Adapters configure the kernel; they never re-implement selection, priority
   navigation, comment mapping, or chat placement.
+- Route metadata keeps `sourceSelectionId` separate from the raw `workspaceId`
+  and clone endpoint. Clone registration includes that exact key and its guard
+  checks the concrete owner. The shell forwards it as `attachmentDestinationId`
+  through every adapter to `FileDiffPanel`; omitted owners retain the panel's
+  workspace fallback. Diff payloads and source factories keep raw workspace IDs.
 - Capabilities are opt-in via optional `progress` / `classification` arguments.
   Branch-range currently opts into neither, which is why its rail hides the
   priority and filter affordances.

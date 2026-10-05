@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
@@ -52,8 +52,8 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => 
     useBreakpoint: mocks.useBreakpoint,
 }));
 
-vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
-    getSpaCocClient: () => ({
+vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => {
+    const createClient = () => ({
         git: {
             getCommit: (...args: unknown[]) => mocks.getCommit(...args),
             commitDiffPath: (...args: unknown[]) => mocks.commitDiffPath(...args),
@@ -90,9 +90,13 @@ vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
             getReasoningEfforts: vi.fn().mockResolvedValue({ reasoningEfforts: {} }),
             getEffortTiers: vi.fn().mockResolvedValue({ effortTiers: {}, defaults: {} }),
         },
-    }),
-    requestSpaApi: vi.fn().mockResolvedValue(null),
-}));
+    });
+    return {
+        getSpaCocClient: createClient,
+        getCocClientFor: createClient,
+        requestSpaApi: vi.fn().mockResolvedValue(null),
+    };
+});
 
 vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useCommitDiffCache', () => ({
     useCachedDiff: (...args: unknown[]) => mocks.useCachedDiff(...args),
@@ -130,7 +134,9 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/PopOutFilePan
 }));
 
 vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', () => ({
-    FileDiffPanel: ({ filePath, source, onBack }: {
+    FileDiffPanel: ({ workspaceId, attachmentDestinationId, filePath, source, onBack }: {
+        workspaceId: string;
+        attachmentDestinationId?: string;
         filePath: string;
         source: {
             cacheKey: string;
@@ -143,6 +149,8 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel
             <div
                 data-testid="file-diff-panel"
                 data-file={filePath}
+                data-workspace={workspaceId}
+                data-destination={attachmentDestinationId ?? ''}
                 data-cache-key={source.cacheKey}
                 data-old-ref={context.oldRef}
                 data-new-ref={context.newRef}
@@ -235,6 +243,10 @@ vi.mock('../../../../src/server/spa/client/react/features/git/branches/BranchRan
 
 import { PopOutGitReviewShell } from '../../../../src/server/spa/client/react/layout/PopOutGitReviewShell';
 import { getReviewChatPlacementStorageKey } from '../../../../src/server/spa/client/react/features/git/commits/commitChatPlacement';
+import { resetCloneRegistryForTests, lookupCloneBaseUrl } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
+import {
+    buildGitReviewPopOutUrl, buildGitBranchRangePopOutUrl, buildGitPrPopOutUrl,
+} from '../../../../src/server/spa/client/react/layout/dashboardRoutes';
 
 const COMMIT_DIFF = [
     'diff --git a/src/app.ts b/src/app.ts',
@@ -257,7 +269,10 @@ const PR_DIFF = [
 ].join('\n');
 
 describe('PopOutGitReviewShell selected-file rendering', () => {
+    afterEach(() => resetCloneRegistryForTests());
+
     beforeEach(() => {
+        resetCloneRegistryForTests();
         vi.clearAllMocks();
         localStorage.clear();
         mocks.isCommitChatLensEnabled.mockReturnValue(false);
@@ -285,6 +300,50 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
         mocks.getPr.mockResolvedValue({ title: 'Fix PR risk', headSha: 'head-sha-42' });
         mocks.getPrDiff.mockResolvedValue(PR_DIFF);
     });
+
+    it.each(['commit', 'branch-range', 'pr'] as const)(
+        'preserves %s selection ownership through the real shell and adapter',
+        async reviewType => {
+            mocks.getCommit.mockResolvedValue({ hash: 'abc123', shortHash: 'abc123', subject: 'Fix app', parentHashes: [] });
+            mocks.listBranchRangeFiles.mockResolvedValue({
+                files: [
+                    { path: 'src/branch.ts', status: 'modified', additions: 1, deletions: 1 },
+                    { path: 'src/other.ts', status: 'modified', additions: 1, deletions: 1 },
+                ],
+            });
+            const filePath = reviewType === 'commit' ? 'src/app.ts' : reviewType === 'pr' ? 'src/pr.ts' : 'src/branch.ts';
+            const urlFor = (owner?: string, endpoint?: string) => {
+                if (reviewType === 'commit') return buildGitReviewPopOutUrl('ws1', 'abc123', endpoint, owner);
+                if (reviewType === 'pr') return buildGitPrPopOutUrl('ws1', 'repo1', 42, 'origin1', endpoint, owner);
+                return buildGitBranchRangePopOutUrl('ws1', endpoint, 'upstream', owner);
+            };
+            window.history.pushState({}, '', urlFor('ws1'));
+            const view = render(<PopOutGitReviewShell />);
+            await screen.findByTestId('popout-file-panel');
+            fireEvent.click(screen.getByText(filePath));
+            const panel = await screen.findByTestId('file-diff-panel');
+            expect(panel.getAttribute('data-workspace')).toBe('ws1');
+            expect(panel.getAttribute('data-destination')).toBe('ws1');
+
+            for (const [owner, endpoint] of [
+                ['remote:server-a:ws1', 'https://clone-a.example.test'],
+                ['remote:server-b:ws1', 'https://clone-b.example.test'],
+            ]) {
+                window.history.pushState({}, '', urlFor(owner, endpoint));
+                view.rerender(<PopOutGitReviewShell />);
+                expect(screen.getByTestId('file-diff-panel').getAttribute('data-destination')).toBe(owner);
+                expect(screen.getByTestId('file-diff-panel').getAttribute('data-workspace')).toBe('ws1');
+                expect(lookupCloneBaseUrl(owner)).toBe(endpoint);
+            }
+            if (reviewType === 'branch-range') {
+                fireEvent.click(screen.getByText('src/other.ts'));
+                expect(screen.getByTestId('file-diff-panel').getAttribute('data-destination')).toBe('remote:server-b:ws1');
+            }
+            window.history.pushState({}, '', urlFor());
+            view.rerender(<PopOutGitReviewShell />);
+            expect(screen.getByTestId('file-diff-panel').getAttribute('data-destination')).toBe('');
+        },
+    );
 
     it('switches commit popout selected files to comment-enabled FileDiffPanel', async () => {
         window.history.pushState({}, '', '/?workspace=ws1#popout/git-review/abc123');

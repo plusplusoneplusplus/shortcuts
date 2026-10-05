@@ -25,9 +25,10 @@ import type { GitBranchRangeResponse, GitRangeBaseMode } from '@plusplusoneplusp
 export interface BranchRangeReviewContentProps {
     workspaceId: string;
     baseMode?: GitRangeBaseMode;
+    attachmentDestinationId?: string;
 }
 
-export function BranchRangeReviewContent({ workspaceId, baseMode = 'default-branch' }: BranchRangeReviewContentProps) {
+export function BranchRangeReviewContent({ workspaceId, baseMode = 'default-branch', attachmentDestinationId }: BranchRangeReviewContentProps) {
     const [range, setRange] = useState<BranchRangeInfo | null>(null);
     const [commits, setCommits] = useState<GitCommitItem[]>([]);
     const [files, setFiles] = useState<BranchRangeFile[]>([]);
@@ -98,6 +99,7 @@ export function BranchRangeReviewContent({ workspaceId, baseMode = 'default-bran
                 <FileDiffPanel
                     key={filePath}
                     workspaceId={workspaceId}
+                    attachmentDestinationId={attachmentDestinationId}
                     filePath={filePath}
                     source={createBranchRangeDiffSource(workspaceId, {
                         files: files.map(file => file.path).sort(),

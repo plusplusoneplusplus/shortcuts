@@ -86,11 +86,11 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                 {/* Review content with file panel */}
                 <div className="flex flex-1 min-h-0 overflow-hidden">
                     {params.reviewType === 'commit' ? (
-                        <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} />
+                        <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} attachmentDestinationId={params.sourceSelectionId} />
                     ) : params.reviewType === 'pr' ? (
-                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} originId={params.originId} onTitleLoaded={setPrTitle} />
+                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} originId={params.originId} onTitleLoaded={setPrTitle} attachmentDestinationId={params.sourceSelectionId} />
                     ) : (
-                        <BranchRangeReviewContent workspaceId={params.workspaceId} baseMode={params.baseMode} />
+                        <BranchRangeReviewContent workspaceId={params.workspaceId} baseMode={params.baseMode} attachmentDestinationId={params.sourceSelectionId} />
                     )}
                 </div>
             </div>
