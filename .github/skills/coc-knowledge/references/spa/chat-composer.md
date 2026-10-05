@@ -225,6 +225,13 @@ payloads through `activeChatAttach`. `ChatDetail` passes its `sourceSelectionId`
 as `attachmentDestinationId` to both follow-up layouts. `FollowUpInputArea`
 subscribes by that owner identity, falling back to its workspace id when omitted;
 validation keeps the raw workspace id. Owner changes replace the subscription.
+
+Chat pop-out openers serialize that owner as `sourceSelectionId` alongside the
+raw workspace and clone endpoint. `PopOutChatShell` registers the explicit clone
+key and forwards the owner to `ChatDetail`; header and desktop Activity-row
+openers resolve endpoints from that owner, preserving an explicit source endpoint
+and keeping explicit local owners off the active remote clone.
+
 The last-focused visible subscriber validates, adds the chip and focuses its input. Composers in
 hidden or inert panels decline before changing attachment state or focus; routing
 tries the next subscriber, then falls back to `newChatSeedContext`. The channel's

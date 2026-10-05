@@ -129,6 +129,10 @@ vi.mock('../../../../src/server/spa/client/react/hooks/ui/useLongPress', () => (
 
 // ── Draft store ──
 const mockGetDraft = vi.fn().mockReturnValue(null);
+let mockDesktopShell = false;
+vi.mock('../../../../src/server/spa/client/react/hooks/ui/useDesktopShell', () => ({
+    isDesktopShell: () => mockDesktopShell,
+}));
 vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useDraftStore', () => ({
     getDraft: (id: string) => mockGetDraft(id),
 }));
@@ -308,6 +312,7 @@ describe('ChatListPane', () => {
         mockDisplaySettings = { taskCardDensity: 'normal', showReportIntent: false };
         mockSessionContextAttachmentsEnabled = false;
         mockNativeCliSessionsEnabled = false;
+        mockDesktopShell = false;
         mockGetDraft.mockReturnValue(null);
         globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
         vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -326,6 +331,23 @@ describe('ChatListPane', () => {
     });
 
     // ── Empty state ────────────────────────────────────────────────────
+    it.each(['ws-1', 'remote:server-a:ws-1', 'remote:server-b:ws-1'])(
+        'retains Activity owner %s when a desktop row opens a chat pop-out',
+        sourceSelectionId => {
+            mockDesktopShell = true;
+            const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+            renderPane({
+                workspaceId: 'ws-1', quotaRoutingTarget: sourceSelectionId,
+                history: [makeHistoryTask()],
+            });
+            fireEvent.doubleClick(screen.getByText('History Task'));
+            expect(openSpy).toHaveBeenCalledOnce();
+            const url = new URL(String(openSpy.mock.calls[0][0]));
+            expect(url.searchParams.get('workspace')).toBe('ws-1');
+            expect(url.searchParams.get('sourceSelectionId')).toBe(sourceSelectionId);
+        },
+    );
+
     describe('Empty state', () => {
         it('shows "No tasks in queue" when all arrays empty', () => {
             renderPane();

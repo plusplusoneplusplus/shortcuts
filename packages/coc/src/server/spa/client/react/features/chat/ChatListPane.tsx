@@ -3812,7 +3812,7 @@ export function ChatListPane({
                             onDoubleClick={(e) => {
                                 e.stopPropagation();
                                 if (isDesktopShell()) {
-                                    openChatPopOut({ taskId: task.id, workspaceId, markPoppedOut, addToast: toastCtx?.addToast });
+                                    openChatPopOut({ taskId: task.id, workspaceId, sourceSelectionId: quotaRoutingTarget, markPoppedOut, addToast: toastCtx?.addToast });
                                     return;
                                 }
                                 setRenameTarget({ taskId: task.id, title: (task as any).customTitle || '' });

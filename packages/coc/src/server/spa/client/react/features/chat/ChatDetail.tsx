@@ -1815,7 +1815,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         />
     ) : null;
 
-    const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId });
+    const { handlePopOut, handleFloat } = useChatWindowActions({ task, taskId, workspaceId, sourceSelectionId, sourceBaseUrl });
 
     // Fetch skills when workspaceId changes
     useEffect(() => {

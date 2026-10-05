@@ -28,6 +28,7 @@ export interface PopOutRouteParams {
     taskId: string;
     workspaceId?: string;
     cloneBaseUrl?: string;
+    sourceSelectionId?: string;
 }
 
 export function parsePopOutActivityRoute(hash: string, search = ''): PopOutRouteParams | null {
@@ -39,6 +40,7 @@ export function parsePopOutActivityRoute(hash: string, search = ''): PopOutRoute
         taskId: decodeURIComponent(parts[2]),
         workspaceId: searchParams.get('workspace') || undefined,
         cloneBaseUrl: searchParams.get('cloneBaseUrl') || undefined,
+        sourceSelectionId: searchParams.get('sourceSelectionId') || undefined,
     };
 }
 
@@ -48,10 +50,12 @@ function PopOutContent({
     taskId,
     workspaceId,
     cloneBaseUrl,
+    sourceSelectionId,
 }: {
     taskId: string;
     workspaceId: string | null;
     cloneBaseUrl?: string;
+    sourceSelectionId?: string;
 }) {
     const { toasts, addToast, removeToast } = useToast();
     const hasNotifiedRef = useRef(false);
@@ -100,6 +104,7 @@ function PopOutContent({
                         taskId={taskId}
                         workspaceId={workspaceId ?? undefined}
                         sourceBaseUrl={cloneBaseUrl}
+                        sourceSelectionId={sourceSelectionId}
                         isPopOut={true}
                     />
                 </div>
@@ -117,7 +122,11 @@ export function PopOutChatShell() {
     // Seed the clone registry before children render so remote chat detail actions
     // use the selected clone's CoC server inside the standalone pop-out window.
     if (parsed?.workspaceId && parsed.cloneBaseUrl) {
-        registerCloneBaseUrls([{ workspaceId: parsed.workspaceId, baseUrl: parsed.cloneBaseUrl }]);
+        registerCloneBaseUrls([{
+            workspaceId: parsed.workspaceId,
+            baseUrl: parsed.cloneBaseUrl,
+            cloneKey: parsed.sourceSelectionId,
+        }]);
     }
 
     if (!parsed) {
@@ -137,6 +146,7 @@ export function PopOutChatShell() {
                             taskId={parsed.taskId}
                             workspaceId={parsed.workspaceId ?? null}
                             cloneBaseUrl={parsed.cloneBaseUrl}
+                            sourceSelectionId={parsed.sourceSelectionId}
                         />
                     </ThemeProvider>
                 </ReposProvider>

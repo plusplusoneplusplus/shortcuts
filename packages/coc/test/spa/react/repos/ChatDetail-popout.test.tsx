@@ -113,6 +113,7 @@ vi.mock('../../../../src/server/spa/client/react/ui/cn', () => ({
 import { ChatHeader, type ChatHeaderProps } from '../../../../src/server/spa/client/react/features/chat/ChatHeader';
 import { ChatDetailPane } from '../../../../src/server/spa/client/react/features/chat/ChatDetailPane';
 import { useChatWindowActions } from '../../../../src/server/spa/client/react/features/chat/hooks/useChatWindowActions';
+import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,8 @@ beforeEach(() => {
     vi.clearAllMocks();
     mockPoppedOutTasks.clear();
     mockFloatingChats.clear();
+    registerCloneBaseUrls([]);
+    setActiveCloneForRouting(null);
     mockBreakpoint.isMobile = false;
     mockBreakpoint.isDesktop = true;
 });
@@ -221,6 +224,49 @@ describe('ChatDetailPane: pop-out placeholder', () => {
 // ── useChatWindowActions: handlePopOut ─────────────────────────────────────────
 
 describe('useChatWindowActions: handlePopOut', () => {
+    it('keeps the explicit owner and endpoint across mounted owner changes', () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'server-a', baseUrl: 'https://clone-a.example.test' },
+            { workspaceId: 'ws-1', serverId: 'server-b', baseUrl: 'https://clone-b.example.test' },
+        ]);
+        setActiveCloneForRouting('remote:server-b:ws-1');
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+        const { result, rerender } = renderHook(({ sourceSelectionId }) =>
+            useChatWindowActions({ task: {}, taskId: 'task-42', workspaceId: 'ws-1', sourceSelectionId }),
+        { initialProps: { sourceSelectionId: 'remote:server-a:ws-1' } });
+        const owners: Array<[string, string | null]> = [
+            ['remote:server-a:ws-1', 'https://clone-a.example.test'],
+            ['remote:server-b:ws-1', 'https://clone-b.example.test'],
+            ['ws-1', null],
+        ];
+        for (const [owner, endpoint] of owners) {
+            rerender({ sourceSelectionId: owner });
+            act(() => result.current.handlePopOut());
+            const url = new URL(String(openSpy.mock.lastCall?.[0]));
+            expect(url.searchParams.get('workspace')).toBe('ws-1');
+            expect(url.searchParams.get('sourceSelectionId')).toBe(owner);
+            expect(url.searchParams.get('cloneBaseUrl')).toBe(endpoint);
+        }
+        openSpy.mockRestore();
+    });
+
+    it('preserves an explicit standalone source endpoint over the active clone', () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'server-b', baseUrl: 'https://clone-b.example.test' },
+        ]);
+        const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
+        const { result } = renderHook(() => useChatWindowActions({
+            task: {}, taskId: 'task-42', workspaceId: 'ws-1',
+            sourceSelectionId: 'remote:server-a:ws-1',
+            sourceBaseUrl: 'https://clone-a.example.test',
+        }));
+        act(() => result.current.handlePopOut());
+        const url = new URL(String(openSpy.mock.lastCall?.[0]));
+        expect(url.searchParams.get('cloneBaseUrl')).toBe('https://clone-a.example.test');
+        expect(url.searchParams.get('sourceSelectionId')).toBe('remote:server-a:ws-1');
+        openSpy.mockRestore();
+    });
+
     it('calls window.open with popout URL containing task ID', () => {
         const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
         const { result } = renderHook(() =>
