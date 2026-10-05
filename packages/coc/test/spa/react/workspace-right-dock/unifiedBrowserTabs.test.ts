@@ -34,6 +34,13 @@ function rejected(input: string): string {
 }
 
 describe('normalizeBrowserUrl', () => {
+    it('enforces the host URL limit on both typed and percent-encoded addresses', () => {
+        const prefix = 'https://example.test/';
+        expect(ok(prefix + 'x'.repeat(8192 - prefix.length))).toHaveLength(8192);
+        expect(rejected(prefix + 'x'.repeat(8193 - prefix.length))).toContain('too long');
+        expect(rejected(prefix + '\u754c'.repeat(2000))).toContain('too long');
+        expect(rejected('example.test/' + '\u754c'.repeat(2000))).toContain('too long');
+    });
     it('keeps explicit http and https URLs', () => {
         expect(ok('https://example.com/a?b=1#c')).toBe('https://example.com/a?b=1#c');
         expect(ok('  http://example.com ')).toBe('http://example.com/');

@@ -5,7 +5,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-    browserPartitionFor,
     browserUserAgent,
     classifyBrowserNavigation,
     classifyBrowserWindowOpen,
@@ -37,6 +36,7 @@ describe('validateBrowserUrl', () => {
         expect(validateBrowserUrl('example.com')).toEqual({ ok: false, reason: 'invalid' });
         expect(validateBrowserUrl('https://exa\nmple.com')).toEqual({ ok: false, reason: 'invalid' });
         expect(validateBrowserUrl(`https://a.test/${'x'.repeat(9000)}`)).toEqual({ ok: false, reason: 'invalid' });
+        expect(validateBrowserUrl(`https://a.test/${'\u754c'.repeat(2000)}`)).toEqual({ ok: false, reason: 'invalid' });
     });
 });
 
@@ -72,22 +72,6 @@ describe('classifyBrowserWindowOpen', () => {
         expect(classifyBrowserWindowOpen('javascript:alert(1)', 'foreground-tab')).toBe('deny');
         expect(classifyBrowserWindowOpen('about:blank', 'foreground-tab')).toBe('deny');
         expect(classifyBrowserWindowOpen('', 'foreground-tab')).toBe('deny');
-    });
-});
-
-describe('browserPartitionFor', () => {
-    it('is stable per session key and never persistent', () => {
-        const a = browserPartitionFor('ws-1');
-        expect(browserPartitionFor('ws-1')).toBe(a);
-        expect(a.startsWith('persist:')).toBe(false);
-        expect(a).toMatch(/^coc-browser-[0-9a-f]{32}$/);
-    });
-
-    it('isolates different owners, including clone routing refs, from each other and from html pages', () => {
-        const keys = ['ws-1', 'ws-2', 'remote:srv:ws-1', 'clone:ws-1:abc'];
-        const parts = new Set(keys.map(browserPartitionFor));
-        expect(parts.size).toBe(keys.length);
-        expect(parts.has('coc-html-page')).toBe(false);
     });
 });
 

@@ -19,6 +19,8 @@ import { DiagramViewerShell } from './react/features/diagrams';
 import { loadRuntimeConfig } from './react/utils/config';
 import './react/shared/file-path/file-path-preview';
 import './react/features/repo-detail/explorer/monaco-setup';
+import { desktopBrowserBridge } from './react/shared/file-path/browser-bridge';
+import { closeBrowserPanelView } from './react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 // Excalidraw ships its renderer styles in a separate CSS entry point. Without
 // importing it the React component mounts (we see the UI chrome) but the
 // canvas itself lacks the positioning / sizing styles needed to paint the
@@ -35,6 +37,7 @@ import 'katex/dist/katex.min.css';
 const container = document.getElementById('app-root');
 if (!container) throw new Error('No #app-root element found');
 const root = createRoot(container);
+desktopBrowserBridge()?.onClosed(({ viewId }) => closeBrowserPanelView(viewId));
 
 if (window.location.pathname.startsWith('/diagram/')) {
     root.render(<DiagramViewerShell />);

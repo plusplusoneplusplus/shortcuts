@@ -54,6 +54,8 @@ import {
     DEVTUNNEL_MODAL_SUBMIT_CHANNEL,
 } from './devtunnel-modal';
 import { buildAppMenuTemplate, buildTrayMenuTemplate, DevTunnelMenuInput } from './app-menu';
+import { disposeBrowserViews, registerBrowserViewIpc } from './browser-view-host';
+import { registerHtmlPageIpc } from './html-page-host';
 
 const APP_NAME = 'CoCContainer';
 const DEFAULT_PORT = 5000;
@@ -136,6 +138,8 @@ function closeSplash(): void {
 
 function showSplashError(message: string): void {
     if (!splashWindow || splashWindow.isDestroyed()) {
+        registerBrowserViewIpc();
+        registerHtmlPageIpc();
         splashWindow = createSplashWindow();
     }
     void splashWindow.loadURL(splashDataUrl({ phase: 'error', message }, APP_NAME));
@@ -531,15 +535,19 @@ app.on('before-quit', (event) => {
     // Dispose the DevTunnel manager (does NOT persist enabled:false) before
     // anything else — it holds no server reference so disposing it is always safe.
     devTunnelManager?.dispose();
-    if (isQuitting || !serverHandle?.started) {
+    if (isQuitting) {
         return;
     }
     event.preventDefault();
     isQuitting = true;
-    void shutdownServer(serverHandle).finally(() => {
+    void disposeBrowserViews()
+        .catch(error => console.error('[coc-desktop] Browser shutdown failed:', error))
+        .then(() => serverHandle?.started ? shutdownServer(serverHandle) : 'detached')
+        .catch(error => console.error('[coc-desktop] Server shutdown failed:', error))
+        .finally(() => {
         serverHandle = null;
         app.quit();
-    });
+        });
 });
 
 app.on('window-all-closed', () => {

@@ -19,6 +19,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@plusplusoneplusplus/coc-native": "^0.1.0",
     "@plusplusoneplusplus/coc": "^1.2.0",
     "@plusplusoneplusplus/coccontainer": "^0.1.0"
   },
@@ -30,7 +31,7 @@
     "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "build": {
     "appId": "com.plusplusoneplusplus.coc",
@@ -44,6 +45,7 @@
     "asarUnpack": [
       "**/*.node",
       "**/coc-symbols-lsp*",
+      "**/coc-webview2*",
       "**/@esbuild/**",
       "**/@anthropic-ai/claude-agent-sdk-*/**",
       "**/@openai/codex-*/**",

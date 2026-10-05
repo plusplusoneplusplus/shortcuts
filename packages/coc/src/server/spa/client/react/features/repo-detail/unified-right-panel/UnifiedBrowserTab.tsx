@@ -4,6 +4,9 @@ import { useNativeViewPlacement } from './useNativeViewPlacement';
 import {
     desktopBrowserBridge,
     openUrlInSystemBrowser,
+    DESKTOP_BROWSER_PREFERENCES_HASH,
+    WEBVIEW2_INSTALL_URL,
+    type BrowserEngine,
     type BrowserViewState,
 } from '../../../shared/file-path/browser-bridge';
 
@@ -11,10 +14,11 @@ export interface UnifiedBrowserTabProps {
     tabId: string;
     /** The desktop view id: the tab's unique resource id. */
     viewId: string;
-    /** The tab's concrete owner identity; tabs sharing it share site sign-ins. */
+    /** The tab's concrete routing owner; profile sharing is installation-wide. */
     sessionKey: string;
     /** The tab's current URL; absent for a blank tab. */
     url?: string;
+    relatedEngine?: BrowserEngine;
     active: boolean;
     /** False while the panel is collapsed or a menu/dialog covers it. */
     visible: boolean;
@@ -36,7 +40,7 @@ const toolbarButton = 'rounded px-2 py-1 hover:bg-[#e8e8e8] focus-visible:outlin
  * web app the tab offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    tabId, viewId, sessionKey, url, active, visible, onNavigate, onPageState,
+    tabId, viewId, sessionKey, url, relatedEngine, active, visible, onNavigate, onPageState,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     const placeholder = useRef<HTMLDivElement>(null);
@@ -45,6 +49,9 @@ export function UnifiedBrowserTab({
     const [page, setPage] = useState<BrowserViewState | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const [opened, setOpened] = useState(false);
+    const [engine, setEngine] = useState<BrowserEngine | undefined>();
+    const [startupError, setStartupError] = useState<{ reason: string; message: string } | null>(null);
+    const [retry, setRetry] = useState(0);
     const latestUrl = useRef(url);
     latestUrl.current = url;
     const onPageStateRef = useRef(onPageState);
@@ -63,6 +70,7 @@ export function UnifiedBrowserTab({
         const offState = bridge.onState(state => {
             if (state.viewId !== viewId || disposed) return;
             setPage(state);
+            setEngine(state.engine);
             if (state.url) onPageStateRef.current(tabId, { url: state.url, title: state.title });
         });
         const offDownload = bridge.onDownload(event => {
@@ -72,17 +80,19 @@ export function UnifiedBrowserTab({
                 : `Could not hand the download to your system browser: ${event.error ?? 'unknown error'}`);
         });
         // Reopening a live view with the same session keeps its history and page.
-        void bridge.open(viewId, latestUrl.current!, sessionKey).then(result => {
+        setStartupError(null);
+        void bridge.open(viewId, latestUrl.current!, sessionKey, relatedEngine).then(result => {
             if (disposed) return;
+            setEngine(result.engine);
             if (result.ok) {
                 setOpened(true);
             } else {
-                setError(`Could not open page: ${result.reason}`);
+                setStartupError({ reason: result.reason, message: result.message ?? `Could not open page: ${result.reason}` });
             }
         }).catch(err => {
             if (disposed) return;
             console.error('Could not open browser view:', err);
-            setError('Could not open this page.');
+            setStartupError({ reason: 'startup-failed', message: 'Could not open this page. Retry or open Desktop Preferences.' });
         });
         return () => {
             disposed = true;
@@ -92,9 +102,9 @@ export function UnifiedBrowserTab({
             // Hide, not close: a remount must find the live page. The panel closes the view with the tab.
             bridge.hide(viewId);
         };
-    }, [bridge, hasUrl, sessionKey, tabId, viewId]);
+    }, [bridge, hasUrl, sessionKey, tabId, viewId, relatedEngine, retry]);
 
-    const failed = Boolean(page?.error) && !page?.loading;
+    const failed = Boolean(startupError || (page?.error && !page?.loading));
     const placement = useMemo(() => bridge ? {
         setBounds: (rect: { x: number; y: number; width: number; height: number }) => bridge.setBounds(viewId, rect),
         hide: () => bridge.hide(viewId),
@@ -114,8 +124,10 @@ export function UnifiedBrowserTab({
         onNavigate(tabId, result.url);
         if (bridge && opened) {
             void bridge.navigate(viewId, result.url).then(reply => {
-                if (!reply.ok) setError(`Could not open page: ${reply.reason}`);
-            });
+                if (!reply.ok) setError(reply.message ?? `Could not open page: ${reply.reason}`);
+            }).catch(err => { console.error('Browser navigation failed:', err); setError('Browser navigation failed. Retry explicitly.'); });
+        } else if (bridge && hasUrl) {
+            setRetry(value => value + 1);
         }
     };
 
@@ -182,6 +194,7 @@ export function UnifiedBrowserTab({
                                 ↻
                             </button>
                         )}
+                        {engine && <span className="flex-shrink-0 rounded bg-[#f0f0f0] px-1.5 py-0.5 text-[10px] text-[#616161] dark:bg-[#2d2d2d] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">{engine === 'electron' ? 'Electron' : 'WebView2'}</span>}
                     </>
                 )}
                 <input
@@ -229,8 +242,14 @@ export function UnifiedBrowserTab({
                 <>
                     {failed && (
                         <div role="alert" className="flex flex-col items-center gap-2 p-4 text-center text-xs" data-testid="browser-load-error">
-                            <p>Could not load {page?.url || url}: {page?.error}</p>
-                            <button className={toolbarButton} type="button" onClick={() => nav('reload')}>Retry</button>
+                            <p>{startupError?.message ?? `Could not load ${page?.url || url}: ${page?.error}`}</p>
+                            <button className={toolbarButton} type="button" onClick={() => startupError ? setRetry(value => value + 1) : nav('reload')}>Retry</button>
+                            <a className={toolbarButton} href={DESKTOP_BROWSER_PREFERENCES_HASH}>Desktop Preferences</a>
+                            {(startupError?.reason === 'missing-runtime' || page?.errorCode === 'missing-runtime') && (
+                                <button className={toolbarButton} type="button" onClick={() => {
+                                    void openUrlInSystemBrowser(WEBVIEW2_INSTALL_URL).then(ok => { if (!ok) setNotice('Could not open the official WebView2 download page.'); });
+                                }}>Get WebView2 Runtime</button>
+                            )}
                         </div>
                     )}
                     {!url && (

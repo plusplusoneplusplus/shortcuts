@@ -35,6 +35,7 @@ const prebuiltRoot = path.join(repoRoot, 'packages', 'coc-native', 'prebuilt');
  * null, which the caller treats as a failed release rather than a file to skip.
  */
 export function tripleFromBinaryName(fileName) {
+    if (fileName === 'coc-webview2.win32-x64-msvc.exe') return 'win32-x64-msvc';
     const addon = /^coc-native\.(.+)\.node$/.exec(fileName);
     if (addon) return addon[1];
     const lsp = /^coc-symbols-lsp\.(.+?)(\.exe)?$/.exec(fileName);
@@ -43,7 +44,7 @@ export function tripleFromBinaryName(fileName) {
 
 /** Whether this file is one of the artifacts a release stages. */
 export function isStageableBinary(fileName) {
-    return fileName.startsWith('coc-native.') || fileName.startsWith('coc-symbols-lsp.');
+    return fileName.startsWith('coc-native.') || fileName.startsWith('coc-symbols-lsp.') || fileName.startsWith('coc-webview2.');
 }
 
 /** Every stageable binary under `dir`, at any depth. */

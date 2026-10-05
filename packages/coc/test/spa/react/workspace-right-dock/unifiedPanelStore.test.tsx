@@ -17,6 +17,8 @@ import {
     clearUnifiedPanelState,
     readUnifiedPanelState,
     useUnifiedPanelState,
+    closeBrowserPanelView,
+    writeUnifiedPanelState,
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { useUnifiedPanelTabs, type UnifiedPanelTabsApi } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useUnifiedPanelTabs';
 import {
@@ -62,6 +64,20 @@ describe('unifiedPanelStore', () => {
         cleanup();
         localStorage.clear();
         clearUnifiedPanelState();
+    });
+
+    it('closes native browser views across cached inactive workspaces without removing other tabs', () => {
+        for (const workspaceId of ['local-workspace', 'remote-workspace']) {
+            let state = openTab(EMPTY_UNIFIED_PANEL, { kind: 'browser', ownerWorkspaceId: workspaceId, chatId: null, resourceId: 'closed-view', label: 'Browser' });
+            state = openTab(state, { kind: 'terminal', ownerWorkspaceId: workspaceId, chatId: null, resourceId: 'terminal', label: 'Terminal' });
+            writeUnifiedPanelState(workspaceId, state);
+        }
+        closeBrowserPanelView('closed-view');
+        for (const workspaceId of ['local-workspace', 'remote-workspace']) {
+            expect(readUnifiedPanelState(workspaceId).workspaceTabs.map(tab => tab.kind)).toEqual(['terminal']);
+        }
+        closeBrowserPanelView('missing-view');
+        expect(readUnifiedPanelState('local-workspace').workspaceTabs).toHaveLength(1);
     });
 
     it('starts empty and persists opened tabs under the workspace key', () => {

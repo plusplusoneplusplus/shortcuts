@@ -89,7 +89,7 @@ import {
 import { isPopOutChildUrl } from './popout-chrome';
 import { createPopOutWindow, registerPopOutIpc } from './popout-window-host';
 import { registerHtmlPageIpc } from './html-page-host';
-import { registerBrowserViewIpc } from './browser-view-host';
+import { disposeBrowserViews, registerBrowserViewIpc } from './browser-view-host';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -1244,19 +1244,17 @@ app.on('before-quit', (event) => {
     // AC-03: always stop the Desktop-owned tunnel process on quit, whether the
     // CoC server was started or only attached. `dispose()` reaps the host tree
     // but does NOT persist `enabled: false`, so the next launch can auto-start.
-    // The manager holds no server reference, so this can never stop an attached
-    // CoC server — hence it runs BEFORE the attached-server early-return below.
+    // The tunnel manager holds no server reference.
     devTunnelManager?.dispose();
-    if (!serverHandle || !serverHandle.started) {
-        // Nothing to drain (no server, or attached to an external one).
-        return;
-    }
     event.preventDefault();
     isQuitting = true;
-    void shutdownServer(serverHandle)
+    void disposeBrowserViews()
+        .catch(error => console.error('[coc-desktop] Browser shutdown failed:', error))
+        .then(() => serverHandle?.started ? shutdownServer(serverHandle) : 'detached')
         .then((outcome) => {
             process.stdout.write(`[coc-desktop] server shutdown on quit: ${outcome}\n`);
         })
+        .catch(error => console.error('[coc-desktop] Shutdown failed:', error))
         .finally(() => {
             serverHandle = null;
             app.quit();

@@ -155,6 +155,7 @@ jobs:
             packages/coc-native/coc-native.${{ matrix.triple }}.node
             packages/coc-native/coc-symbols-lsp.${{ matrix.triple }}
             packages/coc-native/coc-symbols-lsp.${{ matrix.triple }}.exe
+            packages/coc-native/coc-webview2.${{ matrix.triple }}.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -269,6 +270,7 @@ jobs:
           node scripts/stage-native-binaries.mjs packages/coc-native/artifacts
           test -f packages/coc-native/prebuilt/win32-x64-msvc/coc-native.win32-x64-msvc.node
           test -f packages/coc-native/prebuilt/win32-x64-msvc/coc-symbols-lsp.win32-x64-msvc.exe
+          test -f packages/coc-native/prebuilt/win32-x64-msvc/coc-webview2.win32-x64-msvc.exe
 
       - name: Build CoC Windows distributable
         run: npm run dist:win

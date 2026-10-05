@@ -1,20 +1,32 @@
 /** Reply to `browser.open` / `browser.navigate`. */
-export type BrowserOpenResult = { ok: true } | { ok: false; reason: string };
+export type BrowserEngine = 'electron' | 'webview2';
+export type BrowserOpenResult = { ok: true; engine: BrowserEngine } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
+export interface BrowserPreferences {
+    defaultEngine: BrowserEngine;
+    engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
+    clearing: BrowserEngine[];
+}
+export type BrowserOperationResult = { ok: true } | { ok: false; reason: string; message?: string };
+export const WEBVIEW2_INSTALL_URL = 'https://developer.microsoft.com/microsoft-edge/webview2/#download-section';
+export const DESKTOP_BROWSER_PREFERENCES_HASH = '#admin/settings/appearance';
 
 /** Live navigation snapshot of a desktop browser view. */
 export interface BrowserViewState {
     viewId: string;
+    engine: BrowserEngine;
     url: string;
     title: string;
     canGoBack: boolean;
     canGoForward: boolean;
     loading: boolean;
     error?: string;
+    errorCode?: string;
 }
 
 /** A page asked to open a new-window link as another tab. */
 export interface BrowserNewTabRequest {
     openerViewId: string;
+    engine: BrowserEngine;
     url: string;
 }
 
@@ -28,16 +40,22 @@ export interface BrowserDownloadEvent {
 
 /** The desktop preload's browser tab API (see coc-desktop browser-view-host.ts). */
 export interface DesktopBrowserBridge {
-    open(viewId: string, url: string, sessionKey: string): Promise<BrowserOpenResult>;
+    open(viewId: string, url: string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult>;
     navigate(viewId: string, url: string): Promise<BrowserOpenResult>;
     nav(viewId: string, action: 'back' | 'forward' | 'reload' | 'stop'): void;
     setBounds(viewId: string, rect: { x: number; y: number; width: number; height: number } | null): void;
     hide(viewId: string): void;
     close(viewId: string): void;
+    focus(viewId: string): void;
     openExternal(url: string): Promise<boolean>;
     onState(callback: (state: BrowserViewState) => void): () => void;
     onNewTab(callback: (request: BrowserNewTabRequest) => void): () => void;
     onDownload(callback: (event: BrowserDownloadEvent) => void): () => void;
+    getPreferences(): Promise<BrowserPreferences>;
+    setDefaultEngine(engine: BrowserEngine): Promise<BrowserOperationResult>;
+    clearData(engine: BrowserEngine): Promise<BrowserOperationResult>;
+    onPreferencesChanged(callback: () => void): () => void;
+    onClosed(callback: (event: { viewId: string; engine: BrowserEngine }) => void): () => void;
 }
 
 /** Event a chat web-link click sends to ask the right panel for a browser tab. */

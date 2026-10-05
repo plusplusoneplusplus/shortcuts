@@ -125,6 +125,48 @@ The proc macro only emits type definitions while the crate actually compiles, so
 
 ## Binary resolution
 
+### Desktop WebView2
+
+`rust/webview2/` ships `coc-webview2.win32-x64-msvc.exe` for the desktop host.
+It uses `webview2-com` with a statically linked loader; the installed Evergreen
+runtime remains required. Its main thread initializes COM as STA and owns all
+windows/controllers. A stdin reader only queues typed JSON commands and wakes
+the UI message pump. COM callbacks and controller operations stay on that
+thread. The helper-process boundary isolates this lifecycle from Electron's
+Node event loop and from server N-API capabilities.
+Visible embedded views raise their child HWND above Electron's renderer without
+activation; null bounds hide them for inactive tabs and SPA overlays.
+Renderer pointer/focus events and browser tab-out requests send `focus-host` through the desktop host;
+the helper calls Win32 `SetFocus` on that view's parent HWND. DOM focus alone does
+not transfer keyboard input away from the cross-process WebView2 controller.
+
+`src/webview2.ts` resolves `COC_WEBVIEW2_PATH`, the local executable, then the
+Windows x64 prebuilt, rewriting ASAR paths to unpacked paths. Server imports
+do not start it. `build:native` and `ensure:native` include it only on Windows
+x64; other targets retain their native server artifacts without WebView2
+initialization. `--check` detects the runtime without opening a view. Hosted
+pages receive no host objects or CoC bridge; navigation is HTTP(S)-only, with
+`about:blank` allowed inside authentication popups.
+
+Windows-account SSO is enabled by default. The helper sets
+`AllowSingleSignOnUsingOSPrimaryAccount` before environment creation, without an
+environment flag. Profiles stay app-owned and separate from Edge.
+SSO uses eligible Windows-connected accounts and does not guarantee Conditional
+Access compliance or change organization policy. Clearing browser data does not
+disconnect Windows accounts; SSO can authenticate again.
+
+Run `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-webview2`
+for protocol policy, default SSO, and Windows child-window stacking checks. Real desktop contracts require Windows x64 with
+WebView2 installed, `npm run build:native -w packages/coc-native`,
+`npm run build -w packages/coc-native`, and
+`npm run build -w packages/coc-desktop`, then set `COC_DESKTOP_E2E=1` and run
+`npm run test:run -w packages/coc-desktop -- test/e2e/browser-engines.e2e.test.ts`.
+The same live suite runs Electron on macOS/Linux; headless Linux needs Xvfb and
+`COC_DESKTOP_E2E_NO_SANDBOX=1`. Missing runtime on Windows is a failed required
+check, not a skip.
+
+### Server artifacts
+
 In order, from `loader.ts`:
 
 1. `COC_NATIVE_PATH` — an explicit path, for tests and unusual packaging.

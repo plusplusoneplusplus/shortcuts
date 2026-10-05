@@ -20,8 +20,7 @@ const path = require('path');
 const { app, BrowserWindow, session, shell } = require('electron');
 
 const distDir = path.join(__dirname, '..', '..', 'dist');
-const { registerBrowserViewIpc } = require(path.join(distDir, 'browser-view-host.js'));
-const { browserPartitionFor } = require(path.join(distDir, 'browser-view-policy.js'));
+const { registerBrowserViewIpc, disposeBrowserViews } = require(path.join(distDir, 'browser-view-host.js'));
 
 const restartCheck = process.argv.includes('--restart-check');
 if (process.env.COC_BROWSER_E2E_USER_DATA) {
@@ -69,7 +68,7 @@ function handler(req, res) {
             return;
         case '/login':
             // The sign-in pop-up: sets a session cookie, tells the opener, closes.
-            res.setHeader('Set-Cookie', 'sid=signed-in; Path=/');
+            res.setHeader('Set-Cookie', 'sid=signed-in; Path=/; Max-Age=3600');
             res.setHeader('Content-Type', 'text/html');
             res.end(page('Login', '<script>window.opener && window.opener.postMessage("signed-in", "*");</script>'));
             return;
@@ -111,7 +110,7 @@ async function waitFor(fn, timeoutMs = 5000) {
 }
 
 app.whenReady().then(async () => {
-    registerBrowserViewIpc();
+    registerBrowserViewIpc(path.join(app.getPath('userData'), 'coc'));
     const server = http.createServer(handler);
     const port = await listen(server);
     const base = `http://127.0.0.1:${port}`;
@@ -146,6 +145,7 @@ app.whenReady().then(async () => {
             cookie: await wc.executeJavaScript('document.cookie'),
             canGoBack: s && s.canGoBack,
         });
+        await disposeBrowserViews();
         server.close();
         // Quit the way the real app does (windows close first), not app.exit().
         app.quit();
@@ -181,7 +181,7 @@ app.whenReady().then(async () => {
     })`);
     emit('open', {
         openResult, home, viewCount: children(), bounds: b1.getBounds(), visible: b1.getVisible(),
-        partitionPersistent: session.fromPartition(browserPartitionFor('ws-a')).isPersistent(),
+        partitionPersistent: b1.webContents.session.isPersistent(),
         userAgent: b1.webContents.getUserAgent(),
         ...probe,
     });
@@ -334,6 +334,7 @@ app.whenReady().then(async () => {
     await sleep(300);
     emit('owner-reload', { viewCount: children() });
 
+    await disposeBrowserViews();
     server.close();
     fs.rmSync(downloadsDir, { recursive: true, force: true });
     app.exit(0);

@@ -2,7 +2,7 @@
  * CoC Desktop — browser tab — pure policy.
  *
  * The SPA's right panel can host general web pages in "browser" tabs. The main
- * process shows each one in a `WebContentsView` (see `browser-view-host.ts`).
+ * process routes each view to its engine (see `browser-view-host.ts`).
  * Everything decidable without Electron lives here so it is unit-testable
  * under plain Node, the same split as `html-page-policy.ts` / `html-page-host.ts`.
  *
@@ -12,13 +12,10 @@
  *   - where a page may navigate itself ({@link classifyBrowserNavigation});
  *   - what `window.open` does ({@link classifyBrowserWindowOpen}): pop-up
  *     windows (sign-in flows) get a sandboxed child window, other new-window
- *     links become another CoC browser tab;
- *   - which in-memory session a tab uses ({@link browserPartitionFor}): one per
- *     concrete workspace owner, never persisted, never shared with CoC itself or
- *     local HTML page tabs.
+ *     links become another CoC browser tab in the opener's engine.
+ * Engine profiles are persistent and installation-wide, isolated from CoC
+ * itself and local HTML page tabs.
  */
-
-import { createHash } from 'crypto';
 
 /** Longest URL accepted from the SPA. */
 const MAX_URL_LENGTH = 8192;
@@ -50,7 +47,7 @@ function isHttp(url: URL): boolean {
  */
 export function validateBrowserUrl(url: unknown): BrowserUrlCheck {
     const parsed = parse(url);
-    if (!parsed || !parsed.hostname) {
+    if (!parsed || !parsed.hostname || parsed.href.length > MAX_URL_LENGTH) {
         return { ok: false, reason: 'invalid' };
     }
     if (!isHttp(parsed)) {
@@ -107,15 +104,6 @@ export function isValidBrowserSessionKey(key: unknown): key is string {
 }
 
 /**
- * In-memory session partition for a concrete owner. No `persist:` prefix, so
- * cookies and storage live only for this CoC process. Hashing keeps arbitrary
- * routing refs out of the partition name.
- */
-export function browserPartitionFor(sessionKey: string): string {
-    return `coc-browser-${createHash('sha256').update(sessionKey).digest('hex').slice(0, 32)}`;
-}
-
-/**
  * Strip Electron and app tokens from the default user agent so sites treat the
  * tab like the matching Chrome build (some sign-in pages refuse "Electron").
  */
@@ -158,6 +146,42 @@ export const BROWSER_VIEW_STATE_CHANNEL = 'coc-desktop:browser-view-state';
 export const BROWSER_VIEW_NEW_TAB_CHANNEL = 'coc-desktop:browser-view-new-tab';
 /** main → SPA: {@link BrowserDownloadEvent} after a download is handed to the system browser. */
 export const BROWSER_VIEW_DOWNLOAD_CHANNEL = 'coc-desktop:browser-view-download';
+export const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-get';
+export const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
+export const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
+export const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
+export const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
+export const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
+export const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
+
+export type BrowserEngine = 'electron' | 'webview2';
+export function isBrowserEngine(value: unknown): value is BrowserEngine {
+    return value === 'electron' || value === 'webview2';
+}
+
+export type BrowserFailureReason =
+    | 'unsupported-platform' | 'missing-runtime' | 'native-unavailable'
+    | 'profile-locked' | 'startup-failed' | 'runtime-crashed' | 'navigation-failed' | 'cleanup-failed' | 'busy'
+    | 'invalid' | 'unsupported' | 'bad-id' | 'bad-session' | 'bad-engine' | 'no-window' | 'not-found';
+
+export interface BrowserAvailability {
+    engine: BrowserEngine;
+    available: boolean;
+    reason?: BrowserFailureReason;
+    message?: string;
+}
+
+export interface BrowserPreferences {
+    defaultEngine: BrowserEngine;
+    engines: BrowserAvailability[];
+    clearing: BrowserEngine[];
+}
+
+export type BrowserOperationResult = { ok: true } | {
+    ok: false;
+    reason: BrowserFailureReason;
+    message?: string;
+};
 
 /** History / load control actions. */
 export type BrowserNavAction = 'back' | 'forward' | 'reload' | 'stop';
@@ -168,12 +192,13 @@ export function isBrowserNavAction(action: unknown): action is BrowserNavAction 
 
 /** Reply to an open / navigate request. */
 export type BrowserOpenResult =
-    | { ok: true }
-    | { ok: false; reason: Extract<BrowserUrlCheck, { ok: false }>['reason'] | 'bad-id' | 'bad-session' | 'no-window' | 'not-found' };
+    | { ok: true; engine: BrowserEngine }
+    | { ok: false; reason: BrowserFailureReason; message?: string; engine?: BrowserEngine };
 
 /** Live navigation snapshot pushed to the SPA. */
 export interface BrowserViewState {
     viewId: string;
+    engine: BrowserEngine;
     url: string;
     title: string;
     canGoBack: boolean;
@@ -181,11 +206,13 @@ export interface BrowserViewState {
     loading: boolean;
     /** Chromium's error description for a failed main-frame load. */
     error?: string;
+    errorCode?: BrowserFailureReason;
 }
 
 /** A page asked to open `url` in a new tab; the SPA opens it with the opener's owner. */
 export interface BrowserNewTabRequest {
     openerViewId: string;
+    engine: BrowserEngine;
     url: string;
 }
 

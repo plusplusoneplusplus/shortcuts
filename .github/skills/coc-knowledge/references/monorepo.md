@@ -19,7 +19,7 @@ See [server architecture](server-architecture.md) for CoC internals.
 | `forge/` | Queue/process stores, Git, policies, connectors and utilities; SDK/workflow re-exports |
 | `coc-agent-sdk/` | Providers, sessions, streaming, MCP and models; [SDK](sdk-wrapper.md) |
 | `coc-memory/` | Memory stores, search, embeddings, capture and safety; [memory](memory-system.md) |
-| `coc-native/` | Rust/N-API SQLite, Git, repository/Notes indexes and symbol language server; [native contracts](../../../../packages/coc-native/AGENTS.md) |
+| `coc-native/` | Rust/N-API capabilities, symbol language server and desktop-only Windows x64 WebView2 helper; [native contracts](../../../../packages/coc-native/AGENTS.md) |
 | `coc-connector/` | Dependency-independent messaging contract; `/teams` and lazy `/whatsapp` exports; [connector contracts](../../../../packages/coc-connector/AGENTS.md) |
 
 Reusable behavior belongs behind package contracts. Workspace dependencies
@@ -79,16 +79,18 @@ CoC and CoCContainer rebuild loops live in
 they install dependencies and ensure native binaries before serving.
 See [Windows service](coc-service.md) for managed startup.
 
-Use Node.js 24 for development/CI. Published workspaces declare `engines.node`
-`>=24`; the private desktop manifest declares `>=20`, while its embedded server
-packages require 24. Electron is pinned exactly in the desktop manifest.
+Use Node.js 24 for development/CI. Published workspaces and the private desktop
+manifest declare `engines.node >=24`. Electron is pinned exactly in the desktop
+manifest.
 
 ## Native and Distribution
 
 ### Native build boundary
 
 `coc-native`'s `build` is TypeScript-only; `build:native` requires Rust and generates
-the committed bindings, N-API addon and symbol-server executable.
+the committed bindings, N-API addon and symbol-server executable. Windows x64
+also builds the `coc-webview2` desktop helper with a statically linked loader; other platforms
+do not initialize WebView2.
 `ensure:native` refreshes missing/stale binaries and can provision Rust;
 `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning.
 Production server persistence/index capabilities require the addon and fail

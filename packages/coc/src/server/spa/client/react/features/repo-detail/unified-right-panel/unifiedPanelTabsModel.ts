@@ -217,6 +217,8 @@ export interface UnifiedPanelTab {
      * tabs are session-only; the URL is never persisted.
      */
     browserUrl?: string;
+    /** A page-requested tab inherits its opener's engine rather than the current default. */
+    browserEngine?: 'electron' | 'webview2';
 }
 
 export interface UnifiedPanelState {
@@ -366,7 +368,8 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.gitMemberId === b.gitMemberId
         && notesViewKey(a.notesView) === notesViewKey(b.notesView)
         && a.htmlPageId === b.htmlPageId
-        && a.browserUrl === b.browserUrl;
+        && a.browserUrl === b.browserUrl
+        && a.browserEngine === b.browserEngine;
 }
 
 function gitViewKey(view: PersistedGitView | undefined): string {
@@ -499,6 +502,7 @@ export interface OpenUnifiedTabInput {
     htmlPageId?: string;
     /** A `browser` tab's initial URL; absent opens a blank tab. */
     browserUrl?: string;
+    browserEngine?: 'electron' | 'webview2';
 }
 
 /** Source of `revealNonce`. Monotonic for the life of the page. */
@@ -576,6 +580,7 @@ export function openTab(state: UnifiedPanelState, input: OpenUnifiedTabInput): U
         ...(input.kind === 'git' && input.gitMemberId ? { gitMemberId: input.gitMemberId } : {}),
         ...(input.kind === 'html-page' && input.htmlPageId ? { htmlPageId: input.htmlPageId } : {}),
         ...(input.kind === 'browser' && input.browserUrl ? { browserUrl: input.browserUrl } : {}),
+        ...(input.kind === 'browser' && input.browserEngine ? { browserEngine: input.browserEngine } : {}),
     };
 
     let nextList: readonly UnifiedPanelTab[];

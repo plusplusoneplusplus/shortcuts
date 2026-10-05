@@ -402,7 +402,7 @@ describe('UnifiedRightPanel', () => {
             expect(send('https://google.com/search?q=x').handled).toBe(true);
             expect(browserTabs()).toHaveLength(1);
             expect(browserTabs()[0].getAttribute('aria-selected')).toBe('true');
-            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(viewIdOf(), 'https://google.com/search?q=x', WS));
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(viewIdOf(), 'https://google.com/search?q=x', WS, undefined));
 
             // Each click opens its own tab, like the "+" menu does.
             send('https://google.com/search?q=x');
@@ -434,7 +434,7 @@ describe('UnifiedRightPanel', () => {
             fireEvent.change(address, { target: { value: 'example.com' } });
             fireEvent.submit(address.form!);
             const viewId = viewIdOf();
-            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(viewId, 'https://example.com/', WS));
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(viewId, 'https://example.com/', WS, undefined));
             expect(bridge.navigate).not.toHaveBeenCalled();
 
             fireEvent.change(address, { target: { value: 'https://example.org/next' } });
@@ -501,7 +501,7 @@ describe('UnifiedRightPanel', () => {
                 expect(bridge.close).not.toHaveBeenCalled();
                 // Any remount reopens with the same id and session, which keeps live history.
                 expect(new Set(bridge.open.mock.calls.map(call => JSON.stringify(call)))).toEqual(
-                    new Set([JSON.stringify([viewId, 'https://example.com/', WS])]),
+                    new Set([JSON.stringify([viewId, 'https://example.com/', WS, undefined])]),
                 );
 
                 const id = browserTabs()[0].getAttribute('data-testid')!.replace('unified-panel-tab-', '');
@@ -519,14 +519,15 @@ describe('UnifiedRightPanel', () => {
             act(() => onNewTab?.({ openerViewId: 'not-a-tab', url: 'https://ignored.example/' }));
             act(() => onNewTab?.({ openerViewId: viewId, url: 'javascript:alert(1)' }));
             expect(browserTabs()).toHaveLength(1);
-            act(() => onNewTab?.({ openerViewId: viewId, url: 'https://docs.example.com/page' }));
+            act(() => onNewTab?.({ openerViewId: viewId, url: 'https://docs.example.com/page', engine: 'webview2' }));
             expect(browserTabs()).toHaveLength(2);
             expect(browserTabs()[1].getAttribute('aria-selected')).toBe('true');
             const [opener, opened] = readUnifiedPanelState(WS).workspaceTabs;
             expect(opened.browserUrl).toBe('https://docs.example.com/page');
             expect(opened.ownerWorkspaceId).toBe(opener.ownerWorkspaceId);
+            expect(opened.browserEngine).toBe('webview2');
             expect(opened.resourceId).not.toBe(opener.resourceId);
-            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(opened.resourceId, 'https://docs.example.com/page', WS));
+            await waitFor(() => expect(bridge.open).toHaveBeenCalledWith(opened.resourceId, 'https://docs.example.com/page', WS, 'webview2'));
         });
 
         it('reports download handoff and opens the current page in the system browser via the bridge', async () => {

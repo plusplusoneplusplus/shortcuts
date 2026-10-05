@@ -107,15 +107,15 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
         expect(reject.viewCount).toBe(0);
     });
 
-    it('renders the page over the placeholder in a sandboxed, non-persistent session', () => {
+    it('renders the page over the placeholder in a sandboxed, persistent browser profile', () => {
         const open = steps.get('open')!;
-        expect(open.openResult).toEqual({ ok: true });
+        expect(open.openResult).toEqual({ ok: true, engine: 'electron' });
         expect(open.home).toMatchObject({ title: 'Home', loading: false, canGoBack: false });
         expect(open.home.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
         expect(open.viewCount).toBe(1);
         expect(open.bounds).toEqual({ x: 400, y: 50, width: 400, height: 300 });
         expect(open.visible).toBe(true);
-        expect(open).toMatchObject({ hasBridge: false, hasRequire: false, hasProcess: false, partitionPersistent: false });
+        expect(open).toMatchObject({ hasBridge: false, hasRequire: false, hasProcess: false, partitionPersistent: true });
         expect(open.userAgent).not.toMatch(/Electron\//);
     });
 
@@ -164,8 +164,8 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
         expect(popup.cookieInTab).toBe('sid=signed-in');
     });
 
-    it('shares sign-ins with same-owner tabs and isolates other owners and CoC itself', () => {
-        expect(steps.get('sessions')).toMatchObject({ sameOwner: 'sid=signed-in', otherOwner: '', spaCookies: 0 });
+    it('shares sign-ins across workspace owners and isolates CoC itself', () => {
+        expect(steps.get('sessions')).toMatchObject({ sameOwner: 'sid=signed-in', otherOwner: 'sid=signed-in', spaCookies: 0 });
     });
 
     it('hands downloads to the system browser without writing a file', () => {
@@ -188,7 +188,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
     it('hides and re-shows the view, and reopening the same tab keeps its history', () => {
         expect(steps.get('visibility')).toMatchObject({
             hiddenByHide: true, shownAgain: true, hiddenByNull: true,
-            reopen: { ok: true }, sameViewCount: true, keptHistory: true,
+            reopen: { ok: true, engine: 'electron' }, sameViewCount: true, keptHistory: true,
         });
     });
 
@@ -202,8 +202,8 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
         expect(steps.get('owner-reload')).toMatchObject({ viewCount: 0 });
     });
 
-    it('starts with no sign-in after a restart', () => {
+    it('retains sign-ins but not live navigation history after a restart', () => {
         expect(restart.exitCode, restart.raw).toBe(0);
-        expect(restart.steps.get('restart')).toMatchObject({ title: 'Home', cookie: '', canGoBack: false });
+        expect(restart.steps.get('restart')).toMatchObject({ title: 'Home', cookie: 'sid=signed-in', canGoBack: false });
     });
 });
