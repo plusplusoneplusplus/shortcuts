@@ -60,6 +60,8 @@ import { popOutOpened } from '../../utils/popOutWindow';
 export interface PullRequestDetailProps {
     repoId: string;
     workspaceId: string;
+    /** Concrete clone owner used for selection attachment routing. */
+    attachmentDestinationId?: string;
     remoteUrl?: string | null;
     prId: number | string;
     onBack: () => void;
@@ -76,7 +78,7 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
 
 const EMPTY_FILES: FileChange[] = [];
 
-export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
+export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
     const cloneClient = useCocClient(workspaceId);
     const [pr, setPr] = useState<PullRequest | null>(null);
@@ -630,6 +632,7 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                                 diffText={rawDiff}
                                 isMobile={isMobile}
                                 workspaceId={workspaceId}
+                                attachmentDestinationId={attachmentDestinationId}
                                 classificationKey={classificationKey}
                                 onPopOut={handlePopOut}
                                 diffSource={prDiffSource}

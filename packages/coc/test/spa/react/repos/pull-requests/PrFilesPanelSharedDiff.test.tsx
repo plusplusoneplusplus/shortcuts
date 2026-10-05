@@ -156,6 +156,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('PrFilesPanel — desktop adopts the shared FileDiffPanel', () => {
+    it('keeps local and colliding remote owners distinct across mounted owner and file changes', () => {
+        const props = { files: parsedFiles, diffText, workspaceId: 'ws-1', diffSource: makeSource() };
+        const view = render(<PrFilesPanel {...props} attachmentDestinationId="ws-1" />);
+        for (const destination of ['ws-1', 'remote:one:ws-1', 'remote:two:ws-1']) {
+            view.rerender(<PrFilesPanel {...props} attachmentDestinationId={destination} />);
+            expect(lastPanelProps.attachmentDestinationId).toBe(destination);
+            expect(lastPanelProps.workspaceId).toBe('ws-1');
+            const row = screen.getAllByTestId('pr-file-row').find(r => r.getAttribute('data-file-path') === 'two.ts');
+            fireEvent.click(row as HTMLElement);
+            expect(lastPanelProps.attachmentDestinationId).toBe(destination);
+            expect(lastPanelProps.filePath).toBe('two.ts');
+        }
+        view.rerender(<PrFilesPanel {...props} />);
+        expect(lastPanelProps.attachmentDestinationId).toBeUndefined();
+    });
+
     it('hides classification in Monaco and restores it on reported Classic fallback', () => {
         engine = 'monaco';
         currentClassification = makeClassification();

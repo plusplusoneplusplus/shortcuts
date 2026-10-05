@@ -59,6 +59,8 @@ import { matchWorkspaceForPrUrl, parsePrInput, type WorkspaceLike } from './pr-o
 export interface PullRequestsTabProps {
     repoId: string;
     workspaceId: string;
+    /** Concrete clone owner used for selection attachment routing. */
+    attachmentDestinationId?: string;
     remoteUrl?: string;
 }
 
@@ -171,7 +173,7 @@ function buildRecentOpenedRecord(pr: unknown, prNumber: number): { number: numbe
     };
 }
 
-export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequestsTabProps) {
+export function PullRequestsTab({ repoId, workspaceId, attachmentDestinationId, remoteUrl }: PullRequestsTabProps) {
     const { state, dispatch } = useApp();
     // Provider-backed PR list/detail calls use origin routes with explicit
     // selected-clone metadata; durable PR state shares the same origin key.
@@ -1695,6 +1697,7 @@ export function PullRequestsTab({ repoId, workspaceId, remoteUrl }: PullRequests
         />
     ) : state.selectedPrId != null ? (
         <PullRequestDetail
+            attachmentDestinationId={attachmentDestinationId}
             repoId={repoId}
             workspaceId={workspaceId}
             remoteUrl={remoteUrl}

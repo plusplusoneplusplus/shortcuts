@@ -122,7 +122,9 @@ and truncation controls stay specific to Classic.
 Selection pills receive a concrete attachment destination separately from the
 raw payload workspace id. RepoDetail passes its source clone identity through
 RepoGitTab and RepoGitDetailPane to FileDiffPanel and WorkingTreeFileDiff. Group
-Git hosts derive the member clone key from the group server. Working-tree
+Git hosts derive the member clone key from the group server. Inline PR files
+forward RepoDetail’s owner through PullRequestsTab, PullRequestDetail and
+PrFilesPanel to FileDiffPanel using attachmentDestinationId. Working-tree
 selection sources use the repo-relative path and reach the Monaco viewer as well
 as Classic drag handlers. Untracked files pass that owner to PreviewPane for
 file-selection attachments, blob I/O and language transport. A bare or omitted

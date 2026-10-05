@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 
+vi.mock('../../../../../src/server/spa/client/react/features/pull-requests/PullRequestDetail', () => ({
+    PullRequestDetail: (props: any) => <div data-testid="pr-detail-owner" data-destination={props.attachmentDestinationId} data-workspace={props.workspaceId} />,
+}));
+
 const configMock = vi.hoisted(() => ({
     pullRequestsSuggestionsEnabled: false,
     pullRequestsAutoClassifyTeamEnabled: false,
@@ -1710,5 +1714,20 @@ describe('open PR by number or URL', () => {
 
         fireEvent.change(screen.getByTestId('open-pr-input'), { target: { value: 'bad2' } });
         expect(screen.queryByTestId('open-pr-error')).not.toBeInTheDocument();
+    });
+});
+
+describe('selection attachment ownership', () => {
+    it('forwards the explicit owner to the selected PR detail and replaces it on rerender', async () => {
+        mockSelectedPrId = 7;
+        mockFetchOk([]);
+        const view = await renderTab({ attachmentDestinationId: 'ws-1' });
+        await waitFor(() => expect(screen.getByTestId('pr-detail-owner')).toBeInTheDocument());
+        const { PullRequestsTab } = await import('../../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab');
+        for (const destination of ['ws-1', 'remote:one:ws-1', 'remote:two:ws-1']) {
+            view.rerender(<PullRequestsTab repoId="repo-1" workspaceId="ws-1" attachmentDestinationId={destination} />);
+            expect(screen.getByTestId('pr-detail-owner')).toHaveAttribute('data-destination', destination);
+            expect(screen.getByTestId('pr-detail-owner')).toHaveAttribute('data-workspace', 'ws-1');
+        }
     });
 });

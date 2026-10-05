@@ -61,6 +61,8 @@ export interface PrFilesPanelProps {
     isMobile?: boolean;
     /** Workspace ID — enables classification and scoped AI provider preference. */
     workspaceId?: string;
+    /** Concrete clone owner used for selection attachment routing. */
+    attachmentDestinationId?: string;
     /** Classification key — enables focused-diff filter bar when provided. */
     classificationKey?: ClassificationKey;
     /** Explicit pop-out action — opens the separate review window for the file. */
@@ -317,6 +319,7 @@ export function PrFilesPanel({
     diffText,
     isMobile = false,
     workspaceId,
+    attachmentDestinationId,
     classificationKey,
     onPopOut,
     diffSource,
@@ -534,6 +537,7 @@ export function PrFilesPanel({
                         // full-context toggle, comment sidebar) resets cleanly.
                         key={`pr-${diffSource!.cacheKey}-${activePath}`}
                         workspaceId={workspaceId!}
+                        attachmentDestinationId={attachmentDestinationId}
                         filePath={activePath}
                         source={diffSource!}
                         showSourceLabel={false}

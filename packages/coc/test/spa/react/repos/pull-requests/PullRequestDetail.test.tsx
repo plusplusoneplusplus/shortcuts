@@ -7,6 +7,8 @@ vi.mock('../../../../../src/server/spa/client/react/features/git/hooks/useDiffEn
     useDiffEngine: () => ['legacy', vi.fn()],
 }));
 
+const panelOwner = vi.hoisted(() => ({ destination: undefined as string | undefined, workspace: undefined as string | undefined }));
+
 const configMocks = vi.hoisted(() => ({
     isCommitChatLensEnabled: vi.fn(() => false),
 }));
@@ -186,6 +188,15 @@ const SAMPLE_DIFF = [
 ].join('\n');
 
 async function renderDetail(props: Partial<any> = {}) {
+    vi.doMock('../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel', async importOriginal => {
+        const actual = await importOriginal<typeof import('../../../../../src/server/spa/client/react/features/git/diff/FileDiffPanel')>();
+        return { ...actual, FileDiffPanel: (props: any) => {
+            panelOwner.destination = props.attachmentDestinationId;
+            panelOwner.workspace = props.workspaceId;
+            return <actual.FileDiffPanel {...props} />;
+        } };
+    });
+
     const { PullRequestDetail } = await import(
         '../../../../../src/server/spa/client/react/features/pull-requests/PullRequestDetail'
     );
@@ -434,6 +445,15 @@ describe('back button', () => {
 // ── Tabs ───────────────────────────────────────────────────────────────────────
 
 describe('tabs', () => {
+    it.each(['repo-1', 'remote:one:repo-1', 'remote:two:repo-1'])('passes owner %s through the real Files panel', async destination => {
+        mockFetchDetail(makePr(), [], SAMPLE_DIFF);
+        await act(async () => { await renderDetail({ attachmentDestinationId: destination }); });
+        await waitFor(() => expect(screen.getByTestId('tab-files')).toBeInTheDocument());
+        fireEvent.click(screen.getByTestId('tab-files'));
+        await waitFor(() => expect(panelOwner.destination).toBe(destination));
+        expect(panelOwner.workspace).toBe('repo-1');
+    });
+
     it('renders the four redesigned tabs', async () => {
         mockFetchDetail(makePr());
         await act(async () => { await renderDetail(); });

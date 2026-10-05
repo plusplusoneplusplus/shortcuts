@@ -30,10 +30,11 @@ beforeAll(() => {
 // ── Mocks: everything except the queue path under test ──────────────────────
 
 const mockDispatch = vi.fn();
+let activeSubTab = 'chats';
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
-            activeRepoSubTab: 'chats',
+            activeRepoSubTab: activeSubTab,
             repoTabState: {},
             repoRouteState: {},
             wikis: [],
@@ -140,7 +141,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/RepoGitTab', () =>
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab', () => ({ RepoWikiTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({ ExplorerPanel: () => null }));
-vi.mock('../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab', () => ({ PullRequestsTab: () => null }));
+vi.mock('../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab', () => ({ PullRequestsTab: (props: any) => <div data-testid="repo-pr-owner" data-destination={props.attachmentDestinationId} data-workspace={props.workspaceId} /> }));
 vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemsTab', () => ({ WorkItemsTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/processes/dag', () => ({ WorkflowDetailView: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({ TerminalView: () => null }));
@@ -188,6 +189,7 @@ describe('RepoDetail queue — remote-clone request routing', () => {
 
     beforeEach(() => {
         urls = [];
+        activeSubTab = 'chats';
         resetCloneRegistryForTests();
         mockDispatch.mockClear();
         vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
@@ -206,6 +208,13 @@ describe('RepoDetail queue — remote-clone request routing', () => {
         const owner = screen.getByTestId('repo-git-owner');
         expect(owner.getAttribute('data-destination')).toBe(serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
         expect(owner.getAttribute('data-workspace')).toBe(REMOTE_WS);
+    });
+
+    it.each([undefined, 'one', 'two'])('passes repo owner %s to the PR tab', serverId => {
+        activeSubTab = 'pull-requests';
+        renderDetail(REMOTE_WS, serverId);
+        expect(screen.getByTestId('repo-pr-owner')).toHaveAttribute('data-destination', serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
+        expect(screen.getByTestId('repo-pr-owner')).toHaveAttribute('data-workspace', REMOTE_WS);
     });
 
     const queueSeedUrls = (list: string[], wsId: string) =>

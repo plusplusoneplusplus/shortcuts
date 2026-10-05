@@ -315,7 +315,8 @@ references before editing. Paths are package-relative.
 - Repository file previews opt into `MonacoSelectionAttachPill`; diff viewers use
   side-local `MonacoDiffSelectionAttachPill` portals and the existing diff-selection
   builder. Git hosts forward their concrete source clone through the detail pane
-  to both file-diff and working-tree pills; group hosts derive the member clone
+  to both file-diff and working-tree pills. Inline PR tabs forward the same owner
+  through PullRequestsTab, PullRequestDetail and PrFilesPanel; group hosts derive the member clone
   key from the group server. Keep payloads scoped to the raw owner workspace,
   use repo-relative paths, and read live model text.
   Composer routing and context formatting are documented in the
