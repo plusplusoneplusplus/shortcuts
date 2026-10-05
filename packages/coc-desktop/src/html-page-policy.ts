@@ -172,29 +172,23 @@ export function classifyHtmlPageWindowOpen(targetUrl: string): Exclude<HtmlPageN
     }
 }
 
-// ── IPC contract ────────────────────────────────────────────────────────────
-// preload.ts re-declares these as literals (its sandboxed `require` cannot load
-// this module); preload.test.ts keeps the two in sync.
-
-/** SPA → main (invoke): open a page tab `(pageId, filePath)` → {@link HtmlPageOpenResult}. */
-export const HTML_PAGE_OPEN_CHANNEL = 'coc-desktop:html-page-open';
-/** SPA → main: place the page view `(pageId, rect)`; a null/empty rect hides it. */
-export const HTML_PAGE_SET_BOUNDS_CHANNEL = 'coc-desktop:html-page-set-bounds';
-/** SPA → main: hide the page view `(pageId)` without destroying it. */
-export const HTML_PAGE_HIDE_CHANNEL = 'coc-desktop:html-page-hide';
-/** SPA → main: destroy the page view `(pageId)`. */
-export const HTML_PAGE_CLOSE_CHANNEL = 'coc-desktop:html-page-close';
-/** SPA → main: reload the page view `(pageId)`. */
-export const HTML_PAGE_RELOAD_CHANNEL = 'coc-desktop:html-page-reload';
-/** SPA → main: open the page's current `file://` URL in the system browser `(pageId)`. */
-export const HTML_PAGE_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:html-page-open-external';
-/** main → SPA: {@link HtmlPageLoadState} updates for every page view the SPA owns. */
-export const HTML_PAGE_STATE_CHANNEL = 'coc-desktop:html-page-state';
+// ── htmlPage compatibility wrapper ──────────────────────────────────────────
+// `cocDesktop.htmlPage` is a thin preload wrapper over `cocDesktop.browser`
+// with `file` sources. preload.ts re-declares these helpers (its sandboxed
+// `require` cannot load this module); preload.test.ts keeps the two in sync.
 
 /** Reply to an open request. The SPA falls back to the source viewer when `ok` is false. */
 export type HtmlPageOpenResult =
     | { ok: true }
     | { ok: false; reason: Extract<HtmlPagePathCheck, { ok: false }>['reason'] | 'bad-id' | 'no-window' };
+
+const HTML_PAGE_OPEN_REASONS: ReadonlySet<string> = new Set(['invalid', 'not-absolute', 'not-html', 'missing', 'not-file', 'bad-id']);
+
+/** The `htmlPage.open` reply for a merged-API open result. */
+export function toHtmlPageOpenResult(result: { ok: boolean; reason?: string }): HtmlPageOpenResult {
+    if (result.ok) { return { ok: true }; }
+    return { ok: false, reason: (HTML_PAGE_OPEN_REASONS.has(result.reason ?? '') ? result.reason : 'no-window') as Exclude<HtmlPageOpenResult, { ok: true }>['reason'] };
+}
 
 /** Load status pushed to the SPA so the tab can show a spinner or an inline error. */
 export interface HtmlPageLoadState {
@@ -215,7 +209,7 @@ export const HTML_PAGE_VIEW_PREFIX = 'html-page:';
 export const HTML_PAGE_SESSION_KEY = 'html-page';
 
 /** The `htmlPage` load state for a manager view state. */
-export function toHtmlPageLoadState(pageId: string, state: BrowserViewState): HtmlPageLoadState {
+export function toHtmlPageLoadState(pageId: string, state: Pick<BrowserViewState, 'url' | 'loading' | 'error'>): HtmlPageLoadState {
     const status = state.error ? 'failed' : state.loading ? 'loading' : 'loaded';
     return { pageId, status, url: state.url || undefined, ...(state.error ? { error: state.error } : {}) };
 }

@@ -126,7 +126,7 @@ export function isBrowserPermissionAllowed(permission: string): boolean {
 // preload.ts re-declares these as literals (its sandboxed `require` cannot load
 // this module); preload.test.ts keeps the two in sync.
 
-/** SPA → main (invoke): open a browser view `(viewId, url, sessionKey)` → {@link BrowserOpenResult}. */
+/** SPA → main (invoke): open a view `(viewId, source, sessionKey, relatedEngine?)` → {@link BrowserOpenResult}; `source` is a {@link BrowserSource} or a bare URL string. */
 export const BROWSER_VIEW_OPEN_CHANNEL = 'coc-desktop:browser-view-open';
 /** SPA → main (invoke): load a new URL in an existing view `(viewId, url)` → {@link BrowserOpenResult}. */
 export const BROWSER_VIEW_NAVIGATE_CHANNEL = 'coc-desktop:browser-view-navigate';
@@ -153,6 +153,8 @@ export const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
 export const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 export const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 export const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';
+/** SPA → main: open a view's current page in the system browser `(viewId)`. */
+export const BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL = 'coc-desktop:browser-view-open-external';
 
 export type BrowserEngine = 'electron' | 'webview2';
 export function isBrowserEngine(value: unknown): value is BrowserEngine {
@@ -170,6 +172,25 @@ export type BrowserFailureReason =
  * local HTML preview (`file`, always the isolated Electron file host).
  */
 export type BrowserSourceKind = 'url' | 'file';
+/** Source kinds this desktop build can open; exposed as `cocDesktop.browser.sources` for SPA feature detection. */
+export const BROWSER_SOURCE_KINDS: readonly BrowserSourceKind[] = ['url', 'file'];
+
+/** What `open` loads. Open-ended: later kinds (e.g. a server-served preview URL) add fields, never reuse `file`. */
+export type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
+
+/**
+ * Normalize an open request's source. A bare string is a `url` source (the
+ * pre-source `open(viewId, url, …)` call shape). Only the `file` kind may load
+ * a local file; a `url` source with `file:` is refused later by {@link validateBrowserUrl}.
+ */
+export function toBrowserSource(source: unknown): BrowserSource | { ok: false; reason: 'invalid' | 'unsupported' } {
+    if (typeof source === 'string') { return { kind: 'url', url: source }; }
+    if (!source || typeof source !== 'object') { return { ok: false, reason: 'invalid' }; }
+    const { kind, url, path } = source as Record<string, unknown>;
+    if (kind === 'url') { return typeof url === 'string' ? { kind, url } : { ok: false, reason: 'invalid' }; }
+    if (kind === 'file') { return typeof path === 'string' ? { kind, path } : { ok: false, reason: 'invalid' }; }
+    return { ok: false, reason: 'unsupported' };
+}
 
 export interface BrowserAvailability {
     engine: BrowserEngine;
@@ -199,7 +220,7 @@ export function isBrowserNavAction(action: unknown): action is BrowserNavAction 
 
 /** Reply to an open / navigate request. */
 export type BrowserOpenResult =
-    | { ok: true; engine: BrowserEngine }
+    | { ok: true; engine: BrowserEngine; sourceKind?: BrowserSourceKind }
     | { ok: false; reason: BrowserFailureReason; message?: string; engine?: BrowserEngine };
 
 /** Live navigation snapshot pushed to the SPA. */

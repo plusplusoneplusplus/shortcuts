@@ -109,7 +109,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
 
     it('renders the page over the placeholder in a sandboxed, persistent browser profile', () => {
         const open = steps.get('open')!;
-        expect(open.openResult).toEqual({ ok: true, engine: 'electron' });
+        expect(open.openResult).toEqual({ ok: true, engine: 'electron', sourceKind: 'url' });
         expect(open.home).toMatchObject({ title: 'Home', loading: false, canGoBack: false });
         expect(open.home.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
         expect(open.viewCount).toBe(1);
@@ -188,7 +188,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
     it('hides and re-shows the view, and reopening the same tab keeps its history', () => {
         expect(steps.get('visibility')).toMatchObject({
             hiddenByHide: true, shownAgain: true, hiddenByNull: true,
-            reopen: { ok: true, engine: 'electron' }, sameViewCount: true, keptHistory: true,
+            reopen: { ok: true, engine: 'electron', sourceKind: 'url' }, sameViewCount: true, keptHistory: true,
         });
     });
 

@@ -89,7 +89,7 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
     it('runs the full scenario to completion', () => {
         expect(exitCode, raw).toBe(0);
         expect([...steps.keys()]).toEqual(
-            ['reject', 'open', 'isolation', 'reuse', 'resize', 'hide', 'navigate', 'open-external', 'failure', 'close', 'quit'],
+            ['reject', 'open', 'isolation', 'source', 'reuse', 'resize', 'hide', 'navigate', 'open-external', 'failure', 'close', 'quit'],
         );
     });
 
@@ -119,11 +119,21 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
 
     it('never shares browser-profile cookies or storage with the preview', () => {
         const isolation = steps.get('isolation')!;
-        expect(isolation.browserOpen).toEqual({ ok: true, engine: 'electron' });
+        expect(isolation.browserOpen).toEqual({ ok: true, engine: 'electron', sourceKind: 'url' });
         expect(isolation.profileCookieCount).toBe(1);
         expect(isolation.previewCookieNames).not.toContain('coc_profile_probe');
         expect(isolation.previewDocumentCookie).toBe('');
         expect(isolation).toMatchObject({ sameSession: false, previewPersistent: false, previewPartitionMatches: true });
+    });
+
+    it('opens file sources through the merged browser API in the isolated file host only', () => {
+        expect(steps.get('source')).toMatchObject({
+            sources: ['url', 'file'],
+            fileSource: { ok: true, engine: 'electron', sourceKind: 'file' },
+            fileUrlAsUrl: { ok: false },
+            addedViews: 1,
+            filePartitionMatches: true,
+        });
     });
 
     it('reuses the view when the same page is opened again', () => {

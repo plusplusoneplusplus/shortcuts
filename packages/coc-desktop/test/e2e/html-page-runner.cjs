@@ -132,6 +132,23 @@ app.whenReady().then(async () => {
     await spa(`window.cocDesktop.browser.close('site')`);
     await sleep(300);
 
+    // 2c. The merged browser API opens file sources in the file host whatever
+    //     engine is asked for, and a url source can never load a file.
+    const viewsBefore = main.contentView.children.length;
+    const fileSource = await spa(`window.cocDesktop.browser.open('f1', { kind: 'file', path: ${JSON.stringify(indexPath)} }, 'workspace-a', 'webview2')`);
+    await sleep(500);
+    const fileView = main.contentView.children.find((v) => v !== view && v.webContents.getURL().startsWith('file:'));
+    const fileUrlAsUrl = await spa(`window.cocDesktop.browser.open('f2', { kind: 'url', url: ${JSON.stringify(require('url').pathToFileURL(indexPath).href)} }, 'workspace-a')`);
+    emit('source', {
+        sources: await spa('window.cocDesktop.browser.sources'),
+        fileSource,
+        fileUrlAsUrl,
+        addedViews: main.contentView.children.length - viewsBefore,
+        filePartitionMatches: !!fileView && fileView.webContents.session === require('electron').session.fromPartition(HTML_PAGE_PARTITION),
+    });
+    await spa(`window.cocDesktop.browser.close('f1')`);
+    await sleep(300);
+
     // 3. Opening the same id + path again reuses the view.
     const stateCount = (await spa('window.__states')).length;
     const reopen = await spa(`window.cocDesktop.htmlPage.open('p1', ${JSON.stringify(indexPath)})`);

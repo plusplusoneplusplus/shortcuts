@@ -89,8 +89,8 @@ there to re-issuing the named open, which focuses the existing window.
 
 ## Desktop HTML page views
 
-`window.cocDesktop.htmlPage` (`packages/coc-desktop/src/preload.ts`) hosts local `.html`/`.htm` files using Electron `WebContentsView`s created by `file-preview-host.ts` and owned by `browser-host-manager.ts`, independent of the browser engine preference and never closed by browser-data cleanup.
-The SPA picks a per-panel-path `pageId` and calls `open(pageId, absPath)`. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
+Local `.html`/`.htm` previews are `file` sources of `window.cocDesktop.browser` (`browser.open(viewId, { kind: 'file', path }, sessionKey)`), hosted in Electron `WebContentsView`s created by `file-preview-host.ts` and owned by `browser-host-manager.ts`, independent of the browser engine preference and `relatedEngine`, and never closed by browser-data cleanup.
+`window.cocDesktop.htmlPage` (`packages/coc-desktop/src/preload.ts`) is a compatibility wrapper for SPAs without `file` sources: it maps each `pageId` to view `html-page:<pageId>` (session key `html-page`) over the browser channels and narrows replies/states; it has no view logic of its own. The SPA picks a per-panel-path `pageId` and calls `open(pageId, absPath)`. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
 
 `setBounds(pageId, getBoundingClientRect())` aligns the view in CSS px; `null`/`hide()` hides it and `close()` destroys it.
 `reload`, `openExternal` and `onState` (`loading`/`loaded`/`failed`) back the toolbar. Opening a live view replays its load state.
@@ -99,8 +99,8 @@ Views have no preload, use a separate sandboxed partition, close on full SPA rel
 
 ## Desktop browser views
 
-`window.cocDesktop.browser` uses desktop `browser-host-manager.ts`. `open(viewId, url, sessionKey, relatedEngine?)` validates HTTP(S)/ownership and replays live history.
-Results/state identify the retained engine; `sessionKey` identifies routing ownership, not a profile.
+`window.cocDesktop.browser` uses desktop `browser-host-manager.ts`. `open(viewId, source, sessionKey, relatedEngine?)` takes `{ kind: 'url', url }` (or a bare URL string) or `{ kind: 'file', path }`, validates HTTP(S)/file policy and ownership, and replays live history; only `file` sources load `file:`. `browser.sources` (`['url', 'file']`) lets the SPA feature-detect file previews, and `openViewExternal(viewId)` opens a view's current page in the system browser.
+Results/state identify the retained engine and `sourceKind`; `sessionKey` identifies routing ownership, not a profile.
 
 ### Browser profiles and preferences
 

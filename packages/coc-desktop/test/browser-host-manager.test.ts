@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
 import { BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
-import { htmlPageFileUrl, toHtmlPageLoadState } from '../src/html-page-policy';
+import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -50,7 +50,7 @@ function harness(defaultEngine: BrowserEngine = 'electron') {
 describe.each<BrowserEngine>(['electron', 'webview2'])('%s shared browser manager contract', engine => {
     it('is idempotent and holds its engine when the global default changes', async () => {
         const h = harness(engine);
-        expect(await h.manager.open(1, 'view', 'https://example.test/', 'workspace-a')).toEqual({ ok: true, engine });
+        expect(await h.manager.open(1, 'view', 'https://example.test/', 'workspace-a')).toEqual({ ok: true, engine, sourceKind: 'url' });
         await h.manager.select(engine === 'electron' ? 'webview2' : 'electron');
         await h.manager.open(1, 'view', 'https://ignored.test/', 'workspace-a');
         expect(h.created).toHaveLength(1);
@@ -152,7 +152,7 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s shared browser manage
         const old = h.manager.open(1, 'reused-id', 'https://old.test/', 'owner');
         await vi.waitFor(() => expect(h.hosts[engine].create).toHaveBeenCalledTimes(1));
         const reload = h.manager.closeOwner(1);
-        expect(await h.manager.open(1, 'reused-id', 'https://new.test/', 'owner')).toEqual({ ok: true, engine });
+        expect(await h.manager.open(1, 'reused-id', 'https://new.test/', 'owner')).toEqual({ ok: true, engine, sourceKind: 'url' });
         gate.resolve();
         expect(await old).toMatchObject({ ok: false, reason: 'not-found' });
         await reload;
@@ -181,7 +181,7 @@ describe('engine availability and startup errors', () => {
         expect(h.created).toHaveLength(0);
         await h.manager.select('electron');
         vi.mocked(h.hosts.webview2.availability).mockResolvedValue({ engine: 'webview2', available: true });
-        expect(await h.manager.open(1, 'view', 'https://example.test/', 'owner')).toEqual({ ok: true, engine: 'webview2' });
+        expect(await h.manager.open(1, 'view', 'https://example.test/', 'owner')).toEqual({ ok: true, engine: 'webview2', sourceKind: 'url' });
         expect(h.created[0].engine).toBe('webview2');
     });
 
@@ -204,7 +204,7 @@ describe('file previews', () => {
 
     it.each<BrowserEngine>(['electron', 'webview2'])('always use the file host when the default engine is %s', async engine => {
         const h = harness(engine);
-        expect(await h.manager.openFile(1, 'preview', page, 'workspace-a')).toEqual({ ok: true, engine: 'electron' });
+        expect(await h.manager.openFile(1, 'preview', page, 'workspace-a')).toEqual({ ok: true, engine: 'electron', sourceKind: 'file' });
         expect(h.files).toHaveLength(1);
         expect(h.files[0].request).toEqual({ ownerId: 1, viewId: 'preview', sessionKey: 'workspace-a', path: path.normalize(page) });
         expect(h.created).toHaveLength(0);
@@ -236,10 +236,10 @@ describe('file previews', () => {
         const h = harness();
         await h.manager.openFile(1, 'p', page, 'owner');
         h.send.mockClear();
-        expect(await h.manager.openFile(1, 'p', page, 'owner')).toEqual({ ok: true, engine: 'electron' });
+        expect(await h.manager.openFile(1, 'p', page, 'owner')).toEqual({ ok: true, engine: 'electron', sourceKind: 'file' });
         expect(h.files).toHaveLength(1);
         expect(h.send).toHaveBeenCalledWith(1, BROWSER_VIEW_STATE_CHANNEL, expect.objectContaining({ viewId: 'p', sourceKind: 'file', url: htmlPageFileUrl(page) }));
-        expect(await h.manager.openFile(1, 'p', other, 'owner')).toEqual({ ok: true, engine: 'electron' });
+        expect(await h.manager.openFile(1, 'p', other, 'owner')).toEqual({ ok: true, engine: 'electron', sourceKind: 'file' });
         expect(h.files[0].view.close).toHaveBeenCalledOnce();
         expect(h.files[1].request.path).toBe(path.normalize(other));
     });
@@ -285,7 +285,7 @@ describe('file previews', () => {
         await h.manager.open(1, 'web', 'https://example.test/', 'owner');
         const clear = h.manager.clear('electron');
         await vi.waitFor(() => expect(h.hosts.electron.clearData).toHaveBeenCalled());
-        expect(await h.manager.openFile(1, 'p2', other, 'owner')).toEqual({ ok: true, engine: 'electron' });
+        expect(await h.manager.openFile(1, 'p2', other, 'owner')).toEqual({ ok: true, engine: 'electron', sourceKind: 'file' });
         release();
         expect(await h.manager.clear('webview2')).toEqual({ ok: true });
         expect(await clear).toEqual({ ok: true });
@@ -307,11 +307,52 @@ describe('file previews', () => {
         expect(await h.manager.openFile(2, 'q', page, 'owner')).toMatchObject({ ok: false, reason: 'busy' });
     });
 
+    it.each<BrowserEngine>(['electron', 'webview2'])('openSource sends a file source to the file host even when the related engine is %s', async engine => {
+        const h = harness('webview2');
+        expect(await h.manager.openSource(1, 'p', { kind: 'file', path: page }, 'owner', engine)).toEqual({ ok: true, engine: 'electron', sourceKind: 'file' });
+        expect(h.files).toHaveLength(1);
+        expect(h.created).toHaveLength(0);
+    });
+
+    it('openSource opens url sources and bare URL strings on the engine preference', async () => {
+        const h = harness('webview2');
+        expect(await h.manager.openSource(1, 'a', { kind: 'url', url: 'https://example.test/' }, 'owner')).toEqual({ ok: true, engine: 'webview2', sourceKind: 'url' });
+        expect(await h.manager.openSource(1, 'b', 'https://example.test/', 'owner', 'electron')).toEqual({ ok: true, engine: 'electron', sourceKind: 'url' });
+        expect(h.created.map(c => c.engine)).toEqual(['webview2', 'electron']);
+        expect(h.files).toHaveLength(0);
+    });
+
+    it('openSource refuses malformed sources, unknown kinds and file URLs in url sources', async () => {
+        const h = harness();
+        expect(await h.manager.openSource(1, 'p', { kind: 'url', url: htmlPageFileUrl(page) }, 'owner')).toMatchObject({ ok: false });
+        expect(await h.manager.openSource(1, 'p', { kind: 'file', path: 'index.html' }, 'owner')).toEqual({ ok: false, reason: 'not-absolute' });
+        expect(await h.manager.openSource(1, 'p', { kind: 'file', path: path.join(dir, 'style.css') }, 'owner')).toEqual({ ok: false, reason: 'not-html' });
+        expect(await h.manager.openSource(1, 'p', { kind: 'file', url: page }, 'owner')).toEqual({ ok: false, reason: 'invalid' });
+        expect(await h.manager.openSource(1, 'p', { kind: 'server-file', path: page }, 'owner')).toEqual({ ok: false, reason: 'unsupported' });
+        expect(await h.manager.openSource(1, 'p', null, 'owner')).toEqual({ ok: false, reason: 'invalid' });
+        expect(h.created).toHaveLength(0);
+        expect(h.files).toHaveLength(0);
+    });
+
+    it('opens a view externally only for its own kind of page', async () => {
+        const h = harness();
+        const open = vi.fn(async () => {});
+        await h.manager.openFile(1, 'p', page, 'owner');
+        await h.manager.open(1, 'web', 'https://example.test/', 'owner');
+        await h.manager.openExternal(1, 'p', open);
+        await h.manager.openExternal(1, 'web', open);
+        await h.manager.openExternal(1, 'missing', open);
+        expect(open.mock.calls).toEqual([[htmlPageFileUrl(page)], ['https://example.test/']]);
+        vi.spyOn(h.created[0].view, 'snapshot').mockReturnValue({ ...h.created[0].view.snapshot(), url: 'file:///etc/hosts' });
+        await h.manager.openExternal(1, 'web', open);
+        expect(open).toHaveBeenCalledTimes(2);
+    });
+
     it('retries a preview whose startup failed', async () => {
         const h = harness();
         vi.mocked(h.fileHost.create).mockRejectedValueOnce(new BrowserHostError('no-window', 'Preview window is closed.'));
         expect(await h.manager.openFile(1, 'p', page, 'owner')).toEqual({ ok: false, reason: 'no-window', message: 'Preview window is closed.', engine: 'electron' });
-        expect(await h.manager.openFile(1, 'p', page, 'owner')).toEqual({ ok: true, engine: 'electron' });
+        expect(await h.manager.openFile(1, 'p', page, 'owner')).toEqual({ ok: true, engine: 'electron', sourceKind: 'file' });
         expect(h.files).toHaveLength(1);
     });
 });
@@ -323,5 +364,16 @@ describe('htmlPage load state mapping', () => {
         expect(toHtmlPageLoadState('p', base)).toEqual({ pageId: 'p', status: 'loaded', url: base.url });
         expect(toHtmlPageLoadState('p', { ...base, error: 'ERR_FILE_NOT_FOUND' })).toEqual({ pageId: 'p', status: 'failed', url: base.url, error: 'ERR_FILE_NOT_FOUND' });
         expect(toHtmlPageLoadState('p', { ...base, url: '' })).toEqual({ pageId: 'p', status: 'loaded', url: undefined });
+    });
+});
+
+describe('htmlPage open result mapping', () => {
+    it('narrows merged-API results to the htmlPage reply shape', () => {
+        expect(toHtmlPageOpenResult({ ok: true, engine: 'electron', sourceKind: 'file' })).toEqual({ ok: true });
+        for (const reason of ['invalid', 'not-absolute', 'not-html', 'missing', 'not-file', 'bad-id']) {
+            expect(toHtmlPageOpenResult({ ok: false, reason })).toEqual({ ok: false, reason });
+        }
+        expect(toHtmlPageOpenResult({ ok: false, reason: 'busy' })).toEqual({ ok: false, reason: 'no-window' });
+        expect(toHtmlPageOpenResult({ ok: false, reason: 'bad-session' })).toEqual({ ok: false, reason: 'no-window' });
     });
 });

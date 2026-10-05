@@ -1,7 +1,7 @@
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type FilePreviewHost } from './browser-host-contract';
 import {
     BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_DOWNLOAD_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL,
-    isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, validateBrowserUrl,
+    isBrowserEngine, isValidBrowserSessionKey, isValidBrowserViewId, toBrowserSource, validateBrowserUrl,
     type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
     type BrowserSourceKind, type BrowserViewState,
 } from './browser-view-policy';
@@ -65,6 +65,15 @@ export class BrowserHostManager {
         }
     }
 
+    /** Open any source: `file` always goes to the file host, whatever `relatedEngine` says. */
+    openSource(ownerId: number, viewId: unknown, source: unknown, sessionKey: unknown, relatedEngine?: unknown): Promise<BrowserOpenResult> {
+        const checked = toBrowserSource(source);
+        if ('ok' in checked) { return Promise.resolve(checked); }
+        return checked.kind === 'file'
+            ? this.openFile(ownerId, viewId, checked.path, sessionKey)
+            : this.open(ownerId, viewId, checked.url, sessionKey, relatedEngine);
+    }
+
     async open(ownerId: number, viewId: unknown, url: unknown, sessionKey: unknown, relatedEngine?: unknown): Promise<BrowserOpenResult> {
         if (!isValidBrowserViewId(viewId)) { return { ok: false, reason: 'bad-id' }; }
         if (!isValidBrowserSessionKey(sessionKey)) { return { ok: false, reason: 'bad-session' }; }
@@ -123,7 +132,7 @@ export class BrowserHostManager {
             const view = await entry.ready;
             if (entry.closed) { return { ok: false, engine, reason: 'not-found' }; }
             this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, view.snapshot()));
-            return { ok: true, engine };
+            return { ok: true, engine, sourceKind: entry.sourceKind };
         } catch (error) {
             // Failed startup keeps its selected engine but permits an explicit open retry.
             entry.startupFailed = true;
@@ -186,6 +195,15 @@ export class BrowserHostManager {
                 error: error instanceof Error ? error.message : String(error), errorCode: this.failure(error, 'runtime-crashed').reason,
             }); }
         }
+    }
+
+    /** Hand a view's current page to the system: an http(s) page for `url` views, the previewed `file:` page for `file` views. */
+    openExternal(ownerId: number, viewId: unknown, open: (url: string) => Promise<void>): Promise<void> {
+        const sourceKind = this.entry(ownerId, viewId)?.sourceKind;
+        return this.command(ownerId, viewId, view => {
+            const url = view.snapshot().url;
+            if (sourceKind === 'file' ? url.startsWith('file:') : validateBrowserUrl(url).ok) { return open(url); }
+        });
     }
 
     nav(ownerId: number, viewId: unknown, action: BrowserNavAction): Promise<void> {
