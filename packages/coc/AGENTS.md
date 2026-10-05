@@ -98,6 +98,8 @@ references before editing. Paths are package-relative.
   new-chat input in their workspace. Hidden or inert composers decline before
   changing state or focus. Attachment channels accept a destination identity
   separate from the payload workspace id; remote callers use concrete clone keys.
+  ChatDetail forwards its sourceSelectionId to both follow-up layouts; subscription
+  ownership changes with that destination while validation keeps the raw workspace id.
   Fallback seeds retain that destination, and drains preserve other owners’ items.
 - Copilot decisions use a two-minute deadline per initial/repair attempt.
   Preserve caller cancellation and explicit backend timeout overrides.

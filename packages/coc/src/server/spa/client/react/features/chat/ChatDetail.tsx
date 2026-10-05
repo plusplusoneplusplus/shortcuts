@@ -132,7 +132,7 @@ export interface ChatDetailProps {
     taskId: string;
     onBack?: () => void;
     workspaceId?: string;
-    /** Clone-qualified dashboard identity for Ralph launches from this chat. */
+    /** Clone-qualified dashboard identity for launches and editor attachment routing. */
     sourceSelectionId?: string;
     /** Pop-out fallback for source routing when no server registry id is present. */
     sourceBaseUrl?: string;
@@ -2955,6 +2955,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     )}
                     {isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (
                         <FollowUpInputArea
+                            attachmentDestinationId={sourceSelectionId}
                             workspaceRoot={workspaceRootPath || undefined}
                             richTextRef={richTextRef}
                             inputDisabled={inputDisabled}
@@ -3103,6 +3104,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
             )}
             {!isVerticalScratchpad && !isPending && !noSessionForFollowUp && !readOnly && effectiveNav.kind !== 'agent' && (!isMobileScratchpad || scratchpad.activeMobileTab === 'chat') && (
                 <FollowUpInputArea
+                    attachmentDestinationId={sourceSelectionId}
                     workspaceRoot={workspaceRootPath || undefined}
                     richTextRef={richTextRef}
                     inputDisabled={inputDisabled}

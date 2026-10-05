@@ -310,6 +310,62 @@ describe('activeChatAttach channel', () => {
 });
 
 describe('FollowUpInputArea — editor pill attach', () => {
+    it('keeps local and two remote visible composers isolated despite matching raw workspace IDs', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const owners = ['ws-1', 'remote:server-a:ws-1', 'remote:server-b:ws-1'];
+        const handlers = owners.map(() => vi.fn());
+        owners.forEach((attachmentDestinationId, index) => {
+            render(<FollowUpInputArea {...makeProps({
+                attachmentDestinationId,
+                onAttachSessionContext: handlers[index],
+            })} />);
+        });
+        await act(async () => { await Promise.resolve(); });
+        tracker.focusCount = 0;
+        // Even the last-focused local input cannot take a remote owner's selection.
+        fireEvent.focus(screen.getAllByTestId('chat-input-bar')[0]);
+        owners.forEach((destination, index) => {
+            const payload = fileSelection('ws-1', index + 1, index + 2);
+            act(() => { expect(attachSelectionToChat(destination, payload)).toBe('active-chat'); });
+            expect(handlers[index]).toHaveBeenCalledWith(payload);
+        });
+        handlers.forEach(handler => expect(handler).toHaveBeenCalledTimes(1));
+        expect(tracker.focusCount).toBe(3);
+        expect(peekNewChatSeedContext()).toEqual([]);
+    });
+
+    it('replaces its destination subscription when the mounted panel owner changes', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        const props = makeProps({ onAttachSessionContext, attachmentDestinationId: 'remote:server-a:ws-1' });
+        const { rerender, unmount } = render(<FollowUpInputArea {...props} />);
+        await act(async () => { await Promise.resolve(); });
+        rerender(<FollowUpInputArea {...props} attachmentDestinationId="remote:server-b:ws-1" />);
+        expect(hasActiveChatAttachSubscriber('remote:server-a:ws-1')).toBe(false);
+        expect(hasActiveChatAttachSubscriber('remote:server-b:ws-1')).toBe(true);
+        expect(hasActiveChatAttachSubscriber('ws-1')).toBe(false);
+        const payload = fileSelection();
+        act(() => { expect(attachSelectionToChat('remote:server-a:ws-1', payload)).toBe('new-chat'); });
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+        act(() => { expect(attachSelectionToChat('remote:server-b:ws-1', payload)).toBe('active-chat'); });
+        expect(onAttachSessionContext).toHaveBeenCalledExactlyOnceWith(payload);
+        unmount();
+        expect(hasActiveChatAttachSubscriber('remote:server-b:ws-1')).toBe(false);
+    });
+
+    it('validates the raw source workspace after routing to a concrete remote destination', async () => {
+        mockSessionContextAttachmentsEnabled.value = true;
+        const onAttachSessionContext = vi.fn();
+        render(<FollowUpInputArea {...makeProps({ onAttachSessionContext, attachmentDestinationId: 'remote:server-a:ws-1' })} />);
+        await act(async () => { await Promise.resolve(); });
+        act(() => { attachSelectionToChat('remote:server-a:ws-1', {
+            kind: SESSION_CONTEXT_DRAG_KIND, version: 1, sourceWorkspaceId: 'ws-2',
+            processId: 'other-process', label: 'Other chat',
+        }); });
+        expect(onAttachSessionContext).not.toHaveBeenCalled();
+        expect(screen.getByTestId('follow-up-session-context-error').textContent).toMatch(/workspace/i);
+    });
+
     it.each([
         { style: { display: 'none' } },
         { style: { visibility: 'hidden' as const } },

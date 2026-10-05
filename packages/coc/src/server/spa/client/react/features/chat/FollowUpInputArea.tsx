@@ -125,6 +125,8 @@ export interface FollowUpInputAreaProps {
      */
     prComposerChips?: React.ReactNode;
     workspaceId?: string;
+    /** Concrete panel owner for editor attachments; payload validation uses workspaceId. */
+    attachmentDestinationId?: string;
     currentProcessId?: string | null;
     sessionContextAttachmentsEnabled?: boolean;
     canRetrieveConversations?: boolean | null;
@@ -284,6 +286,7 @@ export function FollowUpInputArea({
     onAttachSessionContext,
     prComposerChips,
     workspaceId,
+    attachmentDestinationId,
     currentProcessId,
     sessionContextAttachmentsEnabled: sessionContextAttachmentsEnabledProp,
     canRetrieveConversations: canRetrieveConversationsProp,
@@ -870,15 +873,16 @@ export function FollowUpInputArea({
     activeChatAttachHandlerRef.current = handleActiveChatAttach;
     const activeChatAttachBumpRef = useRef<(() => void) | null>(null);
     const canAttachFromEditor = Boolean(onAttachSessionContext) && sessionContextAttachmentsEnabled;
+    const activeAttachmentDestinationId = attachmentDestinationId ?? activeWorkspaceId;
     useEffect(() => {
-        if (!activeWorkspaceId || !canAttachFromEditor) return;
-        const sub = subscribeActiveChatAttach(activeWorkspaceId, payload => activeChatAttachHandlerRef.current(payload));
+        if (!activeWorkspaceId || !activeAttachmentDestinationId || !canAttachFromEditor) return;
+        const sub = subscribeActiveChatAttach(activeAttachmentDestinationId, payload => activeChatAttachHandlerRef.current(payload));
         activeChatAttachBumpRef.current = sub.bump;
         return () => {
             sub.unsubscribe();
             activeChatAttachBumpRef.current = null;
         };
-    }, [activeWorkspaceId, canAttachFromEditor]);
+    }, [activeWorkspaceId, activeAttachmentDestinationId, canAttachFromEditor]);
 
     function focusInputAndInsertSlash() {
         const cur = richTextRef.current?.getValue() ?? followUpInput;

@@ -167,6 +167,15 @@ describe('ChatDetail', () => {
             expect(source).not.toContain('compactModeSelector');
         });
 
+        it('forwards the concrete owner to both follow-up composer layouts', () => {
+            const usages = source.split('<FollowUpInputArea').slice(1);
+            expect(usages).toHaveLength(2);
+            for (const usage of usages) {
+                expect(usage.substring(0, usage.indexOf('/>')))
+                    .toContain('attachmentDestinationId={sourceSelectionId}');
+            }
+        });
+
         it('does not forward compactModeSelector to any FollowUpInputArea instance', () => {
             const followUpUsages = source.split('<FollowUpInputArea').slice(1);
             expect(followUpUsages.length).toBeGreaterThanOrEqual(2);

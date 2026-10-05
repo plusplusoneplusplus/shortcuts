@@ -25,12 +25,15 @@ import {
     STOPPED_CHAT_STRICT_RESUME_FAILED_REASON,
 } from '../../../../src/server/tasks/task-types';
 
+import { hasActiveChatAttachSubscriber, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
+
 // ── Module mocks (hoisted before imports) ──────────────────────────────────
 
 // Hoisted tracker for mock state
 const { mockState } = vi.hoisted(() => ({
     mockState: {
         defaultChatStyle: 'default' as string,
+        sessionContextAttachmentsEnabled: false,
         sendFollowUp: vi.fn().mockResolvedValue(undefined),
         closeFollowUpStream: vi.fn(),
         onSendComplete: vi.fn(),
@@ -75,7 +78,7 @@ vi.mock('../../../../src/server/spa/client/react/utils/config', () => ({
     isChatStyleSelectorEnabled: () => mockState.chatStyleSelectorEnabled,
     isChatProviderSwitchingEnabled: () => false,
     getDefaultChatStyle: () => mockState.defaultChatStyle,
-    isSessionContextAttachmentsEnabled: () => false,
+    isSessionContextAttachmentsEnabled: () => mockState.sessionContextAttachmentsEnabled,
     getPrewarmDebounceMs: () => 500,
     getWarmClientTtlMs: () => 300000,
     isCanvasEnabled: () => false,
@@ -463,6 +466,8 @@ beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     resetCloneRegistryForTests();
     mockState.defaultChatStyle = 'default';
+    mockState.sessionContextAttachmentsEnabled = false;
+    resetActiveChatAttach();
     // Reset mock state
     mockState.sendFollowUp.mockReset().mockResolvedValue(undefined);
     mockState.closeFollowUpStream.mockReset();
@@ -1779,6 +1784,19 @@ describe('ChatDetail', () => {
     // ── Workspace ID propagation ───────────────────────────────────────────
 
     describe('workspace id', () => {
+        it('subscribes the real follow-up composer with its concrete clone owner', async () => {
+            mockState.sessionContextAttachmentsEnabled = true;
+            setupStandardFetch(makeTask(), makeProcess());
+            const { unmount } = render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-1" sourceSelectionId="remote:server-a:ws-1" /></Wrap>);
+            await waitFor(() => {
+                expect(hasActiveChatAttachSubscriber('remote:server-a:ws-1')).toBe(true);
+            });
+            expect(hasActiveChatAttachSubscriber('ws-1')).toBe(false);
+            expect(hasActiveChatAttachSubscriber('remote:server-b:ws-1')).toBe(false);
+            unmount();
+            expect(hasActiveChatAttachSubscriber('remote:server-a:ws-1')).toBe(false);
+        });
+
         it('passes data-ws-id attribute when workspaceId provided', async () => {
             setupStandardFetch();
             render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-abc" /></Wrap>);

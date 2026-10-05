@@ -221,8 +221,11 @@ local panes). Right-panel tabs forward their persisted owner route through
 to the pill; payloads retain the plain server workspace id.
 `shared/monaco/MonacoSelectionAttachPill` observes cursor
 selection, layout, scroll and blur, reads the live model, and routes file-selection
-payloads through `activeChatAttach`. The last-focused visible workspace subscriber
-in `FollowUpInputArea` validates, adds the chip and focuses its input. Composers in
+payloads through `activeChatAttach`. `ChatDetail` passes its `sourceSelectionId`
+as `attachmentDestinationId` to both follow-up layouts. `FollowUpInputArea`
+subscribes by that owner identity, falling back to its workspace id when omitted;
+validation keeps the raw workspace id. Owner changes replace the subscription.
+The last-focused visible subscriber validates, adds the chip and focuses its input. Composers in
 hidden or inert panels decline before changing attachment state or focus; routing
 tries the next subscriber, then falls back to `newChatSeedContext`. The channel's
 first argument is the destination identity; remote callers use a concrete clone
