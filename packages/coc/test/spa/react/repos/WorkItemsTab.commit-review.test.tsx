@@ -145,11 +145,11 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         vi.restoreAllMocks();
     });
 
-    async function navigateToCommitReview() {
+    async function navigateToCommitReview(attachmentDestinationId?: string) {
         // Set up fetchApi to return commit files when the commit is selected
         mockFetchApi.mockResolvedValue({ files: COMMIT_FILES });
 
-        render(<WorkItemsTab workspaceId="ws-test" />);
+        const view = render(<WorkItemsTab workspaceId="ws-test" attachmentDestinationId={attachmentDestinationId} />);
 
         // Select a work item
         fireEvent.click(screen.getByTestId('select-work-item'));
@@ -162,7 +162,35 @@ describe('WorkItemsTab — commit review with file sidebar', () => {
         await waitFor(() => {
             expect(screen.getByTestId('work-item-commit-review')).toBeTruthy();
         });
+        await waitFor(() => screen.getByTestId('mock-file-diff-panel'));
+        return view;
     }
+
+    it.each([undefined, 'ws-test', 'remote:one:ws-test', 'remote:two:ws-test'])(
+        'keeps attachment owner %s separate from the diff workspace', async destination => {
+            await navigateToCommitReview(destination);
+            const props = mockFileDiffPanel.mock.lastCall![0];
+            expect(props.workspaceId).toBe('ws-test');
+            expect(props.attachmentDestinationId).toBe(destination);
+            expect(mockCreateCommitDiffSource).toHaveBeenLastCalledWith(
+                'ws-test', 'abc1234567890', expect.objectContaining({ files: expect.any(Array) }),
+            );
+        },
+    );
+
+    it('updates the attachment owner while the commit review stays mounted', async () => {
+        const view = await navigateToCommitReview('remote:one:ws-test');
+        view.rerender(<WorkItemsTab workspaceId="ws-test" attachmentDestinationId="remote:two:ws-test" />);
+        expect(mockFileDiffPanel.mock.lastCall![0]).toMatchObject({
+            workspaceId: 'ws-test', attachmentDestinationId: 'remote:two:ws-test',
+            filePath: 'src/utils/helper.ts',
+        });
+        fireEvent.click(screen.getByTestId('wi-commit-file-src/components/Button.tsx'));
+        expect(mockFileDiffPanel.mock.lastCall![0]).toMatchObject({
+            workspaceId: 'ws-test', attachmentDestinationId: 'remote:two:ws-test',
+            filePath: 'src/components/Button.tsx',
+        });
+    });
 
     it('shows commit review with file sidebar when viewing a commit', async () => {
         await navigateToCommitReview();

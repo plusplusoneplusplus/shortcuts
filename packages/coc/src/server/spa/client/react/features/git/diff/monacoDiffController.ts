@@ -104,6 +104,8 @@ export interface DiffEditorAdapter {
     removeViewZone(side: DiffEditorSide, id: string): void;
     /** Show (or, with null, remove) the add-comment glyph widget. */
     setGlyphWidget(widget: GlyphWidgetSpec | null): void;
+    /** Side editor for React selection overlays; optional for non-Monaco adapters. */
+    getSelectionEditor?(side: DiffEditorSide): MonacoApi.editor.ICodeEditor;
     /** Fires with the selection on either side; null when it collapses. */
     onDidChangeSelection(listener: (selection: DiffEditorSelection | null) => void): Disposable;
     /** Adds selection actions to both editors' context menus. */

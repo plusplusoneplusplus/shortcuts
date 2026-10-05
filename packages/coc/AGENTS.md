@@ -94,6 +94,25 @@ references before editing. Paths are package-relative.
 
 ## Chat and Provider Safety
 
+- Monaco selection attachments target a visible follow-up composer or seed the
+  new-chat input in their workspace. Hidden or inert composers decline before
+  changing state or focus. Attachment channels accept a destination identity
+  separate from the payload workspace id; remote callers use concrete clone keys.
+  File-selection payloads cap snippets at 4000 characters before routing and
+  retain truncation through validation, chip creation and sent-message parsing.
+  ChatDetail forwards its sourceSelectionId to both follow-up layouts; subscription
+  ownership changes with that destination while validation keeps the raw workspace id.
+  Chat pop-out URLs preserve sourceSelectionId through both header and Activity-row
+  openers; their shell forwards it to ChatDetail and registers its concrete clone key.
+  ConversationArea and normal/pinned turn bubbles preserve that source owner and
+  optional endpoint through commit-strip and whisper-popover Git review openers.
+  Working-tree untracked previews pass the concrete owner into PreviewPane for
+  selection context and file I/O; local owners use an explicit null route.
+  Fallback seeds retain that destination, and drains preserve other owners’ items.
+  Activity NewChatArea opts into buffered seeds with newChatSeedDestinationId;
+  pop-out commit/PR review composers opt in with their diff panel's owner.
+  Shared notes and inline review composers leave it unset. Pending seeds retain their owner
+  through capability resolution and are discarded when that owner changes.
 - Copilot decisions use a two-minute deadline per initial/repair attempt.
   Preserve caller cancellation and explicit backend timeout overrides.
 - First/follow-up turns share context/system/policy/runner/settlement helpers
@@ -301,6 +320,18 @@ references before editing. Paths are package-relative.
   Preserve thread cursors/own IDs on reconnect; WhatsApp shares the receipt rule.
 - MCP APIs and connection history expose only allowlisted safe fields, never tokens,
   `env`, headers, full arguments, or provider error bodies. Credentials stay on their host.
+
+## Monaco Selection Context
+
+- Repository file previews opt into `MonacoSelectionAttachPill`; diff viewers use
+  side-local `MonacoDiffSelectionAttachPill` portals and the existing diff-selection
+  builder. Git hosts forward their concrete source clone through the detail pane
+  to both file-diff and working-tree pills. Inline PR tabs forward the same owner
+  through PullRequestsTab, PullRequestDetail and PrFilesPanel; group hosts derive the member clone
+  key from the group server. Keep payloads scoped to the raw owner workspace,
+  use repo-relative paths, and read live model text.
+  Composer routing and context formatting are documented in the
+  [composer reference](../../.github/skills/coc-knowledge/references/spa/chat-composer.md).
 
 ## Build and Validation
 

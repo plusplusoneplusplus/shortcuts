@@ -16,11 +16,12 @@ import { FileViewer, formatFileSize } from '../../../../../src/server/spa/client
 vi.mock(
     '../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor',
     () => ({
-        MonacoFileEditor: ({ value, language, markers }: any) => (
+        MonacoFileEditor: ({ value, language, markers, selectionContext }: any) => (
             <div
                 data-testid="mock-monaco-editor"
                 data-language={language}
                 data-value={value}
+                data-selection-context={JSON.stringify(selectionContext)}
                 data-markers={markers === undefined ? 'none' : String(markers.length)}
             />
         ),
@@ -37,6 +38,16 @@ describe('FileViewer', () => {
         );
         expect(queryByTestId('source-canvas-markdown-view')).toBeNull();
         expect(getByTestId('mock-monaco-editor').getAttribute('data-language')).toBe('markdown');
+    });
+
+    it('forwards repository selection identity only when its host opts in', () => {
+        const context = { workspaceId: 'repo-B', filePath: 'src/file.ts' };
+        const { getByTestId, rerender } = render(
+            <FileViewer blob={text('live text')} fileName="file.ts" selectionContext={context} />,
+        );
+        expect(JSON.parse(getByTestId('mock-monaco-editor').getAttribute('data-selection-context')!)).toEqual(context);
+        rerender(<FileViewer blob={text('live text')} fileName="file.ts" />);
+        expect(getByTestId('mock-monaco-editor').hasAttribute('data-selection-context')).toBe(false);
     });
 
     it('renders markdown formatted when the host opts in', () => {

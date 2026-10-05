@@ -22,6 +22,7 @@ export interface PopOutGitReviewParams {
     originId?: string;
     /** Remote clone baseUrl for the workspace, when the workspace lives on a remote CoC server. */
     cloneBaseUrl?: string;
+    sourceSelectionId?: string;
     /** Branch-range comparison base. Defaults to 'default-branch'. */
     baseMode?: GitRangeBaseMode;
 }
@@ -29,6 +30,7 @@ export interface PopOutGitReviewParams {
 export interface PopOutCloneRegistration {
     workspaceId: string;
     baseUrl: string;
+    cloneKey?: string;
 }
 
 export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutGitReviewParams | null {
@@ -41,16 +43,17 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
     if (!workspaceId) return null;
 
     const cloneBaseUrl = searchParams.get('cloneBaseUrl') || undefined;
+    const sourceSelectionId = searchParams.get('sourceSelectionId') || undefined;
 
     if (parts[2] === 'branch-range') {
         const baseMode: GitRangeBaseMode = searchParams.get('base') === 'upstream' ? 'upstream' : 'default-branch';
-        return { workspaceId, reviewType: 'branch-range', cloneBaseUrl, baseMode };
+        return { workspaceId, reviewType: 'branch-range', cloneBaseUrl, sourceSelectionId, baseMode };
     }
 
     if (parts[2] === 'pr' && parts[3]) {
         const repoId = searchParams.get('repo') ?? workspaceId;
         const originId = searchParams.get('origin')?.trim() || undefined;
-        return { workspaceId, reviewType: 'pr', prId: decodeURIComponent(parts[3]), repoId, originId, cloneBaseUrl };
+        return { workspaceId, reviewType: 'pr', prId: decodeURIComponent(parts[3]), repoId, originId, cloneBaseUrl, sourceSelectionId };
     }
 
     // 'pr' without a prId is invalid
@@ -59,7 +62,7 @@ export function parsePopOutGitReviewRoute(hash: string, search: string): PopOutG
     }
 
     if (parts[2]) {
-        return { workspaceId, reviewType: 'commit', commitHash: decodeURIComponent(parts[2]), cloneBaseUrl };
+        return { workspaceId, reviewType: 'commit', commitHash: decodeURIComponent(parts[2]), cloneBaseUrl, sourceSelectionId };
     }
 
     return null;
@@ -86,7 +89,7 @@ export function popOutGitReviewDocumentTitle(
 /** Clone-registry entries implied by the route. Empty for local workspaces. */
 export function popOutCloneRegistrations(params: PopOutGitReviewParams | null): PopOutCloneRegistration[] {
     if (!params?.cloneBaseUrl) return [];
-    return [{ workspaceId: params.workspaceId, baseUrl: params.cloneBaseUrl }];
+    return [{ workspaceId: params.workspaceId, baseUrl: params.cloneBaseUrl, cloneKey: params.sourceSelectionId }];
 }
 
 /**
@@ -104,9 +107,9 @@ let lastRegisteredRouteKey: string | null = null;
 export function registerPopOutCloneBases(params: PopOutGitReviewParams | null): boolean {
     const registrations = popOutCloneRegistrations(params);
     if (registrations.length === 0) return false;
-    const routeKey = registrations.map(entry => `${entry.workspaceId}|${entry.baseUrl}`).join(',');
+    const routeKey = JSON.stringify(registrations);
     const alreadyRegistered = registrations.every(
-        entry => lookupCloneBaseUrl(entry.workspaceId) === entry.baseUrl,
+        entry => lookupCloneBaseUrl(entry.cloneKey ?? entry.workspaceId) === entry.baseUrl,
     );
     if (routeKey === lastRegisteredRouteKey && alreadyRegistered) return false;
     lastRegisteredRouteKey = routeKey;

@@ -120,6 +120,8 @@ export function createDiffSelectionDragPayloadFromLines(
 /** Where a diff viewer's content comes from; enables dragging a selection into chat. */
 export interface DiffSelectionDragSource {
     workspaceId: string;
+    /** Pill destination; drag payloads keep the raw workspace id. */
+    destinationId?: string;
     ref: DiffSelectionRef;
     /** Path used when the diff has no `diff --git` header (single-file views). */
     filePath?: string;

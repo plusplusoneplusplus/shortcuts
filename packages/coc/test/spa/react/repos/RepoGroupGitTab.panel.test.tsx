@@ -149,3 +149,12 @@ describe('repo group desktop Git panel', () => {
         expect(readUnifiedPanelState(group).workspaceTabs.filter(item => item.kind === 'git')).toHaveLength(1);
     });
 });
+
+it.each(['group-example', 'remote:one:group-example', 'remote:two:group-example'])('derives a member selection destination from group owner %s', selectionId => {
+    const view = render(<RepoGroupGitTab workspaceId={group} selectionId={selectionId} members={members} layout="split-workspace" />);
+    const server = selectionId.startsWith('remote:') ? selectionId.split(':')[1] : null;
+    expect(lastGitProps?.sourceSelectionId).toBe(server ? `remote:${server}:repo-a` : 'repo-a');
+    expect(lastGitProps?.workspaceId).toBe('repo-a');
+    view.rerender(<RepoGroupGitTab workspaceId={group} selectionId="remote:next:group-example" members={members} layout="split-workspace" />);
+    expect(lastGitProps?.sourceSelectionId).toBe('remote:next:repo-a');
+});

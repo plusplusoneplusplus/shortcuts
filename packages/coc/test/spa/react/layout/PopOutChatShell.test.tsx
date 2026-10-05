@@ -77,6 +77,11 @@ describe('PopOutChatShell: ChatDetail usage', () => {
     it('passes cloneBaseUrl to ChatDetail as the Ralph source fallback', () => {
         expect(SOURCE).toContain('sourceBaseUrl={cloneBaseUrl}');
     });
+
+    it('passes the parsed concrete owner through the shell to ChatDetail', () => {
+        expect(SOURCE).toContain('sourceSelectionId={parsed.sourceSelectionId}');
+        expect(SOURCE).toContain('sourceSelectionId={sourceSelectionId}');
+    });
 });
 
 describe('PopOutChatShell: BroadcastChannel communication', () => {
@@ -119,8 +124,22 @@ describe('PopOutChatShell: route parsing', () => {
             taskId: 'task/1',
             workspaceId: 'ws1',
             cloneBaseUrl: 'http://127.0.0.1:4000',
+            sourceSelectionId: undefined,
         });
     });
+
+    it.each(['ws1', 'remote:server-a:ws1', 'remote:server-b:ws1'])(
+        'keeps concrete owner %s separate from its workspace and endpoint',
+        sourceSelectionId => {
+            const search = new URLSearchParams({
+                workspace: 'ws1', sourceSelectionId, cloneBaseUrl: 'https://clone.example.test',
+            });
+            expect(parsePopOutActivityRoute('#popout/activity/task-1', `?${search}`)).toEqual({
+                taskId: 'task-1', workspaceId: 'ws1', sourceSelectionId,
+                cloneBaseUrl: 'https://clone.example.test',
+            });
+        },
+    );
 
     it('returns null for invalid hash', () => {
         expect(SOURCE).toContain("return null");
@@ -144,6 +163,7 @@ describe('PopOutChatShell: remote clone registry bootstrap', () => {
 
     it('seeds registry from cloneBaseUrl param before rendering children', () => {
         expect(SOURCE).toContain('parsed?.workspaceId && parsed.cloneBaseUrl');
-        expect(SOURCE).toContain('registerCloneBaseUrls([{ workspaceId');
+        expect(SOURCE).toContain('workspaceId: parsed.workspaceId');
+        expect(SOURCE).toContain('cloneKey: parsed.sourceSelectionId');
     });
 });

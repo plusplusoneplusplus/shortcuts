@@ -24,6 +24,7 @@ import type { HunkTarget, RightPanelView } from './types';
 
 export interface RepoGitDetailPaneProps {
     workspaceId: string;
+    attachmentDestinationId?: string;
     view: RightPanelView | null;
     commits: GitCommitItem[];
     unpushedCount: number;
@@ -52,7 +53,7 @@ export interface RepoGitDetailPaneProps {
 }
 
 export function RepoGitDetailPane({
-    workspaceId, view, commits, unpushedCount, branchRangeData, branchRangeFiles,
+    workspaceId, attachmentDestinationId, view, commits, unpushedCount, branchRangeData, branchRangeFiles,
     baseMode, onBaseModeChange, repoRoot, hunkTarget, onBranchFileSelect,
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
@@ -60,6 +61,7 @@ export function RepoGitDetailPane({
     if (view?.type === 'commit') {
         return (
             <CommitDetail
+                attachmentDestinationId={attachmentDestinationId}
                 key={view.commit.hash}
                 workspaceId={workspaceId}
                 hash={view.commit.hash}
@@ -72,6 +74,7 @@ export function RepoGitDetailPane({
     if (view?.type === 'commit-file') {
         return (
             <FileDiffPanel
+                attachmentDestinationId={attachmentDestinationId}
                 key={`${view.hash}-${view.filePath}`}
                 source={createCommitDiffSource(workspaceId, view.hash, {
                     commit: commits.find(c => c.hash === view.hash),
@@ -98,6 +101,7 @@ export function RepoGitDetailPane({
     if (view?.type === 'branch-range') {
         return (
             <BranchRangeOverview
+                attachmentDestinationId={attachmentDestinationId}
                 workspaceId={workspaceId}
                 range={branchRangeData!}
                 commits={commits}
@@ -116,6 +120,7 @@ export function RepoGitDetailPane({
     if (view?.type === 'branch-file') {
         return (
             <FileDiffPanel
+                attachmentDestinationId={attachmentDestinationId}
                 key={view.filePath}
                 source={createBranchRangeDiffSource(workspaceId, {
                     files: (branchRangeFiles ?? []).map((f: { path: string }) => f.path).sort(),
@@ -133,6 +138,7 @@ export function RepoGitDetailPane({
     if (view?.type === 'working-tree-file') {
         return (
             <WorkingTreeFileDiff
+                attachmentDestinationId={attachmentDestinationId}
                 key={`${view.filePath}:${view.stage}`}
                 workspaceId={workspaceId}
                 filePath={view.filePath}

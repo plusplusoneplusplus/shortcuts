@@ -52,13 +52,15 @@ function AzureDevOpsIcon({ className, testId }: { className?: string; testId?: s
 
 export interface WorkItemsTabProps {
     workspaceId: string;
+    /** Concrete repo owner for Monaco selection attachments. */
+    attachmentDestinationId?: string;
     /** Canonical origin scope used for Work Item storage/cache state. */
     originId?: string;
     /** Called when the user wants to view a completed task in the Tasks tab. */
     onNavigateToTasksTab?: (taskId: string) => void;
 }
 
-export function WorkItemsTab({ workspaceId, originId, onNavigateToTasksTab }: WorkItemsTabProps) {
+export function WorkItemsTab({ workspaceId, originId, attachmentDestinationId, onNavigateToTasksTab }: WorkItemsTabProps) {
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null);
     const [selectedSessionTaskId, setSelectedSessionTaskId] = useState<string | null>(null);
     const [selectedCommitHash, setSelectedCommitHash] = useState<string | null>(null);
@@ -398,6 +400,7 @@ export function WorkItemsTab({ workspaceId, originId, onNavigateToTasksTab }: Wo
         selectedCommitHash ? (
             <WorkItemCommitReviewPane
                 workspaceId={workspaceId}
+                attachmentDestinationId={attachmentDestinationId}
                 selectedCommitHash={selectedCommitHash}
                 selectedCommitFile={selectedCommitFile}
                 commitFiles={commitFiles}

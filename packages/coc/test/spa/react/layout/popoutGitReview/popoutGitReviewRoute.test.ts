@@ -11,10 +11,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
-    registerCloneBaseUrls: (entries: Array<{ workspaceId: string; baseUrl: string }>) => {
+    registerCloneBaseUrls: (entries: Array<{ workspaceId: string; baseUrl: string; cloneKey?: string }>) => {
         mocks.registerCloneBaseUrls(entries);
         mocks.baseUrlByWorkspace.clear();
-        for (const entry of entries) mocks.baseUrlByWorkspace.set(entry.workspaceId, entry.baseUrl);
+        for (const entry of entries) {
+            mocks.baseUrlByWorkspace.set(entry.workspaceId, entry.baseUrl);
+            if (entry.cloneKey) mocks.baseUrlByWorkspace.set(entry.cloneKey, entry.baseUrl);
+        }
     },
     lookupCloneBaseUrl: (workspaceId: string) => mocks.baseUrlByWorkspace.get(workspaceId),
 }));
@@ -100,6 +103,24 @@ describe('registerPopOutCloneBases', () => {
         mocks.registerCloneBaseUrls.mockClear();
         mocks.baseUrlByWorkspace.clear();
         resetPopOutCloneRegistration();
+    });
+
+    it('registers a new concrete owner even when the workspace and endpoint are unchanged', () => {
+        const first = {
+            workspaceId: 'ws1', reviewType: 'commit' as const, commitHash: 'abc123',
+            cloneBaseUrl: 'https://clone.example.test', sourceSelectionId: 'remote:server-a:ws1',
+        };
+        const second = { ...first, sourceSelectionId: 'remote:server-b:ws1' };
+        expect(registerPopOutCloneBases(first)).toBe(true);
+        expect(popOutCloneRegistrations(first)).toEqual([{
+            workspaceId: 'ws1', baseUrl: first.cloneBaseUrl, cloneKey: first.sourceSelectionId,
+        }]);
+        expect(registerPopOutCloneBases(first)).toBe(false);
+        expect(registerPopOutCloneBases(second)).toBe(true);
+        expect(mocks.baseUrlByWorkspace.get(second.sourceSelectionId)).toBe(second.cloneBaseUrl);
+        expect(mocks.baseUrlByWorkspace.has(first.sourceSelectionId)).toBe(false);
+        mocks.baseUrlByWorkspace.delete(second.sourceSelectionId);
+        expect(registerPopOutCloneBases(second)).toBe(true);
     });
 
     it('registers the remote clone before any adapter can issue a request', () => {

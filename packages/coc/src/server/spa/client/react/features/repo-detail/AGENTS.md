@@ -48,7 +48,10 @@ visual layer.
 
 `RepoDetail.tsx` runs its workspace-scoped calls (work-items badge, queue seed,
 Resume Queue) through `getCocClientForWorkspace(ws.id)` so a remote clone hits its
-own server. `/chat/launch-terminal` deliberately stays on the local-origin
+own server. Work-item commit reviews receive the repo’s concrete selection id
+through `WorkItemsTab` and `WorkItemCommitReviewPane` as
+`attachmentDestinationId`; diff payloads keep the plain workspace id.
+`/chat/launch-terminal` deliberately stays on the local-origin
 `fetchApi` — it spawns a terminal on whichever machine runs the server. The queue
 store is still fed by the LOCAL websocket only, so remote-sourced rows can be
 overwritten by a local `REPO_QUEUE_UPDATED`; per-clone queue WS fan-in is the fix.
@@ -281,6 +284,14 @@ Clicking a match sets `previewFile` with a `line`, which threads through
 revealed both on mount and from an effect keyed on `revealLine` and the content
 revision, because the content arrives after the editor does and a second hit in
 an already-open file has no mount to piggyback on.
+
+`PreviewPane` opts into `MonacoFileEditor.selectionContext` with its owner
+workspace, repo-relative path and concrete clone route as `destinationId`.
+Right-panel tabs supply their persisted owner route; payloads keep the plain
+server workspace id. The shared `MonacoSelectionAttachPill` reads
+selected text from the live model and routes it through `activeChatAttach` when
+session-context attachments are enabled. Trusted absolute paths and shared
+viewer hosts do not opt in; right-panel file tabs use the same preview host.
 
 `MonacoFileEditor` does not hand `value` to `@monaco-editor/react`, which
 silently writes any differing `value` back into the model. It remembers the

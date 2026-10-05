@@ -1872,9 +1872,9 @@ export function ChatListPane({
         // Buffer the items, then open the composer via the normal new-chat flow.
         // The composer drains the buffer and validates each item (workspace
         // alignment, dedupe, cap) before attaching — no auto-send.
-        pushNewChatSeedContext(payloads);
+        pushNewChatSeedContext(payloads, quotaRoutingTarget ?? workspaceId);
         (onNewChat ?? onOpenDialog)?.();
-    }, [sessionContextDragEnabled, resetNewChatDropState, onNewChat, onOpenDialog]);
+    }, [sessionContextDragEnabled, resetNewChatDropState, onNewChat, onOpenDialog, quotaRoutingTarget, workspaceId]);
 
     const [searchQuery, setSearchQueryRaw] = useState('');
     const [searchVisible, setSearchVisible] = useState(false);
@@ -3812,7 +3812,7 @@ export function ChatListPane({
                             onDoubleClick={(e) => {
                                 e.stopPropagation();
                                 if (isDesktopShell()) {
-                                    openChatPopOut({ taskId: task.id, workspaceId, markPoppedOut, addToast: toastCtx?.addToast });
+                                    openChatPopOut({ taskId: task.id, workspaceId, sourceSelectionId: quotaRoutingTarget, markPoppedOut, addToast: toastCtx?.addToast });
                                     return;
                                 }
                                 setRenameTarget({ taskId: task.id, title: (task as any).customTitle || '' });

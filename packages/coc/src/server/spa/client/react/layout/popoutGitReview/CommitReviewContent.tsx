@@ -30,9 +30,10 @@ import type { GitCommitItem } from '../../features/git/commits/CommitList';
 export interface CommitReviewContentProps {
     workspaceId: string;
     commitHash: string;
+    attachmentDestinationId?: string;
 }
 
-export function CommitReviewContent({ workspaceId, commitHash }: CommitReviewContentProps) {
+export function CommitReviewContent({ workspaceId, commitHash, attachmentDestinationId }: CommitReviewContentProps) {
     const [commit, setCommit] = useState<GitCommitItem | null>(null);
     const [loading, setLoading] = useState(true);
     const chat = useCommitChatPresentation({ workspaceId, commitHash });
@@ -96,6 +97,7 @@ export function CommitReviewContent({ workspaceId, commitHash }: CommitReviewCon
                     <FileDiffPanel
                         key={`${commitHash}-${filePath}`}
                         workspaceId={workspaceId}
+                        attachmentDestinationId={attachmentDestinationId}
                         filePath={filePath}
                         source={createCommitDiffSource(workspaceId, commitHash, {
                             commit: commit ?? undefined,
@@ -122,6 +124,8 @@ export function CommitReviewContent({ workspaceId, commitHash }: CommitReviewCon
                         containerTestId="commit-popout-chat-container"
                         framed={(
                             <CommitChatPlacementFrame
+                                sourceSelectionId={attachmentDestinationId}
+                                newChatSeedDestinationId={attachmentDestinationId ?? workspaceId}
                                 workspaceId={workspaceId}
                                 commitHash={commitHash}
                                 commitMessage={commit?.subject}
@@ -132,6 +136,8 @@ export function CommitReviewContent({ workspaceId, commitHash }: CommitReviewCon
                         )}
                         plain={(
                             <CommitChatPanel
+                                sourceSelectionId={attachmentDestinationId}
+                                newChatSeedDestinationId={attachmentDestinationId ?? workspaceId}
                                 workspaceId={workspaceId}
                                 commitHash={commitHash}
                                 commitMessage={commit?.subject}
@@ -143,6 +149,8 @@ export function CommitReviewContent({ workspaceId, commitHash }: CommitReviewCon
             />
             <PopOutReviewChatLens chat={chat}>
                 <CommitChatPlacementFrame
+                    sourceSelectionId={attachmentDestinationId}
+                    newChatSeedDestinationId={attachmentDestinationId ?? workspaceId}
                     workspaceId={workspaceId}
                     commitHash={commitHash}
                     commitMessage={commit?.subject}

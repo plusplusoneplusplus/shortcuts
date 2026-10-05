@@ -67,6 +67,15 @@ Epic roots expose no manual pull. Adding children under provider-backed roots us
 normal create flow, which pushes the child to the provider before storing its mirror
 metadata.
 
+## Commit review
+
+`RepoDetail` supplies its concrete repo selection id as `attachmentDestinationId`
+to `WorkItemsTab`, which forwards it through `WorkItemCommitReviewPane` to
+`FileDiffPanel`. Monaco selections target the same repo owner independently of
+the raw workspace id used for diff metadata and validation. Mounted owner changes
+update that destination; callers omitting it retain the diff panel’s workspace
+fallback. Attachment transport and composer rules: [chat-composer.md](chat-composer.md).
+
 ## WorkItemDetail
 
 `WorkItemDetail` is an always-editable inline form — title, description, priority, tags,

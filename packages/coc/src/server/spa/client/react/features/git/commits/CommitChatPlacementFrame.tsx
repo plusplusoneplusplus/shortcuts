@@ -6,6 +6,8 @@ import type { CommitChatPresentation } from './commitChatPlacement';
 
 export interface CommitChatPlacementFrameProps {
     workspaceId: string;
+    sourceSelectionId?: string;
+    newChatSeedDestinationId?: string;
     commitHash: string;
     commitMessage?: string;
     presentation: CommitChatPresentation;
@@ -19,6 +21,8 @@ export interface CommitChatPlacementFrameProps {
 
 export function CommitChatPlacementFrame({
     workspaceId,
+    sourceSelectionId,
+    newChatSeedDestinationId,
     commitHash,
     commitMessage,
     presentation,
@@ -54,6 +58,8 @@ export function CommitChatPlacementFrame({
             dropWorkspaceId={dropEnabled ? workspaceId : undefined}
         >
             <CommitChatPanel
+                sourceSelectionId={sourceSelectionId}
+                newChatSeedDestinationId={newChatSeedDestinationId}
                 workspaceId={workspaceId}
                 commitHash={commitHash}
                 commitMessage={commitMessage}

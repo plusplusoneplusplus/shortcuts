@@ -246,12 +246,14 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     return {
         RichTextInput: R.forwardRef((props: any, ref: any) => {
             const [val, setVal] = R.useState('');
+            const inputRef = R.useRef<HTMLInputElement>(null);
             R.useImperativeHandle(ref, () => ({
                 getValue: () => val,
                 setValue: (text: string) => setVal(text),
-                focus: () => {},
+                focus: () => inputRef.current?.focus(),
             }), [val]);
             return R.createElement('input', {
+                ref: inputRef,
                 'data-testid': props['data-testid'],
                 value: val,
                 disabled: props.disabled,
@@ -267,8 +269,11 @@ vi.mock('../../../../src/server/spa/client/react/shared/RichTextInput', async ()
     };
 });
 
+import { attachSelectionToChat, resetActiveChatAttach } from '../../../../src/server/spa/client/react/features/chat/activeChatAttach';
 import { InitialChatComposer, NewChatArea } from '../../../../src/server/spa/client/react/features/chat/NewChatArea';
 import {
+    createFileSelectionContextPayload,
+    createDiffSelectionContextDragPayload,
     FILE_PATH_DRAG_KIND,
     FILE_PATH_DRAG_MIME,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
@@ -281,6 +286,7 @@ import {
     type SessionContextDragPayload,
 } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
 import {
+    peekNewChatSeedContext,
     pushNewChatSeedContext,
     resetNewChatSeedContext,
 } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
@@ -1983,6 +1989,189 @@ describe('NewChatArea', () => {
         });
         afterEach(() => {
             resetNewChatSeedContext();
+        });
+
+        function fileSelection(workspace = 'ws-1') {
+            return createFileSelectionContextPayload({
+                sourceWorkspaceId: workspace,
+                filePath: 'src/status.ts',
+                range: { start: 24, end: 35 },
+                snippet: 'selected code',
+            })!;
+        }
+
+        it('routes Monaco fallback to its workspace when another composer subscribes first', async () => {
+            resetActiveChatAttach();
+            render(<>
+                <InitialChatComposer workspaceId="ws-2" testIdPrefix="other-chat" onSubmit={vi.fn()} />
+                <NewChatArea workspaceId="ws-1" />
+            </>);
+            const input = screen.getByTestId('new-chat-input');
+            fireEvent.change(input, { target: { value: 'keep this draft' } });
+            screen.getByTestId('other-chat-input').focus();
+            act(() => { expect(attachSelectionToChat('ws-1', fileSelection())).toBe('new-chat'); });
+            await waitFor(() => expect(within(screen.getByTestId('new-chat-area')).getByTestId('attached-file-selection-context-chip')).toBeTruthy());
+            expect(within(screen.getByTestId('other-chat-area')).queryByTestId('attached-file-selection-context-chip')).toBeNull();
+            expect(document.activeElement).toBe(input);
+            expect((input as HTMLInputElement).value).toBe('keep this draft');
+            expect(peekNewChatSeedContext()).toEqual([]);
+            expect(mockEnqueueTask).not.toHaveBeenCalled();
+        });
+
+        it('isolates local and two remote Activity owners sharing a workspace id', async () => {
+            resetActiveChatAttach();
+            render(<>
+                <InitialChatComposer workspaceId="ws-1" testIdPrefix="notes" onSubmit={vi.fn()} />
+                <InitialChatComposer workspaceId="ws-1" sourceSelectionId="remote:a:ws-1" testIdPrefix="review" onSubmit={vi.fn()} />
+                <InitialChatComposer workspaceId="ws-1" newChatSeedDestinationId="ws-1" testIdPrefix="local" onSubmit={vi.fn()} />
+                <InitialChatComposer workspaceId="ws-1" newChatSeedDestinationId="remote:a:ws-1" testIdPrefix="remote-a" onSubmit={vi.fn()} />
+                <NewChatArea workspaceId="ws-1" sourceSelectionId="remote:b:ws-1" />
+            </>);
+            for (const [destination, prefix] of [
+                ['remote:b:ws-1', 'new-chat'], ['remote:a:ws-1', 'remote-a'], ['ws-1', 'local'],
+            ]) {
+                act(() => { expect(attachSelectionToChat(destination, fileSelection())).toBe('new-chat'); });
+                await waitFor(() => expect(within(screen.getByTestId(`${prefix}-area`)).getByTestId('attached-file-selection-context-chip')).toBeTruthy());
+                expect(document.activeElement).toBe(screen.getByTestId(`${prefix}-input`));
+            }
+            for (const prefix of ['notes', 'review']) {
+                expect(within(screen.getByTestId(`${prefix}-area`)).queryByTestId('attached-file-selection-context-chip')).toBeNull();
+            }
+            expect(peekNewChatSeedContext()).toEqual([]);
+        });
+
+        it('buffers Activity selections when only an adapter composer is mounted', async () => {
+            const view = render(<InitialChatComposer workspaceId="ws-1" sourceSelectionId="ws-1" onSubmit={vi.fn()} />);
+            const payload = fileSelection();
+            act(() => pushNewChatSeedContext([payload]));
+            expect(peekNewChatSeedContext()).toEqual([payload]);
+            expect(screen.queryByTestId('attached-file-selection-context-chip')).toBeNull();
+            view.unmount();
+            render(<NewChatArea workspaceId="ws-1" />);
+            await screen.findByTestId('attached-file-selection-context-chip');
+        });
+
+        it('drains the new clone destination when a mounted Activity owner changes', async () => {
+            const view = render(<NewChatArea workspaceId="ws-1" sourceSelectionId="remote:a:ws-1" />);
+            const payload = fileSelection();
+            act(() => pushNewChatSeedContext([payload], 'remote:b:ws-1'));
+            expect(peekNewChatSeedContext()).toEqual([payload]);
+            view.rerender(<NewChatArea workspaceId="ws-1" sourceSelectionId="remote:b:ws-1" />);
+            await screen.findByTestId('attached-file-selection-context-chip');
+            expect(peekNewChatSeedContext()).toEqual([]);
+            view.rerender(<NewChatArea workspaceId="ws-1" sourceSelectionId="remote:a:ws-1" />);
+            act(() => pushNewChatSeedContext([payload], 'remote:b:ws-1'));
+            expect(peekNewChatSeedContext()).toEqual([payload]);
+        });
+
+        it('discards a prior clones pending pointer when retrieval resolves after an owner change', async () => {
+            let resolveConfig!: (value: any) => void;
+            mockGetLlmToolsConfig.mockImplementation(() => new Promise(resolve => { resolveConfig = resolve; }));
+            const view = render(<NewChatArea workspaceId="ws-pending-owner" sourceSelectionId="remote:a:ws-pending-owner" />);
+            await waitFor(() => expect(resolveConfig).toBeTypeOf('function'));
+            act(() => pushNewChatSeedContext([makeSessionPayload({ sourceWorkspaceId: 'ws-pending-owner' })], 'remote:a:ws-pending-owner'));
+            expect(peekNewChatSeedContext()).toEqual([]);
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+            act(() => pushNewChatSeedContext([fileSelection('ws-pending-owner')], 'remote:b:ws-pending-owner'));
+            view.rerender(<NewChatArea workspaceId="ws-pending-owner" sourceSelectionId="remote:b:ws-pending-owner" />);
+            await screen.findByTestId('attached-file-selection-context-chip');
+            await act(async () => resolveConfig({ conversationRetrievalAvailable: true, tools: [{ name: 'get_conversation', enabledByDefault: true }], disabledLlmTools: [] }));
+            expect(screen.queryByTestId('attached-session-context-chip')).toBeNull();
+            act(() => pushNewChatSeedContext([makeSessionPayload({ sourceWorkspaceId: 'ws-pending-owner' })], 'remote:b:ws-pending-owner'));
+            await screen.findByTestId('attached-session-context-chip');
+        });
+
+        it('keeps a selection buffered until its workspace composer mounts', async () => {
+            const other = render(<NewChatArea workspaceId="ws-2" />);
+            const selection = fileSelection();
+            act(() => pushNewChatSeedContext([selection]));
+            expect(screen.queryByTestId('attached-file-selection-context-chip')).toBeNull();
+            expect(peekNewChatSeedContext()).toEqual([selection]);
+            other.unmount();
+            render(<NewChatArea workspaceId="ws-1" />);
+            await screen.findByTestId('attached-file-selection-context-chip');
+            expect(document.activeElement).toBe(screen.getByTestId('new-chat-input'));
+            expect(peekNewChatSeedContext()).toEqual([]);
+        });
+
+        it('drains newly matching seeds when the composer changes workspace', async () => {
+            const view = render(<NewChatArea workspaceId="ws-2" />);
+            act(() => pushNewChatSeedContext([fileSelection()]));
+            view.rerender(<NewChatArea workspaceId="ws-1" />);
+            await screen.findByTestId('attached-file-selection-context-chip');
+            expect(peekNewChatSeedContext()).toEqual([]);
+        });
+
+        it('does not consume seeds while attachments are disabled', async () => {
+            mockSessionContextAttachmentsEnabled.value = false;
+            const view = render(<NewChatArea workspaceId="ws-1" />);
+            const selection = fileSelection();
+            act(() => pushNewChatSeedContext([selection]));
+            expect(peekNewChatSeedContext()).toEqual([selection]);
+            expect(screen.queryByTestId('attached-file-selection-context-chip')).toBeNull();
+            mockSessionContextAttachmentsEnabled.value = true;
+            view.rerender(<NewChatArea workspaceId="ws-1" />);
+            await screen.findByTestId('attached-file-selection-context-chip');
+            expect(document.activeElement).toBe(screen.getByTestId('new-chat-input'));
+        });
+
+        it.each([
+            { hidden: true },
+            { style: { display: 'none' } },
+            { style: { visibility: 'hidden' as const } },
+            { inert: '' },
+        ])('leaves seeds for a visible composer when an ancestor is %j', async (hiddenProps) => {
+            render(<>
+                <div {...hiddenProps}>
+                    <InitialChatComposer workspaceId="ws-1" newChatSeedDestinationId="ws-1" testIdPrefix="hidden-chat" onSubmit={vi.fn()} />
+                </div>
+                <NewChatArea workspaceId="ws-1" />
+            </>);
+            act(() => pushNewChatSeedContext([fileSelection()]));
+            await screen.findByTestId('attached-file-selection-context-chip');
+            expect(within(screen.getByTestId('hidden-chat-area')).queryByTestId('attached-file-selection-context-chip')).toBeNull();
+            expect(document.activeElement).toBe(screen.getByTestId('new-chat-input'));
+        });
+
+        it('drains waiting selections when its panel becomes visible', async () => {
+            const view = render(<div hidden><NewChatArea workspaceId="ws-1" /></div>);
+            const payload = fileSelection();
+            act(() => pushNewChatSeedContext([payload]));
+            expect(peekNewChatSeedContext()).toEqual([payload]);
+            view.rerender(<div><NewChatArea workspaceId="ws-1" /></div>);
+            await screen.findByTestId('attached-file-selection-context-chip');
+            expect(peekNewChatSeedContext()).toEqual([]);
+            expect(document.activeElement).toBe(screen.getByTestId('new-chat-input'));
+        });
+
+        it('does not let a composer without a workspace drain workspace selections', () => {
+            render(<InitialChatComposer onSubmit={vi.fn()} />);
+            const payload = fileSelection();
+            act(() => pushNewChatSeedContext([payload]));
+            expect(peekNewChatSeedContext()).toEqual([payload]);
+            expect(screen.queryByTestId('attached-file-selection-context-chip')).toBeNull();
+        });
+
+        it('reports duplicate file selections and focuses the input without a second chip', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            act(() => pushNewChatSeedContext([fileSelection()]));
+            await screen.findByTestId('attached-file-selection-context-chip');
+            (document.activeElement as HTMLElement).blur();
+            act(() => pushNewChatSeedContext([fileSelection()]));
+            await waitFor(() => expect(screen.getByTestId('new-chat-session-context-error').textContent).toContain('already attached'));
+            expect(screen.getAllByTestId('attached-file-selection-context-chip')).toHaveLength(1);
+            expect(document.activeElement).toBe(screen.getByTestId('new-chat-input'));
+        });
+
+        it('focuses the input when a diff selection is seeded', async () => {
+            render(<NewChatArea workspaceId="ws-1" />);
+            const payload = createDiffSelectionContextDragPayload({
+                sourceWorkspaceId: 'ws-1', filePath: 'src/status.ts',
+                newRange: { start: 24, end: 35 }, ref: { type: 'working-tree' }, snippet: '+changed',
+            })!;
+            act(() => pushNewChatSeedContext([payload]));
+            await screen.findByTestId('attached-diff-selection-context-chip');
+            expect(document.activeElement).toBe(screen.getByTestId('new-chat-input'));
         });
 
         it('attaches a pointer item buffered before the composer mounted', async () => {

@@ -593,6 +593,7 @@ describe('parseAttachedSessionContextBlocks', () => {
             ralphSessionContexts: [],
             pointerContexts: [],
             diffSelectionContexts: [],
+            fileSelectionContexts: [],
             remainingContent: content,
         });
     });

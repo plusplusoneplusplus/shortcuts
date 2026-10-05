@@ -32,10 +32,11 @@ export interface PrReviewContentProps {
     repoId: string;
     prId: string;
     originId?: string;
+    attachmentDestinationId?: string;
     onTitleLoaded?: (title: string) => void;
 }
 
-export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded }: PrReviewContentProps) {
+export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded, attachmentDestinationId }: PrReviewContentProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [fileList, setFileList] = useState<FileChange[]>([]);
@@ -107,6 +108,8 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
 
     const chatPanel = (hideEmptyHeader: boolean) => (
         <PrChatPanel
+            sourceSelectionId={attachmentDestinationId}
+            newChatSeedDestinationId={attachmentDestinationId ?? workspaceId}
             workspaceId={workspaceId}
             prId={prId}
             filePath={model.selectedFilePath ?? undefined}
@@ -137,6 +140,7 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
                     <FileDiffPanel
                         key={`pr-${prId}-${filePath}`}
                         workspaceId={workspaceId}
+                        attachmentDestinationId={attachmentDestinationId}
                         filePath={filePath}
                         source={createPrDiffSource(workspaceId, repoId, prId, {
                             originId: progressOriginId,

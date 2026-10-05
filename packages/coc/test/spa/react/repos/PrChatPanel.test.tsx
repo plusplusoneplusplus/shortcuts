@@ -28,6 +28,7 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/ChatDetail', () =
              data-title={props.title}
              data-hide-mode-selector={props.hideModeSelector ? 'true' : undefined}
              data-workspace-id={props.workspaceId}
+             data-source-selection={props.sourceSelectionId}
         />
     ),
 }));
@@ -70,10 +71,16 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/hooks/useFileAtta
 }));
 
 import { PrChatPanel } from '../../../../src/server/spa/client/react/features/git/commits/PrChatPanel';
+import { _resetRuntimeConfig } from '../../../../src/server/spa/client/react/utils/config';
+import { createFileSelectionContextPayload } from '../../../../src/server/spa/client/react/features/chat/sessionContextDrag';
+import { pushNewChatSeedContext, peekNewChatSeedContext, resetNewChatSeedContext } from '../../../../src/server/spa/client/react/features/chat/newChatSeedContext';
 
 describe('PrChatPanel', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        resetNewChatSeedContext();
+        _resetRuntimeConfig();
+        window.__DASHBOARD_CONFIG__ = { sessionContextAttachmentsEnabled: true };
         mockCreateChat.mockResolvedValue('new-task-id');
         mockToPayload.mockReturnValue([]);
     });
@@ -99,6 +106,30 @@ describe('PrChatPanel', () => {
             ...overrides,
         });
     }
+
+    it('forwards the current review owner to active chat detail', () => {
+        setBindingState({ taskId: 'chat-1' });
+        const view = render(<PrChatPanel {...defaultProps} sourceSelectionId="remote:one:ws1" />);
+        expect(screen.getByTestId('activity-chat-detail').getAttribute('data-source-selection')).toBe('remote:one:ws1');
+        view.rerender(<PrChatPanel {...defaultProps} sourceSelectionId="remote:two:ws1" />);
+        expect(screen.getByTestId('activity-chat-detail').getAttribute('data-source-selection')).toBe('remote:two:ws1');
+    });
+
+    it('preserves seeds until the review composer explicitly opts into its owner', async () => {
+        setBindingState();
+        const payload = createFileSelectionContextPayload({
+            sourceWorkspaceId: 'ws1', filePath: 'src/review.ts', range: { start: 2, end: 3 }, snippet: 'selection',
+        })!;
+        pushNewChatSeedContext([payload], 'remote:one:ws1');
+        pushNewChatSeedContext([payload], 'remote:two:ws1');
+        const view = render(<PrChatPanel {...defaultProps} sourceSelectionId="remote:one:ws1" />);
+        expect(screen.queryByTestId('attached-file-selection-context-chip')).toBeNull();
+        expect(peekNewChatSeedContext()).toEqual([payload, payload]);
+        view.rerender(<PrChatPanel {...defaultProps} sourceSelectionId="remote:one:ws1"
+            newChatSeedDestinationId="remote:one:ws1" />);
+        await screen.findByTestId('attached-file-selection-context-chip');
+        expect(peekNewChatSeedContext()).toEqual([payload]);
+    });
 
     describe('empty state (no chat yet)', () => {
         it('renders empty state UI with input', () => {

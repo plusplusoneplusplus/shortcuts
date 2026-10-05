@@ -64,6 +64,7 @@ import {
     useConversationRetrievalCapability,
     validateSessionContextDrop,
 } from './sessionContextDrop';
+import { isContextComposerVisible, subscribeActiveChatAttach } from './activeChatAttach';
 import { findComposerEditable, textOffsetFromPoint } from './filePathDropCaret';
 import type { RalphGrillSetup } from '../../../../../ralph/grill-planning';
 import { RalphGrillSetupPanel } from './RalphGrillSetupPanel';
@@ -124,6 +125,8 @@ export interface FollowUpInputAreaProps {
      */
     prComposerChips?: React.ReactNode;
     workspaceId?: string;
+    /** Concrete panel owner for editor attachments; payload validation uses workspaceId. */
+    attachmentDestinationId?: string;
     currentProcessId?: string | null;
     sessionContextAttachmentsEnabled?: boolean;
     canRetrieveConversations?: boolean | null;
@@ -283,6 +286,7 @@ export function FollowUpInputArea({
     onAttachSessionContext,
     prComposerChips,
     workspaceId,
+    attachmentDestinationId,
     currentProcessId,
     sessionContextAttachmentsEnabled: sessionContextAttachmentsEnabledProp,
     canRetrieveConversations: canRetrieveConversationsProp,
@@ -362,6 +366,7 @@ export function FollowUpInputArea({
     const [sessionContextDropError, setSessionContextDropError] = useState<string | null>(null);
     const [sessionContextDragActive, setSessionContextDragActive] = useState(false);
     const sessionContextDragDepthRef = useRef(0);
+    const rootRef = useRef<HTMLDivElement>(null);
     const activeWorkspaceId = workspaceId ?? task?.metadata?.workspaceId ?? task?.workspaceId ?? task?.payload?.workspaceId;
     const activeProcessId = currentProcessId ?? task?.processId ?? task?.id ?? null;
     // `#repo_name` mentions: only in a repo-group chat, and only once the
@@ -842,6 +847,43 @@ export function FollowUpInputArea({
         setSessionContextDropError(null);
     }
 
+    // Accept selections attached from a Monaco editor pill in this repo view
+    // ("Attach as context"). The handler is read through a ref so the single
+    // subscription always validates against the latest attached items.
+    function handleActiveChatAttach(payload: SessionContextAttachmentDragPayload): boolean {
+        if (!isContextComposerVisible(rootRef.current)) return false;
+        const validation = validateSessionContextDrop({
+            payload,
+            featureEnabled: sessionContextAttachmentsEnabled,
+            activeWorkspaceId,
+            currentProcessId: activeProcessId,
+            existingItems: attachedContext ?? [],
+            canRetrieveConversations,
+        });
+        if (!validation.ok) {
+            setSessionContextDropError(validation.error);
+        } else {
+            onAttachSessionContext?.(validation.payload);
+            setSessionContextDropError(null);
+        }
+        richTextRef.current?.focus();
+        return true;
+    }
+    const activeChatAttachHandlerRef = useRef(handleActiveChatAttach);
+    activeChatAttachHandlerRef.current = handleActiveChatAttach;
+    const activeChatAttachBumpRef = useRef<(() => void) | null>(null);
+    const canAttachFromEditor = Boolean(onAttachSessionContext) && sessionContextAttachmentsEnabled;
+    const activeAttachmentDestinationId = attachmentDestinationId ?? activeWorkspaceId;
+    useEffect(() => {
+        if (!activeWorkspaceId || !activeAttachmentDestinationId || !canAttachFromEditor) return;
+        const sub = subscribeActiveChatAttach(activeAttachmentDestinationId, payload => activeChatAttachHandlerRef.current(payload));
+        activeChatAttachBumpRef.current = sub.bump;
+        return () => {
+            sub.unsubscribe();
+            activeChatAttachBumpRef.current = null;
+        };
+    }, [activeWorkspaceId, activeAttachmentDestinationId, canAttachFromEditor]);
+
     function focusInputAndInsertSlash() {
         const cur = richTextRef.current?.getValue() ?? followUpInput;
         const next = cur.endsWith('/') || cur === '' ? (cur === '' ? '/' : cur) : cur + ' /';
@@ -893,6 +935,8 @@ export function FollowUpInputArea({
 
     return (
         <div
+            ref={rootRef}
+            onFocusCapture={() => activeChatAttachBumpRef.current?.()}
             className={cn(
                 'border-t border-[#e0e0e0] dark:border-[#3c3c3c]',
                 'px-3 py-2 space-y-1.5',

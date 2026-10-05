@@ -60,6 +60,8 @@ import { popOutOpened } from '../../utils/popOutWindow';
 export interface PullRequestDetailProps {
     repoId: string;
     workspaceId: string;
+    /** Concrete clone owner used for selection attachment routing. */
+    attachmentDestinationId?: string;
     remoteUrl?: string | null;
     prId: number | string;
     onBack: () => void;
@@ -76,7 +78,7 @@ const TAB_DEFINITIONS: Array<{ id: PrDetailTab; label: string }> = [
 
 const EMPTY_FILES: FileChange[] = [];
 
-export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
+export function PullRequestDetail({ repoId, workspaceId, attachmentDestinationId, remoteUrl, prId, onBack, isMobile = false }: PullRequestDetailProps) {
     const { state, dispatch } = useApp();
     const cloneClient = useCocClient(workspaceId);
     const [pr, setPr] = useState<PullRequest | null>(null);
@@ -148,12 +150,14 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
     // Explicit pop-out action for the Files tab. Inline (right-panel) diff is
     // now the default click path; this opens the separate review window.
     const handlePopOut = useCallback((_filePath: string) => {
-        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId, lookupCloneBaseUrl(workspaceId));
+        const cloneBaseUrl = attachmentDestinationId === workspaceId
+            ? undefined : lookupCloneBaseUrl(attachmentDestinationId ?? workspaceId);
+        const url = buildGitPrPopOutUrl(workspaceId, String(repoId), String(prId), originId, cloneBaseUrl, attachmentDestinationId);
         const win = window.open(url, `coc-git-review-pr-${prId}`, 'width=1200,height=800');
         if (popOutOpened(win)) {
             markPoppedOut(gitReviewPrPopOutKey(workspaceId, String(prId)));
         }
-    }, [workspaceId, originId, repoId, prId, markPoppedOut]);
+    }, [workspaceId, attachmentDestinationId, originId, repoId, prId, markPoppedOut]);
 
     const switchTab = useCallback(
         (tab: PrDetailTab) => {
@@ -630,6 +634,7 @@ export function PullRequestDetail({ repoId, workspaceId, remoteUrl, prId, onBack
                                 diffText={rawDiff}
                                 isMobile={isMobile}
                                 workspaceId={workspaceId}
+                                attachmentDestinationId={attachmentDestinationId}
                                 classificationKey={classificationKey}
                                 onPopOut={handlePopOut}
                                 diffSource={prDiffSource}
@@ -727,4 +732,3 @@ function tabCount(
             return counts.checks > 0 ? `${counts.checksPassing}/${counts.checks}` : null;
     }
 }
-

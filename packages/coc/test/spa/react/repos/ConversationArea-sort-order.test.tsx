@@ -20,6 +20,25 @@ const REPOS_DIR = path.join(
 const CONVERSATION_AREA_SOURCE = fs.readFileSync(path.join(REPOS_DIR, 'ConversationArea.tsx'), 'utf-8');
 
 describe('ConversationArea: turn ordering', () => {
+    it('passes concrete review ownership through both normal and pinned turns', () => {
+        const bubbles = CONVERSATION_AREA_SOURCE.match(/<ConversationTurnBubble[\s\S]*?\/>/g);
+        expect(bubbles).toHaveLength(2);
+        for (const bubble of bubbles!) {
+            expect(bubble).toContain('sourceSelectionId={sourceSelectionId}');
+            expect(bubble).toContain('sourceBaseUrl={sourceBaseUrl}');
+        }
+        const chatDetail = fs.readFileSync(path.join(REPOS_DIR, 'ChatDetail.tsx'), 'utf-8');
+        const area = chatDetail.match(/<ConversationArea[\s\S]*?\/>/)![0];
+        expect(area).toContain('sourceSelectionId={sourceSelectionId}');
+        expect(area).toContain('sourceBaseUrl={sourceBaseUrl}');
+        const turnBubble = fs.readFileSync(path.join(REPOS_DIR, 'conversation', 'ConversationTurnBubble.tsx'), 'utf-8');
+        for (const tag of ['CommitStrip', 'WhisperCollapsedGroup']) {
+            const child = turnBubble.match(new RegExp(`<${tag}[\\s\\S]*?/>`))![0];
+            expect(child).toContain('sourceSelectionId={sourceSelectionId}');
+            expect(child).toContain('sourceBaseUrl={sourceBaseUrl}');
+        }
+    });
+
     it('sorts renderTurns by turnIndex before rendering', () => {
         // The source must contain a sort by turnIndex to handle storage order anomalies
         expect(CONVERSATION_AREA_SOURCE).toContain('sortedTurns');
@@ -88,4 +107,3 @@ describe('ConversationArea: process error banner', () => {
         expect(chatDetailSource).toContain('processError={processDetails?.error');
     });
 });
-

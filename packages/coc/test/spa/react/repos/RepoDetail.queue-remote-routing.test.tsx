@@ -30,10 +30,11 @@ beforeAll(() => {
 // ── Mocks: everything except the queue path under test ──────────────────────
 
 const mockDispatch = vi.fn();
+let activeSubTab = 'chats';
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
     useApp: () => ({
         state: {
-            activeRepoSubTab: 'chats',
+            activeRepoSubTab: activeSubTab,
             repoTabState: {},
             repoRouteState: {},
             wikis: [],
@@ -136,12 +137,12 @@ vi.mock('../../../../src/server/spa/client/react/features/chat/RepoChatTab', () 
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoInfoTab', () => ({ RepoInfoTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/templates/TemplatesTab', () => ({ TemplatesTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/schedules/RepoSchedulesTab', () => ({ RepoSchedulesTab: () => null }));
-vi.mock('../../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({ RepoGitTab: () => null }));
+vi.mock('../../../../src/server/spa/client/react/features/git/RepoGitTab', () => ({ RepoGitTab: (props: any) => <div data-testid="repo-git-owner" data-destination={props.sourceSelectionId} data-workspace={props.workspaceId} /> }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/RepoWikiTab', () => ({ RepoWikiTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-settings/RepoSettingsTab', () => ({ RepoSettingsTab: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({ ExplorerPanel: () => null }));
-vi.mock('../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab', () => ({ PullRequestsTab: () => null }));
-vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemsTab', () => ({ WorkItemsTab: () => null }));
+vi.mock('../../../../src/server/spa/client/react/features/pull-requests/PullRequestsTab', () => ({ PullRequestsTab: (props: any) => <div data-testid="repo-pr-owner" data-destination={props.attachmentDestinationId} data-workspace={props.workspaceId} /> }));
+vi.mock('../../../../src/server/spa/client/react/features/work-items/WorkItemsTab', () => ({ WorkItemsTab: (props: any) => <div data-testid="repo-work-item-owner" data-destination={props.attachmentDestinationId} data-workspace={props.workspaceId} /> }));
 vi.mock('../../../../src/server/spa/client/react/processes/dag', () => ({ WorkflowDetailView: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView', () => ({ TerminalView: () => null }));
 vi.mock('../../../../src/server/spa/client/react/features/notes/NotesView', () => ({ NotesView: () => null }));
@@ -169,9 +170,9 @@ function jsonResponse(data: unknown): Partial<Response> {
 // A PAUSED queue, so RepoDetail renders the "Resume Queue" action.
 const PAUSED_QUEUE = { queued: [], running: [], stats: { isPaused: true } };
 
-function renderDetail(wsId: string) {
+function renderDetail(wsId: string, serverId?: string) {
     const repo = {
-        workspace: { id: wsId, rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null },
+        workspace: { id: wsId, rootPath: '/repo', name: 'test-repo', color: '#ccc', remoteUrl: null, ...(serverId ? { remote: { serverId, cloneKey: `remote:${serverId}:${wsId}`, baseUrl: REMOTE_BASE } } : {}) },
         gitInfo: { isGitRepo: true },
         gitInfoLoading: false,
         taskCount: 0,
@@ -188,6 +189,7 @@ describe('RepoDetail queue — remote-clone request routing', () => {
 
     beforeEach(() => {
         urls = [];
+        activeSubTab = 'chats';
         resetCloneRegistryForTests();
         mockDispatch.mockClear();
         vi.stubGlobal('fetch', vi.fn((input: string | URL | Request) => {
@@ -199,6 +201,27 @@ describe('RepoDetail queue — remote-clone request routing', () => {
     afterEach(() => {
         resetCloneRegistryForTests();
         vi.unstubAllGlobals();
+    });
+
+    it.each([undefined, 'one', 'two'])('passes the repo owner %s to Git without changing its workspace id', serverId => {
+        renderDetail(REMOTE_WS, serverId);
+        const owner = screen.getByTestId('repo-git-owner');
+        expect(owner.getAttribute('data-destination')).toBe(serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
+        expect(owner.getAttribute('data-workspace')).toBe(REMOTE_WS);
+    });
+
+    it.each([undefined, 'one', 'two'])('passes repo owner %s to the PR tab', serverId => {
+        activeSubTab = 'pull-requests';
+        renderDetail(REMOTE_WS, serverId);
+        expect(screen.getByTestId('repo-pr-owner')).toHaveAttribute('data-destination', serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
+        expect(screen.getByTestId('repo-pr-owner')).toHaveAttribute('data-workspace', REMOTE_WS);
+    });
+
+    it.each([undefined, 'one', 'two'])('passes repo owner %s to work-item reviews', serverId => {
+        activeSubTab = 'work-items';
+        renderDetail(REMOTE_WS, serverId);
+        expect(screen.getByTestId('repo-work-item-owner')).toHaveAttribute('data-destination', serverId ? `remote:${serverId}:${REMOTE_WS}` : REMOTE_WS);
+        expect(screen.getByTestId('repo-work-item-owner')).toHaveAttribute('data-workspace', REMOTE_WS);
     });
 
     const queueSeedUrls = (list: string[], wsId: string) =>

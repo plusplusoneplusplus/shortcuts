@@ -213,7 +213,56 @@ commit row *body* drags are copy-only; the unpushed-commit reorder path stays is
 the row's grab handle. The review-chat drop target that rebinds an existing chat is in
 [chat.md](chat.md).
 
-The formatter emits **pointer-only** blocks: `<attached_session_context>` for single
+Repository `PreviewPane` hosts opt into the shared Monaco editor's
+`selectionContext` prop with the plain workspace id, repo-relative path and
+`destinationId` taken from the pane's concrete clone route (the workspace id for
+local panes). Right-panel tabs forward their persisted owner route through
+`PreviewPane`. The editor passes this destination separately from the payload
+to the pill; payloads retain the plain server workspace id.
+`shared/monaco/MonacoSelectionAttachPill` observes cursor
+selection, layout, scroll and blur, reads the live model, and routes file-selection
+payloads through `activeChatAttach`. `ChatDetail` passes its `sourceSelectionId`
+as `attachmentDestinationId` to both follow-up layouts. `FollowUpInputArea`
+subscribes by that owner identity, falling back to its workspace id when omitted;
+validation keeps the raw workspace id. Owner changes replace the subscription.
+
+Chat pop-out openers serialize that owner as `sourceSelectionId` alongside the
+raw workspace and clone endpoint. `PopOutChatShell` registers the explicit clone
+key and forwards the owner to `ChatDetail`; header and desktop Activity-row
+openers resolve endpoints from that owner, preserving an explicit source endpoint
+and keeping explicit local owners off the active remote clone.
+
+The last-focused visible subscriber validates, adds the chip and focuses its input. Composers in
+hidden or inert panels decline before changing attachment state or focus; routing
+tries the next subscriber, then falls back to `newChatSeedContext`. The channel's
+first argument is the destination identity; remote callers use a concrete clone
+key while payload `sourceWorkspaceId` remains the plain server workspace id.
+`pushNewChatSeedContext(payloads, destinationId?)` stores that destination with
+each seed, defaulting to each payload's source workspace when omitted.
+`drainNewChatSeedContext(destinationId)` preserves other owners' seeds; an
+omitted destination drains all. `NewChatArea` opts the shared initial composer
+into seed consumption with `newChatSeedDestinationId` set to its
+`sourceSelectionId` or local workspace id. Pop-out commit/PR adapters pass their
+diff panel's owner through review panels and placement frames to both the
+initial seed consumer and active `ChatDetail`. Closed or hidden review composers
+preserve buffered selections until opened. Notes and inline review adapters
+leave seed consumption unset. `ChatListPane` pushes with its Activity routing target.
+Visible, feature-enabled consumers retain the destination while capability
+resolution is pending and discard stale-owner items. File and diff seeds focus
+the input after validation, including duplicate feedback. Consumers retry on
+render so owner and panel visibility changes can make them eligible. Generic
+file viewers and trusted absolute paths do not opt in. File-selection payloads
+cap text at the shared 4000-character limit before routing, retaining truncation
+through normalization and chip creation. Their blocks
+include a repo-relative path, line range and a capped fenced snippet; user-turn
+parsing restores their context cards. `MonacoFileDiffViewer` mounts
+`MonacoDiffSelectionAttachPill` in each side editor via the adapter's
+`getSelectionEditor`; side-local portals share the same overlay lifecycle.
+`monacoToSelection` and `createMonacoDiffSelectionDragPayload` supply the existing
+diff-selection shape using live model text and computed line changes.
+`FileDiffPanel` and `WorkingTreeFileDiff` supply workspace/path/ref metadata.
+
+Pointer attachments emit blocks: `<attached_session_context>` for single
 sessions, `<attached_ralph_session_context>` for Ralph groups, and
 `<attached_pointer_context>` for Work Item, commit, range, and PR references. Pointer blocks
 store the source workspace ID and stable identifiers (work item ID/number, commit hash,

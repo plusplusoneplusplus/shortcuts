@@ -20,4 +20,16 @@ describe('buildChatPopOutUrl', () => {
         expect(buildChatPopOutUrl('http://localhost:3000/', 'proc-1'))
             .toBe('http://localhost:3000/#popout/activity/proc-1');
     });
+
+    it.each(['ws1', 'remote:server-a:ws1', 'remote:server-b:ws1'])(
+        'serializes the concrete owner %s independently of the raw workspace',
+        sourceSelectionId => {
+            const url = new URL(buildChatPopOutUrl(
+                'http://localhost:3000/', 'proc/1', 'ws1', undefined, sourceSelectionId,
+            ));
+            expect(url.searchParams.get('workspace')).toBe('ws1');
+            expect(url.searchParams.get('sourceSelectionId')).toBe(sourceSelectionId);
+            expect(url.hash).toBe('#popout/activity/proc%2F1');
+        },
+    );
 });

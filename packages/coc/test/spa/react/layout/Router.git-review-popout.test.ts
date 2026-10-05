@@ -8,6 +8,29 @@ import {
     buildGitBranchRangePopOutUrl,
     buildGitPrPopOutUrl,
 } from '../../../../src/server/spa/client/react/layout/Router';
+import { parsePopOutGitReviewRoute } from '../../../../src/server/spa/client/react/layout/popoutGitReview/popoutGitReviewRoute';
+
+describe('Git review pop-out selection ownership', () => {
+    it.each(['ws-1', 'remote:server%20a:ws-1', 'remote:server-b:ws-1'])(
+        'round-trips the exact owner %s for every review type',
+        sourceSelectionId => {
+            const cloneBaseUrl = sourceSelectionId.startsWith('remote:') ? 'https://clone.example.test' : undefined;
+            const urls = [
+                buildGitReviewPopOutUrl('ws-1', 'abc123', cloneBaseUrl, sourceSelectionId),
+                buildGitBranchRangePopOutUrl('ws-1', cloneBaseUrl, 'upstream', sourceSelectionId),
+                buildGitPrPopOutUrl('ws-1', 'repo-1', 42, 'origin-1', cloneBaseUrl, sourceSelectionId),
+            ];
+            for (const value of urls) {
+                const url = new URL(value, 'https://app.example.test');
+                expect(url.searchParams.get('workspace')).toBe('ws-1');
+                expect(url.searchParams.get('sourceSelectionId')).toBe(sourceSelectionId);
+                expect(parsePopOutGitReviewRoute(url.hash, url.search)).toMatchObject({
+                    workspaceId: 'ws-1', sourceSelectionId, cloneBaseUrl,
+                });
+            }
+        },
+    );
+});
 
 describe('buildGitReviewPopOutUrl', () => {
     it('builds URL with workspace and commit hash', () => {

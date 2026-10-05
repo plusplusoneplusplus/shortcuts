@@ -70,6 +70,8 @@ const GIT_CHANGED_DEBOUNCE_MS = 500;
 interface RepoGitTabProps {
     /** The workspace whose git data this panel reads and writes. */
     workspaceId: string;
+    /** Concrete source clone for selection attachments. */
+    sourceSelectionId?: string;
     /**
      * The workspace that owns the PAGE this panel lives on. A repo group passes
      * its own `group-<slug>` id here and the member as `workspaceId`, so commit
@@ -145,7 +147,7 @@ export function RepoGitTab(props: RepoGitTabProps) {
     return <RepoGitTabView key={baseUrl ?? 'local'} {...props} />;
 }
 
-function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
+function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repositorySelector, layout = 'split-workspace', detailContainer, detailActive, onActivateDetail, onViewChange, detailOpen, restoreView, headerToolbarContainer, active = true, onDetailDirtyChange, onDetailRegisterSave }: RepoGitTabProps) {
     const isSplitWorkspace = layout === 'split-workspace';
     // Hoist the toolbar into the split panel's section header when a portal
     // target exists; everything in the list pane then uses the compact skin.
@@ -403,12 +405,14 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
 
     const handleOpenAsPopup = useCallback((commit: GitCommitItem) => {
         closeContextMenu();
-        const url = buildGitReviewPopOutUrl(workspaceId, commit.hash, lookupCloneBaseUrl(workspaceId));
+        const cloneBaseUrl = sourceSelectionId === workspaceId
+            ? undefined : lookupCloneBaseUrl(sourceSelectionId ?? workspaceId);
+        const url = buildGitReviewPopOutUrl(workspaceId, commit.hash, cloneBaseUrl, sourceSelectionId);
         const win = window.open(url, `coc-git-review-${commit.hash}`, 'width=1200,height=800');
         if (popOutOpened(win)) {
             markPoppedOut(gitReviewPopOutKey(workspaceId, commit.hash));
         }
-    }, [workspaceId, closeContextMenu, markPoppedOut]);
+    }, [workspaceId, sourceSelectionId, closeContextMenu, markPoppedOut]);
 
     const handleMobileSelectingChange = useCallback((selecting: boolean) => {
         setIsMobileSelecting(selecting);
@@ -668,6 +672,7 @@ function RepoGitTabView({ workspaceId, routeWorkspaceId, repositorySelector, lay
 
     const detailPanel = (
         <RepoGitDetailPane
+            attachmentDestinationId={sourceSelectionId ?? workspaceId}
             workspaceId={workspaceId}
             view={view}
             commits={data.commits}

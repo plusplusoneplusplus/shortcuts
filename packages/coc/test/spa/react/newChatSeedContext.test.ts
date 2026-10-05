@@ -67,6 +67,55 @@ describe('newChatSeedContext store', () => {
         expect(drainNewChatSeedContext()).toEqual([]);
     });
 
+    it('drains only the requested workspace and leaves the others buffered', () => {
+        const a = makeCommitPayload();
+        const b = makeSessionPayload({ sourceWorkspaceId: 'ws-2' });
+        pushNewChatSeedContext([a, b]);
+        expect(drainNewChatSeedContext('ws-3')).toEqual([]);
+        expect(peekNewChatSeedContext()).toEqual([a, b]);
+        expect(drainNewChatSeedContext('ws-1')).toEqual([a]);
+        expect(peekNewChatSeedContext()).toEqual([b]);
+        expect(drainNewChatSeedContext('ws-2')).toEqual([b]);
+        expect(peekNewChatSeedContext()).toEqual([]);
+    });
+
+    it('keeps same-workspace seeds separate for local and concrete remote owners', () => {
+        const local = makeCommitPayload();
+        const remoteA = makeCommitPayload({ commitHash: 'aaaa1111' });
+        const remoteB = makeCommitPayload({ commitHash: 'bbbb2222' });
+        pushNewChatSeedContext([remoteA], 'remote:server-a:ws-1');
+        pushNewChatSeedContext([local]);
+        pushNewChatSeedContext([remoteB], 'remote:server-b:ws-1');
+
+        expect(drainNewChatSeedContext('ws-1')).toEqual([local]);
+        expect(drainNewChatSeedContext('remote:server-a:ws-1')).toEqual([remoteA]);
+        expect(peekNewChatSeedContext()).toEqual([remoteB]);
+        expect(drainNewChatSeedContext('remote:server-b:ws-1')).toEqual([remoteB]);
+        expect(remoteA.sourceWorkspaceId).toBe('ws-1');
+    });
+
+    it('preserves the explicit destination through synchronous listener drains', () => {
+        const payload = makeCommitPayload();
+        const localDrains: SessionContextAttachmentDragPayload[][] = [];
+        const remoteDrains: SessionContextAttachmentDragPayload[][] = [];
+        subscribeNewChatSeedContext(() => localDrains.push(drainNewChatSeedContext('ws-1')));
+        subscribeNewChatSeedContext(() => remoteDrains.push(drainNewChatSeedContext('remote:server-a:ws-1')));
+
+        pushNewChatSeedContext([payload], 'remote:server-a:ws-1');
+        expect(localDrains).toEqual([[]]);
+        expect(remoteDrains).toEqual([[payload]]);
+        expect(peekNewChatSeedContext()).toEqual([]);
+    });
+
+    it('drains all destinations in insertion order when no destination is supplied', () => {
+        const a = makeCommitPayload();
+        const b = makeSessionPayload();
+        pushNewChatSeedContext([a], 'remote:server-a:ws-1');
+        pushNewChatSeedContext([b]);
+        expect(drainNewChatSeedContext()).toEqual([a, b]);
+        expect(peekNewChatSeedContext()).toEqual([]);
+    });
+
     it('appends across multiple pushes (append-keep)', () => {
         const a = makeCommitPayload({ commitHash: 'aaaa1111', shortHash: 'aaaa111' });
         const b = makeSessionPayload({ sourceProcessId: 'proc-b' });

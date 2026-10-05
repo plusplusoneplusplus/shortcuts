@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CommitStrip } from '../../../src/server/spa/client/react/features/chat/conversation/CommitStrip';
 import type { DetectedCommit } from '../../../src/server/spa/client/react/features/chat/conversation/commitDetection';
+import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 function makeCommit(overrides: Partial<DetectedCommit> = {}): DetectedCommit {
     return {
@@ -18,6 +19,7 @@ describe('CommitStrip', () => {
 
     beforeEach(() => {
         originalHash = location.hash;
+        registerCloneBaseUrls([]);
     });
 
     it('renders nothing when commits array is empty', () => {
@@ -205,6 +207,36 @@ describe('CommitStrip', () => {
     });
 
     describe('pop-out button', () => {
+        it('retains mounted owners and an explicit endpoint independently of the active clone', () => {
+            registerCloneBaseUrls([
+                { workspaceId: 'ws-test', cloneKey: 'remote:one:ws-test', baseUrl: 'https://one.example' },
+                { workspaceId: 'ws-test', cloneKey: 'remote:two:ws-test', baseUrl: 'https://two.example' },
+            ]);
+            setActiveCloneForRouting('remote:two:ws-test');
+            const open = vi.spyOn(window, 'open').mockReturnValue(null);
+            const commits = [makeCommit()];
+            const result = render(<CommitStrip commits={commits} workspaceId="ws-test" />);
+            for (const [owner, endpoint] of [
+                ['remote:one:ws-test', 'https://one.example'],
+                ['remote:two:ws-test', 'https://two.example'],
+                ['ws-test', null],
+            ] as const) {
+                result.rerender(<CommitStrip commits={commits} workspaceId="ws-test" sourceSelectionId={owner} />);
+                fireEvent.click(screen.getByRole('button', { name: 'Open commit in new window' }));
+                const url = new URL(String(open.mock.calls.at(-1)![0]), 'https://dashboard.example');
+                expect(url.searchParams.get('workspace')).toBe('ws-test');
+                expect(url.searchParams.get('sourceSelectionId')).toBe(owner);
+                expect(url.searchParams.get('cloneBaseUrl')).toBe(endpoint);
+            }
+            result.rerender(<CommitStrip commits={commits} workspaceId="ws-test"
+                sourceSelectionId="remote:one:ws-test" sourceBaseUrl="https://override.example" />);
+            fireEvent.click(screen.getByRole('button', { name: 'Open commit in new window' }));
+            const url = new URL(String(open.mock.calls.at(-1)![0]), 'https://dashboard.example');
+            expect(url.searchParams.get('cloneBaseUrl')).toBe('https://override.example');
+            expect(url.searchParams.get('sourceSelectionId')).toBe('remote:one:ws-test');
+            open.mockRestore();
+        });
+
         let originalOpen: typeof window.open;
 
         beforeEach(() => {

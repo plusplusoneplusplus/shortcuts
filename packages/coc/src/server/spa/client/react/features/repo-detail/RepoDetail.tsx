@@ -748,7 +748,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
             {/* Sub-tab content */}
             <div id="repo-sub-tab-content" className={cn("flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden")} style={dockExpanded ? { display: 'none' } : undefined}>
                 {activeSubTab === 'work-items' ? (
-                    <WorkItemsTab key={ws.id} workspaceId={ws.id} originId={workItemOriginId} onNavigateToTasksTab={handleNavigateToTask} />
+                    <WorkItemsTab key={ws.id} workspaceId={ws.id} attachmentDestinationId={sourceSelectionId} originId={workItemOriginId} onNavigateToTasksTab={handleNavigateToTask} />
                 ) : activeSubTab === 'tasks' ? (
                     <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                         <TasksPanel
@@ -784,6 +784,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                                     }
                                     gitList={isGitRepo ? (
                                         <RepoGitTab
+                                            sourceSelectionId={sourceSelectionId}
                                             key={`${ws.id}-split-git`}
                                             workspaceId={ws.id}
                                             layout="split-workspace"
@@ -829,6 +830,7 @@ export function RepoDetail({ repo, repos, onRefresh, chromeless = false }: RepoD
                         </div>
                         {isGitRepo && <div style={{ display: activeSubTab === 'pull-requests' ? undefined : 'none' }} className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
                             {wasVisited('pull-requests') && <PullRequestsTab
+                                attachmentDestinationId={sourceSelectionId}
                                 repoId={ws.id}
                                 workspaceId={ws.id}
                                 remoteUrl={ws.remoteUrl ?? undefined}

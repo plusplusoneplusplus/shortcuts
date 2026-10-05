@@ -276,6 +276,16 @@ The `DiffSource` factories (`createCommitDiffSource`, `createBranchRangeDiffSour
 non-React `diffCommentApi` (`patchDiffComment`, `deleteDiffCommentById`) routes via
 `getCocClientForWorkspace(wsId)`.
 
+Git review URL builders accept `sourceSelectionId` separately from the raw
+workspace and clone endpoint. RepoGitTab, CommitDetail, BranchRangeOverview and
+PullRequestDetail serialize their concrete attachment owner and look up its
+endpoint; explicit local owners stay on the page origin. `popoutGitReviewRoute`
+preserves the owner and registers its concrete clone key before children render.
+The registration guard includes that owner, even when two routes share an
+endpoint. `PopOutGitReviewShell` forwards it through commit, PR and branch-range
+adapters to `FileDiffPanel`. Payload workspace IDs stay raw; omitted owners retain
+workspace-based lookup and attachment fallback.
+
 ### Notes, PDFs, and quick ask
 
 `usePaperAnnotations` (sidecar GET, resolve and turns PATCHes), `PdfAnnotationsLayer`

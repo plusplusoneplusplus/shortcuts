@@ -14,6 +14,8 @@ import { getReviewChatTargetStorageId } from './commitChatPlacement';
 
 export interface PrChatPanelProps {
     workspaceId: string;
+    sourceSelectionId?: string;
+    newChatSeedDestinationId?: string;
     prId: string;
     /** Currently selected file path in the pop-out (for context). */
     filePath?: string;
@@ -25,7 +27,7 @@ export interface PrChatPanelProps {
     hideEmptyHeader?: boolean;
 }
 
-export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onClose, hideEmptyHeader = false }: PrChatPanelProps) {
+export function PrChatPanel({ workspaceId, sourceSelectionId, newChatSeedDestinationId, prId, filePath, repoId, prTitle, onClose, hideEmptyHeader = false }: PrChatPanelProps) {
     const { taskId, loading, error, createChat } = usePrChatBinding({ workspaceId, prId, filePath, repoId, prTitle });
 
     const draftKey = `review-chat:${getReviewChatTargetStorageId({
@@ -88,6 +90,8 @@ export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onCl
             {!taskId && !loading && !error && (
                 <div className="min-h-0 flex-1">
                     <InitialChatComposer
+                        sourceSelectionId={sourceSelectionId}
+                        newChatSeedDestinationId={newChatSeedDestinationId}
                         workspaceId={workspaceId}
                         onSubmit={handleComposerSubmit}
                         heroTitle="Chat about this PR"
@@ -106,6 +110,7 @@ export function PrChatPanel({ workspaceId, prId, filePath, repoId, prTitle, onCl
             {taskId && !loading && (
                 <ChatPreferencesProvider workspaceId={workspaceId}>
                     <ChatDetail
+                        sourceSelectionId={sourceSelectionId}
                         taskId={taskId}
                         workspaceId={workspaceId}
                         variant="floating"

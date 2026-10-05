@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import {
     DIFF_SELECTION_CONTEXT_DRAG_KIND,
+    DIFF_SELECTION_TEXT_SIZE_LIMIT,
+    FILE_SELECTION_CONTEXT_KIND,
     GIT_COMMIT_CONTEXT_DRAG_KIND,
     GIT_RANGE_CONTEXT_DRAG_KIND,
     PULL_REQUEST_CONTEXT_DRAG_KIND,
@@ -8,10 +10,12 @@ import {
     SESSION_CONTEXT_DRAG_KIND,
     WORK_ITEM_CONTEXT_DRAG_KIND,
     buildDiffSelectionLabel,
+    buildFileSelectionLabel,
     formatDiffSelectionRef,
     type DiffSelectionContextDragPayload,
     type DiffSelectionLineRange,
     type DiffSelectionRef,
+    type FileSelectionContextPayload,
     type GitCommitContextDragPayload,
     type GitRangeContextDragPayload,
     type PointerContextDragPayload,
@@ -128,6 +132,21 @@ export interface AttachedDiffSelectionContextItem {
     preview: string;
 }
 
+export interface AttachedFileSelectionContextItem {
+    kind: 'file-selection';
+    id: string;
+    sourceWorkspaceId: string;
+    filePath: string;
+    /** 1-based, inclusive line range of the selection. */
+    range: DiffSelectionLineRange;
+    /** Selected text, capped at DIFF_SELECTION_TEXT_SIZE_LIMIT. */
+    snippet: string;
+    /** True when the selection exceeded DIFF_SELECTION_TEXT_SIZE_LIMIT and was cut. */
+    truncated: boolean;
+    label: string;
+    preview: string;
+}
+
 export type AttachedPointerContextItem =
     | AttachedWorkItemContextItem
     | AttachedGitCommitContextItem
@@ -139,12 +158,12 @@ export type AttachedContextItem =
     | AttachedSessionContextItem
     | AttachedRalphSessionContextItem
     | AttachedPointerContextItem
-    | AttachedDiffSelectionContextItem;
+    | AttachedDiffSelectionContextItem
+    | AttachedFileSelectionContextItem;
 
 const PREVIEW_LENGTH = 100;
-/** Same cap as note text references (useNoteReferences TEXT_SIZE_LIMIT). */
-export const DIFF_SELECTION_TEXT_SIZE_LIMIT = 4000;
-const ATTACHED_CONTEXT_BLOCK_PATTERN = /<attached_session_context\s+version="1">[\s\S]*?<\/attached_session_context>|<attached_ralph_session_context\s+version="1">[\s\S]*?<\/attached_ralph_session_context>|<attached_pointer_context\s+version="1">[\s\S]*?<\/attached_pointer_context>|<context\s+from="diff-selection"[^>]*>\r?\n(?<fence>`{3,})diff\r?\n[\s\S]*?\r?\n\k<fence>\r?\n<\/context>/g;
+export { DIFF_SELECTION_TEXT_SIZE_LIMIT } from '../sessionContextDrag';
+const ATTACHED_CONTEXT_BLOCK_PATTERN = /<attached_session_context\s+version="1">[\s\S]*?<\/attached_session_context>|<attached_ralph_session_context\s+version="1">[\s\S]*?<\/attached_ralph_session_context>|<attached_pointer_context\s+version="1">[\s\S]*?<\/attached_pointer_context>|<context\s+from="diff-selection"[^>]*>\r?\n(?<fence>`{3,})diff\r?\n[\s\S]*?\r?\n\k<fence>\r?\n<\/context>|<context\s+from="file-selection"[^>]*>\r?\n(?<fileFence>`{3,})\r?\n[\s\S]*?\r?\n\k<fileFence>\r?\n<\/context>/g;
 // The `<instruction>` element is no longer emitted, but stays optional here so blocks
 // already persisted in older messages still parse back into a session chip.
 const SESSION_CONTEXT_BLOCK_PATTERN = /^<attached_session_context\s+version="1">\s*<source\s+([^>]*)>\s*<title>([\s\S]*?)<\/title>\s*(?:<instruction>[\s\S]*?<\/instruction>\s*)?<\/source>\s*<\/attached_session_context>$/;
@@ -153,6 +172,7 @@ const POINTER_CONTEXT_BLOCK_PATTERN = /^<attached_pointer_context\s+version="1">
 // The fence is one backtick longer than any run inside the snippet, so matching the same
 // fence before `</context>` keeps a snippet that itself contains `</context>` intact.
 const DIFF_SELECTION_CONTEXT_BLOCK_PATTERN = /^<context\s+from="diff-selection"\s+([^>]*)>\r?\n(`{3,})diff\r?\n([\s\S]*?)\r?\n\2\r?\n<\/context>$/;
+const FILE_SELECTION_CONTEXT_BLOCK_PATTERN = /^<context\s+from="file-selection"\s+([^>]*)>\r?\n(`{3,})\r?\n([\s\S]*?)\r?\n\2\r?\n<\/context>$/;
 const CHILD_PROCESS_ID_PATTERN = /<process_id>([\s\S]*?)<\/process_id>/g;
 
 function truncatePreview(text: string): string {
@@ -277,11 +297,23 @@ export interface ParsedDiffSelectionContextBlock {
     rawBlock: string;
 }
 
+export interface ParsedFileSelectionContextBlock {
+    kind: 'file-selection';
+    sourceWorkspaceId: string;
+    filePath: string;
+    range: DiffSelectionLineRange;
+    snippet: string;
+    truncated: boolean;
+    label: string;
+    rawBlock: string;
+}
+
 export type ParsedAttachedContextBlock =
     | ParsedSessionContextBlock
     | ParsedRalphSessionContextBlock
     | ParsedPointerContextBlock
-    | ParsedDiffSelectionContextBlock;
+    | ParsedDiffSelectionContextBlock
+    | ParsedFileSelectionContextBlock;
 
 export interface ParsedAttachedSessionContextContent {
     attachedContexts: ParsedAttachedContextBlock[];
@@ -289,6 +321,7 @@ export interface ParsedAttachedSessionContextContent {
     ralphSessionContexts: ParsedRalphSessionContextBlock[];
     pointerContexts: ParsedPointerContextBlock[];
     diffSelectionContexts: ParsedDiffSelectionContextBlock[];
+    fileSelectionContexts: ParsedFileSelectionContextBlock[];
     remainingContent: string;
 }
 
@@ -414,21 +447,42 @@ function parseDiffSelectionContextBlock(rawBlock: string): ParsedDiffSelectionCo
     };
 }
 
+function parseFileSelectionContextBlock(rawBlock: string): ParsedFileSelectionContextBlock | null {
+    const match = rawBlock.match(FILE_SELECTION_CONTEXT_BLOCK_PATTERN);
+    if (!match) return null;
+    const attrs = parseSourceAttributes(match[1]);
+    const range = parseLineRangeAttribute(attrs.lines);
+    if (!attrs.path || !range) return null;
+    return {
+        kind: 'file-selection',
+        sourceWorkspaceId: attrs.workspace_id || 'unknown-workspace',
+        filePath: attrs.path,
+        range,
+        snippet: match[3],
+        truncated: attrs.truncated === 'true',
+        label: buildFileSelectionLabel(attrs.path, range),
+        rawBlock,
+    };
+}
+
 export function parseAttachedSessionContextBlocks(content: string): ParsedAttachedSessionContextContent {
     const attachedContexts: ParsedAttachedContextBlock[] = [];
     const sessionContexts: ParsedSessionContextBlock[] = [];
     const ralphSessionContexts: ParsedRalphSessionContextBlock[] = [];
     const pointerContexts: ParsedPointerContextBlock[] = [];
     const diffSelectionContexts: ParsedDiffSelectionContextBlock[] = [];
+    const fileSelectionContexts: ParsedFileSelectionContextBlock[] = [];
     const remainingContent = content
         .replace(ATTACHED_CONTEXT_BLOCK_PATTERN, (rawBlock: string) => {
             const parsed = rawBlock.startsWith('<attached_ralph_session_context')
                 ? parseRalphSessionContextBlock(rawBlock)
                 : rawBlock.startsWith('<attached_pointer_context')
                     ? parsePointerContextBlock(rawBlock)
-                    : rawBlock.startsWith('<context')
-                        ? parseDiffSelectionContextBlock(rawBlock)
-                        : parseSessionContextBlock(rawBlock);
+                    : rawBlock.startsWith('<context from="file-selection"')
+                        ? parseFileSelectionContextBlock(rawBlock)
+                        : rawBlock.startsWith('<context')
+                            ? parseDiffSelectionContextBlock(rawBlock)
+                            : parseSessionContextBlock(rawBlock);
             if (parsed) {
                 attachedContexts.push(parsed);
                 if (parsed.kind === 'ralph-session') {
@@ -437,6 +491,8 @@ export function parseAttachedSessionContextBlocks(content: string): ParsedAttach
                     sessionContexts.push(parsed);
                 } else if (parsed.kind === 'diff-selection') {
                     diffSelectionContexts.push(parsed);
+                } else if (parsed.kind === 'file-selection') {
+                    fileSelectionContexts.push(parsed);
                 } else {
                     pointerContexts.push(parsed);
                 }
@@ -446,7 +502,7 @@ export function parseAttachedSessionContextBlocks(content: string): ParsedAttach
         })
         .replace(/^(?:[ \t]*\r?\n)+/, '');
 
-    return { attachedContexts, sessionContexts, ralphSessionContexts, pointerContexts, diffSelectionContexts, remainingContent };
+    return { attachedContexts, sessionContexts, ralphSessionContexts, pointerContexts, diffSelectionContexts, fileSelectionContexts, remainingContent };
 }
 
 export function buildSessionContextPreview(source: Pick<SessionContextDragPayload, 'title' | 'status' | 'lastActivityAt' | 'sourceProcessId'>): string {
@@ -500,6 +556,26 @@ export function createDiffSelectionContextItem(source: DiffSelectionContextDragP
         ...(source.oldRange ? { oldRange: { ...source.oldRange } } : {}),
         ...(source.newRange ? { newRange: { ...source.newRange } } : {}),
         ref: source.ref,
+        snippet,
+        truncated,
+        label: source.label,
+        preview: truncatePreview(snippet),
+    };
+}
+
+/**
+ * Turn a file-editor selection payload into a chip item, cutting the snippet
+ * to DIFF_SELECTION_TEXT_SIZE_LIMIT characters and flagging the cut.
+ */
+export function createFileSelectionContextItem(source: FileSelectionContextPayload, id: string): AttachedFileSelectionContextItem {
+    const truncated = source.truncated === true || source.snippet.length > DIFF_SELECTION_TEXT_SIZE_LIMIT;
+    const snippet = truncated ? source.snippet.slice(0, DIFF_SELECTION_TEXT_SIZE_LIMIT) : source.snippet;
+    return {
+        kind: 'file-selection',
+        id,
+        sourceWorkspaceId: source.sourceWorkspaceId,
+        filePath: source.filePath,
+        range: { ...source.range },
         snippet,
         truncated,
         label: source.label,
@@ -619,9 +695,18 @@ export function useAttachedContext() {
         setItems(prev => [...prev, item]);
     }, []);
 
+    const addFileSelection = useCallback((source: FileSelectionContextPayload) => {
+        const item = createFileSelectionContextItem(source, `ctx-${++nextId}`);
+        setItems(prev => [...prev, item]);
+    }, []);
+
     const addSessionContext = useCallback((source: SessionContextAttachmentDragPayload) => {
         if (source.kind === DIFF_SELECTION_CONTEXT_DRAG_KIND) {
             addDiffSelection(source);
+            return;
+        }
+        if (source.kind === FILE_SELECTION_CONTEXT_KIND) {
+            addFileSelection(source);
             return;
         }
         if (source.kind === RALPH_SESSION_CONTEXT_DRAG_KIND) {
@@ -633,7 +718,7 @@ export function useAttachedContext() {
             return;
         }
         addPointerContext(source);
-    }, [addDiffSelection, addRalphSession, addSession, addPointerContext]);
+    }, [addDiffSelection, addFileSelection, addRalphSession, addSession, addPointerContext]);
 
     const addWorkItem = useCallback((source: WorkItemContextDragPayload) => {
         addPointerContext(source);
@@ -672,6 +757,7 @@ export function useAttachedContext() {
         addGitRange,
         addPullRequest,
         addDiffSelection,
+        addFileSelection,
         addSessionContext,
         remove,
         clear,
@@ -795,6 +881,18 @@ function formatDiffSelectionContextBlock(item: AttachedDiffSelectionContextItem)
     return `<context ${attributes}>\n${fence}diff\n${item.snippet}\n${fence}\n</context>`;
 }
 
+function formatFileSelectionContextBlock(item: AttachedFileSelectionContextItem): string {
+    const attributes = [
+        'from="file-selection"',
+        `workspace_id="${escapeContextText(safeContextPointer(item.sourceWorkspaceId, 'unknown-workspace'))}"`,
+        `path="${escapeContextText(item.filePath)}"`,
+        `lines="${item.range.start}-${item.range.end}"`,
+        item.truncated ? 'truncated="true"' : '',
+    ].filter(Boolean).join(' ');
+    const fence = codeFenceFor(item.snippet);
+    return `<context ${attributes}>\n${fence}\n${item.snippet}\n${fence}\n</context>`;
+}
+
 /**
  * Format attached context items into a text block to prepend to the user message.
  */
@@ -806,6 +904,9 @@ export function formatAttachedContext(items: AttachedContextItem[]): string {
         }
         if (item.kind === 'diff-selection') {
             return formatDiffSelectionContextBlock(item);
+        }
+        if (item.kind === 'file-selection') {
+            return formatFileSelectionContextBlock(item);
         }
         if (item.kind === 'session') {
             const sourceWorkspaceId = safeContextPointer(item.sourceWorkspaceId, 'unknown-workspace');

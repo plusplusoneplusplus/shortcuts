@@ -115,6 +115,7 @@ export function createMonacoDiffEditorAdapter(
     };
 
     return {
+        getSelectionEditor: sideEditor,
         setModels(models) {
             // Detach and release the old pair first, so a refreshed file gets
             // its real URI back instead of a conflict variant. Language

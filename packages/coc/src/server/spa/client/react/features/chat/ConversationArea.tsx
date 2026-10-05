@@ -73,6 +73,8 @@ export interface ConversationAreaProps {
     onAskUserAnswered?: () => void;
     /** Owning workspace, so an ask_user reply routes to the chat's clone (AC-07). */
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
     isScrolledUp: boolean;
     scrollRef: React.RefObject<HTMLDivElement>;
     /** Ref attached to the inner turns container (for minimap navigation) */
@@ -229,6 +231,8 @@ export function ConversationArea({
     ralphGrillPlanningProgress,
     onAskUserAnswered,
     workspaceId,
+    sourceSelectionId,
+    sourceBaseUrl,
     isScrolledUp,
     scrollRef,
     turnsContainerRef,
@@ -367,6 +371,8 @@ export function ConversationArea({
                                     <div className="mt-2 space-y-2">
                                         {pinnedTurns.sort((a, b) => (b.pinnedAt ?? '').localeCompare(a.pinnedAt ?? '')).map((turn, i) => (
                                             <ConversationTurnBubble
+                                                sourceSelectionId={sourceSelectionId}
+                                                sourceBaseUrl={sourceBaseUrl}
                                                 key={`pinned-${turn.turnIndex ?? i}`}
                                                 turn={turn}
                                                 taskId={taskId}
@@ -533,6 +539,8 @@ export function ConversationArea({
                                             )}
                                             <div className="flex-1 min-w-0">
                                                 <ConversationTurnBubble
+                                                    sourceSelectionId={sourceSelectionId}
+                                                    sourceBaseUrl={sourceBaseUrl}
                                                     turn={turn}
                                                     taskId={taskId}
                                                     wsId={wsId}

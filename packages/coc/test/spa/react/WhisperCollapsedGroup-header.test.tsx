@@ -7,6 +7,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
 import { WhisperCollapsedGroup } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/WhisperCollapsedGroup';
 import type { WhisperSummary, FileEdit } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/toolGroupUtils';
+import { registerCloneBaseUrls, setActiveCloneForRouting } from '../../../src/server/spa/client/react/repos/cloneRegistry';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,43 @@ function getHeaderText(container: HTMLElement): string {
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 describe('WhisperCollapsedGroup — header text', () => {
+    it('preserves the owner through each commit hover popover after mounted owner changes', () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'test-ws', cloneKey: 'remote:one:test-ws', baseUrl: 'https://one.example' },
+            { workspaceId: 'test-ws', cloneKey: 'remote:two:test-ws', baseUrl: 'https://two.example' },
+        ]);
+        setActiveCloneForRouting('remote:two:test-ws');
+        const open = vi.spyOn(window, 'open').mockReturnValue(null);
+        const commit = { shortHash: 'abc1234', subject: 'Change', branch: 'main', toolCallId: 't1' };
+        const summary: WhisperSummary = {
+            toolCallCount: 1, messageCount: 0, commitCount: 1,
+            commits: [commit], amendCommits: [{ ...commit, isAmend: true }],
+            fixupCommits: [{ ...commit, isFixup: true }],
+        };
+        const props = {
+            precedingChunks: [], summary, toolById: new Map(), toolsWithChildren: new Set<string>(),
+            toolParentById: new Map<string, string>(), groupSingleLineMessages: false,
+            workspaceId: 'test-ws', renderToolTree: () => null,
+        };
+        const result = render(<WhisperCollapsedGroup {...props} />);
+        for (const [owner, endpoint] of [
+            ['remote:one:test-ws', 'https://one.example'],
+            ['remote:two:test-ws', 'https://two.example'],
+            ['test-ws', null],
+        ] as const) {
+            result.rerender(<WhisperCollapsedGroup {...props} sourceSelectionId={owner} />);
+            fireEvent.mouseEnter(result.container.querySelector('[data-testid="whisper-commit-hover"]')!);
+            const popover = document.body.querySelector('[data-testid="commit-hover-popover"]')!;
+            fireEvent.click(popover.querySelector('[role="button"]')!);
+            const url = new URL(String(open.mock.calls.at(-1)![0]), 'https://dashboard.example');
+            expect(url.searchParams.get('workspace')).toBe('test-ws');
+            expect(url.searchParams.get('sourceSelectionId')).toBe(owner);
+            expect(url.searchParams.get('cloneBaseUrl')).toBe(endpoint);
+        }
+        open.mockRestore();
+        registerCloneBaseUrls([]);
+    });
+
     it('shows commit count when commitCount > 1 (plural)', () => {
         const { container } = renderHeader({
             toolCallCount: 5,

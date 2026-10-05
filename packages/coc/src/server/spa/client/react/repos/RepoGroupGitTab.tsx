@@ -34,6 +34,7 @@ import { buildGitRouteHash, buildGitRouteSuffix } from '../layout/gitRoute';
 import { RepoGroupGitMemberPicker } from './RepoGroupGitMemberPicker';
 import { useSplitGitPanel } from '../features/repo-detail/unified-right-panel/useSplitGitPanel';
 import type { RepoGroupMember } from './repoGroupService';
+import { routingRefForPanelOwner } from '../features/repo-detail/unified-right-panel/unifiedPanelOwnerRouting';
 import { useRepoGroupMemberGitInfo } from './useRepoGroupMemberGitInfo';
 
 /** Members that can actually back a git panel: registered and present on disk. */
@@ -272,6 +273,7 @@ export function RepoGroupGitTab({
                     <RepoGitTab
                         key={selectedId}
                         workspaceId={selectedId}
+                        sourceSelectionId={routingRefForPanelOwner(selectionId, selectedId) ?? selectedId}
                         routeWorkspaceId={selectionId}
                         repositorySelector={repositorySelector}
                         layout={layout}

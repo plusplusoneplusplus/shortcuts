@@ -1095,3 +1095,17 @@ describe('FileDiffPanel', () => {
         });
     });
 });
+
+it.each(['ws1', 'remote:one:ws1', 'remote:two:ws1'])('forwards selection destination %s and updates it without changing the payload workspace', async destinationId => {
+    const source = makeCommitSource({ fetchFileContent: vi.fn().mockResolvedValue({
+        path: 'src/foo.ts', fileName: 'foo.ts', language: 'typescript', binary: false, tooLarge: false,
+        base: { content: 'before', ref: 'base', exists: true },
+        head: { content: 'after', ref: 'head', exists: true },
+    }) });
+    const view = render(<FileDiffPanel workspaceId="ws1" attachmentDestinationId={destinationId} filePath="src/foo.ts" source={source} />);
+    await waitFor(() => expect(mockMonacoProps?.diffSelectionDragSource).toMatchObject({
+        workspaceId: 'ws1', destinationId, filePath: 'src/foo.ts',
+    }));
+    view.rerender(<FileDiffPanel workspaceId="ws1" attachmentDestinationId="remote:next:ws1" filePath="src/foo.ts" source={source} />);
+    expect(mockMonacoProps?.diffSelectionDragSource).toMatchObject({ workspaceId: 'ws1', destinationId: 'remote:next:ws1' });
+});

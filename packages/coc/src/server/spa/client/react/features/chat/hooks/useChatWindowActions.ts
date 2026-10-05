@@ -10,12 +10,15 @@ export interface UseChatWindowActionsOptions {
     task: any;
     taskId: string;
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
 }
 
-export function buildChatPopOutUrl(base: string, taskId: string, workspaceId?: string, cloneBaseUrl?: string): string {
+export function buildChatPopOutUrl(base: string, taskId: string, workspaceId?: string, cloneBaseUrl?: string, sourceSelectionId?: string): string {
     const params = new URLSearchParams();
     if (workspaceId) params.set('workspace', workspaceId);
     if (cloneBaseUrl) params.set('cloneBaseUrl', cloneBaseUrl);
+    if (sourceSelectionId) params.set('sourceSelectionId', sourceSelectionId);
     const query = params.toString();
     return `${base}${query ? `?${query}` : ''}#popout/activity/${encodeURIComponent(taskId)}`;
 }
@@ -23,6 +26,8 @@ export function buildChatPopOutUrl(base: string, taskId: string, workspaceId?: s
 export interface OpenChatPopOutOptions {
     taskId: string;
     workspaceId?: string;
+    sourceSelectionId?: string;
+    sourceBaseUrl?: string;
     markPoppedOut: (taskId: string) => void;
     addToast?: (message: string, type?: ToastItem['type']) => void;
 }
@@ -33,9 +38,13 @@ export interface OpenChatPopOutOptions {
  * ChatListPane, so the URL build + blocked-popup toast + markPoppedOut logic
  * lives in exactly one place.
  */
-export function openChatPopOut({ taskId, workspaceId, markPoppedOut, addToast }: OpenChatPopOutOptions): void {
+export function openChatPopOut({ taskId, workspaceId, sourceSelectionId, sourceBaseUrl, markPoppedOut, addToast }: OpenChatPopOutOptions): void {
     const base = window.location.origin + window.location.pathname;
-    const url = buildChatPopOutUrl(base, taskId, workspaceId, lookupCloneBaseUrl(workspaceId));
+    // An explicit local owner must not inherit the active remote clone's endpoint.
+    const cloneBaseUrl = sourceBaseUrl ?? (sourceSelectionId === workspaceId
+        ? undefined
+        : lookupCloneBaseUrl(sourceSelectionId ?? workspaceId));
+    const url = buildChatPopOutUrl(base, taskId, workspaceId, cloneBaseUrl, sourceSelectionId);
     const popup = window.open(url, `coc-popout-${taskId}`, 'width=800,height=900');
     if (!popOutOpened(popup)) {
         addToast?.('Pop-out blocked. Allow popups for this site and try again.', 'error');
@@ -44,7 +53,7 @@ export function openChatPopOut({ taskId, workspaceId, markPoppedOut, addToast }:
     }
 }
 
-export function useChatWindowActions({ task, taskId, workspaceId }: UseChatWindowActionsOptions): {
+export function useChatWindowActions({ task, taskId, workspaceId, sourceSelectionId, sourceBaseUrl }: UseChatWindowActionsOptions): {
     handlePopOut: () => void;
     handleFloat: () => void;
 } {
@@ -53,8 +62,8 @@ export function useChatWindowActions({ task, taskId, workspaceId }: UseChatWindo
     const { floatChat } = useFloatingChats();
 
     const handlePopOut = useCallback(() => {
-        openChatPopOut({ taskId, workspaceId, markPoppedOut, addToast: toastCtx?.addToast });
-    }, [taskId, workspaceId, markPoppedOut, toastCtx]);
+        openChatPopOut({ taskId, workspaceId, sourceSelectionId, sourceBaseUrl, markPoppedOut, addToast: toastCtx?.addToast });
+    }, [taskId, workspaceId, sourceSelectionId, sourceBaseUrl, markPoppedOut, toastCtx]);
 
     const handleFloat = useCallback(() => {
         const title = task?.payload?.prompt || task?.payload?.promptContent || task?.prompt || 'Chat';

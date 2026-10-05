@@ -60,6 +60,8 @@ import type { TaskCommentCategory } from '../../../../comments/task-comments-typ
 
 export interface WorkingTreeFileDiffProps {
     workspaceId: string;
+    /** Concrete repo owner for selection attachments. */
+    attachmentDestinationId?: string;
     filePath: string;
     stage: 'staged' | 'unstaged' | 'untracked';
     /** Workspace repo root; used to convert the absolute `filePath` to a
@@ -129,7 +131,7 @@ type EditorContentState =
     | ({ key: string; status: 'loaded' } & LoadedEditorContent)
     | { key: string; status: 'failed' };
 
-export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
+export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, filePath, stage, repoRoot, workingTreeFiles, onNavigateToFile, initialHunkTarget, onFileMissing, createDiffEditor, onDirtyChange, onRegisterSave, refreshKey, onSaved }: WorkingTreeFileDiffProps) {
     const { dispatch: queueDispatch } = useQueue();
     const [diff, setDiff] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -339,8 +341,8 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
     }, [initialHunkTarget, diff, loading, classicActive]);
 
     const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
-        () => ({ workspaceId, filePath, ref: stage === 'staged' ? { type: 'staged' } : { type: 'working-tree' } }),
-        [workspaceId, filePath, stage],
+        () => ({ workspaceId, destinationId: attachmentDestinationId, filePath: relativePath, ref: stage === 'staged' ? { type: 'staged' } : { type: 'working-tree' } }),
+        [workspaceId, attachmentDestinationId, relativePath, stage],
     );
 
     const diffContext = stage !== 'untracked'
@@ -578,7 +580,10 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                     ) : stage === 'untracked' ? (
                         <div className="h-full w-full" data-testid="working-tree-file-diff-untracked">
                             <PreviewPane
+                                key={attachmentDestinationId ?? workspaceId}
                                 repoId={workspaceId}
+                                routingRef={attachmentDestinationId && attachmentDestinationId !== workspaceId
+                                    ? attachmentDestinationId : null}
                                 filePath={relativePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
                                 onNotFound={handlePreviewNotFound}
@@ -610,6 +615,7 @@ export function WorkingTreeFileDiff({ workspaceId, filePath, stage, repoRoot, wo
                             onAddComment={handleAddComment}
                             onAskAI={handleAskAIDiff}
                             onCopyAsContext={handleCopyAsContext}
+                            diffSelectionDragSource={diffSelectionDragSource}
                             createEditor={createDiffEditor}
                             data-testid="working-tree-file-diff-editor"
                         />
