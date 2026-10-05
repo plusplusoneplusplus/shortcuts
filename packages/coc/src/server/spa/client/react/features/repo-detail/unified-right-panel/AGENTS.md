@@ -501,8 +501,8 @@ sidebar for AI canvases.
 
 `UnifiedHtmlPageTab` keeps a native `WebContentsView` over a DOM placeholder
 through the preload's `htmlPage` bridge. It updates bounds on resize, scroll,
-and layout changes, hides while inactive/collapsed or behind panel menus and
-modal dialogs, and closes the view on tab close or unmount. Its toolbar reloads
+and layout changes, hides while inactive/collapsed or covered by DOM content,
+and closes the view on tab close or unmount. Its toolbar reloads
 the page, opens the file in the system browser, or requests the read-only source
 canvas (`forceSourceViewer` bypasses editable unified file tabs). Load errors
 surface inline with the same source fallback. The view is ephemeral: the tab
@@ -536,9 +536,13 @@ with the opener's owner and `browserEngine`; the desktop default affects only
 new views. Desktop Preferences lives in Admin Appearance and uses local IPC.
 The SPA entry point subscribes to `onClosed` and removes target-engine tabs
 from every cached workspace via `closeBrowserPanelView`, including unmounted
-panels. Placement over the placeholder (and hiding behind
-modal dialogs / the tab menu) is shared with HTML pages via
-`useNativeViewPlacement`. Without a desktop bridge the view offers Open in
+panels. Placement over the placeholder is shared with HTML pages via
+`useNativeViewPlacement`. Native views paint above all DOM, so the hook hides
+the view while a modal dialog or the tab menu is open, or while a 5x5
+`elementFromPoint` hit test (inset 12px from the edges, so splitters don't count)
+finds any other element above the placeholder — dropdowns, popovers, and
+overlays need no opt-in. Overlays that should stay under the view mark
+themselves `data-native-view-passthrough` (the toast stack does). Without a desktop bridge the view offers Open in
 system browser (`openUrlInSystemBrowser`, `window.open` noopener) instead of
 embedded browsing.
 
