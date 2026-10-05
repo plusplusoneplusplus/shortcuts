@@ -100,6 +100,8 @@ references before editing. Paths are package-relative.
   separate from the payload workspace id; remote callers use concrete clone keys.
   ChatDetail forwards its sourceSelectionId to both follow-up layouts; subscription
   ownership changes with that destination while validation keeps the raw workspace id.
+  Working-tree untracked previews pass the concrete owner into PreviewPane for
+  selection context and file I/O; local owners use an explicit null route.
   Fallback seeds retain that destination, and drains preserve other owners’ items.
   Activity NewChatArea opts into buffered seeds with newChatSeedDestinationId;
   shared notes/review composers leave it unset. Pending seeds retain their owner

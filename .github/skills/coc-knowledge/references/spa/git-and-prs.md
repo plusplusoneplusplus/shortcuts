@@ -124,7 +124,11 @@ raw payload workspace id. RepoDetail passes its source clone identity through
 RepoGitTab and RepoGitDetailPane to FileDiffPanel and WorkingTreeFileDiff. Group
 Git hosts derive the member clone key from the group server. Working-tree
 selection sources use the repo-relative path and reach the Monaco viewer as well
-as Classic drag handlers.
+as Classic drag handlers. Untracked files pass that owner to PreviewPane for
+file-selection attachments, blob I/O and language transport. A bare or omitted
+local destination uses an explicit null route, keeping local previews independent
+of the active remote clone registry. The preview is keyed by owner so changing
+clones reloads the file and isolates edit buffers.
 
 Editing: `MonacoFileDiffViewer`'s `editable` prop opens only the modified side, and
 only when `isEditableDiff` holds (working-tree stage, modified model is the real

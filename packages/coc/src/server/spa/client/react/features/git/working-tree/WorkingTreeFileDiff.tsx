@@ -580,7 +580,10 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                     ) : stage === 'untracked' ? (
                         <div className="h-full w-full" data-testid="working-tree-file-diff-untracked">
                             <PreviewPane
+                                key={attachmentDestinationId ?? workspaceId}
                                 repoId={workspaceId}
+                                routingRef={attachmentDestinationId && attachmentDestinationId !== workspaceId
+                                    ? attachmentDestinationId : null}
                                 filePath={relativePath}
                                 fileName={filePath.split('/').pop() ?? filePath}
                                 onNotFound={handlePreviewNotFound}
