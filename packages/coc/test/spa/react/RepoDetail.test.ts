@@ -7,10 +7,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SUB_TABS, VISIBLE_SUB_TABS } from '../../../src/server/spa/client/react/features/repo-detail/RepoDetail';
 
+// Normalize CRLF so the fixed-size source windows below measure the same on Windows checkouts.
 const REPO_DETAIL_SOURCE = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'repo-detail', 'RepoDetail.tsx'),
     'utf-8',
-);
+).replace(/\r\n/g, '\n');
 
 // The sub-tab taxonomy and visibility logic were extracted into repoSubTabs.ts
 // (shared with the remote-first shell). Source-level assertions about that logic
@@ -755,7 +756,7 @@ describe('RepoDetail split-workspace panel wiring', () => {
     it('feeds the chat list into the panel as a split-workspace RepoChatTab (AC-03/04)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
         expect(anchor).toBeGreaterThan(-1);
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 4000);
         expect(block).toContain('chatList={');
         expect(block).toContain('<RepoChatTab');
         expect(block).toContain('key={`${ws.id}-split-chat`}');
@@ -764,7 +765,7 @@ describe('RepoDetail split-workspace panel wiring', () => {
 
     it('feeds the git list into the panel as a split-workspace RepoGitTab, git-gated (AC-05)', () => {
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 4000);
         expect(block).toContain('gitList={isGitRepo ? (');
         expect(block).toContain('key={`${ws.id}-split-git`}');
     });
@@ -773,7 +774,7 @@ describe('RepoDetail split-workspace panel wiring', () => {
         // A dedicated state node mirrors the splitDetailNode pattern.
         expect(REPO_DETAIL_SOURCE).toContain('const [splitGitHeaderNode, setSplitGitHeaderNode] = useState<HTMLDivElement | null>(null)');
         const anchor = REPO_DETAIL_SOURCE.indexOf('<SplitWorkspacePanel');
-        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 3000);
+        const block = REPO_DETAIL_SOURCE.substring(anchor, anchor + 4000);
         // RepoGitTab portals its compact toolbar into the header host node...
         expect(block).toContain('headerToolbarContainer={splitGitHeaderNode}');
         // ...which RepoDetail renders inside the panel's git header slot.
