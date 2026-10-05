@@ -37,7 +37,7 @@ export interface ToolCallLike {
     toolName?: string;
     name?: string;
     args?: unknown;
-    result?: string;
+    result?: unknown;
     status?: string;
 }
 
@@ -52,10 +52,8 @@ export interface PullRequestDetectionOptions {
 }
 
 const SHELL_TOOL_NAMES = new Set(['powershell', 'shell', 'bash']);
-const GITHUB_PR_CREATION_TOOL_NAMES = new Set([
-    'github_create_pull_request',
-    'mcp__codex_apps__github___create_pull_request',
-]);
+// Providers qualify native/MCP names differently (mcp__server__, server., etc.).
+const PR_CREATION_TOOL_NAME_RE = /(?:^|[_.:/-])create_pull_request$/;
 
 const GITHUB_PR_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)/g;
 
@@ -77,10 +75,6 @@ const PR_CREATING_PATTERNS = [
     new RegExp(PR_CREATE_BOUNDARY + String.raw`az\s+repos\s+pr\s+create\b`),
 ];
 
-const PR_CREATING_WRAPPER_PATTERNS = [
-    /\bsubmit_commits_as_pr\.py\b/,
-];
-
 // `gh pr create` exits non-zero when the branch already has a pull request, and
 // prints the *pre-existing* PR's URL:
 //   a pull request for branch "X" into branch "main" already exists:
@@ -93,30 +87,6 @@ const PR_ALREADY_EXISTS_RE = /already exists:/i;
 // Tool-call statuses that mean "this call did not succeed". A call that is still
 // pending/running has no trustworthy output, and a failed one created nothing.
 const UNSUCCESSFUL_TOOL_STATUSES = new Set(['failed', 'error', 'cancelled', 'canceled', 'aborted', 'timeout', 'pending', 'running']);
-
-// The submit_commits_as_pr.py wrapper prints a machine-readable status line that
-// starts with `JSON: {...}` (see its emit()). A successful run carries a
-// non-empty `pr_url` together with `status: "done"`, e.g.
-//   JSON: {... "pr_url": "https://...", "status": "done"}
-//
-// This line is the only reliable PR-creation evidence when the wrapper's own
-// output is too large to keep: the captured result is truncated to a head preview
-// (a big `git rev-list` dump) and the trailing success line is dropped, so the URL
-// is recovered later by grepping/tailing the wrapper's persisted stdout. On an
-// idempotent / resumed run (commits_count: 0) `gh pr create` is never re-run, so
-// there is no command echo to fall back on either.
-//
-// We anchor on the `JSON:` line start so a genuine emit — or a faithful grep/tail
-// of the wrapper's stdout — counts, while source-search output does not: there the
-// same text appears indented inside a string literal or behind a `path:line:`
-// prefix, never at the start of a line.
-const WRAPPER_SUCCESS_LINE_RE = /^[ \t]*JSON:\s*\{.*\}\s*$/;
-const WRAPPER_PR_URL_VALUE_RE = /"pr_url"\s*:\s*"([^"]+)"/;
-const WRAPPER_STATUS_DONE_RE = /"status"\s*:\s*"done"/;
-
-// Paths that a later grep/tail can legitimately recover a wrapper success line
-// from — anything file-path shaped, as it appears in a shell command.
-const PATH_TOKEN_RE = /(?:[A-Za-z]:)?[\w./\\~-]*[/\\][\w./\\-]+/g;
 
 const READ_ONLY_PR_PATTERNS = [
     /\bgh\s+pr\s+view\b/,
@@ -235,38 +205,66 @@ function isPullRequestCreatingCommand(command: string): boolean {
     return payload !== null && matchesPrCreatePattern(payload);
 }
 
-function isPullRequestCreatingWrapperCommand(command: string): boolean {
-    return PR_CREATING_WRAPPER_PATTERNS.some(re => re.test(command));
-}
-
 function isReadOnlyPullRequestCommand(command: string): boolean {
     return READ_ONLY_PR_PATTERNS.some(re => re.test(command));
 }
 
-function isGitHubConnectorPullRequestCreation(toolName: string): boolean {
-    return GITHUB_PR_CREATION_TOOL_NAMES.has(toolName);
-}
-
 /**
- * The `pr_url` carried by the wrapper's structured success line — a `JSON: {...}`
- * line (at line start) with a non-empty pr_url together with status: "done".
- * Returns the last such line's URL, or null when there is no success line.
+ * Read only the creation result's identity fields, never args, bodies or prose.
+ * CoC returns {success, url, id, provider}; GitHub returns {url, number} or
+ * {html_url, number}. MCP/Claude may wrap either in structuredContent or JSON
+ * text blocks. Reject error envelopes and conflicting identities as a whole.
  */
-function wrapperSuccessPrUrl(result: string): string | null {
-    let found: string | null = null;
-    for (const line of result.split('\n')) {
-        if (!WRAPPER_SUCCESS_LINE_RE.test(line)) continue;
-        if (!WRAPPER_STATUS_DONE_RE.test(line)) continue;
-        const match = WRAPPER_PR_URL_VALUE_RE.exec(line);
-        if (match && match[1]) found = match[1];
-    }
-    return found;
-}
+function creationToolPrUrl(result: unknown, toolCallId: string): string | null {
+    const urls = new Set<string>();
+    let failed = false;
+    const visit = (value: unknown, depth: number): void => {
+        if (depth > 6) { failed = true; return; }
+        if (typeof value === 'string') {
+            try { visit(JSON.parse(value), depth + 1); } catch { /* not structured output */ }
+            return;
+        }
+        // Claude serializes tool_result.content as an array of text blocks.
+        if (Array.isArray(value)) {
+            for (const block of value) {
+                if (isRecord(block) && block.type === 'text') visit(block.text, depth + 1);
+            }
+            return;
+        }
+        if (!isRecord(value)) return;
+        if (('success' in value && value.success !== true) || value.isError === true || value.is_error === true
+            || value.error != null || (typeof value.status === 'string'
+                && UNSUCCESSFUL_TOOL_STATUSES.has(value.status.toLowerCase()))) {
+            failed = true;
+            return;
+        }
+        if ('structuredContent' in value) visit(value.structuredContent, depth + 1);
+        if (Array.isArray(value.content)) visit(value.content, depth + 1);
 
-/** File-path-shaped tokens in a shell command (`grep JSON: /tmp/x/y.txt`). */
-function pathTokens(text: string): string[] {
-    PATH_TOKEN_RE.lastIndex = 0;
-    return text.match(PATH_TOKEN_RE) ?? [];
+        for (const key of ['url', 'html_url']) {
+            if (!(key in value)) continue;
+            const url = value[key];
+            // GitHub REST carries an API `url` alongside its browser html_url.
+            if (key === 'url' && typeof url === 'string' && url.startsWith('https://api.github.com/')
+                && typeof value.html_url === 'string') continue;
+            const pr = typeof url === 'string' ? parsePullRequestUrl(url, toolCallId) : null;
+            if (!pr || !Number.isSafeInteger(pr.number) || pr.number <= 0
+                || typeof url !== 'string' || !url.endsWith(`/${pr.number}`) || pr.owner === '.' || pr.owner === '..'
+                || pr.repo === '.' || pr.repo === '..') {
+                failed = true;
+                continue;
+            }
+            // GitHub REST's `id` is a database id, not the PR number. CoC's `id`
+            // is the PR number; its explicit success flag distinguishes it.
+            if ('number' in value && value.number !== pr.number) failed = true;
+            if (value.success === true && 'id' in value && value.id !== pr.number) failed = true;
+            if (value.provider !== undefined && value.provider !== pr.provider
+                && !(value.provider === 'ado' && pr.provider === 'azure-devops')) failed = true;
+            urls.add(pr.url);
+        }
+    };
+    visit(result, 0);
+    return !failed && urls.size === 1 ? [...urls][0] : null;
 }
 
 /**
@@ -350,79 +348,18 @@ function buildRepoScope(remoteUrl: string | null | undefined): ((pr: DetectedPul
     };
 }
 
-/**
- * The single pull-request URL this tool call is positive evidence of having
- * created, or null when there is no such evidence.
- *
- * `ownLogPaths` holds the file paths this chat's own PR-creation runs named (in
- * their command or their output, e.g. the harness's "full output at <path>"
- * truncation notice). It gates the grep/tail recovery path so a grep that
- * happens to hit *another* run's persisted stdout cannot pin that run's PR here.
- */
-function resolveCreatedPullRequestUrl(
-    command: string,
-    result: string,
-    ownLogPaths: ReadonlySet<string>,
-): string | null {
-    const wrapperUrl = wrapperSuccessPrUrl(result);
-    if (wrapperUrl) {
-        // The wrapper (or a PR-creating CLI) ran in this very tool call.
-        if (isPullRequestCreatingWrapperCommand(command) || isPullRequestCreatingCommand(command)) {
-            return wrapperUrl;
-        }
-        // Recovered afterwards by grepping/tailing the wrapper's persisted
-        // stdout, because the original result was truncated under a large git
-        // dump before the success line. Only trust it when the file being read
-        // is one this chat's own PR-creation run named.
-        if (command && commandReadsOwnLog(command, ownLogPaths)) return wrapperUrl;
-        return null;
-    }
-
-    // A PR-creating CLI ran here: the created PR is the URL it printed last.
-    // A `gh pr create` that failed because the branch already has a PR prints
-    // the pre-existing PR's URL — that one was not created here.
-    if (isPullRequestCreatingCommand(command)) {
-        if (PR_ALREADY_EXISTS_RE.test(result)) return null;
-        return lastPullRequestUrl(result);
-    }
-
-    // A known PR-creation wrapper whose (untruncated) result still echoes the
-    // creating command counts even without the structured success line.
-    if (isPullRequestCreatingWrapperCommand(command) && isPullRequestCreatingCommand(result)) {
-        if (PR_ALREADY_EXISTS_RE.test(result)) return null;
-        return lastPullRequestUrl(result);
-    }
-
-    // No positive evidence — including when there is no command metadata at all.
-    // Attaching every PR URL in an unattributed shell result is exactly how a
-    // foreign PR used to end up bound to this chat.
-    return null;
-}
-
-/** Normalizes a path token for comparison (Windows separators, trailing slash). */
-function normalizePathToken(token: string): string {
-    return token.replace(/\\/g, '/').replace(/\/+$/, '');
-}
-
-function commandReadsOwnLog(command: string, ownLogPaths: ReadonlySet<string>): boolean {
-    if (ownLogPaths.size === 0) return false;
-    return pathTokens(command).some(token => ownLogPaths.has(normalizePathToken(token)));
-}
-
-/** Records the log/output paths a PR-creation run named, for the grep/tail gate. */
-function collectOwnLogPaths(command: string, result: string, into: Set<string>): void {
-    for (const token of pathTokens(command)) into.add(normalizePathToken(token));
-    for (const token of pathTokens(result)) into.add(normalizePathToken(token));
+/** The PR URL emitted by a successful direct provider creation command. */
+function resolveCreatedPullRequestUrl(command: string, result: string): string | null {
+    if (!isPullRequestCreatingCommand(command) || PR_ALREADY_EXISTS_RE.test(result)) return null;
+    return lastPullRequestUrl(result);
 }
 
 /**
  * Scans tool calls in a tool group for pull requests **created by those calls**.
  *
  * A tool call yields at most one pull request, and only with positive evidence
- * that it created it: the wrapper's structured `JSON: {… pr_url … status:"done"}`
- * success line (from its own run, or from a later grep/tail of a log path this
- * chat's own run named), a `gh pr create` / `az repos pr create` invocation that
- * did not fail, or the GitHub connector's create tool. Read-only PR commands,
+ * that it created it: a `gh pr create` / `az repos pr create` invocation that
+ * did not fail, or a structured create_pull_request result. Read-only PR commands,
  * unsuccessful tool calls, and shell output with no command metadata are ignored.
  *
  * Pass `options.remoteUrl` to additionally scope results to the chat's own repo.
@@ -433,7 +370,6 @@ export function detectPullRequestsInToolGroup(
 ): DetectedPullRequest[] {
     const results: DetectedPullRequest[] = [];
     const seenUrls = new Set<string>();
-    const ownLogPaths = new Set<string>();
     const inScope = buildRepoScope(options.remoteUrl);
 
     const append = (url: string | null, tc: ToolCallLike): void => {
@@ -448,27 +384,20 @@ export function detectPullRequestsInToolGroup(
     for (const tc of toolCalls) {
         const toolName = (tc.toolName || tc.name || '').toLowerCase();
 
-        if (isGitHubConnectorPullRequestCreation(toolName)) {
+        if (PR_CREATION_TOOL_NAME_RE.test(toolName)) {
             if (!tc.result || !isSuccessfulToolCall(tc)) continue;
-            append(lastPullRequestUrl(tc.result), tc);
+            append(creationToolPrUrl(tc.result, tc.id), tc);
             continue;
         }
 
         if (!SHELL_TOOL_NAMES.has(toolName)) continue;
-        if (!tc.result) continue;
+        if (typeof tc.result !== 'string' || !tc.result) continue;
 
         const command = getCommandString(tc.args);
         if (isReadOnlyPullRequestCommand(command)) continue;
 
-        // Remember where this chat's own PR-creation runs wrote their output, so a
-        // later grep/tail of that same file counts as recovery rather than a peek
-        // at an unrelated run's log.
-        if (isPullRequestCreatingWrapperCommand(command) || isPullRequestCreatingCommand(command)) {
-            collectOwnLogPaths(command, tc.result, ownLogPaths);
-        }
-
         if (!isSuccessfulToolCall(tc)) continue;
-        append(resolveCreatedPullRequestUrl(command, tc.result, ownLogPaths), tc);
+        append(resolveCreatedPullRequestUrl(command, tc.result), tc);
     }
 
     return results;

@@ -3,8 +3,8 @@
  *
  * Creates a GitHub (`gh`) or Azure DevOps (`az repos`) pull request for the
  * calling chat's own repo through the shared create-PR service, then writes the
- * chat ↔ PR binding for the calling process. This tool is the only thing that
- * links a chat to a PR — nothing scans tool output for PR URLs.
+ * chat ↔ PR binding for the calling process. The shared PR detector also reads
+ * successful results for the live composer and task-completion binding backstop.
  *
  * Autopilot-only: the executor passes these deps only for write-capable turns,
  * so ask/read-only chats never see the tool.
@@ -79,7 +79,7 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 body: { type: 'string', description: 'PR description (markdown).' },
                 base: { type: 'string', description: 'Target branch. Defaults to the repo\'s default branch.' },
                 draft: { type: 'boolean', description: 'Open as a draft PR. Default false.' },
-                autoMerge: { type: 'boolean', description: 'Turn on auto-merge. Default false — only set when the user asks.' },
+                autoMerge: { type: 'boolean', description: 'Turn on auto-merge. Default false. Set true only when authorized by the user, including invoking a skill with a documented auto-merge default; pass false when the user disables it.' },
                 mergeMethod: { type: 'string', enum: [...MERGE_METHODS], description: 'Auto-merge method. Default "merge".' },
                 commits: {
                     type: 'array',

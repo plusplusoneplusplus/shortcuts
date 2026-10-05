@@ -67,6 +67,20 @@ function turnWithPrCreate(url: string, id = 'tc1', command = 'gh pr create --fil
     };
 }
 
+/** Native CoC result serialized through its MCP bridge (as Claude sees it). */
+function nativePrTurn(url: string, number: number, provider = 'github', success = true): ClientConversationTurn {
+    const turn = turnWithPrCreate(url);
+    turn.timeline![0].toolCall = {
+        id: 'native-create', toolName: 'mcp__coc_llm_tools__create_pull_request', status: 'completed',
+        args: { title: 'Fix composer', body: 'Mentions https://github.com/other/repo/pull/1' },
+        result: JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({
+            success, url, id: number, provider, branch: 'pr/abc1234', base: 'main', existing: false,
+            autoMerge: { requested: false, enabled: false }, bound: false,
+        }) }], isError: false }),
+    };
+    return turn;
+}
+
 /** A plain tool turn that introduces no PR — stands in for an ongoing tool call. */
 function plainToolTurn(id: string, command: string): ClientConversationTurn {
     return {
@@ -112,6 +126,64 @@ describe('ChatComposerPrChips / usePrChatStatusItems', () => {
 
     afterEach(() => {
         vi.restoreAllMocks();
+    });
+
+    it.each([
+        ['github', GH_URL, GH_REMOTE, GH_ORIGIN, 42],
+        ['ado', ADO_URL, ADO_REMOTE, ADO_ORIGIN, 380],
+    ] as const)('shows and persists a %s native creation result, then restores it on reload', async (provider, url, remoteUrl, origin, number) => {
+        const bindings: Record<string, { taskId: string }> = {};
+        mocks.pullRequests.listChatBindingsForOrigin.mockImplementation(async () => ({ bindings: { ...bindings } }));
+        mocks.pullRequests.createChatBindingForOrigin.mockImplementation(async (_origin, prId, taskId) => {
+            bindings[prId] = { taskId };
+            return { prId, taskId };
+        });
+        mocks.pullRequests.getForOrigin.mockResolvedValue({ number, title: 'Created through native tool', status: 'open',
+            sourceBranch: 'pr/abc1234', targetBranch: 'main', createdAt: '2026-01-01T00:00:00Z', url });
+        const first = render(<ChatComposerPrChips turns={[nativePrTurn(url, number, provider)]}
+            workspaceId="remote-owner/ws1" remoteUrl={remoteUrl} taskId="native-task" />);
+        await first.findByText('Created through native tool');
+        expect(first.getAllByTestId('composer-pr-chip')).toHaveLength(1);
+        await waitFor(() => expect(mocks.pullRequests.createChatBindingForOrigin).toHaveBeenCalledWith(origin, String(number), 'native-task'));
+        expect(mocks.getCocClientForWorkspace).toHaveBeenCalledWith('remote-owner/ws1');
+        expect(mocks.pullRequests.getForOrigin).toHaveBeenCalledWith(origin, String(number), { workspaceId: 'remote-owner/ws1' });
+        first.unmount();
+        const reload = render(<ChatComposerPrChips turns={[]} workspaceId="remote-owner/ws1" remoteUrl={remoteUrl} taskId="native-task" />);
+        await reload.findByText('Created through native tool');
+        expect(reload.getAllByTestId('composer-pr-chip')).toHaveLength(1);
+        expect(mocks.pullRequests.createChatBindingForOrigin).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses the remote owner client for creation, leaving the local client untouched', async () => {
+        const ownerPrs = {
+            ...mocks.pullRequests,
+            listChatBindingsForOrigin: vi.fn().mockResolvedValue({ bindings: {} }),
+            createChatBindingForOrigin: vi.fn().mockResolvedValue({ prId: '42', taskId: 't1' }),
+            getForOrigin: vi.fn().mockResolvedValue({ number: 42, title: 'Remote owner PR', status: 'open',
+                sourceBranch: 'pr/x', targetBranch: 'main', createdAt: '2026-01-01T00:00:00Z', url: GH_URL }),
+        };
+        mocks.getCocClientForWorkspace.mockImplementation(ws => ({ pullRequests: ws === 'remote-owner/ws1' ? ownerPrs : mocks.pullRequests }));
+        const view = render(<ChatComposerPrChips turns={[nativePrTurn(GH_URL, 42)]}
+            workspaceId="remote-owner/ws1" remoteUrl={GH_REMOTE} taskId="t1" />);
+        await view.findByText('Remote owner PR');
+        expect(ownerPrs.createChatBindingForOrigin).toHaveBeenCalledWith(GH_ORIGIN, '42', 't1');
+        expect(mocks.pullRequests.listChatBindingsForOrigin).not.toHaveBeenCalled();
+        expect(mocks.pullRequests.createChatBindingForOrigin).not.toHaveBeenCalled();
+        expect(mocks.pullRequests.getForOrigin).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        nativePrTurn(GH_URL, 42, 'github', false),
+        nativePrTurn('https://github.com/other/repo/pull/42', 42),
+        nativePrTurn('https://github.com/owner/repo/issues/42', 42),
+    ])('never displays or binds unsuccessful or foreign native output %#', async turn => {
+        mocks.pullRequests.listChatBindingsForOrigin.mockResolvedValue({ bindings: {} });
+        const view = render(<ChatComposerPrChips turns={[turn]} workspaceId="ws1" remoteUrl={GH_REMOTE} taskId="t1" />);
+        await waitFor(() => expect(mocks.pullRequests.listChatBindingsForOrigin).toHaveBeenCalled());
+        await flushMicrotasks();
+        expect(view.queryByTestId('composer-pr-chips')).toBeNull();
+        expect(mocks.pullRequests.createChatBindingForOrigin).not.toHaveBeenCalled();
+        expect(mocks.pullRequests.getForOrigin).not.toHaveBeenCalled();
     });
 
     it('renders one composer chip for a detected GitHub PR, with title, diff, and provider links', async () => {

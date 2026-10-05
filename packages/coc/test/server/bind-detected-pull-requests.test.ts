@@ -1,11 +1,7 @@
-/**
- * Server-side PR-chat binding pass (AC-02).
- *
- * The tool call in `SUBMIT_PR_TOOL_CALL` is the real record from
- * `queue_1787803606663-vctyaxx`, the chat that opened PR #654 and was never
- * bound because nobody opened it in the dashboard.
- */
+/** Server-side PR-chat binding from successful CoC creation results. */
 import { describe, it, expect, beforeEach } from 'vitest';
+import { normalizeToolResult } from '@plusplusoneplusplus/coc-agent-sdk';
+import { createCreatePullRequestTool } from '../../src/server/llm-tools/create-pull-request-tool';
 import { NativeDatabase as Database } from '@plusplusoneplusplus/coc-native';
 import { initializeDatabase, resolveCanonicalOriginId, type ConversationTurn, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import {
@@ -23,15 +19,11 @@ const BARE_TASK_ID = '1787803606663-vctyaxx';
 
 const SUBMIT_PR_TOOL_CALL = {
     id: 'toolu_submit_pr',
-    name: 'Bash',
+    name: 'create_pull_request',
     status: 'completed',
-    args: { command: 'python3 .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py --range HEAD~1..HEAD' },
-    result: [
-        'Cherry-picking 1 commit onto pr/d35c13e92-...',
-        'Pushing branch...',
-        'Creating pull request...',
-        'JSON: {"commits_count": 1, "pr_url": "https://github.com/plusplusoneplusplus/shortcuts/pull/654", "status": "done"}',
-    ].join('\n'),
+    args: { title: 'Fix PR binding', commits: ['d35c13e92'], autoMerge: true },
+    result: JSON.stringify({ success: true, url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/654',
+        id: 654, provider: 'github', bound: false }),
 };
 
 function turn(toolCalls: unknown[]): ConversationTurn {
@@ -76,7 +68,44 @@ describe('bindDetectedPullRequestsForProcess', () => {
         initializeDatabase(db);
     });
 
-    it('binds a PR created by the submit_commits_as_pr wrapper', async () => {
+    it.each([
+        ['github', REMOTE_URL, 'https://github.com/plusplusoneplusplus/shortcuts/pull/874'],
+        ['ado', 'https://dev.azure.com/contoso/MyProject/_git/repo', 'https://dev.azure.com/contoso/MyProject/_git/repo/pullrequest/874'],
+    ] as const)('persists actual %s tool/MCP output when the immediate binding was unavailable', async (provider, remoteUrl, url) => {
+        const ws = workspace({ remoteUrl });
+        const { tool } = createCreatePullRequestTool({
+            workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store: { getWorkspaces: async () => [ws] }, // Simulate a missing immediate binding writer.
+            createPullRequest: async () => ({ url, id: 874, provider, branch: 'pr/abc1234-fix',
+                base: 'main', existing: false, autoMerge: { requested: false, enabled: false } }),
+        });
+        const output = await tool.handler({ title: 'Fix composer' }, {
+            sessionId: 's', toolCallId: 'created', toolName: 'create_pull_request', arguments: { title: 'Fix composer' },
+        });
+        expect(output).toMatchObject({ success: true, bound: false });
+        const calls = [{ id: 'created', name: 'mcp__coc_llm_tools__create_pull_request', status: 'completed',
+            result: JSON.stringify(normalizeToolResult(output)) }];
+        const store = makeStore({ getWorkspaces: async () => [ws, workspace({ id: 'other', remoteUrl: 'https://github.com/other/repo' })] }, [turn(calls)]);
+        expect(await bindDetectedPullRequestsForProcess(store, PROCESS_ID, WORKSPACE_ID)).toEqual(['874']);
+        expect(await bindDetectedPullRequestsForProcess(store, PROCESS_ID, WORKSPACE_ID)).toEqual(['874']);
+        expect(await bindDetectedPullRequestsForProcess(store, 'queue_other-task', 'other')).toEqual([]);
+        const origin = resolveCanonicalOriginId({ workspaceId: WORKSPACE_ID, remoteUrl });
+        expect(rows()).toEqual([{ workspace_id: origin, pr_id: '874', task_id: BARE_TASK_ID }]);
+        // Fresh store instance recovers the binding without loading any turns.
+        expect(new PullRequestChatBindingStore(db).listByTaskId(origin, BARE_TASK_ID)['874'].taskId).toBe(BARE_TASK_ID);
+    });
+
+    it.each([
+        { success: false, url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/874', error: 'Failed' },
+        { content: [{ type: 'text', text: JSON.stringify({ success: true, url: 'https://github.com/plusplusoneplusplus/shortcuts/pull/874', id: 874 }) }], isError: true },
+        { success: true, url: 'https://github.com/plusplusoneplusplus/shortcuts/issues/874', id: 874 },
+    ])('does not persist a failed/malformed creation result %#', async result => {
+        const store = makeStore({}, [turn([{ id: 'bad', name: 'create_pull_request', status: 'completed', result: JSON.stringify(result) }])]);
+        expect(await bindDetectedPullRequestsForProcess(store, PROCESS_ID, WORKSPACE_ID)).toEqual([]);
+        expect(rows()).toEqual([]);
+    });
+
+    it('binds a PR created by the CoC tool', async () => {
         const bound = await bindDetectedPullRequestsForProcess(makeStore(), PROCESS_ID, WORKSPACE_ID);
 
         expect(bound).toEqual(['654']);
@@ -117,7 +146,7 @@ describe('bindDetectedPullRequestsForProcess', () => {
         expect(rows()).toEqual([{ workspace_id: ORIGIN_ID, pr_id: '654', task_id: BARE_TASK_ID }]);
     });
 
-    it('binds a PR when timeline completion omits the creating command', async () => {
+    it('binds a PR when timeline completion omits the creating arguments', async () => {
         const timelineTurn = {
             ...turn([SUBMIT_PR_TOOL_CALL]),
             timeline: [
@@ -158,7 +187,7 @@ describe('bindDetectedPullRequestsForProcess', () => {
         it('a PR in a different repo than the workspace remote', async () => {
             const turns = [turn([{
                 ...SUBMIT_PR_TOOL_CALL,
-                result: 'JSON: {"commits_count": 1, "pr_url": "https://github.com/someone/other-repo/pull/654", "status": "done"}',
+                result: JSON.stringify({ success: true, url: 'https://github.com/someone/other-repo/pull/654', id: 654, provider: 'github' }),
             }])];
             expect(await bindDetectedPullRequestsForProcess(makeStore({}, turns), PROCESS_ID, WORKSPACE_ID)).toEqual([]);
             expect(rows()).toEqual([]);

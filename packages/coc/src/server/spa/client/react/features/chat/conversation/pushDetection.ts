@@ -4,8 +4,8 @@
  *
  * Detection is keyed off the push output block itself — the `To <remote>` line
  * followed by `<local> -> <remote>` ref-update lines — which git prints
- * regardless of which CLI triggered the push (`git push`, `gh`, `az`, or the
- * `submit_commits_as_pr.py` wrapper). A `git push` command pattern is used as a
+ * regardless of which CLI triggered the push (`git push`, `gh`, or `az`).
+ * A `git push` command pattern is used as a
  * secondary signal (e.g. to attribute a forced push from a `--force` flag).
  *
  * Only successful pushes are surfaced: a result carrying a non-zero exit marker

@@ -261,7 +261,7 @@ commits it authored.
 The detector itself is shared by the SPA and the server:
 `@plusplusoneplusplus/forge/git/pull-request-detection` (`detectPullRequestsInToolGroup`,
 `collectToolCallsFromTurns`, `syntheticRemoteUrlForDetectedPr`). It is pure
-strings/regex — no React, no DOM, no Node built-ins — so one copy serves both.
+JSON/string parsing — no React, no DOM, no Node built-ins — so one copy serves both.
 
 `usePrChatStatusItems` unions PRs detected in loaded turns with persisted bindings
 looked up by `task_id` (`listChatBindingsForOrigin(originId, { taskId })`). It resolves
@@ -280,26 +280,26 @@ writes and reads), idempotent (`INSERT OR REPLACE`), and self-swallowing — a b
 failure never fails the task. Stores without `getDatabase`/`getConversationTurns` (e.g.
 `FileProcessStore`) are a clean no-op.
 
-Detection requires **positive evidence that this tool call created that PR**, because
+Detection requires **positive creation-tool evidence for that PR**, because
 each detection is written back as a binding and so is permanent. A tool call yields at
 most **one** PR — the specific created URL, not every PR URL in its output. Read-only
 PR commands, connector lookups, unsuccessful tool calls (`status` failed/pending/…),
-and output with **no command metadata** are ignored.
+and shell output with **no command metadata** are ignored.
 
 Accepted evidence:
-- the GitHub connector's create-pull-request tool;
+- tool names ending in a delimited `create_pull_request` (native CoC and
+  provider/MCP-qualified names): CoC `{success:true, url, id, provider}` results
+  support GitHub and Azure DevOps (`provider: 'ado'`); GitHub connector snapshots
+  use `{url, number}` and REST payloads use `{html_url, number}`. The detector reads
+  object/JSON results and MCP `structuredContent`/JSON text envelopes, validates one
+  canonical browser PR URL and matching identity fields, and rejects error flags,
+  malformed or conflicting identities. Arguments, bodies and prose supply no evidence;
 - a `gh pr create` / `az repos pr create` command, including inside a shell-interpreter
   wrapper (`bash -lc '…'`, `/bin/bash -c "…"`, `sh -c '…'`) whose quoted payload is
   unwrapped and scanned — the **last** PR URL in the result is the created one, and a
   result matching `already exists:` (a failed create printing the pre-existing PR) is
   rejected outright;
-- the `submit_commits_as_pr.py` wrapper's line-start
-  `JSON: {... "pr_url": "...", "status": "done"}` line, which contributes **only that
-  line's `pr_url`**. It is still recognized when surfaced by a later `grep`/`tail` of
-  persisted stdout (the original output is often truncated under a large git dump), but
-  only when the file being read is a path this chat's own PR-creation run named — so a
-  grep that hits another run's log cannot pin that run's PR here;
-- a known wrapper command whose untruncated result echoes a creating command.
+
 
 Pass `options.remoteUrl` (threaded from the chat workspace's remote through
 `gatherDetectedPrsFromTurns`) to scope detections to the chat's own
@@ -365,11 +365,11 @@ Candidates already associated with the chat are skipped and each round is capped
 `prChatAssociation.ts`:
 
 - **branch fast path** — the PR's `sourceBranch` contains one of the chat's short
-  hashes (`submit_commits_as_pr.py` names its branch `pr/<shortSha>-<slug>`); free,
+  hashes (the CoC create-PR service names its branch `pr/<shortSha>-<slug>`); free,
   since it reads a detail the caller already had;
 - **subject match** — `getCommitsForOrigin` (memoized per `originId:prId` for the
   session, evicted on failure) and an exact match on the whole normalized subject.
-  Hashes are useless here: the submit script cherry-picks, so the PR's SHAs are new.
+  Hashes are useless here: the create-PR service cherry-picks, so the PR's SHAs are new.
   `fixup!`/`squash!`/`--amend` commits are excluded — squashed away or rewritten.
 
 Matches get `sources: ['authored']`. `detectedPrsNeedingBinding` still returns only

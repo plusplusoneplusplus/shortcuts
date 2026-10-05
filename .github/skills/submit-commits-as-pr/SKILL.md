@@ -1,117 +1,97 @@
 ---
 name: submit-commits-as-pr
-description: Submit a single commit or a range of commits as a new GitHub pull request. Cherry-picks the commits onto a fresh branch off the latest origin/main, pushes, opens the PR via `gh`, and enables auto-merge by default. On any cherry-pick/rebase conflict the script aborts the entire submit; the AI must NOT attempt to resolve conflicts. Use when the user asks to "open a PR for this commit", "send commits X..Y as a PR", "PR-ify these commits", or similar.
+description: Submit existing commits as a GitHub or Azure DevOps pull request through CoC create_pull_request, with auto-merge on by default. Use when the user asks to open a PR for a commit, send a commit range as a PR, or submit outgoing commits. Conflicts abort submission; never resolve them.
 ---
 
 # Submit Commits as a PR
 
-Republish existing commits as a clean PR off the latest `origin/main`,
-with **auto-merge on by default**. All real work is in
-`scripts/submit_commits_as_pr.py`. Don't use this skill to author new
-commits — use `impl` for that.
+Use CoC's `create_pull_request` tool exclusively. Submit committed objects in an
+isolated temporary linked worktree. Never switch the active worktree's branch or
+move its HEAD during submission. A dirty active worktree is fine. Use `impl` to
+change source code; this skill submits existing commits.
 
-## Inputs (ask only if missing)
+## Workspace and tool availability
 
-1. **Commits** — SHA, comma-separated SHAs, or a range (`A..B`). For
-   "last N commits", resolve to `HEAD~N..HEAD`. **If omitted, defaults
-   to all outgoing commits on the current branch that are not yet on
-   `<remote>/<base>` — do not ask the user for commits unless they want
-   to submit a specific subset.** Commit order does not matter — the
-   script always cherry-picks oldest-first. Comma-separated SHAs may be
-   pasted in any order (including `git log` newest-first order).
-2. **Base** — defaults to `main`. Ask only if the repo clearly differs.
-3. **Title / body** — optional; otherwise `gh pr create --fill` uses the
-   commit message.
-4. **Draft** — only if user says "draft" / "WIP".
-5. **Auto-merge** — on by default. Pass `--no-auto-merge` only if the
-   user explicitly asks to leave it open / merge manually. Use
-   `--merge-method squash|rebase` if they request that strategy.
+The tool uses the calling chat's repository and its `origin` remote; it does not
+accept a target workspace or alternate remote. Verify that the chat owns the
+requested repository. For another workspace, use `list_workspaces` and delegate
+to a writable CoC chat in that workspace, carrying the exact commit selection
+and PR options. Confirm that the target has the committed objects.
 
-The caller's worktree may be dirty because submission runs entirely in an
-isolated temporary linked worktree. Only committed objects are submitted.
+Discover CoC's native or MCP-qualified `create_pull_request` tool. If unavailable,
+explain that submission requires a writable CoC context (Autopilot or a Ralph
+write turn), with the tool enabled, and delegate when authorized and available.
+Otherwise report the blocker. Never substitute scripts, `gh pr create`,
+`az repos pr create`, or another PR creation path.
 
-## Invocation
+## Select the exact commits
 
-```bash
-python3 .agents/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start [<commits>] [options]
-```
+1. Honor the requested SHA, comma-separated SHAs, range (`A..B`), or last N
+   commits (`HEAD~N..HEAD`). Resolve each ref to a full commit SHA. Expand ranges
+   with `git rev-list --reverse --topo-order <range>`; resolve explicit SHAs with
+   `git rev-parse --verify <ref>^{commit}`. Deduplicate and order only the selected
+   commits oldest first; do not add their unrequested ancestors.
+2. Use the requested base, otherwise resolve the repository's default branch
+   from `origin/HEAD` or `git ls-remote --symref origin HEAD`, falling back to
+   `main`. The tool supports `origin` only.
+3. When commits are unspecified, fetch `origin` and the resolved base without
+   changing the active branch/HEAD. Resolve outgoing commits with
+   `git rev-list --reverse --topo-order origin/<base>..HEAD`. Do not ask for a
+   subset unless the request needs one. For an explicit selection, never replace
+   it with the outgoing range.
+4. Inspect the selected commits and their diff. If the selection is empty or
+   invalid, report it and stop. **ALWAYS pass nonempty `commits`** as an explicit
+   array of resolved SHAs. Omitted or empty `commits` selects the tool's
+   current-branch mode, which this skill must never use.
 
-Common options:
+## Prepare and submit
 
-| Flag | Purpose |
-|------|---------|
-| `--branch <name>` | Override auto-generated `pr/<short>-<slug>` |
-| `--base <branch>` | Base branch (default `main`) |
-| `--remote <name>` | Remote name (default `origin`) |
-| `--title <t>` / `--body <b>` | PR metadata |
-| `--draft` | Open as draft |
-| `--gh-arg <arg>` | Extra arg passed verbatim to `gh pr create` (repeatable, e.g. `--gh-arg --reviewer --gh-arg alice`) |
-| `--no-auto-merge` | Disable auto-merge (it's on by default) |
-| `--merge-method merge\|squash\|rebase` | Auto-merge method (default `merge`) |
+Provide a reviewable `title` and Markdown `body` describing the concrete change,
+why it matters, relevant validation, and material limitations. Respect supplied
+metadata. Pass the resolved `base` and these options:
 
-Other subcommands:
+- `draft`: true for an explicit draft/WIP request; otherwise false.
+- `autoMerge`: **always pass `autoMerge: true` by default**, or
+  **`autoMerge: false`** when the user explicitly asks to disable auto-merge,
+  leave it open, or merge manually. Invoking this skill authorizes its documented
+  auto-merge default. The general tool's omitted-parameter default remains false.
+- `mergeMethod`: honor `merge`, `squash`, or `rebase` when requested; otherwise
+  use `merge`. Surface provider/repository limitations from the result.
+- `commits`: the nonempty exact SHA array, oldest first.
 
-- `continue` — only for retrying a transient `git push` / `gh pr create` /
-  `gh pr merge --auto` failure (e.g. `gh` not authed). Conflicts cannot
-  be resumed.
-- `abort` — bail out of an in-progress submit; aborts any cherry-pick /
-  rebase, deletes the work branch, restores the original branch, clears
-  state.
+Call `create_pull_request` once. The tool orders selected commits oldest first,
+fetches `origin/<base>`, creates a fresh branch in a temporary linked worktree,
+cherry-picks and rebases there, pushes, opens the PR, and records its chat binding.
+The provider comes from `origin`; server-side GitHub/ADO credentials must work.
+Do not create branches, push, or open PRs yourself.
 
-## What it does
+## Interpret results and retries
 
-1. Snapshot the caller's branch and repository root without changing its HEAD.
-2. `git fetch <remote> <base>` and create a temporary linked worktree on a
-   fresh branch off `<remote>/<base>`.
-3. Cherry-pick each commit in order inside the temporary worktree.
-   **Conflict → auto-abort.**
-4. Rebase there onto `<remote>/<base>` (race guard). **Conflict → auto-abort.**
-5. Run `git push -u`, `gh pr create`, and (unless `--no-auto-merge`)
-   `gh pr merge --auto --<method>`.
-6. Remove the temporary worktree without changing the caller's branch or HEAD.
+- `success: true`: report `url`, PR identity, branch/base, and actual
+  `autoMerge.enabled` plus any `autoMerge.warning`. Requested auto-merge can fail
+  while PR creation succeeds. `existing: true` means the tool returned an open
+  PR for its branch; report it as existing.
+- `bound: false` with success means the PR exists but its chat binding was not
+  written. Report that limitation; never resubmit to repair a binding.
+- `success: false`: report `code`, `error`, and `commit` when present. A
+  `conflict` aborts and cleans up the temporary run. **NEVER resolve cherry-pick
+  or rebase conflicts**, run `--continue`, or alter source commits to overcome
+  them. Report the conflicting SHA when supplied and the base, then stop so the
+  user can fix the source commits and request submission again.
+- Push/creation errors, timeouts, or lost responses can leave a remote branch or
+  an existing PR. Before any retry, check local/remote submission branches and
+  provider PR state using read-only Git/provider queries in the owning workspace.
+  The generated branch is `pr/<first-short-SHA>-<subject-slug>` with a numeric
+  suffix on collisions. A fresh commits-mode call can create a different branch;
+  the tool's existing-PR check alone does not make a blind retry safe.
+  If a PR exists, report it and its incomplete steps. If the outcome remains
+  uncertain, stop and report the uncertainty. Retry only after proving no PR was
+  created and accounting for any pushed branch; never blindly rerun or fall back
+  to CLI creation. Do not claim an error rolled back remote state.
 
-State lives in the repository's common Git directory as
-`submit_commits_as_pr.state.json`, so `continue` and `abort` work across linked
-worktrees. It is removed automatically on success or auto-abort.
+## Monitor mode
 
-## Output
-
-Stderr is human-readable progress; stdout has `JSON: {...}` status
-lines. On success each subcommand's own stdout/stderr is **not** echoed
-to the progress stream (only the `$ <cmd>` breadcrumb is), keeping the
-combined output small so the trailing `JSON: {...}` success line survives
-the agent harness's output cap — that line is what the chat's PR banner
-detects. Set `SUBMIT_PR_VERBOSE=1` to echo child output on success too;
-failing subcommands always echo their output regardless.
-
-Statuses you'll see:
-
-- `done` — success. Report `pr_url` to the user.
-- `aborted` with `reason: cherry-pick-conflict` or `rebase-conflict` —
-  hard abort already cleaned up. Tell the user the conflict killed the
-  submit (include the `commit` SHA and base ref) and ask them to rebase
-  / fix the source commits and re-invoke. **Do NOT** attempt to resolve
-  the conflict, **do NOT** call `git cherry-pick/rebase --continue`, and
-  **do NOT** call this script's `continue` subcommand.
-- `aborted` from the user-invoked `abort` — cleanup finished.
-- `error` with a `reason` (e.g. `dirty-worktree`, `gh-missing`,
-  `gh-failed`) — surface verbatim.
-
-Non-zero exit = hard failure or auto-abort. There is no "paused on
-conflict" exit code.
-
-## Monitor Mode
-
-**Only activate this mode when the user explicitly asks to monitor the PR.**
-
-After the PR is created, invoke the `cron` skill with a self-contained prompt that describes the PR and asks it to watch for problems, fix any that are fixable, and stop once the PR is merged or closed.
-
-## Prereqs & notes
-
-- Needs `git`, `gh` (authed), and `python3` ≥ 3.9 on PATH.
-- Auto-merge only takes effect if the repo allows it and the chosen
-  method is enabled; otherwise the PR is created and a warning is logged.
-- Branch-name collisions get a numeric suffix (`pr/abc1234-fix-foo-2`).
-- `--title` / `--body` win over `gh --fill`.
-- No stacked-PR support and no commit-message editing — submit as-is or
-  amend locally first.
+Activate monitoring **only when the user explicitly asks to monitor the PR**.
+Use the `cron` skill with a self-contained prompt naming the owning workspace,
+PR, requested checks/fixes, and a stop condition when the PR is merged or closed.
+Submission and auto-merge alone do not authorize monitoring.

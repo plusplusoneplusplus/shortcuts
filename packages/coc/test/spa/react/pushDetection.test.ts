@@ -109,18 +109,17 @@ describe('detectPushesInToolGroup', () => {
     });
 
     it('detects a wrapper-triggered push from its output block (no git push command)', () => {
-        // submit_commits_as_pr.py / gh / az all surface the same `To ... / -> `
+        // Provider CLI commands can surface the same `To ... / -> `
         // output block, so detection keys off the block rather than the command.
         const pushes = detectPushesInToolGroup([
             {
                 id: 'tool-1',
                 toolName: 'bash',
-                args: { command: 'python .github/skills/submit-commits-as-pr/scripts/submit_commits_as_pr.py start abc123' },
+                args: { command: 'gh pr create --fill' },
                 result: [
                     '$ git push -u origin pr/feature',
                     'To https://github.com/org/repo.git',
                     ' * [new branch]      pr/feature -> pr/feature',
-                    'JSON: {"pr_url": "https://github.com/org/repo/pull/1", "status": "done"}',
                 ].join('\n'),
             },
         ]);
