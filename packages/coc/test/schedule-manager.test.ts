@@ -576,7 +576,7 @@ describe('ScheduleManager', () => {
             mgr.dispose();
         });
 
-        it.each(['final-check-failed', 'iteration-enqueue-failed', 'no-signal'])('fails a scheduled Ralph run for terminal reason %s', async reason => {
+        it.each(['final-check-failed', 'iteration-enqueue-failed', 'iteration-failed', 'no-signal'])('fails a scheduled Ralph run for terminal reason %s', async reason => {
             const queue = createDeferredQueueManager();
             const mgr = new ScheduleManager(persistence, queue as any, null, dataDir);
             const events: any[] = [];

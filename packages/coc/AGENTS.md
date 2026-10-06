@@ -110,7 +110,10 @@ references before editing. Paths are package-relative.
   terminal outcome. Journal recovery prefers the durable session `completion` record, then
   terminal reasons or final-check evidence. Iteration caps/missing signals, rejected follow-on
   admission and final-check terminal publication persist this outcome before emitting. Replay
-  cannot admit further work. Explicit resume clears it before admission and restores it on
+  cannot admit further work. The bridge also persists failed/cancelled execution iterations
+  before returning: failure reviews use `iteration-failed`; cancellations use passive notices.
+  Paused/stopped/newer sessions and follow-ups/checks/submit/grilling keep their own lifecycle.
+  Explicit resume clears the outcome before admission and restores it on
   rejection; the delegation ledger retains its first outcome. Complete
   iteration loops with pending checks remain silent. Caps do not assert goal completion.
   `ProcessMessageDeliveryService.deliverOnce` admits server-owned reviews with a stable

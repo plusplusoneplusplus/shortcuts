@@ -14,15 +14,19 @@ cancellation notice. Caps explicitly leave goal completion unconfirmed. Result d
 scoped final process summary, session API link and journal path; reviews retain authorization
 and Sentinel dispatcher constraints.
 
-Startup recovery reads the registered session journal and prefers its durable `completion`
-outcome, including the exact reason, final process and iteration count. Iteration caps,
-missing signals, rejected iteration/check admission and final-check terminal publication
-require this independent record even when iteration/check metadata writes fail. Replay
-publishes the stored first outcome without admitting further work. Missing signals use
-`no-signal`; rejected next-iteration admission uses `iteration-enqueue-failed`. Explicit
-extension, new-loop, awaiting-input and admitted resume transitions clear the record;
-rejected resume restores it. Unavailable sessions publish their existing
-live failure and recover as unavailable children.
+Startup recovery prefers the registered session's durable `completion` outcome, including
+reason, final process and iteration count. Caps, missing signals, rejected admission and
+final-check terminal publication require this independent record even when step metadata
+writes fail. Outcome replay admits no further work. Explicit extension, new-loop,
+awaiting-input and admitted resume transitions clear the record; rejected resume restores it.
+Unavailable sessions retain their live failure and recover as unavailable children.
+
+The queue bridge settles failed or cancelled execution iterations before returning their
+execution result. `iteration-failed` requests a result review; `user-stopped` requests only a
+passive notice. Persistence precedes publication, and failed writes withhold publication.
+The first completion wins. Late failures cannot settle paused, stopped or newer iterations.
+Follow-ups, checks/repair, submit and grilling retain their own lifecycle. Interrupted sessions
+keep their executing phase so explicit resume stays available; completion grants no retry.
 
 Awaiting-input, format repair and continuing gap loops remain silent. Journals without a
 completion record recover from clean/failed final checks, gap caps and terminal iteration caps.
@@ -247,7 +251,7 @@ The parser accepts the result block either after a bare `RALPH_FINAL_CHECK_RESUL
 or as any fenced ```json block whose `marker` field equals `RALPH_FINAL_CHECK_RESULT`.
 
 Terminal paths broadcast `ralph-session-complete` with `reason`: `signal` (clean), `cap`,
-`no-signal`, `iteration-enqueue-failed`, `final-check-failed` (parse failure, after the repair attempt),
+`no-signal`, `iteration-failed`, `iteration-enqueue-failed`, `final-check-failed` (parse failure, after the repair attempt),
 `final-check-enqueue-failed`,
 `final-check-session-missing`, `final-check-gap-loop-start-failed`,
 `final-check-gap-enqueue-failed`. A successful gap-fix enqueue broadcasts nothing because the

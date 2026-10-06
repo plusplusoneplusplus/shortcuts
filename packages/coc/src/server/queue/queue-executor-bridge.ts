@@ -685,16 +685,49 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     return infra.manager.onActionComplete(triggerId, success);
                 },
             });
-            return await executeImplementPlanWithPrGate({
+            const result = await executeImplementPlanWithPrGate({
                 task,
                 queueManager: this.queueManager,
                 workingDirectory: this.executors.getWorkingDirectory(task),
                 processStore: this.store,
                 execute: runTask,
             });
+            await this.settleInterruptedRalphIteration(task, result).catch(error => {
+                getLogger().warn(LogCategory.AI, `[Ralph] Failed to persist interrupted iteration outcome: ${error instanceof Error ? error.message : String(error)}`);
+            });
+            return result;
         } finally {
             this.cancelledTasks.delete(task.id);
         }
+    }
+
+    /** Failed/cancelled execution does not pass through the successful iteration orchestrator. */
+    private async settleInterruptedRalphIteration(task: QueuedTask, result: TaskExecutionResult): Promise<void> {
+        const payload = task.payload as unknown as ChatPayload;
+        const ctx = payload.context?.ralph;
+        // Follow-ups, checks/repair, submit and grilling have their own lifecycle.
+        if (task.type !== 'chat' || payload.mode !== 'ralph' || payload.processId
+            || !ctx?.sessionId || getRalphTaskKind(ctx) !== 'iteration' || ctx.phase === 'grilling'
+            || !payload.workspaceId || !this.dataDir) return;
+        const processId = task.processId ?? toQueueProcessId(task.id);
+        const process = await this.store.getProcess(processId, payload.workspaceId);
+        const cancelled = this.cancelledTasks.has(task.id)
+            || (process?.metadata?.workspaceId === payload.workspaceId && process.status === 'cancelled');
+        if (result.success && !cancelled) return;
+        const journal = new RalphSessionStore({ dataDir: this.dataDir });
+        const session = await journal.readSessionRecord(payload.workspaceId, ctx.sessionId);
+        // A late step result cannot end a paused or explicitly stopped session.
+        if (session?.phase === 'awaiting-input' || session?.phase === 'grilling'
+            || session?.terminalReason === 'USER_STOPPED'
+            || (session && session.currentIteration > (ctx.currentIteration ?? 1))) return;
+        const record = await journal.recordCompletion(payload.workspaceId, ctx.sessionId, {
+            reason: cancelled ? 'user-stopped' : 'iteration-failed',
+            processId, totalIterations: ctx.currentIteration ?? 1,
+            completedAt: new Date().toISOString(),
+        });
+        const completion = record.completion!;
+        this.broadcastRalphSessionComplete(payload.workspaceId, ctx.sessionId, completion.processId,
+            completion.totalIterations, completion.reason);
     }
 
     cancel(taskId: string): void {

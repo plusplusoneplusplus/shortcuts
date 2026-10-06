@@ -35,6 +35,7 @@ export type RalphSessionCompleteReason =
     | 'cap'
     | 'no-signal'
     | 'iteration-enqueue-failed'
+    | 'iteration-failed'
     | 'user-stopped'
     | 'final-check-failed'
     | 'final-check-enqueue-failed'

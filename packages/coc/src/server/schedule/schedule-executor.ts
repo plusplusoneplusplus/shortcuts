@@ -343,6 +343,7 @@ function matchesScheduledRalphTask(
 function isFailedRalphCompletionReason(reason: string): boolean {
     return reason === 'no-signal'
         || reason === 'iteration-enqueue-failed'
+        || reason === 'iteration-failed'
         || reason === 'final-check-failed'
         || reason === 'final-check-enqueue-failed'
         || reason === 'final-check-session-missing'
