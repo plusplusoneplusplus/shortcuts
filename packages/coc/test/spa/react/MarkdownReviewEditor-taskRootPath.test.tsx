@@ -193,20 +193,3 @@ describe('MarkdownReviewEditor — Run Skill path resolution', () => {
         expect(call.contextFiles[0]).toBe('/home/user/.coc/repos/ws-abc/tasks/coc/task.plan.md');
     });
 });
-
-describe('MarkdownReviewEditor — Copy with Context path resolution', () => {
-    // The Copy with Context handler uses the same resolveAbsolutePath() helper as
-    // Run Skill. Since Run Skill tests above verify the path logic end-to-end via
-    // a clickable button, we only verify here that the callback dependency on
-    // taskRootPath is consistent (i.e. useCallback deps include resolveAbsolutePath).
-    // Full integration would require opening a context menu, which is covered by
-    // the Run Skill button tests above.
-
-    it('resolveAbsolutePath prefers taskRootPath over workspaceRootPath', () => {
-        // This is a unit-level assertion that the same logic applies:
-        // when taskRootPath is provided, it is used instead of workspaceRootPath.
-        // The Run Skill button tests above already prove this end-to-end.
-        // Copy with Context delegates to the same resolveAbsolutePath callback.
-        expect(true).toBe(true);
-    });
-});

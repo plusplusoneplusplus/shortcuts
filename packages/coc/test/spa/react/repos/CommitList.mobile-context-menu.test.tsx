@@ -241,9 +241,7 @@ describe('CommitList — mobile context menu behavior', () => {
         // longPress has no effect because onTouchStart is undefined
         longPress(row, 150, 200);
 
-        // Context menu not called via long press (would need right-click)
-        // Only verifying no error is thrown
-        expect(true).toBe(true);
+        expect(onCommitContextMenu).not.toHaveBeenCalled();
 
         restoreTouchOnly();
     });
