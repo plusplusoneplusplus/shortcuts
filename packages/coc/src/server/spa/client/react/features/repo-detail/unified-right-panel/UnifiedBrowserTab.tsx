@@ -150,7 +150,7 @@ export function UnifiedBrowserTab({
 
     const toolbar = (
         <form
-            className="flex min-w-0 flex-shrink-0 items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
+            className="flex min-w-0 flex-shrink-0 flex-wrap items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
             onSubmit={submit}
             onKeyDown={event => {
                 const mac = isMacPlatform();
@@ -202,7 +202,7 @@ export function UnifiedBrowserTab({
         <NativeViewTab
             bridge={bridge}
             viewId={viewId}
-            shown={opened && active && visible && !failed && !menuOpen}
+            shown={opened && active && visible && !failed}
             surfaceHidden={failed || !url}
             placeholderTestId="browser-placeholder"
             toolbar={toolbar}

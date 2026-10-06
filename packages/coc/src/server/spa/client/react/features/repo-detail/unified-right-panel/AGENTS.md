@@ -572,8 +572,11 @@ ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
 Back/Forward/Reload|Stop, an editable address, and `BrowserToolbarMenu`
 with the actual engine and the current-page system-browser action. The menu
-portals to the document body, uses `useAnchoredPanelPosition`, and closes when
-the tab loses visibility or ownership. The tab also shows the page title, a load-error panel
+occupies an in-flow toolbar row, keeping the native page visible below it;
+placement follows the resized placeholder without reopening or navigating the
+view. Escape, outside clicks, repeated trigger clicks, and loss of tab visibility
+or ownership dismiss it. Focus returning to the trigger leaves dismissal to its
+click handler. The tab also shows the page title, a load-error panel
 with Retry and Desktop Preferences/runtime guidance, and
 download-handoff notices. Unmounting only hides the view (chat switch, collapse
 keep live history); `closeTab` closes it. `onState` feeds `updateBrowserTab`

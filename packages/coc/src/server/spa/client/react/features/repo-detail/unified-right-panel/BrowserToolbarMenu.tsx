@@ -1,7 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import type { BrowserEngine } from '../../../shared/file-path/browser-bridge';
-import { useAnchoredPanelPosition } from '../../../shared/useAnchoredPanelPosition';
 import { nativeViewToolbarButton } from './NativeViewTab';
 
 export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal, onOpenExternal }: {
@@ -15,7 +13,6 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
     const panelRef = useRef<HTMLDivElement>(null);
     const actionRef = useRef<HTMLButtonElement>(null);
     const id = useId();
-    const position = useAnchoredPanelPosition({ open, placement: 'down', triggerRef, panelRef, constrainHeight: true });
 
     useEffect(() => {
         if (!open) return;
@@ -46,18 +43,18 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                 }
             }}
         >…</button>
-        {open && createPortal(
+        {/* Reserve toolbar space: native surfaces paint above DOM popovers. */}
+        {open && <div className="flex w-full justify-end">
             <div
                 ref={panelRef}
                 id={id}
                 role="menu"
                 aria-label="Browser options"
                 tabIndex={-1}
-                data-native-view-overlay=""
-                className="fixed z-[10000] w-56 max-w-[calc(100vw-16px)] overflow-auto rounded border border-[#c8c8c8] bg-white p-1 text-xs text-[#1f1f1f] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
-                style={position}
+                className="w-56 max-w-full max-h-[25vh] overflow-auto rounded border border-[#c8c8c8] bg-white p-1 text-xs text-[#1f1f1f] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
                 onBlur={event => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onOpenChange(false);
+                    const next = event.relatedTarget as Node | null;
+                    if (!event.currentTarget.contains(next) && !triggerRef.current?.contains(next)) onOpenChange(false);
                 }}
                 onKeyDown={event => {
                     if (event.key === 'Escape') {
@@ -87,7 +84,7 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                     }}
                     data-testid="browser-open-external"
                 >Open in system browser</button>
-            </div>, document.body,
-        )}
+            </div>
+        </div>}
     </>;
 }

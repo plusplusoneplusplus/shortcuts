@@ -146,13 +146,13 @@ describe('browser toolbar overflow', () => {
         const trigger = screen.getByRole('button', { name: 'Browser options' });
         await userEvent.click(trigger);
         const menu = screen.getByRole('menu', { name: 'Browser options' });
-        expect(menu.parentElement).toBe(document.body);
-        expect(menu).toHaveAttribute('data-native-view-overlay');
+        expect(screen.getByLabelText('Address').closest('form')).toContainElement(menu);
+        expect(menu).not.toHaveAttribute('data-native-view-overlay');
         expect(trigger).toHaveAttribute('aria-expanded', 'true');
         expect(trigger).toHaveAttribute('aria-controls', menu.id);
         expect(screen.getByTestId('browser-engine')).toHaveTextContent(engine === 'electron' ? 'Electron' : 'WebView2');
         expect(mocks.bridge!.setDefaultEngine).not.toHaveBeenCalled();
-        expect(vi.mocked(useNativeViewPlacement).mock.calls.at(-1)?.[1]).toBe(false);
+        expect(vi.mocked(useNativeViewPlacement).mock.calls.at(-1)?.[1]).toBe(true);
         const listener = vi.mocked(mocks.bridge!.onState).mock.calls[0][0];
         act(() => listener({ viewId: 'view', engine, url: 'https://redirect.test/', title: 'Redirect', loading: false, canGoBack: true, canGoForward: false }));
         await userEvent.click(screen.getByRole('menuitem', { name: 'Open in system browser' }));
@@ -184,31 +184,6 @@ describe('browser toolbar overflow', () => {
         await userEvent.click(screen.getByLabelText('Address'));
         expect(screen.queryByRole('menu')).toBeNull();
         expect(screen.getByLabelText('Address')).toHaveFocus();
-    });
-
-    it('clamps and flips a portaled menu in a narrow viewport and repositions on resize', async () => {
-        tab();
-        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
-        vi.stubGlobal('innerWidth', 180);
-        vi.stubGlobal('innerHeight', 180);
-        const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-            return this.getAttribute('role') === 'menu'
-                ? { x: 0, y: 0, left: 0, top: 0, right: 164, bottom: 80, width: 164, height: 80, toJSON: () => ({}) }
-                : { x: 148, y: 150, left: 148, top: 150, right: 172, bottom: 174, width: 24, height: 24, toJSON: () => ({}) };
-        });
-        try {
-            await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
-            const menu = screen.getByRole('menu');
-            expect(menu.style.left).toBe('8px');
-            expect(menu.style.top).toBe('66px');
-            vi.stubGlobal('innerHeight', 400);
-            fireEvent(window, new Event('resize'));
-            expect(menu.style.top).toBe('178px');
-            expect(menu.style.maxHeight).toBe('214px');
-        } finally {
-            rect.mockRestore();
-            vi.unstubAllGlobals();
-        }
     });
 
     it('keeps blank-tab actions disabled and removes the menu when ownership or visibility changes', async () => {
