@@ -162,6 +162,22 @@ executor binds via the ask_user relay's `locateOrigin`) as `payload.context.mess
 (see server-architecture "Messaging job completion notices"). Remote targets and dashboard
 turns record nothing.
 
+### Delegated result persistence
+
+`server/delegation/delegated-job-store.ts` provides `DelegatedJobStore`, a server-owned
+ledger at `getRepoDataPath(dataDir, parentWorkspaceId, 'delegated-jobs.json')`. Rows
+capture immutable parent/child workspace and process identities, optional remote server
+and Ralph session IDs, and a title. Explicit registration limits tracking to new
+relationships. The first terminal result wins across event replay; outcome is
+`completed | failed | cancelled | capped`, with bounded summary/reason and artifact links.
+
+Terminal delivery moves conditionally from `pending` to `queued` (receipt ID) to
+`delivered`, or to a diagnosable `failed` state. Settled rows cannot reopen. Atomic writes
+and fresh reads keep disk failure from advancing state. This store provides persistence;
+dispatch, terminal subscriptions, and parent review delivery require runtime integration.
+The snapshot registry clears these machine-local receipts on wipe and excludes them
+from export/import to prevent portable backups from replaying delivery.
+
 ### list_workspaces
 
 Built in the same addon as `send_to_conversation` (same `enqueueChat` gate, own registry toggle,

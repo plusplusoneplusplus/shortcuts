@@ -96,6 +96,10 @@ references before editing. Paths are package-relative.
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
+- Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
+  parent workspace. Preserve parent/child identities, first terminal result, and conditional
+  delivery state transitions; child output cannot change routing. Operational receipts are
+  wiped through the snapshot registry and excluded from export/import.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 
