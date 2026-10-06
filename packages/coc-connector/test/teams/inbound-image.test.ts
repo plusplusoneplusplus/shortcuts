@@ -14,11 +14,12 @@ const binary = (data = png, contentType = 'image/png', extraHeaders = {}) =>
     new Response(data, { headers: { 'Content-Type': contentType, ...extraHeaders } });
 
 async function setup(options: { html?: string; rootId?: string; receiveImages?: boolean;
-    acquireToken?: (signal: AbortSignal) => Promise<string> } = {}) {
+    acquireToken?: (signal: AbortSignal) => Promise<string>; attachments?: unknown } = {}) {
     const acquireToken = vi.fn(options.acquireToken ?? (async () => token()));
     const reader = new GraphChannelReader(account, { acquireToken }, options.receiveImages ?? true);
     const fetch = vi.fn(async (_url: string | URL, _init?: RequestInit) => new Response(JSON.stringify({
         value: [{ id: 'message', body: { content: options.html ?? html, contentType: 'html' },
+            attachments: options.attachments,
             from: { user: { id: 'sender', displayName: 'Person' } }, createdDateTime: '2026-01-01T00:00:01Z' }],
     })));
     vi.stubGlobal('fetch', fetch);
@@ -142,7 +143,7 @@ describe('Graph channel image transport', () => {
         s.reader.stop();
     });
 
-    it.each([302, 403, 404, 429, 500])('sanitizes HTTP %s failures without replay', async status => {
+    it.each([302, 404, 429, 500])('sanitizes HTTP %s failures without replay', async status => {
         const s = await setup();
         s.fetch.mockImplementation(async () => new Response('sensitive provider body', { status }));
         await expect(s.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'download',
@@ -230,6 +231,203 @@ describe('Graph channel image transport', () => {
         expect(cancel).toHaveBeenCalledOnce();
         await expect(t.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'cancelled' });
         expect(t.fetch).toHaveBeenCalledOnce();
+        s.reader.stop();
+    });
+});
+
+const fileUrl = 'https://tenant.sharepoint.com/sites/Team/Shared%20Documents/photo.png?web=1';
+const fileAttachment = (patch: Record<string, unknown> = {}) => ({
+    id: 'file-id', contentType: 'reference', contentUrl: fileUrl, name: 'photo.png',
+    thumbnailUrl: 'https://untrusted.test/thumbnail.jpg', ...patch,
+});
+const streamUrl = (source = fileUrl) => 'https://graph.microsoft.com/beta/shares/u!'
+    + Buffer.from(new URL(source).href).toString('base64url') + '/driveItem/contentStream';
+const setupFile = (patch: Record<string, unknown> = {}) => setup({ html: '<attachment id="file-id"></attachment>',
+    attachments: [fileAttachment(patch)] });
+
+describe('Graph channel native image file references', () => {
+    it.each([undefined, 'root'])('downloads a native file on a root/reply (%s) using only the pinned Graph credential', async rootId => {
+        const s = await setup({ rootId, html: '<p>/ask [chat] explain</p><attachment id="file-id"></attachment>',
+            attachments: [fileAttachment()] });
+        expect(s.message).toMatchObject({ text: '/ask [chat] explain', senderAadId: 'sender', replyToMessageId: rootId });
+        expect(s.message.images).toHaveLength(1);
+        expect(s.acquireToken).toHaveBeenCalledOnce();
+        expect(s.fetch).not.toHaveBeenCalled();
+        expect(await s.image.download({ maxBytes: 100 })).toEqual(png);
+        expect(s.image.mimeType).toBe('image/png');
+        expect(s.fetch).toHaveBeenCalledExactlyOnceWith(streamUrl(), expect.objectContaining({
+            headers: { Authorization: `Bearer ${token()}` }, redirect: 'error', signal: expect.any(AbortSignal),
+        }));
+        s.reader.stop();
+    });
+
+    it('retains native file order and deduplicates files/inline images without downloading document thumbnails or cards', async () => {
+        const second = fileUrl.replace('photo.png', 'second.jpeg');
+        const s = await setup({ attachments: [fileAttachment(), fileAttachment({ id: 'duplicate' }),
+            fileAttachment({ name: 'second.jpeg', contentUrl: second }),
+            fileAttachment({ name: 'report.pdf', contentUrl: fileUrl.replace('photo.png', 'report.pdf') }),
+            fileAttachment({ contentType: 'application/pdf' }),
+            fileAttachment({ contentType: 'application/vnd.microsoft.card.adaptive' }),
+            fileAttachment({ contentType: 'image/png', contentUrl })] });
+        expect(s.message.images).toHaveLength(3);
+        for (const image of s.message.images!) await image.download({ maxBytes: 100 });
+        expect(s.fetch.mock.calls.map(([url]) => url)).toEqual([contentUrl, streamUrl(), streamUrl(second)]);
+        s.reader.stop();
+    });
+
+    it.each(['png', 'jpg', 'jpeg', 'jpe', 'jfif', 'gif', 'webp', 'PNG'])('detects reference images named %s without trusting the extension as MIME', async ext => {
+        const s = await setupFile({ name: `photo.${ext}` });
+        expect(s.message.text).toBe('');
+        expect(s.message.images).toHaveLength(1);
+        expect(await s.image.download({ maxBytes: 100 })).toEqual(png);
+        expect(s.image.mimeType).toBe('image/png');
+        s.reader.stop();
+    });
+
+    it.each([null, '', undefined])('detects an image URL when the native filename is absent (%s)', async name => {
+        const s = await setupFile({ name, contentUrl: fileUrl.replace('photo.png', 'photo%2Epng') });
+        expect(s.message.images).toHaveLength(1);
+        expect(await s.image.download({ maxBytes: 100 })).toEqual(png);
+        s.reader.stop();
+    });
+
+    it.each([
+        'https://untrusted.test/photo.png', 'http://tenant.sharepoint.com/photo.png',
+        'https://tenant.sharepoint.com.attacker.test/photo.png', 'https://sharepoint.com/photo.png',
+        'https://tenant.sharepoint.com:8443/photo.png', 'https://user:secret@tenant.sharepoint.com/photo.png',
+        'https://tenant.sharepoint.com/photo.png#secret', 'file:///photo.png',
+        'data:image/png;base64,secret', 'https://127.0.0.1/photo.png', '../photo.png',
+        '%broken', '', null, undefined, 'https://tenant.sharepoint.com/' + 'x'.repeat(8192),
+    ])('retains an explicit failing image for invalid file source %s without requesting it', async source => {
+        const s = await setupFile({ contentUrl: source });
+        expect(s.message.images).toHaveLength(1);
+        await expect(s.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'unsupported' });
+        expect(s.fetch).not.toHaveBeenCalled();
+        expect(s.acquireToken).toHaveBeenCalledOnce();
+        s.reader.stop();
+    });
+
+    it.each(['image/svg+xml', 'application/pdf', 'text/html', 'application/octet-stream', '', 'image/jpeg'])(
+        'rejects a file response with unsupported/mismatched type %s', async type => {
+            const s = await setupFile();
+            s.fetch.mockResolvedValueOnce(binary(png, type));
+            await expect(s.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'unsupported' });
+            s.reader.stop();
+        });
+
+    it.each([false, true])('bounds actual/declared file size (declared: %s)', async declared => {
+        const s = await setupFile();
+        const cancel = vi.fn();
+        s.fetch.mockResolvedValueOnce(new Response(new ReadableStream({
+            start(controller) { controller.enqueue(png); }, cancel,
+        }), { headers: { 'content-type': 'image/png', ...(declared ? { 'content-length': '1000' } : {}) } }));
+        await expect(s.image.download({ maxBytes: png.length - 1 })).rejects.toMatchObject({ code: 'size-limit' });
+        expect(cancel).toHaveBeenCalledOnce();
+        s.reader.stop();
+    });
+
+    it.each([302, 404, 429, 500])('sanitizes HTTP %s file errors and never follows redirects', async status => {
+        const s = await setupFile();
+        s.fetch.mockResolvedValueOnce(new Response('secret URL/token', { status,
+            headers: { Location: 'https://untrusted.test/secret' } }));
+        await expect(s.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'download',
+            message: 'Could not download the image. Send the image again.' });
+        expect(s.fetch).toHaveBeenCalledOnce();
+        expect(s.fetch.mock.calls[0][1]?.redirect).toBe('error');
+        s.reader.stop();
+    });
+
+    it('refreshes once on file HTTP 401 with the same pinned account and endpoint', async () => {
+        const s = await setupFile();
+        const fresh = token({ exp: Math.floor(Date.now() / 1000) + 7200 });
+        s.acquireToken.mockResolvedValueOnce(fresh);
+        s.fetch.mockResolvedValueOnce(new Response('secret', { status: 401 }));
+        expect(await s.image.download({ maxBytes: 100 })).toEqual(png);
+        expect(s.acquireToken).toHaveBeenCalledTimes(2);
+        expect(s.fetch.mock.calls.map(([url]) => url)).toEqual([streamUrl(), streamUrl()]);
+        expect(s.fetch.mock.calls[1][1]?.headers).toEqual({ Authorization: `Bearer ${fresh}` });
+        s.reader.stop();
+    });
+
+    it.each(['inline', 'file'])('provides actionable HTTP 403 feedback for %s images without leaking response bodies', async kind => {
+        const s = kind === 'inline' ? await setup() : await setupFile();
+        s.fetch.mockResolvedValueOnce(new Response('sensitive provider body/credential', { status: 403 }));
+        await expect(s.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'access-denied',
+            message: 'Image access was denied. Check read permissions or paste the image directly into the message.' });
+        expect(s.fetch).toHaveBeenCalledOnce();
+        s.reader.stop();
+    });
+
+    it('does not replay repeated file authentication rejection or use a mismatched refresh identity', async () => {
+        const s = await setupFile();
+        s.fetch.mockImplementation(async () => new Response('secret', { status: 401 }));
+        await expect(s.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'download' });
+        expect(s.fetch).toHaveBeenCalledTimes(2);
+        s.fetch.mockClear();
+        s.acquireToken.mockResolvedValueOnce(token({ oid: 'other-account' }));
+        await expect(s.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'download' });
+        expect(s.fetch).toHaveBeenCalledOnce();
+        s.reader.stop();
+    });
+
+    it('bounds file credential refresh and cancels a late HTTP response after reader stop', async () => {
+        vi.useFakeTimers();
+        const s = await setupFile();
+        s.acquireToken.mockImplementationOnce(() => new Promise(() => {}));
+        s.fetch.mockResolvedValueOnce(new Response(null, { status: 401 }));
+        const rejected = expect(s.image.download({ maxBytes: 100, timeoutMs: 100 })).rejects.toMatchObject({ code: 'timeout' });
+        await vi.advanceTimersByTimeAsync(100);
+        await rejected;
+        const t = await setupFile();
+        let release!: (response: Response) => void;
+        t.fetch.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+        const stopped = expect(t.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'cancelled' });
+        await vi.advanceTimersByTimeAsync(0);
+        t.reader.stop();
+        await stopped;
+        const cancel = vi.fn();
+        release(new Response(new ReadableStream({ cancel })));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(cancel).toHaveBeenCalledOnce();
+        await expect(t.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'cancelled' });
+        expect(t.fetch).toHaveBeenCalledOnce();
+        s.reader.stop();
+    });
+
+    it.each(['caller', 'stop', 'timeout'] as const)('cancels a stalled file stream on %s', async cause => {
+        vi.useFakeTimers();
+        const s = await setupFile();
+        const cancel = vi.fn();
+        s.fetch.mockResolvedValueOnce(new Response(new ReadableStream({
+            start(controller) { controller.enqueue(png); }, cancel,
+        }), { headers: { 'content-type': 'image/png' } }));
+        const controller = new AbortController();
+        const rejected = expect(s.image.download({ maxBytes: 100, timeoutMs: 100, signal: controller.signal }))
+            .rejects.toMatchObject({ code: cause === 'timeout' ? 'timeout' : 'cancelled' });
+        await vi.advanceTimersByTimeAsync(0);
+        if (cause === 'caller') controller.abort();
+        if (cause === 'stop') s.reader.stop();
+        if (cause === 'timeout') await vi.advanceTimersByTimeAsync(100);
+        await rejected;
+        await vi.advanceTimersByTimeAsync(0);
+        expect(cancel).toHaveBeenCalledOnce();
+        s.reader.stop();
+    });
+
+    it.each([{}, [null], [{ contentType: null }], [fileAttachment({ name: {} })],
+        [fileAttachment({ contentUrl: {} })]])('fails malformed native attachment metadata explicitly', async attachments => {
+        const s = await setup({ html: '<p>explain</p>', attachments });
+        expect(s.message.images).toHaveLength(1);
+        await expect(s.image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'unsupported' });
+        expect(s.fetch).not.toHaveBeenCalled();
+        s.reader.stop();
+    });
+
+    it('keeps native file attachments disabled for default consumers', async () => {
+        const s = await setup({ receiveImages: false, html: '<p>explain</p>', attachments: [fileAttachment()] });
+        expect(s.message).toMatchObject({ text: 'explain' });
+        expect(s.message.images).toBeUndefined();
+        expect(s.fetch).not.toHaveBeenCalled();
         s.reader.stop();
     });
 });

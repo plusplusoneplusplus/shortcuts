@@ -67,7 +67,7 @@ export class GraphChannelReader {
                     replyToMessageId: rootId,
                     text: (this.receiveImages ? decodeGraphHtmlEntities(text) : text).trim(),
                     ...(this.receiveImages ? { images: graphChannelImages(html,
-                        { teamId, channelId, messageId: message.id, rootId }, this.credentials, this.lifetime.signal) } : {}),
+                        { teamId, channelId, messageId: message.id, rootId }, this.credentials, this.lifetime.signal, message.attachments) } : {}),
                     senderName: message.from?.user?.displayName,
                     senderAadId: message.from?.user?.id,
                     botAuthored: !!message.from?.application,

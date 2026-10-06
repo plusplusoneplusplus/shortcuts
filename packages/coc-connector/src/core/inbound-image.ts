@@ -15,7 +15,7 @@ export interface InboundImage {
     download(options: ImageDownloadOptions): Promise<Buffer>;
 }
 
-export type ImageDownloadErrorCode = 'unsupported' | 'size-limit' | 'timeout' | 'cancelled' | 'download';
+export type ImageDownloadErrorCode = 'unsupported' | 'size-limit' | 'timeout' | 'cancelled' | 'download' | 'access-denied';
 
 /** Safe to show to users: never includes provider bodies, URLs or credentials. */
 export class ImageDownloadError extends Error {
@@ -26,6 +26,7 @@ export class ImageDownloadError extends Error {
             timeout: 'Image download timed out. Send the image again.',
             cancelled: 'Image download was cancelled. Send the image again.',
             download: 'Could not download the image. Send the image again.',
+            'access-denied': 'Image access was denied. Check read permissions or paste the image directly into the message.',
         };
         super(messages[code]);
         this.name = 'ImageDownloadError';

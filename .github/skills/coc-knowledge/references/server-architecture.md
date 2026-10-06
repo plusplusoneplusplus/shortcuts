@@ -287,13 +287,14 @@ Missing relay settings resolve on; explicit false stops reply polling and answer
 without restart/reconnect. Connectivity, Likes and Trouter require their own enablement.
 The connector's standalone defaults remain independent.
 
-Connector `receiveImages` opt-in exposes lazy inline image descriptors on hybrid
-Graph channel roots/replies. Hosted-content downloads use fixed v1.0 paths scoped
-to the exact message, identity-pinned read credentials, one 401 refresh, and no
-redirects. MIME resolves during authenticated download; shared raster signature,
-byte and deadline checks apply. Captionless images retain ordinary ID/thread
-admission, and stop cancels retained descriptors. Main-server managers retain
-default text-only delivery.
+Connector `receiveImages` exposes lazy inline/file image descriptors on hybrid
+Graph roots/replies. Scoped hosted content uses fixed v1.0 paths; HTTPS SharePoint
+image references encode into fixed beta `/shares/u!…/driveItem/contentStream` paths.
+Both use identity-pinned read credentials, one 401 refresh and no redirects.
+File reads require delegated `Files.Read` (or documented higher read consent) and
+SharePoint access; 403 yields safe permission feedback. MIME, raster signatures,
+byte/deadline limits, ordinary admission and stop cancellation apply. Main-server
+managers retain text-only delivery.
 
 `teams-messaging.json` persists `outboundBackend: mcp | graph` (default `graph`, including missing saved settings);
 Graph fixes channel send/reply routes to `GraphOperations`; explicit MCP remains supported. Its separate Azure CLI

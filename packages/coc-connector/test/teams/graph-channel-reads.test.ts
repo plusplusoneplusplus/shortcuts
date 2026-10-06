@@ -397,9 +397,17 @@ describe('Graph pages through durable channel admission', () => {
         return { bot, onMessage, fetch };
     }
 
-    it('admits captionless/captioned images through normal routing without downloading skipped history or duplicates', async () => {
+    it.each(['inline', 'file'])('admits captionless/captioned %s images without downloading skipped history or duplicates', async kind => {
         const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-        const imageBody = '<p><img src="../hostedContents/content/$value"></p>';
+        const fileUrl = 'https://tenant.sharepoint.com/sites/Team/photo.png';
+        const filePath = '/beta/shares/u!' + Buffer.from(fileUrl).toString('base64url') + '/driveItem/contentStream';
+        const imageBody = kind === 'inline' ? '<p><img src="../hostedContents/content/$value"></p>'
+            : '<attachment id="file"></attachment>';
+        const imageMessage = (id: string, body = imageBody, time?: string): GraphMessage => ({
+            ...message(id, body, time), ...(kind === 'file' ? { attachments: [{
+                id: 'file', contentType: 'reference', contentUrl: fileUrl, name: 'photo.png',
+            }] } : {}),
+        });
         const known = new Set(['known']);
         const s = botSetup({ receiveImages: true, isOwnChannelReply: msg => msg.messageId === 'own',
             isKnownChannelReply: msg => known.has(msg.messageId) });
@@ -412,17 +420,17 @@ describe('Graph pages through durable channel admission', () => {
         await s.bot.start();
         s.fetch.mockImplementation(async url => {
             const path = new URL(url).pathname;
-            if (path.endsWith('/$value')) {
+            if (path.endsWith('/$value') || path.endsWith('/contentStream')) {
                 downloads.push(path);
                 return new Response(png, { headers: { 'content-type': 'image/png' } });
             }
-            return response(path.endsWith('/messages') ? [message('new-image', imageBody),
-                message('historic-image', imageBody, '2025-01-01T00:00:00Z')]
+            return response(path.endsWith('/messages') ? [imageMessage('new-image'),
+                imageMessage('historic-image', imageBody, '2025-01-01T00:00:00Z')]
                 : path === new URL(replyUrl('tracked')).pathname ? [
-                    message('historic-reply', imageBody, '2025-01-01T00:00:00Z'),
-                    { ...message('undated-image', imageBody), createdDateTime: '' },
-                    message('own', imageBody), message('known', imageBody),
-                    message('image-only', imageBody), message('caption', `<p>/ask [chat] explain</p>${imageBody}`),
+                    imageMessage('historic-reply', imageBody, '2025-01-01T00:00:00Z'),
+                    { ...imageMessage('undated-image'), createdDateTime: '' },
+                    imageMessage('own'), imageMessage('known'),
+                    imageMessage('image-only'), imageMessage('caption', `<p>/ask [chat] explain</p>${imageBody}`),
                 ] : []);
         });
         await vi.advanceTimersByTimeAsync(1000);
@@ -431,7 +439,7 @@ describe('Graph pages through durable channel admission', () => {
         expect(s.onMessage.mock.calls[1][0]).toMatchObject({ text: '', replyToMessageId: 'tracked',
             reference: { backend: 'graph', rootMessageId: 'tracked', destination: { teamId: 'team', channelId: 'channel' } } });
         expect(s.onMessage.mock.calls[2][0].text).toBe('/ask [chat] explain');
-        expect(downloads).toEqual([
+        expect(downloads).toEqual(kind === 'file' ? [filePath, filePath, filePath] : [
             '/v1.0/teams/team/channels/channel/messages/new-image/hostedContents/content/$value',
             '/v1.0/teams/team/channels/channel/messages/tracked/replies/image-only/hostedContents/content/$value',
             '/v1.0/teams/team/channels/channel/messages/tracked/replies/caption/hostedContents/content/$value',
