@@ -158,7 +158,7 @@ describe('WhatsApp durable existing-topic control admission', () => {
                 WHEN NEW.repo_id = 'ws-a' AND EXISTS (SELECT 1 FROM queue_tasks WHERE id = NEW.id)
                 BEGIN SELECT RAISE(ABORT, 'queue order failed'); END;
             `);
-            enqueue = vi.fn((workspaceId, prompt, mode, processId, id, _botControl, admissionHeld) => (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
+            enqueue = vi.fn((workspaceId, prompt, mode, processId, id, _botControl, _images, admissionHeld) => (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                 id, processId, repoId: workspaceId, type: 'chat', priority: 'normal',
                 payload: { kind: 'chat', mode, workspaceId, prompt, processId, relayRequestId: id }, config: {},
             }));

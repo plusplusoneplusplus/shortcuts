@@ -232,7 +232,11 @@ references before editing. Paths are package-relative.
   after local workspace resolution. It reuses chat attachment processing, stores
   temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
   batch on failure. Limits are five images, 10 MB decoded total and 30 seconds total.
-  Callers own temporary-directory cleanup until delivery transfers it to executors.
+  Callers own temporary-directory cleanup until delivery transfers it to executors. WhatsApp
+  captioned-image preparation runs inside durable binding admission; queue payloads
+  carry SDK attachments, image history and the temporary directory together. Failed
+  queue admission removes prepared files. Main-server receiveImages stays disabled
+  until pending-image, handoff and provider checks are ready.
 - Teams/WhatsApp command grammar is one spec table in
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`,
   `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp

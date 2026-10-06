@@ -26,6 +26,18 @@ export class IncomingImagesError extends Error {
     }
 }
 
+/** Prepared files and durable history carried together into a messaging turn. */
+export type PreparedIncomingImages = ReturnType<typeof processMessageAttachments>;
+
+/** Existing chat payload fields; keep SDK files and persisted image history together. */
+export function incomingImageTaskPayload(images?: PreparedIncomingImages) {
+    return images ? {
+        attachments: images.sdkAttachments,
+        imageTempDir: images.imageTempDir,
+        images: images.validatedImages,
+    } : {};
+}
+
 /**
  * Call only after durable inbound admission and local workspace resolution.
  * Downloads the entire batch before writing files; rejects rather than returning

@@ -528,6 +528,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                                 timestamp: new Date(),
                                 turnIndex: index,
                                 relayRequestId: followUpPayload.relayRequestId,
+                                ...(followUpPayload.images?.length ? { images: followUpPayload.images } : {}),
                                 timeline: [],
                             }),
                         );

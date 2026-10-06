@@ -169,6 +169,7 @@ import { TeamsMessagingManager } from '../messaging/teams-messaging-manager';
 import { registerWhatsAppMessagingRoutes } from '../messaging/whatsapp-messaging-handler';
 import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-manager';
 import { WhatsAppBindings, WhatsAppBindingReleaseError } from '../messaging/whatsapp-bindings';
+import { incomingImageTaskPayload } from '../messaging/incoming-images';
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
@@ -1001,6 +1002,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     void jobNotices.restore().catch(error => console.error('[job-notices] Could not restore notices:', error));
     const whatsappRouter = new WhatsAppCommandRouter({
         store,
+        dataDir,
         bindings: whatsappBindings,
         getBotManagedConversationsEnabled: () =>
             (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.botManagedConversations === true,
@@ -1014,7 +1016,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         questions: questionRelay,
         handOff: messagingHandOff,
         getTask: taskId => queueFacade.getTask(taskId),
-        enqueue: async (workspaceId, message, mode, processId, taskId, botControl, admissionHeld = false) => {
+        enqueue: async (workspaceId, message, mode, processId, taskId, botControl, images, admissionHeld = false) => {
             const followUp = processId !== toQueueProcessId(taskId);
             return enqueueWithResolvedDefaults({
                 ...messagingChatInput(workspaceId, message, taskId, true),
@@ -1026,6 +1028,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     prompt: message, workspaceId,
                     ...(followUp ? { processId } : {}),
                     relayRequestId: taskId,
+                    ...incomingImageTaskPayload(images),
                 },
             }, admissionHeld);
         },

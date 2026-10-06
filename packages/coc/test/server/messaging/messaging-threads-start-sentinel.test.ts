@@ -97,6 +97,38 @@ describe('phone threads start chats in sentinel mode', () => {
         });
     }
 
+    it('WhatsApp routes prepared first-turn and queued follow-up images through real server wiring', { timeout: 20_000 }, async () => {
+        await start(false);
+        const { WhatsAppCommandRouter } = await import('../../../src/server/messaging/whatsapp-command-router');
+        const bindings = captured.whatsapp.bindings;
+        const router = new WhatsAppCommandRouter({ ...captured.whatsapp,
+            groupJid: () => 'group@g.us', send: async () => 'outbound', react: async () => {},
+        });
+        const bytes = Buffer.from('89504e470d0a1a0a010203', 'hex');
+        const inbound = (messageId: string, text: string) => ({
+            chatJid: 'group@g.us', senderJid: 'group@g.us', fromMe: true, messageId, text,
+            images: [{ mimeType: 'image/png', download: async () => bytes }],
+        });
+        await router.handle(inbound('first-image', '/ask describe this'));
+        await router.handle(inbound('next-image', '/autopilot compare this'));
+        const rows = bindings.entries().filter((row: { inboundId: string }) => ['first-image', 'next-image'].includes(row.inboundId));
+        expect(rows).toHaveLength(2);
+        expect(rows[1].processId).toBe(rows[0].processId);
+        for (const [index, row] of rows.entries()) {
+            const res = await fetch(`${server!.url}/api/queue/${encodeURIComponent(row.taskId)}`);
+            const { task } = await res.json() as { task: { payload: { mode: string; prompt: string; images: string[]; attachments: Array<{ path: string }>; imageTempDir: string; processId?: string } } };
+            expect(task.payload.mode).toBe(index === 0 ? 'ask' : 'autopilot');
+            expect(task.payload.prompt).toBe(index === 0 ? 'describe this' : 'compare this');
+            expect(task.payload.attachments).toHaveLength(1);
+            expect(fs.readFileSync(task.payload.attachments[0].path)).toEqual(bytes);
+            expect(task.payload.imageTempDir).toContain(path.join(dataDir!, 'repos', GLOBAL, 'attachments'));
+            // Queue summaries intentionally omit binary history; inspect the durable execution task.
+            expect(captured.whatsapp.getTask(row.taskId).payload.images)
+                .toEqual([`data:image/png;base64,${bytes.toString('base64')}`]);
+            expect(task.payload.processId).toBe(index === 0 ? undefined : rows[0].processId);
+        }
+    });
+
     it('both connectors share one hand-off that queues a tracked job from a queued sentinel', { timeout: 20_000 }, async () => {
         await start(false);
         expect(captured.teams.handOff).toBe(captured.whatsapp.handOff);

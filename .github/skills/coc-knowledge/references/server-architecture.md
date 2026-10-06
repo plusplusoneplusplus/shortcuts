@@ -213,6 +213,14 @@ a 30-second acquisition/download deadline. Temporary files use
 cleanup until executor delivery takes ownership. Download and storage failures
 reject the whole batch with fixed feedback; partial writes are removed.
 
+WhatsApp captioned-image preparation runs inside durable binding admission, after normal
+workspace/topic/mode resolution. `incomingImageTaskPayload` carries SDK files,
+image history and the temporary directory through initial/follow-up queue payloads;
+failed queue admission removes files. Request-correlated queued follow-ups persist
+image history on the user turn before execution. Captioned images bypass question-answer
+consumption and reject control commands. Main-server image reception stays disabled
+until pending-image, sentinel handoff and provider checks are ready.
+
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
 `compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown

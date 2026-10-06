@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { BotControlMetadata } from '@plusplusoneplusplus/forge/ai';
-import { isMessagingControlCommand, parseMessagingCommand, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
+import { ImageDownloadError, isMessagingControlCommand, parseMessagingCommand, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import type { AskUserQuestionRelayHub } from './ask-user-relay';
@@ -11,6 +11,8 @@ import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse'
 import { admitBotControlledFollowUp } from './bot-control-admission';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
 import type { MessagingHandOff } from './job-handoff';
+import { IncomingImagesError, prepareIncomingImages, type PreparedIncomingImages } from './incoming-images';
+import { cleanupTempDir } from '../core/image-utils';
 
 import { LocalTopicMemory } from './local-topics';
 
@@ -19,9 +21,11 @@ const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*` };
 export interface WhatsAppRouterDeps {
     store: Pick<ProcessStore, 'getWorkspaces' | 'getAllProcesses' | 'getProcess' | 'updateProcess'>;
     bindings: WhatsAppBindings;
+    /** Enables admitted captioned-image preparation for the main server. */
+    dataDir?: string;
     groupJid: () => string | undefined;
     /** `mode` is undefined for plain text; follow-ups then keep the chat's mode. */
-    enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string, botControl?: BotControlMetadata, admissionHeld?: boolean) => Promise<string>;
+    enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string, botControl?: BotControlMetadata, images?: PreparedIncomingImages, admissionHeld?: boolean) => Promise<string>;
     getTask: (taskId: string) => QueuedTask | undefined;
     send: (text: string, quotedId: string) => Promise<string>;
     react: (messageId: string) => Promise<void>;
@@ -67,11 +71,17 @@ export class WhatsAppCommandRouter {
                 console.error('[whatsapp-messaging] Reaction failed:', error);
             }
         };
+        let images: PreparedIncomingImages | undefined;
+        const hasImages = !!msg.images?.length;
         try {
-            if (await this.deps.questions?.tryAnswer('whatsapp', {
+            if (!hasImages && await this.deps.questions?.tryAnswer('whatsapp', {
                 chatKey: msg.chatJid, messageId: msg.messageId, replyToId: msg.quotedMessageId, text: msg.text,
                 reply, acknowledge: () => this.deps.react(msg.messageId),
             })) return;
+            if (hasImages && (command.type === 'invalid' || isMessagingControlCommand(command))) {
+                await reply('Send the images with chat instructions, separately from control commands.');
+                return;
+            }
             if (command.type === 'invalid') { await reply(invalidCommandReply(WHATSAPP_HELP_FORMAT)); return; }
             if (isMessagingControlCommand(command)) {
                 const bindings = this.deps.bindings;
@@ -148,6 +158,10 @@ export class WhatsAppCommandRouter {
                 }
             }
             const handOff = await this.deps.handOff?.resolve(targetId, command.mode);
+            if (handOff && hasImages) {
+                await reply('Images in sentinel job handoffs are not available yet. Send them to a regular chat topic.');
+                return;
+            }
             if (handOff) {
                 await this.deps.handOff!.start(handOff, command.args, { connector: 'whatsapp', chatKey: msg.chatJid });
                 admitted = true;
@@ -163,12 +177,16 @@ export class WhatsAppCommandRouter {
                 outboundIds: [], nextPart: 0, status: 'queued',
             };
             if (!await this.deps.bindings.admit(binding, async () => {
+                if (hasImages) {
+                    if (!this.deps.dataDir) throw new IncomingImagesError('storage');
+                    images = await prepareIncomingImages(this.deps.dataDir, workspaceId, msg.images!);
+                }
                 const enqueue = async (admissionHeld = false) => {
                     try {
                         return await this.deps.enqueue(
                             workspaceId, command.args, command.mode, processId, taskId,
                             !targetId && enabled ? createBotControlMetadata('whatsapp') : undefined,
-                            ...(admissionHeld ? [true] : []),
+                            ...(images || admissionHeld ? [images, admissionHeld] : []),
                         );
                     } catch (error) {
                         // taskAdded observers run after durable admission; keep accepted work and its receipt.
@@ -188,6 +206,11 @@ export class WhatsAppCommandRouter {
             this.deps.queued?.(binding);
             await react();
         } catch (error) {
+            if (!admitted && images?.imageTempDir) cleanupTempDir(images.imageTempDir);
+            if (error instanceof ImageDownloadError || error instanceof IncomingImagesError) {
+                await reply(error.message);
+                return;
+            }
             console.error('[whatsapp-messaging] Unable to handle inbound message:', error);
             await reply(admitted
                 ? 'Request was queued, but its confirmation could not be completed.'

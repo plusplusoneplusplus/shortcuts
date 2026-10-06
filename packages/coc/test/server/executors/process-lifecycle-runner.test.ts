@@ -2,6 +2,7 @@
  * ProcessLifecycleRunner — selected-skills directive tests.
  */
 
+import * as path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { getLogger } from '@plusplusoneplusplus/forge';
@@ -1498,7 +1499,7 @@ describe('ProcessLifecycleRunner — follow-up lifecycle status ordering', () =>
         runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
     });
 
-    it('persists a queued Teams user turn once before execution, including after retry', async () => {
+    it.each(['teams', 'whatsapp'])('persists a queued %s image turn once before execution, including after retry', async platform => {
         const processId = 'queue_existing';
         store.processes.set(processId, {
             id: processId, type: 'clarification', status: 'completed',
@@ -1510,15 +1511,19 @@ describe('ProcessLifecycleRunner — follow-up lifecycle status ordering', () =>
             ],
         } as any);
         const task = makeTask({
-            id: 'teams-follow-up',
+            id: `${platform}-follow-up`,
             processId,
             payload: { kind: 'chat', prompt: 'new request', processId, workspaceId: 'ws-abc',
-                relayRequestId: 'opaque-request' },
+                relayRequestId: 'opaque-request', images: ['data:image/png;base64,iVBORw0KGgoBAgM='],
+                attachments: [{ type: 'file', path: path.join(process.cwd(), 'incoming-image.png') }] },
         });
         const executeFollowUpFn = vi.fn().mockResolvedValue(undefined);
         await runner.run(task, makeOpts({ executeFollowUpFn }));
         expect((await store.getProcess(processId))?.conversationTurns?.filter(turn => turn.relayRequestId === 'opaque-request'))
-            .toEqual([expect.objectContaining({ role: 'user', content: 'new request', turnIndex: 2 })]);
+            .toEqual([expect.objectContaining({ role: 'user', content: 'new request', turnIndex: 2,
+                images: ['data:image/png;base64,iVBORw0KGgoBAgM='] })]);
+        expect(executeFollowUpFn.mock.calls[0][2]).toEqual(task.payload.attachments);
+        expect(executeFollowUpFn.mock.calls[0][5]).toEqual(task.payload.images);
         expect(executeFollowUpFn.mock.calls[0][11]).toMatchObject({ historyCutoffTurnIndex: 2 });
 
         await runner.run(task, makeOpts({ executeFollowUpFn }));
