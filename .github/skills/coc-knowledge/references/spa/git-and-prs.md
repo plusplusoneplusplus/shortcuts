@@ -56,6 +56,11 @@ read 404s, `PreviewPane` fires `onNotFound`; `WorkingTreeFileDiff` replaces the
 preview with a missing-file notice and calls `onFileMissing` once, which
 `RepoGitTab` wires to `bumpWorkingChanges` so the refetched list drops the ghost
 entry. Non-404 preview failures keep the plain error + Retry presentation.
+The preview reads a workspace-relative path built from `RepoGitTab`'s `repoRoot`.
+`RepoGitTab` resolves that root from the repos list by clone key
+(`findRepoBySelectionId`), falling back to `state.workspaces`, which lists only
+page-origin workspaces. Without a root, the absolute path 404s and a remote
+file shows as missing.
 
 ### Job polling
 
