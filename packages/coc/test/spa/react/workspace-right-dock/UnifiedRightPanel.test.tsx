@@ -346,6 +346,18 @@ describe('UnifiedRightPanel', () => {
             expect(readUnifiedPanelState(WS).workspaceTabs[0].browserUrl).toBe('http://localhost:3000/');
         });
 
+        it.each([{ ctrlKey: true }, { metaKey: true }])('closes a web-hosted browser tab from its controls (%o)', modifiers => {
+            renderPanel();
+            Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });
+            openViaMenu('unified-panel-open-browser');
+            const address = screen.getByTestId('browser-address');
+            address.focus();
+            const event = new KeyboardEvent('keydown', { key: 'w', ...modifiers, bubbles: true, cancelable: true });
+            act(() => address.dispatchEvent(event));
+            expect(event.defaultPrevented).toBe(true);
+            expect(browserTabs()).toHaveLength(0);
+        });
+
         it('offers the system browser when there is no desktop bridge', () => {
             const open = vi.spyOn(window, 'open').mockReturnValue(null);
             try {
@@ -369,6 +381,7 @@ describe('UnifiedRightPanel', () => {
         let onState: Listener<{
             viewId: string; url: string; title: string; canGoBack: boolean; canGoForward: boolean; loading: boolean; error?: string;
         }>;
+        let onCloseRequested: Listener<{ viewId: string }>;
         let onNewTab: Listener<{ openerViewId: string; url: string }>;
         let onDownload: Listener<{ viewId: string; url: string; ok: boolean; error?: string }>;
         const bridge = {
@@ -379,6 +392,7 @@ describe('UnifiedRightPanel', () => {
             hide: vi.fn(),
             close: vi.fn(),
             openExternal: vi.fn(async () => true),
+            onCloseRequested: vi.fn((callback: typeof onCloseRequested) => { onCloseRequested = callback; return () => { onCloseRequested = undefined; }; }),
             onState: vi.fn((callback: typeof onState) => { onState = callback; return () => { onState = undefined; }; }),
             onNewTab: vi.fn((callback: typeof onNewTab) => { onNewTab = callback; return () => { onNewTab = undefined; }; }),
             onDownload: vi.fn((callback: typeof onDownload) => { onDownload = callback; return () => { onDownload = undefined; }; }),
@@ -401,7 +415,93 @@ describe('UnifiedRightPanel', () => {
             onState = undefined;
             onNewTab = undefined;
             onDownload = undefined;
+            onCloseRequested = undefined;
+            bridge.onCloseRequested.mockImplementation(callback => {
+                onCloseRequested = callback;
+                return () => { onCloseRequested = undefined; };
+            });
             Object.defineProperty(window, 'cocDesktop', { value: { browser: bridge }, configurable: true });
+        });
+
+        it('closes only the active browser source through the existing lifecycle', async () => {
+            writeUnifiedTreeState(WS, { open: false, width: 220 });
+            const panel = renderPanel({ chatId: 'chat-1' });
+            Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });
+            await openUrlTab('https://example.com/');
+            const first = viewIdOf();
+            await openUrlTab('https://other.example.com/');
+            const second = viewIdOf(1);
+            // Native focus can leave DOM focus on an unrelated editor/composer.
+            document.body.focus();
+            act(() => onCloseRequested?.({ viewId: first }));
+            act(() => onCloseRequested?.({ viewId: 'another-workspace-view' }));
+            expect(browserTabs()).toHaveLength(2);
+            act(() => onCloseRequested?.({ viewId: second }));
+            expect(browserTabs()).toHaveLength(1);
+            expect(bridge.close).toHaveBeenCalledExactlyOnceWith(second);
+            act(() => onCloseRequested?.({ viewId: second }));
+            expect(browserTabs()).toHaveLength(1);
+            panel.rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub({ isOpen: false })} />);
+            act(() => onCloseRequested?.({ viewId: first }));
+            expect(bridge.close).toHaveBeenCalledTimes(1);
+            panel.rerender(<UnifiedRightPanel workspaceId={WS} chatId="chat-1" dock={dockStub()} />);
+            act(() => openWorkspaceDock(WS));
+            act(() => onCloseRequested?.({ viewId: first }));
+            expect(browserTabs()).toHaveLength(0);
+            expect(bridge.close).toHaveBeenLastCalledWith(first);
+            expect(bridge.hide).toHaveBeenCalledWith(first);
+            expect(localStorage.getItem(workspaceDockOpenStorageKey(WS))).toBe('0');
+        });
+
+        it.each([{ ctrlKey: true }, { metaKey: true }])('closes the active browser from its editable address bar (%o)', async modifiers => {
+            renderPanel();
+            Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });
+            await openUrlTab('https://example.com/');
+            const viewId = viewIdOf();
+            const address = screen.getByTestId('browser-address');
+            address.focus();
+            const event = new KeyboardEvent('keydown', { key: 'w', ...modifiers, bubbles: true, cancelable: true });
+            act(() => address.dispatchEvent(event));
+            expect(event.defaultPrevented).toBe(true);
+            expect(browserTabs()).toHaveLength(0);
+            expect(bridge.close).toHaveBeenCalledWith(viewId);
+        });
+
+        it('targets a remote-owned browser in its group panel without closing another workspace', () => {
+            const listeners = new Set<(event: { viewId: string }) => void>();
+            bridge.onCloseRequested.mockImplementation(callback => {
+                listeners.add(callback!);
+                return () => { listeners.delete(callback!); };
+            });
+            const browserInput = (ownerRoutingRef: string, resourceId: string) => ({
+                kind: 'browser' as const, ownerWorkspaceId: 'same-workspace-id', ownerRoutingRef,
+                chatId: null, resourceId, label: 'Page', browserUrl: 'https://example.com/',
+            });
+            writeUnifiedPanelState('group', openTab(EMPTY_UNIFIED_PANEL, browserInput('remote:server-a:repo', 'group-view')));
+            writeUnifiedPanelState(WS, openTab(EMPTY_UNIFIED_PANEL, browserInput('remote:server-b:repo', 'workspace-view')));
+            renderPanel({ workspaceId: 'group', dock: dockStub({ target: 'another-dock-target' }) });
+            renderPanel();
+            for (const root of screen.getAllByTestId('unified-right-panel')) {
+                Object.defineProperty(root, 'offsetParent', { get: () => document.body });
+            }
+            act(() => listeners.forEach(listener => listener({ viewId: 'group-view' })));
+            expect(readUnifiedPanelState('group').workspaceTabs).toHaveLength(0);
+            expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(1);
+            expect(bridge.close).toHaveBeenCalledExactlyOnceWith('group-view');
+            cleanup();
+            expect(listeners.size).toBe(0);
+        });
+
+        it('rejects native requests when a terminal is the active tab', async () => {
+            renderPanel();
+            Object.defineProperty(screen.getByTestId('unified-right-panel'), 'offsetParent', { get: () => document.body });
+            await openUrlTab('https://example.com/');
+            const browserId = viewIdOf();
+            openViaMenu('unified-panel-open-terminal');
+            act(() => onCloseRequested?.({ viewId: browserId }));
+            expect(browserTabs()).toHaveLength(1);
+            expect(bridge.close).not.toHaveBeenCalled();
+            expect(screen.getByTestId('mock-terminal')).toBeTruthy();
         });
 
         it('opens a chat web link as a new browser tab and claims the event', async () => {

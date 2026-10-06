@@ -256,6 +256,8 @@ export class QueueExecutor extends EventEmitter {
      * @param taskId ID of the task to cancel
      */
     cancelTask(taskId: string): void {
+        const task = this.queueManager.getTask(taskId);
+        if (task?.status === 'running' && task.config?.cancelRunning === false) return;
         this.cancelledTasks.add(taskId);
 
         // Also cancel in queue manager
@@ -419,6 +421,10 @@ export class QueueExecutor extends EventEmitter {
         const timeoutMs = task.config.timeoutMs ?? DEFAULT_TASK_CONFIG.timeoutMs!;
 
         const startTime = Date.now();
+        this.queueManager.beginExecution(task);
+        const execution = Promise.resolve().then(() => this.taskExecutor.execute(task))
+            .finally(() => this.queueManager.endExecution(task.id));
+        if (timeoutMs === 0) return execution;
 
         const timeoutPromise = new Promise<TaskExecutionResult>((_, reject) => {
             setTimeout(() => {
@@ -429,7 +435,7 @@ export class QueueExecutor extends EventEmitter {
         // Race between execution and timeout
         try {
             const result = await Promise.race([
-                this.taskExecutor.execute(task),
+                execution,
                 timeoutPromise,
             ]);
 

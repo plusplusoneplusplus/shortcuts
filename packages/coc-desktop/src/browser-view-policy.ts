@@ -150,6 +150,8 @@ export const BROWSER_PREFERENCES_GET_CHANNEL = 'coc-desktop:browser-preferences-
 export const BROWSER_PREFERENCES_SET_CHANNEL = 'coc-desktop:browser-preferences-set';
 export const BROWSER_PREFERENCES_CHANGED_CHANNEL = 'coc-desktop:browser-preferences-changed';
 export const BROWSER_CLEAR_DATA_CHANNEL = 'coc-desktop:browser-clear-data';
+/** main → SPA: native close shortcut; the active panel owns tab teardown. */
+export const BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL = 'coc-desktop:browser-view-close-requested';
 export const BROWSER_VIEW_CLOSED_CHANNEL = 'coc-desktop:browser-view-closed';
 export const BROWSER_VIEW_FOCUS_CHANNEL = 'coc-desktop:browser-view-focus';
 export const BROWSER_HOST_FOCUS_CHANNEL = 'coc-desktop:browser-host-focus';

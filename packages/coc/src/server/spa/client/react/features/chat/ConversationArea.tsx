@@ -211,6 +211,9 @@ export interface ConversationAreaProps {
      * history.
      */
     isCompacting?: boolean;
+    compactionQueued?: boolean;
+    onCancelCompaction?: () => void;
+    compactionError?: string;
     /** Custom instructions typed after the `/compact` token, surfaced in the compacting bubble. */
     compactInstructions?: string;
     /**
@@ -281,6 +284,9 @@ export function ConversationArea({
     postConversationContent,
     restartAction,
     isCompacting,
+    compactionQueued,
+    onCancelCompaction,
+    compactionError,
     compactInstructions,
     searchHighlightQuery,
 }: ConversationAreaProps) {
@@ -575,9 +581,10 @@ export function ConversationArea({
                                 );
                             });
                         })()}
-                        {isCompacting && (
-                            <CompactionBubble instructions={compactInstructions} />
+                        {(isCompacting || compactionQueued) && (
+                            <CompactionBubble instructions={compactInstructions} queued={compactionQueued} onCancel={onCancelCompaction} />
                         )}
+                        {compactionError && <div role="alert" className="text-red-600">{compactionError}</div>}
                         {pendingAskUserBatch && (
                             <AskUserInline
                                 key={pendingAskUserBatch.batchId}

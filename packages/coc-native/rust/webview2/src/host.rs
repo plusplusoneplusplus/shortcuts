@@ -19,7 +19,11 @@ use windows::{
             GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
         },
         System::{Com::*, Threading::*},
-        UI::{HiDpi::*, Input::KeyboardAndMouse::SetFocus, WindowsAndMessaging::*},
+        UI::{
+            HiDpi::*,
+            Input::KeyboardAndMouse::{GetKeyState, SetFocus, VK_CONTROL, VK_MENU},
+            WindowsAndMessaging::*,
+        },
     },
 };
 
@@ -992,6 +996,37 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     protocol::emit(
                         json!({ "event": "download", "viewId": view.root_id, "url": url }),
                     );
+                }
+                Ok(())
+            })),
+            &mut token,
+        )?;
+        let weak = Rc::downgrade(view);
+        view.controller.add_AcceleratorKeyPressed(
+            &AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
+                let (Some(view), Some(args)) = (weak.upgrade(), args) else {
+                    return Ok(());
+                };
+                if view.closed.get() || view.popup || view.bounds.get().is_none() {
+                    return Ok(());
+                }
+                let mut kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+                let mut key = 0;
+                args.KeyEventKind(&mut kind)?;
+                args.VirtualKey(&mut key)?;
+                if !protocol::close_shortcut(
+                    key,
+                    kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
+                    GetKeyState(VK_CONTROL.0 as i32) < 0,
+                    GetKeyState(VK_MENU.0 as i32) < 0,
+                ) {
+                    return Ok(());
+                }
+                args.SetHandled(true)?;
+                let mut status = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
+                args.PhysicalKeyStatus(&mut status)?;
+                if !status.WasKeyDown.as_bool() {
+                    protocol::emit(json!({ "event": "close-requested", "viewId": view.id }));
                 }
                 Ok(())
             })),

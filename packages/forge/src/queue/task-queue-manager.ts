@@ -69,6 +69,7 @@ export class TaskQueueManager extends EventEmitter {
     /** Set of paused repository IDs */
     private pausedRepos = new Set<string>();
     /** Set of processIds currently running (for per-process serialization in peek) */
+    private executionReservations = new Map<string, string>();
     private runningProcessIds = new Set<string>();
     /** Per-repo pause reason (present when paused due to task failure). */
     private pauseReasons = new Map<string, PauseReason>();
@@ -108,12 +109,21 @@ export class TaskQueueManager extends EventEmitter {
 
         const task: QueuedTask = {
             ...input,
+            config: input.config ?? {},
             id: input.id || generateTaskId(),
             status: 'queued',
             createdAt: Date.now(),
             retryCount: 0,
         };
 
+        if (task.processId && !('processPredecessorId' in task.config)) {
+            const predecessors = [...this.running.values(), ...this.getQueued()]
+                .filter(previous => (previous.processId ?? previous.payload.processId ?? (previous.type === 'chat' ? `queue_${previous.id}` : undefined)) === task.processId);
+            // Dependencies retain admission order even when priority or UI reordering changes queue position.
+            const referenced = new Set(predecessors.map(previous => previous.config?.processPredecessorId));
+            const last = predecessors.reverse().find(previous => !referenced.has(previous.id));
+            if (last) task.config = { ...task.config, processPredecessorId: last.id };
+        }
         const repoId = this.resolveTaskRepoId(task);
         const hadGate = repoId !== undefined && this.repoGates.has(repoId);
         this.insertTask(task);
@@ -168,6 +178,10 @@ export class TaskQueueManager extends EventEmitter {
                 return item;
             }
             const task = item as QueuedTask;
+            if (task.processId && (this.runningProcessIds.has(task.processId)
+                || Array.from(this.executionReservations.values()).includes(task.processId))) continue;
+            const predecessor = task.config?.processPredecessorId && this.getTask(task.config.processPredecessorId);
+            if (predecessor && (predecessor.status === 'queued' || predecessor.status === 'running')) continue;
             if (task.frozen) continue;
             if (!this.isAllowedByRepoGate(task)) continue;
             if (this.getTaskRepoId && this.pausedRepos.size > 0) {
@@ -199,6 +213,10 @@ export class TaskQueueManager extends EventEmitter {
                 return item;
             }
             const task = item as QueuedTask;
+            if (task.processId && (this.runningProcessIds.has(task.processId)
+                || Array.from(this.executionReservations.values()).includes(task.processId))) continue;
+            const predecessor = task.config?.processPredecessorId && this.getTask(task.config.processPredecessorId);
+            if (predecessor && (predecessor.status === 'queued' || predecessor.status === 'running')) continue;
             if (task.frozen) continue;
             if (!this.isAllowedByRepoGate(task)) continue;
             if (this.getTaskRepoId && this.pausedRepos.size > 0) {
@@ -209,8 +227,6 @@ export class TaskQueueManager extends EventEmitter {
             // An autopilot cooldown holds only autopilot/ralph work, so ask and
             // script tasks queued behind it keep flowing.
             if (this.isExclusiveFn?.(task) && this.getTaskDelayUntil('autopilot') !== undefined) continue;
-            // Per-process serialization: skip tasks targeting a process that already has a running task
-            if (task.processId && this.runningProcessIds.has(task.processId)) continue;
             return task;
         }
         return undefined;
@@ -219,6 +235,17 @@ export class TaskQueueManager extends EventEmitter {
     // ========================================================================
     // Queue Access
     // ========================================================================
+
+    /** Keep conversation ownership until executor cleanup settles, including after cancellation. */
+    beginExecution(task: QueuedTask): void {
+        const processId = task.processId ?? task.payload.processId
+            ?? (task.type === 'chat' ? `queue_${task.id}` : undefined);
+        if (typeof processId === 'string') this.executionReservations.set(task.id, processId);
+    }
+
+    endExecution(taskId: string): void {
+        this.executionReservations.delete(taskId);
+    }
 
     /**
      * Get all tasks (queued + running + history)
@@ -463,6 +490,12 @@ export class TaskQueueManager extends EventEmitter {
         if (queueIndex !== -1) {
             const [item] = this.queue.splice(queueIndex, 1);
             const task = item as QueuedTask;
+            for (const successor of this.getQueued()) {
+                if (successor.config.processPredecessorId === task.id) {
+                    successor.config = { ...successor.config, processPredecessorId: task.config.processPredecessorId };
+                    this.emitChange('updated', successor);
+                }
+            }
             task.status = 'cancelled';
             task.completedAt = Date.now();
             this.addToHistory(task);
@@ -474,6 +507,7 @@ export class TaskQueueManager extends EventEmitter {
         // Try to cancel running task
         const running = this.running.get(id);
         if (running) {
+            if (running.config?.cancelRunning === false) return false;
             running.status = 'cancelled';
             running.completedAt = Date.now();
             this.running.delete(id);
@@ -1293,6 +1327,7 @@ export class TaskQueueManager extends EventEmitter {
             task.status = 'cancelled';
             task.completedAt = Date.now();
             this.addToHistory(task);
+            this.emitChange('removed', task);
         }
 
         this.emitChange('cleared');
@@ -1378,6 +1413,7 @@ export class TaskQueueManager extends EventEmitter {
         this.queue = [];
         this.running.clear();
         this.runningProcessIds.clear();
+        this.executionReservations.clear();
         this.history = [];
         this.paused = false;
         this.pausedUntil = undefined;

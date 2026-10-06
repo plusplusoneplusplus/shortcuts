@@ -48,7 +48,8 @@ import { getRepoDataPath } from '../paths';
 import { readActiveProviderSession } from '../processes/active-provider-session';
 import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetry';
 import { processOperationAdmission } from '../processes/process-operation-admission';
-import { compactGuardError, compactProcess } from '../processes/compact-process';
+import { pendingMessageTask } from '../processes/queued-pending-message';
+import { cancelQueuedCompaction, compactProcess } from '../processes/compact-process';
 import { projectProcessBotControl, projectProcessIndexBotControl } from '../processes/bot-control-read-model';
 
 /** Valid AIProcessStatus values for validation. */
@@ -669,15 +670,14 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
     //
     // Unlike /rewind, this is non-destructive to CoC's stored transcript: the
     // provider session's history is summarized in place, but CoC's
-    // conversation_turns are left untouched — the SPA surfaces the result as a
-    // transient inline info message rather than rewriting the displayed history.
+    // conversation_turns are retained and a display-only result is appended.
+    // Busy conversations admit one durable task after already admitted turns.
     //
     // Body (optional): { customInstructions?: string } — focuses the summary.
     //
     // Guards:
     //   - unknown process                          → 404
     //   - process has no SDK session               → 400
-    //   - a turn is active (running/queued/pending) → 409 CONVERSATION_NOT_IDLE
     //   - provider does not support compaction     → 422 COMPACT_UNSUPPORTED
     routes.push(createRoute({
         method: 'POST',
@@ -689,10 +689,6 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (!proc) {
                 return void handleAPIError(res, notFound('Process'));
             }
-            const guard = compactGuardError(proc);
-            if (guard) {
-                return void handleAPIError(res, guard);
-            }
 
             // Optional { customInstructions?: string } body. parseBody resolves {}
             // for an empty body; only invalid JSON rejects (sends its own 400).
@@ -700,10 +696,22 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             if (body === null) return;
             const customInstructions = typeof body.customInstructions === 'string' ? body.customInstructions : undefined;
             try {
-                return (await compactProcess(store, proc, customInstructions)).result;
+                return (await compactProcess(store, proc, customInstructions, bridge)).result;
             } catch (err) {
                 return void handleAPIError(res, err);
             }
+        },
+    }));
+
+    routes.push(createRoute({
+        method: 'DELETE', pattern: /^\/api\/processes\/([^/]+)\/compact$/,
+        handler: async ({ req, res, match }) => {
+            const proc = await resolveProcess(store, decodeURIComponent(match[1]), parseQueryParams(req.url || '/').workspaceId);
+            if (!proc) return void handleAPIError(res, notFound('Process'));
+            if (!bridge || !await cancelQueuedCompaction(store, proc, bridge)) {
+                return void handleAPIError(res, new APIError(409, 'Compaction is no longer queued.', 'COMPACTION_NOT_QUEUED'));
+            }
+            return { cancelled: true };
         },
     }));
 
@@ -1435,9 +1443,13 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 createdAt: new Date().toISOString(),
             };
 
-            const existing = proc.pendingMessages ?? [];
-            await store.updateProcess(id, {
-                pendingMessages: [...existing, pendingMsg],
+            await processOperationAdmission.runExclusive(proc.id, async () => {
+                const current = await store.getProcess(proc.id) ?? proc;
+                await store.appendPendingMessage(proc.id, pendingMsg);
+                if (bridge?.enqueue && (current.metadata?.compaction?.state === 'queued'
+                    || current.metadata?.compaction?.state === 'running' || bridge.findCompactionTask?.(proc.id))) {
+                    await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, pendingMessageTask(current, pendingMsg));
+                }
             });
 
             emitPendingMessageAdded(store, id, pendingMsg);
@@ -1459,9 +1471,10 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
                 return void handleAPIError(res, notFound('Process'));
             }
 
-            const existing = proc.pendingMessages ?? [];
-            const filtered = existing.filter(m => m.id !== msgId);
-            await store.updateProcess(proc.id, { pendingMessages: filtered });
+            await processOperationAdmission.runExclusive(proc.id, async () => {
+                bridge?.cancelQueuedTask?.(`pending-${proc.id}-${msgId}`);
+                await store.removePendingMessage(proc.id, msgId);
+            });
 
             res.writeHead(204);
             res.end();

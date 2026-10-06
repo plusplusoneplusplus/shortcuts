@@ -567,6 +567,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         // later metadata change from retargeting a message
                         // that is already queued.
                         {
+                            ...(task.payload.deferredMessage ? { userTurnPersisted: true } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),
                             ...(typeof followUpPayload.historyCutoffTurnIndex === 'number'
                                 ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }

@@ -85,6 +85,7 @@ import {
     __resetDiffEngineForTesting,
 } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffEngine';
 import type { DiffEditorFactory } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffEditorAdapter';
+import { __resetDiffWordWrapForTesting } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffWordWrap';
 
 let fakes: FakeDiffEditor[];
 const createDiffEditor: DiffEditorFactory = async (_host, options) => {
@@ -115,6 +116,7 @@ beforeEach(() => {
     fakes = [];
     localStorage.clear();
     __resetDiffEngineForTesting();
+    __resetDiffWordWrapForTesting();
     getGlobal.mockReset().mockReturnValue(new Promise(() => {}));
     patchGlobal.mockReset().mockResolvedValue({});
     clients['ws-a'] = makeClient();
@@ -122,6 +124,18 @@ beforeEach(() => {
 });
 
 describe('WorkingTreeFileDiff — diff engine', () => {
+    it.each(['staged', 'unstaged'] as const)('toggles word wrap in a mounted %s editor', async stage => {
+        await renderDiff({ stage });
+        const toggle = screen.getByRole('button', { name: 'Word wrap' });
+        await act(async () => { fireEvent.click(toggle); });
+        expect(fakes).toHaveLength(1);
+        expect(fakes[0].options.at(-1)).toMatchObject({ wordWrap: 'on', diffWordWrap: 'on' });
+        expect(patchGlobal).toHaveBeenCalledWith({ diffWordWrap: true });
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
+        expect(screen.queryByRole('button', { name: 'Word wrap' })).toBeNull();
+        await act(async () => { fireEvent.click(screen.getByTestId('diff-engine-toggle')); });
+        expect(fakes.at(-1)?.options.at(-1)).toMatchObject({ wordWrap: 'on', diffWordWrap: 'on' });
+    });
     it('renders the editor by default with no cached or server choice', async () => {
         await renderDiff();
         expect(screen.getByTestId('diff-engine-toggle').getAttribute('data-value')).toBe('monaco');

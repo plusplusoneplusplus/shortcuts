@@ -2403,11 +2403,15 @@ export function ChatListPane({
     const spawnedTreeEnabled = isSpawnedTreeViewEnabled();
     const spawnedTreeView = useMemo(() => {
         const queueTasks = tabFilteredQueued.filter((task: any) => task.kind !== 'pause-marker');
+        // Individual pins render in Pinned (or Running), never inside a spawn
+        // tree. Keep parent links intact so unpinning restores normal grouping.
+        const treeTasks = [...tabFilteredRunning, ...queueTasks, ...tabFilteredHistory]
+            .filter(task => !pinnedChatIds || !taskIdentityMatches(task, pinnedChatIds));
         return buildSpawnedTreeChatView(
-            [...tabFilteredRunning, ...queueTasks, ...tabFilteredHistory],
+            treeTasks,
             { enabled: spawnedTreeEnabled, unseenIds: unseenProcessIds, excludeIds: workflowGroupedTaskIds },
         );
-    }, [spawnedTreeEnabled, tabFilteredRunning, tabFilteredQueued, tabFilteredHistory, unseenProcessIds, workflowGroupedTaskIds]);
+    }, [spawnedTreeEnabled, tabFilteredRunning, tabFilteredQueued, tabFilteredHistory, unseenProcessIds, workflowGroupedTaskIds, pinnedChatIds]);
     const spawnedTreeGroups = spawnedTreeView.groups;
 
     // AC-01/AC-02: when a chat that is a spawned-tree node is archived, its whole

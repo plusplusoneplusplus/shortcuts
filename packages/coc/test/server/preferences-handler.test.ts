@@ -78,6 +78,15 @@ function request(
     });
 }
 
+/**
+ * `server.url` says `localhost`, which can resolve to `::1` first. Sibling test
+ * workers bind CoC servers on `::1`, so a same-numbered port there would answer
+ * these requests instead. Target the address this server actually bound.
+ */
+function boundUrl(server: ExecutionServer): string {
+    return `http://${server.host}:${server.port}`;
+}
+
 function getJSON(url: string) {
     return request(url);
 }
@@ -141,6 +150,18 @@ describe('readPreferences / writePreferences', () => {
         writeRepoPreferences(tmpDir, 'repo-1', { lastModel: 'claude-sonnet-4.6' });
         const result = readRepoPreferences(tmpDir, 'repo-1');
         expect(result.lastModel).toBe('claude-sonnet-4.6');
+    });
+
+    it('persists global diff word wrap while preserving preferences for multiple workspaces', () => {
+        writeRepoPreferences(tmpDir, 'repo-a', { lastModel: 'model-a' });
+        writeRepoPreferences(tmpDir, 'repo-b', { lastModel: 'model-b' });
+        for (const diffWordWrap of [true, false]) {
+            const result = applyGlobalPreferencesPatch(readGlobalPreferences(tmpDir), { diffWordWrap });
+            writePreferences(tmpDir, { global: result.preferences });
+            expect(readGlobalPreferences(tmpDir).diffWordWrap).toBe(diffWordWrap);
+            expect(readRepoPreferences(tmpDir, 'repo-a').lastModel).toBe('model-a');
+            expect(readRepoPreferences(tmpDir, 'repo-b').lastModel).toBe('model-b');
+        }
     });
 
     it('round-trips global HTML embed preference', () => {
@@ -1571,6 +1592,15 @@ describe('validateGlobalPreferences', () => {
 
     // -- diffEngine field --
 
+    it('validates diff word wrap without changing other global preferences', () => {
+        for (const diffWordWrap of [true, false]) {
+            expect(validateGlobalPreferences({ theme: 'dark', diffWordWrap })).toEqual({ theme: 'dark', diffWordWrap });
+        }
+        for (const diffWordWrap of ['on', 1, null]) {
+            expect(validateGlobalPreferences({ diffWordWrap })).toEqual({});
+        }
+    });
+
     it('accepts diffEngine legacy and monaco', () => {
         expect(validateGlobalPreferences({ diffEngine: 'legacy' })).toEqual({ diffEngine: 'legacy' });
         expect(validateGlobalPreferences({ diffEngine: 'monaco' })).toEqual({ diffEngine: 'monaco' });
@@ -1638,7 +1668,7 @@ describe('Preferences REST API', () => {
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-prefs-api-'));
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
     });
 
     afterEach(async () => {
@@ -1796,7 +1826,7 @@ describe('Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
@@ -1853,7 +1883,7 @@ describe('Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
@@ -1909,7 +1939,7 @@ describe('Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).gitGroupOrder).toEqual(order);
@@ -1958,7 +1988,7 @@ describe('Preferences REST API', () => {
 
         await server.close();
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).hasSeenWelcome).toBe(true);
@@ -1995,7 +2025,7 @@ describe('Preferences REST API', () => {
 
         await server.close();
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).onboardingProgress).toEqual({ hasCompletedTour: true });
@@ -2048,7 +2078,7 @@ describe('Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).activityFilters).toEqual(filters);
@@ -2101,7 +2131,7 @@ describe('Per-Repo Preferences REST API', () => {
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-repo-prefs-'));
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
     });
 
     afterEach(async () => {
@@ -2550,7 +2580,7 @@ describe('Per-Repo Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(repoUrl(repoId));
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4', lastDepth: 'deep' });
@@ -2766,7 +2796,7 @@ describe('Per-Repo Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(repoUrl(repoId));
         expect(JSON.parse(res.body).activityFilters).toEqual({ statusFilter: 'queued', typeFilter: 'run-workflow' });

@@ -9,7 +9,7 @@ export async function admitBotControlledFollowUp<T>(
     workspaceId: string,
     processId: string,
     source: BotControlSource,
-    admit: () => Promise<T>,
+    admit: (admissionHeld?: boolean) => Promise<T>,
 ): Promise<T> {
     return processOperationAdmission.runExclusive(processId, async () => {
         const process = await store.getProcess(processId, workspaceId);
@@ -23,7 +23,7 @@ export async function admitBotControlledFollowUp<T>(
             if (control.source !== source) {
                 throw new Error('Conversation is already controlled by another integration');
             }
-            return admit();
+            return admit(true);
         }
 
         const claimed = createBotControlMetadata(source);
@@ -31,7 +31,7 @@ export async function admitBotControlledFollowUp<T>(
             await store.updateProcess(processId, {
                 metadata: { ...process.metadata, botControl: claimed },
             });
-            return await admit();
+            return await admit(true);
         } catch (admissionError) {
             try {
                 const current = await store.getProcess(processId, workspaceId);

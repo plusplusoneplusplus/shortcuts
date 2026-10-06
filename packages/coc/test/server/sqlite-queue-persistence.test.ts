@@ -547,6 +547,54 @@ describe('SqliteQueuePersistence', () => {
             }
         });
 
+        it('restores queued compaction dependencies without cycling through a restarted earlier turn', () => {
+            const rootPath = path.join(os.tmpdir(), 'compact-recovery');
+            const rId = repoId(rootPath);
+            bridge.registerRepoId(rId, rootPath);
+            persistence = new SqliteQueuePersistence(bridge, db, { restartPolicy: 'requeue' });
+            db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(rId, rootPath);
+            const processId = 'conversation';
+            store.upsertQueueTask(makeTask('earlier', { repoId: rId, processId, status: 'running', type: 'chat',
+                payload: { kind: 'chat', processId, prompt: 'earlier', workspaceId: rId } }));
+            store.upsertQueueTask(makeTask('compact', { repoId: rId, processId, type: 'chat',
+                payload: { kind: 'compact', processId, workspaceId: rId, customInstructions: 'keep original' },
+                config: { processPredecessorId: 'earlier', retryOnFailure: false } }));
+            store.upsertQueueTask(makeTask('later', { repoId: rId, processId, type: 'chat',
+                payload: { kind: 'chat', processId, prompt: 'later', workspaceId: rId }, config: { processPredecessorId: 'compact' } }));
+            persistence.restore();
+            const manager = registry.getQueueForRepo(rootPath)!;
+            expect(manager.getTask('earlier')!.config.processPredecessorId).toBeUndefined();
+            expect(manager.peek()!.id).toBe('earlier');
+            manager.markStarted('earlier'); manager.markCompleted('earlier');
+            expect(manager.peek()!.id).toBe('compact');
+            expect(manager.getTask('compact')!.payload.customInstructions).toBe('keep original');
+            manager.markStarted('compact'); manager.markFailed('compact', 'failed');
+            expect(manager.peek()!.id).toBe('later');
+        });
+
+        it('settles interrupted compaction despite requeue policy and releases later turns', () => {
+            const rootPath = path.join(os.tmpdir(), 'compact-interrupted');
+            const rId = repoId(rootPath);
+            bridge.registerRepoId(rId, rootPath);
+            persistence = new SqliteQueuePersistence(bridge, db, { restartPolicy: 'requeue' });
+            db.prepare('INSERT OR REPLACE INTO queue_repo_paths (repo_id, root_path) VALUES (?, ?)').run(rId, rootPath);
+            const metadata = { type: 'chat', workspaceId: rId, compaction: {
+                state: 'running', taskId: 'compact', priorStatus: 'completed', startedAt: new Date().toISOString(),
+            } };
+            db.prepare('INSERT INTO processes (id, workspace_id, status, start_time, metadata) VALUES (?, ?, ?, ?, ?)')
+                .run('conversation', rId, 'running', new Date().toISOString(), JSON.stringify(metadata));
+            store.upsertQueueTask(makeTask('compact', { repoId: rId, processId: 'conversation', status: 'running', type: 'chat',
+                payload: { kind: 'compact', processId: 'conversation', workspaceId: rId } }));
+            store.upsertQueueTask(makeTask('later', { repoId: rId, processId: 'conversation', config: { processPredecessorId: 'compact' } }));
+            persistence.restore();
+            const manager = registry.getQueueForRepo(rootPath)!;
+            expect(manager.getTask('compact')).toBeUndefined();
+            expect(manager.peek()!.id).toBe('later');
+            const row = db.prepare('SELECT status, metadata FROM processes WHERE id = ?').get('conversation') as any;
+            expect(row.status).toBe('completed');
+            expect(JSON.parse(row.metadata).compaction).toMatchObject({ state: 'failed', error: 'Compaction interrupted by server restart' });
+        });
+
         it('with running tasks + fail policy — removes from DB', () => {
             const rootPath = '/repo/fail-policy';
             const rId = repoId(rootPath);

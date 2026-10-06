@@ -70,6 +70,7 @@ import { FakeClient } from '../../../language-servers/fakeLanguageTransport';
 import { UnifiedPanelHostProvider, type UnifiedPanelHost } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelHost';
 import { clearUnifiedChatCanvasActions, publishUnifiedChatCanvasActions } from '../../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedChatCanvasActions';
 import { formatDiffCommentPrompt } from '../../../../../../src/server/spa/client/react/utils/diffCommentPrompt';
+import { __resetDiffWordWrapForTesting } from '../../../../../../src/server/spa/client/react/features/git/hooks/useDiffWordWrap';
 
 const ORIGINAL = 'a\nb\nc\n';
 const MODIFIED = 'a\nB\nc\nd\n';
@@ -168,6 +169,7 @@ beforeEach(() => {
     localStorage.clear();
     localStorage.setItem(DIFF_ENGINE_STORAGE_KEY, 'monaco');
     __resetDiffEngineForTesting();
+    __resetDiffWordWrapForTesting();
     vi.stubGlobal('WebSocket', class {
         addEventListener() {}
         send() {}
@@ -220,6 +222,19 @@ function publishChat(chatId: string) {
 }
 
 describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco comments', kind => {
+    it('offers word wrap and preserves it across layout and engine switches', async () => {
+        await mount(makeSource(kind));
+        const editor = fake();
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Word wrap' })); });
+        expect(editor.options.at(-1)).toMatchObject({ wordWrap: 'on', diffWordWrap: 'on' });
+        fireEvent.click(screen.getByTestId('diff-view-toggle'));
+        expect(fake()).toBe(editor);
+        expect(editor.options.at(-1)).toMatchObject({ renderSideBySide: true, diffWordWrap: 'on' });
+        await toggleEngine('legacy');
+        expect(screen.queryByRole('button', { name: 'Word wrap' })).toBeNull();
+        await toggleEngine('monaco');
+        expect(fake().options.at(-1)?.diffWordWrap).toBe('on');
+    });
     it('portals stored comments and replies without changing their persisted shape', async () => {
         const source = makeSource(kind);
         const initial = comment(source, 'c1', {

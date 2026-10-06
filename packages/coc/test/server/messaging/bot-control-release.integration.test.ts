@@ -31,7 +31,7 @@ describe('authoritative bot control release persistence', () => {
         persistence.restore();
     };
     const enqueue = (source: 'teams' | 'whatsapp', patch: Partial<QueuedTask> = {}) => {
-        router.enqueue({
+        return router.enqueue({
             id: 'origin', type: 'chat', processId, repoId: 'ws-a', priority: 'normal', config: {},
             botControl: createBotControlMetadata(source),
             payload: { kind: 'chat', prompt: 'request', workspaceId: 'ws-a' }, ...patch,
@@ -69,7 +69,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it.each(['teams', 'whatsapp'] as const)('clears %s process and origin authority before binding removal, durably and idempotently', async source => {
-        enqueue(source);
+        await enqueue(source);
         await register(source);
         const remove = vi.fn(async () => {
             expect((await store.getProcess(processId))?.metadata).not.toHaveProperty('botControl');
@@ -87,7 +87,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it.each(['teams', 'whatsapp'] as const)('clears accepted pending %s origins across restart without cancelling execution', async source => {
-        enqueue(source);
+        await enqueue(source);
         await release(source);
         restart();
         expect(router.getTask('origin')).toMatchObject({ status: 'queued', repoId: 'ws-a', processId });
@@ -97,7 +97,7 @@ describe('authoritative bot control release persistence', () => {
 
     it.each(['teams', 'whatsapp'] as const)(
         'releases an adopted nested %s fork without consulting inherited queue authority', async source => {
-            enqueue(source === 'teams' ? 'whatsapp' : 'teams');
+            await enqueue(source === 'teams' ? 'whatsapp' : 'teams');
             await register(source === 'teams' ? 'whatsapp' : 'teams');
             const original = await store.getProcess(processId);
             const originalTask = new SqliteQueueStore(store.getDatabase()).getQueueTasks().find(task => task.id === 'origin');
@@ -122,7 +122,7 @@ describe('authoritative bot control release persistence', () => {
 
     it.each(['workspace', 'controller'] as const)(
         'rejects adopted-fork %s drift before preparing release', async drift => {
-            enqueue('teams');
+            await enqueue('teams');
             await register('teams');
             const fork = await store.forkProcess(processId, 'fork');
             await admitBotControlledFollowUp(store, 'ws-a', fork.id, 'whatsapp', async () => {});
@@ -140,12 +140,12 @@ describe('authoritative bot control release persistence', () => {
 
     it.each(['valid', 'workspace', 'process', 'payload'] as const)(
         'validates a fork with its own initial queue authority (%s)', async state => {
-            enqueue('teams');
+            await enqueue('teams');
             await register('teams');
             const fork = await store.forkProcess(processId, 'queue_fork-origin');
             await store.updateProcess(fork.id, { metadata: { ...fork.metadata, queueTaskId: 'fork-origin',
                 botControl: createBotControlMetadata('teams') } });
-            enqueue('teams', { id: 'fork-origin', processId: state === 'process' ? processId : fork.id,
+            await enqueue('teams', { id: 'fork-origin', processId: state === 'process' ? processId : fork.id,
                 repoId: state === 'workspace' ? 'ws-b' : 'ws-a',
                 payload: { kind: 'chat', workspaceId: state === 'workspace' ? 'ws-b' : 'ws-a', prompt: 'request',
                     ...(state === 'payload' ? { processId: 'another' } : {}) } });
@@ -171,7 +171,7 @@ describe('authoritative bot control release persistence', () => {
     );
 
     it('rejects mismatched saved authority on an ordinary conversation without mutating a reassigned source task', async () => {
-        enqueue('teams', { processId: 'unrelated' });
+        await enqueue('teams', { processId: 'unrelated' });
         await store.addProcess({
             id: 'unrelated', type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'request',
             metadata: { type: 'chat', workspaceId: 'ws-a', queueTaskId: 'origin',
@@ -186,7 +186,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it('releases a reserved pending origin before its processId is assigned by execution', async () => {
-        enqueue('teams', { processId: undefined });
+        await enqueue('teams', { processId: undefined });
         await release('teams');
         restart();
         expect(router.getTask('origin')).not.toHaveProperty('botControl');
@@ -194,7 +194,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it.each(['teams', 'whatsapp'] as const)('retains valid %s ownership through running recovery until explicitly released', async source => {
-        enqueue(source);
+        await enqueue(source);
         await register(source);
         router.registry.getQueueForRepo(path.join(dir, 'ws-a')).markStarted('origin');
         restart();
@@ -206,7 +206,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it.each(['teams', 'whatsapp'] as const)('restores exact %s control and saved link when binding removal fails, then permits retry', async source => {
-        enqueue(source);
+        await enqueue(source);
         await register(source);
         const prior = (await store.getProcess(processId))!.metadata!.botControl;
         const remove = vi.fn().mockRejectedValueOnce(new Error('binding write rejected')).mockResolvedValue(undefined);
@@ -220,7 +220,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it('rolls back queue clearing and keeps the binding when process persistence fails', async () => {
-        enqueue('teams');
+        await enqueue('teams');
         await register('teams');
         const update = vi.spyOn(store, 'updateProcess');
         update.mockRejectedValueOnce(new Error('process write rejected'));
@@ -234,7 +234,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it('compensates a committed process write whose observer throws', async () => {
-        enqueue('whatsapp');
+        await enqueue('whatsapp');
         await register('whatsapp');
         const update = store.updateProcess.bind(store);
         vi.spyOn(store, 'updateProcess').mockImplementationOnce(async (id, updates) => {
@@ -249,7 +249,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it('keeps process, queue, and binding on durable queue rejection, then retries', async () => {
-        enqueue('teams');
+        await enqueue('teams');
         await register('teams');
         store.getDatabase().exec(`CREATE TRIGGER reject_release BEFORE INSERT ON queue_tasks
             WHEN NEW.id = 'origin' AND NEW.bot_control IS NULL
@@ -265,9 +265,9 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it('does not erase other-workspace queued authority or process metadata', async () => {
-        enqueue('teams');
+        await enqueue('teams');
         await register('teams');
-        enqueue('whatsapp', { id: 'other', processId: 'queue_other', repoId: 'ws-b',
+        await enqueue('whatsapp', { id: 'other', processId: 'queue_other', repoId: 'ws-b',
             payload: { kind: 'chat', workspaceId: 'ws-b', prompt: 'other' } });
         await store.addProcess({
             id: 'queue_other', type: 'chat', status: 'completed', startTime: new Date(), promptPreview: 'other',
@@ -279,7 +279,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it.each(['process', 'queue'] as const)('rejects competing %s ownership without touching the binding', async target => {
-        enqueue(target === 'queue' ? 'whatsapp' : 'teams');
+        await enqueue(target === 'queue' ? 'whatsapp' : 'teams');
         await register(target === 'process' ? 'whatsapp' : 'teams');
         const remove = vi.fn(async () => {});
         await expect(release('teams', remove)).rejects.toThrow('already controlled');
@@ -289,7 +289,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it.each(['process', 'queue'] as const)('rejects malformed %s ownership rather than overwriting it', async target => {
-        enqueue('teams');
+        await enqueue('teams');
         await register('teams');
         if (target === 'process') {
             const process = (await store.getProcess(processId))!;
@@ -304,7 +304,7 @@ describe('authoritative bot control release persistence', () => {
     });
 
     it('rejects a workspace hint even when the SQLite single-process reader ignores it', async () => {
-        enqueue('teams');
+        await enqueue('teams');
         await register('teams');
         const remove = vi.fn(async () => {});
         await expect(releaseBotControlledConversation(store, router.createAggregateQueueFacade(), 'ws-b',
@@ -317,7 +317,7 @@ describe('authoritative bot control release persistence', () => {
         { payload: { kind: 'chat', workspaceId: 'ws-b', prompt: 'request' } },
         { payload: { kind: 'chat', workspaceId: 'ws-a', prompt: 'request', processId: 'another' } },
     ])('rejects contradictory pending authority (%j)', async patch => {
-        enqueue('teams', patch);
+        await enqueue('teams', patch);
         const remove = vi.fn(async () => {});
         await expect(release('teams', remove)).rejects.toThrow('authority does not match');
         expect(remove).not.toHaveBeenCalled();

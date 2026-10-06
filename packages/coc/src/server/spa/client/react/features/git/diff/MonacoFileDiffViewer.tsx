@@ -29,6 +29,7 @@ import { Spinner } from '../../../ui';
 import { useTheme } from '../../../layout/ThemeProvider';
 import type { DiffLine, UnifiedDiffViewerHandle } from './UnifiedDiffViewer';
 import type { DiffViewMode } from '../hooks/useDiffViewMode';
+import { useDiffWordWrap } from '../hooks/useDiffWordWrap';
 import { createDiffLineIndexResolver, type DiffLineChange } from './diffCoords';
 import type { DiffComment } from '../../../../comments/diff-comment-types';
 import {
@@ -135,6 +136,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
         'data-testid': testId = 'monaco-file-diff-viewer',
     }, ref) {
         const { theme } = useTheme();
+        const [wordWrap] = useDiffWordWrap();
         const hostRef = useRef<HTMLDivElement | null>(null);
         const controllerRef = useRef<MonacoDiffController | null>(null);
         const [attached, setAttached] = useState(false);
@@ -153,7 +155,7 @@ export const MonacoFileDiffViewer = forwardRef<MonacoFileDiffViewerHandle, Monac
             [workspaceId, relativePath, stage, modelIdentity, modifiedMatchesWorkingCopy, original, modified],
         );
         const editable = isEditableDiff(editableRequested, stage, models);
-        const options = useMemo(() => buildDiffEditorOptions(viewMode, editable), [viewMode, editable]);
+        const options = useMemo(() => buildDiffEditorOptions(viewMode, editable, wordWrap), [viewMode, editable, wordWrap]);
         const language = useDiffLanguageFeatures({
             workspaceId,
             relativePath,

@@ -89,11 +89,12 @@ function listen(server, port = 0) {
 /** Stand-in SPA: a right-panel placeholder the browser view should cover. */
 const spaHtml = '<!doctype html><html><body style="margin:0">'
     + '<div id="slot" style="position:absolute;left:400px;top:50px;width:400px;height:300px"></div>'
-    + '<script>window.__states = []; window.__newTabs = []; window.__downloads = [];'
+    + '<script>window.__states = []; window.__newTabs = []; window.__downloads = []; window.__closeRequests = [];'
     + 'var b = window.cocDesktop.browser;'
     + 'b.onState(function (s) { window.__states.push(s); });'
     + 'b.onNewTab(function (r) { window.__newTabs.push(r); });'
     + 'b.onDownload(function (d) { window.__downloads.push(d); });'
+    + 'b.onCloseRequested(function (r) { window.__closeRequests.push(r); });'
     + 'window.__last = function (id) { var l = window.__states.filter(function (s) { return s.viewId === id; }); return l[l.length - 1] || null; };'
     + 'window.__place = function (id) { var r = document.getElementById("slot").getBoundingClientRect();'
     + ' b.setBounds(id, { x: r.x, y: r.y, width: r.width, height: r.height }); };'
@@ -185,6 +186,36 @@ app.whenReady().then(async () => {
         userAgent: b1.webContents.getUserAgent(),
         ...probe,
     });
+
+    // Native page focus must forward through the real preload, never page DOM.
+    const modifiers = [process.platform === 'darwin' ? 'meta' : 'control'];
+    await b1.webContents.executeJavaScript(`document.body.innerHTML += '<input id="editable">';
+        document.getElementById('editable').focus();
+        window.__pageCloseKeys = 0;
+        document.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'w') window.__pageCloseKeys++; });`);
+    b1.webContents.focus();
+    const press = async (key, mods) => {
+        b1.webContents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers: mods });
+        b1.webContents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers: mods });
+        await sleep(100);
+    };
+    await press('W', [...modifiers, 'alt']);
+    const beforeClose = await spa('window.__closeRequests.length');
+    const beforePage = await b1.webContents.executeJavaScript('window.__pageCloseKeys');
+    await press('W', modifiers);
+    await waitFor(async () => (await spa('window.__closeRequests.length')) === beforeClose + 1);
+    await press('W', [...modifiers, 'isautorepeat']);
+    const forwarded = await spa('window.__closeRequests');
+    const pageCloseKeys = await b1.webContents.executeJavaScript('window.__pageCloseKeys');
+    await spa("window.cocDesktop.browser.hide('b1')");
+    await sleep(100);
+    await press('W', modifiers);
+    emit('close-shortcut', {
+        forwarded, beforeClose, beforePage, pageCloseKeys,
+        afterHidden: await spa('window.__closeRequests.length'),
+        windowAlive: !main.isDestroyed(), viewAlive: !b1.webContents.isDestroyed(),
+    });
+    await spa("window.__place('b1')");
 
     // 3. Link click navigates in the tab; redirects and in-page navigation update the URL.
     await b1.webContents.executeJavaScript(`document.getElementById('next').click()`, true);

@@ -177,6 +177,14 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
 function wireView(entry: BrowserEntry): void {
     const wc = entry.view.webContents;
     wireNavigation(entry, wc);
+    wc.on('before-input-event', (event, input) => {
+        // Only the embedded view, never authentication popups, owns this shortcut.
+        const modifier = process.platform === 'darwin' ? input.meta : input.control;
+        if (entry.closed || !entry.view.getVisible() || input.type !== 'keyDown'
+            || input.key.toLowerCase() !== 'w' || !modifier || input.alt) { return; }
+        event.preventDefault();
+        if (!input.isAutoRepeat) { entry.sink.closeRequested(); }
+    });
     const update = () => pushState(entry);
     wc.on('did-start-loading', () => {
         entry.error = undefined;

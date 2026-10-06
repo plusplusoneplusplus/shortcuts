@@ -3,6 +3,16 @@ import { CocClient, ProcessesClient } from '../../src';
 import { createMockAdapter } from './helpers';
 
 describe('ProcessesClient', () => {
+  it('preserves queued compaction responses and scopes cancellation to its workspace', async () => {
+    const adapter = createMockAdapter({ state: 'queued', taskId: 'compact-task' });
+    const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);
+    await expect(client.compact('proc/1', 'keep decisions', { workspace: 'remote/workspace' }))
+      .resolves.toEqual({ state: 'queued', taskId: 'compact-task' });
+    await client.cancelCompaction('proc/1', { workspace: 'remote/workspace' });
+    expect(adapter.calls[1]).toMatchObject({ path: '/processes/proc%2F1/compact',
+      options: { method: 'DELETE', query: { workspace: 'remote/workspace' } } });
+  });
+
   it('serializes list filters and gets process details', async () => {
     const adapter = createMockAdapter({ processes: [] });
     const client = new ProcessesClient(adapter, new CocClient({ fetch: (() => Promise.resolve(new Response('{}'))) as typeof fetch }).options);

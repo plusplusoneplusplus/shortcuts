@@ -127,6 +127,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/diff/DiffViewToggl
             {engine}
         </button>
     ),
+    DiffWordWrapToggle: () => <button data-testid="diff-word-wrap-toggle">Word wrap</button>,
 }));
 
 // Mock DiffMiniMap

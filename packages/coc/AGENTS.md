@@ -55,6 +55,11 @@ references before editing. Paths are package-relative.
 
 ## Runtime, Persistence, and Configuration
 
+- Conversation compaction shares process admission and durable queue dependencies.
+  Promote buffered turns before the boundary; later arrivals cannot steer across it.
+  Cancel removes queued compaction only. Running compaction never retries after restart.
+  Already-admitted messaging callbacks use `enqueueAdmitted` to avoid nested admission locks.
+
 - Production `createProcessStore` uses native `SqliteProcessStore` and `processes.db`;
   `store.backend: file` is ignored; file stores are test fixtures only.
   Native failures fail startup, without JavaScript persistence/index fallbacks.
@@ -181,7 +186,10 @@ references before editing. Paths are package-relative.
 - Sentinel chats are dispatchers: ask permissions plus the `<coc-sentinel-dispatcher>` block in
   the mode directive (`chat-mode-directive.ts`); `send_to_conversation` create mode from a
   sentinel defaults to `autopilot`. Delegation prefers explicit `provider: "auto"` unless the user
-  requests a particular provider/model; Auto uses target routing without parent AI inheritance.
+  requests a particular provider/model. Enabled Auto uses target routing without parent AI
+  inheritance. Disabled/unavailable Auto uses the parent's concrete provider after target
+  validation; local model/effort inherit normally, remote defaults stay destination-owned.
+  Explicit override, quota/runtime, and dispatch failures never trigger substitution.
   Omitted provider keeps ordinary inheritance. No workspace ownership or scan cron; any number may coexist.
   Startup cancels retired Sentinel scan crons (`src/server/cron/legacy-sentinel-crons.ts`).
 - Create PRs via `src/server/git/create-pull-request-service.ts` and injected runners.

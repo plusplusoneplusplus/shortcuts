@@ -25,6 +25,7 @@ import {
     ProcessOperationAdmission,
     processOperationAdmission,
 } from './process-operation-admission';
+import { pendingMessageTask } from './queued-pending-message';
 import { truncateDisplayName } from '../shared/queue-utils';
 import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
@@ -331,6 +332,9 @@ export class ProcessMessageDeliveryService {
     private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
+        const compactionPending = proc.metadata?.compaction?.state === 'queued'
+            || proc.metadata?.compaction?.state === 'running'
+            || !!this.bridge.findCompactionTask?.(id);
         const activeBinding = readActiveProviderSession(proc);
         const events: DeliveryEvent[] = [];
         const requestCorrelation = input.relayRequestId !== undefined
@@ -362,6 +366,7 @@ export class ProcessMessageDeliveryService {
             const pendingMessage = {
                 id: this.newId(),
                 ...requestCorrelation,
+                ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
                 content: input.content,
                 displayContent: input.displayContent,
                 ...(input.images ? { images: input.images } : {}),
@@ -379,16 +384,21 @@ export class ProcessMessageDeliveryService {
             await this.store.appendPendingMessage(id, pendingMessage);
             pendingMessageId = pendingMessage.id;
             events.push({ kind: 'pending-message-added', pendingMessage });
+            if (compactionPending && this.bridge.enqueue) {
+                taskId = await (this.bridge.enqueueAdmitted ?? this.bridge.enqueue).call(this.bridge, pendingMessageTask(proc, pendingMessage));
+            }
         };
 
         try {
             if (input.metadataUpdate) {
-                await this.store.updateProcess(id, { metadata: input.metadataUpdate });
+                await this.store.updateProcess(id, { metadata: { ...input.metadataUpdate, ...(proc.metadata?.compaction ? { compaction: proc.metadata.compaction } : {}) } });
             }
             if (this.bridge.enqueue) {
                 const displayName = truncateDisplayName(input.content.trim());
                 const parentTask = this.bridge.findTaskByProcessId?.(id);
-                if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && this.bridge.steerProcess) {
+                if (compactionPending) {
+                    await bufferAsPendingMessage();
+                } else if (parentTask && parentTask.status === 'running' && input.deliveryMode === 'immediate' && this.bridge.steerProcess) {
                     const steered = await this.bridge.steerProcess(id, input.content);
                     if (!steered) {
                         // Steering failed (no active SDK session); buffer for server-side drain.
@@ -407,7 +417,7 @@ export class ProcessMessageDeliveryService {
                 } else {
                     // Terminal status (failed or resumable cancelled) or restart fallback → enqueue.
                     const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
-                    taskId = await this.bridge.enqueue({
+                    taskId = await (this.bridge.enqueueAdmitted ?? this.bridge.enqueue).call(this.bridge, {
                         ...(isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
                         processId: id,
                         type: 'chat',

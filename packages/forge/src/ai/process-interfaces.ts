@@ -66,7 +66,9 @@ export interface BotControlMetadata {
  */
 export interface ProcessCompactionState {
     /** Lifecycle of the most recent compaction action. */
-    state: 'running' | 'completed' | 'failed';
+    state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+    /** Owning durable queue task, absent for immediate idle compaction. */
+    taskId?: string;
     /** Terminal status to restore once compaction settles (success or failure). */
     priorStatus: AIProcessStatus;
     /** ISO timestamp compaction started. */
@@ -523,6 +525,9 @@ export interface ActiveProviderSession {
  * Persisted on the AIProcess so it survives chat switches and page refreshes.
  */
 export interface PendingMessage {
+    /** Strict native session to resume for a stopped-chat continuation. */
+    resumeSessionId?: string;
+    reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
     /** Unique identifier (crypto.randomUUID) */
     id: string;
     /** Opaque origin request identifier, preserved when this message becomes a user turn. */

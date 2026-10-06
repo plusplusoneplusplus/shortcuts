@@ -802,6 +802,15 @@ export function UnifiedRightPanel({
         beginProtectedClose(id);
     }, [beginProtectedClose]);
 
+    // Native pages own their keyboard. The bridge identifies the source view;
+    // never use stale DOM focus or close a different active tab after a switch.
+    useEffect(() => desktopBrowserBridge()?.onCloseRequested?.(({ viewId }) => {
+        const root = panelRootRef.current;
+        if (!isOpen || !root || root.offsetParent === null
+            || active?.kind !== 'browser' || active.resourceId !== viewId) return;
+        requestClose(active.id);
+    }), [isOpen, active, requestClose]);
+
     const requestBulkClose = useCallback((ids: readonly string[]) => {
         bulkCloseQueue.current = [...ids];
         drainBulkClose();

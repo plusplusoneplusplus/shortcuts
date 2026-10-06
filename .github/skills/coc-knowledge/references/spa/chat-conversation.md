@@ -42,6 +42,14 @@ from the active binding. Compaction labels its display-only result turn with the
 provider and segment. Legacy CLI-resume records retain their metadata/default-provider
 and historical session-id fallbacks.
 
+### Conversation compaction
+
+`metadata.compaction` carries queued/running/completed/failed/cancelled state and the durable
+task ID. `CompactionBubble` offers Cancel while queued; messages remain sendable and follow
+the admission boundary. Owning-server socket updates refresh state across tabs and reloads;
+completion refreshes the transcript, failure stays visible, and queued state preserves the
+active turn's streaming placeholder. Compact and Cancel route through the workspace client.
+
 User turns render through the same escape-at-generation `chatMarkdownToHtml` pipeline as
 assistant turns (`breaks: true`, `linkifyFilePaths` skips code spans/blocks, raw HTML
 escaped and never injected); the raw toggle shows literal source. Local markdown anchors

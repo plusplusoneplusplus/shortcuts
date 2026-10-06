@@ -7,13 +7,23 @@
  * status, surfacing any custom instructions the user typed.
  */
 /* @vitest-environment jsdom */
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { CompactionBubble } from '../../../../src/server/spa/client/react/features/chat/CompactionBubble';
 
 afterEach(() => cleanup());
 
 describe('CompactionBubble', () => {
+    it('shows queued state and cancels only the requested operation', () => {
+        const cancel = vi.fn();
+        const { rerender } = render(<CompactionBubble queued onCancel={cancel} instructions="keep decisions" />);
+        expect(screen.getByRole('status').textContent).toContain('Compaction queued');
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(cancel).toHaveBeenCalledTimes(1);
+        rerender(<CompactionBubble onCancel={cancel} />);
+        expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    });
+
     it('renders the in-progress "Compacting context…" status', () => {
         render(<CompactionBubble />);
         expect(screen.getByTestId('compaction-bubble')).toBeTruthy();

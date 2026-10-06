@@ -1,6 +1,7 @@
 import React from 'react';
 import type { DiffViewMode } from '../hooks/useDiffViewMode';
 import type { DiffEngine } from '../hooks/useDiffEngine';
+import { useDiffWordWrap } from '../hooks/useDiffWordWrap';
 import { DIFF_TOOLBAR_NARROW_HIDDEN } from './diffToolbarClasses';
 
 interface ToggleOption<T extends string> {
@@ -92,5 +93,28 @@ export function DiffEngineToggle({ engine, onChange }: DiffEngineToggleProps) {
             buttons={ENGINE_BUTTONS}
             testId="diff-engine-toggle"
         />
+    );
+}
+
+/** Shared, keyboard-accessible toggle for Monaco's original and modified panes. */
+export function DiffWordWrapToggle() {
+    const [enabled, setEnabled] = useDiffWordWrap();
+    return (
+        <button
+            type="button"
+            aria-label="Word wrap"
+            aria-pressed={enabled}
+            title={enabled ? 'Disable word wrap' : 'Enable word wrap'}
+            onClick={() => setEnabled(!enabled)}
+            data-testid="diff-word-wrap-toggle"
+            className={[
+                'inline-flex items-center whitespace-nowrap shrink-0 rounded border px-2 py-0.5 text-xs transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0078d4]',
+                enabled
+                    ? 'border-[#0078d4] bg-[#ddeeff] text-[#005a9e] dark:border-[#3794ff] dark:bg-[#1e3a5f] dark:text-[#79c0ff]'
+                    : 'border-[#d0d7de] dark:border-[#30363d] bg-white dark:bg-[#161b22] text-[#1f2328] dark:text-[#c9d1d9] hover:bg-[#f3f4f6] dark:hover:bg-[#21262d]',
+            ].join(' ')}
+        >
+            Word wrap
+        </button>
     );
 }

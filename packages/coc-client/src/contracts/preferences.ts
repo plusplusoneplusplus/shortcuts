@@ -9,6 +9,8 @@ export interface GlobalPreferences {
   dismissedTips?: string[];
   /** Engine for the working-tree file diff. Absent means `monaco`. */
   diffEngine?: 'legacy' | 'monaco';
+  /** Wrap long lines in Monaco diffs. Absent means false. */
+  diffWordWrap?: boolean;
   htmlEmbed?: {
     enabled?: boolean;
   };

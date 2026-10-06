@@ -1036,6 +1036,16 @@ describe('TaskQueueManager', () => {
     });
 
     describe('clear', () => {
+        it('emits terminal task events so durable operations settle on clear', () => {
+            const id = manager.enqueue(createTestTask());
+            const listener = vi.fn();
+            manager.on('change', listener);
+            manager.clear();
+            expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'removed', task: expect.objectContaining({ id, status: 'cancelled' }),
+            }));
+        });
+
         it('removes all queued tasks', () => {
             manager.enqueue(createTestTask());
             manager.enqueue(createTestTask());
@@ -3803,5 +3813,62 @@ describe('delay between tasks', () => {
 
         expect(manager.getTaskDelayMinutes('all')).toBeUndefined();
         expect(manager.getTaskDelayUntil('all')).toBeUndefined();
+    });
+});
+
+describe('durable conversation admission dependencies', () => {
+    const input = (id: string, processId = 'chat-a'): CreateTaskInput => ({
+        id, processId, type: 'chat', priority: 'normal', payload: {}, config: {},
+    });
+
+    it('keeps priority, frozen tasks and reorder from crossing the conversation boundary', () => {
+        const manager = new TaskQueueManager({ keepHistory: false });
+        manager.enqueue(input('first'));
+        manager.enqueue(input('compact'));
+        manager.enqueue({ ...input('later'), priority: 'high' });
+        manager.moveToTop('later');
+        manager.freezeTask('first');
+        expect(manager.peek()).toBeUndefined();
+        expect(manager.dequeue()).toBeUndefined();
+        manager.enqueue(input('other', 'chat-b'));
+        expect(manager.peek()?.id).toBe('other');
+        manager.cancelTask('other');
+        manager.unfreezeTask('first');
+        expect(manager.peek()?.id).toBe('first');
+        manager.markStarted('first');
+        expect(manager.peek()).toBeUndefined();
+        manager.markCompleted('first');
+        expect(manager.peek()?.id).toBe('compact');
+    });
+
+    it('rewires cancellation dependencies even without history', () => {
+        const manager = new TaskQueueManager({ keepHistory: false });
+        manager.enqueue(input('first')); manager.enqueue(input('compact')); manager.enqueue(input('later'));
+        manager.moveToTop('later');
+        manager.cancelTask('compact');
+        expect(manager.getTask('later')?.config.processPredecessorId).toBe('first');
+        expect(manager.peek()?.id).toBe('first');
+    });
+
+    it('waits for a cancelled active turn to finish cleanup before starting compaction', () => {
+        const manager = new TaskQueueManager();
+        manager.enqueue(input('active'));
+        const task = manager.markStarted('active')!;
+        manager.beginExecution(task);
+        manager.enqueue(input('compact'));
+        manager.cancelTask('active');
+        expect(manager.peek()).toBeUndefined();
+        manager.endExecution('active');
+        expect(manager.peek()?.id).toBe('compact');
+    });
+
+    it('keeps a non-cancellable running operation serialized until it settles', () => {
+        const manager = new TaskQueueManager();
+        manager.enqueue({ ...input('compact'), config: { cancelRunning: false } });
+        manager.markStarted('compact'); manager.enqueue(input('later'));
+        expect(manager.cancelTask('compact')).toBe(false);
+        expect(manager.peek()).toBeUndefined();
+        manager.markFailed('compact', 'provider error');
+        expect(manager.peek()?.id).toBe('later');
     });
 });

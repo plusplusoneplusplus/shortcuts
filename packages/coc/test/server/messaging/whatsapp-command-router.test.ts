@@ -275,7 +275,7 @@ describe('WhatsApp workspace command routing', () => {
             await router.handle(inbound('select topic topic-a', 'pick'));
             send.mockResolvedValueOnce('compact-reply');
             await router.handle(inbound('Compact focus on the WhatsApp relay work', 'compact'));
-            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-a' }), 'focus on the WhatsApp relay work');
+            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-a' }), 'focus on the WhatsApp relay work', { connector: 'whatsapp', chatKey: 'group@g.us' });
             expect(send).toHaveBeenLastCalledWith('🗜️ Compacted "Topic A" — context 82k → 14k tokens', 'compact');
             expect(enqueue).not.toHaveBeenCalled();
             expect(react).not.toHaveBeenCalled();
@@ -293,7 +293,7 @@ describe('WhatsApp workspace command routing', () => {
                 inboundId: 'q-a', outboundIds: ['answer-a'], nextPart: 1, status: 'completed' as const };
             bindings.add(binding);
             await router.handle(inbound('compact', 'quoted', { quotedMessageId: 'answer-a' }));
-            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-a' }), undefined);
+            expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-a' }), undefined, { connector: 'whatsapp', chatKey: 'group@g.us' });
             expect(bindings.selectedRepo).toBe('ws-b');
             expect(bindings.topic('ws-b')).toBe('topic-b');
         });

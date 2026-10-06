@@ -178,6 +178,14 @@ export class SqliteQueuePersistence {
             const queueManager = this.bridge.registry.getQueueForRepo(rootPath);
             if (!queueManager) continue;
 
+            for (const item of repoItems) {
+                if (isPauseMarker(item) || item.payload.kind !== 'compact') continue;
+                const compaction = { state: 'queued', taskId: item.id, priorStatus: 'completed',
+                    startedAt: new Date(item.createdAt).toISOString(), customInstructions: item.payload.customInstructions };
+                this.db.prepare(`UPDATE processes SET metadata = json_set(COALESCE(metadata, '{}'), '$.compaction', json(?))
+                    WHERE id = ? AND workspace_id = ?`)
+                    .run(JSON.stringify(compaction), item.processId, repoId);
+            }
             queueManager.restoreQueueItems(repoItems);
             totalRestored += repoItems.length;
         }
@@ -386,6 +394,20 @@ export class SqliteQueuePersistence {
     // ========================================================================
 
     private restoreRunningTask(task: QueuedTask, queueManager: TaskQueueManager, repoId: string): number {
+        if (task.payload.kind === 'compact') {
+            // Provider mutation may already have succeeded. Never replay an interrupted compaction.
+            const error = 'Compaction interrupted by server restart';
+            this.db.transaction(() => {
+                this.store.upsertQueueTask({ ...task, status: 'failed', error, completedAt: Date.now() });
+                this.db.prepare(`UPDATE processes SET
+                    status = CASE WHEN json_extract(metadata, '$.compaction.priorStatus') IN ('completed','failed','cancelled')
+                        THEN json_extract(metadata, '$.compaction.priorStatus') ELSE 'completed' END,
+                    metadata = json_set(metadata, '$.compaction.state', 'failed', '$.compaction.error', ?, '$.compaction.completedAt', ?)
+                    WHERE id = ? AND workspace_id = ? AND json_extract(metadata, '$.compaction.taskId') = ?`)
+                    .run(error, new Date().toISOString(), task.processId, repoId, task.id);
+            })();
+            return 0;
+        }
         const policy = this.restartPolicy;
         const shouldRequeue =
             policy === 'requeue' ||
@@ -428,7 +450,7 @@ export class SqliteQueuePersistence {
                         type: task.type,
                         priority: 'high',
                         payload,
-                        config: task.config,
+                        config: { ...task.config, processPredecessorId: task.config.processPredecessorId },
                         displayName: task.displayName,
                         repoId: task.repoId,
                         botControl: task.botControl,

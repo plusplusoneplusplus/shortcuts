@@ -6,6 +6,7 @@ export interface BotControlUpdate {
     processId: string;
     workspaceId?: string;
     control?: BotControlPresentation;
+    compaction?: { state: string; customInstructions?: string; error?: string; taskId?: string };
 }
 
 /** Observe the existing owning-server socket, including conversations absent from the local index. */
@@ -30,6 +31,7 @@ export function useBotControlUpdates(
                 processId: process.id,
                 workspaceId: process.workspaceId,
                 control: readBotControl(process.botControl),
+                ...(process.compaction ? { compaction: process.compaction } : {}),
             });
         };
         window.addEventListener(eventName, handle);

@@ -99,7 +99,7 @@ export function collectResumableFollowUpProcessIds(
     const ids = new Set<string>();
     for (const task of tasks) {
         const payload = task.payload;
-        if (payload && isChatFollowUp(payload) && payload.processId) {
+        if (payload && (isChatFollowUp(payload) || payload.kind === 'compact') && typeof payload.processId === 'string') {
             ids.add(payload.processId);
         }
     }
@@ -147,6 +147,17 @@ export async function sweepOrphanedRunningProcesses(
     let finalized = 0;
     let revived = 0;
     for (const { id, status } of candidates) {
+        const proc = await store.getProcess(id);
+        if (proc?.metadata?.compaction?.state === 'running') {
+            const compaction = proc.metadata.compaction;
+            await store.updateProcess(id, { status: ['completed', 'failed', 'cancelled'].includes(compaction.priorStatus)
+                ? compaction.priorStatus : 'completed', metadata: { ...proc.metadata, compaction: {
+                    ...compaction, state: 'failed', error: 'Compaction interrupted by server restart',
+                    completedAt: new Date().toISOString(),
+                } } });
+            finalized++;
+            continue;
+        }
         // A still-`running` process that a live re-enqueued follow-up will
         // resume is recoverable — revive it to pending instead of failing it.
         if (status === 'running' && protectedIds?.has(id)) {

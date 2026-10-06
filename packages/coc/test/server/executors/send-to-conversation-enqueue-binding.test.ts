@@ -170,6 +170,7 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
             getDefaultProvider: () => 'codex', isAutoProviderRoutingActive: () => true,
         });
         const { tool } = createSendToConversationTool({
+            runtime: { isAutoProviderRoutingAvailable: () => true },
             store, workspaceId: WS_ID, parentProcessId: PARENT_PID,
             enqueueChat: async input => {
                 await prepare(input);
@@ -222,6 +223,33 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
         } finally {
             bridge.dispose();
             fs.rmSync(dataDir, { recursive: true, force: true });
+        }
+    });
+
+    it.each(['ask', 'autopilot'] as const)('prepares disabled Auto %s fallback without requesting runtime routing', async mode => {
+        const { bridge, store } = setup();
+        await store.updateProcess(PARENT_PID, { metadata: { provider: 'claude', model: 'sonnet', reasoningEffort: 'high' } });
+        const resolveDefaultProvider = vi.fn().mockRejectedValue(new Error('Auto disabled'));
+        const { tool } = createSendToConversationTool({
+            store, workspaceId: WS_ID, parentProcessId: PARENT_PID,
+            runtime: { isAutoProviderRoutingAvailable: () => false },
+            enqueueChat: async input => {
+                await prepareTaskForEnqueue(input, {
+                    getDefaultProvider: () => 'copilot', isAutoProviderRoutingActive: () => false, resolveDefaultProvider,
+                });
+                return enqueueViaBridge(input, bridge, freshState(), ROOT, store);
+            },
+        });
+        try {
+            const result = await tool.handler({ content: 'goal', provider: 'auto', mode });
+            if ('error' in result) throw new Error(result.error);
+            const task = bridge.getTask(result.processId.slice('queue_'.length))!;
+            expect(task.payload.provider).toBe('claude');
+            expect((task.payload.context as any).autoProviderRouting).toBeUndefined();
+            expect(task.config).toMatchObject({ model: 'sonnet', reasoningEffort: 'high' });
+            expect(resolveDefaultProvider).not.toHaveBeenCalled();
+        } finally {
+            bridge.dispose();
         }
     });
 

@@ -33,7 +33,7 @@ import type { UnifiedDiffViewerHandle, DiffLine } from '../diff/UnifiedDiffViewe
 import type { DiffSelectionDragSource } from '../diff/diffSelectionContext';
 import { SideBySideDiffViewer } from '../diff/SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
-import { DiffViewToggle, DiffEngineToggle } from '../diff/DiffViewToggle';
+import { DiffViewToggle, DiffEngineToggle, DiffWordWrapToggle } from '../diff/DiffViewToggle';
 import { DiffEngineFallbackBanner } from '../diff/DiffEngineFallbackBanner';
 import { resolveDiffEngineSelection, type DiffContentLoadState } from '../diff/diffEngineResolution';
 import { useDiffEngine } from '../hooks/useDiffEngine';
@@ -511,6 +511,7 @@ export function WorkingTreeFileDiff({ workspaceId, attachmentDestinationId, file
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                     {stage !== 'untracked' && <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />}
                     {stage !== 'untracked' && <DiffViewToggle mode={viewMode} onChange={setViewMode} />}
+                    {editorSides && <DiffWordWrapToggle />}
                     <span className="text-xs text-[#616161] dark:text-[#999] flex-shrink-0">{STAGE_LABEL[stage]}</span>
                     {stage !== 'untracked' && (
                         <button

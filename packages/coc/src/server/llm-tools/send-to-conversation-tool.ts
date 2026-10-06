@@ -132,6 +132,8 @@ export type ValidateSendToConversationProviderFn = (provider: ChatProvider) => P
 export type GetSendToConversationEffortTiersFn = (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 
 export interface SendToConversationRuntimeOptions {
+    /** Capability check only; routing/quota errors must not trigger fallback. */
+    isAutoProviderRoutingAvailable?: () => boolean;
     validateProvider?: ValidateSendToConversationProviderFn;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
     /**
@@ -243,8 +245,9 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             '(no clarifying questions) with `content` as a self-contained goal spec and returns ' +
             '`{ processId, sessionId, openLink }`; use it for long, multi-step build-until-done goals that write ' +
             'to the repo. `ralph` is rejected in post mode; `plan` is not supported. Prefer `provider: "auto"` for delegation ' +
-            'unless the user requests a particular provider/model. Auto uses target workspace/server routing rules ' +
-            'without inheriting parent provider, model, or effort. Omitted provider keeps existing inheritance.',
+            'unless the user requests a particular provider/model. Enabled Auto uses target workspace/server routing rules ' +
+            'without inheriting parent provider, model, or effort. Disabled/unavailable Auto falls back to the parent concrete provider ' +
+            'after target validation, with ordinary local model/effort inheritance or remote defaults. Omitted provider keeps existing inheritance.',
         parameters: {
             type: 'object',
             properties: {
@@ -288,7 +291,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     type: 'string',
                     enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'],
                     description: 'Create mode: prefer `auto` for target workspace/server routing unless the user requests ' +
-                        'a particular provider/model. Auto inherits no parent AI settings; omitted provider inherits as usual. ' +
+                        'a particular provider/model. Enabled Auto inherits no parent AI settings; unavailable Auto falls back to the parent concrete provider. Omitted provider inherits as usual. ' +
                         'Post mode ignores this selection and keeps the existing provider.',
                 },
                 effortTier: {
@@ -396,6 +399,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 explicitProvider: provider,
                 effortTier: model ? undefined : effortTier,
                 validateProvider: runtime?.validateProvider,
+                isAutoProviderRoutingAvailable: runtime?.isAutoProviderRoutingAvailable,
                 getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
                 messagingOrigin: runtime?.messagingOrigin,
                 trackMessagingJob: runtime?.trackMessagingJob,
@@ -507,6 +511,7 @@ async function createNewConversation(params: {
     explicitProvider?: SendToConversationProvider;
     effortTier?: SendToConversationEffortTier;
     validateProvider?: ValidateSendToConversationProviderFn;
+    isAutoProviderRoutingAvailable?: () => boolean;
     getEffortTiersForProvider?: GetSendToConversationEffortTiersFn;
     messagingOrigin?: SendToConversationRuntimeOptions['messagingOrigin'];
     trackMessagingJob?: SendToConversationRuntimeOptions['trackMessagingJob'];
@@ -525,6 +530,7 @@ async function createNewConversation(params: {
         explicitProvider,
         effortTier,
         validateProvider,
+        isAutoProviderRoutingAvailable,
         getEffortTiersForProvider,
         messagingOrigin,
         trackMessagingJob,
@@ -561,15 +567,8 @@ async function createNewConversation(params: {
 
     if (target.kind === 'remote') {
         return createRemoteConversation({
-            directory,
-            target,
-            content,
-            mode,
-            title,
-            priority,
-            model,
-            explicitProvider,
-            effortTier,
+            directory, target, content, mode, title, priority, model,
+            explicitProvider, effortTier, store, parentProcessId,
         });
     }
     const requestedWorkspaceId = target.workspaceId;
@@ -589,10 +588,13 @@ async function createNewConversation(params: {
     const parentEffort =
         typeof parent?.metadata?.reasoningEffort === 'string' ? parent.metadata.reasoningEffort : undefined;
 
-    const autoRequested = explicitProvider === 'auto';
-    const resolvedProvider = autoRequested ? undefined : explicitProvider ?? parentProvider;
-    const resolvedModel = model ?? (explicitProvider || effortTier ? undefined : parentModel);
-    const resolvedEffort = explicitProvider || effortTier ? undefined : parentEffort;
+    const autoRequested = explicitProvider === 'auto' && isAutoProviderRoutingAvailable?.() === true;
+    // Disabled/missing Auto capability uses ordinary parent inheritance. Never
+    // reinterpret routing, quota, validation or dispatch errors as a fallback.
+    const concreteOverride = explicitProvider !== 'auto' ? explicitProvider : undefined;
+    const resolvedProvider = autoRequested ? undefined : concreteOverride ?? parentProvider;
+    const resolvedModel = model ?? (autoRequested || concreteOverride || effortTier ? undefined : parentModel);
+    const resolvedEffort = autoRequested || concreteOverride || effortTier ? undefined : parentEffort;
 
     // Omitted provider requires parent context; explicit Auto can route without it.
     // Absent inherited model/effort use provider defaults.
@@ -600,16 +602,16 @@ async function createNewConversation(params: {
         return {
             error:
                 'Cannot determine a provider for the new conversation: no parent chat ' +
-                'context was available to inherit from and no explicit `provider` was supplied.',
+                'context was available to inherit from. Supply a concrete `provider` or enable Auto routing.',
         };
     }
 
-    if (explicitProvider && explicitProvider !== 'auto' && validateProvider) {
+    if (resolvedProvider && explicitProvider && validateProvider) {
         try {
-            await validateProvider(explicitProvider);
+            await validateProvider(resolvedProvider);
         } catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
-            return { error: `Provider '${explicitProvider}' is not available for send_to_conversation: ${reason}` };
+            return { error: `Provider '${resolvedProvider}' is not available for send_to_conversation: ${reason}` };
         }
     }
 
@@ -813,9 +815,9 @@ async function resolveCreateTarget(params: {
 
 /**
  * Start the new conversation on a remote CoC server through its own queue (or
- * Ralph launch) API. Only explicit provider/model/effortTier travel; parent
- * selections are not inherited, so the remote's defaults apply. No spawn link —
- * the parent lives on this server.
+ * Ralph launch) API. Explicit overrides travel; disabled Auto selects the parent
+ * concrete provider after destination capability validation. Remote defaults
+ * own model/effort inheritance. The local parent's spawn link stays local.
  */
 async function createRemoteConversation(params: {
     directory: WorkspaceDirectory;
@@ -827,13 +829,41 @@ async function createRemoteConversation(params: {
     model?: string;
     explicitProvider?: SendToConversationProvider;
     effortTier?: SendToConversationEffortTier;
+    store: ProcessStore;
+    parentProcessId?: string;
 }): Promise<SendToConversationResult> {
     const { directory, target, content, mode, title, priority, model, explicitProvider, effortTier } = params;
+    let provider = explicitProvider;
+    if (provider === 'auto') {
+        try {
+            const available = await directory.isRemoteAutoProviderRoutingAvailable?.(target.serverId);
+            if (!available) {
+                const parent = params.parentProcessId ? await params.store.getProcess(params.parentProcessId) : undefined;
+                const parentProvider = parent?.metadata?.provider;
+                if (typeof parentProvider !== 'string' || !VALID_CHAT_PROVIDERS.has(parentProvider as ChatProvider)) {
+                    return { error: 'Cannot determine a provider for the new conversation: Auto is unavailable and no concrete parent provider is available.' };
+                }
+                provider = parentProvider as ChatProvider;
+                // Validate against the destination, never against local services
+                // or effort tiers. Remote defaults own model/effort inheritance.
+                if (!directory.validateRemoteProvider) {
+                    return { error: 'Remote provider validation is unavailable; the chat was not started.' };
+                }
+                await directory.validateRemoteProvider(target.serverId, provider);
+                const compatibility = validateRequestedModelAndTier({ provider, model });
+                if (compatibility) {
+                    return { error: compatibility };
+                }
+            }
+        } catch (err) {
+            return { error: err instanceof Error ? err.message : String(err) };
+        }
+    }
     const body = mode === 'ralph'
         ? {
             goalSpec: content.trim(),
             workspaceId: target.workspaceId,
-            ...(explicitProvider === 'auto' ? { autoProviderRouting: true } : explicitProvider ? { provider: explicitProvider } : {}),
+            ...(provider === 'auto' ? { autoProviderRouting: true } : provider ? { provider } : {}),
             config: {
                 ...(model ? { model } : {}),
                 ...(effortTier ? { effortTier } : {}),
@@ -846,8 +876,8 @@ async function createRemoteConversation(params: {
             content,
             priority,
             title,
-            provider: explicitProvider === 'auto' ? undefined : explicitProvider,
-            autoProviderRouting: explicitProvider === 'auto',
+            provider: provider === 'auto' ? undefined : provider,
+            autoProviderRouting: provider === 'auto',
             model,
             effortTier,
         });

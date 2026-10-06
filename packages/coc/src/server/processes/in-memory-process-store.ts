@@ -67,6 +67,12 @@ export function createStubStore(): ProcessStore {
             changeCallback?.({ type: 'process-updated', process: merged });
             return { turn, allTurns };
         },
+        removePendingMessage: async (processId, messageId) => {
+            const process = processes.get(processId);
+            if (!process) return undefined;
+            process.pendingMessages = (process.pendingMessages ?? []).filter(message => message.id !== messageId);
+            return process.pendingMessages;
+        },
         appendPendingMessage: async (processId, message) => {
             const existing = processes.get(processId);
             if (!existing) return undefined;

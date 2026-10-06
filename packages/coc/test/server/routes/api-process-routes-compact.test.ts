@@ -780,3 +780,56 @@ describe('POST /api/processes/:id/compact', () => {
         expect(mockCompactSession).not.toHaveBeenCalled();
     });
 });
+
+describe('queued compact REST lifecycle', () => {
+    it('deduplicates, exposes persisted queued state, scopes Cancel and preserves the active user turn', async () => {
+        const { TaskQueueManager } = await import('@plusplusoneplusplus/forge');
+        const queue = new TaskQueueManager({ keepHistory: true });
+        const store = createMockProcessStore();
+        const process = { id: 'conversation', type: 'chat', status: 'running' as const, startTime: new Date(),
+            sdkSessionId: 'latest-session', promptPreview: 'active', workingDirectory: globalThis.process.cwd(),
+            metadata: { type: 'chat', workspaceId: 'ws-a', provider: 'copilot' } };
+        await store.addProcess(process as any);
+        queue.enqueue({ id: 'active', processId: process.id, type: 'chat', priority: 'normal', payload: {}, config: {} });
+        queue.markStarted('active');
+        const bridge = {
+            enqueue: async (input: any) => queue.enqueue(input),
+            getTask: (id: string) => queue.getTask(id),
+            findTaskByProcessId: (id: string) => queue.getAll().find(task => task.processId === id && ['queued', 'running'].includes(task.status)),
+            cancelQueuedTask: (id: string) => queue.getTask(id)?.status === 'queued' && queue.cancelTask(id),
+        };
+        const routes: Route[] = [];
+        registerApiProcessRoutes({ routes, store, bridge: bridge as any, dataDir: '', gitOpsStore: {} as any });
+        const server = http.createServer(createRouter({ routes }));
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+        try {
+            const first = await request(base, '/api/processes/conversation/compact?workspace=ws-a', {
+                method: 'POST', body: JSON.stringify({ customInstructions: 'original instructions' }),
+            });
+            expect(first.status).toBe(200);
+            expect(first.json()).toMatchObject({ state: 'queued' });
+            const repeated = await request(base, '/api/processes/conversation/compact?workspace=ws-a', {
+                method: 'POST', body: JSON.stringify({ customInstructions: 'replacement' }),
+            });
+            expect(repeated.json().taskId).toBe(first.json().taskId);
+            const detail = await request(base, '/api/processes/conversation?workspace=ws-a');
+            expect(detail.json().process.metadata.compaction).toMatchObject({ state: 'queued', customInstructions: 'original instructions' });
+            const later = await request(base, '/api/processes/conversation/pending-messages?workspace=ws-a', {
+                method: 'POST', body: JSON.stringify({ content: 'later message' }),
+            });
+            expect(later.status).toBe(201);
+            expect(queue.peek()).toBeUndefined();
+            expect((await request(base, '/api/processes/conversation/compact?workspace=ws-b', { method: 'DELETE' })).status).toBe(404);
+            expect(queue.getTask('active')!.status).toBe('running');
+            expect((await request(base, '/api/processes/conversation/compact?workspace=ws-a', { method: 'DELETE' })).json()).toEqual({ cancelled: true });
+            expect(queue.getTask('active')!.status).toBe('running');
+            expect((await store.getProcess(process.id))!.metadata!.compaction!.state).toBe('cancelled');
+            queue.markCompleted('active');
+            expect(queue.peek()!.payload.prompt).toBe('later message');
+            expect(queue.getQueued().filter(task => task.payload.kind === 'compact')).toHaveLength(0);
+        } finally {
+            await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+        }
+    });
+});

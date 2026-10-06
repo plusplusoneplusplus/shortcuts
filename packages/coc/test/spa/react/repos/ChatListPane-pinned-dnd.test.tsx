@@ -103,6 +103,8 @@ vi.mock('../../../../src/server/spa/client/react/shared/useAgentProvidersQuota',
 }));
 
 let mockPinnedChatIds = new Set<string>();
+const mockPinChat = vi.fn();
+const mockUnpinChat = vi.fn();
 vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext', () => ({
     // Real key names — the context exposes pinChat/archiveChats and
     // ChatListPane renames them on destructure. Getting these wrong silently
@@ -111,8 +113,8 @@ vi.mock('../../../../src/server/spa/client/react/contexts/ChatPreferencesContext
     useChatPrefs: () => ({
         pinnedChatIds: mockPinnedChatIds,
         archivedChatIds: new Set<string>(),
-        pinChat: vi.fn(),
-        unpinChat: vi.fn(),
+        pinChat: mockPinChat,
+        unpinChat: mockUnpinChat,
         archiveChat: vi.fn(),
         unarchiveChat: vi.fn(),
         archiveChats: vi.fn(),
@@ -283,6 +285,76 @@ describe.each([
     });
 
     afterEach(() => { cleanup(); });
+
+    it.each([
+        ['parent', ['parent']],
+        ['child', ['child']],
+        ['both', ['child', 'parent']],
+    ])('renders pinned delegated %s chats exactly once and restores grouping on unpin', async (_name, pinnedIds) => {
+        const history = [
+            makeChat('parent', 'delegating parent'),
+            { ...makeChat('child', 'delegated child'), parentProcessId: 'parent' },
+            { ...makeChat('grandchild', 'delegated grandchild'), parentProcessId: 'child' },
+            { ...makeChat('sibling', 'delegated sibling'), parentProcessId: 'parent' },
+        ];
+        mockPinnedChatIds = new Set(pinnedIds);
+        const onReorderPins = vi.fn();
+        const { unmount } = await renderPane({ activeTab, history, onReorderPins });
+
+        const assertPinned = () => {
+            expect([...pinnedSection().querySelectorAll('[data-pinned-key]')]
+                .map(row => row.getAttribute('data-pinned-key'))).toEqual(pinnedIds);
+            expect(screen.getAllByTestId('history-task-row')).toHaveLength(4);
+            for (const id of pinnedIds) {
+                expect(pinnedEntry(id).querySelectorAll('[data-testid="history-task-row"]')).toHaveLength(1);
+            }
+        };
+        assertPinned();
+
+        // Reloaded history carries the same durable pin timestamps and parent links.
+        unmount();
+        const restoredHistory = history.map(task => ({
+            ...task,
+            ...(pinnedIds.includes(task.id) ? { pinnedAt: '2026-01-03T00:00:00.000Z' } : {}),
+        }));
+        const restored = await renderPane({ activeTab, history: restoredHistory, onReorderPins });
+        assertPinned();
+
+        mockPinnedChatIds = new Set();
+        await act(async () => {
+            restored.rerender(<ChatListPane {...defaultProps} activeTab={activeTab} history={history} />);
+        });
+        expect(document.querySelector('[data-section="pinned"]')).toBeNull();
+        expect(screen.getAllByTestId('spawned-tree-row')).toHaveLength(1);
+        expect(screen.getAllByTestId('spawned-tree-node').map(node => node.getAttribute('data-node-id')))
+            .toEqual(['parent', 'child', 'grandchild', 'sibling']);
+        expect(history[1].parentProcessId).toBe('parent');
+        expect(history[2].parentProcessId).toBe('child');
+        expect(history[3].parentProcessId).toBe('parent');
+    });
+
+    it.each(['parent', 'child'])('pins and unpins a delegated %s through its row menu', async id => {
+        const history = [
+            makeChat('parent', 'delegating parent'),
+            { ...makeChat('child', 'delegated child'), parentProcessId: 'parent' },
+        ];
+        mockPinnedChatIds = new Set();
+        const pane = await renderPane({ activeTab, history });
+        const title = id === 'parent' ? 'delegating parent' : 'delegated child';
+        fireEvent.contextMenu(rowByTitle(title));
+        fireEvent.click(screen.getByText('Pin to top'));
+        expect(mockPinChat).toHaveBeenCalledWith(id);
+
+        mockPinnedChatIds = new Set([id]);
+        await act(async () => {
+            pane.rerender(<ChatListPane {...defaultProps} activeTab={activeTab} history={history} />);
+        });
+        expect(pinnedSection().textContent).toContain(title);
+        expect(screen.getAllByTestId('history-task-row')).toHaveLength(2);
+        fireEvent.contextMenu(rowByTitle(title));
+        fireEvent.click(screen.getByText('Unpin'));
+        expect(mockUnpinChat).toHaveBeenCalledWith(id);
+    });
 
     it('dragging the bottom pinned row onto the top row\'s upper half moves it first', async () => {
         const onReorderPins = vi.fn();

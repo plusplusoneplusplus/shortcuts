@@ -47,10 +47,16 @@ export interface QueueExecutorBridge {
     isSessionAlive(processId: string): Promise<boolean>;
     /** Enqueue a task through the scheduler. When present, follow-ups are routed through the queue. */
     enqueue?(input: CreateTaskInput): Promise<string>;
+    /** Internal queue write when the caller already owns process admission. */
+    enqueueAdmitted?(input: CreateTaskInput): Promise<string>;
     /** Find a task by its processId. Used for steering (running tasks) and follow-up routing. */
     findTaskByProcessId?(processId: string): { id: string; type: string; status: string } | undefined;
+    /** Locate the durable queued/running compaction for a conversation. */
+    findCompactionTask?(processId: string): { id: string; status: string } | undefined;
     /** Look up a queue task by its task ID. Used to synthesize process records for pre-execution tasks. */
     getTask?(taskId: string): import('@plusplusoneplusplus/forge').QueuedTask | undefined;
+    /** Remove only a queued task, without aborting its conversation. */
+    cancelQueuedTask?(taskId: string): boolean;
     /** Cancel a running process by aborting its live AI session. */
     cancelProcess?(processId: string): Promise<void>;
     /** Steer a running process by injecting an immediate message into its SDK session. */

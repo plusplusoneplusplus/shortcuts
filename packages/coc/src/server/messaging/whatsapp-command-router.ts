@@ -19,7 +19,7 @@ export interface WhatsAppRouterDeps {
     bindings: WhatsAppBindings;
     groupJid: () => string | undefined;
     /** `mode` is undefined for plain text; follow-ups then keep the chat's mode. */
-    enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string, botControl?: BotControlMetadata) => Promise<string>;
+    enqueue: (workspaceId: string, message: string, mode: MessagingChatMode | undefined, processId: string, taskId: string, botControl?: BotControlMetadata, admissionHeld?: boolean) => Promise<string>;
     getTask: (taskId: string) => QueuedTask | undefined;
     send: (text: string, quotedId: string) => Promise<string>;
     react: (messageId: string) => Promise<void>;
@@ -70,6 +70,7 @@ export class WhatsAppCommandRouter {
                     helpFormat: WHATSAPP_HELP_FORMAT,
                     getQuota: this.deps.getQuota,
                     compact: this.deps.compact,
+                    compactOrigin: { connector: 'whatsapp', chatKey: msg.chatJid },
                     remotes: this.deps.remotes,
                     remoteRefs: this.remoteRefs.slot(msg.chatJid),
                     // A quote-reply to an answer compacts that answer's chat.
@@ -154,11 +155,12 @@ export class WhatsAppCommandRouter {
                 outboundIds: [], nextPart: 0, status: 'queued',
             };
             if (!await this.deps.bindings.admit(binding, async () => {
-                const enqueue = async () => {
+                const enqueue = async (admissionHeld = false) => {
                     try {
                         return await this.deps.enqueue(
                             workspaceId, command.args, command.mode, processId, taskId,
                             !targetId && enabled ? createBotControlMetadata('whatsapp') : undefined,
+                            ...(admissionHeld ? [true] : []),
                         );
                     } catch (error) {
                         // taskAdded observers run after durable admission; keep accepted work and its receipt.

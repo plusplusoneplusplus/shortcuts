@@ -97,8 +97,12 @@ and repo clone-selection metadata, and the source cache identity includes the he
 `FileDiffPanel` and `WorkingTreeFileDiff` share the global `useDiffEngine` preference
 and the same Classic/Editor toggle; the preference defaults to Monaco and updates all
 mounted file-diff surfaces immediately. `DiffEngineToggle` and `DiffViewToggle` are
-single buttons that show the current choice and flip to the other on click. The
-`FileDiffPanel` header path keeps the filename visible (the directory clips first);
+single buttons that show the current choice and flip to the other on click.
+Editor toolbars share `DiffWordWrapToggle` and `useDiffWordWrap`, backed by the
+global `diffWordWrap` preference (default false). `MonacoFileDiffViewer` observes
+the shared state and updates `wordWrap` and `diffWordWrap` on mounted editors;
+both split panes and the visible inline editor follow the choice across workspaces.
+The `FileDiffPanel` header path keeps the filename visible (the directory clips first);
 Ctrl/Cmd+click on it opens the file in its own unified-panel file tab when a
 `UnifiedPanelHostProvider` hosts the diff. In Editor mode, `FileDiffPanel` loads the
 paired content and renders `MonacoFileDiffViewer`; its synthetic model identity includes

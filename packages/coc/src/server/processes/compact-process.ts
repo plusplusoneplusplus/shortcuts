@@ -1,14 +1,15 @@
 /**
  * Compacts (summarizes) a chat's live provider session to shrink the model's
  * context-window usage on the NEXT turn. Shared by `POST /api/processes/:id/compact`
- * and the Teams/WhatsApp `compact` command.
+ * and the Teams/WhatsApp `compact` command. Busy conversations admit a durable
+ * task after existing buffered/queued turns; idle compaction returns its result.
  *
  * Non-destructive to CoC's stored transcript: the provider session's history is
  * summarized in place and a display-only result turn is appended.
  *
  * Failures throw `APIError`:
  *   - process has no SDK session               → 400
- *   - a turn is active (running/queued/pending) → 409 CONVERSATION_NOT_IDLE
+ *   - busy without a queue bridge              → 409 CONVERSATION_NOT_IDLE
  *   - provider does not support compaction     → 422 COMPACT_UNSUPPORTED
  *   - any other provider failure               → 500
  */
@@ -16,12 +17,17 @@
 import type {
     AIProcess, AIProcessStatus, GenericProcessMetadata, ProcessCompactionState, ProcessStore,
 } from '@plusplusoneplusplus/forge';
+import { randomUUID } from 'crypto';
+import type { QueueExecutorBridge } from '../core/api-handler';
+import { processOperationAdmission } from './process-operation-admission';
+import { pendingMessageTask } from './queued-pending-message';
 import { APIError, badRequest, internalError } from '../errors';
 import type { ChatProvider } from '../tasks/task-types';
 import { readActiveProviderSession, turnProviderAttribution } from './active-provider-session';
 
 /** Terminal statuses: the only ones idle enough to compact. */
 const IDLE_STATUSES: Set<string> = new Set(['completed', 'failed', 'cancelled']);
+const compactionAdmissions = new Map<string, Promise<CompactProcessOutcome>>();
 
 export interface CompactProcessOutcome {
     /** The provider's raw compaction result (the route's JSON response). */
@@ -30,6 +36,8 @@ export interface CompactProcessOutcome {
     tokensBefore?: number;
     /** Context tokens after compaction, when known. */
     tokensAfter?: number;
+    /** Present when admitted for later execution. */
+    taskId?: string;
 }
 
 /** A finite, non-negative number, or `undefined` for anything else. */
@@ -101,7 +109,62 @@ export async function compactProcess(
     store: Pick<ProcessStore, 'updateProcess' | 'emitProcessEvent' | 'appendConversationTurn'>,
     proc: AIProcess,
     customInstructions?: string,
+    bridge?: QueueExecutorBridge,
+    onQueued?: (taskId: string) => void,
 ): Promise<CompactProcessOutcome> {
+    if (bridge) {
+        const fullStore = store as ProcessStore;
+        const key = `${proc.metadata?.workspaceId ?? ''}\0${proc.id}`;
+        const existingAdmission = compactionAdmissions.get(key);
+        if (existingAdmission) return existingAdmission;
+        const operation = processOperationAdmission.runExclusive(proc.id, async () => {
+            const current = await fullStore.getProcess(proc.id, proc.metadata?.workspaceId) ?? proc;
+            const pending = current.metadata?.compaction;
+            const task = bridge.findCompactionTask?.(current.id)
+                ?? (pending?.taskId ? bridge.getTask?.(pending.taskId) : undefined);
+            if (task?.status === 'queued' || task?.status === 'running') {
+                return { taskId: task.id, result: { state: task.status, taskId: task.id } };
+            }
+            const owningTask = bridge.findTaskByProcessId?.(current.id);
+            const busy = !IDLE_STATUSES.has(current.status) || !!current.pendingMessages?.length
+                || owningTask?.status === 'queued' || owningTask?.status === 'running';
+            if (!busy) return compactProcess(store, current, customInstructions);
+            if (!bridge.enqueue) throw compactGuardError(current) ?? internalError('Queue unavailable');
+            // An admitted first turn may not have reported its session yet. Execution validates its latest binding.
+            if (!readActiveProviderSession(current).sessionId && !owningTask) {
+                throw badRequest('Process has no SDK session to compact');
+            }
+            for (const message of current.pendingMessages ?? []) {
+                const input = pendingMessageTask(current, message);
+                if (!bridge.getTask?.(input.id!)) await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, input);
+            }
+            const taskId = randomUUID();
+            try {
+                await (bridge.enqueueAdmitted ?? bridge.enqueue).call(bridge, {
+                    id: taskId, processId: current.id, type: 'chat', priority: 'normal',
+                    payload: { kind: 'compact', processId: current.id,
+                        workspaceId: current.metadata?.workspaceId, workingDirectory: current.workingDirectory,
+                        customInstructions },
+                    config: { retryOnFailure: false, retryAttempts: 0, pauseOnFailure: false, timeoutMs: 0, cancelRunning: false },
+                    displayName: 'Compact conversation',
+                });
+                await fullStore.updateProcess(current.id, { metadata: {
+                    ...current.metadata, type: current.metadata?.type ?? 'chat',
+                    compaction: { state: 'queued', taskId, priorStatus: current.status,
+                        startedAt: new Date().toISOString(), ...(customInstructions ? { customInstructions } : {}) },
+                } });
+                onQueued?.(taskId);
+            } catch (error) {
+                bridge.cancelQueuedTask?.(taskId);
+                await fullStore.updateProcess(current.id, { metadata: current.metadata }).catch(() => {});
+                throw error;
+            }
+            return { taskId, result: { state: 'queued', taskId } };
+        });
+        compactionAdmissions.set(key, operation);
+        try { return await operation; }
+        finally { if (compactionAdmissions.get(key) === operation) compactionAdmissions.delete(key); }
+    }
     const guard = compactGuardError(proc);
     if (guard) throw guard;
     const id = proc.id;
@@ -122,8 +185,11 @@ export async function compactProcess(
     // Both stores REPLACE `metadata` on update rather than deep-merging,
     // so spread the existing metadata wholesale and only own `compaction`.
     const baseMeta = (proc.metadata ?? { type: proc.type ?? 'chat' }) as GenericProcessMetadata;
-    const writeCompaction = (status: AIProcessStatus, compaction: ProcessCompactionState, fields?: Partial<AIProcess>) =>
-        store.updateProcess(id, { status, metadata: { ...baseMeta, compaction }, ...(fields ?? {}) });
+    const writeCompaction = async (status: AIProcessStatus, compaction: ProcessCompactionState, fields?: Partial<AIProcess>) => {
+        const current = 'getProcess' in store ? await (store as ProcessStore).getProcess(id) : undefined;
+        return store.updateProcess(id, { status, metadata: { ...(current?.metadata ?? baseMeta),
+            compaction: { ...(baseMeta.compaction?.taskId && ['queued', 'running'].includes(baseMeta.compaction.state) ? { taskId: baseMeta.compaction.taskId } : {}), ...compaction } }, ...(fields ?? {}) });
+    };
 
     await writeCompaction('running', {
         state: 'running',
@@ -217,4 +283,18 @@ export async function compactProcess(
         }
         throw internalError(`Failed to compact SDK session: ${err?.message || err}`);
     }
+}
+
+/** Cancels the queued operation only. A running turn or compaction is never aborted here. */
+export async function cancelQueuedCompaction(store: ProcessStore, proc: AIProcess, bridge: QueueExecutorBridge): Promise<boolean> {
+    return processOperationAdmission.runExclusive(proc.id, async () => {
+        const current = await store.getProcess(proc.id, proc.metadata?.workspaceId);
+        const compaction = current?.metadata?.compaction;
+        if (!current || compaction?.state !== 'queued' || !compaction.taskId) return false;
+        if (!bridge.cancelQueuedTask?.(compaction.taskId)) return false;
+        await store.updateProcess(proc.id, { metadata: { ...current.metadata!, compaction: {
+            ...compaction, state: 'cancelled', completedAt: new Date().toISOString(),
+        } } });
+        return true;
+    });
 }

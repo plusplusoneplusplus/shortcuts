@@ -225,6 +225,18 @@ describe('useSendMessage — /compact interception', () => {
     });
 
     // ── AC-02: in-progress lifecycle + duplicate-send block ──
+    it('acknowledges queued compaction without claiming completion and permits later sends', async () => {
+        compactSpy.mockResolvedValue({ state: 'queued', taskId: 'compact-1' });
+        const options = makeOptions({ setCompacting: vi.fn() });
+        const { result } = renderHook(() => useSendMessage(options), { wrapper });
+        await act(async () => { await result.current.sendFollowUp('/compact'); });
+        expect(options.notifyCompact).toHaveBeenCalledWith('Compaction queued.', 'success');
+        expect(options.refreshConversation).toHaveBeenCalledWith(PROCESS);
+        expect(options.setCompacting).toHaveBeenLastCalledWith(false);
+        await act(async () => { await result.current.sendFollowUp('later message'); });
+        expect(sendSpy).toHaveBeenCalledTimes(1);
+    });
+
     it('marks compacting true (with instructions) at start and false on success', async () => {
         compactSpy.mockResolvedValue({ success: true, messagesRemoved: 2, tokensRemoved: 99 });
         const setCompacting = vi.fn();

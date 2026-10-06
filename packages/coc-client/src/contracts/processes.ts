@@ -394,9 +394,11 @@ export interface ProcessForkResponse {
  * is the generated summary text when the provider returns it.
  */
 export interface CompactResult {
-  success: boolean;
-  tokensRemoved: number;
-  messagesRemoved: number;
+  state?: 'queued' | 'running' | 'completed' | 'failed';
+  taskId?: string;
+  success?: boolean;
+  tokensRemoved?: number;
+  messagesRemoved?: number;
   summaryContent?: string;
 }
 

@@ -14,7 +14,7 @@ import type { UnifiedDiffViewerHandle, DiffLine } from './UnifiedDiffViewer';
 import { SideBySideDiffViewer } from './SideBySideDiffViewer';
 import { useDiffViewMode } from '../hooks/useDiffViewMode';
 import { useDiffEngine } from '../hooks/useDiffEngine';
-import { DiffEngineToggle, DiffViewToggle } from './DiffViewToggle';
+import { DiffEngineToggle, DiffViewToggle, DiffWordWrapToggle } from './DiffViewToggle';
 import { DiffMiniMap } from './DiffMiniMap';
 import { DiffFindWidget } from './DiffFindWidget';
 import { useDiffFind } from './useDiffFind';
@@ -483,6 +483,7 @@ export function FileDiffPanel({
                     <HunkNavButtons onPrev={handlePrev} onNext={handleNext} />
                     <DiffEngineToggle engine={diffEngine} onChange={setDiffEngine} />
                     <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                    {editorSides && <DiffWordWrapToggle />}
                     {classicActive && source.fullContextFileDiffUrl && (
                         <button
                             onClick={() => setFullContextMode(m => !m)}

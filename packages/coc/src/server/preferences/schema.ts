@@ -456,6 +456,8 @@ export const GlobalPreferencesSchema = z.object({
     activityFilters: GlobalActivityFiltersSchema.optional().catch(undefined),
     /** Engine for the working-tree file diff ('legacy' | 'monaco'). Absent means 'monaco'. */
     diffEngine: z.enum(['legacy', 'monaco']).optional().catch(undefined),
+    /** Wrap long lines in Monaco diffs. Absent means false. */
+    diffWordWrap: z.boolean().optional().catch(undefined),
     /**
      * Per-handler enabled/disabled overrides for the link-handler feature.
      * Keys are handler names (e.g. 'teams', 'vscode', 'onenote').
