@@ -7,7 +7,7 @@
  */
 
 import type { AgentProvidersQuotaResponse } from '@plusplusoneplusplus/coc-client';
-import { getQuotaPercent, getTightestFiniteQuotaType, getUnlimitedQuotaTypes } from '@plusplusoneplusplus/coc-client';
+import { getFiniteQuotaTypes, getQuotaPercent, getUnlimitedQuotaTypes } from '@plusplusoneplusplus/coc-client';
 import { formatMessagingHelp, type MessagingHelpFormat, type MessagingControlCommand } from '@plusplusoneplusplus/coc-connector';
 import type { AIProcess, ProcessStore } from '@plusplusoneplusplus/forge';
 import { isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
@@ -72,15 +72,23 @@ export function formatQuotaReply(data: AgentProvidersQuotaResponse | null | unde
     if (!data || data.providers.length === 0) return 'Quota data is unavailable.';
     return data.providers.map(provider => {
         if (provider.error) return `${provider.id}: unavailable`;
-        const tightest = getTightestFiniteQuotaType(provider.quotaTypes);
-        if (!tightest) {
+        const finite = getFiniteQuotaTypes(provider.quotaTypes);
+        if (!finite.length) {
             return getUnlimitedQuotaTypes(provider.quotaTypes).length
                 ? `${provider.id}: unlimited`
                 : `${provider.id}: no quota data`;
         }
-        const reset = tightest.resetDate && !Number.isNaN(Date.parse(tightest.resetDate))
-            ? `, resets ${new Date(tightest.resetDate).toISOString().slice(0, 10)}` : '';
-        return `${provider.id}: ${getQuotaPercent(tightest.remainingPercentage)}% left (${tightest.type}${reset})`;
+        const buckets = finite.map(quota => {
+            // Codex can prefix window names with a limit id; keep that identity.
+            const label = quota.type.replace(/(^|_)(five_hour|seven_day)$/, (_match, prefix, window) =>
+                `${prefix}${window === 'five_hour' ? '5h' : '7d'}`);
+            const remaining = Number.isFinite(quota.remainingPercentage)
+                ? `${getQuotaPercent(quota.remainingPercentage)}% left` : 'remaining unknown';
+            const reset = quota.resetDate && !Number.isNaN(Date.parse(quota.resetDate))
+                ? `, resets ${new Date(quota.resetDate).toISOString().slice(0, 10)}` : '';
+            return `${remaining} (${label}${reset})`;
+        });
+        return `${provider.id}: ${buckets.join('; ')}`;
     }).join('\n');
 }
 

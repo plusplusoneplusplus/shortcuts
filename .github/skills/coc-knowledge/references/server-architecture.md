@@ -215,7 +215,11 @@ use native WhatsApp bold or Teams Markdown rendered by the manager as safe HTML;
 command grammar and renders its specs with `formatMessagingHelpCommands` as HTML.
 `messaging/messaging-commands.ts` answers repo/topic selection, help, quota (from
 `AgentProvidersQuotaCache`) and compact for both routers via a `MessagingSelection`
-adapter; routers keep platform state and transport. `compact` targets the quoted
+adapter; routers keep platform state and transport. WhatsApp and Teams channel/thread
+quota commands share `formatQuotaReply`: every finite normalized snapshot retains its
+remaining percentage and reset date, with `5h`/`7d` labels and Codex limit-id prefixes;
+unknown percentages stay unknown. Collection, cache freshness and provider-selection
+thresholds belong to the quota cache and provider router. `compact` targets the quoted
 WhatsApp answer's chat / the bound Teams thread's chat, else the selected topic,
 and calls `processes/compact-process.ts` `compactProcess` (shared with
 `POST /api/processes/:id/compact`). Busy compaction admits one durable queue operation

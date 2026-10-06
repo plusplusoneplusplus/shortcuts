@@ -232,7 +232,10 @@ references before editing. Paths are package-relative.
   bold or Teams Markdown converted to safe HTML by the manager; unknown `/word` or malformed list/select/create replies
   "Unknown command" + help, never the AI. `src/server/messaging/messaging-commands.ts`
   answers selection, help, quota and `compact [instructions]` for both routers via a
-  `MessagingSelection` adapter. With no selected repo (or a removed one), plain messages
+  `MessagingSelection` adapter. Quota replies share `formatQuotaReply` across WhatsApp
+  and Teams channel/thread commands, report every finite snapshot with `5h`/`7d` window
+  labels and `% left`, and preserve unknown values and limit-id prefixes.
+  With no selected repo (or a removed one), plain messages
   and topic commands in both connectors use the built-in Global workspace via
   `resolveChatWorkspace` in `chat-target.ts` (fixed reply if Global is missing; the
   selection is not persisted). `select repo` (including re-selecting the current repo or

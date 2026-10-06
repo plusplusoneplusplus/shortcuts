@@ -308,6 +308,26 @@ describe('WhatsApp workspace command routing', () => {
         expect(bindings.isKnownMessage('outbound')).toBe(true);
     });
 
+    it('replies with both quota windows without changing the selected workspace or topic', async () => {
+        bindings.selectRepo('ws-b');
+        bindings.selectTopic('ws-b', 'topic-b');
+        const getQuota = vi.fn().mockResolvedValue({ lastUpdated: null, providers: [{
+            id: 'claude', quotaTypes: [
+                { type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 28,
+                    entitlementRequests: 100, remainingPercentage: 0.72, usageAllowedWithExhaustedQuota: false, overage: 0 },
+                { type: 'seven_day', isUnlimitedEntitlement: false, usedRequests: 81,
+                    entitlementRequests: 100, remainingPercentage: 0.19, usageAllowedWithExhaustedQuota: false, overage: 0 },
+            ],
+        }] });
+        router = new WhatsAppCommandRouter({ store, bindings, groupJid: () => 'group@g.us', enqueue, send, react, getQuota });
+        await router.handle(inbound('/quota', 'quota-windows'));
+        expect(send).toHaveBeenLastCalledWith('claude: 72% left (5h); 19% left (7d)', 'quota-windows');
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('topic-b');
+        expect(bindings.isKnownMessage('outbound')).toBe(true);
+        expect(enqueue).not.toHaveBeenCalled();
+    });
+
     it('sends [chatid] messages to that chat in its own workspace, with or without autopilot', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('[topic-b] continue there', 'explicit'));

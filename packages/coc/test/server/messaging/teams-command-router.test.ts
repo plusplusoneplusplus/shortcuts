@@ -462,6 +462,34 @@ describe('TeamsCommandRouter', () => {
         expect(sendReplySpy.mock.lastCall?.[0]).toBe('Quota data is unavailable.');
     });
 
+    it.each([undefined, 'root-quota'])('reports both quota windows in the channel or thread %s without changing selection', async root => {
+        deps.getQuota = vi.fn().mockResolvedValue({ lastUpdated: null, providers: [{
+            id: 'codex', quotaTypes: [
+                { type: 'five_hour', isUnlimitedEntitlement: false, usedRequests: 28,
+                    entitlementRequests: 100, remainingPercentage: 0.72, usageAllowedWithExhaustedQuota: false, overage: 0 },
+                { type: 'seven_day', isUnlimitedEntitlement: false, usedRequests: 81,
+                    entitlementRequests: 100, remainingPercentage: 0.19, usageAllowedWithExhaustedQuota: false, overage: 0 },
+            ],
+        }] });
+        deps.isAnswerRelayEnabled = () => true;
+        deps.selectThreadTarget = vi.fn();
+        deps.resolveThreadReply = vi.fn().mockResolvedValue({
+            process: { id: 'sentinel-b', metadata: { workspaceId: 'ws-2', mode: 'sentinel' } }, workspaceId: 'ws-2',
+        });
+        router = new TeamsCommandRouter(deps);
+        await router.handle(makeMsg('/select repo ProjectB'));
+        await router.handle(makeMsg('/select topic proc-222'));
+        const selection = new TeamsUserStateStore(tmpDir).get('user-aad-1');
+        sendReplySpy.mockClear();
+        await router.handle(makeMsg('/quota', { replyToMessageId: root, messageId: 'quota-windows' }));
+        expect(sendReplySpy).toHaveBeenCalledOnce();
+        expect(sendReplySpy).toHaveBeenCalledWith('codex: 72% left (5h); 19% left (7d)', root ?? 'quota-windows');
+        expect(new TeamsUserStateStore(tmpDir).get('user-aad-1')).toEqual(selection);
+        expect(deps.selectThreadTarget).not.toHaveBeenCalled();
+        expect(deps.enqueueChat).not.toHaveBeenCalled();
+        expect(deps.executeFollowUp).not.toHaveBeenCalled();
+    });
+
     it('replies "Unknown command" for an unknown /word instead of sending it to the AI', async () => {
         await router.handle(makeMsg('/frobnicate now'));
         await router.handle(makeMsg('/select repo'));
