@@ -7,6 +7,8 @@ import { createMockProcessStore, createProcessFixture } from '../../helpers/mock
 import { DelegatedJobStore, MAX_RESULT_SUMMARY } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { createSentinelDelegationEnqueue } from '../../../src/server/delegation/sentinel-delegation-enqueue';
+import { RalphSessionStore } from '../../../src/server/ralph/ralph-session-store';
+import { orchestrateFinalCheck } from '../../../src/server/ralph/orchestrate-final-check';
 import type { RalphSessionRecord } from '../../../src/server/ralph/types';
 import type { RalphSessionCompleteEvent } from '../../../src/server/queue/queue-executor-bridge';
 import { getRepoDataPath } from '../../../src/server/paths';
@@ -422,6 +424,48 @@ describe('ordinary delegated job result recording', () => {
             vi.spyOn(jobs, 'recordResult').mockImplementationOnce(() => { throw new Error('disk failure'); });
             complete(); await flush(); expect(persisted().terminal).toBeUndefined();
             await results.restore(); expect(persisted().terminal?.result.outcome).toBe('completed');
+        });
+
+        it.each([
+            ['clean', 'completed', 'signal'], ['cap', 'capped', 'cap'],
+            ['failed', 'failed', 'final-check-failed'],
+            ['gap admission', 'failed', 'final-check-gap-enqueue-failed'],
+        ])('recovers durable %s after metadata failure and a crash before publication', async (scenario, outcome, reason) => {
+            const journal = new RalphSessionStore({ dataDir });
+            await journal.initSession(childWorkspace, sessionId, { originalGoal: 'Fix search', maxIterations: 20 });
+            await journal.updateSessionRecord(childWorkspace, sessionId, () => session({
+                finalChecks: [check({ status: 'running', processId: 'queue_final-check', repairAttempted: true })],
+            }));
+            vi.spyOn(journal, 'upsertFinalCheckRecord').mockRejectedValue(new Error('check metadata write failed'));
+            await store.addProcess(createProcessFixture({ id: 'queue_final-check', metadata: { workspaceId: childWorkspace },
+                result: 'Final scoped output' }));
+            const response = scenario === 'failed' ? 'missing result'
+                : `RALPH_FINAL_CHECK_RESULT\n\`\`\`json\n${JSON.stringify({
+                    marker: 'RALPH_FINAL_CHECK_RESULT', hasGaps: scenario !== 'clean', summary: 'Checked',
+                    gaps: scenario === 'clean' ? [] : [{ id: 'gap', title: 'Missing check', evidence: 'test', recommendedAction: 'test' }],
+                    gapFixGoal: 'Run missing check',
+                })}\n\`\`\``;
+            const publish = vi.fn(() => { throw new Error('crash before result subscriber'); });
+            await expect(orchestrateFinalCheck({
+                workspaceId: childWorkspace, sessionId, checkIndex: 2, loopIndex: 2, sourceIteration: 3,
+                taskId: 'check-task', processId: 'queue_final-check', responseText: response,
+                deps: { store: journal, maxGapFixLoops: scenario === 'cap' ? 0 : 3,
+                    enqueueTask: () => { throw new Error('admission rejected'); }, broadcastSessionComplete: publish },
+            })).rejects.toThrow('crash before result subscriber');
+            const restarted = new RalphSessionStore({ dataDir });
+            const record = (await restarted.readSessionRecord(childWorkspace, sessionId))!;
+            expect(record.completion).toMatchObject({ reason, processId: 'queue_final-check', totalIterations: 3 });
+            // The check stayed running: only the independent completion record can recover this outcome.
+            expect(record.finalChecks?.at(-1)?.status).toBe('running');
+            const { results, sessions, onResult } = ralph();
+            sessions.readSessionRecord.mockImplementation(() => restarted.readSessionRecord(childWorkspace, sessionId));
+            await results.restore();
+            expect(persisted().terminal?.result).toMatchObject({ outcome, reason });
+            expect(persisted().terminal?.result.summary).toContain('Final scoped output');
+            expect(onResult).toHaveBeenCalledOnce();
+            const first = persisted();
+            complete('signal'); await flush();
+            expect(persisted()).toEqual(first);
         });
 
         it('disposes session listeners and pending journal reads', async () => {

@@ -156,6 +156,11 @@ export class DelegatedJobResults {
             return;
         }
         if (session.phase === 'awaiting-input' || session.phase === 'grilling') return;
+        if (session.completion && session.terminalReason !== 'USER_STOPPED') {
+            await this.saveSessionResult(job, session.completion.reason, session.completion.totalIterations,
+                session, session.completion.processId);
+            return;
+        }
         let reason: string | undefined;
         if (session.terminalReason === 'USER_STOPPED') reason = 'user-stopped';
         else {

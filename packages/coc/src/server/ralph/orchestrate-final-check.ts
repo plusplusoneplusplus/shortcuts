@@ -20,6 +20,7 @@ import {
     type RalphStartGapFixLoopAction,
 } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { RalphSessionStore } from './ralph-session-store';
+import type { RalphSessionCompleteReason, RalphSessionRecord } from './types';
 import { buildRalphIterationTask, inheritRalphTaskConfig } from './enqueue-iteration';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import { resolveRalphAdditionalIterations } from '../routes/ralph-route-utils';
@@ -42,7 +43,7 @@ export interface OrchestrateFinalCheckDeps {
         sessionId: string;
         processId: string;
         totalIterations: number;
-        reason: string;
+        reason: RalphSessionCompleteReason;
     }) => void;
     /** Resolved `ralph.finalCheck.maxGapFixLoops` from config (default: 3). */
     maxGapFixLoops: number;
@@ -88,19 +89,23 @@ export interface OrchestrateFinalCheckInput {
 // ============================================================================
 
 /**
- * Intentionally async-void from the bridge's perspective:
- * all errors are logged and do not propagate.
+ * The bridge logs errors. Terminal publication requires a persisted outcome;
+ * persistence failures propagate so the bridge can report them.
  */
 export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): Promise<void> {
     const {
         workspaceId, sessionId, checkIndex, loopIndex, sourceIteration,
         taskId, processId, responseText, deps,
     } = input;
-    const { store, broadcastSessionComplete, maxGapFixLoops } = deps;
+    const { store, maxGapFixLoops } = deps;
     const logger = getLogger();
 
     const nowIso = new Date().toISOString();
     const session = await store.readSessionRecord(workspaceId, sessionId);
+    if (session?.completion) {
+        broadcastStoredCompletion(deps, workspaceId, sessionId, session.completion);
+        return;
+    }
     const decision = decideRalphFinalCheckActions({
         responseText,
         taskId,
@@ -138,7 +143,7 @@ export async function orchestrateFinalCheck(input: OrchestrateFinalCheckInput): 
                 break;
 
             case 'broadcastSessionComplete':
-                broadcastSessionComplete({
+                await publishSessionCompletion(deps, {
                     workspaceId,
                     sessionId,
                     processId: action.processId,
@@ -226,7 +231,7 @@ async function requestFinalCheckRepair(input: RequestFinalCheckRepairInput): Pro
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Failed to append failure section for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
     }
     await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, action.failureRecord, logger);
-    deps.broadcastSessionComplete({
+    await publishSessionCompletion(deps, {
         workspaceId,
         sessionId,
         processId,
@@ -272,7 +277,7 @@ async function startGapFixLoop(input: StartGapFixLoopInput): Promise<void> {
     } catch (err) {
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] startNewLoop failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
         await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, action.failureRecord, logger);
-        deps.broadcastSessionComplete({
+        await publishSessionCompletion(deps, {
             workspaceId,
             sessionId,
             processId,
@@ -310,7 +315,7 @@ async function startGapFixLoop(input: StartGapFixLoopInput): Promise<void> {
     } catch (err) {
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] enqueue gap-fix failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
         await safeUpsertRecord(store, workspaceId, sessionId, checkIndex, action.failureRecord, logger);
-        deps.broadcastSessionComplete({
+        await publishSessionCompletion(deps, {
             workspaceId,
             sessionId,
             processId,
@@ -351,4 +356,34 @@ function isAutoProviderRoutingRequested(context: Record<string, unknown> | undef
         && !Array.isArray(routing)
         && (routing as Record<string, unknown>).requested === true
     );
+}
+
+/** The durable outcome survives failed check metadata writes and a crash before publication. */
+async function publishSessionCompletion(
+    deps: OrchestrateFinalCheckDeps,
+    params: Parameters<OrchestrateFinalCheckDeps['broadcastSessionComplete']>[0],
+): Promise<void> {
+    // A deleted session has no journal to update; recovery diagnoses the missing
+    // registered child independently. Keep its existing live failure event.
+    if (params.reason === 'final-check-session-missing') {
+        deps.broadcastSessionComplete(params);
+        return;
+    }
+    const record = await deps.store.recordCompletion(params.workspaceId, params.sessionId, {
+        reason: params.reason,
+        processId: params.processId,
+        totalIterations: params.totalIterations,
+        completedAt: new Date().toISOString(),
+    });
+    broadcastStoredCompletion(deps, params.workspaceId, params.sessionId, record.completion!);
+}
+
+function broadcastStoredCompletion(
+    deps: OrchestrateFinalCheckDeps, workspaceId: string, sessionId: string,
+    completion: NonNullable<RalphSessionRecord['completion']>,
+): void {
+    deps.broadcastSessionComplete({
+        workspaceId, sessionId, reason: completion.reason,
+        processId: completion.processId, totalIterations: completion.totalIterations,
+    });
 }

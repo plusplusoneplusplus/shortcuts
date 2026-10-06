@@ -272,6 +272,21 @@ export class RalphSessionStore {
         return next;
     }
 
+    /** Persist the first whole-session outcome before publishing its terminal event. */
+    async recordCompletion(
+        workspaceId: string,
+        sessionId: string,
+        completion: NonNullable<RalphSessionRecord['completion']>,
+    ): Promise<RalphSessionRecord> {
+        return this.updateSessionRecord(workspaceId, sessionId, rec => {
+            if (!rec || rec.workspaceId !== workspaceId || rec.sessionId !== sessionId) {
+                throw new Error(`Ralph session ${sessionId} not found in workspace ${workspaceId}`);
+            }
+            if (rec.completion) return rec;
+            return { ...rec, completion };
+        });
+    }
+
     /**
      * Has the journal file's mtime advanced past the given threshold?
      */
@@ -315,6 +330,7 @@ export class RalphSessionStore {
             const next: RalphSessionRecord = { ...base, phase: 'awaiting-input', pendingInput: pending };
             delete next.completedAt;
             delete next.terminalReason;
+            delete next.completion;
             return next;
         });
     }
@@ -479,6 +495,7 @@ export class RalphSessionStore {
             next.phase = 'executing';
             delete next.completedAt;
             delete next.terminalReason;
+            delete next.completion;
             return next;
         });
     }
@@ -550,6 +567,7 @@ export class RalphSessionStore {
             next.maxIterations = base.maxIterations + additionalIterations;
             delete next.completedAt;
             delete next.terminalReason;
+            delete next.completion;
             next.loops = updatedLoops;
             return next;
         });

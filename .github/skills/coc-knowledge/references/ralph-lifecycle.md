@@ -14,11 +14,18 @@ cancellation notice. Caps explicitly leave goal completion unconfirmed. Result d
 scoped final process summary, session API link and journal path; reviews retain authorization
 and Sentinel dispatcher constraints.
 
-Startup recovery reads the registered session journal. Awaiting-input, queued/running checks,
-format repair and continuing gap loops remain silent. Clean/failed final checks, gap caps and
-terminal iteration caps recover results. Successful iteration-loop `phase=complete` alone
-cannot settle a session because final-check admission follows it. Ambiguous admission crash
-windows remain pending; remote sessions use a separate return boundary.
+Startup recovery reads the registered session journal and prefers its durable `completion`
+outcome, including the exact reason, final process and iteration count. Final-check terminal
+publication requires this independent record even when check metadata writes fail; replay
+publishes the stored first outcome without starting another loop or repair. Explicit extension,
+new-loop and awaiting-input transitions clear it. Unavailable sessions publish their existing
+live failure and recover as unavailable children.
+
+Awaiting-input, format repair and continuing gap loops remain silent. Journals without a
+completion record recover from clean/failed final checks, gap caps and terminal iteration caps.
+Successful iteration-loop `phase=complete` alone cannot settle a session because final-check
+admission follows it. Ambiguous admission crash windows remain pending; remote sessions use
+a separate return boundary.
 
 ## Resume Routes
 
