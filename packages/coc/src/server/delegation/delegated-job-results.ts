@@ -1,10 +1,11 @@
-import { toQueueProcessId, toTaskId, type AIProcess, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId, toTaskId, type AIProcess, type ProcessStore, type QueuedTask, type TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { onTaskTerminal } from '../messaging/chat-target';
 import { isTerminalStatus } from '../messaging/relay-answer';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import type { RalphSessionCompleteEvent } from '../queue/queue-executor-bridge';
 import type { RalphSessionRecord } from '../ralph/types';
 import type { RalphSessionStore } from '../ralph/ralph-session-store';
+import { getRalphTaskKind } from '../ralph/task-kind';
 import { getRalphContext } from '../tasks/task-types';
 import { DelegatedJobStore, type DelegatedJob } from './delegated-job-store';
 
@@ -52,8 +53,8 @@ export class DelegatedJobResults {
     constructor(private readonly deps: {
         jobs: DelegatedJobStore;
         store: Pick<ProcessStore, 'getWorkspaces' | 'getProcess'>;
-        queue: Pick<ScheduleQueueEventBus, 'on' | 'off' | 'getTask'>;
-        sessions?: Pick<RalphSessionStore, 'readSessionRecord' | 'getProgressPath'>;
+        queue: Pick<ScheduleQueueEventBus, 'on' | 'off' | 'getTask'> & Pick<TaskQueueManager, 'getHistory' | 'getQueued' | 'getRunning'>;
+        sessions?: Pick<RalphSessionStore, 'readSessionRecord' | 'getProgressPath' | 'recordCompletion'>;
         onResult?: (job: DelegatedJob) => Promise<void>;
     }) {
         this.unsubscribe = onTaskTerminal(deps.queue, task => {
@@ -161,6 +162,11 @@ export class DelegatedJobResults {
                 session, session.completion.processId);
             return;
         }
+        if (session.phase === 'executing') {
+            for (const task of this.deps.queue.getHistory()) {
+                if (await this.recordQueuedSessionCancellation(job, task, session)) return;
+            }
+        }
         let reason: string | undefined;
         if (session.terminalReason === 'USER_STOPPED') reason = 'user-stopped';
         else {
@@ -189,6 +195,40 @@ export class DelegatedJobResults {
                 ? check.processId : session.iterations.at(-1)?.processId;
             await this.saveSessionResult(job, reason, session.currentIteration, session, finalProcessId);
         }
+    }
+
+    /** Queued iterations never enter the executor's interrupted-turn settlement. */
+    private async recordQueuedSessionCancellation(
+        job: DelegatedJob, task: QueuedTask, storedSession?: RalphSessionRecord,
+    ): Promise<boolean> {
+        const ctx = getRalphContext(task);
+        if (!this.deps.sessions || task.status !== 'cancelled' || task.startedAt !== undefined
+            || task.type !== 'chat' || task.payload.mode !== 'ralph' || task.payload.processId
+            || !ctx?.sessionId || ctx.sessionId !== job.child.sessionId
+            || (task.payload.workspaceId ?? task.repoId) !== job.child.workspaceId
+            || getRalphTaskKind(ctx) !== 'iteration' || ctx.phase === 'grilling') return false;
+        const session = storedSession ?? await this.deps.sessions.readSessionRecord(job.child.workspaceId, ctx.sessionId);
+        if (this.disposed || !session || session.workspaceId !== job.child.workspaceId
+            || session.sessionId !== ctx.sessionId || session.phase !== 'executing'
+            || session.terminalReason === 'USER_STOPPED') return false;
+        // The journal records finished iterations; a queued continuation can be one ahead.
+        const iteration = ctx.currentIteration ?? 1;
+        if (iteration !== session.currentIteration + 1) return false;
+        // Explicit resume can reuse the iteration number. Its live task wins over history.
+        if ([...this.deps.queue.getQueued(), ...this.deps.queue.getRunning()].some(active => {
+            const activeContext = getRalphContext(active);
+            return active.id !== task.id && activeContext?.sessionId === ctx.sessionId
+                && (active.payload.workspaceId ?? active.repoId) === job.child.workspaceId
+                && (activeContext?.currentIteration ?? 1) >= iteration;
+        })) return false;
+        const record = await this.deps.sessions.recordCompletion(job.child.workspaceId, ctx.sessionId, {
+            reason: 'user-stopped', processId: task.processId ?? toQueueProcessId(task.id),
+            totalIterations: session.currentIteration, completedAt: new Date().toISOString(),
+        });
+        if (this.disposed) return true;
+        const completion = record.completion!;
+        await this.saveSessionResult(job, completion.reason, completion.totalIterations, record, completion.processId);
+        return true;
     }
 
     private sessionEventId(job: DelegatedJob): string {
@@ -227,10 +267,18 @@ export class DelegatedJobResults {
     }
 
     private async recordTerminal(task: QueuedTask): Promise<void> {
-        if (!isTerminalStatus(task.status) || task.type !== 'chat' || getRalphContext(task)) return;
+        if (!isTerminalStatus(task.status) || task.type !== 'chat') return;
+        const ctx = getRalphContext(task);
         for (const workspace of await this.deps.store.getWorkspaces()) {
             if (this.disposed) return;
             try {
+                if (ctx) {
+                    const sessionJob = this.deps.jobs.list(workspace.id).find(row => !row.child.serverId
+                        && row.child.workspaceId === (task.payload.workspaceId ?? task.repoId)
+                        && row.child.sessionId === ctx.sessionId);
+                    if (sessionJob) await this.recordQueuedSessionCancellation(sessionJob, task);
+                    continue;
+                }
                 const job = this.deps.jobs.list(workspace.id).find(row =>
                     !row.child.sessionId && !row.child.serverId && matchesChild(row, task));
                 if (job) await this.recordJob(job, task);

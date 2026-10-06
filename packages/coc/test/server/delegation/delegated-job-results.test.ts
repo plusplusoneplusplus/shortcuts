@@ -305,12 +305,128 @@ describe('ordinary delegated job result recording', () => {
         function ralph(record: RalphSessionRecord | null = session()) {
             register({ sessionId });
             const sessions = { readSessionRecord: vi.fn().mockResolvedValue(record),
+                recordCompletion: vi.fn(async (_workspaceId, _sessionId, completion) => ({ ...record!, completion: record?.completion ?? completion })),
                 getProgressPath: () => path.join(dataDir, 'progress.md') };
             const onResult = vi.fn().mockResolvedValue(undefined);
             const results = new DelegatedJobResults({ jobs, store, queue, sessions, onResult });
             services.push(results);
             return { results, sessions, onResult };
         }
+        function queuedIteration(overrides: Record<string, unknown> = {}, workspaceId = childWorkspace, id = 'child') {
+            queue.enqueue({ id, type: 'chat', priority: 'normal', repoId: workspaceId,
+                payload: { kind: 'chat', mode: 'ralph', workspaceId,
+                    context: { ralph: { sessionId, phase: 'executing', currentIteration: 4, ...overrides } } } });
+        }
+
+        it('persists a queued continuation cancellation before returning it to the original parent', async () => {
+            const { sessions, onResult } = ralph(session({ phase: 'executing', terminalReason: undefined }));
+            queuedIteration({}, childWorkspace, 'continuation');
+            queue.cancelTask('continuation'); await flush();
+            expect(sessions.recordCompletion).toHaveBeenCalledWith(childWorkspace, sessionId,
+                expect.objectContaining({ reason: 'user-stopped', processId: 'queue_continuation', totalIterations: 3 }));
+            expect(persisted().terminal?.result).toMatchObject({ outcome: 'cancelled', reason: 'user-stopped' });
+            expect(onResult).toHaveBeenCalledOnce();
+            expect(queue.getQueued()).toEqual([]);
+            expect(store.appendConversationTurn).not.toHaveBeenCalled();
+        });
+
+        it('settles cancellation before the first iteration ever starts', async () => {
+            const { sessions, onResult } = ralph(session({ phase: 'executing', terminalReason: undefined, currentIteration: 0 }));
+            queuedIteration({ currentIteration: 1 }); queue.cancelTask('child'); await flush();
+            expect(sessions.recordCompletion).toHaveBeenCalledWith(childWorkspace, sessionId,
+                expect.objectContaining({ reason: 'user-stopped', totalIterations: 0 }));
+            expect(onResult).toHaveBeenCalledOnce();
+        });
+
+        it('leaves running cancellation to the executor boundary', async () => {
+            const { sessions, onResult } = ralph(session({ phase: 'executing', terminalReason: undefined }));
+            queuedIteration(); queue.markStarted('child'); queue.cancelTask('child'); await flush();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled(); expect(onResult).not.toHaveBeenCalled();
+        });
+
+        it('preserves the first durable outcome when queued cancellation is replayed', async () => {
+            const completion = { reason: 'iteration-failed' as const, processId: 'queue_previous',
+                totalIterations: 3, completedAt: new Date().toISOString() };
+            const { onResult } = ralph(session({ phase: 'executing', terminalReason: undefined, completion }));
+            queuedIteration(); queue.cancelTask('child'); await flush();
+            expect(persisted().terminal?.result).toMatchObject({ outcome: 'failed', reason: 'iteration-failed' });
+            expect(onResult).toHaveBeenCalledOnce();
+        });
+
+        it('recovers a queued cancellation after lost ledger recording and pruned queue history', async () => {
+            const journal = new RalphSessionStore({ dataDir });
+            await journal.initSession(childWorkspace, sessionId, { originalGoal: 'Fix search', maxIterations: 20 });
+            await journal.updateSessionRecord(childWorkspace, sessionId, () => session({ phase: 'executing', terminalReason: undefined }));
+            const { results, sessions, onResult } = ralph();
+            sessions.readSessionRecord.mockImplementation(() => journal.readSessionRecord(childWorkspace, sessionId));
+            sessions.recordCompletion.mockImplementation((...args) => journal.recordCompletion(...args));
+            const saveResult = vi.spyOn(jobs, 'recordResult').mockImplementationOnce(() => { throw new Error('ledger write interrupted'); });
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+            queuedIteration(); queue.cancelTask('child');
+            await vi.waitFor(() => expect(saveResult).toHaveBeenCalledOnce());
+            expect((await journal.readSessionRecord(childWorkspace, sessionId))?.completion?.reason).toBe('user-stopped');
+            expect(persisted().terminal).toBeUndefined();
+            expect(onResult).not.toHaveBeenCalled();
+            saveResult.mockRestore();
+            results.dispose();
+            queue = new TaskQueueManager(); // no task/process survived; only session.json remains
+            const restarted = new DelegatedJobResults({ jobs: new DelegatedJobStore(dataDir), store, queue,
+                sessions: new RalphSessionStore({ dataDir }), onResult });
+            services.push(restarted);
+            await restarted.restore();
+            expect(persisted().terminal?.result.outcome).toBe('cancelled');
+            expect(onResult).toHaveBeenCalledOnce();
+        });
+
+        it('recovers cancellation before the result listener was started', async () => {
+            queuedIteration({}, childWorkspace, 'continuation'); queue.cancelTask('continuation');
+            const { results, sessions, onResult } = ralph(session({ phase: 'executing', terminalReason: undefined }));
+            await results.restore();
+            expect(sessions.recordCompletion).toHaveBeenCalledOnce();
+            expect(persisted().terminal?.result.outcome).toBe('cancelled');
+            expect(onResult).toHaveBeenCalledOnce();
+        });
+
+        it.each([
+            { currentIteration: 2 }, { currentIteration: 3 }, { currentIteration: 5 },
+            { sessionId: 'other-session' }, { finalCheck: true }, { submit: true }, { phase: 'grilling' },
+        ])('does not settle excluded queued steps: %j', async context => {
+            const { sessions, results, onResult } = ralph(session({ phase: 'executing', terminalReason: undefined }));
+            queuedIteration(context); queue.cancelTask('child'); await flush(); await results.restore();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+            expect(onResult).not.toHaveBeenCalled(); expect(persisted().terminal).toBeUndefined();
+        });
+
+        it.each(['awaiting-input', 'grilling', 'complete'] as const)('keeps %s sessions silent on queued cancellation', async phase => {
+            const { sessions, onResult } = ralph(session({ phase }));
+            queuedIteration(); queue.cancelTask('child'); await flush();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled(); expect(onResult).not.toHaveBeenCalled();
+        });
+
+        it('ignores cancellation in a different workspace', async () => {
+            const { sessions, results } = ralph(session({ phase: 'executing', terminalReason: undefined }));
+            queuedIteration({}, parentWorkspace); queue.cancelTask('child'); await flush(); await results.restore();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled(); expect(persisted().terminal).toBeUndefined();
+        });
+
+        it('lets an admitted resume win over stale queued cancellation history', async () => {
+            queuedIteration(); queue.cancelTask('child'); queuedIteration({}, childWorkspace, 'resume');
+            const { sessions, results } = ralph(session({ phase: 'executing', terminalReason: undefined }));
+            await results.restore();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled(); expect(persisted().terminal).toBeUndefined();
+        });
+
+        it('withholds cancellation publication when session persistence fails', async () => {
+            const { sessions, onResult, results } = ralph(session({ phase: 'executing', terminalReason: undefined }));
+            sessions.recordCompletion.mockRejectedValue(new Error('disk unavailable'));
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+            queuedIteration(); queue.cancelTask('child'); await flush();
+            expect(onResult).not.toHaveBeenCalled(); expect(persisted().terminal).toBeUndefined();
+            sessions.recordCompletion.mockImplementation(async (_ws, _id, completion) => session({ completion }));
+            await results.restore();
+            expect(persisted().terminal?.result.outcome).toBe('cancelled');
+        });
+
         function complete(reason = 'signal', overrides: Partial<RalphSessionCompleteEvent> = {}) {
             queue.emit('ralphSessionComplete', { type: 'ralphSessionComplete', workspaceId: childWorkspace,
                 sessionId, processId: 'queue_final-check', totalIterations: 3, reason, ...overrides });

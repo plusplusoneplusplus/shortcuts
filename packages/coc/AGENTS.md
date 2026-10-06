@@ -104,8 +104,8 @@ references before editing. Paths are package-relative.
   before queue execution; Ralph registration identifies the session at launch only.
   Rejected admission settles delivery as failed; accepted observer errors retain tracking.
   `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
-  from scoped queue/process records at startup. Tool admission waits for recovery. Exclude
-  Ralph step events and remote jobs; unavailable children settle with a diagnosable failed delivery.
+  from scoped queue/process records at startup. Tool admission waits for recovery. Ordinary
+  recording excludes Ralph steps and remote jobs; unavailable children settle with a diagnosable failed delivery.
   Whole-session Ralph events match registered workspace/session identity, preserving the first
   terminal outcome. Journal recovery prefers the durable session `completion` record, then
   terminal reasons or final-check evidence. Iteration caps/missing signals, rejected follow-on
@@ -116,6 +116,10 @@ references before editing. Paths are package-relative.
   Explicit resume clears the outcome before admission and restores it on
   rejection; the delegation ledger retains its first outcome. Complete
   iteration loops with pending checks remain silent. Caps do not assert goal completion.
+  Queued execution-iteration cancellations persist `user-stopped` through the result recorder;
+  startup scans scoped queue history. Only the next unfinished iteration qualifies, and a
+  live admitted resume wins over cancellation history. Pauses and other Ralph task kinds
+  retain their own lifecycle.
   `ProcessMessageDeliveryService.deliverOnce` admits server-owned reviews with a stable
   receipt in pending messages, queue tasks and user turns. It verifies the parent's workspace,
   preserves queue ordering, rejects stopped parents and never steers. Review pending IDs equal

@@ -28,6 +28,12 @@ The first completion wins. Late failures cannot settle paused, stopped or newer 
 Follow-ups, checks/repair, submit and grilling retain their own lifecycle. Interrupted sessions
 keep their executing phase so explicit resume stays available; completion grants no retry.
 
+Queued execution-iteration cancellations settle through the registered result recorder because
+these tasks never enter the executor. It persists `user-stopped` before returning the passive
+notice and scans scoped queue history during startup. Only the next unfinished iteration
+qualifies; admitted resume tasks take precedence over cancellation history. Paused sessions,
+stale steps, grilling, checks and submit tasks stay outside this boundary.
+
 Awaiting-input, format repair and continuing gap loops remain silent. Journals without a
 completion record recover from clean/failed final checks, gap caps and terminal iteration caps.
 Successful iteration-loop `phase=complete` alone cannot settle a session because final-check
