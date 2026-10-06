@@ -296,6 +296,50 @@ describe.each(['whatsapp', 'teams'] as const)('%s native images through executio
         expect(fs.readdirSync(getRepoDataPath(ctx.dataDir, 'ws-a', 'attachments'))).toEqual([]);
     });
 
+    it.each(['missing-file', 'changed-file', 'missing-blob', 'corrupt-blob', 'invalid-history', 'empty-attachments', 'other-workspace'] as const)(
+        'rejects %s before initial and resumed SDK image execution', { timeout: 30_000 }, async damage => {
+            for (const followUp of [false, true]) {
+                const ctx = await harness(platform);
+                if (followUp) {
+                    await ctx.deliver('seed', '/ask text-only request');
+                    await ctx.settle();
+                    ctx.facade.pause();
+                }
+                await ctx.deliver('image', '/ask describe the image', true, followUp ? 'seed' : undefined);
+                const task = ctx.facade.getAll().find(task => task.payload.prompt === 'describe the image')!;
+                const payload = task.payload as any;
+                const file = payload.attachments[0].path;
+                if (damage === 'missing-file') fs.unlinkSync(file);
+                if (damage === 'changed-file') fs.writeFileSync(file, Buffer.from('not an image'));
+                if (damage === 'missing-blob' || damage === 'corrupt-blob') {
+                    payload.images = [];
+                    payload.imagesFilePath = path.join(ctx.dataDir, 'damaged-images.json');
+                    if (damage === 'corrupt-blob') fs.writeFileSync(payload.imagesFilePath, '{bad json');
+                }
+                if (damage === 'invalid-history') payload.images = [123];
+                if (damage === 'empty-attachments') payload.attachments = [];
+                if (damage === 'other-workspace') {
+                    const other = getRepoDataPath(ctx.dataDir, 'ws-b', 'attachments');
+                    fs.mkdirSync(other, { recursive: true });
+                    const otherDir = fs.mkdtempSync(path.join(other, 'incoming-'));
+                    const otherFile = path.join(otherDir, 'image.png');
+                    fs.writeFileSync(otherFile, PNG);
+                    payload.attachments[0].path = otherFile;
+                }
+                if (followUp) ctx.facade.resume();
+                await ctx.settle();
+                expect((await ctx.store.getProcess(task.processId!))?.status).toBe('failed');
+                expect(ctx.received).toHaveLength(followUp ? 1 : 0);
+                await vi.waitFor(() => expect(ctx.sends.some(text => text.includes(CHAT_IMAGE_FAILURE_TEXT.storage))).toBe(true));
+                expect(fs.readdirSync(getRepoDataPath(ctx.dataDir, 'ws-a', 'attachments'))).toEqual([]);
+                // Durable source admission still prevents re-execution of damaged batches.
+                const taskCount = ctx.facade.getAll().length;
+                await ctx.deliver('image', '/ask describe the image', true, followUp ? 'seed' : undefined);
+                expect(ctx.facade.getAll()).toHaveLength(taskCount);
+            }
+        },
+    );
+
     it.each([false, true])('rejects failed media without executing instructions (await instructions=%s)', { timeout: 20_000 }, async captionless => {
         const ctx = await harness(platform);
         ctx.failDownloads(true);

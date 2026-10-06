@@ -574,6 +574,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         // that is already queued.
                         {
                             ...(task.payload.deferredMessage ? { userTurnPersisted: true } : {}),
+                            ...(imageTempDir ? { imageTempDir } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),
                             ...(typeof followUpPayload.historyCutoffTurnIndex === 'number'
                                 ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }

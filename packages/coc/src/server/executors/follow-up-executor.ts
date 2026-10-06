@@ -61,7 +61,7 @@ import {
     shouldInjectChatModeDirective,
 } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
-import { assertChatImageTransport } from './chat-image-policy';
+import { assertIncomingImageFiles, assertChatImageTransport } from './chat-image-policy';
 import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
 import {
     buildCumulativeTokenUsage,
@@ -110,6 +110,8 @@ export interface FollowUpTurnOptions {
     relayRequestId?: string;
     /** Queue admission already persisted the deferred user turn, including automated turns. */
     userTurnPersisted?: boolean;
+    /** Prepared connector directory retained by the queue cleanup lifecycle. */
+    imageTempDir?: string;
 }
 
 /** Log prefix for every line this executor writes. */
@@ -457,6 +459,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const turnAbort = this.registerTurnAbortController(processId, continuation.provider);
         try {
+            await assertIncomingImageFiles(attachments, images, options?.imageTempDir,
+                this.dataDir ?? path.join(os.homedir(), '.coc'), wsId, turnAbort.signal);
             assertChatImageTransport(sessionProvider, attachments, workingDirectory);
             if (continuation.strictResume) {
                 if (!activeBinding.sessionId) {

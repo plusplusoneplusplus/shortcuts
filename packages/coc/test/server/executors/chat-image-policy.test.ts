@@ -1,7 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { getRepoDataPath } from '../../../src/server/paths';
+import { MAX_IMAGE_BYTES } from '../../../src/server/core/image-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Attachment, ModelInfo } from '@plusplusoneplusplus/forge';
 import { resolveWorkspaceExecutionContext, translatePathForExecution } from '@plusplusoneplusplus/forge';
-import { assertChatImageTransport, assertCopilotImageModel, CHAT_IMAGE_FAILURE_TEXT } from '../../../src/server/executors/chat-image-policy';
+import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, CHAT_IMAGE_FAILURE_TEXT } from '../../../src/server/executors/chat-image-policy';
 
 vi.mock('@plusplusoneplusplus/forge', async importOriginal => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -93,5 +98,76 @@ describe('Copilot image model policy', () => {
     ])('fails closed for unknown identity or capability', (id, metadata) => {
         expect(() => assertCopilotImageModel(id as string | undefined, metadata as ModelInfo | undefined))
             .toThrow(CHAT_IMAGE_FAILURE_TEXT.unknownModel);
+    });
+});
+
+describe('admitted incoming image storage policy', () => {
+    let dataDir: string;
+    let tempDir: string;
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
+    let attachments: Attachment[];
+    let images: string[];
+
+    beforeEach(() => {
+        dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-policy-'));
+        const root = getRepoDataPath(dataDir, 'ws-a', 'attachments');
+        fs.mkdirSync(root, { recursive: true });
+        tempDir = fs.mkdtempSync(path.join(root, 'incoming-'));
+        const file = path.join(tempDir, 'image.png');
+        fs.writeFileSync(file, png);
+        attachments = [{ type: 'file', path: file }];
+        images = [`data:image/png;base64,${png.toString('base64')}`];
+    });
+    afterEach(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+
+    const validate = (files: unknown, history: unknown, dir: string, root: string) =>
+        assertIncomingImageFiles(files, history, dir, root, 'ws-a');
+
+    it('preserves complete images and leaves other attachment flows alone', async () => {
+        await validate(attachments, images, tempDir, dataDir);
+        await validate([{ type: 'file', path: 'missing-document.pdf' }], undefined, 'uploads', dataDir);
+    });
+
+    it.each([[], [123], ['data:image/png;base64,invalid'], Array(6).fill('bad')])(
+        'rejects invalid or incomplete persisted history (%j)', async history => {
+            await expect(validate(attachments, history, tempDir, dataDir)).rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
+        },
+    );
+
+    it('honors turn cancellation before reading any prepared files', async () => {
+        await expect(assertIncomingImageFiles(attachments, images, tempDir, dataDir, 'ws-a', AbortSignal.abort()))
+            .rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
+    });
+
+    it('rejects changed valid image bytes as well as signature corruption', async () => {
+        fs.writeFileSync(attachments[0].path, Buffer.concat([png, Buffer.from('changed')]));
+        await expect(validate(attachments, images, tempDir, dataDir)).rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
+    });
+
+    it('bounds actual file bytes even when persisted history claims a small image', async () => {
+        fs.writeFileSync(attachments[0].path, Buffer.alloc(MAX_IMAGE_BYTES + 1));
+        await expect(validate(attachments, images, tempDir, dataDir)).rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
+    });
+
+    it('rejects a whole batch whose combined bytes exceed the cap', async () => {
+        const large = Buffer.concat([png, Buffer.alloc(MAX_IMAGE_BYTES / 2)]);
+        fs.writeFileSync(attachments[0].path, large);
+        const history = `data:image/png;base64,${large.toString('base64')}`;
+        await expect(validate([attachments[0], attachments[0]], [history, history], tempDir, dataDir))
+            .rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
+    });
+
+    it('rejects a file extension that disagrees with the saved MIME', async () => {
+        const wrong = path.join(tempDir, 'image.gif');
+        fs.renameSync(attachments[0].path, wrong);
+        attachments[0].path = wrong;
+        await expect(validate(attachments, images, tempDir, dataDir)).rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
+    });
+
+    it.skipIf(process.platform === 'win32')('rejects symbolic links even within the admitted directory', async () => {
+        const linked = path.join(tempDir, 'linked.png');
+        fs.symlinkSync(attachments[0].path, linked);
+        attachments[0].path = linked;
+        await expect(validate(attachments, images, tempDir, dataDir)).rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
     });
 });
