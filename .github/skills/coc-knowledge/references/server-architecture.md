@@ -188,6 +188,10 @@ Receipts preserve progress; uncertain sends require reconciliation rather than a
 Accepted Teams channel-thread follow-ups acknowledge durable admission directly
 without a confirmation post; new chats retain confirmations. Upstream Like admission
 and request-correlated final-answer delivery remain independent of acceptance posts.
+WhatsApp reserves recognized control-command IDs in its bounded own/known-message
+guard before best-effort 👍 acknowledgement and command dispatch. Teams' enabled
+channel Likes include commands and skip recorded thread-command IDs. Reaction
+failures preserve command handling; acknowledgements use native reactions.
 
 `messaging/chat-target.ts` shares workspace/topic lookup (`resolveWorkspace`,
 bounded `listRecentTopics`, `resolveTopic`) and terminal queue subscriptions

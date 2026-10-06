@@ -223,7 +223,66 @@ describe('WhatsApp workspace command routing', () => {
         expect(bindings.selectedRepo).toBe('ws-b');
         expect(bindings.topic('ws-b')).toBe('topic-b');
         expect(enqueue).not.toHaveBeenCalled();
-        expect(react).not.toHaveBeenCalled();
+        expect(react.mock.calls).toEqual([['styled-help']]);
+    });
+
+    it.each(['help', '/help', 'quota', 'list repos', 'select repo Beta', 'create topic', 'compact'])(
+        'acknowledges %s once without invoking the LLM, including redelivery after reload', async text => {
+            await router.handle(inbound(text, 'command'));
+            await router.handle(inbound(text, 'command'));
+            const restored = new WhatsAppBindings(dir);
+            await restored.restore(store);
+            const restarted = new WhatsAppCommandRouter({
+                store, bindings: restored, groupJid: () => 'group@g.us', enqueue, send, react,
+                getTask: () => undefined,
+            });
+            await restarted.handle(inbound(text, 'command'));
+            expect(react.mock.calls).toEqual([['command']]);
+            expect(send).toHaveBeenCalledOnce();
+            expect(send.mock.calls[0][1]).toBe('command');
+            expect(react.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
+            expect(enqueue).not.toHaveBeenCalled();
+        },
+    );
+
+    it('reserves concurrent commands before reacting and preserves sender and group guards', async () => {
+        bindings.selectRepo('ws-b');
+        bindings.selectTopic('ws-b', 'topic-b');
+        let finishReaction!: () => void;
+        react.mockImplementationOnce(() => new Promise<void>(resolve => { finishReaction = resolve; }));
+        const first = router.handle(inbound('help', 'concurrent'));
+        try {
+            await router.handle(inbound('help', 'concurrent'));
+            await router.handle(inbound('help', 'other-author', { fromMe: false }));
+            await router.handle(inbound('help', 'other-group', { chatJid: 'other@g.us' }));
+            expect(react.mock.calls).toEqual([['concurrent']]);
+            expect(send).not.toHaveBeenCalled();
+        } finally {
+            finishReaction();
+            await first;
+        }
+        expect(send).toHaveBeenCalledOnce();
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('topic-b');
+    });
+
+    it('still answers commands when reactions fail, without a text acknowledgement or duplicate retry', async () => {
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+        react.mockRejectedValueOnce(new Error('reaction down'));
+        try {
+            await router.handle(inbound('help', 'failed-like'));
+            await router.handle(inbound('help', 'failed-like'));
+            await router.handle(inbound('quota', 'next-command'));
+            expect(react.mock.calls).toEqual([['failed-like'], ['next-command']]);
+            expect(send.mock.calls).toEqual([
+                [expect.stringContaining('*CoC help*'), 'failed-like'],
+                ['Quota data is unavailable.', 'next-command'],
+            ]);
+            expect(enqueue).not.toHaveBeenCalled();
+            expect(errors).toHaveBeenCalledWith('[whatsapp-messaging] Reaction failed:', expect.any(Error));
+        } finally {
+            errors.mockRestore();
+        }
     });
 
     it('answers help, list agents and quota without enqueueing, and records the replies as own messages', async () => {
@@ -295,7 +354,7 @@ describe('WhatsApp workspace command routing', () => {
             expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-a' }), 'focus on the WhatsApp relay work', { connector: 'whatsapp', chatKey: 'group@g.us' });
             expect(send).toHaveBeenLastCalledWith('🗜️ Compacted "Topic A" — context 82k → 14k tokens', 'compact');
             expect(enqueue).not.toHaveBeenCalled();
-            expect(react).not.toHaveBeenCalled();
+            expect(react.mock.calls).toEqual([['select'], ['pick'], ['compact']]);
             expect(bindings.topic('ws-a')).toBe('topic-a');
             // The reply is guarded as an own message, never a new request.
             expect(bindings.isKnownMessage('compact-reply')).toBe(true);

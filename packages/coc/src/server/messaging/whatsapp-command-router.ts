@@ -60,6 +60,13 @@ export class WhatsAppCommandRouter {
             this.deps.bindings.recordOutbound(id);
         };
         let admitted = false;
+        const react = async () => {
+            try {
+                await this.deps.react(msg.messageId);
+            } catch (error) {
+                console.error('[whatsapp-messaging] Reaction failed:', error);
+            }
+        };
         try {
             if (await this.deps.questions?.tryAnswer('whatsapp', {
                 chatKey: msg.chatJid, messageId: msg.messageId, replyToId: msg.quotedMessageId, text: msg.text,
@@ -68,6 +75,10 @@ export class WhatsAppCommandRouter {
             if (command.type === 'invalid') { await reply(invalidCommandReply(WHATSAPP_HELP_FORMAT)); return; }
             if (isMessagingControlCommand(command)) {
                 const bindings = this.deps.bindings;
+                // Reserve the command before awaiting transport or dispatch, including concurrent redelivery.
+                if (bindings.isKnownMessage(msg.messageId)) return;
+                bindings.recordOutbound(msg.messageId);
+                await react();
                 await reply(await handleMessagingCommand(command, {
                     store: this.deps.store,
                     helpFormat: WHATSAPP_HELP_FORMAT,
@@ -136,13 +147,6 @@ export class WhatsAppCommandRouter {
                     }
                 }
             }
-            const react = async () => {
-                try {
-                    await this.deps.react(msg.messageId);
-                } catch (error) {
-                    console.error('[whatsapp-messaging] Reaction failed:', error);
-                }
-            };
             const handOff = await this.deps.handOff?.resolve(targetId, command.mode);
             if (handOff) {
                 await this.deps.handOff!.start(handOff, command.args, { connector: 'whatsapp', chatKey: msg.chatJid });
