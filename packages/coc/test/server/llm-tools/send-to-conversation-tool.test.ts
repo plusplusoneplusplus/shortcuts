@@ -130,6 +130,9 @@ describe('createSendToConversationTool — shape & description', () => {
         );
         expect(props.provider).toMatchObject({ type: 'string', enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'] });
         expect(props.effortTier).toMatchObject({ type: 'string', enum: ['very-low', 'low', 'medium', 'high'] });
+        expect(props.effortTier).toMatchObject({
+            description: expect.stringContaining('Defaults to `medium` in create mode'),
+        });
     });
 
     // AC-05: description leads with the processId (post) branch before the create branch.
@@ -309,6 +312,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         const { tool, captured } = makeTool();
         await tool.handler({ content: 'hi', model: 'claude-opus-4-8' }, invocationStub);
         expect(captured.input!.config?.model).toBe('claude-opus-4-8');
+        expect(captured.input!.config?.effortTier).toBeUndefined();
     });
 
     it('targets a different registered workspace when workspaceId is provided', async () => {
@@ -406,6 +410,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(payloadOf(captured.input!).model).toBeUndefined();
         expect(captured.input!.config?.model).toBeUndefined();
         expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+        expect(captured.input!.config?.effortTier).toBe('medium');
         expect(validateProvider).not.toHaveBeenCalled();
         expect(getEffortTiersForProvider).not.toHaveBeenCalled();
     });
@@ -427,16 +432,31 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(captured.input!.config?.reasoningEffort).toBeUndefined();
     });
 
-    it('inherits provider/model/reasoningEffort from the parent for { content } only', async () => {
+    it('inherits only the provider and defaults to Medium for { content } only', async () => {
         const { tool, captured } = makeTool({
             parentMeta: { provider: 'claude', model: 'claude-sonnet-4-6', reasoningEffort: 'high' },
         });
         await tool.handler({ content: 'spawned' }, invocationStub);
         const payload = payloadOf(captured.input!);
         expect(payload.provider).toBe('claude');
-        expect(captured.input!.config?.model).toBe('claude-sonnet-4-6');
-        expect(captured.input!.config?.reasoningEffort).toBe('high');
+        expect(captured.input!.config?.effortTier).toBe('medium');
+        expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
     });
+
+    it.each(['copilot', 'codex', 'claude', 'opencode'] as const)(
+        'defaults an explicit %s provider to Medium without inheriting model or effort',
+        async provider => {
+            const { tool, captured } = makeTool({
+                parentMeta: { provider: 'copilot', model: 'gpt-5', reasoningEffort: 'high' },
+            });
+            asSuccess(await tool.handler({ content: 'work', provider }, invocationStub));
+            expect(payloadOf(captured.input!).provider).toBe(provider);
+            expect(captured.input!.config?.effortTier).toBe('medium');
+            expect(captured.input!.config?.model).toBeUndefined();
+            expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+        },
+    );
 
     it('reads the parent process via store.getProcess(parentProcessId)', async () => {
         const getProcess = vi.fn(async (_id: string) => ({
@@ -552,11 +572,11 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
-    it('reasoningEffort is inherited but not exposed as a raw schema param', async () => {
+    it('reasoningEffort is inherited with an explicit model but not exposed as a raw schema param', async () => {
         const { tool, captured } = makeTool({
             parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'xhigh' },
         });
-        await tool.handler({ content: 'hi' }, invocationStub);
+        await tool.handler({ content: 'hi', model: 'opus' }, invocationStub);
         expect(captured.input!.config?.reasoningEffort).toBe('xhigh');
 
         const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
@@ -564,13 +584,14 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(props.provider).toBeDefined();
     });
 
-    it('falls back to provider default (no error) when parent has provider but no model', async () => {
+    it('defaults to Medium when parent has provider but no model', async () => {
         const { tool, enqueueChat, captured } = makeTool({ parentMeta: { provider: 'claude' } });
         const result = await tool.handler({ content: 'hi' }, invocationStub);
         expect('error' in result).toBe(false);
         expect(enqueueChat).toHaveBeenCalledTimes(1);
         expect(payloadOf(captured.input!).provider).toBe('claude');
         expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.effortTier).toBe('medium');
     });
 
     it('errors (and does NOT enqueue) with no resolvable parent to inherit a provider from', async () => {
@@ -586,7 +607,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(payloadOf(captured.input!).provider).toBe('claude');
     });
 
-    it('inherits parent settings even when targeting a different workspace', async () => {
+    it('inherits the provider with default Medium when targeting a different workspace', async () => {
         const { tool, captured } = makeTool({
             workspaceId: 'ws-1',
             storeWorkspaces: ['ws-1', 'ws-2'],
@@ -596,7 +617,9 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         const payload = payloadOf(captured.input!);
         expect(payload.workspaceId).toBe('ws-2');
         expect(payload.provider).toBe('claude');
-        expect(captured.input!.config?.reasoningEffort).toBe('high');
+        expect(captured.input!.config?.effortTier).toBe('medium');
+        expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
     });
 
     // ---- spawn link -------------------------------------------------------
@@ -909,7 +932,7 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
         return vi.fn<LaunchRalphFn>(async () => result);
     }
 
-    it('launches with the trimmed goal, caller workspace, and inherited AI selection', async () => {
+    it('launches with the trimmed goal, caller workspace, inherited provider, and default Medium', async () => {
         const launchRalph = makeLaunch();
         const { tool, enqueueChat } = makeTool({
             launchRalph,
@@ -924,7 +947,7 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
             workspaceId: 'ws-1',
             aiSelection: {
                 provider: 'claude',
-                config: { model: 'claude-opus-5-5', reasoningEffort: 'high' },
+                config: { effortTier: 'medium' },
             },
             spawnedFromProcessId: DEFAULT_PARENT_ID,
         });
@@ -946,10 +969,10 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
             parentMeta: { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'high' },
         });
         asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', provider: 'copilot' }, invocationStub));
-        expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'copilot', config: {} });
+        expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'copilot', config: { effortTier: 'medium' } });
     });
 
-    it('launches Auto Ralph with target routing and only explicit overrides', async () => {
+    it('launches Auto Ralph with target routing, default Medium, and explicit overrides', async () => {
         const launchRalph = makeLaunch();
         const { tool } = makeTool({
             launchRalph, storeWorkspaces: ['ws-1', 'ws-2'],
@@ -961,7 +984,10 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
                 workspaceId: 'ws-2', spawnedFromProcessId: DEFAULT_PARENT_ID,
                 aiSelection: { autoProviderRouting: true, config: overrides },
             });
-            expect(launchRalph.mock.lastCall![0].aiSelection).toEqual({ autoProviderRouting: true, config: overrides });
+            expect(launchRalph.mock.lastCall![0].aiSelection).toEqual({
+                autoProviderRouting: true,
+                config: 'model' in overrides ? overrides : { effortTier: 'medium', ...overrides },
+            });
         }
     });
 
@@ -1122,15 +1148,16 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
                 workspaceId: 'w-web',
                 displayName: 'T',
                 payload: { kind: 'chat', mode: 'autopilot', prompt: 'build it', workspaceId: 'w-web', customTitle: 'T' },
+                config: { effortTier: 'medium' },
             },
         });
         // Clone-key targets skip the directory listing entirely.
         expect(directory.list).not.toHaveBeenCalled();
     });
 
-    it.each(['ask', 'autopilot', 'ralph'] as const)('forwards explicit Auto %s to remote routing without parent selections', async mode => {
+    it.each(['ask', 'autopilot', 'ralph'] as const)('forwards default Medium and Auto %s to remote routing without parent selections', async mode => {
         const { tool, directory } = makeTargetTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' } });
-        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w-web', effortTier: 'medium' }, invocationStub));
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w-web' }, invocationStub));
         const call = (directory.startRemoteChat as any).mock.calls[0][0];
         expect(call.kind).toBe(mode === 'ralph' ? 'ralph' : 'queue');
         expect(call.body.config).toEqual({ effortTier: 'medium' });
@@ -1171,7 +1198,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         expect((directory.startRemoteChat as any).mock.calls[0][0]).toEqual({
             serverId: 'srv-1',
             kind: 'ralph',
-            body: { goalSpec: 'goal', workspaceId: 'w-web', config: {}, title: 'G' },
+            body: { goalSpec: 'goal', workspaceId: 'w-web', config: { effortTier: 'medium' }, title: 'G' },
         });
         expect(result.sessionId).toBe('ralph-1');
     });
@@ -1305,7 +1332,7 @@ describe('createSendToConversationTool — messaging completion notices', () => 
 });
 
 describe('Auto delegation capability fallback', () => {
-    it.each(['ask', 'autopilot', 'ralph'] as const)('inherits parent settings for disabled local Auto %s across workspaces', async mode => {
+    it.each(['ask', 'autopilot', 'ralph'] as const)('inherits the provider with default Medium for disabled local Auto %s across workspaces', async mode => {
         const launchRalph = vi.fn().mockResolvedValue({ ok: true, processId: 'queue_r', sessionId: 'r' });
         const validateProvider = vi.fn();
         const { tool, captured } = makeTool({ storeWorkspaces: ['ws-1', 'ws-2'], launchRalph,
@@ -1315,16 +1342,18 @@ describe('Auto delegation capability fallback', () => {
         asSuccess(await tool.handler({ content: 'goal', provider: 'auto', workspaceId: 'ws-2', mode }, invocationStub));
         expect(validateProvider).toHaveBeenCalledExactlyOnceWith('claude');
         if (mode === 'ralph') {
-            expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'claude', config: { model: 'sonnet', reasoningEffort: 'high' } });
+            expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'claude', config: { effortTier: 'medium' } });
         } else {
             expect(payloadOf(captured.input!).provider).toBe('claude');
             expect((payloadOf(captured.input!).context as any).autoProviderRouting).toBeUndefined();
-            expect(captured.input!.config).toMatchObject({ model: 'sonnet', reasoningEffort: 'high' });
+            expect(captured.input!.config).toMatchObject({ effortTier: 'medium' });
+            expect(captured.input!.config?.model).toBeUndefined();
+            expect(captured.input!.config?.reasoningEffort).toBeUndefined();
         }
     });
 
     it.each([
-        [{}, { model: 'sonnet', reasoningEffort: 'high' }],
+        [{}, { effortTier: 'medium' }],
         [{ model: 'opus' }, { model: 'opus', reasoningEffort: 'high' }],
         [{ effortTier: 'medium' }, { effortTier: 'medium' }],
         [{ model: 'opus', effortTier: 'medium' }, { model: 'opus', reasoningEffort: 'high' }],
@@ -1384,6 +1413,8 @@ describe('Auto delegation capability fallback', () => {
         const { tool } = makeTool({ sendMessage, runtime: { isAutoProviderRoutingAvailable } });
         asSuccess(await tool.handler({ content: 'continue', processId: 'queue_existing', provider: 'auto' }, invocationStub));
         expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(sendMessage.mock.calls[0][0]).not.toHaveProperty('model');
+        expect(sendMessage.mock.calls[0][0]).not.toHaveProperty('effort');
         expect(isAutoProviderRoutingAvailable).not.toHaveBeenCalled();
     });
 
@@ -1398,7 +1429,7 @@ describe('Auto delegation capability fallback', () => {
         });
         const validateProvider = vi.fn().mockRejectedValue(new Error('Local Codex disabled'));
         const { tool, enqueueChat } = makeTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' }, runtime: { workspaceDirectory, validateProvider } });
-        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w1', effortTier: 'medium' }, invocationStub));
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w1' }, invocationStub));
         expect(fetchImpl).toHaveBeenCalledTimes(3);
         const body = JSON.parse(fetchImpl.mock.calls[2][1]!.body as string);
         expect(mode === 'ralph' ? body.provider : body.payload.provider).toBe('codex');

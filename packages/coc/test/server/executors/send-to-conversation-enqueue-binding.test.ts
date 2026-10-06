@@ -210,14 +210,14 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
                 })).success).toBe(true);
                 expect(resolveDefaultProvider).toHaveBeenCalledExactlyOnceWith({ forceAuto: true });
                 expect(executeByTypeFn.mock.calls[0][0].payload.provider).toBe('claude');
-                expect(task.config?.model).toBe(overrides.model || (overrides.effortTier ? 'opus' : undefined));
-                expect(task.config?.reasoningEffort).toBe(!overrides.model && overrides.effortTier ? 'high' : undefined);
-                // The executor's shared policy reads the target workspace's mode defaults.
+                expect(task.config?.model).toBe(overrides.model || 'opus');
+                expect(task.config?.reasoningEffort).toBe(!overrides.model ? 'high' : undefined);
+                // The default Medium tier resolves against the target provider, ahead of repo model defaults.
                 expect(resolveChatTurnModel({
                     provider: 'claude', requestedModel: task.config?.model, dataDir,
                     workspaceId: task.payload.workspaceId as string,
                     defaultModelMode: mode === 'ask' ? 'ask' : 'task',
-                })).toBe(overrides.model || (overrides.effortTier ? 'opus' : mode === 'ask' ? 'haiku' : 'sonnet'));
+                })).toBe(overrides.model || 'opus');
                 expect((await store.getProcess(result.processId))?.metadata?.provider).toBe('claude');
             }
         } finally {
@@ -246,8 +246,46 @@ describe('send_to_conversation create-mode enqueue binding (real enqueueViaBridg
             const task = bridge.getTask(result.processId.slice('queue_'.length))!;
             expect(task.payload.provider).toBe('claude');
             expect((task.payload.context as any).autoProviderRouting).toBeUndefined();
-            expect(task.config).toMatchObject({ model: 'sonnet', reasoningEffort: 'high' });
+            expect(task.config).toMatchObject({ model: 'opus', reasoningEffort: 'medium', afterEffortTier: 'medium' });
             expect(resolveDefaultProvider).not.toHaveBeenCalled();
+        } finally {
+            bridge.dispose();
+        }
+    });
+
+    it('resolves omitted Auto effort to Copilot Medium and records it on the process', async () => {
+        const { bridge, store } = setup();
+        const { tool } = createSendToConversationTool({
+            store, workspaceId: WS_ID, parentProcessId: PARENT_PID,
+            runtime: { isAutoProviderRoutingAvailable: () => true },
+            enqueueChat: async input => {
+                await prepareTaskForEnqueue(input, { isAutoProviderRoutingActive: () => true });
+                return enqueueViaBridge(input, bridge, freshState(), ROOT, store);
+            },
+        });
+        try {
+            const result = await tool.handler({ content: 'audit', provider: 'auto', mode: 'ask' });
+            if ('error' in result) throw new Error(result.error);
+            const task = bridge.getTask(result.processId.slice('queue_'.length))!;
+            expect(task.config).toMatchObject({ afterEffortTier: 'medium' });
+            expect(task.config.model).toBeUndefined();
+            const executeByTypeFn = vi.fn(async (executedTask: Parameters<ProcessLifecycleRunner['run']>[0]) => ({
+                response: 'done', effectiveModel: executedTask.config.model,
+            }));
+            const runner = new ProcessLifecycleRunner(store, undefined, vi.fn(), 'claude');
+            expect((await runner.run(task, {
+                cancelledTasks: new Set(), executeFollowUpFn: vi.fn(), executeByTypeFn,
+                getWorkingDirectoryFn: () => ROOT,
+                resolveDefaultProvider: async () => ({
+                    provider: 'copilot', selectedByAuto: true, fallbackUsed: false, warnings: [], decisions: [],
+                }),
+            })).success).toBe(true);
+            expect(executeByTypeFn.mock.calls[0][0].config).toMatchObject({
+                model: 'gpt-6.1-sol', reasoningEffort: 'medium', afterEffortTier: 'medium',
+            });
+            expect((await store.getProcess(result.processId))?.metadata).toMatchObject({
+                provider: 'copilot', model: 'gpt-6.1-sol', reasoningEffort: 'medium', afterEffortTier: 'medium',
+            });
         } finally {
             bridge.dispose();
         }

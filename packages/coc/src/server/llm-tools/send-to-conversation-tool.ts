@@ -175,9 +175,9 @@ export interface SendToConversationToolOptions {
     /**
      * The parent chat's processId — the conversation in which this tool was
      * built/invoked. In create mode the handler reads the parent process
-     * record's resolved `provider` / `model` / `reasoningEffort` from its
-     * `metadata` and inherits them onto the spawned conversation unless an
-     * explicit provider or effort tier asks for provider defaults. Mirrors the
+     * record's `provider` and, with an explicit model and no provider override,
+     * `reasoningEffort` from its `metadata`. New chats without an explicit model
+     * use the supplied tier or Medium. Mirrors the
      * `search_conversations` addon's `processId` threading.
      */
     parentProcessId?: string;
@@ -267,7 +267,8 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'to the repo. `ralph` is rejected in post mode; `plan` is not supported. Prefer `provider: "auto"` for delegation ' +
             'unless the user requests a particular provider/model. Enabled Auto uses target workspace/server routing rules ' +
             'without inheriting parent provider, model, or effort. Disabled/unavailable Auto falls back to the parent concrete provider ' +
-            'after target validation, with ordinary local model/effort inheritance or remote defaults. Omitted provider keeps existing inheritance.',
+            'after target validation. Omitted provider inherits the parent provider. Create mode defaults to Medium effort ' +
+            'when neither `model` nor `effortTier` is supplied; post mode keeps existing settings.',
         parameters: {
             type: 'object',
             properties: {
@@ -317,13 +318,14 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     type: 'string',
                     enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'],
                     description: 'Create mode: prefer `auto` for target workspace/server routing unless the user requests ' +
-                        'a particular provider/model. Enabled Auto inherits no parent AI settings; unavailable Auto falls back to the parent concrete provider. Omitted provider inherits as usual. ' +
+                        'a particular provider/model. Enabled Auto inherits no parent AI settings; unavailable Auto falls back to the parent concrete provider. Omitted provider inherits the parent provider. ' +
                         'Post mode ignores this selection and keeps the existing provider.',
                 },
                 effortTier: {
                     type: 'string',
                     enum: ['very-low', 'low', 'medium', 'high'],
-                    description: 'Provider-specific effort tier. Ignored when `model` is also provided.',
+                    description: 'Provider-specific effort tier. Defaults to `medium` in create mode when `model` is omitted. ' +
+                        'Post mode has no default tier. Ignored when `model` is also provided.',
                 },
                 priority: {
                     type: 'string',
@@ -459,7 +461,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 mode: args.mode ?? await resolveDefaultCreateMode(store, parentProcessId),
                 model,
                 explicitProvider: provider,
-                effortTier: model ? undefined : effortTier,
+                effortTier: model ? undefined : effortTier ?? 'medium',
                 validateProvider: runtime?.validateProvider,
                 isAutoProviderRoutingAvailable: runtime?.isAutoProviderRoutingAvailable,
                 getEffortTiersForProvider: runtime?.getEffortTiersForProvider,
@@ -646,7 +648,6 @@ async function createNewConversation(params: {
         typeof parent?.metadata?.provider === 'string' && VALID_CHAT_PROVIDERS.has(parent.metadata.provider as ChatProvider)
             ? (parent.metadata.provider as ChatProvider)
             : undefined;
-    const parentModel = typeof parent?.metadata?.model === 'string' ? parent.metadata.model : undefined;
     const parentEffort =
         typeof parent?.metadata?.reasoningEffort === 'string' ? parent.metadata.reasoningEffort : undefined;
 
@@ -655,7 +656,7 @@ async function createNewConversation(params: {
     // reinterpret routing, quota, validation or dispatch errors as a fallback.
     const concreteOverride = explicitProvider !== 'auto' ? explicitProvider : undefined;
     const resolvedProvider = autoRequested ? undefined : concreteOverride ?? parentProvider;
-    const resolvedModel = model ?? (autoRequested || concreteOverride || effortTier ? undefined : parentModel);
+    const resolvedModel = model;
     const resolvedEffort = autoRequested || concreteOverride || effortTier ? undefined : parentEffort;
 
     // Omitted provider requires parent context; explicit Auto can route without it.
@@ -713,7 +714,7 @@ async function createNewConversation(params: {
     // Explicit Auto omits the provider and carries the existing routing marker.
     // Resolved model goes onto `config.model` (with the `payload.model` mirror),
     // inherited effort onto `config.reasoningEffort`,
-    // and an explicit tier onto `config.effortTier` for queue preparation.
+    // and the selected/default tier onto `config.effortTier` for queue preparation.
     const taskSpec = buildChatTaskSpec({
         workspaceId: requestedWorkspaceId,
         mode,

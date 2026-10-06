@@ -43,6 +43,8 @@ references before editing. Paths are package-relative.
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
   local fallback; output never carries paths, URLs, or credentials.
+- `send_to_conversation` create mode defaults to Medium when model/tier are omitted;
+  resolve tiers on the destination server after provider selection. Post/cancel have no default tier.
 - Remote group selection uses a server-qualified clone key; decode the raw
   group id at the owning API. Groups are page/queue scope; Git uses a member.
   Names are not keys; refresh live membership and preserve search failure states.

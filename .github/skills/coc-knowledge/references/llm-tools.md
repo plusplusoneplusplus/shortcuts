@@ -95,18 +95,23 @@ in-process queue path as `POST /api/queue`. It defaults to the caller workspace 
 can target another registered workspace, links spawned chats via
 `payload.context.spawnedFromProcessId`, and accepts `provider: "auto"` or a concrete provider
 (`copilot`, `codex`, `claude`,
-`opencode`) plus optional `effortTier` (`very-low`…`high`). Enabled Auto carries
+`opencode`) plus optional `effortTier` (`very-low`…`high`). Create mode defaults to
+`medium` when both model and tier are omitted, without inheriting parent model/effort;
+an explicit model wins over tier selection. Post and cancel modes have no default tier.
+Enabled Auto carries
 `context.autoProviderRouting.requested` without a concrete provider or inherited model/effort;
 the target server selects the provider at execution using its existing routing rules.
 
 Explicit models survive queue validation; tiers expand against the selected provider, and
 incompatible overrides fail before SDK execution. Auto uses a capability check before dispatch:
 when routing is disabled or unavailable, local create mode validates and inherits the invoking
-conversation's concrete provider and ordinary model/effort settings, honoring explicit overrides.
+conversation's concrete provider. Omitted provider also inherits the local parent provider.
+An explicit model without a provider override retains local parent reasoning-effort inheritance;
+tier selection uses the destination provider's mapping.
 Missing or unavailable parent providers fail. Enabled Auto never inherits parent AI settings;
 quota, routing/runtime, explicit provider/model, and dispatch failures never trigger substitution.
-Omitted provider preserves local parent inheritance. Explicit concrete providers use their own
-defaults without parent model/effort; incompatible provider/model/tier combinations fail.
+Explicit concrete providers inherit no parent model/effort;
+incompatible provider/model/tier combinations fail.
 
 Optional create-mode `title` is
 trimmed, must be non-empty and at most 80 characters, and travels through canonical task
