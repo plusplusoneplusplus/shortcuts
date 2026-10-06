@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { getLogger } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner, asPlanFilePath } from '../../../src/server/executors/process-lifecycle-runner';
+import { cleanupTempDir } from '../../../src/server/executors/image-store';
 import type { LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { rehydrateImagesIfNeeded } from '../../../src/server/executors/image-store';
@@ -61,6 +62,30 @@ function makeOpts(overrides: Partial<LifecycleRunnerOptions> = {}): LifecycleRun
 // ============================================================================
 // Selected-skills directive in initial turn
 // ============================================================================
+
+describe('ProcessLifecycleRunner — admitted attachment cancellation', () => {
+    it.each([false, true])('cleans prepared images before execution (follow-up=%s)', async followUp => {
+        vi.clearAllMocks();
+        const store = createMockProcessStore();
+        if (followUp) {
+            await store.addProcess({
+                id: 'existing-chat', type: 'chat', status: 'running', startTime: new Date(),
+                promptPreview: '', fullPrompt: '', metadata: { workspaceId: 'ws-abc' },
+            });
+        }
+        const imageTempDir = path.join('test-attachments', 'incoming');
+        const task = makeTask({
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Describe this image',
+                imageTempDir, ...(followUp ? { processId: 'existing-chat' } : {}) },
+        });
+        const options = makeOpts({ cancelledTasks: new Set([task.id]) });
+        const runner = new ProcessLifecycleRunner(store, 'test-data', vi.fn());
+        expect((await runner.run(task, options)).success).toBe(false);
+        expect(cleanupTempDir).toHaveBeenCalledExactlyOnceWith(imageTempDir);
+        expect(options.executeByTypeFn).not.toHaveBeenCalled();
+        expect(options.executeFollowUpFn).not.toHaveBeenCalled();
+    });
+});
 
 describe('ProcessLifecycleRunner — custom title seeding', () => {
     it.each(['cancelling', 'cancelled'] as const)('preserves %s when a cancelled follow-up reaches execution', async status => {

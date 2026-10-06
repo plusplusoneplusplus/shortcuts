@@ -463,7 +463,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             if (isChatFollowUp(task.payload)) {
                 const payload = task.payload as unknown as ChatPayload;
                 task.processId = payload.processId;
-                const imageTempDir = payload.imageTempDir;
                 try {
                     const current = await this.store.getProcess(payload.processId!);
                     if (current?.status !== 'cancelling' && current?.status !== 'cancelled') {
@@ -472,8 +471,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 } catch (err) {
                     logger.debug(LogCategory.AI, `[QueueExecutor] Failed to update process status for cancelled task ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
                 }
-                if (imageTempDir) { cleanupTempDir(imageTempDir); }
             }
+            const imageTempDir = isChatPayload(task.payload) ? task.payload.imageTempDir : undefined;
+            if (imageTempDir) { cleanupTempDir(imageTempDir); }
             return { success: false, error: new Error('Task cancelled'), durationMs: 0 };
         }
 
