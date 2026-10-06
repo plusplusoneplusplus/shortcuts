@@ -1,12 +1,11 @@
 /**
- * Tests the full lifecycle of the MarkdownReviewDialog opened by clicking
- * a `.file-path-link` in a user message for a non-markdown file: open →
+ * Tests the full lifecycle of the floating MarkdownReviewDialog: open →
  * display → minimize → chip (pill) → restore → close.
  *
- * NOTE: Markdown file links inside any `.chat-message` are intercepted by the
- * SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS feature flag and routed to the docked
- * canvas. To keep the MarkdownReviewDialog reachable we use a non-markdown
- * file path (`.ts`), which falls through to the floating dialog.
+ * Chat file links (user and assistant, any extension) open in the workspace
+ * panel under SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS, so the dialog is opened the
+ * way the non-chat surfaces (tasks tree, notes) open it: by dispatching
+ * `coc-open-markdown-review`.
  */
 
 import { test, expect } from './fixtures/server-fixture';
@@ -16,8 +15,6 @@ import type { Page } from '@playwright/test';
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 const WORKSPACE_ROOT = '/tmp/review-ws';
-// Use a non-markdown extension so the click falls through to MarkdownReviewDialog.
-// Markdown links inside .chat-message are intercepted by SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS.
 const FILE_PATH = '/tmp/review-ws/src/main.ts';
 
 async function waitForTaskStatus(
@@ -109,11 +106,11 @@ async function setupAndNavigate(
     return taskId;
 }
 
-/** Click the file-path-link in the user bubble to open the dialog. */
-async function openDialog(page: Page): Promise<void> {
-    const link = page.locator('.chat-message.user .file-path-link');
-    await expect(link).toHaveCount(1);
-    await link.click();
+/** Open the dialog through the event the tasks tree and notes dispatch. */
+async function openDialog(page: Page, wsId: string): Promise<void> {
+    await page.evaluate(({ filePath, wsId }) => {
+        window.dispatchEvent(new CustomEvent('coc-open-markdown-review', { detail: { filePath, wsId } }));
+    }, { filePath: FILE_PATH, wsId });
 }
 
 // Selector for the minimized pill rendered by MinimizedDialogsTray
@@ -122,13 +119,13 @@ const PILL_SELECTOR = '[data-testid="minimized-pill-markdown-review"]';
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test.describe('MarkdownReviewDialog', () => {
-    test('clicking file-path-link opens MarkdownReviewDialog', async ({
+    test('coc-open-markdown-review opens MarkdownReviewDialog', async ({
         serverUrl,
         mockAI,
         page,
     }) => {
         await setupAndNavigate(page, serverUrl, mockAI, 'ws-md-1');
-        await openDialog(page);
+        await openDialog(page, 'ws-md-1');
 
         // Dialog should be visible (rendered by MarkdownReviewDialog component)
         const dialog = page.locator('[data-testid="markdown-review-minimize-btn"]');
@@ -139,13 +136,30 @@ test.describe('MarkdownReviewDialog', () => {
         await expect(closeBtn.first()).toBeVisible();
     });
 
+    test('user-message file link opens a workspace panel tab, not the dialog', async ({
+        serverUrl,
+        mockAI,
+        page,
+    }) => {
+        await setupAndNavigate(page, serverUrl, mockAI, 'ws-md-6');
+        const link = page.locator('.chat-message.user .file-path-link');
+        await expect(link).toHaveCount(1);
+        await link.click();
+
+        const tabLabel = page
+            .locator('[data-testid="unified-right-panel"] [data-testid^="unified-panel-tab-label-"]')
+            .filter({ hasText: 'main.ts' });
+        await expect(tabLabel).toHaveCount(1, { timeout: 10_000 });
+        await expect(page.locator('[data-testid="markdown-review-minimize-btn"]')).toHaveCount(0);
+    });
+
     test('minimize button hides dialog and shows chip', async ({
         serverUrl,
         mockAI,
         page,
     }) => {
         await setupAndNavigate(page, serverUrl, mockAI, 'ws-md-2');
-        await openDialog(page);
+        await openDialog(page, 'ws-md-2');
 
         const minimizeBtn = page.locator('[data-testid="markdown-review-minimize-btn"]');
         await expect(minimizeBtn).toBeVisible({ timeout: 5_000 });
@@ -170,7 +184,7 @@ test.describe('MarkdownReviewDialog', () => {
         page,
     }) => {
         await setupAndNavigate(page, serverUrl, mockAI, 'ws-md-3');
-        await openDialog(page);
+        await openDialog(page, 'ws-md-3');
 
         const minimizeBtn = page.locator('[data-testid="markdown-review-minimize-btn"]');
         await expect(minimizeBtn).toBeVisible({ timeout: 5_000 });
@@ -197,7 +211,7 @@ test.describe('MarkdownReviewDialog', () => {
         page,
     }) => {
         await setupAndNavigate(page, serverUrl, mockAI, 'ws-md-4');
-        await openDialog(page);
+        await openDialog(page, 'ws-md-4');
 
         const minimizeBtn = page.locator('[data-testid="markdown-review-minimize-btn"]');
         await expect(minimizeBtn).toBeVisible({ timeout: 5_000 });
@@ -220,7 +234,7 @@ test.describe('MarkdownReviewDialog', () => {
         page,
     }) => {
         await setupAndNavigate(page, serverUrl, mockAI, 'ws-md-5');
-        await openDialog(page);
+        await openDialog(page, 'ws-md-5');
 
         const minimizeBtn = page.locator('[data-testid="markdown-review-minimize-btn"]');
         await expect(minimizeBtn).toBeVisible({ timeout: 5_000 });
