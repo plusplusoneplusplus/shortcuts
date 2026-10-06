@@ -253,7 +253,159 @@ describe('delegated success/failure review scheduling', () => {
         expect(row().terminal?.delivery.state).toBe('queued');
     });
 
-    it('never reviews cancellation, Ralph steps, remote jobs or unrelated completions', async () => {
+    it('posts one cancellation notice without an AI turn or partial output, including after restart', async () => {
+        const job = record('cancelled');
+        await Promise.all([reviews.schedule(job), reviews.schedule(job)]);
+        await restart();
+        const proc = await store.getProcess(parentId);
+        expect(proc?.conversationTurns).toHaveLength(1);
+        expect(proc?.conversationTurns?.[0]).toMatchObject({ role: 'assistant', displayOnly: true,
+            relayRequestId: receipt(), content: 'Delegated job "Fix child search" in "Child repository" was cancelled.' });
+        expect(proc?.status).toBe('completed');
+        expect(row().terminal?.delivery.state).toBe('delivered');
+        expect(queue.getAll()).toEqual([]);
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect(bridge.steerProcess).not.toHaveBeenCalled();
+        expect(bridge.executeFollowUp).not.toHaveBeenCalled();
+    });
+
+    it('delivers an ordinary child cancellation event once despite event replay', async () => {
+        queue.enqueue({ id: 'child', processId: childId, type: 'chat', priority: 'normal',
+            payload: { workspaceId: childWorkspace, kind: 'chat' } });
+        queue.markStarted('child'); queue.cancelTask('child');
+        await flush();
+        queue.emit('taskCancelled', queue.getTask('child'));
+        await flush();
+        expect(row().terminal?.result.outcome).toBe('cancelled');
+        expect(row().terminal?.delivery.state).toBe('delivered');
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('rechecks a parent terminal event racing a deferred notice admission', async () => {
+        let release!: () => void;
+        let entered!: () => void;
+        const blocked = new Promise<void>(resolve => { release = resolve; });
+        const admissionEntered = new Promise<void>(resolve => { entered = resolve; });
+        vi.spyOn(delivery, 'deliverNoticeOnce').mockImplementationOnce(async () => {
+            entered(); await blocked; return 'deferred';
+        });
+        const pending = reviews.schedule(record('cancelled'));
+        await admissionEntered;
+        queue.enqueue({ id: 'active', processId: parentId, type: 'chat', priority: 'normal', payload: { workspaceId: parentWorkspace } });
+        queue.markStarted('active'); queue.markCompleted('active', 'Done');
+        await flush();
+        release(); await pending; await flush();
+        expect(delivery.deliverNoticeOnce).toHaveBeenCalledTimes(2);
+        expect(row().terminal?.delivery.state).toBe('delivered');
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+    });
+
+    it('waits for the parent turn without changing its queue or pending user messages', async () => {
+        queue.enqueue({ id: 'active', processId: parentId, type: 'chat', priority: 'normal', payload: { workspaceId: parentWorkspace } });
+        queue.markStarted('active');
+        await store.updateProcess(parentId, { status: 'running' });
+        await store.appendPendingMessage(parentId, { id: 'human', content: 'Do not retry', createdAt: new Date().toISOString() });
+        await reviews.schedule(record('cancelled'));
+        expect(row().terminal?.delivery.state).toBe('pending');
+        expect((await store.getProcess(parentId))?.conversationTurns ?? []).toEqual([]);
+        await store.appendConversationTurn(parentId, turnIndex => ({ role: 'assistant', content: 'Current answer',
+            timestamp: new Date(), turnIndex, timeline: [] }));
+        await store.updateProcess(parentId, { status: 'completed' });
+        queue.markCompleted('active', 'Current answer');
+        await flush();
+        const proc = await store.getProcess(parentId);
+        expect(proc?.conversationTurns?.map(turn => turn.content)).toEqual([
+            'Current answer', 'Delegated job "Fix child search" in "Child repository" was cancelled.',
+        ]);
+        expect(proc?.pendingMessages?.map(message => message.id)).toEqual(['human']);
+        expect(row().terminal?.delivery.state).toBe('delivered');
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('defers cancellation when queue state is active despite stale terminal process state', async () => {
+        queue.enqueue({ id: 'active', processId: parentId, type: 'chat', priority: 'normal', payload: { workspaceId: parentWorkspace } });
+        await reviews.schedule(record('cancelled'));
+        expect(row().terminal?.delivery.state).toBe('pending');
+        expect((await store.getProcess(parentId))?.conversationTurns ?? []).toEqual([]);
+        queue.markStarted('active'); queue.markCompleted('active', 'Done');
+        await flush();
+        expect(row().terminal?.delivery.state).toBe('delivered');
+    });
+
+    it('recovers a deferred cancellation notice after restart', async () => {
+        await store.updateProcess(parentId, { status: 'running' });
+        await reviews.schedule(record('cancelled'));
+        await store.updateProcess(parentId, { status: 'completed' });
+        await restart();
+        expect(row().terminal?.delivery.state).toBe('delivered');
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+        expect(queue.getAll()).toEqual([]);
+    });
+
+    it.each(['pending', 'queued'] as const)('reconciles a cancellation transcript written before a %s ledger acknowledgement', async state => {
+        const job = record('cancelled');
+        const original = jobs.updateDelivery.bind(jobs);
+        vi.spyOn(jobs, 'updateDelivery').mockImplementation((workspaceId, jobId, expected, next) => {
+            if (expected === state) throw new Error('ledger write failed');
+            return original(workspaceId, jobId, expected, next);
+        });
+        await expect(reviews.schedule(job)).rejects.toThrow('ledger write failed');
+        expect(row().terminal?.delivery.state).toBe(state);
+        await restart();
+        expect(row().terminal?.delivery.state).toBe('delivered');
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+        expect(queue.getAll()).toEqual([]);
+    });
+
+    it('retains a cancellation after a transient transcript failure and recovers it', async () => {
+        vi.spyOn(store, 'appendConversationTurn').mockRejectedValueOnce(new Error('database write failed'));
+        await expect(reviews.schedule(record('cancelled'))).rejects.toThrow('database write failed');
+        expect(row().terminal?.delivery.state).toBe('pending');
+        await restart();
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+        expect(row().terminal?.delivery.state).toBe('delivered');
+    });
+
+    it.each(['missing', 'wrong workspace'] as const)('settles cancellation for a %s parent without redirecting', async kind => {
+        const job = record('cancelled');
+        if (kind === 'missing') await store.removeProcess(parentId);
+        else await store.updateProcess(parentId, { metadata: { workspaceId: childWorkspace } });
+        await reviews.schedule(job);
+        expect(row().terminal?.delivery).toMatchObject({ state: 'failed', reason: expect.stringContaining('unavailable') });
+        await restart();
+        expect(queue.getAll()).toEqual([]);
+    });
+
+    it('posts a brief notice to a stopped parent without resuming it', async () => {
+        await store.updateProcess(parentId, { status: 'cancelled' });
+        await reviews.schedule(record('cancelled'));
+        expect((await store.getProcess(parentId))?.status).toBe('cancelled');
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+        expect(row().terminal?.delivery.state).toBe('delivered');
+        expect(queue.getAll()).toEqual([]);
+    });
+
+    it('serializes notice appends across independent coordinators', async () => {
+        const job = record('cancelled');
+        const second = new DelegatedJobReviews({ jobs: new DelegatedJobStore(directory), store,
+            delivery: new ProcessMessageDeliveryService({ store, bridge }), queue });
+        try { await Promise.all([reviews.schedule(job), second.schedule(job)]); }
+        finally { second.dispose(); }
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+        expect(row().terminal?.delivery.state).toBe('delivered');
+    });
+
+    it('rejects notice receipts that collide with existing user turns', async () => {
+        record('cancelled');
+        await store.appendConversationTurn(parentId, turnIndex => ({ role: 'user', content: 'User message',
+            timestamp: new Date(), turnIndex, relayRequestId: receipt(), timeline: [] }));
+        await reviews.schedule(row());
+        expect(row().terminal?.delivery).toMatchObject({ state: 'failed', reason: expect.stringContaining('conflicts') });
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+    });
+
+    it('never reviews Ralph steps, remote jobs or unrelated completions', async () => {
         await reviews.schedule(record('cancelled'));
         const ordinary = row();
         await reviews.schedule({ ...ordinary, child: { ...ordinary.child, sessionId: 'ralph' },
@@ -264,7 +416,7 @@ describe('delegated success/failure review scheduling', () => {
         queue.markStarted('unrelated'); queue.markCompleted('unrelated', 'Done');
         await flush();
         expect(bridge.enqueue).not.toHaveBeenCalled();
-        expect(row().terminal?.delivery.state).toBe('pending');
+        expect(row().terminal?.delivery.state).toBe('delivered');
     });
 
     it('continues startup recovery after one review admission fails', async () => {

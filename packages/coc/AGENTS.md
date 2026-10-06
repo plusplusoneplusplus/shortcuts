@@ -119,8 +119,12 @@ references before editing. Paths are package-relative.
   transient storage errors remain recoverable. Buffered admission invokes owner-queue recovery
   outside admission; idle completed/failed parents drain the head in order, reconciling terminal
   receipts first. Active queues, stopped parents and pending questions/answers block recovery.
-  Cancellation, Ralph and remote delivery use
-  separate boundaries. Child completion grants no additional action authority.
+  Ordinary cancellation uses `deliverNoticeOnce`: a stable display-only assistant receipt,
+  serialized with process admission, without AI work or queue changes. Busy parents defer;
+  parent terminal events/startup retry admission, and transcript receipts reconcile ledger
+  write failures. Stopped parents can receive notices without resuming. Missing/mis-scoped
+  parents settle delivery failure. Ralph and remote results use separate boundaries.
+  Child completion grants no additional action authority.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 

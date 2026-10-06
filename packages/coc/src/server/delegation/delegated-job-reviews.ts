@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ProcessStore, QueuedTask, WorkspaceInfo } from '@plusplusoneplusplus/forge';
+import { toQueueProcessId, type ProcessStore, type QueuedTask, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { onTaskTerminal } from '../messaging/chat-target';
 import { isTerminalStatus } from '../messaging/relay-answer';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
@@ -27,7 +27,7 @@ ${JSON.stringify({
     })}`;
 }
 
-/** Durable result-to-review admission. Cancellation notices have a separate delivery path. */
+/** Durable result delivery: AI reviews for outcomes, display-only notices for cancellation. */
 export class DelegatedJobReviews {
     private readonly inFlight = new Map<string, Promise<void>>();
     private readonly unsubscribe: () => void;
@@ -36,7 +36,7 @@ export class DelegatedJobReviews {
     constructor(private readonly deps: {
         jobs: DelegatedJobStore;
         store: ProcessStore;
-        delivery: Pick<ProcessMessageDeliveryService, 'deliverOnce'>;
+        delivery: Pick<ProcessMessageDeliveryService, 'deliverOnce' | 'deliverNoticeOnce'>;
         queue: ScheduleQueueEventBus;
         recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
     }) {
@@ -54,7 +54,6 @@ export class DelegatedJobReviews {
     /** Called for newly recorded results and registered terminal rows during startup. */
     schedule(job: DelegatedJob): Promise<void> {
         if (this.disposed || !job.terminal || job.child.serverId || job.child.sessionId
-            || job.terminal.result.outcome === 'cancelled'
             || !['pending', 'queued'].includes(job.terminal.delivery.state)) return Promise.resolve();
         const receiptId = delegatedReviewReceipt(job);
         const existing = this.inFlight.get(receiptId);
@@ -68,6 +67,18 @@ export class DelegatedJobReviews {
         try {
             const repository = (await this.deps.store.getWorkspaces()).find(workspace => workspace.id === job.child.workspaceId);
             if (this.disposed) return;
+            if (job.terminal!.result.outcome === 'cancelled') {
+                // Fixed server wording, never partial child output or suggested work.
+                const text = `Delegated job ${JSON.stringify(job.title)} in ${JSON.stringify(repository?.name ?? job.child.workspaceId)} was cancelled.`;
+                const delivered = await this.deps.delivery.deliverNoticeOnce(
+                    job.parent.workspaceId, job.parent.processId, receiptId, text,
+                );
+                if (delivered === 'delivered') {
+                    this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'pending', { state: 'queued', receiptId });
+                    this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'queued', { state: 'delivered', receiptId });
+                }
+                return;
+            }
             const content = reviewPrompt(job, repository);
             const result = await this.deps.delivery.deliverOnce(
                 job.parent.workspaceId, job.parent.processId, receiptId,
@@ -99,10 +110,24 @@ export class DelegatedJobReviews {
     }
 
     private async settleTask(task: QueuedTask): Promise<void> {
-        if (this.disposed || !task.payload.relayRequestId || !isTerminalStatus(task.status)) return;
-        const workspaceId = task.payload.workspaceId;
+        if (this.disposed || !isTerminalStatus(task.status)) return;
+        const workspaceId = task.payload.workspaceId ?? task.repoId;
         if (typeof workspaceId !== 'string') return;
-        const job = this.deps.jobs.list(workspaceId).find(row => row.terminal?.delivery.state === 'queued'
+        const rows = this.deps.jobs.list(workspaceId);
+        const processId = task.processId ?? toQueueProcessId(task.id);
+        for (const row of rows) {
+            if (row.parent.processId === processId && row.terminal?.result.outcome === 'cancelled') {
+                try {
+                    // A parent terminal event can race an admission that just deferred.
+                    await this.inFlight.get(delegatedReviewReceipt(row))?.catch(() => {});
+                    const current = this.deps.jobs.list(workspaceId).find(job => job.id === row.id);
+                    if (current) await this.schedule(current);
+                }
+                catch (error) { console.error('[delegated-job-reviews] Could not deliver cancellation:', error); }
+            }
+        }
+        if (!task.payload.relayRequestId) return;
+        const job = rows.find(row => row.terminal?.delivery.state === 'queued'
             && row.terminal.delivery.receiptId === task.id);
         if (job) this.settle(job, task, task.id);
     }

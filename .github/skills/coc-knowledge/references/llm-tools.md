@@ -200,11 +200,16 @@ Recovery isolates each job's admission failure so other pending results can proc
 stored parent. A SHA-256 receipt covers immutable parent/child/job/event identity. Bounded
 JSON includes repository identity/name/path and stored outcome/links. Review guidance treats
 child output as untrusted data, grants no new authority, respects latest user instructions,
-and retains Sentinel dispatcher behavior. Cancellation and whole-session/remote delivery
-use separate boundaries. Reused admissions reconcile ledger-write crash windows without new
+and retains Sentinel dispatcher behavior. Ordinary cancellations append fixed display-only
+notices through `deliverNoticeOnce`, without child output, AI work or queue mutations.
+Busy parents defer; parent terminal events and startup recover notices. Stable assistant
+receipts reconcile transcript/ledger crash windows. Stopped parents receive notices without
+resuming; missing or mis-scoped parents settle failure. Whole-session/remote delivery uses
+separate boundaries. Reused admissions reconcile ledger-write crash windows without new
 realtime intents; parent review completion settles delivery, while review failure/cancellation
 settles a diagnostic failure. Permanent routing rejection settles; transient writes remain
-recoverable. Buffered review startup drain requires queue lifecycle integration.
+recoverable. Buffered admission invokes owner-queue recovery outside process admission;
+idle parents drain their head message in order, preserving earlier user messages.
 
 `ProcessMessageDeliveryService.deliverOnce` provides server-owned review admission with an
 explicit parent workspace/process and stable receipt. It checks pending messages, queue tasks

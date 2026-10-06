@@ -399,6 +399,35 @@ export class ProcessMessageDeliveryService {
         });
     }
 
+    /** Persist a server notice without an AI request or any change to queue state. */
+    async deliverNoticeOnce(
+        workspaceId: string, processId: string, receiptId: string, content: string,
+    ): Promise<'deferred' | 'delivered'> {
+        if (!receiptId.trim()) throw new ReviewDeliveryRejectedError('A stable notice receipt is required');
+        return this.admission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId, workspaceId);
+            if (!proc || proc.metadata?.workspaceId !== workspaceId) {
+                throw new ReviewDeliveryRejectedError('Notice parent is unavailable in its originating workspace');
+            }
+            const existing = proc.conversationTurns?.find(turn => turn.relayRequestId === receiptId);
+            if (existing) {
+                if (existing.role !== 'assistant' || !existing.displayOnly) {
+                    throw new ReviewDeliveryRejectedError('Notice receipt conflicts with another conversation turn');
+                }
+                return 'delivered';
+            }
+            const task = this.bridge.findTaskByProcessId?.(processId);
+            if (NONTERMINAL_STATUSES.has(proc.status) || (task && NONTERMINAL_STATUSES.has(task.status))
+                || proc.pendingAskUser || proc.pendingAskUserAnswer) return 'deferred';
+            const appended = await this.store.appendConversationTurn(processId, turnIndex => ({
+                role: 'assistant', content, timestamp: this.now(), turnIndex,
+                timeline: [], displayOnly: true, relayRequestId: receiptId,
+            }));
+            if (!appended) throw new ReviewDeliveryRejectedError('Notice parent is unavailable');
+            return 'delivered';
+        });
+    }
+
     private isReviewTask(task: import('@plusplusoneplusplus/forge').QueuedTask, proc: AIProcess, receiptId: string): boolean {
         return task.type === 'chat' && task.processId === proc.id
             && task.payload.processId === proc.id
