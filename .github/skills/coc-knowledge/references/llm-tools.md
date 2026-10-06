@@ -193,7 +193,14 @@ back to the child's scoped process. Event IDs derive from child workspace/proces
 Summaries use response text or the last request's finished assistant turn, with process
 and result-file links. Cancellation stores a fixed notice summary without partial output.
 Missing children settle with failed delivery. Ralph/remote rows and Ralph steps are excluded;
-parent review admission, whole-session results and return transport require integration.
+parent review scheduling, whole-session results and return transport require integration.
+
+`ProcessMessageDeliveryService.deliverOnce` provides server-owned review admission with an
+explicit parent workspace/process and stable receipt. It checks pending messages, queue tasks
+and user turns under shared process admission before enqueueing. Busy reviews buffer after
+existing messages; stopped or missing parents reject. The receipt travels as `relayRequestId`
+and as the review's pending/task ID. Drain reconciles accepted tasks and persisted turns;
+executor correlation repair shares admission. Reused receipts produce no new realtime events.
 
 ### list_workspaces
 

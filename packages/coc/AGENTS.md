@@ -106,6 +106,12 @@ references before editing. Paths are package-relative.
   `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
   from scoped queue/process records at startup. Tool admission waits for recovery. Exclude
   Ralph steps and remote jobs; unavailable children settle with a diagnosable failed delivery.
+  `ProcessMessageDeliveryService.deliverOnce` admits server-owned reviews with a stable
+  receipt in pending messages, queue tasks and user turns. It verifies the parent's workspace,
+  preserves queue ordering, rejects stopped parents and never steers. Review pending IDs equal
+  their request receipts; drain reuses those IDs and reconciles accepted tasks/turns before replay.
+  Correlation repair and drain share process admission with follow-up delivery. Active tasks take
+  precedence over history in process lookup. Use this boundary for ledger review scheduling.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 

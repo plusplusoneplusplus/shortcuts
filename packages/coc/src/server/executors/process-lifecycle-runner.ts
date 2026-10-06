@@ -513,27 +513,29 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             }
             try {
                 if (followUpPayload.relayRequestId) {
-                    const current = await this.store.getProcess(followUpPayload.processId!);
-                    if (!current) throw new Error('Follow-up process is unavailable');
-                    const existingUserTurn = current.conversationTurns?.find(turn => turn.role === 'user'
-                        && turn.relayRequestId === followUpPayload.relayRequestId);
-                    if (existingUserTurn) {
-                        followUpPayload.historyCutoffTurnIndex = existingUserTurn.turnIndex;
-                    } else {
-                        const appended = await this.store.appendConversationTurn(
-                            followUpPayload.processId!,
-                            index => ({
-                                role: 'user' as const,
-                                content: followUpPayload.prompt,
-                                timestamp: new Date(),
-                                turnIndex: index,
-                                relayRequestId: followUpPayload.relayRequestId,
-                                ...(followUpPayload.images?.length ? { images: followUpPayload.images } : {}),
-                                timeline: [],
-                            }),
-                        );
-                        followUpPayload.historyCutoffTurnIndex = appended?.turn.turnIndex;
-                    }
+                    await processOperationAdmission.runExclusive(followUpPayload.processId!, async () => {
+                        const current = await this.store.getProcess(followUpPayload.processId!);
+                        if (!current) throw new Error('Follow-up process is unavailable');
+                        const existingUserTurn = current.conversationTurns?.find(turn => turn.role === 'user'
+                            && turn.relayRequestId === followUpPayload.relayRequestId);
+                        if (existingUserTurn) {
+                            followUpPayload.historyCutoffTurnIndex = existingUserTurn.turnIndex;
+                        } else {
+                            const appended = await this.store.appendConversationTurn(
+                                followUpPayload.processId!,
+                                index => ({
+                                    role: 'user' as const,
+                                    content: followUpPayload.prompt,
+                                    timestamp: new Date(),
+                                    turnIndex: index,
+                                    relayRequestId: followUpPayload.relayRequestId,
+                                    ...(followUpPayload.images?.length ? { images: followUpPayload.images } : {}),
+                                    timeline: [],
+                                }),
+                            );
+                            followUpPayload.historyCutoffTurnIndex = appended?.turn.turnIndex;
+                        }
+                    });
                 }
                 // Per-turn reasoning effort flows in via the follow-up payload
                 // (see queue-shared.validateAndParseTask) but follow-up tasks

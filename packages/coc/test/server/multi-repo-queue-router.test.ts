@@ -558,6 +558,21 @@ describe('MultiRepoQueueRouter', () => {
     // ========================================================================
 
     describe('findTaskByProcessId', () => {
+        it.each(['queued', 'running'] as const)('prefers a %s follow-up over historical tasks for the same process', status => {
+            const { bridge } = createBridge();
+            bridge.getOrCreateBridge('/repo/review');
+            const manager = bridge.registry.getQueueForRepo('/repo/review');
+            const input = { type: 'chat', priority: 'normal' as const, processId: 'parent',
+                payload: { kind: 'chat', prompt: 'Review' }, config: {} };
+            const original = manager.enqueue(input);
+            manager.markStarted(original);
+            manager.markCompleted(original);
+            const review = manager.enqueue({ ...input, id: 'review-receipt' });
+            if (status === 'running') manager.markStarted(review);
+            expect(bridge.findTaskByProcessId('parent')).toEqual({ id: review, type: 'chat', status });
+            bridge.dispose();
+        });
+
         it('finds a queued task by processId and returns status', () => {
             const { bridge } = createBridge();
             bridge.getOrCreateBridge('/repo/find-test');

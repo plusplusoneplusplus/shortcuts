@@ -137,7 +137,6 @@ export class WhatsAppCommandRouter {
             return id;
         };
         let admitted = false;
-<<<<<<< HEAD
         const react = async () => {
             try {
                 await this.deps.react(msg.messageId);
@@ -145,9 +144,7 @@ export class WhatsAppCommandRouter {
                 console.error('[whatsapp-messaging] Reaction failed:', error);
             }
         };
-=======
         let consumedPendingImages = false;
->>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
         let images: PreparedIncomingImages | undefined;
         let sourceMessageIds: string[] | undefined;
         try {
@@ -254,8 +251,6 @@ export class WhatsAppCommandRouter {
                     }
                 }
             }
-<<<<<<< HEAD
-=======
             checkImageSelection();
             const scope = { ...context, workspaceId, chatId: targetId };
             if (!command.args) {
@@ -277,14 +272,6 @@ export class WhatsAppCommandRouter {
                 }
                 return;
             }
-            const react = async () => {
-                try {
-                    await this.deps.react(msg.messageId);
-                } catch (error) {
-                    console.error('[whatsapp-messaging] Reaction failed:', error);
-                }
-            };
->>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
             const handOff = await this.deps.handOff?.resolve(targetId, command.mode);
             checkConnection();
             checkImageSelection();
@@ -339,12 +326,8 @@ export class WhatsAppCommandRouter {
                     images = await prepareIncomingImages(this.deps.dataDir, workspaceId, turnImages, signal);
                     checkConnection();
                 }
-<<<<<<< HEAD
                 const enqueue = async (admissionHeld = false) => {
-=======
-                const enqueue = async () => {
                     checkConnection();
->>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
                     try {
                         return await this.deps.enqueue(
                             workspaceId, command.args, command.mode, processId, taskId,

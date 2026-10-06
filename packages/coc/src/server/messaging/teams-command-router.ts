@@ -24,14 +24,10 @@ import {
 import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 import type { MessagingHandOff, MessagingHandOffTarget } from './job-handoff';
 import type { MessagingJobOrigin } from './job-notices';
-<<<<<<< HEAD
 import { LocalTopicMemory, localTopicsReply, resolveLocalTopic } from './local-topics';
-import { IncomingImagesError } from './incoming-images';
-=======
 import { IncomingImagesError, MAX_MESSAGING_IMAGES } from './incoming-images';
 import { PendingImages, PendingImagesError, PENDING_IMAGE_TTL_MS, type PendingImageContext, type PendingImageScope } from './pending-images';
 import { createCache } from '../cache';
->>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
 
 const EMPTY_CHAT_REPLY = 'Send a message to start a chat.';
 
@@ -400,9 +396,6 @@ export class TeamsCommandRouter {
             } else if (command.type === 'chat') {
                 await this.handleChat(userKey, command.args, command.mode, msg, observe);
             } else {
-<<<<<<< HEAD
-                await this.deps.sendReply(await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, this.deps.handOffOrigin?.(msg) ? { ...this.deps.handOffOrigin(msg)!, threadId: msg.messageId } : undefined), msg.messageId);
-=======
                 await this.deps.sendReply(await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, msg), msg.messageId);
             }
             if (consumedRoots && !msg.replyToMessageId) {
@@ -411,7 +404,6 @@ export class TeamsCommandRouter {
                 for (const root of consumedRoots.roots) {
                     await this.deps.bindImageRoot?.({ ...msg, messageId: root }, consumedRoots.scope.workspaceId, processId);
                 }
->>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
             }
         } catch (err: any) {
             if (consumedRoots) this.clearRootFrame(consumedRoots);
@@ -441,22 +433,18 @@ export class TeamsCommandRouter {
     }
 
     /** `chatKey` scopes the `list remotes` numbering: a bound thread, or a user in a channel. */
-<<<<<<< HEAD
-    private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, compactOrigin?: MessagingJobOrigin): Promise<string> {
-=======
     private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, msg?: InboundTeamsMessage): Promise<string> {
         const discard = () => {
             if (msg?.senderAadId) this.pendingImages.discard(this.imageContext(msg));
             if (msg) this.imageRoots.delete(this.latestImageRootKey(msg));
         };
->>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
         return handleMessagingCommand(command, {
             store: this.deps.store,
             getQuota: this.deps.getQuota,
             ...TEAMS_FORMAT,
             helpFormat: TEAMS_FORMAT,
             compact: this.deps.compact,
-            compactOrigin,
+            compactOrigin: msg && this.deps.handOffOrigin?.(msg) ? { ...this.deps.handOffOrigin(msg)!, threadId: msg.replyToMessageId ?? msg.messageId } : undefined,
             remotes: this.deps.remotes,
             remoteRefs: this.remoteRefs.slot(chatKey),
             localTopics: this.localTopics.slot(`user\0${chatKey}`),
@@ -536,6 +524,7 @@ export class TeamsCommandRouter {
             }
             const workspace = workspaces.find(w => w.id === process.metadata?.workspaceId)!;
             await this.deps.selectThreadTarget(msg, workspace.id, process.id);
+            if (!silent) this.discardThreadImages(msg);
             const title = process.title ?? process.customTitle ?? process.id;
             await reply(`✅ Selected topic: **${escapeTeamsMarkdown(title)}** in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question continues this chat.`);
             return;
@@ -552,22 +541,6 @@ export class TeamsCommandRouter {
             await reply(`✅ Ready for a new topic in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question starts a new chat.`);
             return;
         }
-<<<<<<< HEAD
-=======
-        if (command.type === 'select-topic') {
-            const process = await resolveTopic(this.deps.store, workspace.id, command.args);
-            if (!process || process.metadata?.workspaceId !== workspace.id
-                || ['failed', 'cancelled'].includes(process.status)) {
-                this.deps.recordThreadCommand?.(msg);
-                await reply('❌ Topic not found in the selected repo. Use `/list topics` here.');
-                return;
-            }
-            await this.deps.selectThreadTarget(msg, workspace.id, process.id);
-            if (!silent) this.discardThreadImages(msg);
-            const title = process.title ?? process.customTitle ?? process.id;
-            await reply(`✅ Selected topic: **${escapeTeamsMarkdown(title)}** in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question continues this chat.`);
-        }
->>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
     }
 
     // ────────────────────────────────────────────────────────────────────────
