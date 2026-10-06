@@ -106,7 +106,9 @@ references before editing. Paths are package-relative.
   the child ID and persist the relationship before queue execution. A queued/running
   first Sentinel task supplies mode/workspace only when its process is absent; stored
   processes win over queue metadata. Ralph registration identifies the session at launch
-  only; connector Ralph grilling requires separate session registration.
+  only. Tool Ralph carries the captured connector origin into iteration 1 before registration
+  for parent session-result return, without tracking direct iteration notices; connector Ralph
+  grilling requires separate session registration.
   Rejected admission settles delivery as failed; accepted observer errors retain tracking.
   `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
   from scoped queue/process records at startup. Registered admission waits for recovery. Ordinary

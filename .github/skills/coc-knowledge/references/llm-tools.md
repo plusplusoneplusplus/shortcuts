@@ -159,12 +159,14 @@ Sentinel or its WhatsApp/Teams chat. Tool guidance directs the AI to inspect the
 promising automatic return, and avoid launching a duplicate job. Local responses omit this field.
 Post mode with a `remote:` processId is rejected as not supported yet.
 
-When the invoking turn came from WhatsApp/Teams, local (non-Ralph) create mode records the
+When the invoking turn came from WhatsApp/Teams, local create mode records the
 turn's origin (`{ connector, chatKey, threadId? }`, from the per-turn `runtime.messagingOrigin` the
 executor binds via the ask_user relay's `locateOrigin`) as `payload.context.messagingOrigin`
-(→ `metadata.messagingOrigin`) and calls `runtime.trackMessagingJob` for completion notices
-(see server-architecture "Messaging job completion notices"). Remote targets and dashboard
-turns record nothing.
+(→ `metadata.messagingOrigin`). Ordinary jobs call `runtime.trackMessagingJob` for completion
+notices (see server-architecture "Messaging job completion notices"). Ralph passes the origin
+through `RalphLaunchInput` into iteration 1 before delegation registration; only the delegated
+whole-session result returns through the parent review outbox, with no iteration notice tracking.
+Remote targets and dashboard turns record nothing.
 
 ### Delegated result persistence
 

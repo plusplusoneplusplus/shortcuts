@@ -673,6 +673,9 @@ async function createNewConversation(params: {
         }
     }
 
+    // Remote targets returned above. Ralph captures routing for session results only.
+    const origin = mode === 'ralph' || trackMessagingJob ? messagingOrigin?.() : undefined;
+
     if (mode === 'ralph') {
         return launchRalphConversation({
             launchRalph,
@@ -680,6 +683,7 @@ async function createNewConversation(params: {
             workspaceId: requestedWorkspaceId,
             title,
             parentProcessId,
+            messagingOrigin: origin,
             provider: resolvedProvider,
             autoProviderRouting: autoRequested,
             model: resolvedModel,
@@ -687,9 +691,6 @@ async function createNewConversation(params: {
             effortTier,
         });
     }
-
-    // Remote targets returned above: completion notices are local-only.
-    const origin = trackMessagingJob ? messagingOrigin?.() : undefined;
 
     // --- build + validate the task spec, then enqueue in-process ----------
     // Setting `payload.provider` makes the enqueue path treat the provider as
@@ -959,13 +960,14 @@ async function launchRalphConversation(params: {
     workspaceId: string;
     title?: string;
     parentProcessId?: string;
+    messagingOrigin?: MessagingJobOrigin;
     provider?: ChatProvider;
     autoProviderRouting?: boolean;
     model?: string;
     reasoningEffort?: string;
     effortTier?: SendToConversationEffortTier;
 }): Promise<SendToConversationResult> {
-    const { launchRalph, goalSpec, workspaceId, title, parentProcessId, provider, autoProviderRouting, model, reasoningEffort, effortTier } = params;
+    const { launchRalph, goalSpec, workspaceId, title, parentProcessId, messagingOrigin, provider, autoProviderRouting, model, reasoningEffort, effortTier } = params;
     if (!launchRalph) {
         return {
             error: "Launching a Ralph session is not available in this context (no Ralph launch capability was wired).",
@@ -987,6 +989,7 @@ async function launchRalphConversation(params: {
             },
             ...(title ? { title } : {}),
             ...(parentProcessId ? { spawnedFromProcessId: parentProcessId } : {}),
+            ...(messagingOrigin ? { messagingOrigin } : {}),
         });
         if (!result.ok) {
             return { error: `Failed to launch Ralph session: ${result.error}` };

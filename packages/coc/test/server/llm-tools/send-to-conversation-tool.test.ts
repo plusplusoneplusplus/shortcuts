@@ -968,6 +968,26 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
         });
     });
 
+    it.each([
+        { connector: 'whatsapp' as const, chatKey: 'original-group' },
+        { connector: 'teams' as const, chatKey: 'original-channel', threadId: 'original-thread' },
+    ])('captures local Ralph routing without tracking iteration notices (%j)', async origin => {
+        const launchRalph = makeLaunch();
+        const trackMessagingJob = vi.fn();
+        const { tool } = makeTool({ launchRalph, storeWorkspaces: ['ws-1', 'ws-2'], runtime: { messagingOrigin: () => origin, trackMessagingJob } });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', workspaceId: 'ws-2' }, invocationStub));
+        expect(launchRalph.mock.calls[0][0]).toMatchObject({ workspaceId: 'ws-2', messagingOrigin: origin });
+        expect(trackMessagingJob).not.toHaveBeenCalled();
+    });
+
+    it('captures Ralph routing independently of ordinary notice tracking', async () => {
+        const launchRalph = makeLaunch();
+        const origin = { connector: 'teams' as const, chatKey: 'channel', threadId: 'thread' };
+        const { tool } = makeTool({ launchRalph, runtime: { messagingOrigin: () => origin } });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph' }, invocationStub));
+        expect(launchRalph.mock.calls[0][0].messagingOrigin).toEqual(origin);
+    });
+
     it('never requests a worktree or max iterations', async () => {
         const launchRalph = makeLaunch();
         const { tool } = makeTool({ launchRalph });

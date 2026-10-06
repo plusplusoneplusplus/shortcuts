@@ -74,6 +74,34 @@ describe('Sentinel delegation admission', () => {
         expect(job.terminal).toBeUndefined();
     });
 
+    it.each(['whatsapp', 'teams'] as const)('persists tool Ralph %s origin and session before cross-workspace execution', async connector => {
+        const origin = { connector, chatKey: 'original-chat', ...(connector === 'teams' ? { threadId: 'original-thread' } : {}) };
+        const trackMessagingJob = vi.fn();
+        queue.on('taskAdded', task => {
+            const job = new DelegatedJobStore(dataDir).list(parentWorkspace)[0];
+            expect(job).toMatchObject({
+                parent: { workspaceId: parentWorkspace, processId: parentId },
+                child: { workspaceId: childWorkspace, processId: toQueueProcessId(task.id), sessionId: task.payload.context.ralph.sessionId },
+                messagingOrigin: origin,
+            });
+            expect(task.payload.context.messagingOrigin).toEqual(origin);
+            expect(jobs.list(childWorkspace)).toEqual([]);
+        });
+        const { tool } = createSendToConversationTool({
+            store, workspaceId: parentWorkspace, parentProcessId: parentId,
+            runtime: { messagingOrigin: () => origin, trackMessagingJob },
+            enqueueChat: task => admit(task, enqueue),
+            launchRalph: request => launchRalphSession(request, {
+                dataDir, store, bridge: { enqueue: task => admit(task, enqueue) } as any,
+            }),
+        });
+        const result = await tool.handler({ content: 'Goal', mode: 'ralph', workspaceId: childWorkspace });
+        if ('error' in result) throw new Error(result.error);
+        expect(jobs.list(parentWorkspace)[0].child.sessionId).toBe(result.sessionId);
+        expect(trackMessagingJob).not.toHaveBeenCalled();
+        expect(enqueue).toHaveBeenCalledOnce();
+    });
+
     it.each(['whatsapp', 'teams'] as const)('captures the %s route before child admission and rejects rerouting', async connector => {
         const task = input();
         task.id = 'origin-job';
