@@ -68,6 +68,7 @@ import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conv
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
+import { assertChatImageTransport } from './chat-image-policy';
 import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn } from '../workspaces/repo-group-chat-context';
@@ -1118,6 +1119,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // lifecycle runner can attribute the assistant turn it appends.
         let turnSegmentId: string | undefined;
         try {
+            assertChatImageTransport(taskProvider, attachments, workingDirectory);
             // Rewrite large prompts to file-path references
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
             const wsId = payload.workspaceId;

@@ -156,6 +156,18 @@ describe('ChatBaseExecutor provider routing', () => {
         });
     });
 
+    it('rejects an image turn before OpenCode can execute the caption alone', async () => {
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider: 'opencode',
+            resolveAiServiceForProvider: () => sdkMocks.service as any,
+        }));
+        const task = makeChatTask('ask', 'image-opencode');
+        task.payload = { ...task.payload, attachments: [{ type: 'file', path: '/attachments/incoming/image.png', displayName: 'image.png' }] } as any;
+
+        await expect(executor.execute(task, 'describe this')).rejects.toThrow('cannot receive image attachments');
+        expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+    });
+
     it('uses the server default provider when payload.provider is omitted', async () => {
         const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
         const executor = new ChatExecutor(store, makeOptions(store, {

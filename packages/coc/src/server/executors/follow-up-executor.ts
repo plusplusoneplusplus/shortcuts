@@ -61,6 +61,7 @@ import {
     shouldInjectChatModeDirective,
 } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
+import { assertChatImageTransport } from './chat-image-policy';
 import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
 import {
     buildCumulativeTokenUsage,
@@ -456,6 +457,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
 
         const turnAbort = this.registerTurnAbortController(processId, continuation.provider);
         try {
+            assertChatImageTransport(sessionProvider, attachments, workingDirectory);
             if (continuation.strictResume) {
                 if (!activeBinding.sessionId) {
                     throw new Error('Cannot continue this stopped chat because no SDK session was saved.');

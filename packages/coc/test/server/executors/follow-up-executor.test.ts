@@ -245,6 +245,17 @@ describe('FollowUpExecutor', () => {
     // Happy path
     // -------------------------------------------------------------------------
 
+    it('fails an OpenCode image follow-up without executing the caption or resuming the session', async () => {
+        await store.addProcess(makeProcess({ sdkSessionId: 'opencode-session', metadata: { provider: 'opencode' } }));
+        const executor = makeExecutor(store, { provider: 'opencode' });
+        await executor.executeFollowUp('proc-1', 'describe this', [{ type: 'file', path: '/attachments/incoming/image.png', displayName: 'image.png' }]);
+
+        expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+        const updated = store.processes.get('proc-1');
+        expect(updated?.status).toBe('failed');
+        expect(updated?.error).toContain('cannot receive image attachments');
+    });
+
     it('updates process status to completed on success', async () => {
         const proc = makeProcess();
         await store.addProcess(proc);
