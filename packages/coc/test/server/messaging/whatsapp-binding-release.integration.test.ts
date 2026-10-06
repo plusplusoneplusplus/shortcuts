@@ -166,7 +166,7 @@ describe('WhatsApp authoritative binding removal', () => {
             const router = new WhatsAppCommandRouter({
                 bindings, store, groupJid: () => 'test-group@g.us', getTask: id => queue.getTask(id),
                 getBotManagedConversationsEnabled: () => true, send, react: vi.fn(),
-                enqueue: async (workspaceId, prompt, mode, target, taskId, botControl, admissionHeld) => (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
+                enqueue: async (workspaceId, prompt, mode, target, taskId, botControl, _images, admissionHeld) => (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                     id: taskId, repoId: workspaceId, type: 'chat', processId: target,
                     priority: 'normal', config: {}, botControl,
                     payload: { kind: 'chat', workspaceId, processId: target, prompt, mode, relayRequestId: taskId },

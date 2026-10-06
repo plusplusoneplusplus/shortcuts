@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Attachment } from '@plusplusoneplusplus/forge';
+import type { Attachment, ModelInfo } from '@plusplusoneplusplus/forge';
 import { resolveWorkspaceExecutionContext, translatePathForExecution } from '@plusplusoneplusplus/forge';
-import { assertChatImageTransport, CHAT_IMAGE_FAILURE_TEXT } from '../../../src/server/executors/chat-image-policy';
+import { assertChatImageTransport, assertCopilotImageModel, CHAT_IMAGE_FAILURE_TEXT } from '../../../src/server/executors/chat-image-policy';
 
 vi.mock('@plusplusoneplusplus/forge', async importOriginal => {
     const actual = await importOriginal<typeof import('@plusplusoneplusplus/forge')>();
@@ -70,5 +70,28 @@ describe('chat image transport policy', () => {
         wsl();
         assertChatImageTransport(provider, [image], '/workspace');
         expect(translatePathForExecution).not.toHaveBeenCalled();
+    });
+});
+
+
+describe('Copilot image model policy', () => {
+    const model = (vision: boolean): ModelInfo => ({
+        id: 'vision-model', name: 'Vision model',
+        capabilities: { supports: { vision, reasoningEffort: false }, limits: { max_context_window_tokens: 0 } },
+    });
+
+    it('accepts only the exact model advertising vision', () => {
+        expect(() => assertCopilotImageModel('vision-model', model(true))).not.toThrow();
+        expect(() => assertCopilotImageModel('vision-model', model(false))).toThrow(CHAT_IMAGE_FAILURE_TEXT.model);
+    });
+
+    it.each([
+        [undefined, model(true)],
+        ['other-model', model(true)],
+        ['vision-model', undefined],
+        ['vision-model', { id: 'vision-model', name: 'No capabilities' }],
+    ])('fails closed for unknown identity or capability', (id, metadata) => {
+        expect(() => assertCopilotImageModel(id as string | undefined, metadata as ModelInfo | undefined))
+            .toThrow(CHAT_IMAGE_FAILURE_TEXT.unknownModel);
     });
 });

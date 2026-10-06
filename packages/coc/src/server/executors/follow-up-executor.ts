@@ -661,6 +661,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 }),
             });
 
+            await this.assertChatImageModel(sessionProvider, followUpAiService, policy.modelId, attachments);
+
             // AC-04 — Apply the per-repo MCP allow-lists (server-level
             // `enabledMcpServers` + per-tool `enabledMcpTools`) to the
             // dashboard chat/session follow-up path. When resolved, the explicit

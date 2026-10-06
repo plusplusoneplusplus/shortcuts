@@ -168,6 +168,82 @@ describe('ChatBaseExecutor provider routing', () => {
         expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
     });
 
+    it.each([false, true])('checks the active Copilot catalog before initial image execution (vision=%s)', async vision => {
+        const model: ModelInfo = {
+            id: 'gpt-4.1', name: 'Model',
+            capabilities: { supports: { vision, reasoningEffort: false }, limits: { max_context_window_tokens: 0 } },
+        };
+        // Shared metadata can advertise the opposite capability; it must not authorize this image.
+        vi.spyOn(modelMetadataStore, 'getModel').mockReturnValue({
+            ...model, capabilities: { ...model.capabilities, supports: { ...model.capabilities.supports, vision: !vision } },
+        });
+        sdkMocks.mockListModels.mockResolvedValue([model]);
+        const executor = new ChatExecutor(store, makeOptions(store));
+        const task = makeChatTask('ask', 'image-copilot');
+        task.config.model = 'gpt-4.1';
+        const attachments = [{ type: 'file', path: '/attachments/incoming/image.png', displayName: 'image.png' }];
+        task.payload = { ...task.payload, attachments } as any;
+        try {
+            if (vision) {
+                await executor.execute(task, 'describe this');
+                expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-4.1', attachments }));
+            } else {
+                await expect(executor.execute(task, 'describe this')).rejects.toThrow('This model cannot receive image attachments.');
+                expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+            }
+        } finally {
+            vi.mocked(modelMetadataStore.getModel).mockRestore();
+        }
+    });
+
+    it.each(['default', 'unlisted-model', 'failed-catalog'])('rejects unconfirmed Copilot image support (%s)', async selection => {
+        if (selection === 'failed-catalog') {
+            sdkMocks.mockListModels.mockImplementation(async () => { throw new Error('private credential failure'); });
+        } else {
+            sdkMocks.mockListModels.mockResolvedValue([]);
+        }
+        const task = makeChatTask('ask', 'image-unknown');
+        if (selection !== 'default') task.config.model = selection;
+        task.payload = { ...task.payload, attachments: [{ type: 'file', path: '/incoming/image.png' }] } as any;
+        const executor = new ChatExecutor(store, makeOptions(store));
+        await expect(executor.execute(task, 'describe this')).rejects.toThrow('Image support could not be confirmed');
+        expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it.each(['codex', 'claude'] as const)('preserves %s image execution despite non-authoritative vision metadata', async provider => {
+        sdkMocks.mockListModels.mockResolvedValue([{ id: 'gpt-5', name: 'Model', capabilities: { supports: { vision: false } } } as any]);
+        const executor = new ChatExecutor(store, makeOptions(store, {
+            provider, resolveAiServiceForProvider: () => sdkMocks.service as any,
+        }));
+        const task = makeChatTask('ask', `image-${provider}`);
+        const attachments = [{ type: 'file', path: '/incoming/image.png', displayName: 'image.png' }];
+        task.payload = { ...task.payload, attachments } as any;
+        await executor.execute(task, 'describe this');
+        expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ attachments }));
+    });
+
+    it('checks the workspace mode default and lets an explicit vision model override it', async () => {
+        const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-model-preferences-'));
+        const model = (id: string, vision: boolean) => ({
+            id, name: id, capabilities: { supports: { vision, reasoningEffort: false }, limits: { max_context_window_tokens: 0 } },
+        });
+        sdkMocks.mockListModels.mockResolvedValue([model('gpt-4.1', true), model('gpt-5', false)]);
+        try {
+            writeRepoPreferences(dataDir, 'ws-image', { defaultModel: 'gpt-4.1', defaultModels: { ask: 'gpt-5' } });
+            const executor = new ChatExecutor(store, makeOptions(store), dataDir);
+            const task = makeChatTask('ask', 'image-workspace-default');
+            task.payload = { ...task.payload, workspaceId: 'ws-image', attachments: [{ type: 'file', path: '/incoming/image.png' }] } as any;
+            await expect(executor.execute(task, 'describe this')).rejects.toThrow('This model cannot receive image attachments.');
+            expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+            task.id = 'image-explicit-model';
+            task.config.model = 'gpt-4.1';
+            await executor.execute(task, 'describe this');
+            expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-4.1' }));
+        } finally {
+            fs.rmSync(dataDir, { recursive: true, force: true });
+        }
+    });
+
     it('uses the server default provider when payload.provider is omitted', async () => {
         const resolveAiServiceForProvider = vi.fn().mockReturnValue(sdkMocks.service as any);
         const executor = new ChatExecutor(store, makeOptions(store, {

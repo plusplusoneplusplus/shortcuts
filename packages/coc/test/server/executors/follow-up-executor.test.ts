@@ -256,6 +256,31 @@ describe('FollowUpExecutor', () => {
         expect(updated?.error).toContain('cannot receive image attachments');
     });
 
+    it.each([false, true])('checks Copilot vision capability for a resumed image turn (vision=%s)', async vision => {
+        const model = makeModelInfo('gpt-4.1', undefined);
+        model.capabilities.supports.vision = vision;
+        sdkMocks.mockListModels.mockResolvedValue([model]);
+        await store.addProcess(makeProcess({ sdkSessionId: 'copilot-session', metadata: { provider: 'copilot', model: 'gpt-4.1' } }));
+        const attachments = [{ type: 'file' as const, path: '/attachments/incoming/image.png', displayName: 'image.png' }];
+        await makeExecutor(store).executeFollowUp('proc-1', 'describe this', attachments);
+        const updated = store.processes.get('proc-1');
+        if (vision) {
+            expect(updated?.status).toBe('completed');
+            expect(sdkMocks.mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-4.1', attachments, sessionId: 'copilot-session' }));
+        } else {
+            expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+            expect(updated?.status).toBe('failed');
+            expect(updated?.error).toBe('This model cannot receive image attachments. Select a model with vision support and send the images again.');
+        }
+    });
+
+    it('rejects an image follow-up with an unknown Copilot default without sending instructions alone', async () => {
+        await store.addProcess(makeProcess({ sdkSessionId: 'copilot-session' }));
+        await makeExecutor(store).executeFollowUp('proc-1', 'describe this', [{ type: 'file', path: '/incoming/image.webp' }]);
+        expect(sdkMocks.mockSendMessage).not.toHaveBeenCalled();
+        expect(store.processes.get('proc-1')?.error).toContain('Image support could not be confirmed');
+    });
+
     it('updates process status to completed on success', async () => {
         const proc = makeProcess();
         await store.addProcess(proc);

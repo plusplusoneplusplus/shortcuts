@@ -22,6 +22,7 @@ import { incomingImageTaskPayload } from '../../../src/server/messaging/incoming
 import { createMessagingHandOff } from '../../../src/server/messaging/job-handoff';
 import { PENDING_IMAGE_TTL_MS } from '../../../src/server/messaging/pending-images';
 import { CHAT_IMAGE_FAILURE_TEXT } from '../../../src/server/executors/chat-image-policy';
+import { writeRepoPreferences } from '../../../src/server/preferences-handler';
 import { getRepoDataPath } from '../../../src/server/paths';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
 
@@ -132,7 +133,7 @@ async function teamsTransport(handle: (msg: InboundTeamsMessage) => Promise<void
         cancelDownloads: () => reader.stop() };
 }
 
-async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'opencode' = 'copilot') {
+async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'opencode' = 'copilot', vision = true) {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'incoming-execution-'));
     cleanup.push(() => fs.rmSync(dataDir, { recursive: true, force: true }));
     const store = new SqliteProcessStore({ dbPath: path.join(dataDir, 'processes.db') });
@@ -141,8 +142,12 @@ async function harness(platform: 'whatsapp' | 'teams', provider: 'copilot' | 'op
         const rootPath = path.join(dataDir, id);
         fs.mkdirSync(rootPath);
         await store.registerWorkspace({ id, name: id, rootPath });
+        if (provider === 'copilot') writeRepoPreferences(dataDir, id, { defaultModel: 'gpt-4.1' });
     }
-    const ai = createMockSDKService();
+    const ai = createMockSDKService({ listModelsResult: [{
+        id: 'gpt-4.1', name: 'Fixture model',
+        capabilities: { supports: { vision, reasoningEffort: false }, limits: { max_context_window_tokens: 0 } },
+    }] });
     const received: Array<{ prompt: string; bytes: Buffer[]; paths: string[] }> = [];
     ai.mockSendMessage.mockImplementation(async (options: SendMessageOptions) => {
         received.push({ prompt: options.prompt,
@@ -272,6 +277,22 @@ describe.each(['whatsapp', 'teams'] as const)('%s native images through executio
         expect(ctx.facade.getAll()[0].status).toBe('failed');
         expect(ctx.received).toEqual([]);
         await vi.waitFor(() => expect(ctx.sends.some(text => text.includes(CHAT_IMAGE_FAILURE_TEXT.provider))).toBe(true));
+        expect(fs.readdirSync(getRepoDataPath(ctx.dataDir, 'ws-a', 'attachments'))).toEqual([]);
+    });
+
+    it.each([false, true])('returns safe non-vision-model feedback without SDK image execution (follow-up=%s)', { timeout: 20_000 }, async followUp => {
+        const ctx = await harness(platform, 'copilot', false);
+        if (followUp) {
+            await ctx.deliver('seed', '/ask text-only request');
+            await ctx.settle();
+            expect(ctx.received).toHaveLength(1);
+        }
+        await ctx.deliver('image', '/ask describe the image', true, followUp ? 'seed' : undefined);
+        await ctx.settle();
+        const imageTask = ctx.facade.getAll().find(task => task.payload.prompt === 'describe the image')!;
+        expect((await ctx.store.getProcess(imageTask.processId!))?.status).toBe('failed');
+        expect(ctx.received).toHaveLength(followUp ? 1 : 0);
+        await vi.waitFor(() => expect(ctx.sends.some(text => text.includes(CHAT_IMAGE_FAILURE_TEXT.model))).toBe(true));
         expect(fs.readdirSync(getRepoDataPath(ctx.dataDir, 'ws-a', 'attachments'))).toEqual([]);
     });
 
