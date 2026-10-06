@@ -189,20 +189,3 @@ describe('Schedule API — nextRun is UTC ISO format', () => {
     });
 });
 
-// ============================================================================
-// DST tests — documented as known gaps / TODO
-// ============================================================================
-
-describe('Schedule Timezone — DST (TODO / known gaps)', () => {
-    it.todo(
-        'schedule with explicit timezone fires at correct wall-clock time — requires timezone support in nextCronTime'
-    );
-
-    it.todo(
-        'schedule crossing DST spring-forward fires at correct time, not 1h off — requires @sinonjs/fake-timers'
-    );
-
-    it.todo(
-        'schedule crossing DST fall-back fires once, not twice for the repeated hour — requires @sinonjs/fake-timers'
-    );
-});

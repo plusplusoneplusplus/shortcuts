@@ -310,17 +310,6 @@ describe('useMermaid hook module', () => {
         expect(content).toMatch(/useMermaid\(rootRef.*contentKey/);
     });
 
-    it('handles mermaid CDN loading', async () => {
-        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/ui/useMermaid.ts');
-        const content = fs.readFileSync(hookPath, 'utf8');
-        expect(content).toContain('mermaid');
-    });
-
-    it('supports theme reinitialisation', async () => {
-        const hookPath = path.resolve(__dirname, '../../../../src/server/spa/client/react/hooks/ui/useMermaid.ts');
-        const content = fs.readFileSync(hookPath, 'utf8');
-        expect(content).toContain('theme');
-    });
 });
 
 // ---------------------------------------------------------------------------

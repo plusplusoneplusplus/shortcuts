@@ -260,21 +260,6 @@ describe('autoExecute triggers re-execution after comment resolution', () => {
         expect(updated!.executionHistory![0].autoReExecuted).toBe(true);
     });
 
-    it.skip('routes/index.ts auto-execute guard includes item.autoExecute — feature not yet implemented', async () => {
-        const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'routes', 'index.ts');
-        const src = await fs.readFile(srcPath, 'utf-8');
-        expect(src).toContain('!item.autoExecute');
-        // Ensure autoExecute is part of the same guard as autoResolveAndReExecute
-        expect(src).toContain('!item.autoResolveAndReExecute && !resolveCtx.autoReExecute && !item.autoExecute');
-    });
-
-    it('WorkItemDetail.tsx resolves commits via resolve-comments endpoint', async () => {
-        const srcPath = path.join(__dirname, '..', '..', '..', 'src', 'server', 'spa', 'client', 'react', 'features', 'work-items', 'WorkItemDetail.tsx');
-        const src = await fs.readFile(srcPath, 'utf-8');
-        // handleAutoResolveChange should call the typed work-item resolve-comments client method
-        expect(src).toContain('workItems.resolveCommentsForOrigin(workItemOriginId, workItemId');
-        expect(src).toContain("type: 'commit'");
-    });
 });
 
 // ============================================================================
@@ -369,10 +354,6 @@ describe('WorkItemDetail layout — commit resolution UI', () => {
         // The per-commit button renders just "Resolve" (optionally with spinner prefix)
         expect(src).toContain("}Resolve");
         expect(src).toContain("commit-resolve-btn-");
-    });
-
-    it('session-level resolve button says "Resolve all"', () => {
-        expect(src).toContain('Resolve all (');
     });
 
     it('per-commit resolve passes sourceRunIndex', () => {

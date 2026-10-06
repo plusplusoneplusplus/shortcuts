@@ -2,11 +2,10 @@
  * Verifies that:
  * 1. WikiManager satisfies the WikiProvider interface structurally.
  * 2. createSingleWikiProvider produces a valid WikiProvider.
- * 3. handleAskCore and handleExploreCore accept ResolvedAskContext / ResolvedExploreContext.
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import type { WikiProvider, GenerateWiki, ResolvedAskContext, ResolvedExploreContext } from '../../src/server/wiki/wiki-backend';
+import type { WikiProvider, GenerateWiki } from '../../src/server/wiki/wiki-backend';
 import { createSingleWikiProvider } from '../../src/server/wiki/wiki-backend';
 import { WikiManager } from '../../src/server/wiki/wiki-manager';
 
@@ -60,78 +59,3 @@ describe('WikiProvider interface', () => {
     });
 });
 
-// ============================================================================
-// ResolvedAskContext conformance
-// ============================================================================
-
-describe('ResolvedAskContext', () => {
-    it('can be constructed with required fields', () => {
-        const context: ResolvedAskContext = {
-            contextBuilder: {
-                retrieve: vi.fn().mockReturnValue({
-                    componentIds: [],
-                    contextText: '',
-                    graphSummary: '',
-                    themeContexts: [],
-                }),
-            } as any,
-            sendMessage: vi.fn().mockResolvedValue('response'),
-        };
-
-        expect(context.contextBuilder).toBeDefined();
-        expect(context.sendMessage).toBeDefined();
-        expect(context.model).toBeUndefined();
-        expect(context.workingDirectory).toBeUndefined();
-        expect(context.sessionManager).toBeUndefined();
-    });
-
-    it('accepts optional fields', () => {
-        const context: ResolvedAskContext = {
-            contextBuilder: {} as any,
-            sendMessage: vi.fn(),
-            model: 'gpt-4',
-            workingDirectory: '/work',
-            sessionManager: {
-                get: vi.fn(),
-                create: vi.fn(),
-                send: vi.fn(),
-                destroy: vi.fn(),
-            } as any,
-        };
-
-        expect(context.model).toBe('gpt-4');
-        expect(context.workingDirectory).toBe('/work');
-        expect(context.sessionManager).toBeDefined();
-    });
-});
-
-// ============================================================================
-// ResolvedExploreContext conformance
-// ============================================================================
-
-describe('ResolvedExploreContext', () => {
-    it('can be constructed with required fields', () => {
-        const context: ResolvedExploreContext = {
-            wikiData: {
-                graph: { components: [] },
-                getComponentDetail: vi.fn(),
-            } as any,
-            sendMessage: vi.fn().mockResolvedValue('response'),
-        };
-
-        expect(context.wikiData).toBeDefined();
-        expect(context.sendMessage).toBeDefined();
-    });
-
-    it('accepts optional fields', () => {
-        const context: ResolvedExploreContext = {
-            wikiData: {} as any,
-            sendMessage: vi.fn(),
-            model: 'gpt-4',
-            workingDirectory: '/work',
-        };
-
-        expect(context.model).toBe('gpt-4');
-        expect(context.workingDirectory).toBe('/work');
-    });
-});

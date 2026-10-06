@@ -123,22 +123,6 @@ describe('Import Large Payload — Section 4', () => {
         expect(result.body.errors).toHaveLength(0);
     });
 
-    // NOTE: 10,000 sequential file writes are very slow on the FileProcessStore backend
-    // (each process is a separate file on disk). This test is skipped to avoid flaky
-    // timeouts in CI. It documents the intended requirement.
-    it.skip('imports 10,000 processes within 30 seconds (skipped: file-per-process store is too slow)', async () => {
-        const payload = generateExportPayload({ processCount: 10000 });
-
-        const start = Date.now();
-        const result = await sendImport(payload);
-        const elapsed = Date.now() - start;
-
-        expect(result.status).toBe(200);
-        expect(result.body.importedProcesses).toBe(10000);
-        expect(result.body.errors).toHaveLength(0);
-        expect(elapsed).toBeLessThan(30000);
-    });
-
     it('after large import, GET /api/processes total count matches imported count', async () => {
         const PROCESS_COUNT = 200;
         const payload = generateExportPayload({ processCount: PROCESS_COUNT });

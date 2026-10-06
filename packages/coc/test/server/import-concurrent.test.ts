@@ -110,15 +110,6 @@ describe('Concurrent Import Requests — Section 6', () => {
         return { status: res.status, body: JSON.parse(res.body) };
     }
 
-    // KNOWN GAP: Two simultaneous import requests with separate tokens both succeed.
-    // There is no concurrency lock — the second import is NOT rejected with 409.
-    // If a lock is added in future, replace this skip with the actual 409 assertion.
-    it.skip('two simultaneous import requests: second returns 409 IMPORT_IN_PROGRESS (not implemented)', async () => {
-        // When implemented:
-        // const [r1, r2] = await Promise.all([sendImport(payload), sendImport(payload)]);
-        // assert exactly one returned 200 and one returned 409 with IMPORT_IN_PROGRESS
-    });
-
     it('after first import completes, second import can proceed successfully', async () => {
         const payload1 = makePayload('first');
         const r1 = await sendImport(payload1);
