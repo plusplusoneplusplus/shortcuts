@@ -44,7 +44,7 @@ beforeEach(() => {
 async function view() {
     const sink: BrowserEventSink = {
         state: vi.fn(), newTab: vi.fn(), download: vi.fn(),
-        closeRequested: vi.fn(), openMenuRequested: vi.fn(),
+        closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn(),
     };
     const hosted = await new ElectronBrowserHost('profile').create({
         ownerId: 7, viewId: 'browser', sessionKey: 'remote:workspace', url: 'https://example.test/',
@@ -61,6 +61,23 @@ async function view() {
 }
 
 describe('Electron browser add-menu forwarding', () => {
+    it('returns owner focus for the address shortcut, preserving other chords and hidden views', async () => {
+        const { hosted, sink, press } = await view();
+        expect(press({ key: 'l' }).preventDefault).not.toHaveBeenCalled();
+        await hosted.setBounds({ x: 0, y: 0, width: 300, height: 200 });
+        expect(press({ key: 'L' }).preventDefault).toHaveBeenCalledOnce();
+        expect(sink.focusAddressRequested).toHaveBeenCalledOnce();
+        expect(mocks.owner.focus.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(sink.focusAddressRequested!).mock.invocationCallOrder[0]);
+        expect(press({ key: 'l', isAutoRepeat: true }).preventDefault).toHaveBeenCalledOnce();
+        for (const input of [{ shift: true }, { alt: true }, { control: false, meta: false }, { type: 'keyUp' }]) {
+            expect(press({ key: 'l', ...input }).preventDefault).not.toHaveBeenCalled();
+        }
+        expect(sink.focusAddressRequested).toHaveBeenCalledOnce();
+        expect(sink.openMenuRequested).not.toHaveBeenCalled();
+        await hosted.close();
+        expect(press({ key: 'l' }).preventDefault).not.toHaveBeenCalled();
+    });
+
     it('claims only visible live views and returns focus before forwarding once', async () => {
         const { hosted, sink, press } = await view();
         expect(press().preventDefault).not.toHaveBeenCalled();

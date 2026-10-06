@@ -22,6 +22,7 @@ export interface BrowserEventSink {
     download(event: BrowserDownloadEvent): void;
     closeRequested(): void;
     openMenuRequested(): void;
+    focusAddressRequested?(): void;
 }
 
 export interface BrowserHostedView {

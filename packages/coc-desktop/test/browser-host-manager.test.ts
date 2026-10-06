@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
-import { BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
+import { BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 
 function deferred<T>() {
@@ -192,6 +192,23 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s shared browser manage
         expect(h.created[0].view.close).not.toHaveBeenCalled();
         expect(h.created[0].view.navigate).toHaveBeenCalledWith('https://next.test/');
         expect(h.created[1].view.close).toHaveBeenCalledOnce();
+    });
+});
+
+describe('address shortcut ownership', () => {
+    it.each<BrowserEngine>(['electron', 'webview2'])('routes %s address requests only to their live owning window', async engine => {
+        const h = harness(engine);
+        await h.manager.open(1, 'same-view', 'https://example.test/', 'workspace-a');
+        await h.manager.open(2, 'same-view', 'https://example.test/', 'workspace-b');
+        h.send.mockClear();
+        h.created[0].sink.focusAddressRequested!();
+        expect(h.send).toHaveBeenCalledExactlyOnceWith(1, BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, { viewId: 'same-view' });
+        await h.manager.close(1, 'same-view');
+        h.send.mockClear();
+        h.created[0].sink.focusAddressRequested!();
+        expect(h.send).not.toHaveBeenCalled();
+        h.created[1].sink.focusAddressRequested!();
+        expect(h.send).toHaveBeenCalledExactlyOnceWith(2, BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, { viewId: 'same-view' });
     });
 });
 

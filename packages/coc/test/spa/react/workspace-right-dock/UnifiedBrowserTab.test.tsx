@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnifiedBrowserTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
 import type { DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
@@ -31,6 +32,60 @@ function tab() {
 }
 
 describe('browser tab engine-neutral controls', () => {
+    it.each(['electron', 'webview2'])('selects the complete editable URL on a matching %s request and replaces it on typing/Enter', async engine => {
+        const listeners = new Set<(event: { viewId: string }) => void>();
+        mocks.bridge!.onFocusAddressRequested = callback => { listeners.add(callback); return () => { listeners.delete(callback); }; };
+        open.mockResolvedValue({ ok: true, engine });
+        const onNavigate = vi.fn();
+        const props = { tabId: 'tab', viewId: 'view', sessionKey: 'workspace-a', url: 'https://example.test/long/path?q=value#fragment', active: true, visible: true, onNavigate, onPageState: vi.fn() };
+        const rendered = render(<UnifiedBrowserTab {...props} />);
+        await screen.findByTestId('browser-engine');
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        fireEvent.change(address, { target: { value: 'https://draft.test/edit?full=url#end' } });
+        const outside = document.createElement('input');
+        document.body.append(outside);
+        outside.focus();
+        act(() => listeners.forEach(fn => fn({ viewId: 'other-view' })));
+        expect(document.activeElement).toBe(outside);
+        act(() => listeners.forEach(fn => fn({ viewId: 'view' })));
+        expect(document.activeElement).toBe(address);
+        expect([address.selectionStart, address.selectionEnd]).toEqual([0, address.value.length]);
+        await userEvent.keyboard('https://replacement.test/{Enter}');
+        expect(onNavigate).toHaveBeenCalledWith('tab', 'https://replacement.test/');
+        expect(mocks.bridge!.navigate).toHaveBeenCalledWith('view', 'https://replacement.test/');
+        rendered.rerender(<UnifiedBrowserTab {...props} active={false} />);
+        outside.focus();
+        act(() => listeners.forEach(fn => fn({ viewId: 'view' })));
+        expect(document.activeElement).toBe(outside);
+        rendered.rerender(<UnifiedBrowserTab {...props} visible={false} />);
+        act(() => listeners.forEach(fn => fn({ viewId: 'view' })));
+        expect(document.activeElement).toBe(outside);
+        rendered.unmount();
+        expect(listeners.size).toBe(0);
+        outside.remove();
+    });
+
+    it.each(['Win32', 'MacIntel'])('handles the platform address shortcut throughout the toolbar on %s', async platform => {
+        const platformSpy = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+        tab();
+        await screen.findByText('Electron');
+        const address = screen.getByLabelText('Address') as HTMLInputElement;
+        const button = screen.getByTestId('browser-open-external');
+        button.focus();
+        const chord = { key: 'l', ctrlKey: platform === 'Win32', metaKey: platform === 'MacIntel' };
+        expect(fireEvent.keyDown(button, { ...chord, shiftKey: true })).toBe(true);
+        expect(document.activeElement).toBe(button);
+        expect(fireEvent.keyDown(button, chord)).toBe(false);
+        expect(document.activeElement).toBe(address);
+        expect([address.selectionStart, address.selectionEnd]).toEqual([0, address.value.length]);
+        address.setSelectionRange(2, 2);
+        expect(fireEvent.keyDown(address, chord)).toBe(false);
+        expect(address.selectionEnd).toBe(address.value.length);
+        expect(fireEvent.keyDown(document.body, chord)).toBe(true);
+        expect(fireEvent.keyDown(address, { ...chord, key: 'Tab' })).toBe(true);
+        platformSpy.mockRestore();
+    });
+
     it('labels the actual engine returned by the host and hides rather than closes on unmount', async () => {
         open.mockResolvedValue({ ok: true, engine: 'webview2' });
         const view = tab();

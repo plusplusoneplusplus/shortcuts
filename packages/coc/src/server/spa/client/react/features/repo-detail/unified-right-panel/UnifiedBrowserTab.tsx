@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import {
@@ -49,6 +50,7 @@ export function UnifiedBrowserTab({
     const [engine, setEngine] = useState<BrowserEngine | undefined>();
     const [startupError, setStartupError] = useState<{ reason: string; message: string } | null>(null);
     const [retry, setRetry] = useState(0);
+    const addressRef = useRef<HTMLInputElement>(null);
     const latestUrl = useRef(url);
     latestUrl.current = url;
     const onPageStateRef = useRef(onPageState);
@@ -59,6 +61,15 @@ export function UnifiedBrowserTab({
         setAddress(url ?? '');
         setError(null);
     }, [url]);
+
+    useEffect(() => {
+        if (!active || !visible) return;
+        return bridge?.onFocusAddressRequested?.(event => {
+            if (event.viewId !== viewId) return;
+            addressRef.current?.focus();
+            addressRef.current?.select();
+        });
+    }, [bridge, active, visible, viewId]);
 
     const hasUrl = Boolean(url);
     useEffect(() => {
@@ -136,6 +147,16 @@ export function UnifiedBrowserTab({
         <form
             className="flex flex-shrink-0 items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
             onSubmit={submit}
+            onKeyDown={event => {
+                const mac = isMacPlatform();
+                if (!active || !visible || event.defaultPrevented || event.key.toLowerCase() !== 'l'
+                    || !(mac ? event.metaKey : event.ctrlKey) || event.altKey || event.shiftKey
+                    || !addressRef.current) return;
+                addressRef.current.focus();
+                addressRef.current.select();
+                event.preventDefault();
+                event.stopPropagation();
+            }}
         >
             {bridge && (
                 <>
@@ -151,6 +172,7 @@ export function UnifiedBrowserTab({
                 </>
             )}
             <input
+                ref={addressRef}
                 type="text"
                 value={address}
                 onChange={event => { setAddress(event.target.value); setError(null); }}

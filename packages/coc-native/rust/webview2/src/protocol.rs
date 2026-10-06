@@ -30,6 +30,16 @@ pub fn open_menu_shortcut(key: u32, key_down: bool, control: bool, alt: bool, sh
     key == u32::from(b'T') && key_down && control && !alt && !shift
 }
 
+pub fn focus_address_shortcut(
+    key: u32,
+    key_down: bool,
+    control: bool,
+    alt: bool,
+    shift: bool,
+) -> bool {
+    key == u32::from(b'L') && key_down && control && !alt && !shift
+}
+
 pub fn allowed_url(value: &str, allow_blank: bool) -> bool {
     if allow_blank && (value.is_empty() || value == "about:blank") {
         return true;
@@ -88,6 +98,20 @@ mod tests {
             (b'T', true, true, false, true),
         ] {
             assert!(!open_menu_shortcut(u32::from(key), down, control, alt, shift));
+        }
+    }
+
+    #[test]
+    fn address_shortcut_preserves_other_keys_and_modifiers() {
+        assert!(focus_address_shortcut(u32::from(b'L'), true, true, false, false));
+        for (key, down, control, alt, shift) in [
+            (b'T', true, true, false, false),
+            (b'L', false, true, false, false),
+            (b'L', true, false, false, false),
+            (b'L', true, true, true, false),
+            (b'L', true, true, false, true),
+        ] {
+            assert!(!focus_address_shortcut(u32::from(key), down, control, alt, shift));
         }
     }
 

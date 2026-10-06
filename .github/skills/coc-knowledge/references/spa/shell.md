@@ -113,6 +113,11 @@ Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML pr
 WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
 
+The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
+`onFocusAddressRequested` to the owning renderer after returning host keyboard
+focus. Only the matching active, visible browser tab focuses and selects its
+complete editable address, including unsent edits.
+
 Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores via `closeBrowserPanelView`. Window teardown closes every view. A full SPA reload (`manager.reloadOwner`) closes `url` views but only hides `file` views: the persisted `html-page` tab reopens the same view id and gets the live page, history and scroll back. A file view not reopened before the next reload closes then.
 Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.
 

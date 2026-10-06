@@ -32,7 +32,7 @@ vi.mock('../src/webview2-process', () => ({
     },
 }));
 
-const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn() };
+const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn(), focusAddressRequested: vi.fn() };
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
 
 describe('WebView2 native focus handoff', () => {
@@ -41,6 +41,7 @@ describe('WebView2 native focus handoff', () => {
         mocks.owner.focus.mockClear();
         vi.mocked(sink.closeRequested).mockClear();
         vi.mocked(sink.openMenuRequested).mockClear();
+        vi.mocked(sink.focusAddressRequested!).mockClear();
         mocks.running = true;
     });
 
@@ -75,6 +76,23 @@ describe('WebView2 native focus handoff', () => {
         await view.close();
         mocks.onEvent({ event: 'open-menu-requested', viewId: '7:tab:1' });
         expect(sink.openMenuRequested).toHaveBeenCalledOnce();
+    });
+
+    it('hands native focus back before forwarding an address request, rejecting hidden and foreign views', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'remote-workspace', url: 'https://example.test' }, sink);
+        mocks.onEvent({ event: 'focus-address-requested', viewId: '7:tab:1' });
+        expect(sink.focusAddressRequested).not.toHaveBeenCalled();
+        await view.setBounds(bounds);
+        mocks.onEvent({ event: 'focus-address-requested', viewId: '8:tab:1' });
+        expect(sink.focusAddressRequested).not.toHaveBeenCalled();
+        mocks.onEvent({ event: 'focus-address-requested', viewId: '7:tab:1' });
+        await vi.waitFor(() => expect(sink.focusAddressRequested).toHaveBeenCalledOnce());
+        expect(mocks.request).toHaveBeenCalledWith('focus-host', { viewId: '7:tab:1' });
+        expect(mocks.owner.focus.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(sink.focusAddressRequested!).mock.invocationCallOrder[0]);
+        await view.close();
+        mocks.onEvent({ event: 'focus-address-requested', viewId: '7:tab:1' });
+        expect(sink.focusAddressRequested).toHaveBeenCalledOnce();
     });
 
     it('does not start a helper when no browser view is present', async () => {

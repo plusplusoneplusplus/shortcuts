@@ -182,13 +182,14 @@ function wireView(entry: BrowserEntry): void {
         const key = input.key.toLowerCase();
         const modifier = process.platform === 'darwin' ? input.meta : input.control;
         if (entry.closed || !entry.view.getVisible() || input.type !== 'keyDown'
-            || !['w', 't'].includes(key) || !modifier || input.alt
-            || (key === 't' && input.shift)) { return; }
+            || !['w', 't', 'l'].includes(key) || !modifier || input.alt
+            || (key !== 'w' && input.shift) || (key === 'l' && !entry.sink.focusAddressRequested)) { return; }
         event.preventDefault();
         if (!input.isAutoRepeat) {
-            if (key === 't') {
+            if (key === 't' || key === 'l') {
                 entry.win.webContents.focus();
-                entry.sink.openMenuRequested();
+                if (key === 'l') { entry.sink.focusAddressRequested!(); }
+                else { entry.sink.openMenuRequested(); }
             } else { entry.sink.closeRequested(); }
         }
     });

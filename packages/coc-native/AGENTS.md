@@ -139,9 +139,10 @@ activation; null bounds hide them for inactive tabs and SPA overlays.
 Renderer pointer/focus events and browser tab-out requests send `focus-host` through the desktop host;
 the helper calls Win32 `SetFocus` on that view's parent HWND. DOM focus alone does
 not transfer keyboard input away from the cross-process WebView2 controller.
-Visible embedded views forward Ctrl+T as `open-menu-requested` (excluding Shift,
-Alt, popups and repeats); the desktop host completes `focus-host` before the SPA
-opens the owning panel's shared add-tab menu.
+Visible embedded views forward Ctrl+T as `open-menu-requested` and Ctrl+L as
+`focus-address-requested` (excluding Shift, Alt, popups and repeats). The desktop
+host completes `focus-host` before the SPA opens the owning panel's add-tab menu
+or focuses and selects the active owning browser's editable address.
 
 `src/webview2.ts` resolves `COC_WEBVIEW2_PATH`, the local executable, then the
 Windows x64 prebuilt, rewriting ASAR paths to unpacked paths. Server imports
