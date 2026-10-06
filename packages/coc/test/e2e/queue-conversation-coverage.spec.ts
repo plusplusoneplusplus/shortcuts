@@ -544,60 +544,6 @@ test.describe('Slash Command Menu', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Medium Priority: 1 — Suggestion chips
-// ---------------------------------------------------------------------------
-
-test.describe('Suggestion Chips', () => {
-    // The `suggest_follow_ups` tool emits a dedicated `suggestions` SSE event via the
-    // server pipeline. The E2E mock fires a raw `tool-complete` event via `onToolEvent`,
-    // but that path does NOT go through the actual tool handler which translates the
-    // tool result into a `suggestions` pipeline event. As a result the browser never
-    // receives the `suggestions` SSE event and the chips never appear.
-    // Fixing this properly would require wiring the full suggest_follow_ups handler into
-    // the mock executor, which is out of scope for the URL routing migration.
-    test.skip('suggestion chips appear after AI emits suggestions and click sends message', async ({ page, serverUrl, mockAI }) => {
-        const { wsId, cleanup } = await makeWorkspace(serverUrl, 'chips-1');
-        try {
-            let releaseEvents!: () => void;
-            const sseConnected = new Promise<void>((r) => { releaseEvents = r; });
-
-            mockAI.mockSendMessage.mockImplementation(async (opts: any) => {
-                await sseConnected;
-                if (opts && opts.onToolEvent) {
-                    opts.onToolEvent({
-                        type: 'tool-complete',
-                        toolCallId: 'tc-suggest',
-                        toolName: 'suggest_follow_ups',
-                        result: JSON.stringify({ suggestions: ['Tell me more', 'Show an example'] }),
-                    });
-                }
-                await new Promise((r) => setTimeout(r, 300));
-                return { success: true, response: 'AI response with suggestions', sessionId: 'sess-chips' };
-            });
-
-            const task = await seedQueueTask(serverUrl, {
-                repoId: wsId,
-                payload: { workspaceId: wsId, prompt: 'Suggestions test' },
-            });
-
-            const ssePromise = page.waitForRequest((req) => req.url().includes('/stream'), { timeout: 15_000 });
-            await gotoQueueTask(page, serverUrl, wsId, task.id as string);
-            await ssePromise;
-            await page.waitForTimeout(250);
-            releaseEvents();
-
-            await waitForTaskStatus(serverUrl, task.id as string, ['completed', 'failed'], 15_000);
-
-            await expect(page.locator('[data-testid="suggestion-chips"]')).toBeVisible({ timeout: 8_000 });
-            await expect(page.locator('[data-testid="suggestion-chip"]')).toHaveCount(2, { timeout: 3_000 });
-            await expect(page.locator('[data-testid="suggestion-chip"]').first()).toContainText('Tell me more');
-        } finally {
-            cleanup();
-        }
-    });
-});
-
-// ---------------------------------------------------------------------------
 // Medium Priority: 2 — Copy conversation button
 // ---------------------------------------------------------------------------
 
