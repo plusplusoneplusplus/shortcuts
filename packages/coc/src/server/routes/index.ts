@@ -497,6 +497,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         console.error('[delegated-job-results] Could not restore results:', error));
     const registerSentinelDelegation = createSentinelDelegationEnqueue({
         store, jobs: delegatedJobs, hasTask: taskId => !!bridge.getTask(taskId),
+        getTask: taskId => bridge.getTask(taskId),
     });
     const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
         // Recovery must finish before a new registration can look like an interrupted launch.
@@ -905,7 +906,14 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         });
     };
     // Mode-prefixed phone messages to a sentinel start a separate tracked job.
-    const messagingHandOff = createMessagingHandOff({ store, queue: queueFacade, enqueue: enqueueWithResolvedDefaults, jobNotices });
+    const messagingHandOff = createMessagingHandOff({
+        store, queue: queueFacade, jobNotices,
+        // Ordinary command handoffs share durable Sentinel admission. Ralph
+        // grilling needs session-aware registration, separate from this path.
+        enqueue: input => input.payload.mode === 'ralph'
+            ? enqueueWithResolvedDefaults(input)
+            : enqueueSentinelDelegation(input, enqueueWithResolvedDefaults),
+    });
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
     // Container default agent session routes (feature-flagged)

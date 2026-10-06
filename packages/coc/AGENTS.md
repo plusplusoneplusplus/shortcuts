@@ -100,11 +100,14 @@ references before editing. Paths are package-relative.
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are
   wiped through the snapshot registry and excluded from export/import.
-  Tool-bound local Sentinel admission reserves the child ID and persists the relationship
-  before queue execution; Ralph registration identifies the session at launch only.
+  Tool-bound local Sentinel admission and ordinary connector command handoffs reserve
+  the child ID and persist the relationship before queue execution. A queued/running
+  first Sentinel task supplies mode/workspace only when its process is absent; stored
+  processes win over queue metadata. Ralph registration identifies the session at launch
+  only; connector Ralph grilling requires separate session registration.
   Rejected admission settles delivery as failed; accepted observer errors retain tracking.
   `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
-  from scoped queue/process records at startup. Tool admission waits for recovery. Ordinary
+  from scoped queue/process records at startup. Registered admission waits for recovery. Ordinary
   recording excludes Ralph steps and remote jobs; unavailable children settle with a diagnosable failed delivery.
   Whole-session Ralph events match registered workspace/session identity, preserving the first
   terminal outcome. Journal recovery prefers the durable session `completion` record, then

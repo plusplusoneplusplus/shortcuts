@@ -34,7 +34,7 @@ describe('Sentinel delegation admission', () => {
             { id: parentWorkspace, rootPath: path.join(dataDir, 'parent') },
             { id: childWorkspace, rootPath: path.join(dataDir, 'child') },
         ]);
-        admit = createSentinelDelegationEnqueue({ store, jobs, hasTask: id => !!queue.getTask(id) });
+        admit = createSentinelDelegationEnqueue({ store, jobs, hasTask: id => !!queue.getTask(id), getTask: id => queue.getTask(id) });
         enqueue = vi.fn(async (input: CreateTaskInput) => queue.enqueue(input));
     });
 
@@ -81,6 +81,41 @@ describe('Sentinel delegation admission', () => {
         expect(await admit(task, launch)).toBe('reserved');
         expect(await admit(task, launch)).toBe('reserved');
         expect(jobs.list(parentWorkspace)).toHaveLength(1);
+    });
+
+    it.each(['queued', 'running'] as const)('registers a %s Sentinel parent before its first process exists', async status => {
+        const id = queue.enqueue({ type: 'chat', repoId: parentWorkspace, priority: 'normal',
+            payload: { kind: 'chat', mode: 'sentinel', workspaceId: parentWorkspace } });
+        if (status === 'running') queue.markStarted(id);
+        const task = input();
+        task.payload.context = { spawnedFromProcessId: toQueueProcessId(id) };
+        queue.on('taskAdded', child => {
+            expect(new DelegatedJobStore(dataDir).list(parentWorkspace)[0]).toMatchObject({
+                parent: { workspaceId: parentWorkspace, processId: toQueueProcessId(id) },
+                child: { workspaceId: childWorkspace, processId: toQueueProcessId(child.id) },
+            });
+        });
+        await admit(task, enqueue);
+        expect(jobs.list(childWorkspace)).toEqual([]);
+    });
+
+    it('does not use stale queue history when the parent process is unavailable', async () => {
+        const id = queue.enqueue({ type: 'chat', repoId: parentWorkspace, priority: 'normal',
+            payload: { kind: 'chat', mode: 'sentinel', workspaceId: parentWorkspace } });
+        queue.cancelTask(id);
+        const task = input();
+        task.payload.context = { spawnedFromProcessId: toQueueProcessId(id) };
+        await admit(task, enqueue);
+        expect(jobs.list(parentWorkspace)).toEqual([]);
+    });
+
+    it('prefers stored parent mode and workspace over its active queue task', async () => {
+        queue.enqueue({ id: 'parent', type: 'chat', repoId: childWorkspace, priority: 'normal',
+            payload: { kind: 'chat', mode: 'sentinel', workspaceId: childWorkspace } });
+        await store.updateProcess(parentId, { metadata: { workspaceId: parentWorkspace, mode: 'ask' } });
+        await admit(input(), enqueue);
+        expect(jobs.list(parentWorkspace)).toEqual([]);
+        expect(jobs.list(childWorkspace)).toEqual([]);
     });
 
     it.each(['ask', 'autopilot', undefined])('keeps non-Sentinel parent mode %s untracked', async mode => {

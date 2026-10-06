@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { toQueueProcessId, type CreateTaskInput, type ProcessStore } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toTaskId, toQueueProcessId, type CreateTaskInput, type ProcessStore, type TaskQueueManager } from '@plusplusoneplusplus/forge';
 import { normalizeChatMode } from '../tasks/task-types';
 import { DelegatedJobStore } from './delegated-job-store';
 
 /** Register local Sentinel handoffs before the queue can execute their first turn. */
 export function createSentinelDelegationEnqueue(deps: {
-    store: ProcessStore;
+    store: Pick<ProcessStore, 'getProcess'>;
     jobs: DelegatedJobStore;
+    /** A Sentinel's first turn can still be queued, before its process exists. */
+    getTask?: TaskQueueManager['getTask'];
     /** Admission can succeed even when a later taskAdded observer throws. */
     hasTask: (taskId: string) => boolean;
 }) {
@@ -15,9 +17,12 @@ export function createSentinelDelegationEnqueue(deps: {
         const parentId = context?.spawnedFromProcessId;
         if (input.type !== 'chat' || typeof parentId !== 'string') return enqueue(input);
         const parent = await deps.store.getProcess(parentId);
-        if (normalizeChatMode(parent?.metadata?.mode) !== 'sentinel') return enqueue(input);
+        const task = !parent && isQueueProcessId(parentId) ? deps.getTask?.(toTaskId(parentId)) : undefined;
+        const liveParent = task?.type === 'chat' && task.payload.kind === 'chat'
+            && (task.status === 'queued' || task.status === 'running') ? task : undefined;
+        if (normalizeChatMode(parent ? parent.metadata?.mode : liveParent?.payload.mode) !== 'sentinel') return enqueue(input);
 
-        const parentWorkspaceId = parent?.metadata?.workspaceId;
+        const parentWorkspaceId = parent ? parent.metadata?.workspaceId : liveParent?.repoId;
         const childWorkspaceId = input.payload.workspaceId;
         if (typeof parentWorkspaceId !== 'string' || !parentWorkspaceId
             || typeof childWorkspaceId !== 'string' || !childWorkspaceId) {

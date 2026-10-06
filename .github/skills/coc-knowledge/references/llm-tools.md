@@ -179,12 +179,14 @@ The snapshot registry clears these machine-local receipts on wipe and excludes t
 from export/import to prevent portable backups from replaying delivery.
 
 `server/delegation/sentinel-delegation-enqueue.ts` wraps the route-bound tool enqueue and
-Ralph-launch capabilities. It resolves the stored Sentinel parent's workspace independently
-of the target, reserves a child task ID, and registers before queue admission. Local
+Ralph-launch capabilities and ordinary connector command handoffs. It resolves the stored
+Sentinel parent independently of the target; when no process exists, a queued/running
+chat task supplies its mode and owner workspace. Stored processes take precedence over
+queue metadata. It reserves a child task ID and registers before queue admission. Local
 ordinary jobs and whole Ralph sessions are registered; Ralph continuation/final-check tasks
 use the ordinary lifecycle bridge. Accepted tasks retain tracking after observer errors.
-Non-Sentinel and remote dispatch keep their existing paths. Tool admission waits for
-startup result recovery before registering a new job.
+Non-Sentinel and remote dispatch keep their existing paths. Registered admission waits
+for startup result recovery. Connector Ralph grilling requires separate session registration.
 
 `server/delegation/delegated-job-results.ts` subscribes through `onTaskTerminal` and
 records ordinary outcomes in the parent ledger. Startup recovery examines only registered

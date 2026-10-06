@@ -270,6 +270,10 @@ hand off instead: `messaging/job-handoff.ts` `createMessagingHandOff` (one insta
 `routes/index.ts`, passed to both routers) resolves the sentinel's workspace, enqueues a
 separate job with `context.spawnedFromProcessId` + `context.messagingOrigin`, and calls
 `MessagingJobNotices.track`, so it gets notices and `ask_user` relay like a model hand-off.
+Ordinary `/ask` and `/autopilot` handoffs share `createSentinelDelegationEnqueue` with
+model delegation: after startup recovery, the parent-owned relationship is durable before
+queue admission. A queued/running first Sentinel task supplies parent identity when its
+process does not exist. Connector `/ralph` grilling keeps separate session admission.
 Image handoffs reserve a job id before workspace-scoped receipt admission and download.
 WhatsApp keeps a delivered notice receipt; Teams keeps an admission-only receipt whose
 selected target remains the sentinel (including its queued task id). Matching queue

@@ -17,6 +17,9 @@ import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-binding
 import { WhatsAppCommandRouter, type WhatsAppRouterDeps } from '../../../src/server/messaging/whatsapp-command-router';
 import { TeamsCommandRouter, type TeamsCommandRouterDeps } from '../../../src/server/messaging/teams-command-router';
 import { TeamsUserStateStore } from '../../../src/server/messaging/teams-user-state';
+import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
+import { createSentinelDelegationEnqueue } from '../../../src/server/delegation/sentinel-delegation-enqueue';
+import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 
 const GLOBAL = 'global-workspace-00';
 const workspaces = [{ id: 'ws-a', name: 'Alpha' }, { id: GLOBAL, name: 'Global' }];
@@ -33,6 +36,7 @@ let queue: TaskQueueManager;
 let notices: MessagingJobNotices;
 let handOff: MessagingHandOff;
 let enqueueJob: ReturnType<typeof vi.fn>;
+let jobs: DelegatedJobStore;
 
 /** Queue tasks the hand-off created (they carry a `messagingOrigin`). */
 const handedOff = () => queue.getAll().filter(task => (task.payload as { context?: { messagingOrigin?: unknown } }).context?.messagingOrigin);
@@ -48,7 +52,12 @@ beforeEach(() => {
     const store = { getProcess: vi.fn(getProcess), getWorkspaces: vi.fn(async () => workspaces) };
     notices = new MessagingJobNotices({ dataDir: dir, store: store as never, queue });
     enqueueJob = vi.fn(async (input: CreateTaskInput) => queue.enqueue(input));
-    handOff = createMessagingHandOff({ store, queue, enqueue: enqueueJob, jobNotices: notices });
+    jobs = new DelegatedJobStore(dir);
+    const admit = createSentinelDelegationEnqueue({ store, jobs,
+        hasTask: id => !!queue.getTask(id), getTask: id => queue.getTask(id) });
+    handOff = createMessagingHandOff({ store, queue,
+        enqueue: input => input.payload.mode === 'ralph' ? enqueueJob(input) : admit(input, enqueueJob),
+        jobNotices: notices });
 });
 afterEach(() => {
     notices.dispose();
@@ -56,6 +65,67 @@ afterEach(() => {
 });
 
 describe('createMessagingHandOff', () => {
+    it.each(['completed', 'failed', 'cancelled'] as const)('records a connector command %s outcome for the originating Sentinel', async outcome => {
+        const onResult = vi.fn().mockResolvedValue(undefined);
+        const results = new DelegatedJobResults({ jobs, queue, onResult,
+            store: { getProcess: getProcess as never, getWorkspaces: async () => workspaces as never } });
+        try {
+            const processId = await handOff.start({ mode: 'autopilot', workspaceId: 'ws-a', parentProcessId: 'sentinel-a' }, 'inspect',
+                { connector: 'teams', chatKey: 'team', threadId: 'root' });
+            const taskId = handedOff()[0].id;
+            queue.markStarted(taskId);
+            if (outcome === 'completed') queue.markCompleted(taskId, { response: 'Checked the logs.' });
+            else if (outcome === 'failed') queue.markFailed(taskId, new Error('Job failed'));
+            else queue.cancelTask(taskId);
+            await vi.waitFor(() => expect(onResult).toHaveBeenCalledTimes(1));
+            expect(onResult.mock.calls[0][0]).toMatchObject({
+                parent: { workspaceId: 'ws-a', processId: 'sentinel-a' },
+                child: { workspaceId: 'ws-a', processId }, terminal: { result: { outcome } },
+            });
+            queue.emit('taskCompleted', queue.getTask(taskId)!);
+            await vi.waitFor(() => expect(onResult).toHaveBeenCalledTimes(2));
+            expect(jobs.list('ws-a')).toHaveLength(1);
+            expect(onResult.mock.calls[1][0].terminal).toEqual(onResult.mock.calls[0][0].terminal);
+        } finally {
+            results.dispose();
+        }
+    });
+
+    it.each(['whatsapp', 'teams'] as const)('durably registers an ordinary %s handoff before queue execution', async connector => {
+        const origin = { connector, chatKey: 'original-chat', threadId: 'original-thread' };
+        queue.on('taskAdded', task => {
+            expect(new DelegatedJobStore(dir).list('ws-a')).toEqual([expect.objectContaining({
+                parent: { workspaceId: 'ws-a', processId: 'sentinel-a' },
+                child: { workspaceId: 'ws-a', processId: toQueueProcessId(task.id) },
+            })]);
+        });
+        const processId = await handOff.start({ mode: 'ask', workspaceId: 'ws-a', parentProcessId: 'sentinel-a' }, 'inspect', origin);
+        expect(jobs.list('ws-a')[0].id).toBe(processId);
+        expect(jobs.list(GLOBAL)).toEqual([]);
+    });
+
+    it('settles rejected command admission without a pending parent review', async () => {
+        enqueueJob.mockRejectedValueOnce(new Error('queue full'));
+        await expect(handOff.start({ mode: 'autopilot', workspaceId: 'ws-a', parentProcessId: 'sentinel-a' }, 'fix',
+            { connector: 'whatsapp', chatKey: 'group' })).rejects.toThrow('queue full');
+        expect(jobs.list('ws-a')[0].terminal).toMatchObject({ delivery: { state: 'failed' } });
+        expect(ledger('ws-a')).toEqual([]);
+    });
+
+    it('retains registered image handoff identity after an accepted observer failure', async () => {
+        const images = await prepareIncomingImages(dir, 'ws-a', [{ mimeType: 'image/png',
+            download: async () => Buffer.from('89504e470d0a1a0a010203', 'hex') }]);
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        queue.on('taskAdded', () => { throw new Error('observer failed'); });
+        const processId = await handOff.start({ mode: 'ask', workspaceId: 'ws-a', parentProcessId: 'sentinel-a' }, 'inspect',
+            { connector: 'teams', chatKey: 'team', threadId: 'root' }, { taskId: 'reserved', images });
+        expect(processId).toBe(toQueueProcessId('reserved'));
+        expect(jobs.list('ws-a')).toHaveLength(1);
+        expect(jobs.list('ws-a')[0].terminal).toBeUndefined();
+        expect(fs.existsSync(images.imageTempDir!)).toBe(true);
+        error.mockRestore();
+    });
+
     it('hands off only non-sentinel prefixes to a sentinel, in the sentinel workspace', async () => {
         expect(await handOff.resolve('sentinel-a', 'autopilot')).toEqual({ mode: 'autopilot', workspaceId: 'ws-a', parentProcessId: 'sentinel-a' });
         expect(await handOff.resolve('sentinel-g', 'ralph')).toEqual({ mode: 'ralph', workspaceId: GLOBAL, parentProcessId: 'sentinel-g' });
@@ -200,6 +270,8 @@ describe('WhatsApp sentinel hand-off', () => {
         expect(enqueue).toHaveBeenCalledTimes(1);
         expect(handedOff()[0].payload).toMatchObject({ mode: 'autopilot', context: { spawnedFromProcessId: sentinel } });
         expect(bindings.topic('ws-a')).toBe(sentinel);
+        expect(jobs.list('ws-a')[0]).toMatchObject({ parent: { processId: sentinel },
+            child: { processId: toQueueProcessId(handedOff()[0].id) } });
     });
 
     it('hands off from a Global sentinel into Global', async () => {
@@ -319,6 +391,7 @@ describe('Teams sentinel hand-off', () => {
             await router().handle(msg('/autopilot go', { replyToMessageId: 'root-q' }));
             expect(deps.admitPendingFollowUp).not.toHaveBeenCalled();
             expect(handedOff()[0].payload).toMatchObject({ context: { spawnedFromProcessId: toQueueProcessId(queuedSentinel) } });
+            expect(jobs.list('ws-a')[0].parent.processId).toBe(toQueueProcessId(queuedSentinel));
         });
 
         it('asks for a message when the prefix has no body', async () => {

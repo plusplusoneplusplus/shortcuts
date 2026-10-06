@@ -23,6 +23,7 @@ import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { isChatPayload } from '../../src/server/tasks/task-types';
 import { DelegatedJobResults } from '../../src/server/delegation/delegated-job-results';
 import { DelegatedJobStore } from '../../src/server/delegation/delegated-job-store';
+import { TeamsUserStateStore } from '../../src/server/messaging/teams-user-state';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
@@ -365,6 +366,7 @@ describe('registerAllRoutes', () => {
         expect(queueFacade.on.mock.calls.map(([event]: [string]) => event)).toEqual([
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
+            'ralphSessionComplete',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
@@ -397,6 +399,48 @@ describe('registerAllRoutes', () => {
         await expect(admitted).resolves.toBe('child');
         expect(new DelegatedJobStore(tmpDir).list('ws-parent')).toHaveLength(1);
         expect(queue.enqueue).toHaveBeenCalledOnce();
+    });
+
+    it('waits for recovery and registers a Teams command handoff before queue admission', async () => {
+        let finishRestore!: () => void;
+        vi.spyOn(DelegatedJobResults.prototype, 'restore').mockImplementation(() =>
+            new Promise<void>(resolve => { finishRestore = resolve; }));
+        const store = createMockProcessStore();
+        vi.mocked(store.getWorkspaces).mockResolvedValue([
+            { id: 'ws-parent', name: 'Parent', rootPath: path.join(tmpDir, 'parent') },
+        ]);
+        await store.addProcess({ id: 'queue_parent', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: 'Dispatch', metadata: { mode: 'sentinel', workspaceId: 'ws-parent' } });
+        new TeamsUserStateStore(tmpDir).update('sender', { selectedRepo: 'ws-parent', selectedTopic: 'queue_parent' });
+        const bridge = makeBridge();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => {
+            expect(new DelegatedJobStore(tmpDir).list('ws-parent')[0]).toMatchObject({
+                parent: { workspaceId: 'ws-parent', processId: 'queue_parent' },
+                child: { workspaceId: 'ws-parent', processId: toQueueProcessId(input.id!) },
+            });
+            return input.id;
+        });
+        let inbound: Parameters<TeamsMessagingManager['setMessageHandler']>[0] | undefined;
+        vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => { inbound = handler; });
+        vi.spyOn(TeamsMessagingManager.prototype, 'getStatus').mockReturnValue({
+            enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
+            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
+        });
+        vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
+        const opts = makeOpts({ dataDir: tmpDir, store, bridge });
+        opts.runtimeConfigService!.config.features.teamsAiAnswerRelay = false;
+        registerAllRoutes([], opts);
+        const admitted = inbound!({ text: '/autopilot inspect', senderAadId: 'sender', messageId: 'command', channelId: 'channel' }, () => {});
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect(new DelegatedJobStore(tmpDir).list('ws-parent')).toEqual([]);
+        finishRestore();
+        await admitted;
+        expect(bridge.enqueue).toHaveBeenCalledOnce();
+        expect(bridge.enqueue.mock.calls[0][0].payload.context).toMatchObject({
+            spawnedFromProcessId: 'queue_parent', messagingOrigin: { connector: 'teams', threadId: 'command' },
+        });
+        expect(new TeamsUserStateStore(tmpDir).get('sender').selectedTopic).toBe('queue_parent');
     });
 
     it('routes authorized Notes searches through the required scoped service', async () => {
