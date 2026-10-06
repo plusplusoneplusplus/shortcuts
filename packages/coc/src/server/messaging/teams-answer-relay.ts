@@ -597,7 +597,7 @@ export class TeamsAnswerRelay {
         reservedTaskId: string, admission?: { admissionOnly: true; prompt: string },
     ): Promise<{ taskId: string; duplicate: boolean }> {
         if (this.disposed || !(admission
-            ? this.deps.isBotManagedConversationsEnabled?.() === true : this.deps.isEnabled())) {
+            ? !!msg.images?.length || this.deps.isBotManagedConversationsEnabled?.() === true : this.deps.isEnabled())) {
             throw new Error('Teams conversation admission is unavailable');
         }
         const target = this.deps.target();
@@ -639,7 +639,7 @@ export class TeamsAnswerRelay {
                 && task.payload?.kind === 'chat' && task.payload.workspaceId === workspaceId
                 && !task.payload.processId
                 && (!admission || (task.payload.prompt === admission.prompt
-                    && !task.payload.relayRequestId && task.botControl !== undefined))) {
+                    && !task.payload.relayRequestId && (!!msg.images?.length || task.botControl !== undefined)))) {
                 if (task.botControl !== undefined && validateBotControlMetadata(task.botControl).source !== 'teams') {
                     throw new Error('Teams admission has competing bot control');
                 }
@@ -683,7 +683,7 @@ export class TeamsAnswerRelay {
         reservedTaskId?: string, admissionOnly = false,
     ): Promise<{ duplicate: boolean; taskId: string }> {
         if (this.disposed || !(admissionOnly
-            ? this.deps.isBotManagedConversationsEnabled?.() === true : this.deps.isEnabled())) {
+            ? !!msg.images?.length || this.deps.isBotManagedConversationsEnabled?.() === true : this.deps.isEnabled())) {
             throw new Error('Teams conversation admission is unavailable');
         }
         const target = this.deps.target();

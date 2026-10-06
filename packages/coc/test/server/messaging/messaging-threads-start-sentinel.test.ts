@@ -129,6 +129,55 @@ describe('phone threads start chats in sentinel mode', () => {
         }
     });
 
+    it('Teams routes first, pending and active follow-up images through real server callbacks', { timeout: 20_000 }, async () => {
+        await start(false);
+        const { registerTeamsMessagingRoutes } = await import('../../../src/server/messaging/teams-messaging-handler');
+        const { TeamsMessagingManager } = await import('../../../src/server/messaging/teams-messaging-manager');
+        const manager = new TeamsMessagingManager(dataDir!);
+        vi.spyOn(manager, 'getStatus').mockReturnValue({
+            enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
+            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
+        });
+        vi.spyOn(manager, 'sendMessage').mockResolvedValue('outbound');
+        let handle!: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) => Promise<void>;
+        vi.spyOn(manager, 'setMessageHandler').mockImplementation(handler => { handle = msg => handler(msg); });
+        const deps = captured.teams;
+        registerTeamsMessagingRoutes([], { ...deps, manager,
+            getAnswerRelayEnabled: () => true, getBotManagedConversationsEnabled: () => false,
+        });
+        const bytes = Buffer.from('89504e470d0a1a0a010203', 'hex');
+        const inbound = (messageId: string, text: string) => ({
+            channelId: 'channel', messageId, text, senderAadId: 'sender',
+            images: [{ mimeType: 'image/png', download: async () => bytes }],
+        });
+        try {
+            await handle(inbound('teams-first', '/ask describe this'));
+            const initial = deps.relayQueue.getAll()[0];
+            await handle(inbound('teams-pending', '/autopilot compare this'));
+            await deps.store.addProcess({
+                id: initial.processId, type: 'chat', status: 'completed', startTime: new Date(),
+                promptPreview: 'describe this', fullPrompt: 'describe this',
+                metadata: { workspaceId: GLOBAL, queueTaskId: initial.id, mode: 'ask' },
+            });
+            await handle(inbound('teams-active', `/autopilot [${initial.processId}] inspect again`));
+            const tasks = deps.relayQueue.getAll();
+            expect(tasks).toHaveLength(3);
+            for (const [index, task] of tasks.entries()) {
+                expect(task.repoId).toBe(GLOBAL);
+                expect(task.payload.mode).toBe(index === 0 ? 'ask' : 'autopilot');
+                expect(task.payload.prompt).toBe(['describe this', 'compare this', 'inspect again'][index]);
+                expect(task.payload.processId).toBe(index === 0 ? undefined : initial.processId);
+                expect(task.payload.attachments).toHaveLength(1);
+                expect(fs.readFileSync(task.payload.attachments[0].path)).toEqual(bytes);
+                expect(task.payload.images).toEqual([`data:image/png;base64,${bytes.toString('base64')}`]);
+                expect(task.payload.imageTempDir).toContain(path.join(dataDir!, 'repos', GLOBAL, 'attachments'));
+            }
+        } finally {
+            manager.dispose();
+            vi.restoreAllMocks();
+        }
+    });
+
     it('both connectors share one hand-off that queues a tracked job from a queued sentinel', { timeout: 20_000 }, async () => {
         await start(false);
         expect(captured.teams.handOff).toBe(captured.whatsapp.handOff);

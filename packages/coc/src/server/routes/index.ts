@@ -169,7 +169,7 @@ import { TeamsMessagingManager } from '../messaging/teams-messaging-manager';
 import { registerWhatsAppMessagingRoutes } from '../messaging/whatsapp-messaging-handler';
 import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-manager';
 import { WhatsAppBindings, WhatsAppBindingReleaseError } from '../messaging/whatsapp-bindings';
-import { incomingImageTaskPayload } from '../messaging/incoming-images';
+import { incomingImageTaskPayload, type PreparedIncomingImages } from '../messaging/incoming-images';
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
@@ -865,11 +865,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) =>
         bridge.enqueue(messagingChatInput(workspaceId, message, taskId));
     // Teams threads start new chats as the sentinel dispatcher unless a mode prefix says otherwise.
-    const enqueueTeamsChat = async (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl']) =>
-        enqueueWithResolvedDefaults({
-            ...messagingChatInput(workspaceId, message, taskId, true, await resolveMessagingChatMode(undefined, mode)),
-            botControl,
+    const enqueueTeamsChat = async (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl'], images?: PreparedIncomingImages) => {
+        const input = messagingChatInput(workspaceId, message, taskId, true, await resolveMessagingChatMode(undefined, mode));
+        return enqueueWithResolvedDefaults({
+            ...input, botControl,
+            payload: { ...input.payload, ...incomingImageTaskPayload(images) },
         });
+    };
     // Mode-prefixed phone messages to a sentinel start a separate tracked job.
     const messagingHandOff = createMessagingHandOff({ store, queue: queueFacade, enqueue: enqueueWithResolvedDefaults, jobNotices });
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
@@ -923,7 +925,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
         enqueueRelayChat: enqueueTeamsChat,
-        admitRelayFollowUp: async (proc, message, requestId, mode, taskId, admissionHeld = false) => {
+        admitRelayFollowUp: async (proc, message, requestId, mode, taskId, images, admissionHeld = false) => {
             const workspaceId = proc.metadata?.workspaceId;
             if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Teams conversation workspace is unavailable');
             return {
@@ -931,25 +933,25 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     id: taskId, type: 'chat', repoId: workspaceId, processId: proc.id, priority: 'normal',
                     payload: {
                         kind: 'chat', mode: await resolveMessagingChatMode(proc.id, mode), processId: proc.id, prompt: message,
-                        workspaceId, relayRequestId: requestId,
+                        workspaceId, relayRequestId: requestId, ...incomingImageTaskPayload(images),
                     },
                     config: {},
                 }),
             };
         },
-        enqueuePendingRelayFollowUp: async (workspaceId, processId, message, requestId, mode, taskId) => bridge.enqueue({
+        enqueuePendingRelayFollowUp: async (workspaceId, processId, message, requestId, mode, taskId, images) => bridge.enqueue({
             id: taskId, type: 'chat', repoId: workspaceId, processId, priority: 'normal',
             payload: {
                 kind: 'chat', mode: await resolveMessagingChatMode(processId, mode), processId, prompt: message,
-                workspaceId, relayRequestId: requestId,
+                workspaceId, relayRequestId: requestId, ...incomingImageTaskPayload(images),
             },
             config: {},
         }),
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,
-        enqueueChat: (workspaceId, message, mode, taskId, botControl) =>
-            enqueueTeamsChat(workspaceId, message, taskId, mode, botControl),
+        enqueueChat: (workspaceId, message, mode, taskId, botControl, images) =>
+            enqueueTeamsChat(workspaceId, message, taskId, mode, botControl, images),
         executeFollowUp: async (processId, message, mode) =>
             bridge.executeFollowUp(processId, message, undefined, await resolveMessagingChatMode(processId, mode)),
         getQuota: getMessagingQuota,

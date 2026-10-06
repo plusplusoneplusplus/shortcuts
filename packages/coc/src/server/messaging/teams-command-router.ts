@@ -10,7 +10,7 @@
 import { toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import {
-    formatMessagingHelp, isMessagingControlCommand, parseMessagingCommand,
+    ImageDownloadError, formatMessagingHelp, isMessagingControlCommand, parseMessagingCommand,
     type MessagingChatMode, type MessagingCommand, type MessagingControlCommand,
 } from '@plusplusoneplusplus/coc-connector';
 import { TeamsUserStateStore } from './teams-user-state';
@@ -25,6 +25,7 @@ import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse'
 import type { MessagingHandOff } from './job-handoff';
 import type { MessagingJobOrigin } from './job-notices';
 import { LocalTopicMemory, localTopicsReply, resolveLocalTopic } from './local-topics';
+import { IncomingImagesError } from './incoming-images';
 
 const EMPTY_CHAT_REPLY = 'Send a message to start a chat.';
 
@@ -114,6 +115,14 @@ export class TeamsCommandRouter {
         let boundThread = false;
 
         try {
+            if (msg.images?.length && (msg.botAuthored || msg.initializationReplay || msg.historicalSelectionReplay)) return;
+            if (msg.images?.length) {
+                const mediaCommand = parseMessagingCommand(msg.text);
+                if (mediaCommand.type === 'invalid' || isMessagingControlCommand(mediaCommand)) {
+                    await this.deps.sendReply('Send the images with chat instructions, separately from control commands.', msg.replyToMessageId || msg.messageId);
+                    return;
+                }
+            }
             if (msg.replyToMessageId && this.deps.resolveThreadReply
                 && this.deps.isAnswerRelayEnabled?.() !== true) {
                 await this.deps.sendReply('❌ Teams thread follow-ups are unavailable.', msg.replyToMessageId);
@@ -205,6 +214,10 @@ export class TeamsCommandRouter {
             }
         } catch (err: any) {
             observe?.('dispatch-failed');
+            if (err instanceof ImageDownloadError || err instanceof IncomingImagesError) {
+                await this.deps.sendReply(err.message, msg.replyToMessageId || msg.messageId);
+                return;
+            }
             if ('historicalSelectionReplay' in msg && msg.historicalSelectionReplay === true) {
                 console.error('[teams-messaging] Historical thread selection could not be restored');
                 return;
@@ -216,7 +229,7 @@ export class TeamsCommandRouter {
                         ? '❌ This chat is unavailable. Use `/select topic <id>` or `/create topic` here.'
                         : '❌ Teams thread target is unavailable. Retry the command or question shortly.';
                 await this.deps.sendReply(text, msg.replyToMessageId);
-            } else if (this.deps.isAnswerRelayEnabled?.() === true && (msg.replyToMessageId || command?.type === 'chat' || command?.type === 'chat-explicit')) {
+            } else if (msg.images?.length || (this.deps.isAnswerRelayEnabled?.() === true && (msg.replyToMessageId || command?.type === 'chat' || command?.type === 'chat-explicit'))) {
                 await this.deps.sendReply('❌ Unable to accept the request. Please try again later.', msg.replyToMessageId || msg.messageId);
             } else {
                 await this.deps.sendReply(`❌ Error: ${err.message ?? 'Unknown error'}`, msg.messageId);
@@ -355,6 +368,7 @@ export class TeamsCommandRouter {
             const admission = await this.deps.admitFollowUp(msg, process, message, mode);
             if (admission.duplicate) return;
         } else {
+            if (msg.images?.length) throw new IncomingImagesError('storage');
             await this.deps.executeFollowUp(chatId, message, mode);
         }
         observe?.('dispatch-follow-up');
@@ -403,6 +417,7 @@ export class TeamsCommandRouter {
                 const admission = await this.deps.admitFollowUp(msg, targetProcess, message, mode);
                 if (admission.duplicate) return;
             } else {
+                if (msg.images?.length) throw new IncomingImagesError('storage');
                 await this.deps.executeFollowUp(targetId, message, mode);
             }
             observe?.('dispatch-follow-up');
@@ -416,6 +431,7 @@ export class TeamsCommandRouter {
                 await this.deps.sendReply(NO_CHAT_WORKSPACE_REPLY, msg.messageId);
                 return;
             }
+            if (msg.images?.length && !this.deps.admitNewChat) throw new IncomingImagesError('storage');
             const admission = this.deps.admitNewChat
                 ? await this.deps.admitNewChat(msg, repo.id, message, mode)
                 : { taskId: await this.deps.enqueueChat(repo.id, message, mode), duplicate: false };
@@ -442,6 +458,10 @@ export class TeamsCommandRouter {
     ): Promise<boolean> {
         const target = await this.deps.handOff?.resolve(targetProcessId, mode);
         if (!target) return false;
+        if (msg.images?.length) {
+            await this.deps.sendReply('Images in sentinel job handoffs are not available yet. Send them to a regular chat topic.', msg.replyToMessageId || msg.messageId);
+            return true;
+        }
         const origin = this.deps.handOffOrigin?.(msg);
         if (!origin) throw new Error('Teams hand-off origin is unavailable');
         // Bound-thread replies are deduplicated by message id, like thread commands.

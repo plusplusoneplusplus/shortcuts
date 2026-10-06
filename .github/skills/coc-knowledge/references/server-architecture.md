@@ -213,11 +213,13 @@ a 30-second acquisition/download deadline. Temporary files use
 cleanup until executor delivery takes ownership. Download and storage failures
 reject the whole batch with fixed feedback; partial writes are removed.
 
-WhatsApp captioned-image preparation runs inside durable binding admission, after normal
-workspace/topic/mode resolution. `incomingImageTaskPayload` carries SDK files,
-image history and the temporary directory through initial/follow-up queue payloads;
-failed queue admission removes files. Request-correlated queued follow-ups persist
-image history on the user turn before execution. Captioned images bypass question-answer
+Teams/WhatsApp captioned-image preparation runs inside durable binding admission after
+workspace/topic/mode resolution. Teams uses relay receipts for initial, active and
+pending follow-ups; admission-only image receipts remain enabled when answer delivery
+and bot control are off. `incomingImageTaskPayload` carries SDK files, image history
+and temporary directories through queue payloads. Rejected admission cleans files;
+accepted tasks retain ownership through observer failures. The shared lifecycle persists
+follow-up image history before execution. Image captions bypass question-answer
 consumption and reject control commands. Main-server image reception stays disabled
 until pending-image, sentinel handoff and provider checks are ready.
 

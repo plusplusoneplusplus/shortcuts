@@ -232,9 +232,12 @@ references before editing. Paths are package-relative.
   after local workspace resolution. It reuses chat attachment processing, stores
   temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
   batch on failure. Limits are five images, 10 MB decoded total and 30 seconds total.
-  Callers own temporary-directory cleanup until delivery transfers it to executors. WhatsApp
+  Callers own temporary-directory cleanup until delivery transfers it to executors. Teams/WhatsApp
   captioned-image preparation runs inside durable binding admission; queue payloads
-  carry SDK attachments, image history and the temporary directory together. Failed
+  carry SDK attachments, image history and the temporary directory together. Teams prepares
+  initial, active and pending follow-ups inside relay receipts, including admission-only
+  receipts when answer delivery and bot control are disabled. Image captions bypass
+  question-answer consumption and reject control commands. Failed
   queue admission removes prepared files. Main-server receiveImages stays disabled
   until pending-image, handoff and provider checks are ready.
 - Teams/WhatsApp command grammar is one spec table in
