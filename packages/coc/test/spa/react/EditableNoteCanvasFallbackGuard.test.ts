@@ -91,15 +91,15 @@ describe('AC-06 — floating dialog is the fallback after the flag-gated canvas 
 //    markdown chat links carry kind 'note', code chat links do NOT, and the
 //    code branch stays assistant-only.
 // ---------------------------------------------------------------------------
-describe('AC-06 — code references stay read-only and assistant-only', () => {
+describe('chat source and note routes remain distinct', () => {
     const preview = read('shared/file-path/file-path-preview.ts');
 
     it('markdown chat links open as an editable note (kind: note)', () => {
         expect(preview).toContain("dispatchOpenSourceCanvas(ref, 'note')");
     });
 
-    it('code chat links open the read-only viewer (no note kind) from assistant messages only', () => {
-        expect(preview).toContain("sourceEl.closest('.chat-message.assistant')");
+    it('code chat links use the source route (no note kind) in either message role', () => {
+        expect(preview).toContain("sourceEl.closest('.chat-message,[data-chat-id]')");
         // The non-markdown branch dispatches WITHOUT a kind argument.
         expect(preview).toMatch(/!isSourceCanvasNotePath\(ref\.filePath\)[\s\S]*?dispatchOpenSourceCanvas\(ref\);/);
     });

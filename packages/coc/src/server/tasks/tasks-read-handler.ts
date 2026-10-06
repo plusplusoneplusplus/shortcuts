@@ -9,6 +9,7 @@ import * as url from 'url';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { pipeline } from 'stream/promises';
 import type { ProcessStore, TaskFolder } from '@plusplusoneplusplus/forge';
 import { isWithinDirectory } from '@plusplusoneplusplus/forge';
 import { sendJSON, sendError } from '../core/api-handler';
@@ -134,6 +135,11 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             if (!filePath) {
                 return sendError(res, 400, 'Missing required query parameter: path');
             }
+            const download = parsed.query.download === 'true';
+            const resolve = parsed.query.resolve === 'true';
+            if ((download || resolve) && filePath.includes('\0')) {
+                return sendError(res, 400, 'Invalid path');
+            }
 
             // Resolve and validate path is within workspace, a trusted read-only directory, or the task root.
             // Relative paths resolve against the workspace root (mirrors resolveAllowedHtmlPath), not process.cwd().
@@ -190,6 +196,68 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
             }
 
             try {
+                if (download || resolve) {
+                    const realPath = await fs.promises.realpath(resolvedPath);
+                    const allowedRoots = [
+                        wsRoot,
+                        ...repoGroupReadRoots.map(member => member.rootPath),
+                        ...TRUSTED_READ_ONLY_DIRS,
+                        dataDir,
+                        taskRoot.absolutePath,
+                    ].filter(root => isWithinDirectory(resolvedPath, root));
+                    let contained = false;
+                    for (const root of allowedRoots) {
+                        const realRoot = await realpathIfExists(root);
+                        if (realRoot && isWithinDirectory(realPath, realRoot)) {
+                            contained = true;
+                            break;
+                        }
+                    }
+                    if (!contained) {
+                        return sendError(res, 403, 'Access denied: path is outside allowed file roots');
+                    }
+                    const stat = await fs.promises.stat(realPath);
+                    if (resolve) {
+                        if (!stat.isFile() && !stat.isDirectory()) {
+                            return sendError(res, 404, 'Not a file or directory');
+                        }
+                        return sendJSON(res, 200, {
+                            type: stat.isDirectory() ? 'directory' : 'file',
+                            path: resolvedPath,
+                            resolvedWorkspaceId,
+                            fileName: path.basename(resolvedPath),
+                            size: stat.size,
+                        });
+                    }
+                    if (!stat.isFile()) {
+                        return sendError(res, 400, 'Only regular files can be downloaded');
+                    }
+
+                    // Stream from an open handle; never apply preview limits or buffer the file.
+                    const file = await fs.promises.open(realPath, 'r');
+                    try {
+                        const stat = await file.stat();
+                        if (!stat.isFile()) {
+                            return sendError(res, 400, 'Only regular files can be downloaded');
+                        }
+                        const fileName = path.basename(resolvedPath).replace(/[\x00-\x1f\x7f]/g, '_');
+                        const fallbackName = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_');
+                        const encodedName = encodeURIComponent(fileName).replace(/['()*]/g, char => (
+                            '%' + char.charCodeAt(0).toString(16).toUpperCase()
+                        ));
+                        res.writeHead(200, {
+                            'Content-Type': 'application/octet-stream',
+                            'Content-Length': stat.size,
+                            'Content-Disposition': `attachment; filename="${fallbackName}"; filename*=UTF-8''${encodedName}`,
+                            'X-Content-Type-Options': 'nosniff',
+                            'Cache-Control': 'no-store',
+                        });
+                        await pipeline(file.createReadStream({ autoClose: false }), res);
+                    } finally {
+                        await file.close();
+                    }
+                    return;
+                }
                 const stat = await fs.promises.stat(resolvedPath);
 
                 // ── Directory listing ──────────────────────────────
@@ -321,7 +389,11 @@ export function registerTaskRoutes(routes: Route[], store: ProcessStore, dataDir
                     ...(maxLines === 0 ? { content } : {}),
                 });
             } catch (err: any) {
-                if (err.code === 'ENOENT') {
+                if (res.headersSent || res.destroyed) {
+                    res.destroy();
+                    return;
+                }
+                if (err.code === 'ENOENT' || ((download || resolve) && err.code === 'ENOTDIR')) {
                     return sendError(res, 404, 'File not found');
                 }
                 return sendError(res, 500, 'Failed to read file: ' + (err.message || 'Unknown error'));

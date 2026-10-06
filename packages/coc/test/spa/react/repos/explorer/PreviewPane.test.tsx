@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
+import {
+    registerCloneBaseUrls, resetCloneRegistryForTests,
+} from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const mockExplorerApi = vi.hoisted(() => ({
     readBlob: vi.fn(),
@@ -62,9 +65,12 @@ vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explore
 describe('PreviewPane', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        resetCloneRegistryForTests();
         mockMonaco.onSave = undefined;
         mockMonaco.saveAction = undefined;
     });
+
+    afterEach(() => resetCloneRegistryForTests());
 
     it('root container has w-full so it fills the preview area', async () => {
         mockExplorerApi.readBlob.mockResolvedValue({
@@ -102,6 +108,10 @@ describe('PreviewPane', () => {
     });
 
     it('keeps attachment destinations separate for file panes sharing a server workspace id', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'r1', serverId: 'server-a', baseUrl: 'https://alpha.example' },
+            { workspaceId: 'r1', serverId: 'server-b', baseUrl: 'https://beta.example' },
+        ]);
         mockExplorerApi.readBlob.mockResolvedValue({ content: 'const a = 1;', encoding: 'utf-8', mimeType: 'text/plain' });
         const owners = ['r1', 'remote:server-a:r1', 'remote:server-b:r1'];
         render(<>{owners.map(owner => <section key={owner} data-testid={owner}>

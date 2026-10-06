@@ -55,8 +55,7 @@ import { publishUnifiedChatCanvasActions, withdrawUnifiedChatCanvasActions, type
 import { whisperDiffTabInput } from '../repo-detail/unified-right-panel/unifiedDiffSources';
 import { publishUnifiedChatChanges, withdrawUnifiedChatChanges } from '../repo-detail/unified-right-panel/unifiedChatChanges';
 import { buildChatChangesContext } from './conversation/tool-calls/chatChangesModel';
-import { sourceLinkTabInput } from '../repo-detail/unified-right-panel/unifiedSourceLinks';
-import { noteTabInput } from '../repo-detail/unified-right-panel/unifiedNoteTabs';
+import { resolveChatFileLink, OPEN_PANEL_DIRECTORY_EVENT } from '../repo-detail/unified-right-panel/resolveChatFileLink';
 import { useWorkspacesWithRemote } from '../../repos/workspacesWithRemote';
 import { WhisperSkillDetailDialogProvider } from './conversation/tool-calls/WhisperSkillDetailDialog';
 import { useResizablePanel } from '../../hooks/ui/useResizablePanel';
@@ -731,51 +730,46 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
         };
     }, [chatChangesScopeId, taskId]);
 
-    // Chat AI-response file-path links (feature flag default ON) dispatch
-    // `coc-open-source-canvas` to open the docked source-file canvas. The bare
-    // path is what the canvas resolves + fetches; any `:line`/`:start-end` info
-    // travels in the event for scroll + highlight.
-    //
-    // With a unified panel hosting this chat, a `code` ref becomes a READ-ONLY
-    // `file` tab instead (AC-04): `sourceLinkTabInput` runs the same resolution
-    // the docked canvas would have run and returns the descriptor when the ref
-    // lands inside a known workspace root. A `note` ref becomes a WORKSPACE-owned,
-    // editable note tab through `noteTabInput` — the same editor the docked
-    // canvas would have shown, so a plan-note link keeps its edit capability.
-    // Both return null for refs only the canvas's probing transport can fetch (a
-    // repo-group relative ref, a path outside every root, no owning workspace) —
-    // those keep the docked canvas, since a tab there could only ever render an
-    // error. Folder refs still belong to the Explorer and keep the canvas.
+    // Hosted file links use the workspace panel. Async group/folder resolution
+    // belongs to the initiating chat; a later selection must not claim it.
+    // Mobile and embedded chats without a matching host keep the source dock.
     const openSourceCanvas = sourceCanvas.open;
-    const openFileRef = useCallback((fileRef: Parameters<typeof openSourceCanvas>[0]) => {
-        if (unifiedPanelHost) {
-            const input = fileRef.kind === 'note'
-                ? noteTabInput({
-                    fileRef,
-                    workspaces: resolvableWorkspaces,
-                    scopeWorkspaceId: unifiedPanelHost.workspaceId,
-                })
-                : sourceLinkTabInput({
-                    fileRef,
-                    workspaces: resolvableWorkspaces,
-                    sourceSelectionId,
-                    // The panel's scope; the descriptor's owner is whichever
-                    // clone the resolution picked.
-                    scopeWorkspaceId: unifiedPanelHost.workspaceId,
-                    // The originating chat, never whichever chat is selected
-                    // by the time this lands.
-                    chatId: taskId,
-                });
-            if (input) {
-                openUnifiedPanelTab(unifiedPanelHost.workspaceId, input);
-                return;
-            }
+    const fileLinkRequest = useRef<AbortController | null>(null);
+    useEffect(() => () => fileLinkRequest.current?.abort(),
+        [taskId, sourceSelectionId, unifiedPanelHost?.workspaceId, unifiedPanelHost?.chatId]);
+    const openFileRef = useCallback((fileRef: Parameters<typeof openSourceCanvas>[0], forceSourceViewer = false) => {
+        fileLinkRequest.current?.abort();
+        if (!unifiedPanelHost) {
+            openSourceCanvas(fileRef);
+            return;
         }
-        openSourceCanvas(fileRef);
-    }, [openSourceCanvas, unifiedPanelHost, resolvableWorkspaces, sourceSelectionId, taskId]);
+        const request = new AbortController();
+        fileLinkRequest.current = request;
+        const host = unifiedPanelHost;
+        void resolveChatFileLink({
+            fileRef: { ...fileRef, wsId: fileRef.wsId ?? workspaceId },
+            workspaces: resolvableWorkspaces,
+            sourceSelectionId,
+            scopeWorkspaceId: host.workspaceId,
+            chatId: taskId,
+            forceSourceViewer,
+        }, request.signal).then(result => {
+            const current = unifiedPanelHostRef.current;
+            if (request.signal.aborted || current?.workspaceId !== host.workspaceId || current.chatId !== taskId) return;
+            if (result.type === 'tab') {
+                openUnifiedPanelTab(host.workspaceId, result.input);
+            } else {
+                window.dispatchEvent(new CustomEvent(OPEN_PANEL_DIRECTORY_EVENT, { detail: result.detail }));
+                if (!result.detail.handled) addToast('The folder panel is unavailable in this view.', 'error');
+            }
+        }).catch(err => {
+            if (!request.signal.aborted) addToast(getSpaCocClientErrorMessage(err, 'Failed to open file.'), 'error');
+        });
+    }, [openSourceCanvas, unifiedPanelHost, resolvableWorkspaces, sourceSelectionId, taskId, workspaceId, addToast]);
     useEffect(() => {
         const handler = (event: Event) => {
             const detail = (event as CustomEvent).detail || {};
+            if (detail.chatId && detail.chatId !== taskId) return;
             const filePath = typeof detail.filePath === 'string' ? detail.filePath : '';
             if (!filePath) return;
             const kind = detail.kind === 'note' || detail.kind === 'dir' ? detail.kind : 'code';
@@ -787,12 +781,11 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                 sourceFilePath: typeof detail.sourceFilePath === 'string' ? detail.sourceFilePath : undefined,
                 kind,
             };
-            if (detail.forceSourceViewer === true) openSourceCanvas(fileRef);
-            else openFileRef(fileRef);
+            openFileRef(fileRef, detail.forceSourceViewer === true);
         };
         window.addEventListener('coc-open-source-canvas', handler as EventListener);
         return () => window.removeEventListener('coc-open-source-canvas', handler as EventListener);
-    }, [openFileRef, openSourceCanvas]);
+    }, [openFileRef, openSourceCanvas, taskId]);
 
     // Keep refs in sync with state for stale-closure-safe draft saves
     followUpInputRef.current = followUpInput;

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { ToolResultPopover } from '../../../src/server/spa/client/react/features/chat/conversation/tool-calls/ToolResultPopover';
+import { ChatRenderContextProvider } from '../../../src/server/spa/client/react/features/chat/conversation/ChatRenderContext';
 
 vi.mock('../../../src/server/spa/client/diff/markdown-renderer', () => ({
     renderMarkdownToHtml: (s: string) => `<p>${s}</p>`,
@@ -25,6 +26,18 @@ function makeAnchorRect(overrides: Partial<DOMRect> = {}): DOMRect {
 const defaultHandlers = { onMouseEnter: () => {}, onMouseLeave: () => {} };
 
 describe('ToolResultPopover', () => {
+    it('preserves chat, workspace, and source-file identity across its portal', () => {
+        const { getByTestId } = render(
+            <ChatRenderContextProvider value={{ chatId: 'chat-a', wsId: 'ws-a' }}>
+                <ToolResultPopover toolName="view" args={{ path: '/repo/notes/report.md' }}
+                    result="A related file" anchorRect={makeAnchorRect()} {...defaultHandlers} />
+            </ChatRenderContextProvider>,
+        );
+        const popover = getByTestId('tool-result-popover');
+        expect(popover).toHaveAttribute('data-chat-id', 'chat-a');
+        expect(popover).toHaveAttribute('data-ws-id', 'ws-a');
+        expect(popover).toHaveAttribute('data-source-file', '/repo/notes/report.md');
+    });
     it('renders result text in a portal on document.body', () => {
         render(
             <ToolResultPopover

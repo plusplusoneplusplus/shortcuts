@@ -15,6 +15,9 @@ import { PreviewPane } from '../../../../../src/server/spa/client/react/features
 import { TRUSTED_PATH_PREFIX } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExactOpen';
 import { resetLanguageDocumentStoresForTests } from '../../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import { MAX_FILE_VIEW_SIZE } from '../../../../../src/server/spa/client/react/shared/file-viewer/useFileContent';
+import {
+    registerCloneBaseUrls, resetCloneRegistryForTests,
+} from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
 import { FakeClient, readyState, diagnostic } from '../../language-servers/fakeLanguageTransport';
 
 const mockExplorerApi = vi.hoisted(() => ({
@@ -70,6 +73,7 @@ function renderPane(props: Partial<Parameters<typeof PreviewPane>[0]> = {}) {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    resetCloneRegistryForTests();
     resetLanguageDocumentStoresForTests();
     transport.client = new FakeClient();
     transport.clientCalls = [];
@@ -82,6 +86,7 @@ beforeEach(() => {
 
 afterEach(() => {
     resetLanguageDocumentStoresForTests();
+    resetCloneRegistryForTests();
 });
 
 describe('PreviewPane — language document (AC-02)', () => {
@@ -98,6 +103,9 @@ describe('PreviewPane — language document (AC-02)', () => {
 
     it('uses the concrete clone identity for the file read and language transport', async () => {
         const routingRef = 'remote:server-owner:ws-1';
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'server-owner', baseUrl: 'https://alpha.example' },
+        ]);
         renderPane({ routingRef });
         await attachmentFor('src/a.ts');
 

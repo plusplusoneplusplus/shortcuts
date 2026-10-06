@@ -28,6 +28,7 @@ import { parseNoteResourceId } from './unifiedNoteTabs';
 export interface UnifiedNoteTabProps {
     /** The clone that owns the note — where loads and saves route. */
     workspaceId: string;
+    routingRef?: string | null;
     /** The tab's `resourceId`: `<fetchMode>|<root>|<path>`. */
     resourceId: string;
     /** The tab label, echoed in the undecodable state. */
@@ -45,13 +46,13 @@ export interface UnifiedNoteTabProps {
 }
 
 export function UnifiedNoteTab({
-    workspaceId, resourceId, label, line, onClose, onErrorChange, onDirtyChange, onRegisterSave,
+    workspaceId, routingRef, resourceId, label, line, onClose, onErrorChange, onDirtyChange, onRegisterSave,
 }: UnifiedNoteTabProps) {
     const resource = useMemo(() => parseNoteResourceId(resourceId), [resourceId]);
 
     // Stateless adapters — create once per mount, as the docked editor does.
-    const tasksIO = useMemo(() => createTasksNoteEditorIO(), []);
-    const workspaceIO = useMemo(() => createWorkspaceFileNoteEditorIO(), []);
+    const tasksIO = useMemo(() => createTasksNoteEditorIO(routingRef), [routingRef]);
+    const workspaceIO = useMemo(() => createWorkspaceFileNoteEditorIO(routingRef), [routingRef]);
 
     const invalid = resource === null;
     useEffect(() => {

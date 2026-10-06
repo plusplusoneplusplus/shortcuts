@@ -64,6 +64,7 @@ describe('noteTabInput — what a note link opens', () => {
         expect(input({ fullPath: '/repos/main/notes/plan.md', wsId: 'ws-1', line: 8 })).toEqual({
             kind: 'note',
             ownerWorkspaceId: 'ws-1',
+            ownerRoutingRef: null,
             chatId: null,
             resourceId: 'auto||/repos/main/notes/plan.md',
             label: 'plan.md',

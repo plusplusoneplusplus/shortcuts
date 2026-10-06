@@ -108,7 +108,7 @@ Gated by `canvas.enabled` (default on). Mutations emit `canvas-updated` on WebSo
 | GET | `/api/fs/browse` | Browse local directories for repo path selection |
 | GET | `/api/fs/browse-helper` | Same-origin helper page for container-mode directory browsing |
 | GET | `/api/fs/blob?path=<absolute>` | Read one file under CoC trusted data dirs (`~/.copilot`, server data dir, OS temp) or any registered workspace/repo root; arbitrary paths rejected |
-| GET | `/api/workspaces/:id/files/preview?path=<path>` | Bounded preview; relative paths anchor to workspace. Groups probe live member roots in order or accept contained absolute paths, returning `resolvedWorkspaceId`. Writes remain workspace-scoped |
+| GET | `/api/workspaces/:id/files/preview?path=<path>` | Bounded preview; groups probe live members and return `resolvedWorkspaceId`. `resolve=true` returns file/folder metadata without content; `download=true` streams regular-file bytes with attachment headers. Both modes validate realpath containment; writes remain workspace-scoped |
 | GET | `/api/workspaces/:id/files/html?path=<path>` | Serve a sandboxed HTML preview from the workspace, its repo output data, OS temp, `~/.copilot`, `~/.codex`, or `~/.claude`; canonical-path checks reject symlink escapes |
 | GET | `/api/workspaces/:id/files/html/resolve?path=<path>` | Validate the same HTML allowlist and return `{ path }` with the canonical absolute path for a local desktop HTML tab |
 

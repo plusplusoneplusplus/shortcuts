@@ -808,15 +808,16 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         expect(tab).not.toHaveProperty('readOnly');
     });
 
-    it('opens View source in the read-only source canvas even with a panel host', async () => {
+    it('opens HTML View source as a read-only right-panel tab', async () => {
         renderHostedChat('task-A');
         dispatchSourceLink({
             filePath: '/repos/main/pages/demo.html',
             wsId: WS_ID,
             forceSourceViewer: true,
         });
-        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
-        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+        await waitFor(() => expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]?.resourceId)
+            .toBe('__workspace_preview__:/repos/main/pages/demo.html'));
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
     });
 
     it('files a note ref as an editable, workspace-owned note tab', async () => {
@@ -839,19 +840,69 @@ describe('ChatDetail — source-link entry point with the unified right panel (A
         expect(tab.line).toBe(3);
     });
 
-    it('keeps the docked canvas for refs the panel’s views cannot read', async () => {
-        // A folder ref is the Explorer's, and an out-of-root path is not
-        // readable through a repo's blob API — both keep the existing surface
-        // rather than opening a tab that could only render an error.
+    it('routes folders to the hosted Explorer and outside-root files to read-only tabs', async () => {
         renderHostedChat('task-A');
-        dispatchSourceLink({ filePath: '/repos/main/src', wsId: WS_ID, kind: 'dir' });
+        fetchMock.mockImplementation(async (url: string) => url.includes('/files/preview')
+            ? jsonResponse({ type: 'directory', path: '/repos/main/src', resolvedWorkspaceId: WS_ID })
+            : jsonResponse({}));
+        const directoryEvents: CustomEvent[] = [];
+        const listener = (event: Event) => {
+            const custom = event as CustomEvent;
+            custom.detail.handled = true;
+            directoryEvents.push(custom);
+        };
+        window.addEventListener('coc-open-panel-directory', listener);
+        try {
+            dispatchSourceLink({ filePath: '/repos/main/src', wsId: WS_ID, kind: 'dir' });
+            await waitFor(() => expect(directoryEvents).toHaveLength(1));
+            expect(directoryEvents[0].detail).toMatchObject({ scopeWorkspaceId: WS_ID, chatId: 'task-A', path: 'src' });
+            expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+            dispatchSourceLink({ filePath: '/elsewhere/src/a.ts', wsId: WS_ID });
+            await waitFor(() => expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')[0]?.resourceId)
+                .toBe('__workspace_preview__:/elsewhere/src/a.ts'));
+            expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+        } finally {
+            window.removeEventListener('coc-open-panel-directory', listener);
+        }
+    });
 
-        await waitFor(() => expect(screen.getByTestId('source-canvas-dock')).toBeTruthy());
-        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    it.each(['plot.png', 'data.csv'])('opens outside-root %s only once in the right panel', async name => {
+        renderHostedChat('task-A');
+        dispatchSourceLink({ filePath: `/outputs/${name}`, wsId: WS_ID, chatId: 'task-A' });
+        await waitFor(() => expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1));
+        dispatchSourceLink({ filePath: `/outputs/${name}`, wsId: WS_ID, chatId: 'task-A' });
+        await waitFor(() => expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(1));
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+    });
 
-        dispatchSourceLink({ filePath: '/elsewhere/src/a.ts', wsId: WS_ID });
-        await waitFor(() => expect(screen.getByTestId('source-canvas-dock').getAttribute('data-path')).toBe('/elsewhere/src/a.ts'));
-        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
+    it('ignores events originating in another chat', async () => {
+        renderHostedChat('task-A');
+        dispatchSourceLink({ filePath: '/outputs/data.csv', wsId: WS_ID, chatId: 'task-B' });
+        await act(async () => {});
+        expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toHaveLength(0);
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
+    });
+
+    it('does not publish a late folder resolution after the selected chat changes', async () => {
+        const { rerender } = renderHostedChat('task-A');
+        let finish: (value: Response) => void = () => {};
+        fetchMock.mockImplementation(async (url: string) => url.includes('/files/preview')
+            ? new Promise<Response>(resolve => { finish = resolve; })
+            : jsonResponse({}));
+        const listener = vi.fn();
+        window.addEventListener('coc-open-panel-directory', listener);
+        try {
+            dispatchSourceLink({ filePath: '/repos/main/src', wsId: WS_ID, kind: 'dir', chatId: 'task-A' });
+            await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/files/preview'))).toBe(true));
+            rerender(<Wrap><UnifiedPanelHostProvider host={{ workspaceId: WS_ID, chatId: 'task-B' }}>
+                <ChatDetail taskId="task-A" workspaceId={WS_ID} />
+            </UnifiedPanelHostProvider></Wrap>);
+            await act(async () => finish(jsonResponse({ type: 'directory', path: '/repos/main/src', resolvedWorkspaceId: WS_ID })));
+            expect(listener).not.toHaveBeenCalled();
+            expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-B')).toHaveLength(0);
+        } finally {
+            window.removeEventListener('coc-open-panel-directory', listener);
+        }
     });
 
     it('keeps the chat’s own column when the panel is showing another chat', async () => {
@@ -938,7 +989,7 @@ describe('ChatDetail — Implement-plan path with the unified right panel', () =
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
     });
 
-    it('falls back to the docked canvas when no known workspace owns the plan', async () => {
+    it('reports an unresolved plan owner without creating a second panel', async () => {
         // The chat's source workspace is not in the resolvable list and the
         // path is outside every known root, so `noteTabInput` cannot build a tab.
         serveAskChatWithPlan('/elsewhere/feature.plan.md');
@@ -951,9 +1002,8 @@ describe('ChatDetail — Implement-plan path with the unified right panel', () =
         );
         await clickPlanPath();
 
-        const dock = await screen.findByTestId('source-canvas-dock');
-        expect(dock.getAttribute('data-kind')).toBe('note');
-        expect(dock.getAttribute('data-path')).toBe('/elsewhere/feature.plan.md');
+        await screen.findByText('No workspace can open this file.');
+        expect(screen.queryByTestId('source-canvas-dock')).toBeNull();
         expect(visibleTabs(readUnifiedPanelState(WS_ID), 'task-A')).toEqual([]);
     });
 });

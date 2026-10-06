@@ -1625,6 +1625,7 @@ export function ConversationTurnBubble({ turn, taskId, onRetry, onContinueInterr
             'py-1.5'
         )}
             {...(wsId ? { 'data-ws-id': wsId } : {})}
+            {...(taskId ? { 'data-chat-id': taskId } : {})}
             {...(turnIndex != null ? { 'data-turn-index': turnIndex } : {})}
             onContextMenu={handleContextMenu}
         >
