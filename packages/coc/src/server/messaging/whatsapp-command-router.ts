@@ -12,6 +12,8 @@ import { admitBotControlledFollowUp } from './bot-control-admission';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
 import type { MessagingHandOff } from './job-handoff';
 
+import { LocalTopicMemory } from './local-topics';
+
 const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*` };
 
 export interface WhatsAppRouterDeps {
@@ -44,6 +46,7 @@ function matchesBinding(task: QueuedTask | undefined, binding: WhatsAppBinding):
 }
 
 export class WhatsAppCommandRouter {
+    private readonly localTopics = new LocalTopicMemory();
     private readonly remoteRefs = new RemoteRefMemory();
 
     constructor(private readonly deps: WhatsAppRouterDeps) {}
@@ -73,6 +76,7 @@ export class WhatsAppCommandRouter {
                     compactOrigin: { connector: 'whatsapp', chatKey: msg.chatJid },
                     remotes: this.deps.remotes,
                     remoteRefs: this.remoteRefs.slot(msg.chatJid),
+                    localTopics: this.localTopics.slot(msg.chatJid),
                     // A quote-reply to an answer compacts that answer's chat.
                     compactTarget: () => msg.quotedMessageId ? bindings.findMessage(msg.quotedMessageId) : undefined,
                     selection: {
