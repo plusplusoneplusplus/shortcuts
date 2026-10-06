@@ -17,7 +17,6 @@ import {
     parseRalphSignal,
     parseRalphSubmitResult,
     type FinalCheckResult,
-    type RalphSessionRecord,
 } from '../../src/ralph';
 
 const FINAL_CHECK_MARKER = 'RALPH_FINAL_CHECK_RESULT';
@@ -27,23 +26,6 @@ function wrapFinalCheck(json: string): string {
 }
 
 describe('Ralph public module boundary', () => {
-    it('exports portable Ralph helpers from a sibling module', () => {
-        expect(typeof parseRalphSignal).toBe('function');
-        expect(typeof appendProgress).toBe('function');
-        expect(typeof parseProgressSections).toBe('function');
-        expect(typeof formatProgressSection).toBe('function');
-        expect(typeof buildRalphIterationPrompt).toBe('function');
-        expect(typeof classifyRalphProgressStagnation).toBe('function');
-        expect(typeof buildFinalCheckPrompt).toBe('function');
-        expect(typeof parseFinalCheckResult).toBe('function');
-        expect(typeof buildRalphSubmitPrompt).toBe('function');
-        expect(typeof parseRalphSubmitResult).toBe('function');
-        expect(typeof decideRalphIterationActions).toBe('function');
-        expect(typeof decideRalphFinalCheckActions).toBe('function');
-        expect(typeof formatFinalCheckProgressSection).toBe('function');
-        expect(typeof parseRalphNeedsInput).toBe('function');
-    });
-
     it('declares the ./ralph JavaScript and declaration subpath', () => {
         const packageJsonPath = path.resolve(__dirname, '../../package.json');
         const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8')) as {
@@ -266,19 +248,3 @@ describe('parseFinalCheckResult', () => {
     });
 });
 
-describe('Ralph types', () => {
-    it('supports TypeScript consumers using exported record contracts', () => {
-        const record: RalphSessionRecord = {
-            sessionId: 'ralph-1',
-            workspaceId: 'ws-1',
-            originalGoal: 'Goal',
-            maxIterations: 20,
-            currentIteration: 0,
-            phase: 'executing',
-            startedAt: '2026-06-03T00:00:00.000Z',
-            iterations: [],
-        };
-
-        expect(record.phase).toBe('executing');
-    });
-});

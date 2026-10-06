@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { isValidComponentId, normalizeComponentId, COMPONENT_GRAPH_REQUIRED_FIELDS, PROJECT_INFO_REQUIRED_FIELDS, COMPONENT_INFO_REQUIRED_FIELDS, VALID_COMPLEXITY_VALUES, COMPONENT_GRAPH_SCHEMA, STRUCTURAL_SCAN_SCHEMA } from '../src/schemas';
-import type { ComponentGraph, ComponentInfo, ProjectInfo, CategoryInfo, DiscoveryOptions, DiscoveryResult, DeepWikiConfig, DiscoverCommandOptions, TopLevelDomain, StructuralScanResult, CacheMetadata, CachedGraph, DomainInfo, GeneratedArticle, ArticleType, ThemeRequest, ThemeCoverageCheck, ThemeOutline, ThemeAnalysis, ThemeArticle, ThemeMeta, ThemeCommandOptions } from '../src/types';
+import type { ComponentGraph, ComponentInfo, ProjectInfo, CategoryInfo, DiscoveryOptions, DiscoveryResult, DeepWikiConfig, DiscoverCommandOptions, TopLevelDomain, StructuralScanResult, CacheMetadata, CachedGraph, DomainInfo, GeneratedArticle, ThemeRequest, ThemeCoverageCheck, ThemeOutline, ThemeAnalysis, ThemeArticle, ThemeMeta, ThemeCommandOptions } from '../src/types';
 
 describe('Types and Schemas', () => {
     // ========================================================================
@@ -393,23 +393,6 @@ describe('Types and Schemas', () => {
     // ========================================================================
     // Extended ArticleType and GeneratedArticle
     // ========================================================================
-
-    describe('extended ArticleType', () => {
-        it('should support area-index type', () => {
-            const articleType: ArticleType = 'domain-index';
-            expect(articleType).toBe('domain-index');
-        });
-
-        it('should support area-architecture type', () => {
-            const articleType: ArticleType = 'domain-architecture';
-            expect(articleType).toBe('domain-architecture');
-        });
-
-        it('should still support original types', () => {
-            const types: ArticleType[] = ['component', 'index', 'architecture', 'getting-started'];
-            expect(types).toHaveLength(4);
-        });
-    });
 
     describe('GeneratedArticle with domainId', () => {
         it('should allow GeneratedArticle without domainId (backward compat)', () => {

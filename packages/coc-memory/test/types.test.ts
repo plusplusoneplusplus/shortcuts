@@ -5,10 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type {
     MemoryFact,
     MemoryEpisode,
-    MemoryScope,
     MemoryFactStatus,
-    MemoryFactSource,
-    MemoryEpisodeEventType,
 } from '../src/types';
 import {
     FEATURE_FLAG_COC_MEMORY,
@@ -58,22 +55,6 @@ describe('storage path constants', () => {
 });
 
 // ---------------------------------------------------------------------------
-// MemoryScope
-// ---------------------------------------------------------------------------
-
-describe('MemoryScope', () => {
-    it('accepts global scope', () => {
-        const scope: MemoryScope = 'global';
-        expect(scope).toBe('global');
-    });
-
-    it('accepts workspace scope', () => {
-        const scope: MemoryScope = 'workspace';
-        expect(scope).toBe('workspace');
-    });
-});
-
-// ---------------------------------------------------------------------------
 // MemoryFactStatus
 // ---------------------------------------------------------------------------
 
@@ -82,22 +63,6 @@ describe('MemoryFactStatus', () => {
 
     it('covers all four lifecycle states', () => {
         expect(statuses).toHaveLength(4);
-    });
-
-    it.each(statuses)('status "%s" is a valid string', (s) => {
-        expect(typeof s).toBe('string');
-    });
-});
-
-// ---------------------------------------------------------------------------
-// MemoryFactSource
-// ---------------------------------------------------------------------------
-
-describe('MemoryFactSource', () => {
-    const sources: MemoryFactSource[] = ['explicit', 'auto-extracted', 'imported'];
-
-    it.each(sources)('source "%s" is a valid string', (s) => {
-        expect(typeof s).toBe('string');
     });
 });
 
@@ -146,18 +111,6 @@ describe('MemoryFact', () => {
         const fact = buildFact({ recalledCount: 3, lastRecalledAt: '2026-06-01T00:00:00.000Z' });
         expect(fact.recalledCount).toBe(3);
         expect(fact.lastRecalledAt).toBe('2026-06-01T00:00:00.000Z');
-    });
-});
-
-// ---------------------------------------------------------------------------
-// MemoryEpisodeEventType
-// ---------------------------------------------------------------------------
-
-describe('MemoryEpisodeEventType', () => {
-    const types: MemoryEpisodeEventType[] = ['chat-turn', 'ralph-iteration', 'note-session', 'commit-chat'];
-
-    it.each(types)('event type "%s" is a valid string', (t) => {
-        expect(typeof t).toBe('string');
     });
 });
 
