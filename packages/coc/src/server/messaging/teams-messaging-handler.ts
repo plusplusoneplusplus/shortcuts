@@ -261,7 +261,7 @@ export function registerTeamsMessagingRoutes(
                     const admit = (requestId: string) => withImages(msg, workspaceId, taskId, images => {
                         const enqueue = async (admissionHeld = false) => {
                             try {
-                                const result = await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId, ...(images || admissionHeld ? [images, admissionHeld] : []));
+                                const result = await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId, ...((images || admissionHeld ? [images, admissionHeld] : []) as [PreparedIncomingImages?, boolean?]));
                                 if (result.taskId !== taskId) throw new Error('Queue returned a different task ID');
                                 return result;
                             } catch (error) {

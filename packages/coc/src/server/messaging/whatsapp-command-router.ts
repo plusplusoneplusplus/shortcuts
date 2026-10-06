@@ -332,7 +332,7 @@ export class WhatsAppCommandRouter {
                         return await this.deps.enqueue(
                             workspaceId, command.args, command.mode, processId, taskId,
                             !targetId && enabled ? createBotControlMetadata('whatsapp') : undefined,
-                            ...(images || admissionHeld ? [images, admissionHeld] : []),
+                            ...((images || admissionHeld ? [images, admissionHeld] : []) as [PreparedIncomingImages?, boolean?]),
                         );
                     } catch (error) {
                         // taskAdded observers run after durable admission; keep accepted work and its receipt.

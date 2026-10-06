@@ -141,7 +141,7 @@ describe('Teams trusted initial conversation admission', () => {
         await handle(inbound('choose-existing', '/select topic existing-topic'));
         await handle(inbound('mode-adopted', '/autopilot adopted'));
         expect(admitFollowUp).toHaveBeenLastCalledWith(
-            expect.objectContaining({ id: 'existing-topic' }), 'adopted', expect.any(String), 'autopilot', expect.any(String), true,
+            expect.objectContaining({ id: 'existing-topic' }), 'adopted', expect.any(String), 'autopilot', expect.any(String), undefined, true,
         );
         expect((await store.getProcess('existing-topic'))?.metadata?.botControl).toEqual(createBotControlMetadata('teams'));
     });
@@ -351,7 +351,7 @@ describe('Teams trusted initial conversation admission', () => {
         expect(followUp).not.toHaveBeenCalled();
         expect(admitFollowUp).toHaveBeenCalledWith(
             expect.objectContaining({ id: toQueueProcessId(origin.id) }), 'later question',
-            expect.any(String), undefined, expect.any(String), true,
+            expect.any(String), undefined, expect.any(String), undefined, true,
         );
         expect((await store.getProcess(toQueueProcessId(origin.id)))?.metadata).toMatchObject({
             botControl: createBotControlMetadata('teams'), provider: 'claude',

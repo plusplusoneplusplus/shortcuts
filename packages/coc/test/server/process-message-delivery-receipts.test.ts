@@ -135,7 +135,7 @@ describe('durable review admission', () => {
         await store.updateProcess(processId, { status: 'running' });
         await deliver();
         await deliver('second');
-        vi.spyOn(store, 'updateProcess').mockRejectedValueOnce(new Error('remove failed'));
+        vi.spyOn(store, 'removePendingMessage').mockRejectedValueOnce(new Error('remove failed'));
         await expect(drain()).rejects.toThrow('remove failed');
         queue.markStarted(receiptId);
         queue.markCompleted(receiptId, {});
@@ -291,7 +291,7 @@ describe('durable review admission', () => {
     it('reconciles drain after queue admission succeeds but pending removal fails', async () => {
         await store.updateProcess(processId, { status: 'running' });
         await deliver();
-        vi.spyOn(store, 'updateProcess').mockRejectedValueOnce(new Error('pending write'));
+        vi.spyOn(store, 'removePendingMessage').mockRejectedValueOnce(new Error('pending write'));
         await expect(drain()).rejects.toThrow('pending write');
         expect(queue.getTask(receiptId)).toBeDefined();
         restart();
@@ -299,6 +299,22 @@ describe('durable review admission', () => {
         expect(queue.getAll()).toHaveLength(1);
         expect((await store.getProcess(processId))?.conversationTurns).toHaveLength(1);
         expect((await store.getProcess(processId))?.pendingMessages ?? []).toEqual([]);
+    });
+
+    it('preserves a human message appended while a review is being drained', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await deliver();
+        const remove = store.removePendingMessage.bind(store);
+        vi.spyOn(store, 'removePendingMessage').mockImplementationOnce(async (id, messageId) => {
+            await store.appendPendingMessage(id, {
+                id: 'later-human', content: 'Follow-up', createdAt: new Date().toISOString(),
+            });
+            return remove(id, messageId);
+        });
+        await drain();
+        expect(queue.getTask(receiptId)).toBeDefined();
+        expect((await store.getProcess(processId))?.pendingMessages?.map(message => message.id))
+            .toEqual(['later-human']);
     });
 
     it('retains a review drained through a throwing admission observer', async () => {
