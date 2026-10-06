@@ -96,9 +96,12 @@ describe('WhatsApp image transport (real Baileys decryption, mocked HTTP)', () =
         const encryptedStream = new PassThrough();
         const http = vi.spyOn(axios, 'get').mockResolvedValue({ data: encryptedStream });
         vi.useFakeTimers();
-        const result = createWhatsAppImage(nativeImage(), lifetime.signal).download({ maxBytes: 100, timeoutMs: 100 });
+        const result = createWhatsAppImage(nativeImage(), lifetime.signal).download({ maxBytes: 100, timeoutMs: 30_000 });
         const rejection = expect(result).rejects.toMatchObject({ code: 'timeout' });
-        await vi.advanceTimersByTimeAsync(100);
+        // Dynamic import/key derivation can need real event-loop work before HTTP.
+        // Start the stalled-stream assertion only once acquisition has completed.
+        await vi.waitFor(() => expect(http).toHaveBeenCalledOnce());
+        await vi.advanceTimersByTimeAsync(30_000);
         await rejection;
         expect(http.mock.calls[0][1]?.signal?.aborted).toBe(true);
         encryptedStream.destroy();

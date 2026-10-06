@@ -205,6 +205,14 @@ partial output and raw exceptions stay out of relay messages.
 Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
 
+`messaging/incoming-images.ts` prepares admitted images after local workspace
+resolution, using `core/attachment-utils.ts` for SDK file attachments, history
+images and display metadata. Batches allow five images, 10 MB decoded total and
+a 30-second acquisition/download deadline. Temporary files use
+`getRepoDataPath(dataDir, workspaceId, 'attachments')/incoming-*`; callers own
+cleanup until executor delivery takes ownership. Download and storage failures
+reject the whole batch with fixed feedback; partial writes are removed.
+
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
 `compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown

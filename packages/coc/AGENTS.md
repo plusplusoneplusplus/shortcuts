@@ -228,6 +228,11 @@ references before editing. Paths are package-relative.
   include recognized UTC/GMT reset times; other failures use fixed text. Never
   relay raw exceptions or partial output, or borrow another request's error. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
+- `src/server/messaging/incoming-images.ts` prepares admitted image batches only
+  after local workspace resolution. It reuses chat attachment processing, stores
+  temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
+  batch on failure. Limits are five images, 10 MB decoded total and 30 seconds total.
+  Callers own temporary-directory cleanup until delivery transfers it to executors.
 - Teams/WhatsApp command grammar is one spec table in
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`,
   `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp
