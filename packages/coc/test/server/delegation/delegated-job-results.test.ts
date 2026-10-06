@@ -7,6 +7,8 @@ import { createMockProcessStore, createProcessFixture } from '../../helpers/mock
 import { DelegatedJobStore, MAX_RESULT_SUMMARY } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { createSentinelDelegationEnqueue } from '../../../src/server/delegation/sentinel-delegation-enqueue';
+import type { RalphSessionRecord } from '../../../src/server/ralph/types';
+import type { RalphSessionCompleteEvent } from '../../../src/server/queue/queue-executor-bridge';
 import { getRepoDataPath } from '../../../src/server/paths';
 
 const parentWorkspace = 'ws-parent';
@@ -289,4 +291,143 @@ describe('ordinary delegated job result recording', () => {
         for (const event of ['taskCompleted', 'taskFailed', 'taskCancelled']) expect(queue.listenerCount(event)).toBe(0);
         expect(persisted().terminal).toBeUndefined();
     });
+    describe('whole-session Ralph results', () => {
+        const sessionId = 'ralph-session';
+        function session(overrides: Partial<RalphSessionRecord> = {}): RalphSessionRecord {
+            return { sessionId, workspaceId: childWorkspace, originalGoal: 'Fix search', maxIterations: 20,
+                currentIteration: 3, phase: 'complete', terminalReason: 'RALPH_COMPLETE',
+                startedAt: new Date().toISOString(), iterations: [], ...overrides };
+        }
+        function ralph(record: RalphSessionRecord | null = session()) {
+            register({ sessionId });
+            const sessions = { readSessionRecord: vi.fn().mockResolvedValue(record),
+                getProgressPath: () => path.join(dataDir, 'progress.md') };
+            const onResult = vi.fn().mockResolvedValue(undefined);
+            const results = new DelegatedJobResults({ jobs, store, queue, sessions, onResult });
+            services.push(results);
+            return { results, sessions, onResult };
+        }
+        function complete(reason = 'signal', overrides: Partial<RalphSessionCompleteEvent> = {}) {
+            queue.emit('ralphSessionComplete', { type: 'ralphSessionComplete', workspaceId: childWorkspace,
+                sessionId, processId: 'queue_final-check', totalIterations: 3, reason, ...overrides });
+        }
+        function check(overrides: Record<string, unknown> = {}) {
+            return { checkIndex: 2, loopIndex: 2, sourceIteration: 3, startedAt: new Date().toISOString(),
+                status: 'completed' as const, hasGaps: false, ...overrides };
+        }
+
+        it.each([
+            ['signal', 'completed'], ['manual-verification-only', 'completed'], ['cap', 'capped'],
+            ['user-stopped', 'cancelled'], ['final-check-failed', 'failed'], ['final-check-enqueue-failed', 'failed'],
+            ['final-check-session-missing', 'failed'], ['final-check-gap-loop-start-failed', 'failed'],
+            ['final-check-gap-enqueue-failed', 'failed'],
+        ])('records whole-session %s as %s, independently of final process identity', async (reason, outcome) => {
+            const { onResult } = ralph(); complete(reason); await flush();
+            expect(persisted().terminal?.result).toMatchObject({ outcome, reason,
+                terminalEventId: `ralph:${childWorkspace}:${sessionId}:terminal`,
+                links: [`/api/workspaces/${childWorkspace}/ralph-sessions/${sessionId}`, path.join(dataDir, 'progress.md')] });
+            expect(onResult).toHaveBeenCalledWith(persisted());
+            expect(jobs.list(childWorkspace)).toEqual([]);
+            if (outcome === 'capped') expect(persisted().terminal?.result.summary).toContain('goal completion is not confirmed');
+        });
+
+        it('includes only finished output from the scoped final process, never the original iteration', async () => {
+            ralph(); await child({ result: 'Old iteration' });
+            await store.addProcess(createProcessFixture({ id: 'queue_final-check', metadata: { workspaceId: childWorkspace },
+                result: JSON.stringify({ response: 'All checks passed. The fix is committed.' }) }));
+            complete(); await flush();
+            expect(persisted().terminal?.result.summary).toContain('All checks passed. The fix is committed.');
+            expect(persisted().terminal?.result.summary).not.toContain('Old iteration');
+        });
+
+        it('maps missing-signal termination to failure, even when the lifecycle labels it cap', async () => {
+            ralph(session({ terminalReason: 'NO_SIGNAL' })); complete('cap'); await flush();
+            expect(persisted().terminal?.result.outcome).toBe('failed');
+        });
+
+        it('ignores iterations, checks and gap tasks and awaiting-input pauses', async () => {
+            const { results, onResult } = ralph(session({ phase: 'awaiting-input' }));
+            enqueue(childWorkspace, { ralph: { sessionId } }); queue.markCompleted('child', 'Intermediate');
+            await flush(); await results.restore();
+            expect(persisted().terminal).toBeUndefined(); expect(onResult).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            { workspaceId: 'wrong' }, { sessionId: 'other' }, { sessionId: undefined },
+        ])('ignores whole-session events without the registered workspace/session: %j', async overrides => {
+            const { onResult } = ralph(); complete('signal', overrides); await flush();
+            expect(persisted().terminal).toBeUndefined(); expect(onResult).not.toHaveBeenCalled();
+        });
+
+        it('retains first terminal identity and outcome across duplicate/conflicting events and restart', async () => {
+            const { results } = ralph(); complete('cap'); complete('signal'); await flush();
+            const first = persisted(); await results.restore(); complete('final-check-failed'); await flush();
+            expect(persisted()).toEqual(first); expect(first.terminal?.result.outcome).toBe('capped');
+        });
+
+        it.each([
+            { terminalReason: 'USER_STOPPED', outcome: 'cancelled' },
+            { terminalReason: 'CAP_REACHED', outcome: 'capped' },
+            { terminalReason: 'NO_SIGNAL', outcome: 'failed' },
+            { terminalReason: 'CANCELLED', outcome: 'cancelled' },
+        ] as const)('recovers terminal journal $terminalReason', async ({ terminalReason, outcome }) => {
+            await ralph(session({ terminalReason })).results.restore();
+            expect(persisted().terminal?.result.outcome).toBe(outcome);
+        });
+
+        it.each([
+            { status: 'completed', hasGaps: false, outcome: 'completed' },
+            { status: 'completed', hasGaps: true, capReached: true, outcome: 'capped' },
+            { status: 'failed', outcome: 'failed' },
+        ] as const)('recovers final check outcome $outcome without a live terminal event', async ({ outcome, ...record }) => {
+            const { results, onResult } = ralph(session({ finalChecks: [check(record)] }));
+            await results.restore(); expect(persisted().terminal?.result.outcome).toBe(outcome);
+            expect(onResult).toHaveBeenCalledOnce();
+        });
+
+        it.each([
+            {}, { finalChecks: [check({ status: 'queued' })] }, { finalChecks: [check({ status: 'running', repairAttempted: true })] },
+            { finalChecks: [check({ gapLoopStarted: true })] }, { finalChecks: [check({ hasGaps: true })] },
+            { finalChecks: [check({ sourceIteration: 2 })] }, { phase: 'executing' },
+        ] as Partial<RalphSessionRecord>[])('does not recover a complete iteration as whole-session completion: %j', async record => {
+            const { results, onResult } = ralph(session(record)); await results.restore();
+            expect(persisted().terminal).toBeUndefined(); expect(onResult).not.toHaveBeenCalled();
+        });
+
+        it('uses the last iteration output for a cap after earlier checks and gap loops', async () => {
+            const { results } = ralph(session({ terminalReason: 'CAP_REACHED',
+                finalChecks: [check({ sourceIteration: 2, gapLoopStarted: true, processId: 'queue_old-check' })],
+                iterations: [{ iteration: 3, loopIndex: 2, taskId: 'child', processId: childId,
+                    status: 'completed', startedAt: new Date().toISOString() }] }));
+            await child({ result: 'Latest gap loop result' });
+            await store.addProcess(createProcessFixture({ id: 'queue_old-check', metadata: { workspaceId: childWorkspace }, result: 'Old check' }));
+            await results.restore();
+            expect(persisted().terminal?.result.summary).toContain('Latest gap loop result');
+            expect(persisted().terminal?.result.summary).not.toContain('Old check');
+        });
+
+        it('recovers failed gap-loop admission even when its phase is executing', async () => {
+            await ralph(session({ phase: 'executing', finalChecks: [check({ status: 'failed' })] })).results.restore();
+            expect(persisted().terminal?.result.outcome).toBe('failed');
+        });
+
+        it.each([null, session({ workspaceId: 'wrong' }), session({ sessionId: 'wrong' })])('settles unavailable/mis-scoped journal without redirecting results', async record => {
+            const { results, onResult } = ralph(record); await results.restore();
+            expect(persisted().terminal?.delivery.state).toBe('failed'); expect(onResult).not.toHaveBeenCalled();
+        });
+
+        it('recovers after a transient ledger write failure using the final-check journal', async () => {
+            const { results } = ralph(session({ finalChecks: [check()] }));
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+            vi.spyOn(jobs, 'recordResult').mockImplementationOnce(() => { throw new Error('disk failure'); });
+            complete(); await flush(); expect(persisted().terminal).toBeUndefined();
+            await results.restore(); expect(persisted().terminal?.result.outcome).toBe('completed');
+        });
+
+        it('disposes session listeners and pending journal reads', async () => {
+            const { results } = ralph(); complete(); results.dispose(); await flush();
+            expect(queue.listenerCount('ralphSessionComplete')).toBe(0); expect(persisted().terminal).toBeUndefined();
+        });
+    });
+
 });

@@ -105,25 +105,28 @@ references before editing. Paths are package-relative.
   Rejected admission settles delivery as failed; accepted observer errors retain tracking.
   `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
   from scoped queue/process records at startup. Tool admission waits for recovery. Exclude
-  Ralph steps and remote jobs; unavailable children settle with a diagnosable failed delivery.
+  Ralph step events and remote jobs; unavailable children settle with a diagnosable failed delivery.
+  Whole-session Ralph events match registered workspace/session identity, preserving the first
+  terminal outcome. Journal recovery requires a terminal reason or final-check evidence;
+  complete iteration loops with pending checks remain silent. Caps do not assert goal completion.
   `ProcessMessageDeliveryService.deliverOnce` admits server-owned reviews with a stable
   receipt in pending messages, queue tasks and user turns. It verifies the parent's workspace,
   preserves queue ordering, rejects stopped parents and never steers. Review pending IDs equal
   their request receipts; drain reuses those IDs and reconciles accepted tasks/turns before replay.
   Correlation repair and drain share process admission with follow-up delivery. Active tasks take
-  precedence over history in process lookup. `delegated-job-reviews.ts` admits ordinary
-  success/failure reviews on recording/startup, using a stable parent/job/event receipt and
+  precedence over history in process lookup. `delegated-job-reviews.ts` admits ordinary and
+  whole-session Ralph outcome reviews on recording/startup, using a stable parent/job/event receipt and
   bounded untrusted result context. Resolve the parent's mode into pending/task payloads.
   Reconcile receipt admission before ledger acknowledgement; reuse emits no realtime intents.
   Review completion settles delivery; permanent routing rejection settles failure, while
   transient storage errors remain recoverable. Buffered admission invokes owner-queue recovery
   outside admission; idle completed/failed parents drain the head in order, reconciling terminal
   receipts first. Active queues, stopped parents and pending questions/answers block recovery.
-  Ordinary cancellation uses `deliverNoticeOnce`: a stable display-only assistant receipt,
+  Cancellation uses `deliverNoticeOnce`: a stable display-only assistant receipt,
   serialized with process admission, without AI work or queue changes. Busy parents defer;
   parent terminal events/startup retry admission, and transcript receipts reconcile ledger
   write failures. Stopped parents can receive notices without resuming. Missing/mis-scoped
-  parents settle delivery failure. Ralph and remote results use separate boundaries.
+  parents settle delivery failure. Ralph uses session terminal receipts; remote delivery remains separate.
   Child completion grants no additional action authority.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.

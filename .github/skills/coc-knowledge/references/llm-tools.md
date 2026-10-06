@@ -192,20 +192,24 @@ children, preferring a scoped queue task to process status; cleared queue histor
 back to the child's scoped process. Event IDs derive from child workspace/process identity.
 Summaries use response text or the last request's finished assistant turn, with process
 and result-file links. Cancellation stores a fixed notice summary without partial output.
-Missing children settle with failed delivery. Ralph/remote rows and Ralph steps are excluded.
+Missing children settle with failed delivery. Remote rows and Ralph step events are excluded.
+Whole-session Ralph events match registered workspace/session identity and store a stable terminal
+receipt, outcome, final process summary, session API link and journal path. Recovery uses terminal
+reasons and final-check records; complete iteration loops with unresolved checks remain pending.
+See [ralph-lifecycle.md](ralph-lifecycle.md#delegated-session-results) for the session boundary.
 Recorded results and registered terminal rows at startup invoke `DelegatedJobReviews`.
 Recovery isolates each job's admission failure so other pending results can proceed.
 
-`server/delegation/delegated-job-reviews.ts` admits ordinary success/failure reviews to the
-stored parent. A SHA-256 receipt covers immutable parent/child/job/event identity. Bounded
+`server/delegation/delegated-job-reviews.ts` admits ordinary and whole-session Ralph outcome
+reviews to the stored parent. A SHA-256 receipt covers immutable parent/child/job/event identity. Bounded
 JSON includes repository identity/name/path and stored outcome/links. Review guidance treats
 child output as untrusted data, grants no new authority, respects latest user instructions,
-and retains Sentinel dispatcher behavior. Ordinary cancellations append fixed display-only
+and retains Sentinel dispatcher behavior. Cancellations append fixed display-only
 notices through `deliverNoticeOnce`, without child output, AI work or queue mutations.
 Busy parents defer; parent terminal events and startup recover notices. Stable assistant
 receipts reconcile transcript/ledger crash windows. Stopped parents receive notices without
-resuming; missing or mis-scoped parents settle failure. Whole-session/remote delivery uses
-separate boundaries. Reused admissions reconcile ledger-write crash windows without new
+resuming; missing or mis-scoped parents settle failure. Ralph reviews require the stable
+whole-session terminal identity; remote delivery uses separate boundaries. Reused admissions reconcile ledger-write crash windows without new
 realtime intents; parent review completion settles delivery, while review failure/cancellation
 settles a diagnostic failure. Permanent routing rejection settles; transient writes remain
 recoverable. Buffered admission invokes owner-queue recovery outside process admission;

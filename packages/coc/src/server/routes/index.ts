@@ -25,6 +25,7 @@ import { cancelConversation } from '../processes/cancel-conversation';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
 import { DelegatedJobResults } from '../delegation/delegated-job-results';
 import { DelegatedJobReviews } from '../delegation/delegated-job-reviews';
 import { ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
@@ -489,7 +490,8 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
     });
     const delegatedJobResults = new DelegatedJobResults({
-        jobs: delegatedJobs, store, queue: queueFacade, onResult: job => delegatedJobReviews.schedule(job),
+        jobs: delegatedJobs, store, queue: queueFacade, sessions: new RalphSessionStore({ dataDir }),
+        onResult: job => delegatedJobReviews.schedule(job),
     });
     const delegatedResultsRestored = delegatedJobResults.restore().catch(error =>
         console.error('[delegated-job-results] Could not restore results:', error));

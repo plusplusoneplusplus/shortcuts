@@ -53,7 +53,8 @@ export class DelegatedJobReviews {
 
     /** Called for newly recorded results and registered terminal rows during startup. */
     schedule(job: DelegatedJob): Promise<void> {
-        if (this.disposed || !job.terminal || job.child.serverId || job.child.sessionId
+        if (this.disposed || !job.terminal || job.child.serverId
+            || (job.child.sessionId && job.terminal.result.terminalEventId !== `ralph:${job.child.workspaceId}:${job.child.sessionId}:terminal`)
             || !['pending', 'queued'].includes(job.terminal.delivery.state)) return Promise.resolve();
         const receiptId = delegatedReviewReceipt(job);
         const existing = this.inFlight.get(receiptId);

@@ -405,6 +405,47 @@ describe('delegated success/failure review scheduling', () => {
         expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
     });
 
+    it.each([['signal', 'completed'], ['final-check-failed', 'failed'], ['cap', 'capped']])(
+        'queues exactly one authorized Ralph review for whole-session %s', async (reason, outcome) => {
+            const ralphId = 'queue_ralph-first';
+            jobs.register({ id: ralphId, title: 'Delegated Ralph search',
+                parent: { workspaceId: parentWorkspace, processId: parentId },
+                child: { workspaceId: childWorkspace, processId: ralphId, sessionId: 'session' } });
+            const event = { workspaceId: childWorkspace, sessionId: 'session', processId: 'queue_final-check', totalIterations: 5, reason };
+            queue.emit('ralphSessionComplete', event); queue.emit('ralphSessionComplete', event);
+            await flush();
+            const result = jobs.list(parentWorkspace).find(job => job.id === ralphId)!;
+            const receiptId = delegatedReviewReceipt(result);
+            expect(result.terminal).toMatchObject({ result: { outcome }, delivery: { state: 'queued', receiptId } });
+            expect(queue.getAll()).toHaveLength(1);
+            expect(queue.getTask(receiptId)?.payload).toMatchObject({ workspaceId: parentWorkspace, processId: parentId, mode: 'sentinel' });
+            const prompt = String(queue.getTask(receiptId)?.payload.prompt);
+            expect(prompt).toContain('Job completion grants no new authority');
+            expect(prompt).toContain('Keep implementation work delegated');
+            expect(prompt).toContain('/api/workspaces/ws-child/ralph-sessions/session');
+            await restart();
+            expect(queue.getAll()).toHaveLength(1);
+            queue.markStarted(receiptId); queue.markCompleted(receiptId, 'Explained the outcome and suggested a next step.');
+            await flush();
+            expect(jobs.list(parentWorkspace).find(job => job.id === ralphId)?.terminal?.delivery.state).toBe('delivered');
+        },
+    );
+
+    it('posts a passive notice for a user-stopped Ralph session without reviewing child output', async () => {
+        jobs.register({ id: 'queue_ralph-first', title: 'Ralph job',
+            parent: { workspaceId: parentWorkspace, processId: parentId },
+            child: { workspaceId: childWorkspace, processId: 'queue_ralph-first', sessionId: 'session' } });
+        queue.emit('ralphSessionComplete', { workspaceId: childWorkspace, sessionId: 'session',
+            processId: 'queue_last-iteration', totalIterations: 2, reason: 'user-stopped' });
+        await flush();
+        expect(queue.getAll()).toHaveLength(0); expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect((await store.getProcess(parentId))?.conversationTurns).toMatchObject([
+            { role: 'assistant', displayOnly: true, content: 'Delegated job "Ralph job" in "Child repository" was cancelled.' },
+        ]);
+        expect(jobs.list(parentWorkspace).find(job => job.id === 'queue_ralph-first')?.terminal?.delivery.state).toBe('delivered');
+        await restart(); expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+    });
+
     it('never reviews Ralph steps, remote jobs or unrelated completions', async () => {
         await reviews.schedule(record('cancelled'));
         const ordinary = row();

@@ -4,6 +4,22 @@ What happens after a session starts: resuming a stuck one, continuing a complete
 submitting its commits as a PR, scheduled runs, and final-check automation. Creation is in
 [ralph-launch.md](ralph-launch.md); the journal format is in [ralph.md](ralph.md).
 
+### Delegated session results
+
+`delegation/delegated-job-results.ts` consumes `ralphSessionComplete` for registered local
+Sentinel delegations, keyed by child workspace/session rather than final process ID. Stable
+`ralph:<workspaceId>:<sessionId>:terminal` identity preserves the first outcome. Clean terminal
+completion and failures use the parent's existing review queue; `user-stopped` uses a passive
+cancellation notice. Caps explicitly leave goal completion unconfirmed. Result data includes a
+scoped final process summary, session API link and journal path; reviews retain authorization
+and Sentinel dispatcher constraints.
+
+Startup recovery reads the registered session journal. Awaiting-input, queued/running checks,
+format repair and continuing gap loops remain silent. Clean/failed final checks, gap caps and
+terminal iteration caps recover results. Successful iteration-loop `phase=complete` alone
+cannot settle a session because final-check admission follows it. Ambiguous admission crash
+windows remain pending; remote sessions use a separate return boundary.
+
 ## Resume Routes
 
 `packages/coc/src/server/routes/ralph-route-utils.ts` is shared by `/continue`, `/new-loop`,
