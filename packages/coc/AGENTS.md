@@ -122,10 +122,11 @@ references before editing. Paths are package-relative.
   Explicit resume clears the outcome before admission and restores it on
   rejection; the delegation ledger retains its first outcome. Complete
   iteration loops with pending checks remain silent. Caps do not assert goal completion.
-  Queued execution-iteration cancellations persist `user-stopped` through the result recorder;
-  startup scans scoped queue history. Only the next unfinished iteration qualifies, and a
-  live admitted resume wins over cancellation history. Pauses and other Ralph task kinds
-  retain their own lifecycle.
+  Queued iteration/check/repair cancellations persist `user-stopped` through the result recorder;
+  startup scans scoped queue history. Only the next unfinished iteration or current admitted
+  check qualifies; repairs require the persisted attempt and exact checker process. Complete
+  iteration phases may await checks. Live admitted tasks win over cancellation history.
+  Pauses, stale steps, grilling and submit retain their own lifecycle.
   `ProcessMessageDeliveryService.deliverOnce` admits server-owned reviews with a stable
   receipt in pending messages, queue tasks and user turns. It verifies the parent's workspace,
   preserves queue ordering, rejects stopped parents and never steers. Review pending IDs equal

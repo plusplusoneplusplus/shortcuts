@@ -34,11 +34,13 @@ repairs bypass result parsing, including when follow-up execution saves failure 
 throwing. Ordinary follow-ups, submit and grilling retain their own lifecycle. Interrupted
 sessions remain resumable; completion grants no retry.
 
-Queued execution-iteration cancellations settle through the registered result recorder because
-these tasks never enter the executor. It persists `user-stopped` before returning the passive
-notice and scans scoped queue history during startup. Only the next unfinished iteration
-qualifies; admitted resume tasks take precedence over cancellation history. Paused sessions,
-stale steps, grilling, checks and submit tasks stay outside this boundary.
+Queued execution-iteration, checker and format-repair cancellations settle through the registered
+result recorder because these tasks never enter the executor. It persists `user-stopped` before
+returning the passive notice and scans scoped queue history during startup. Only the next
+unfinished iteration or current admitted queued/running check qualifies. Checks match index,
+loop, source iteration and original task; repairs require the persisted attempt and checker
+process. A complete iteration phase may still await its check. Live admitted tasks take
+precedence over cancellation history; paused sessions, stale steps, grilling and submit stay silent.
 
 Awaiting-input, format repair and continuing gap loops remain silent. Journals without a
 completion record recover from clean/failed final checks, gap caps and terminal iteration caps.

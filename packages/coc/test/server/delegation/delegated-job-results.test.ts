@@ -318,6 +318,95 @@ describe('ordinary delegated job result recording', () => {
                     context: { ralph: { sessionId, phase: 'executing', currentIteration: 4, ...overrides } } } });
         }
 
+        function queuedCheck(repair = false, overrides: Record<string, unknown> = {}, id = 'checker', workspaceId = childWorkspace) {
+            queue.enqueue({ id, type: 'chat', priority: 'normal', repoId: workspaceId,
+                ...(repair ? { processId: 'queue_checker' } : {}),
+                payload: { kind: 'chat', mode: 'ralph', workspaceId,
+                    ...(repair ? { processId: 'queue_checker' } : {}),
+                    context: { ralph: { sessionId, phase: 'executing', currentIteration: 3,
+                        finalCheck: { kind: 'goal-gap-check', checkIndex: 2, loopIndex: 2,
+                            sourceIteration: 3, ...(repair ? { repairTurn: true } : {}), ...overrides } } } } });
+        }
+        function waitingCheck(repair = false, overrides: Record<string, unknown> = {}) {
+            return session({ finalChecks: [check({ status: repair ? 'running' : 'queued',
+                taskId: 'checker', processId: 'queue_checker', repairAttempted: repair, ...overrides })] });
+        }
+
+        it.each([false, true])('settles a queued check cancellation (repair=%s) in a complete iteration phase', async repair => {
+            const { sessions, onResult } = ralph(waitingCheck(repair));
+            queuedCheck(repair, {}, repair ? 'repair' : 'checker');
+            queue.cancelTask(repair ? 'repair' : 'checker'); await flush();
+            expect(sessions.recordCompletion).toHaveBeenCalledWith(childWorkspace, sessionId,
+                expect.objectContaining({ reason: 'user-stopped', processId: 'queue_checker', totalIterations: 3 }));
+            expect(persisted().terminal?.result).toMatchObject({ outcome: 'cancelled', reason: 'user-stopped' });
+            expect(onResult).toHaveBeenCalledOnce();
+            expect(store.appendConversationTurn).not.toHaveBeenCalled();
+        });
+
+        it.each([false, true])('recovers a queued check cancellation before subscription (repair=%s)', async repair => {
+            queuedCheck(repair, {}, repair ? 'repair' : 'checker');
+            queue.cancelTask(repair ? 'repair' : 'checker');
+            const { results, onResult } = ralph(waitingCheck(repair));
+            await results.restore();
+            expect(persisted().terminal?.result.outcome).toBe('cancelled');
+            expect(onResult).toHaveBeenCalledOnce();
+        });
+
+        it.each([
+            { checkIndex: 1 }, { loopIndex: 1 }, { sourceIteration: 2 },
+        ])('ignores stale queued checker identity: %j', async overrides => {
+            const { results, sessions } = ralph(waitingCheck());
+            queuedCheck(false, overrides); queue.cancelTask('checker'); await flush(); await results.restore();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+            expect(persisted().terminal).toBeUndefined();
+        });
+
+        it.each([
+            { status: 'completed' }, { status: 'failed' }, { taskId: 'other' }, { processId: 'queue_other' },
+            { sourceIteration: 4 },
+        ])('ignores cancellations outside the current admitted check: %j', async overrides => {
+            const { results, sessions } = ralph(waitingCheck(false, overrides));
+            queuedCheck(); queue.cancelTask('checker'); await flush();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+            expect(persisted().terminal).toBeUndefined();
+            await results.restore();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+            expect(persisted().terminal?.result.outcome).not.toBe('cancelled');
+        });
+
+        it('requires the durable repair attempt', async () => {
+            const { sessions } = ralph(waitingCheck(false));
+            queuedCheck(true, {}, 'repair'); queue.cancelTask('repair'); await flush();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+        });
+
+        it('lets a live checker repair win over the cancelled checker history', async () => {
+            queuedCheck(); queue.cancelTask('checker'); queuedCheck(true, {}, 'repair');
+            const { results, sessions } = ralph(waitingCheck(true));
+            await results.restore();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+            expect(persisted().terminal).toBeUndefined();
+        });
+
+        it.each(['awaiting-input', 'grilling'] as const)('keeps %s silent for cancelled checks', async phase => {
+            const { results, sessions } = ralph({ ...waitingCheck(), phase });
+            queuedCheck(); queue.cancelTask('checker'); await flush(); await results.restore();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+        });
+
+        it('ignores queued checker cancellation in another workspace', async () => {
+            const { results, sessions } = ralph(waitingCheck());
+            queuedCheck(false, {}, 'checker', parentWorkspace); queue.cancelTask('checker');
+            await flush(); await results.restore();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+        });
+
+        it('leaves a started checker cancellation to the executor boundary', async () => {
+            const { sessions } = ralph(waitingCheck());
+            queuedCheck(); queue.markStarted('checker'); queue.cancelTask('checker'); await flush();
+            expect(sessions.recordCompletion).not.toHaveBeenCalled();
+        });
+
         it('persists a queued continuation cancellation before returning it to the original parent', async () => {
             const { sessions, onResult } = ralph(session({ phase: 'executing', terminalReason: undefined }));
             queuedIteration({}, childWorkspace, 'continuation');
@@ -374,6 +463,29 @@ describe('ordinary delegated job result recording', () => {
                 sessions: new RalphSessionStore({ dataDir }), onResult });
             services.push(restarted);
             await restarted.restore();
+            expect(persisted().terminal?.result.outcome).toBe('cancelled');
+            expect(onResult).toHaveBeenCalledOnce();
+        });
+
+        it.each([false, true])('recovers durable checker cancellation with pruned history (repair=%s)', async repair => {
+            const journal = new RalphSessionStore({ dataDir });
+            await journal.initSession(childWorkspace, sessionId, { originalGoal: 'Fix search', maxIterations: 20 });
+            await journal.updateSessionRecord(childWorkspace, sessionId, () => waitingCheck(repair));
+            const { results, sessions, onResult } = ralph();
+            sessions.readSessionRecord.mockImplementation(() => journal.readSessionRecord(childWorkspace, sessionId));
+            sessions.recordCompletion.mockImplementation((...args) => journal.recordCompletion(...args));
+            const saveResult = vi.spyOn(jobs, 'recordResult').mockImplementationOnce(() => { throw new Error('interrupted ledger write'); });
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+            queuedCheck(repair, {}, repair ? 'repair' : 'checker');
+            queue.cancelTask(repair ? 'repair' : 'checker');
+            await vi.waitFor(() => expect(saveResult).toHaveBeenCalledOnce());
+            expect((await journal.readSessionRecord(childWorkspace, sessionId))?.completion).toMatchObject({
+                reason: 'user-stopped', processId: 'queue_checker', totalIterations: 3 });
+            expect(onResult).not.toHaveBeenCalled();
+            saveResult.mockRestore(); results.dispose(); queue = new TaskQueueManager();
+            const restarted = new DelegatedJobResults({ jobs: new DelegatedJobStore(dataDir), store, queue,
+                sessions: new RalphSessionStore({ dataDir }), onResult });
+            services.push(restarted); await restarted.restore();
             expect(persisted().terminal?.result.outcome).toBe('cancelled');
             expect(onResult).toHaveBeenCalledOnce();
         });

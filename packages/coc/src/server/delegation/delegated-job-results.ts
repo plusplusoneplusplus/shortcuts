@@ -6,7 +6,7 @@ import type { RalphSessionCompleteEvent } from '../queue/queue-executor-bridge';
 import type { RalphSessionRecord } from '../ralph/types';
 import type { RalphSessionStore } from '../ralph/ralph-session-store';
 import { getRalphTaskKind } from '../ralph/task-kind';
-import { getRalphContext } from '../tasks/task-types';
+import { isRalphFinalCheckRepairTurn, getRalphContext } from '../tasks/task-types';
 import { DelegatedJobStore, type DelegatedJob } from './delegated-job-store';
 
 function responseText(result: unknown): string | undefined {
@@ -162,7 +162,7 @@ export class DelegatedJobResults {
                 session, session.completion.processId);
             return;
         }
-        if (session.phase === 'executing') {
+        if (session.phase === 'executing' || session.phase === 'complete') {
             for (const task of this.deps.queue.getHistory()) {
                 if (await this.recordQueuedSessionCancellation(job, task, session)) return;
             }
@@ -197,23 +197,40 @@ export class DelegatedJobResults {
         }
     }
 
-    /** Queued iterations never enter the executor's interrupted-turn settlement. */
+    /** Queued iterations/checks never enter the executor's interrupted-turn settlement. */
     private async recordQueuedSessionCancellation(
         job: DelegatedJob, task: QueuedTask, storedSession?: RalphSessionRecord,
     ): Promise<boolean> {
         const ctx = getRalphContext(task);
+        const repair = isRalphFinalCheckRepairTurn(task.payload);
+        const kind = getRalphTaskKind(ctx ?? undefined);
         if (!this.deps.sessions || task.status !== 'cancelled' || task.startedAt !== undefined
-            || task.type !== 'chat' || task.payload.mode !== 'ralph' || task.payload.processId
+            || task.type !== 'chat' || task.payload.mode !== 'ralph' || (task.payload.processId && !repair)
             || !ctx?.sessionId || ctx.sessionId !== job.child.sessionId
             || (task.payload.workspaceId ?? task.repoId) !== job.child.workspaceId
-            || getRalphTaskKind(ctx) !== 'iteration' || ctx.phase === 'grilling') return false;
+            || kind === 'submit' || ctx.phase === 'grilling') return false;
         const session = storedSession ?? await this.deps.sessions.readSessionRecord(job.child.workspaceId, ctx.sessionId);
         if (this.disposed || !session || session.workspaceId !== job.child.workspaceId
-            || session.sessionId !== ctx.sessionId || session.phase !== 'executing'
+            || session.sessionId !== ctx.sessionId
+            || !['executing', 'complete'].includes(session.phase)
             || session.terminalReason === 'USER_STOPPED') return false;
-        // The journal records finished iterations; a queued continuation can be one ahead.
-        const iteration = ctx.currentIteration ?? 1;
-        if (iteration !== session.currentIteration + 1) return false;
+        const processId = typeof task.payload.processId === 'string' ? task.payload.processId
+            : task.processId ?? toQueueProcessId(task.id);
+        const check = ctx.finalCheck;
+        const iteration = check?.sourceIteration ?? ctx.currentIteration ?? 1;
+        if (kind === 'final-check') {
+            const saved = session.finalChecks?.at(-1);
+            // A complete iteration phase may still be waiting on its checker/repair.
+            // Match its durable admission so stale step cancellations remain silent.
+            if (!check || !saved || !['queued', 'running'].includes(saved.status)
+                || saved.checkIndex !== check.checkIndex || saved.loopIndex !== check.loopIndex
+                || saved.sourceIteration !== check.sourceIteration || iteration !== session.currentIteration
+                || (saved.processId && saved.processId !== processId)
+                || (repair ? !saved.repairAttempted || saved.processId !== processId : saved.taskId !== task.id)) return false;
+        } else {
+            // The journal records finished iterations; a queued continuation can be one ahead.
+            if (session.phase !== 'executing' || iteration !== session.currentIteration + 1) return false;
+        }
         // Explicit resume can reuse the iteration number. Its live task wins over history.
         if ([...this.deps.queue.getQueued(), ...this.deps.queue.getRunning()].some(active => {
             const activeContext = getRalphContext(active);
@@ -222,7 +239,7 @@ export class DelegatedJobResults {
                 && (activeContext?.currentIteration ?? 1) >= iteration;
         })) return false;
         const record = await this.deps.sessions.recordCompletion(job.child.workspaceId, ctx.sessionId, {
-            reason: 'user-stopped', processId: task.processId ?? toQueueProcessId(task.id),
+            reason: 'user-stopped', processId,
             totalIterations: session.currentIteration, completedAt: new Date().toISOString(),
         });
         if (this.disposed) return true;
