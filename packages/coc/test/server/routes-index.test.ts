@@ -21,6 +21,8 @@ import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/tea
 import { TeamsMessagingManager } from '../../src/server/messaging/teams-messaging-manager';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { isChatPayload } from '../../src/server/tasks/task-types';
+import { DelegatedJobResults } from '../../src/server/delegation/delegated-job-results';
+import { DelegatedJobStore } from '../../src/server/delegation/delegated-job-store';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
@@ -355,7 +357,7 @@ describe('registerAllRoutes', () => {
         expect(routes.length).toBeGreaterThan(30);
     });
 
-    it('subscribes job notices and both messaging answer relays to queue terminal events', () => {
+    it('subscribes delegated results, job notices and both messaging answer relays to queue terminal events', () => {
         const queueFacade = makeQueueFacade();
         const opts = makeOpts({ queueFacade });
         registerAllRoutes([], opts);
@@ -364,8 +366,36 @@ describe('registerAllRoutes', () => {
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
+            'taskCompleted', 'taskFailed', 'taskCancelled',
         ]);
         expect(opts.runtimeConfigService?.onChange).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it('waits for delegated-result recovery before registering a new tool launch', async () => {
+        let finishRestore!: () => void;
+        vi.spyOn(DelegatedJobResults.prototype, 'restore').mockImplementation(() =>
+            new Promise<void>(resolve => { finishRestore = resolve; }));
+        const store = createMockProcessStore();
+        await store.addProcess({ id: 'queue_parent', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: 'Dispatch', metadata: { mode: 'sentinel', workspaceId: 'ws-parent' } });
+        const bridge = makeBridge();
+        const queue = { getStats: () => ({ isPaused: false, isAutopilotPaused: false }), enqueue: vi.fn(input => input.id) };
+        bridge.getOrCreateBridge = vi.fn();
+        bridge.getRepoIdForPath = vi.fn().mockReturnValue('ws-child');
+        bridge.registry.getQueueForRepo = vi.fn().mockReturnValue(queue);
+        let enqueueChat!: (input: CreateTaskInput) => Promise<string>;
+        registerAllRoutes([], makeOpts({ dataDir: tmpDir, store, bridge,
+            setEnqueueChat: value => { enqueueChat = value; } }));
+        const admitted = enqueueChat({ id: 'child', type: 'chat', priority: 'normal', config: {},
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'Fix it', workspaceId: 'ws-child',
+                context: { spawnedFromProcessId: 'queue_parent' } } });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(new DelegatedJobStore(tmpDir).list('ws-parent')).toEqual([]);
+        expect(queue.enqueue).not.toHaveBeenCalled();
+        finishRestore();
+        await expect(admitted).resolves.toBe('child');
+        expect(new DelegatedJobStore(tmpDir).list('ws-parent')).toHaveLength(1);
+        expect(queue.enqueue).toHaveBeenCalledOnce();
     });
 
     it('routes authorized Notes searches through the required scoped service', async () => {

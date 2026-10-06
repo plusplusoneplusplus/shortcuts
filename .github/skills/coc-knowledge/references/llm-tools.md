@@ -183,8 +183,17 @@ Ralph-launch capabilities. It resolves the stored Sentinel parent's workspace in
 of the target, reserves a child task ID, and registers before queue admission. Local
 ordinary jobs and whole Ralph sessions are registered; Ralph continuation/final-check tasks
 use the ordinary lifecycle bridge. Accepted tasks retain tracking after observer errors.
-Non-Sentinel and remote dispatch keep their existing paths. Terminal subscriptions and
-parent review delivery require runtime integration.
+Non-Sentinel and remote dispatch keep their existing paths. Tool admission waits for
+startup result recovery before registering a new job.
+
+`server/delegation/delegated-job-results.ts` subscribes through `onTaskTerminal` and
+records ordinary outcomes in the parent ledger. Startup recovery examines only registered
+children, preferring a scoped queue task to process status; cleared queue history falls
+back to the child's scoped process. Event IDs derive from child workspace/process identity.
+Summaries use response text or the last request's finished assistant turn, with process
+and result-file links. Cancellation stores a fixed notice summary without partial output.
+Missing children settle with failed delivery. Ralph/remote rows and Ralph steps are excluded;
+parent review admission, whole-session results and return transport require integration.
 
 ### list_workspaces
 

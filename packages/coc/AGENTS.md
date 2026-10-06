@@ -103,6 +103,9 @@ references before editing. Paths are package-relative.
   Tool-bound local Sentinel admission reserves the child ID and persists the relationship
   before queue execution; Ralph registration identifies the session at launch only.
   Rejected admission settles delivery as failed; accepted observer errors retain tracking.
+  `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
+  from scoped queue/process records at startup. Tool admission waits for recovery. Exclude
+  Ralph steps and remote jobs; unavailable children settle with a diagnosable failed delivery.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 

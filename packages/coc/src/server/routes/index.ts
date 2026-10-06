@@ -25,6 +25,7 @@ import { cancelConversation } from '../processes/cancel-conversation';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
+import { DelegatedJobResults } from '../delegation/delegated-job-results';
 import { createSentinelDelegationEnqueue } from '../delegation/sentinel-delegation-enqueue';
 import { compactProcess } from '../processes/compact-process';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
@@ -479,9 +480,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // can offer the `send_to_conversation` tool. Reuses the exact machinery
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
-    const enqueueSentinelDelegation = createSentinelDelegationEnqueue({
-        store, jobs: new DelegatedJobStore(dataDir), hasTask: taskId => !!bridge.getTask(taskId),
+    const delegatedJobs = new DelegatedJobStore(dataDir);
+    const delegatedJobResults = new DelegatedJobResults({ jobs: delegatedJobs, store, queue: queueFacade });
+    const delegatedResultsRestored = delegatedJobResults.restore().catch(error =>
+        console.error('[delegated-job-results] Could not restore results:', error));
+    const registerSentinelDelegation = createSentinelDelegationEnqueue({
+        store, jobs: delegatedJobs, hasTask: taskId => !!bridge.getTask(taskId),
     });
+    const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
+        // Recovery must finish before a new registration can look like an interrupted launch.
+        await delegatedResultsRestored;
+        return registerSentinelDelegation(input, enqueue);
+    };
     const delegatedRalphBridge = Object.create(bridgeWithResolvedDefaults) as MultiRepoQueueRouter;
     Object.defineProperty(delegatedRalphBridge, 'enqueue', {
         value: (task: CreateTaskInput) => enqueueSentinelDelegation(task,
@@ -1064,6 +1074,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         whatsappRouter.dispose();
         whatsappRelay.dispose();
         jobNotices.dispose();
+        delegatedJobResults.dispose();
     });
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime
