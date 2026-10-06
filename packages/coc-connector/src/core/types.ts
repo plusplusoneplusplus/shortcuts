@@ -4,6 +4,8 @@
  * internal logic and adapt to these normalized shapes at the boundary.
  */
 
+import type { InboundImage } from './inbound-image';
+
 /** Normalized connection lifecycle across all providers. */
 export type ConnectorStatus =
     | 'disconnected' | 'connecting' | 'authenticating'
@@ -20,6 +22,8 @@ export interface InboundMessage {
     senderName?: string;
     /** Teams senderAadId (WhatsApp: n/a). */
     senderId?: string;
+    /** Available only when the consumer opts into incoming images. */
+    images?: InboundImage[];
     /** Escape hatch for provider-specific fields. */
     raw?: unknown;
 }

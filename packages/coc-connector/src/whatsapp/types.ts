@@ -2,6 +2,8 @@
  * WhatsApp Bot types — standalone, no CoC/forge deps.
  */
 
+import type { InboundImage } from '../core';
+
 export interface InboundWAMessage {
     /** Chat or group that contains the message. */
     chatJid: string;
@@ -15,6 +17,7 @@ export interface InboundWAMessage {
     quotedMessageId?: string;
     text: string;
     senderName?: string;
+    images?: InboundImage[];
 }
 
 export interface BotOptions {
@@ -22,8 +25,10 @@ export interface BotOptions {
     sessionDir: string;
     /** Device name shown in WhatsApp's "Linked Devices" (default: "CoC"). */
     deviceName?: string;
-    /** Called when an inbound text message arrives. */
+    /** Called when an inbound message arrives. Images require receiveImages. */
     onMessage: (msg: InboundWAMessage) => Promise<void>;
+    /** Opt into images and their captions; default false for existing consumers. */
+    receiveImages?: boolean;
     /** If true, print QR to terminal (default: true). */
     printQR?: boolean;
     /** Called when a new QR code is available for pairing. */

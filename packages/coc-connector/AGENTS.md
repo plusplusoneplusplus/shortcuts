@@ -4,7 +4,7 @@ Consolidated messaging connectors behind one `MessagingConnector` contract. No C
 
 ## Layout
 
-- `src/core/` — provider-neutral contract: `MessagingConnector`, `InboundMessage`, `ConnectorStatus`, `SendOptions`, `MessagingTarget`, `MessagingConnectorOptions`. Exported from the package root (`@plusplusoneplusplus/coc-connector`).
+- `src/core/` — provider-neutral contract: `MessagingConnector`, `InboundMessage`, `InboundImage`, `ConnectorStatus`, `SendOptions`, `MessagingTarget`, `MessagingConnectorOptions`. Exported from the package root (`@plusplusoneplusplus/coc-connector`).
 - `src/teams/` — `TeamsBot`, transports, auth, clients. MCP owners can select Graph channel reads independently of discovery/operations; standalone Graph timestamp polling stays opt-in. Exported from `@plusplusoneplusplus/coc-connector/teams`.
 - `src/teams/operations.ts` — typed send/reply/Like contract and fixed per-owner routing.
 - `TeamsBot` selects a poll/admission routine at construction; scheduling, references and errors are shared. Hybrid `mode: mcp, channelReadBackend: graph` uses the ID/thread scanner, not standalone Graph timestamp admission.
@@ -36,6 +36,7 @@ Consolidated messaging connectors behind one `MessagingConnector` contract. No C
 - Baileys + qrcode-terminal are `optionalDependencies` — installed but only loaded by WhatsApp use.
 - The WhatsApp connection factory receives an abort signal from `WhatsAppBot`; stop cancels pending reconnect timers and prevents late callbacks from reviving the bot.
 - WhatsApp inbound messages expose the chat JID, optional group participant JID, and paired-account `fromMe` flag; `senderJid` remains the chat JID for container consumers. `WhatsAppBot.react()` sends a Baileys reaction with a five-second rejection timeout.
+- `WhatsAppBot.receiveImages` opts into captioned/captionless images, preserving native quote/sender metadata and Baileys content normalization. Default consumers retain text-only delivery. `InboundImage.download` is lazy: callers authorize and resolve workspace bindings before download. `core/inbound-image.ts` bounds decoded bytes by the caller's attachment limit and total duration to 30 seconds, checks PNG/JPEG/GIF/WebP signatures, cancels on caller or connector shutdown, and emits sanitized `ImageDownloadError` codes. WhatsApp uses media-key decryption through Baileys on the fixed media origin with redirects disabled.
 - `shared/commands.ts` shares parsing and grouped help (`parseMessagingCommand`, `formatMessagingHelp`) from command/mode specs. `formatMessagingHelpCommands` renders consumer-specific specs, including the container Teams grammar. WhatsApp uses native bold; CoC Teams Markdown passes through its manager to safe HTML; container Teams renders HTML directly. `MESSAGING_HELP_TEXT` is the plain-text fallback.
 - Mode prefixes `/ask`, `/autopilot`, `/ralph`, and `/sentinel` require a slash; an empty body parses as `chat` with empty args (routers ask for a message); plain text leaves mode undefined (callers keep the chat's mode). Explicit `[chatid]` targeting composes with every mode prefix.
 - `whatsapp/message-utils.ts` contains CoC-independent outbound formatting, lossless WhatsApp text chunking, and the container bridge's `[global]` prefix parser. The container bridge uses the helpers without changing its short-message formatting or routing.
