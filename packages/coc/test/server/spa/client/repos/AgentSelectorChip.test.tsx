@@ -2,8 +2,9 @@
  * @vitest-environment jsdom
  * Tests for AgentSelectorChip — rendering, provider selection, disabled state.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { AgentSelectorChip } from '../../../../../src/server/spa/client/react/features/chat/AgentSelectorChip';
 import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 
@@ -45,6 +46,95 @@ const CODEX_UNAVAILABLE: AgentProviderStatus = {
 };
 
 describe('AgentSelectorChip', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    describe('anchored menu', () => {
+        function openAt(top: number, left = 100, height = 120, placement?: 'up' | 'down') {
+            let triggerTop = top;
+            vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+                return this.getAttribute('role') === 'listbox'
+                    ? new DOMRect(0, 0, 140, height) : new DOMRect(left, triggerTop, 80, 22);
+            });
+            render(<div style={{ overflow: 'hidden', transform: 'translateX(0)' }}>
+                <AgentSelectorChip providers={[COPILOT, CODEX_ENABLED]} loading={false}
+                    selected="copilot" onChange={vi.fn()} menuPlacement={placement} />
+            </div>);
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            return { menu: screen.getByTestId('agent-selector-menu'), move: (value: number) => { triggerTop = value; } };
+        }
+
+        it('retains upward composer placement and escapes clipping/stacking ancestors', () => {
+            const { menu } = openAt(400);
+            expect(menu.parentElement).toBe(document.body);
+            expect(menu).toHaveStyle({ position: 'fixed', top: '276px', left: '100px' });
+        });
+
+        it('opens inline controls below, left-aligned to the trigger', () => {
+            expect(openAt(400, 100, 120, 'down').menu).toHaveStyle({ top: '426px', left: '100px' });
+        });
+
+        it('flips near the bottom and clamps at the right edge', () => {
+            expect(openAt(700, 950, 120, 'down').menu).toHaveStyle({ top: '576px', left: '876px' });
+        });
+
+        it('limits oversized menus to the room beside the trigger without covering it', () => {
+            const { menu } = openAt(400, 100, 900, 'down');
+            expect(menu).toHaveStyle({ top: '8px', maxHeight: '388px' });
+            expect(menu.className).toContain('overflow-y-auto');
+        });
+
+        it('tracks ancestor scrolling and viewport resizing while open', () => {
+            const { menu, move } = openAt(400, 100, 120, 'down');
+            move(450);
+            fireEvent.scroll(screen.getByTestId('agent-selector-chip-container'));
+            expect(menu).toHaveStyle({ top: '476px' });
+            move(700);
+            fireEvent(window, new Event('resize'));
+            expect(menu).toHaveStyle({ top: '576px' });
+        });
+
+        it('keeps portal option clicks inside and dismisses outside clicks', () => {
+            const { menu } = openAt(400);
+            fireEvent.mouseDown(screen.getByTestId('agent-option-codex'));
+            expect(menu).toBeInTheDocument();
+            fireEvent.mouseDown(document.body);
+            expect(screen.queryByRole('listbox')).toBeNull();
+        });
+
+        it('supports keyboard navigation, disabled options, selection and Escape focus return', async () => {
+            const user = userEvent.setup();
+            const onChange = vi.fn();
+            render(<AgentSelectorChip providers={[COPILOT, CODEX_DISABLED, AUTO]} loading={false}
+                selected="copilot" onChange={onChange} />);
+            const trigger = screen.getByTestId('agent-selector-chip-btn');
+            trigger.focus();
+            await user.keyboard('{ArrowDown}{ArrowDown}');
+            expect(screen.getByTestId('agent-option-auto')).toHaveFocus();
+            await user.keyboard('{Enter}');
+            expect(onChange).toHaveBeenCalledWith('auto');
+            expect(trigger).toHaveFocus();
+            await user.keyboard('{ArrowDown}{End}{Home}{Escape}');
+            expect(screen.queryByRole('listbox')).toBeNull();
+            expect(trigger).toHaveFocus();
+            expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        });
+
+        it.each([false, true])('Tab follows inline control order (shift=%s)', async shift => {
+            const user = userEvent.setup();
+            vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue([new DOMRect(0, 0, 80, 22)] as unknown as DOMRectList);
+            render(<>
+                <button>Previous control</button>
+                <AgentSelectorChip providers={[COPILOT, CODEX_ENABLED]} loading={false}
+                    selected="copilot" onChange={vi.fn()} />
+                <button>Next control</button>
+            </>);
+            screen.getByTestId('agent-selector-chip-btn').focus();
+            await user.keyboard(shift ? '{ArrowDown}{Shift>}{Tab}{/Shift}' : '{ArrowDown}{Tab}');
+            expect(screen.getByRole('button', { name: shift ? 'Previous control' : 'Next control' })).toHaveFocus();
+            expect(screen.queryByRole('listbox')).toBeNull();
+        });
+    });
+
     describe('chip button display', () => {
         it('shows Copilot when selected is copilot', () => {
             render(
