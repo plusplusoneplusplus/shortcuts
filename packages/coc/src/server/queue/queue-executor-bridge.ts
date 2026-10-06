@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
-import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { isChatPayload, isRalphFinalCheckRepairTurn, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
@@ -692,8 +692,8 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 processStore: this.store,
                 execute: runTask,
             });
-            await this.settleInterruptedRalphIteration(task, result).catch(error => {
-                getLogger().warn(LogCategory.AI, `[Ralph] Failed to persist interrupted iteration outcome: ${error instanceof Error ? error.message : String(error)}`);
+            await this.settleInterruptedRalphTask(task, result).catch(error => {
+                getLogger().warn(LogCategory.AI, `[Ralph] Failed to persist interrupted task outcome: ${error instanceof Error ? error.message : String(error)}`);
             });
             return result;
         } finally {
@@ -701,15 +701,17 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         }
     }
 
-    /** Failed/cancelled execution does not pass through the successful iteration orchestrator. */
-    private async settleInterruptedRalphIteration(task: QueuedTask, result: TaskExecutionResult): Promise<void> {
+    /** Failed/cancelled execution does not pass through successful Ralph orchestration. */
+    private async settleInterruptedRalphTask(task: QueuedTask, result: TaskExecutionResult): Promise<void> {
         const payload = task.payload as unknown as ChatPayload;
         const ctx = payload.context?.ralph;
-        // Follow-ups, checks/repair, submit and grilling have their own lifecycle.
-        if (task.type !== 'chat' || payload.mode !== 'ralph' || payload.processId
-            || !ctx?.sessionId || getRalphTaskKind(ctx) !== 'iteration' || ctx.phase === 'grilling'
+        const kind = getRalphTaskKind(ctx);
+        const repair = isRalphFinalCheckRepairTurn(task.payload);
+        // Ordinary follow-ups, submit and grilling keep their own lifecycle.
+        if (task.type !== 'chat' || payload.mode !== 'ralph' || (payload.processId && !repair)
+            || !ctx?.sessionId || kind === 'submit' || ctx.phase === 'grilling'
             || !payload.workspaceId || !this.dataDir) return;
-        const processId = task.processId ?? toQueueProcessId(task.id);
+        const processId = payload.processId ?? task.processId ?? toQueueProcessId(task.id);
         const process = await this.store.getProcess(processId, payload.workspaceId);
         const cancelled = this.cancelledTasks.has(task.id)
             || (process?.metadata?.workspaceId === payload.workspaceId && process.status === 'cancelled');
@@ -720,11 +722,30 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         if (session?.phase === 'awaiting-input' || session?.phase === 'grilling'
             || session?.terminalReason === 'USER_STOPPED'
             || (session && session.currentIteration > (ctx.currentIteration ?? 1))) return;
+        const check = ctx.finalCheck;
+        if (check && !session?.completion) {
+            const saved = session?.finalChecks?.find(item => item.checkIndex === check.checkIndex);
+            // Only the current admitted checker (or its one repair) can end the
+            // session. Completed checks and checks from an earlier loop are stale.
+            if (!saved || !['queued', 'running'].includes(saved.status)
+                || saved.sourceIteration !== check.sourceIteration || saved.loopIndex !== check.loopIndex
+                || (session?.finalChecks?.at(-1)?.checkIndex !== check.checkIndex)
+                || (saved.processId && saved.processId !== processId)
+                || (repair ? !saved.repairAttempted : saved.taskId !== task.id)) return;
+        }
         const record = await journal.recordCompletion(payload.workspaceId, ctx.sessionId, {
-            reason: cancelled ? 'user-stopped' : 'iteration-failed',
-            processId, totalIterations: ctx.currentIteration ?? 1,
+            reason: cancelled ? 'user-stopped' : check ? 'final-check-failed' : 'iteration-failed',
+            processId, totalIterations: check?.sourceIteration ?? ctx.currentIteration ?? 1,
             completedAt: new Date().toISOString(),
         });
+        if (check && !session?.completion) {
+            // Independent completion is authoritative even if step metadata fails.
+            await journal.upsertFinalCheckRecord(payload.workspaceId, ctx.sessionId, check.checkIndex, {
+                status: 'failed', completedAt: record.completion!.completedAt,
+            }).catch(error => {
+                getLogger().warn(LogCategory.AI, `[Ralph] Failed to persist interrupted check metadata: ${error instanceof Error ? error.message : String(error)}`);
+            });
+        }
         const completion = record.completion!;
         this.broadcastRalphSessionComplete(payload.workspaceId, ctx.sessionId, completion.processId,
             completion.totalIterations, completion.reason);

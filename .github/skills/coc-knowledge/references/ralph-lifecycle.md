@@ -21,12 +21,18 @@ writes fail. Outcome replay admits no further work. Explicit extension, new-loop
 awaiting-input and admitted resume transitions clear the record; rejected resume restores it.
 Unavailable sessions retain their live failure and recover as unavailable children.
 
-The queue bridge settles failed or cancelled execution iterations before returning their
-execution result. `iteration-failed` requests a result review; `user-stopped` requests only a
-passive notice. Persistence precedes publication, and failed writes withhold publication.
-The first completion wins. Late failures cannot settle paused, stopped or newer iterations.
-Follow-ups, checks/repair, submit and grilling retain their own lifecycle. Interrupted sessions
-keep their executing phase so explicit resume stays available; completion grants no retry.
+The queue bridge settles failed or cancelled execution iterations and admitted final-check/
+format-repair tasks before returning their execution result. `iteration-failed` and
+`final-check-failed` request result reviews; `user-stopped` requests a passive notice.
+Persistence precedes publication; failed outcome writes withhold publication. Check metadata
+is best effort after the independent outcome write. The first completion wins.
+
+Late results cannot settle paused, stopped or newer iterations. Checker settlement requires
+the current queued/running check's index, source iteration, loop and process identity; the
+original task must match, or a repair must have its persisted attempt. Failed/cancelled
+repairs bypass result parsing, including when follow-up execution saves failure without
+throwing. Ordinary follow-ups, submit and grilling retain their own lifecycle. Interrupted
+sessions remain resumable; completion grants no retry.
 
 Queued execution-iteration cancellations settle through the registered result recorder because
 these tasks never enter the executor. It persists `user-stopped` before returning the passive

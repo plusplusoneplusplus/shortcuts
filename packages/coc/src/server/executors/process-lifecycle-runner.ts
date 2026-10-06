@@ -602,6 +602,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 if (opts.onRalphNext && isRalphFinalCheckRepairTurn(task.payload)) {
                     try {
                         const proc = await this.store.getProcess(followUpPayload.processId!);
+                        // Follow-up execution persists failures without throwing. Never
+                        // interpret an earlier checker response as a successful repair.
+                        if (proc?.status !== 'completed' || opts.cancelledTasks.has(task.id)) {
+                            return { success: false, error: new Error(proc?.error ?? 'Ralph final-check repair did not complete'), durationMs: duration };
+                        }
                         const lastAssistant = [...(proc?.conversationTurns ?? [])]
                             .reverse()
                             .find(turn => turn.role === 'assistant');

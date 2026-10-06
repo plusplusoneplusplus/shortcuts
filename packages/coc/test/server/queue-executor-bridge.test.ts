@@ -8664,12 +8664,121 @@ describe('interrupted delegated Ralph iteration settlement', () => {
         expect((await journal.readSessionRecord(workspaceId, sessionId))?.completion).toBeUndefined();
     });
 
-    it.each(['final-check', 'repair', 'submit', 'follow-up', 'grilling'])('does not settle the session for a failed %s task', async kind => {
+    async function checkTask(repair = false): Promise<QueuedTask> {
         const running = task();
         const payload = running.payload as any;
-        if (kind === 'final-check' || kind === 'repair') payload.context.ralph.finalCheck = { checkIndex: 1, repairTurn: kind === 'repair' };
+        payload.context.ralph.finalCheck = { kind: 'goal-gap-check', checkIndex: 1,
+            sourceIteration: 2, loopIndex: 1, ...(repair ? { repairTurn: true } : {}) };
+        await journal.updateSessionRecord(workspaceId, sessionId, record => ({ ...record!,
+            phase: 'complete', currentIteration: 2 }));
+        await journal.upsertFinalCheckRecord(workspaceId, sessionId, 1, {
+            status: 'running', sourceIteration: 2, loopIndex: 1, taskId: running.id,
+            processId: 'queue_interrupted-iteration', startedAt: new Date().toISOString(),
+            ...(repair ? { repairAttempted: true } : {}),
+        });
+        if (repair) {
+            running.id = 'repair-follow-up';
+            running.processId = payload.processId = 'queue_interrupted-iteration';
+            const parent = createCompletedProcessWithSession(running.processId, 'sdk-check');
+            parent.metadata = { ...parent.metadata, workspaceId, mode: 'ralph', provider: 'copilot' };
+            await store.addProcess(parent);
+        }
+        return running;
+    }
+
+    it.each([false, true])('persists a failed checker/repair as one whole-session outcome (repair=%s)', async repair => {
+        const running = await checkTask(repair);
+        const complete = vi.fn();
+        const queue = new TaskQueueManager();
+        const bridge = new CLITaskExecutor(store, { dataDir, onRalphSessionComplete: complete });
+        bridge.setQueueManager(queue);
+        const result = await bridge.execute(running);
+        expect(result.success).toBe(false);
+        expect(mockSendMessage).toHaveBeenCalledOnce();
+        expect(complete).toHaveBeenCalledOnce();
+        expect(complete.mock.calls[0][0]).toMatchObject({ reason: 'final-check-failed',
+            processId: 'queue_interrupted-iteration', totalIterations: 2 });
+        const saved = await journal.readSessionRecord(workspaceId, sessionId);
+        expect(saved?.completion?.reason).toBe('final-check-failed');
+        expect(saved?.finalChecks?.[0].status).toBe('failed');
+        expect(queue.getQueued()).toEqual([]);
+    });
+
+    it.each([false, true])('cancels the running checker/repair without interpreting its response (repair=%s)', async repair => {
+        const running = await checkTask(repair);
+        const pending = deferred<any>();
+        mockSendMessage.mockImplementationOnce(() => pending.promise);
+        const complete = vi.fn();
+        const queue = new TaskQueueManager();
+        const bridge = new CLITaskExecutor(store, { dataDir, onRalphSessionComplete: complete });
+        bridge.setQueueManager(queue);
+        const execution = bridge.execute(running);
+        await waitForCondition(() => mockSendMessage.mock.calls.length === 1);
+        bridge.cancel(running.id);
+        pending.resolve({ success: true, response: 'Partial checker response', sessionId: 'sdk-check' });
+        await execution;
+        expect(complete).toHaveBeenCalledOnce();
+        expect(complete.mock.calls[0][0]).toMatchObject({ reason: 'user-stopped', totalIterations: 2 });
+        expect((await journal.readSessionRecord(workspaceId, sessionId))?.completion?.reason).toBe('user-stopped');
+        expect(queue.getQueued()).toEqual([]);
+    });
+
+    it.each(['newer-check', 'newer-loop', 'settled-check', 'wrong-process', 'wrong-task', 'unregistered-repair', 'paused'])
+    ('ignores interrupted checker results for %s', async state => {
+        const running = await checkTask(state === 'unregistered-repair');
+        if (state === 'newer-check') await journal.upsertFinalCheckRecord(workspaceId, sessionId, 2, {
+            status: 'running', sourceIteration: 2, loopIndex: 1, startedAt: new Date().toISOString() });
+        if (state === 'newer-loop' || state === 'paused') await journal.updateSessionRecord(workspaceId, sessionId,
+            record => ({ ...record!, ...(state === 'paused' ? { phase: 'awaiting-input' as const } : { currentIteration: 3 }) }));
+        if (['settled-check', 'wrong-process', 'wrong-task', 'unregistered-repair'].includes(state)) {
+            await journal.upsertFinalCheckRecord(workspaceId, sessionId, 1, {
+                ...(state === 'settled-check' ? { status: 'completed' as const } : {}),
+                ...(state === 'wrong-process' ? { processId: 'queue_other' } : {}),
+                ...(state === 'wrong-task' ? { taskId: 'other-task' } : {}),
+                ...(state === 'unregistered-repair' ? { repairAttempted: false } : {}),
+            });
+        }
+        const complete = vi.fn();
+        await new CLITaskExecutor(store, { dataDir, onRalphSessionComplete: complete }).execute(running);
+        expect(complete).not.toHaveBeenCalled();
+        expect((await journal.readSessionRecord(workspaceId, sessionId))?.completion).toBeUndefined();
+    });
+
+    it('recovers a checker failure from the independent outcome after lost publication and metadata writes', async () => {
+        const running = await checkTask();
+        vi.spyOn(RalphSessionStore.prototype, 'upsertFinalCheckRecord').mockRejectedValue(new Error('Metadata failed'));
+        const publish = vi.fn(() => { throw new Error('Publication failed'); });
+        await new CLITaskExecutor(store, { dataDir, onRalphSessionComplete: publish }).execute(running);
+        store.getWorkspaces = vi.fn().mockResolvedValue([{ id: 'parent-workspace' }, { id: workspaceId }]);
+        const jobs = new DelegatedJobStore(dataDir);
+        jobs.register({ id: 'job', title: 'Delegated goal',
+            parent: { workspaceId: 'parent-workspace', processId: 'queue_parent' },
+            child: { workspaceId, processId: 'queue_first-iteration', sessionId } });
+        const results = new DelegatedJobResults({ jobs, store, queue: new TaskQueueManager(),
+            sessions: new RalphSessionStore({ dataDir }) });
+        try {
+            await results.restore();
+            const saved = jobs.list('parent-workspace')[0];
+            expect(saved.terminal?.result).toMatchObject({ outcome: 'failed', reason: 'final-check-failed' });
+            await results.restore();
+            expect(jobs.list('parent-workspace')[0]).toEqual(saved);
+        } finally { results.dispose(); }
+    });
+
+    it('withholds checker publication when independent completion persistence fails', async () => {
+        const running = await checkTask();
+        vi.spyOn(RalphSessionStore.prototype, 'recordCompletion').mockRejectedValue(new Error('Disk full'));
+        const complete = vi.fn();
+        await new CLITaskExecutor(store, { dataDir, onRalphSessionComplete: complete }).execute(running);
+        expect(complete).not.toHaveBeenCalled();
+        expect((await journal.readSessionRecord(workspaceId, sessionId))?.completion).toBeUndefined();
+    });
+
+    it.each(['submit', 'follow-up', 'grilling'])('does not settle the session for a failed %s task', async kind => {
+        const running = task();
+        const payload = running.payload as any;
         if (kind === 'submit') payload.context.ralph.submit = { submitIndex: 1 };
-        if (kind === 'follow-up' || kind === 'repair') payload.processId = 'queue_existing';
+        if (kind === 'follow-up') payload.processId = 'queue_existing';
         if (kind === 'grilling') payload.context.ralph.phase = 'grilling';
         const complete = vi.fn();
         await new CLITaskExecutor(store, { dataDir, onRalphSessionComplete: complete }).execute(running);
