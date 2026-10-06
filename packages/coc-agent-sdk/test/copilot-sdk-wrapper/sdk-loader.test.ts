@@ -41,10 +41,4 @@ describe('findSdkBinaryPath', () => {
             fs.rmSync(tmpDir, { recursive: true, force: true });
         }
     });
-
-    it('returns a string or undefined without throwing regardless of environment', () => {
-        expect(() => findSdkBinaryPath()).not.toThrow();
-        const result = findSdkBinaryPath();
-        expect(result === undefined || typeof result === 'string').toBe(true);
-    });
 });

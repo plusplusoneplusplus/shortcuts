@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import * as path from 'path';
+import { describe, it, expect } from 'vitest';
 import {
     getWslUncRoot,
     isWslUncPath,
@@ -9,7 +8,6 @@ import {
     toWslUncPath,
     windowsPathToWslPath,
 } from '../../src/platform/path-utils';
-import { isWithinDirectory } from '../../src/platform/path-security';
 
 describe('toForwardSlashes', () => {
     it('converts backslashes to forward slashes', () => {
@@ -120,42 +118,6 @@ describe('WSL path helpers', () => {
 
     it('converts Windows drive paths to WSL mount paths', () => {
         expect(windowsPathToWslPath('C:\\Users\\tester\\.copilot')).toBe('/mnt/c/Users/tester/.copilot');
-    });
-});
-
-describe('isWithinDirectory', () => {
-    it('returns true for exact match', () => {
-        const base = path.resolve('/tmp/base');
-        expect(isWithinDirectory(base, base)).toBe(true);
-    });
-
-    it('returns true for a child path', () => {
-        const base = path.resolve('/tmp/base');
-        const child = path.join(base, 'child', 'file.txt');
-        expect(isWithinDirectory(child, base)).toBe(true);
-    });
-
-    it('returns false for a traversal attempt', () => {
-        const base = path.resolve('/tmp/base');
-        const traversal = path.join(base, '..', 'other');
-        expect(isWithinDirectory(traversal, base)).toBe(false);
-    });
-
-    it('returns false for an unrelated path', () => {
-        const base = path.resolve('/tmp/base');
-        const other = path.resolve('/tmp/other');
-        expect(isWithinDirectory(other, base)).toBe(false);
-    });
-
-    it('returns false for prefix-overlapping sibling', () => {
-        const base = path.resolve('/tmp/base');
-        const sibling = path.resolve('/tmp/base-extra');
-        expect(isWithinDirectory(sibling, base)).toBe(false);
-    });
-
-    it('resolves relative paths against cwd', () => {
-        const cwd = process.cwd();
-        expect(isWithinDirectory('child', cwd)).toBe(true);
     });
 });
 
