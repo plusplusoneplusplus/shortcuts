@@ -367,14 +367,14 @@ references before editing. Paths are package-relative.
   clears pending ones; approvals stay dashboard-only. Ordinary replies preserve
   recognized choice/boolean/array mappings and pass other non-empty text to the
   AI unchanged apart from trimming. Only exact `skip` skips; empty replies reject.
-- Chats handed off by `send_to_conversation` create mode from a WhatsApp/Teams turn
-  (origin via the ask_user relay's `locateOrigin`; local targets only, not Ralph) get
-  `metadata.messagingOrigin` and a direct notice `<repo> · <title> · ✅/❌/⏹` per
-  finished turn through `src/server/messaging/job-notices.ts` (per-repo
-  `messaging-job-notices.json`: pending → sending → done per task; interrupted sends are
-  never resent). WhatsApp binds the notice (`notice: true`) so a quote-reply follows up
-  the job; Teams posts it top-level and binds it as a thread root. Neither changes the
-  selected repo/topic; follow-up mode is kept.
+- Local ordinary connector handoffs carry `metadata.messagingOrigin` and use
+  `messaging/job-notices.ts` for direct completion notices. Sentinel first-turn notices
+  wait for matching parent delegation at the same connector/group/thread. Suppress only
+  with durable parent result outbox coverage; failed parent delivery releases a safe child
+  fallback. Review admission/settlement reconciles held notices. Later child turns and
+  compaction retain direct notices. Receipt states persist per workspace; interrupted sends
+  are quarantined. WhatsApp binds replies to the notice's chat; Teams uses the captured
+  parent thread for results or binds a top-level child notice. Selection remains unchanged.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

@@ -484,10 +484,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
-    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade });
+    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade, delegatedJobs });
     const delegatedJobReviews = new DelegatedJobReviews({
         jobs: delegatedJobs, store, queue: queueFacade,
         queueMessagingResult: result => jobNotices.queueResult(result),
+        reconcileMessagingNotices: () => jobNotices.reconcile(),
         delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
         recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
     });

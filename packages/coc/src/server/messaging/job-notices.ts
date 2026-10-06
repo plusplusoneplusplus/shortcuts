@@ -17,6 +17,7 @@
 
 import * as fs from 'node:fs';
 import { toQueueProcessId, toTaskId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
+import type { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { getRepoDataPath } from '../paths';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { atomicWriteJsonUnique } from '../shared/fs-utils';
@@ -108,6 +109,7 @@ export class MessagingJobNotices {
 
     constructor(private readonly deps: {
         dataDir: string;
+        delegatedJobs?: Pick<DelegatedJobStore, 'list'>;
         store: Pick<ProcessStore, 'getProcess' | 'getWorkspaces'>;
         queue: Pick<ScheduleQueueEventBus, 'on' | 'off'> & { getAll?: () => QueuedTask[] };
     }) {
@@ -233,6 +235,16 @@ export class MessagingJobNotices {
                     if (!transport?.connected(job.origin.chatKey)) return;
                     const entry = job.pending[0];
                     const notice = await this.buildNotice(job, entry.status);
+                    const policy = await this.directNoticePolicy(job, entry.taskId);
+                    if (policy === 'wait') return;
+                    if (policy === 'suppress') {
+                        const done = job.done;
+                        job.pending.shift();
+                        job.done = [...done, entry.taskId].slice(-MAX_DONE);
+                        try { this.save(job.workspaceId); }
+                        catch (error) { job.pending.unshift(entry); job.done = done; throw error; }
+                        continue;
+                    }
                     job.pending.shift();
                     job.sending = entry.taskId;
                     this.save(job.workspaceId);
@@ -259,6 +271,32 @@ export class MessagingJobNotices {
         } finally {
             this.active.delete(job);
         }
+    }
+
+    /** Only the original ordinary turn shares the parent's result; later child turns keep their notices. */
+    private async directNoticePolicy(job: NoticeJob, taskId: string): Promise<'send' | 'wait' | 'suppress'> {
+        if (!this.deps.delegatedJobs || job.result || job.taskId || taskId !== toTaskId(job.processId)) return 'send';
+        for (const workspace of await this.deps.store.getWorkspaces()) {
+            const delegation = this.deps.delegatedJobs.list(workspace.id).find(row =>
+                !row.child.serverId && !row.child.sessionId
+                && row.child.workspaceId === job.workspaceId && row.child.processId === job.processId
+                && row.messagingOrigin?.connector === job.origin.connector
+                && row.messagingOrigin.chatKey === job.origin.chatKey
+                && row.messagingOrigin.threadId === job.origin.threadId);
+            if (!delegation) continue;
+            const delivery = delegation.terminal?.delivery;
+            if (delivery?.state === 'failed') return 'send';
+            if (delivery?.state === 'queued' || delivery?.state === 'delivered') {
+                // Durable outbox coverage, including the crash window before ledger acknowledgement.
+                if (this.load(workspace.id).some(row => row.result && row.taskId === delivery.receiptId
+                    && row.processId === delegation.parent.processId
+                    && row.origin.connector === job.origin.connector && row.origin.chatKey === job.origin.chatKey
+                    && row.origin.threadId === job.origin.threadId)) return 'suppress';
+                if (delivery.state === 'delivered') return 'send';
+            }
+            return 'wait';
+        }
+        return 'send';
     }
 
     private async buildNotice(job: NoticeJob, status: RelayTerminalStatus): Promise<JobNotice> {

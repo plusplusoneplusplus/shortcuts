@@ -381,17 +381,20 @@ errors. Azure CLI sign-in alone does not grant consent; failed reads never fall 
 
 ### Messaging job completion notices
 
-`messaging/job-notices.ts` (`MessagingJobNotices`) posts a direct notice (no AI turn)
-`<repo> · <title> · ✅|❌|⏹` to the originating group/channel each time a chat handed off
-by `send_to_conversation` from a connector turn ends a turn (first turn and every follow-up,
-matched by `onTaskTerminal` on the job's processId). Failures add `findRequestFailureText`
-(fixed text or a recognized usage-limit reset). The executor's per-turn
-`sendToConversationRuntimeFor(processId, relayRequestId | taskId)` resolves the origin through
-`AskUserQuestionRelayHub.locateOrigin`; the tool then calls `track`. The ledger is
-`repos/<workspaceId>/messaging-job-notices.json` (`atomicWriteJsonUnique`): terminal turns are
-`pending` before send, `sending` during it (a restart there marks it done, never resent),
-then `done` per queue task id. `restore()` at route setup also queues first turns that ended
-while the server was down; connector reconnects call `reconcile(platform)`. Transports:
+`messaging/job-notices.ts` (`MessagingJobNotices`) tracks connector-originated jobs by
+workspace/process and terminal task. Ordinary Sentinel first-turn notices wait for the
+matching parent-owned delegation, with the same connector/group/thread. A persisted parent
+result outbox receipt suppresses the child notice, including before ledger acknowledgement;
+failed parent delivery releases one safe child fallback. Review admission and settlement
+reconcile held notices. Later child turns and compaction retain direct notices. Non-Sentinel
+jobs use direct notices immediately. Failures use fixed text or a recognized usage-limit reset.
+
+The executor's per-turn `sendToConversationRuntimeFor` resolves the origin through
+`AskUserQuestionRelayHub.locateOrigin`; the tool calls `track`. The ledger lives at
+`repos/<workspaceId>/messaging-job-notices.json`: terminal turns persist as `pending`,
+sends persist as `sending`, and sent/suppressed tasks become `done`. Interrupted sends are
+quarantined. Restore recovers first-turn terminals; reconnect calls `reconcile(platform)`.
+Transports:
 `createWhatsAppNoticeTransport` sends unquoted plain text and binds the notice as a
 `WhatsAppBinding` with `notice: true`, so a quote-reply follows up the job (mode kept by the
 follow-up resolver) without `selectTopic`; `TeamsAnswerRelay.noticeTransport()` posts a

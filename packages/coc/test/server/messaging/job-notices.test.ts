@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toQueueProcessId, type ProcessStore, type QueuedTask } from '@plusplusoneplusplus/forge';
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
-import { MessagingJobNotices, formatJobNotice, type JobNoticeTransport } from '../../../src/server/messaging/job-notices';
+import { MessagingJobNotices, formatJobNotice, type JobNoticeTransport, type MessagingJobOrigin } from '../../../src/server/messaging/job-notices';
 import { AskUserQuestionRelayHub } from '../../../src/server/messaging/ask-user-relay';
 import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-bindings';
 import { createWhatsAppNoticeTransport, createWhatsAppQuestionTransport } from '../../../src/server/messaging/whatsapp-answer-relay';
@@ -14,6 +14,7 @@ import { WhatsAppNotConnectedError } from '../../../src/server/messaging/whatsap
 import { TeamsAnswerRelay, teamsQuestionChatKey } from '../../../src/server/messaging/teams-answer-relay';
 import { TeamsCommandRouter } from '../../../src/server/messaging/teams-command-router';
 import { TeamsMessageNotSentError } from '../../../src/server/messaging/teams-messaging-manager';
+import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { getRepoDataPath } from '../../../src/server/paths';
 
 const WS = 'ws-a';
@@ -44,9 +45,10 @@ describe('MessagingJobNotices', () => {
     let hubs: MessagingJobNotices[];
     let posted: Array<{ chatKey: string; text: string; processId: string }>;
     let online: boolean;
+    let delegatedJobs: DelegatedJobStore | undefined;
 
-    const transport = (): JobNoticeTransport => ({
-        platform: 'whatsapp',
+    const transport = (platform: 'whatsapp' | 'teams' = 'whatsapp'): JobNoticeTransport => ({
+        platform,
         connected: () => online,
         post: async (chatKey, notice) => {
             const { line, detail } = formatJobNotice(notice);
@@ -55,8 +57,9 @@ describe('MessagingJobNotices', () => {
         },
     });
     const makeHub = () => {
-        const hub = new MessagingJobNotices({ dataDir, store, queue });
+        const hub = new MessagingJobNotices({ dataDir, store, queue, delegatedJobs });
         hub.register(transport());
+        hub.register(transport('teams'));
         hubs.push(hub);
         return hub;
     };
@@ -76,11 +79,100 @@ describe('MessagingJobNotices', () => {
         hubs = [];
         posted = [];
         online = true;
+        delegatedJobs = undefined;
     });
 
     afterEach(() => {
         for (const hub of hubs) hub.dispose();
         fs.rmSync(dataDir, { recursive: true, force: true });
+    });
+
+    function registerDelegation(origin: MessagingJobOrigin = { connector: 'whatsapp', chatKey: GROUP }) {
+        delegatedJobs = new DelegatedJobStore(dataDir);
+        vi.mocked(store.getWorkspaces).mockResolvedValue([{ id: 'ws-parent', name: 'Parent' }, { id: WS, name: 'Alpha' }] as never);
+        delegatedJobs.register({ id: JOB, title: 'Fix login', parent: { workspaceId: 'ws-parent', processId: 'sentinel' },
+            child: { workspaceId: WS, processId: JOB }, messagingOrigin: origin });
+        return delegatedJobs;
+    }
+
+    it.each([['whatsapp', 'completed'], ['whatsapp', 'failed'], ['whatsapp', 'cancelled'],
+        ['teams', 'completed'], ['teams', 'failed'], ['teams', 'cancelled']] as const)(
+        'defers the original %s %s notice and suppresses it after durable parent return across restart', async (connector, status) => {
+            const origin = { connector, chatKey: GROUP, ...(connector === 'teams' ? { threadId: 'original-thread' } : {}) };
+            const ledger = registerDelegation(origin);
+            const hub = makeHub();
+            hub.track({ processId: JOB, workspaceId: WS, origin });
+            job([], status);
+            terminal(queue, 'job-task', status);
+            await flush();
+            await hub.reconcile();
+            expect(posted).toEqual([]); // Registration already blocks the notice before terminal recording races it.
+            ledger.recordResult('ws-parent', JOB, { terminalEventId: 'terminal', outcome: status, summary: '', links: [] });
+            ledger.updateDelivery('ws-parent', JOB, 'pending', { state: 'queued', receiptId: 'review' });
+            await hub.reconcile();
+            expect(posted).toEqual([]); // Review admission alone is not coverage.
+            online = false;
+            hub.queueResult({ processId: 'sentinel', workspaceId: 'ws-parent', receiptId: 'review',
+                origin, repo: 'Alpha', title: 'Fix login', body: 'Parent result', status });
+            hub.dispose();
+            const restarted = makeHub();
+            await restarted.restore();
+            online = true;
+            await restarted.reconcile(); // Outbox persists even if the delegation acknowledgement was lost.
+            terminal(queue, 'job-task', status);
+            await flush();
+            expect(posted).toHaveLength(1);
+            expect(posted[0].processId).toBe('sentinel');
+            expect(JSON.parse(fs.readFileSync(getRepoDataPath(dataDir, WS, 'messaging-job-notices.json'), 'utf8'))[0].done).toEqual(['job-task']);
+            terminal(queue, 'later-child-turn', 'completed');
+            await flush();
+            expect(posted.map(row => row.processId)).toEqual(['sentinel', JOB]);
+        });
+
+    it.each(['pending', 'queued'] as const)('falls back to one child notice when a %s parent review fails', async state => {
+        const ledger = registerDelegation();
+        const hub = makeHub();
+        hub.track({ processId: JOB, workspaceId: WS, origin: { connector: 'whatsapp', chatKey: GROUP } });
+        job([], 'failed');
+        terminal(queue, 'job-task', 'failed');
+        await flush();
+        ledger.recordResult('ws-parent', JOB, { terminalEventId: 'terminal', outcome: 'failed', summary: '', links: [] });
+        if (state === 'queued') ledger.updateDelivery('ws-parent', JOB, 'pending', { state: 'queued', receiptId: 'review' });
+        ledger.updateDelivery('ws-parent', JOB, state, { state: 'failed', reason: 'Parent unavailable or review failed.' });
+        await hub.reconcile();
+        await hub.reconcile();
+        expect(posted).toHaveLength(1);
+        expect(posted[0].processId).toBe(JOB);
+    });
+
+    it('keeps direct notices when parent return targets a different connector route', async () => {
+        registerDelegation({ connector: 'whatsapp', chatKey: 'different-group' });
+        const hub = makeHub();
+        hub.track({ processId: JOB, workspaceId: WS, origin: { connector: 'whatsapp', chatKey: GROUP } });
+        job([]);
+        terminal(queue, 'job-task', 'completed');
+        await flush();
+        await hub.reconcile();
+        expect(posted).toHaveLength(1);
+    });
+
+    it('withholds a notice on unreadable delegation state and recovers without losing it', async () => {
+        const ledger = registerDelegation();
+        const hub = makeHub();
+        hub.track({ processId: JOB, workspaceId: WS, origin: { connector: 'whatsapp', chatKey: GROUP } });
+        job([]);
+        const read = vi.spyOn(ledger, 'list').mockImplementation(() => { throw new Error('ledger unavailable'); });
+        const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+        terminal(queue, 'job-task', 'completed');
+        await flush();
+        await expect(hub.reconcile()).rejects.toThrow('ledger unavailable');
+        expect(posted).toEqual([]);
+        read.mockRestore();
+        ledger.recordResult('ws-parent', JOB, { terminalEventId: 'terminal', outcome: 'completed', summary: '', links: [] },
+            { state: 'failed', reason: 'Parent missing' });
+        await hub.reconcile();
+        expect(posted).toHaveLength(1);
+        log.mockRestore();
     });
 
     it('persists parent review output and replays once after reconnect and restart', async () => {

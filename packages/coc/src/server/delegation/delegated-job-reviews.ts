@@ -40,10 +40,11 @@ export class DelegatedJobReviews {
         delivery: Pick<ProcessMessageDeliveryService, 'deliverOnce' | 'deliverNoticeOnce'>;
         queue: ScheduleQueueEventBus;
         queueMessagingResult?: MessagingJobNotices['queueResult'];
+        reconcileMessagingNotices?: () => Promise<void>;
         recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
     }) {
         this.unsubscribe = onTaskTerminal(deps.queue, task => {
-            void this.settleTask({ ...task, payload: { ...task.payload } }).catch(error =>
+            void this.settleTask({ ...task, payload: { ...task.payload } }).then(() => this.reconcileNotices()).catch(error =>
                 console.error('[delegated-job-reviews] Could not settle review:', error));
         });
     }
@@ -61,9 +62,17 @@ export class DelegatedJobReviews {
         const receiptId = delegatedReviewReceipt(job);
         const existing = this.inFlight.get(receiptId);
         if (existing) return existing;
-        const work = this.admit(job, receiptId).finally(() => this.inFlight.delete(receiptId));
+        const work = this.admit(job, receiptId).finally(async () => {
+            this.inFlight.delete(receiptId);
+            await this.reconcileNotices();
+        });
         this.inFlight.set(receiptId, work);
         return work;
+    }
+
+    private async reconcileNotices(): Promise<void> {
+        try { await this.deps.reconcileMessagingNotices?.(); }
+        catch (error) { console.error('[delegated-job-reviews] Could not reconcile direct notices:', error); }
     }
 
     private async admit(job: DelegatedJob, receiptId: string): Promise<void> {

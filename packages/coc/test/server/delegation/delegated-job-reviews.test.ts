@@ -7,6 +7,7 @@ import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
 import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { MessagingJobNotices } from '../../../src/server/messaging/job-notices';
 import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { DelegatedJobReviews, delegatedReviewReceipt } from '../../../src/server/delegation/delegated-job-reviews';
@@ -27,12 +28,13 @@ describe('delegated success/failure review scheduling', () => {
     let reviews: DelegatedJobReviews;
     let recorder: DelegatedJobResults;
     let queueMessagingResult: ReturnType<typeof vi.fn>;
+    let reconcileMessagingNotices: ReturnType<typeof vi.fn>;
 
     function wire() {
         delivery = new ProcessMessageDeliveryService({ store, bridge });
         const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service });
         executor.setQueueManager(queue);
-        reviews = new DelegatedJobReviews({ jobs, store, delivery, queue, queueMessagingResult,
+        reviews = new DelegatedJobReviews({ jobs, store, delivery, queue, queueMessagingResult, reconcileMessagingNotices,
             recoverPendingMessages: (workspaceId, processId) => executor.recoverPendingMessages(workspaceId, processId),
         });
         recorder = new DelegatedJobResults({ jobs, store, queue, onResult: job => reviews.schedule(job) });
@@ -61,6 +63,7 @@ describe('delegated success/failure review scheduling', () => {
             }, steerProcess: vi.fn(), executeFollowUp: vi.fn(),
         } as unknown as QueueExecutorBridge;
         queueMessagingResult = vi.fn();
+        reconcileMessagingNotices = vi.fn().mockResolvedValue(undefined);
         wire();
     });
 
@@ -232,6 +235,7 @@ describe('delegated success/failure review scheduling', () => {
         else queue.cancelTask(id);
         await flush();
         expect(row().terminal?.delivery.state).toBe(status === 'completed' ? 'delivered' : 'failed');
+        expect(reconcileMessagingNotices).toHaveBeenCalled();
         await restart();
         expect(bridge.enqueue).toHaveBeenCalledOnce();
     });
@@ -245,6 +249,37 @@ describe('delegated success/failure review scheduling', () => {
             outcome, summary: 'Untrusted child answer', links: [] });
         return jobs.list(parentWorkspace).find(job => job.id === 'connector-child')!;
     }
+
+    it.each(['completed', 'failed', 'cancelled'] as const)('reconciles the real child outbox after the parent review %s', async status => {
+        const origin = { connector: 'teams' as const, chatKey: 'original-channel', threadId: 'original-thread' };
+        const child = 'queue_noticechild';
+        jobs.register({ id: child, title: 'Notice child', parent: { workspaceId: parentWorkspace, processId: parentId },
+            child: { workspaceId: childWorkspace, processId: child }, messagingOrigin: origin });
+        const notices = new MessagingJobNotices({ dataDir: directory, store, queue, delegatedJobs: jobs });
+        const post = vi.fn().mockResolvedValue('external-message');
+        notices.register({ platform: 'teams', connected: () => true, post });
+        notices.track({ workspaceId: childWorkspace, processId: child, origin });
+        queueMessagingResult.mockImplementation(result => notices.queueResult(result));
+        reconcileMessagingNotices.mockImplementation(() => notices.reconcile());
+        try {
+            const childTask = queue.enqueue({ id: 'noticechild', type: 'chat', processId: child,
+                repoId: childWorkspace, payload: { kind: 'chat', workspaceId: childWorkspace, processId: child, prompt: 'Do job' } });
+            queue.markStarted(childTask); queue.markCompleted(childTask, 'Child outcome');
+            await vi.waitFor(() => expect(jobs.list(parentWorkspace).find(row => row.id === child)?.terminal?.delivery.state).toBe('queued'));
+            expect(post).not.toHaveBeenCalled();
+            const job = jobs.list(parentWorkspace).find(row => row.id === child)!;
+            const id = delegatedReviewReceipt(job);
+            await store.appendConversationTurn(parentId, turnIndex => ({ role: 'assistant', content: 'Parent review', timestamp: new Date(), turnIndex }));
+            queue.markStarted(id);
+            if (status === 'completed') queue.markCompleted(id, 'review done');
+            else if (status === 'failed') queue.markFailed(id, new Error('review failed'));
+            else queue.cancelTask(id);
+            await vi.waitFor(() => expect(post).toHaveBeenCalledOnce());
+            expect(post.mock.calls[0][1]).toMatchObject({ processId: status === 'completed' ? parentId : child });
+            await notices.reconcile();
+            expect(post).toHaveBeenCalledOnce();
+        } finally { notices.dispose(); }
+    });
 
     it('returns only the correlated parent answer to the captured channel before settling', async () => {
         const job = recordConnector();
