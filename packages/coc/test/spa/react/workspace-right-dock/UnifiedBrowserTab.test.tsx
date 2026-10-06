@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnifiedBrowserTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
+import { useNativeViewPlacement } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/useNativeViewPlacement';
 import type { DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 
 const mocks = vi.hoisted(() => ({ bridge: undefined as DesktopBrowserBridge | undefined }));
@@ -26,7 +27,7 @@ beforeEach(() => {
         getPreferences: vi.fn(), setDefaultEngine: vi.fn(), clearData: vi.fn(), onPreferencesChanged: vi.fn(),
     };
 });
-afterEach(() => { cleanup(); mocks.bridge = undefined; });
+afterEach(() => { cleanup(); mocks.bridge = undefined; delete (window as { cocDesktop?: unknown }).cocDesktop; });
 function tab() {
     return render(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" url="https://example.test/" active visible onNavigate={vi.fn()} onPageState={vi.fn()} />);
 }
@@ -39,7 +40,7 @@ describe('browser tab engine-neutral controls', () => {
         const onNavigate = vi.fn();
         const props = { tabId: 'tab', viewId: 'view', sessionKey: 'workspace-a', url: 'https://example.test/long/path?q=value#fragment', active: true, visible: true, onNavigate, onPageState: vi.fn() };
         const rendered = render(<UnifiedBrowserTab {...props} />);
-        await screen.findByTestId('browser-engine');
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
         const address = screen.getByLabelText('Address') as HTMLInputElement;
         fireEvent.change(address, { target: { value: 'https://draft.test/edit?full=url#end' } });
         const outside = document.createElement('input');
@@ -53,6 +54,10 @@ describe('browser tab engine-neutral controls', () => {
         await userEvent.keyboard('https://replacement.test/{Enter}');
         expect(onNavigate).toHaveBeenCalledWith('tab', 'https://replacement.test/');
         expect(mocks.bridge!.navigate).toHaveBeenCalledWith('view', 'https://replacement.test/');
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        act(() => listeners.forEach(fn => fn({ viewId: 'view' })));
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(address).toHaveFocus();
         rendered.rerender(<UnifiedBrowserTab {...props} active={false} />);
         outside.focus();
         act(() => listeners.forEach(fn => fn({ viewId: 'view' })));
@@ -68,9 +73,9 @@ describe('browser tab engine-neutral controls', () => {
     it.each(['Win32', 'MacIntel'])('handles the platform address shortcut throughout the toolbar on %s', async platform => {
         const platformSpy = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
         tab();
-        await screen.findByText('Electron');
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
         const address = screen.getByLabelText('Address') as HTMLInputElement;
-        const button = screen.getByTestId('browser-open-external');
+        const button = screen.getByRole('button', { name: 'Browser options' });
         button.focus();
         const chord = { key: 'l', ctrlKey: platform === 'Win32', metaKey: platform === 'MacIntel' };
         expect(fireEvent.keyDown(button, { ...chord, shiftKey: true })).toBe(true);
@@ -83,13 +88,22 @@ describe('browser tab engine-neutral controls', () => {
         expect(address.selectionEnd).toBe(address.value.length);
         expect(fireEvent.keyDown(document.body, chord)).toBe(true);
         expect(fireEvent.keyDown(address, { ...chord, key: 'Tab' })).toBe(true);
+        await userEvent.click(button);
+        const action = screen.getByRole('menuitem');
+        expect(action).toHaveFocus();
+        expect(fireEvent.keyDown(action, chord)).toBe(false);
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(address).toHaveFocus();
+        expect(address.selectionEnd).toBe(address.value.length);
         platformSpy.mockRestore();
     });
 
     it('labels the actual engine returned by the host and hides rather than closes on unmount', async () => {
         open.mockResolvedValue({ ok: true, engine: 'webview2' });
         const view = tab();
-        await screen.findByText('WebView2');
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        expect(screen.getByTestId('browser-engine')).toHaveTextContent('WebView2');
         expect(open).toHaveBeenCalledWith('view', 'https://example.test/', 'remote-workspace', undefined);
         view.unmount();
         expect(offState).toHaveBeenCalled();
@@ -112,10 +126,110 @@ describe('browser tab engine-neutral controls', () => {
 
     it('rejects unsafe address input without sending a navigation command', async () => {
         tab();
-        await screen.findByText('Electron');
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
         fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'javascript:alert(1)' } });
         fireEvent.submit(screen.getByLabelText('Address').closest('form')!);
         expect(screen.getByRole('alert').textContent).toContain('not supported');
         expect(mocks.bridge?.navigate).not.toHaveBeenCalled();
+    });
+});
+
+
+describe('browser toolbar overflow', () => {
+    it.each(['electron', 'webview2'] as const)('keeps %s information and the live external action in the menu above the native view', async engine => {
+        open.mockResolvedValue({ ok: true, engine });
+        Object.assign(window, { cocDesktop: { browser: mocks.bridge } });
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        expect(screen.queryByTestId('browser-engine')).toBeNull();
+        expect(screen.queryByTestId('browser-open-external')).toBeNull();
+        const trigger = screen.getByRole('button', { name: 'Browser options' });
+        await userEvent.click(trigger);
+        const menu = screen.getByRole('menu', { name: 'Browser options' });
+        expect(menu.parentElement).toBe(document.body);
+        expect(menu).toHaveAttribute('data-native-view-overlay');
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
+        expect(trigger).toHaveAttribute('aria-controls', menu.id);
+        expect(screen.getByTestId('browser-engine')).toHaveTextContent(engine === 'electron' ? 'Electron' : 'WebView2');
+        expect(mocks.bridge!.setDefaultEngine).not.toHaveBeenCalled();
+        expect(vi.mocked(useNativeViewPlacement).mock.calls.at(-1)?.[1]).toBe(false);
+        const listener = vi.mocked(mocks.bridge!.onState).mock.calls[0][0];
+        act(() => listener({ viewId: 'view', engine, url: 'https://redirect.test/', title: 'Redirect', loading: false, canGoBack: true, canGoForward: false }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Open in system browser' }));
+        expect(mocks.bridge!.openExternal).toHaveBeenCalledWith('https://redirect.test/');
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(trigger).toHaveFocus();
+        expect(vi.mocked(useNativeViewPlacement).mock.calls.at(-1)?.[1]).toBe(true);
+        await userEvent.click(screen.getByLabelText('Back'));
+        expect(mocks.bridge!.nav).toHaveBeenCalledWith('view', 'back');
+        await userEvent.click(screen.getByLabelText('Reload'));
+        expect(mocks.bridge!.nav).toHaveBeenCalledWith('view', 'reload');
+    });
+
+    it('supports keyboard opening, action focus, Escape, Tab and outside-click dismissal', async () => {
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        const trigger = screen.getByRole('button', { name: 'Browser options' });
+        trigger.focus();
+        await userEvent.keyboard('{ArrowDown}');
+        expect(screen.getByRole('menuitem')).toHaveFocus();
+        await userEvent.keyboard('{Escape}');
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(trigger).toHaveFocus();
+        await userEvent.keyboard('{Enter}');
+        expect(screen.getByRole('menuitem')).toHaveFocus();
+        await userEvent.tab();
+        expect(screen.queryByRole('menu')).toBeNull();
+        await userEvent.click(trigger);
+        await userEvent.click(screen.getByLabelText('Address'));
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(screen.getByLabelText('Address')).toHaveFocus();
+    });
+
+    it('clamps and flips a portaled menu in a narrow viewport and repositions on resize', async () => {
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        vi.stubGlobal('innerWidth', 180);
+        vi.stubGlobal('innerHeight', 180);
+        const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            return this.getAttribute('role') === 'menu'
+                ? { x: 0, y: 0, left: 0, top: 0, right: 164, bottom: 80, width: 164, height: 80, toJSON: () => ({}) }
+                : { x: 148, y: 150, left: 148, top: 150, right: 172, bottom: 174, width: 24, height: 24, toJSON: () => ({}) };
+        });
+        try {
+            await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+            const menu = screen.getByRole('menu');
+            expect(menu.style.left).toBe('8px');
+            expect(menu.style.top).toBe('66px');
+            vi.stubGlobal('innerHeight', 400);
+            fireEvent(window, new Event('resize'));
+            expect(menu.style.top).toBe('178px');
+            expect(menu.style.maxHeight).toBe('214px');
+        } finally {
+            rect.mockRestore();
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it('keeps blank-tab actions disabled and removes the menu when ownership or visibility changes', async () => {
+        const props = { tabId: 'blank', viewId: 'blank-view', sessionKey: 'workspace-a', active: true, visible: true, onNavigate: vi.fn(), onPageState: vi.fn() };
+        const view = render(<UnifiedBrowserTab {...props} />);
+        const trigger = screen.getByRole('button', { name: 'Browser options' });
+        await userEvent.click(trigger);
+        expect(screen.getByRole('menuitem')).toBeDisabled();
+        expect(screen.getByRole('menu')).toHaveFocus();
+        expect(screen.queryByTestId('browser-engine')).toBeNull();
+        expect(open).not.toHaveBeenCalled();
+        view.rerender(<UnifiedBrowserTab {...props} active={false} />);
+        expect(screen.queryByRole('menu')).toBeNull();
+        view.rerender(<UnifiedBrowserTab {...props} />);
+        expect(screen.queryByRole('menu')).toBeNull();
+        await userEvent.click(trigger);
+        view.rerender(<UnifiedBrowserTab {...props} visible={false} />);
+        expect(screen.queryByRole('menu')).toBeNull();
+        view.rerender(<UnifiedBrowserTab {...props} />);
+        await userEvent.click(trigger);
+        view.rerender(<UnifiedBrowserTab {...props} sessionKey="workspace-b" viewId="other-window-view" />);
+        expect(screen.queryByRole('menu')).toBeNull();
     });
 });

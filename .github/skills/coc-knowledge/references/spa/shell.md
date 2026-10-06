@@ -110,7 +110,7 @@ The Windows desktop helper enables OS-account SSO by default at environment crea
 Electron uses sandboxed `WebContentsView`s; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
 Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile and downloads go to the system browser.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
-WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
+WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays. `BrowserToolbarMenu` portals engine information and the current-page external-open action to the owning renderer document, positioned with `useAnchoredPanelPosition`. `useNativeViewPlacement` hides views while explicit `data-native-view-overlay` elements are mounted, including small menus between its hit-test probes; closing the menu restores eligible active views.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
 
 The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward

@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from 'react';
 
-/** Overlays that always hide native views: modal backdrops dim the whole window, and the tab menu opens right against the view's edge. */
-const ALWAYS_BLOCKERS = '[role="dialog"][aria-modal="true"], [data-testid="unified-panel-tab-menu"]';
+/** Overlays that always hide native views: modal backdrops dim the whole window, and explicit native-view overlays must stay above the view even between hit-test probes. */
+const ALWAYS_BLOCKERS = '[role="dialog"][aria-modal="true"], [data-testid="unified-panel-tab-menu"], [data-native-view-overlay]';
 /** Marks DOM overlays (e.g. toasts) allowed to stay under a native view. */
 const NATIVE_VIEW_PASSTHROUGH_ATTR = 'data-native-view-passthrough';
 /** Hit-test grid per axis, and inset from the edges so splitters touching the placeholder don't count. */

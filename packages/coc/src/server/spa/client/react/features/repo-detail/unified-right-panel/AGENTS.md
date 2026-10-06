@@ -557,7 +557,10 @@ and `browserSessionKey(tab)` the routing owner. Browser profiles persist per
 engine across all installation workspaces; browser tab descriptors stay
 ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
-Back/Forward/Reload|Stop, the actual engine, the page title, a load-error panel
+Back/Forward/Reload|Stop, an editable address, and `BrowserToolbarMenu`
+with the actual engine and the current-page system-browser action. The menu
+portals to the document body, uses `useAnchoredPanelPosition`, and closes when
+the tab loses visibility or ownership. The tab also shows the page title, a load-error panel
 with Retry and Desktop Preferences/runtime guidance, and
 download-handoff notices. Unmounting only hides the view (chat switch, collapse
 keep live history); `closeTab` closes it. `onState` feeds `updateBrowserTab`
@@ -568,7 +571,8 @@ The SPA entry point subscribes to `onClosed` and removes target-engine tabs
 from every cached workspace via `closeBrowserPanelView`, including unmounted
 panels. The frame, placement, and history buttons are shared with HTML pages via
 `NativeViewTab` (see Desktop HTML pages). Native views paint above all DOM, so the hook hides
-the view while a modal dialog or the tab menu is open, or while a 5x5
+the view while a modal dialog, the tab menu, or a `data-native-view-overlay`
+is open, or while a 5x5
 `elementFromPoint` hit test (inset 12px from the edges, so splitters don't count)
 finds any other element above the placeholder — dropdowns, popovers, and
 overlays need no opt-in. Overlays that should stay under the view mark
