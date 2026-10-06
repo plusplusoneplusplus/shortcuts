@@ -1,6 +1,6 @@
 /**
- * Factory that creates a single dual-mode `send_to_conversation` custom tool for
- * the Copilot SDK. The `processId` argument is the mode switch:
+ * Factory that creates the `send_to_conversation` custom tool.
+ * Omitted `action` or `action: "send"` uses `processId` as the mode switch:
  *
  *   - `processId` omitted → **create mode**: start a brand-new chat
  *     (fire-and-forget) through the same in-process queue path that
@@ -21,6 +21,8 @@
  *     capability). Returns the appended user-turn index. An omitted `mode`
  *     keeps the conversation's current mode (create mode defaults to `ask`,
  *     or `autopilot` when called from a sentinel chat).
+ *   - `action: "cancel"` with `processId` stops local queued/running work through
+ *     the shared process cancellation service, without content or a new turn.
  *
  * Per-invocation factory pattern: each AI call gets its own tool instance bound
  * to the store + enqueue/send capabilities + the caller's current workspace,
@@ -39,6 +41,8 @@ import { validateAndParseTask } from '../routes/queue-shared';
 import { normalizeChatMode, VALID_CHAT_PROVIDERS, type ChatProvider, type ReasoningEffort } from '../tasks/task-types';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { MessagingJobOrigin } from '../messaging/job-notices';
+import { APIError } from '../errors';
+import type { ConversationCancellationResult } from '../processes/cancel-conversation';
 import {
     buildChatOpenLink,
     createWorkspaceDirectory,
@@ -66,8 +70,10 @@ export type SendToConversationProvider = ChatProvider | 'auto';
 export type SendToConversationEffortTier = 'very-low' | 'low' | 'medium' | 'high';
 
 export interface SendToConversationArgs {
-    /** The message (post mode) / first prompt (create mode). Required. */
-    content: string;
+    /** Omitted or `send` preserves create/post behavior; `cancel` requires processId only. */
+    action?: 'send' | 'cancel';
+    /** The message (post mode) / first prompt (create mode). Required for send only. */
+    content?: string;
     /**
      * Mode switch. Omitted → create a new conversation; provided → post into
      * that existing conversation.
@@ -132,6 +138,8 @@ export type ValidateSendToConversationProviderFn = (provider: ChatProvider) => P
 export type GetSendToConversationEffortTiersFn = (provider: ChatProvider) => StoredEffortTiersMap | undefined;
 
 export interface SendToConversationRuntimeOptions {
+    /** Shared process/queue cancellation lifecycle, bound on the owning local server. */
+    cancelConversation?: (processId: string, workspaceId?: string) => Promise<ConversationCancellationResult>;
     /** Capability check only; routing/quota errors must not trigger fallback. */
     isAutoProviderRoutingAvailable?: () => boolean;
     validateProvider?: ValidateSendToConversationProviderFn;
@@ -184,10 +192,17 @@ export interface SendToConversationSuccess {
     turnIndex?: number;
     /** Ralph mode only: the launched Ralph session id. */
     sessionId?: string;
+    /** Cancel only: false means the conversation was already terminal. */
+    cancelled?: boolean;
+    /** Cancel only: resulting process/task status. */
+    status?: ConversationCancellationResult['status'];
+    /** Cancel only: the target's workspace, when recorded. */
+    workspaceId?: string;
 }
 
 export interface SendToConversationError {
     error: string;
+    code?: string;
 }
 
 export type SendToConversationResult = SendToConversationSuccess | SendToConversationError;
@@ -236,7 +251,12 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
             'Send a message to a conversation. With `processId`, posts `content` into that EXISTING conversation and ' +
             'returns `{ processId, openLink, turnIndex }`. Without `processId`, starts a brand-new, separate ' +
             'fire-and-forget chat with `content` as its first prompt (it does NOT continue the current chat) and ' +
-            'returns `{ processId, openLink }`. `content` is required. In create mode `mode` defaults to `ask` (`autopilot` from a sentinel chat); in post ' +
+            'returns `{ processId, openLink }`. Omitted `action` or `action: "send"` keeps this behavior; `content` is required for send. ' +
+            'Use `{ action: "cancel", processId }` to stop a known local conversation, including a queued `queue_<taskId>` before execution. ' +
+            'Cancel requires no content and sends no message; omit all send-only fields. It returns `{ processId, openLink, cancelled, status, workspaceId? }`; ' +
+            '`cancelled: false` means already terminal (completed, failed, or cancelled). Unknown IDs and cancellation failures return an error. ' +
+            'Cancel is local-only: remote process IDs or workspace routes are rejected; optional cancel `workspaceId` must match the owning local workspace ID. ' +
+            'Cancellation retains conversation history. In create mode `mode` defaults to `ask` (`autopilot` from a sentinel chat); in post ' +
             'mode omitting `mode` keeps the conversation\'s current mode. Create mode defaults to the current workspace. Create-mode `workspaceId` accepts an id from `list_workspaces` ' +
             '(including remote `remote:<serverId>:<workspaceId>` ids, which start the chat on that remote CoC ' +
             'server), or a repo name, with `name@server` to disambiguate. Post mode is local-only. For new conversations, provide a short, task-specific `title` ' +
@@ -251,20 +271,26 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
         parameters: {
             type: 'object',
             properties: {
+                action: {
+                    type: 'string',
+                    enum: ['send', 'cancel'],
+                    description: 'Omit or use `send` for ordinary create/post behavior. Use `cancel` with a known local processId to stop work without sending content.',
+                },
                 content: {
                     type: 'string',
-                    description: 'The message (post mode), first prompt (create mode), or goal spec (`ralph` mode). Required.',
+                    description: 'The message (post mode), first prompt (create mode), or goal spec (`ralph` mode). Required for send; omit for cancel.',
                 },
                 processId: {
                     type: 'string',
                     description:
                         'Mode switch. When given, posts `content` into that existing conversation; ' +
-                        'when omitted, starts a new conversation.',
+                        'when omitted, starts a new conversation. Required for cancel; accepts local process IDs including queue_<taskId>.',
                 },
                 workspaceId: {
                     type: 'string',
                     description: 'Create mode: target repo — an id from `list_workspaces` (local or ' +
-                        '`remote:<serverId>:<workspaceId>`), or a repo name / `name@server`. Defaults to the current workspace.',
+                        '`remote:<serverId>:<workspaceId>`), or a repo name / `name@server`. Defaults to the current workspace. ' +
+                        'Cancel: optional exact local workspace ID assertion; must match the target owner. Remote routes are unsupported.',
                 },
                 mode: {
                     type: 'string',
@@ -305,9 +331,45 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                     description: 'Create mode: queue priority. Default `normal`.',
                 },
             },
-            required: ['content'],
+            anyOf: [
+                { properties: { action: { const: 'cancel' } }, required: ['action', 'processId'] },
+                { properties: { action: { enum: ['send'] } }, required: ['content'] },
+            ],
         },
         handler: async (args: SendToConversationArgs): Promise<SendToConversationResult> => {
+            if (args.action !== undefined && args.action !== 'send' && args.action !== 'cancel') {
+                return { error: `Unknown action: '${String(args.action)}'. Valid actions: send, cancel.` };
+            }
+            if (args.action === 'cancel') {
+                if (typeof args.processId !== 'string' || !args.processId.trim()) {
+                    return { error: 'Cancel requires a non-empty processId.' };
+                }
+                const processId = args.processId.trim();
+                if (args.workspaceId !== undefined && typeof args.workspaceId !== 'string') {
+                    return { error: 'Cancel workspaceId must be an exact local workspace ID.' };
+                }
+                if (processId.startsWith('remote:') || args.workspaceId?.startsWith('remote:') || args.workspaceId?.includes('@')) {
+                    return { error: 'Cancellation on a remote CoC server is not supported. Cancel only accepts local conversation IDs and workspace IDs.' };
+                }
+                if ((['content', 'mode', 'deliveryMode', 'title', 'model', 'provider', 'effortTier', 'priority'] as const)
+                    .some(field => args[field] !== undefined)) {
+                    return { error: 'Cancel does not accept send-only fields; use { action: "cancel", processId, workspaceId? }.' };
+                }
+                if (!runtime?.cancelConversation) {
+                    return { error: 'Cancellation is not available in this context (no cancellation capability was wired).' };
+                }
+                try {
+                    const result = await runtime.cancelConversation(processId, args.workspaceId);
+                    return { ...result, openLink: result.workspaceId
+                        ? buildChatOpenLink(result.workspaceId, result.processId)
+                        : `#/process/${encodeURIComponent(result.processId)}` };
+                } catch (err) {
+                    return {
+                        error: `Failed to cancel conversation: ${err instanceof Error ? err.message : String(err)}`,
+                        ...(err instanceof APIError ? { code: err.code } : {}),
+                    };
+                }
+            }
             // --- content (required, non-empty) --------------------------------
             if (typeof args.content !== 'string' || !args.content.trim()) {
                 return { error: 'Missing required field: content must be a non-empty string.' };

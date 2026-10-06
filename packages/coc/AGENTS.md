@@ -148,6 +148,10 @@ references before editing. Paths are package-relative.
   Emit intents once; follow-up enqueue sites resolve mode via `resolveFollowUpMode(...)`
   (an omitted mode keeps the chat's mode; terminal Sentinel wins) — never default it to `'ask'`.
   Use `metadataPatch` for field updates.
+- REST and `send_to_conversation` explicit `action: "cancel"` share
+  `processes/cancel-conversation.ts`. Serialize canonical process admission, cancel linked
+  queue tasks, and abort the owning provider; reject remote routes and surface failures.
+  Preserve history and fork/source identity; recheck cancellation before registration.
 - Tool-free lookups use `src/server/core/one-shot-ai.ts`: deny permissions/ambient MCP.
   Dreams analyzer/critic work uses persisted lifecycle processes, not direct SDK calls.
 

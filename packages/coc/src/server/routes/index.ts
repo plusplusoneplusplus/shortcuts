@@ -21,6 +21,7 @@ import { prepareTaskForEnqueue } from './queue-enqueue';
 import { serializeTask, enqueueViaBridge } from './queue-shared';
 import type { QueueGlobalState } from './queue-shared';
 import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } from '../llm-tools/send-to-conversation-tool';
+import { cancelConversation } from '../processes/cancel-conversation';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { compactProcess } from '../processes/compact-process';
@@ -568,6 +569,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // register their transports below.
     const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade });
     opts.setSendToConversationRuntime?.({
+        cancelConversation: (processId, workspaceId) => cancelConversation(store, bridge, processId, workspaceId),
         isAutoProviderRoutingAvailable: () => isAutoProviderRoutingActive() && !!agentProvidersQuotaCache,
         validateProvider: validateSendToConversationProvider,
         getEffortTiersForProvider,

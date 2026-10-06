@@ -37,6 +37,15 @@ describe('buildSendToConversationAddon', () => {
         expect(addon.tools.map(t => t.name)).toEqual(['send_to_conversation', 'list_workspaces']);
     });
 
+    it('forwards cancellation through the existing runtime without changing registration gates', async () => {
+        const cancelConversation = vi.fn().mockResolvedValue({ processId: 'target', cancelled: true, status: 'cancelled' });
+        const addon = buildSendToConversationAddon(makeStore(), WS_ID, vi.fn(), undefined, undefined, { cancelConversation });
+        const tool = addon.tools.find(t => t.name === 'send_to_conversation')!;
+        expect(await tool.handler({ action: 'cancel', processId: 'target' }, {} as never)).toMatchObject({ cancelled: true });
+        expect(cancelConversation).toHaveBeenCalledWith('target', undefined);
+        expect(buildSendToConversationAddon(makeStore(), WS_ID, undefined, undefined, undefined, { cancelConversation }).tools).toEqual([]);
+    });
+
     it('backs list_workspaces with the runtime workspace directory', async () => {
         const directory = {
             list: vi.fn().mockResolvedValue({

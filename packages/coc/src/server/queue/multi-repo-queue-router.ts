@@ -336,8 +336,21 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     async cancelProcess(processId: string): Promise<void> {
-        const proc = await this.store.getProcess(processId);
-        const workingDirectory = (proc as any)?.workingDirectory as string | undefined;
+        let taskOwnerPath: string | undefined;
+        for (const [rootPath, manager] of this.registry.getAllQueues()) {
+            const tasks = manager.getAll().filter(task => (task.status === 'queued' || task.status === 'running')
+                && (task.processId ?? task.payload.processId ?? toQueueProcessId(task.id)) === processId);
+            if (tasks.some(task => task.status === 'running' && task.config.cancelRunning === false)) {
+                throw new Error('This running operation cannot be cancelled.');
+            }
+            for (const task of tasks) {
+                taskOwnerPath = rootPath;
+                const executor = this.bridges.get(rootPath)?.executor;
+                if (executor) executor.cancelTask(task.id);
+                else if (!manager.cancelTask(task.id)) throw new Error('Conversation task could not be cancelled.');
+            }
+        }
+        const workingDirectory = await this.resolveRootPathForProcess(processId) ?? taskOwnerPath;
         if (workingDirectory) {
             const bridge = this.getOrCreateBridge(workingDirectory);
             await bridge.cancelProcess?.(processId);
@@ -579,14 +592,19 @@ export class MultiRepoQueueRouter extends EventEmitter {
     }
 
     findTaskByProcessId(processId: string): { id: string; type: string; status: string } | undefined {
+        let queuedTask: { id: string; type: string; status: string } | undefined;
+        let terminalTask: { id: string; type: string; status: string } | undefined;
         for (const manager of this.registry.getAllQueues().values()) {
             for (const task of manager.getAll()) {
-                if (task.processId === processId) {
-                    return { id: task.id, type: task.type, status: task.status };
+                if ((task.processId ?? task.payload.processId ?? toQueueProcessId(task.id)) === processId) {
+                    const result = { id: task.id, type: task.type, status: task.status };
+                    if (task.status === 'running') return result;
+                    if (task.status === 'queued') queuedTask ??= result;
+                    else terminalTask ??= result;
                 }
             }
         }
-        return undefined;
+        return queuedTask ?? terminalTask;
     }
 
     /**

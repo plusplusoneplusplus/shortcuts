@@ -43,7 +43,7 @@ owns hierarchy validation, provider sync, cache invalidation, and broadcasts for
 | `resolve-comment-tool.ts` | `resolve_comment` | Marks inline comments resolved; tracks resolved IDs in a per-invocation Map. |
 | `save-classification-tool.ts` | `saveClassification` | Persists per-hunk diff classifications for PR/commit/branch-range review. Categories: `logic`, `mechanical`, `test`, `simple`, `generated`. New `test` hunks require `testFidelityComment`, `logic` hunks require `summaryComment`; critical metadata is validated rather than dropped. |
 | `search-conversations-tool.ts` | `search_conversations` | FTS5 full-text search over past conversations. Requires a SQLite-backed `ProcessStore`. |
-| `send-to-conversation-tool.ts` | `send_to_conversation` | Dual-mode dispatch — see below. |
+| `send-to-conversation-tool.ts` | `send_to_conversation` | Create/post dispatch and explicit local cancellation — see below. |
 | `list-workspaces-tool.ts` | `list_workspaces` | Read-only local + remote repo/group discovery for `send_to_conversation` targets — see below. |
 | `canvas-tools.ts` | `write_canvas`, `read_canvas`, `extension_canvas` | Chat canvas side-panel artifacts — see below. |
 | `kusto-tools.ts` | `kusto_query` | Kusto/KQL against Azure Data Explorer — see below. |
@@ -65,6 +65,29 @@ not undo creation. Before retrying uncertain creation, inspect branches and PR
 state in the owning workspace to avoid duplicate submissions.
 
 ### send_to_conversation
+
+Omitted `action` or `action: "send"` selects ordinary create/post dispatch and requires
+`content`. `{ action: "cancel", processId }` stops known local work without content or
+a follow-up turn. Cancel rejects send-only fields and remote process/workspace routes.
+Optional cancel `workspaceId` asserts the exact owning local workspace ID; it does not
+default to the caller's workspace. Registration, repo tool preferences, and chat-mode
+availability are shared with create/post dispatch.
+
+The route layer binds `runtime.cancelConversation` to
+`server/processes/cancel-conversation.ts`, shared with `POST /api/processes/:id/cancel`.
+It resolves persisted IDs and `queue_<taskId>` tasks before process materialization,
+serializes on canonical process admission, and uses `MultiRepoQueueRouter.cancelProcess`
+to cancel linked queued/running tasks and abort the owning provider's in-flight turn.
+Fork provenance never authorizes source-queue cancellation. Pending messages are removed
+through the store; conversation history remains intact.
+
+Cancel returns `{ processId, openLink, cancelled, status, workspaceId? }`.
+Already-terminal work without admitted follow-ups returns `cancelled: false` and its
+terminal status; the REST adapter retains its terminal `409`. Unknown IDs, owner
+mismatches, unavailable cancellation, protected running operations, abort/persistence
+errors, and the 30-second timeout surface errors rather than success. Failed aborts
+retain `cancelling` until lifecycle settlement. First-turn registration rechecks
+cancellation, and follow-up settlement preserves cancelled status on success/error.
 
 Create mode omits `processId` and enqueues a brand-new visible chat through the same
 in-process queue path as `POST /api/queue`. It defaults to the caller workspace and Ask mode
@@ -97,8 +120,9 @@ naming.
 
 The tool and Sentinel mode directive prefer Auto delegation unless the user requests a
 particular provider/model. The tool description asks for short, task-specific create-mode titles.
-The bundled `delegate` skill requires agents to include a title in its handoff calls; the JSON schema
-keeps only `content` unconditionally required so untitled creation and post mode stay valid.
+The bundled `delegate` skill requires agents to include a title in its handoff calls.
+The JSON schema requires `content` for send or explicit `action: "cancel"` plus `processId`
+for cancellation; titles remain optional.
 
 Create mode with `mode: "ralph"` launches a Ralph session straight into iteration 1 (no
 grilling) through the late-bound `getLaunchRalph` runtime capability, which wraps

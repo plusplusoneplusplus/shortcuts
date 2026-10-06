@@ -8,6 +8,7 @@ import { getLogger } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner, asPlanFilePath } from '../../../src/server/executors/process-lifecycle-runner';
 import type { LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
 import { createMockProcessStore } from '../helpers/mock-process-store';
+import { rehydrateImagesIfNeeded } from '../../../src/server/executors/image-store';
 
 // ============================================================================
 // Mocks
@@ -61,6 +62,32 @@ function makeOpts(overrides: Partial<LifecycleRunnerOptions> = {}): LifecycleRun
 // ============================================================================
 
 describe('ProcessLifecycleRunner — custom title seeding', () => {
+    it.each(['cancelling', 'cancelled'] as const)('preserves %s when a cancelled follow-up reaches execution', async status => {
+        const store = createMockProcessStore();
+        await store.addProcess({
+            id: 'fixture', status, type: 'chat', startTime: new Date(), promptPreview: 'test',
+        });
+        const runner = new ProcessLifecycleRunner(store, undefined, vi.fn());
+        const task = makeTask({ payload: { kind: 'chat', mode: 'ask', prompt: 'test', processId: 'fixture' } });
+        const opts = makeOpts({ cancelledTasks: new Set([task.id]) });
+        expect((await runner.run(task, opts)).success).toBe(false);
+        expect((await store.getProcess('fixture'))?.status).toBe(status);
+        expect(opts.executeFollowUpFn).not.toHaveBeenCalled();
+    });
+
+    it('does not materialize or execute a task cancelled during preparation', async () => {
+        const store = createMockProcessStore();
+        const runner = new ProcessLifecycleRunner(store, undefined, vi.fn());
+        const task = makeTask();
+        const opts = makeOpts();
+        vi.mocked(rehydrateImagesIfNeeded).mockImplementationOnce(async () => {
+            task.status = 'cancelled';
+            opts.cancelledTasks.add(task.id);
+        });
+        expect(await runner.run(task, opts)).toMatchObject({ success: false, error: new Error('Task cancelled') });
+        expect(store.addProcess).not.toHaveBeenCalled();
+        expect(opts.executeByTypeFn).not.toHaveBeenCalled();
+    });
     it.each([undefined, 'Delegated helper'])('seeds only supplied custom titles (%s)', async customTitle => {
         const store = createMockProcessStore();
         const runner = new ProcessLifecycleRunner(store, '/data-dir', vi.fn());

@@ -109,13 +109,16 @@ function asSuccess(result: SendToConversationResult): SendToConversationSuccess 
 }
 
 describe('createSendToConversationTool — shape & description', () => {
-    it('returns a valid Tool shape named send_to_conversation with content required', () => {
+    it('requires content for send or processId for explicit cancel', () => {
         const { tool } = makeTool();
         expect(tool.name).toBe('send_to_conversation');
         expect(typeof tool.handler).toBe('function');
         expect(tool.parameters).toMatchObject({
             type: 'object',
-            required: ['content'],
+            anyOf: [
+                { properties: { action: { const: 'cancel' } }, required: ['action', 'processId'] },
+                { properties: { action: { enum: ['send'] } }, required: ['content'] },
+            ],
         });
     });
 
@@ -123,7 +126,7 @@ describe('createSendToConversationTool — shape & description', () => {
         const { tool } = makeTool();
         const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
         expect(Object.keys(props).sort()).toEqual(
-            ['content', 'deliveryMode', 'effortTier', 'mode', 'model', 'priority', 'processId', 'provider', 'title', 'workspaceId'].sort(),
+            ['action', 'content', 'deliveryMode', 'effortTier', 'mode', 'model', 'priority', 'processId', 'provider', 'title', 'workspaceId'].sort(),
         );
         expect(props.provider).toMatchObject({ type: 'string', enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'] });
         expect(props.effortTier).toMatchObject({ type: 'string', enum: ['very-low', 'low', 'medium', 'high'] });
@@ -139,11 +142,10 @@ describe('createSendToConversationTool — shape & description', () => {
 
     it('documents persistent task-specific titles without making them required', () => {
         const { tool } = makeTool();
-        expect((tool.parameters as { required: string[] }).required).toEqual(['content']);
+        expect(tool.parameters).not.toHaveProperty('required');
         expect(tool.description).toContain('short, task-specific `title`');
         expect(tool.description).toContain('visible custom title even after AI title generation');
         expect(tool.parameters).toMatchObject({
-            required: ['content'],
             properties: {
                 title: {
                     type: 'string',
@@ -154,6 +156,85 @@ describe('createSendToConversationTool — shape & description', () => {
         const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;
         expect(props.title.description).toContain('Trimmed, non-empty, max 80 characters');
         expect(props.title.description).toContain('Ignored in post mode');
+    });
+});
+
+describe('createSendToConversationTool — cancel dispatch', () => {
+    it('cancels without content, enqueueing, posting, or launching Ralph', async () => {
+        const cancelConversation = vi.fn().mockResolvedValue({
+            processId: 'queue_target', workspaceId: 'ws-2', cancelled: true, status: 'cancelled',
+        });
+        const sendMessage = vi.fn();
+        const launchRalph = vi.fn();
+        const { tool, enqueueChat } = makeTool({ sendMessage, launchRalph, runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', processId: ' queue_target ', workspaceId: 'ws-2' }, invocationStub)).toEqual({
+            processId: 'queue_target', workspaceId: 'ws-2', cancelled: true, status: 'cancelled',
+            openLink: '#repos/ws-2/chats/queue_target',
+        });
+        expect(cancelConversation).toHaveBeenCalledWith('queue_target', 'ws-2');
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect(launchRalph).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, '', '  ', 42])('rejects missing/invalid processId %j', async processId => {
+        const cancelConversation = vi.fn();
+        const { tool, enqueueChat } = makeTool({ runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', processId: processId as never }, invocationStub)).toMatchObject({ error: expect.stringContaining('processId') });
+        expect(cancelConversation).not.toHaveBeenCalled();
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { processId: 'remote:server:queue_target' },
+        { processId: 'queue_target', workspaceId: 'remote:server:ws-1' },
+        { processId: 'queue_target', workspaceId: 'repo@server' },
+        { processId: 'queue_target', workspaceId: 42 },
+    ])('rejects unsupported routes before dispatch: %j', async fields => {
+        const cancelConversation = vi.fn();
+        const { tool } = makeTool({ runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', ...fields } as never, invocationStub)).toHaveProperty('error');
+        expect(cancelConversation).not.toHaveBeenCalled();
+    });
+
+    it.each(['content', 'mode', 'deliveryMode', 'title', 'model', 'provider', 'effortTier', 'priority'])('rejects send-only %s for cancellation', async field => {
+        const cancelConversation = vi.fn();
+        const { tool } = makeTool({ runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', processId: 'queue_target', [field]: 'dummy' }, invocationStub)).toHaveProperty('error');
+        expect(cancelConversation).not.toHaveBeenCalled();
+    });
+
+    it('reports an unavailable capability and dispatch errors without success fields', async () => {
+        const { tool } = makeTool();
+        expect(await tool.handler({ action: 'cancel', processId: 'target' }, invocationStub)).toMatchObject({ error: expect.stringContaining('not available') });
+        const cancelConversation = vi.fn().mockRejectedValue(new Error('abort failed'));
+        const wired = makeTool({ runtime: { cancelConversation } });
+        expect(await wired.tool.handler({ action: 'cancel', processId: 'target' }, invocationStub)).toEqual({ error: 'Failed to cancel conversation: abort failed' });
+    });
+
+    it('returns terminal no-op status distinctly', async () => {
+        const cancelConversation = vi.fn().mockResolvedValue({ processId: 'target', cancelled: false, status: 'completed' });
+        const { tool } = makeTool({ runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', processId: 'target' }, invocationStub)).toEqual({
+            processId: 'target', openLink: '#/process/target', cancelled: false, status: 'completed',
+        });
+    });
+
+    it('rejects unknown actions instead of creating a conversation', async () => {
+        const { tool, enqueueChat } = makeTool();
+        expect(await tool.handler({ action: 'delete' as never, content: 'hello' }, invocationStub)).toHaveProperty('error');
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('preserves explicit send creation and posting', async () => {
+        const sendMessage = vi.fn().mockResolvedValue({ turnIndex: 2 });
+        const cancelConversation = vi.fn();
+        const { tool, enqueueChat } = makeTool({ sendMessage, runtime: { cancelConversation } });
+        asSuccess(await tool.handler({ action: 'send', content: 'create' }, invocationStub));
+        asSuccess(await tool.handler({ action: 'send', processId: 'queue_target', content: 'post' }, invocationStub));
+        expect(enqueueChat).toHaveBeenCalledTimes(1);
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(cancelConversation).not.toHaveBeenCalled();
     });
 });
 

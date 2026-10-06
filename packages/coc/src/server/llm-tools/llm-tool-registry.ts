@@ -76,7 +76,7 @@ export const LLM_TOOL_REGISTRY: readonly LlmToolMeta[] = [
     {
         name: 'send_to_conversation',
         label: 'Send to Conversation',
-        description: 'Posts a message into an existing conversation (by processId), or starts a brand-new one when no processId is given.',
+        description: 'Posts into an existing conversation, starts a new one, or explicitly cancels local work with action: cancel and processId.',
         enabledByDefault: true,
     },
     {

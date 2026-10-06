@@ -465,7 +465,10 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 task.processId = payload.processId;
                 const imageTempDir = payload.imageTempDir;
                 try {
-                    await this.store.updateProcess(payload.processId!, { status: 'completed' });
+                    const current = await this.store.getProcess(payload.processId!);
+                    if (current?.status !== 'cancelling' && current?.status !== 'cancelled') {
+                        await this.store.updateProcess(payload.processId!, { status: 'completed' });
+                    }
                 } catch (err) {
                     logger.debug(LogCategory.AI, `[QueueExecutor] Failed to update process status for cancelled task ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
                 }
@@ -845,7 +848,8 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             process.conversationTurns = initialTurns;
         }
 
-        await processOperationAdmission.runExclusive(processId, async () => {
+        const registered = await processOperationAdmission.runExclusive(processId, async () => {
+            if (opts.cancelledTasks.has(task.id) || task.status === 'cancelled') return false;
             // A binding can release queued authority while prompt preparation is in flight.
             const currentControl = task.botControl === undefined ? undefined : validateBotControlMetadata(task.botControl);
             if (currentControl && (!isChatPayload(task.payload) || !task.repoId
@@ -863,7 +867,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 if (botControl || currentControl) throw err;
             }
             task.processId = processId;
+            return true;
         });
+        if (!registered) return { success: false, error: new Error('Task cancelled'), durationMs: 0 };
 
         // Tracks whether the assistant conversation turn has been persisted
         // (either via the success path or the error/timeout recovery path).
@@ -872,6 +878,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
         let turnSaved = false;
 
         try {
+            if (opts.cancelledTasks.has(task.id) || task.status === 'cancelled') throw new Error('Task cancelled');
             const result = await opts.executeByTypeFn(task, prompt);
             const duration = Date.now() - startTime;
             logger.debug(LogCategory.AI, `[QueueExecutor] Task ${task.id} completed in ${duration}ms`);
