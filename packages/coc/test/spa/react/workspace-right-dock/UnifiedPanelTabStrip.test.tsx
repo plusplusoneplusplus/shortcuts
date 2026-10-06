@@ -312,7 +312,15 @@ describe('UnifiedPanelTabStrip', () => {
     describe('context menu', () => {
         it('shows common commands for every kind and file commands only for files', () => {
             const tabs = tabsOfEveryKind();
-            const props = renderStrip({ tabs, activeId: tabs[0].id });
+            const props = renderStrip({
+                tabs,
+                activeId: tabs[0].id,
+                fileActionAvailability: tab => ({
+                    copyPath: tab.kind === 'file',
+                    copyRelativePath: tab.kind === 'file',
+                    revealInExplorer: tab.kind === 'file',
+                }),
+            });
 
             fireEvent.contextMenu(tabNode(tabs[0]), { clientX: 20, clientY: 30 });
             expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([

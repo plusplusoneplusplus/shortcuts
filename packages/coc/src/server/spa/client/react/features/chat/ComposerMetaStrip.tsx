@@ -43,8 +43,8 @@ export interface ComposerMetaStripProps {
     sessionConversationTokens?: number;
     /**
      * When true, the composer pane is container-narrow: the cwd chip renders
-     * only the last path segment (basename) with no `cwd` label, keeping the
-     * full path in its `title` tooltip. Wide/normal state is unchanged.
+     * only the last path segment (basename), and context usage collapses to its
+     * percentage. Tooltips and popovers retain the full details.
      */
     compact?: boolean;
 }
@@ -178,15 +178,29 @@ export function ComposerMetaStrip({
                 <span
                     aria-label={ctxTitle}
                     data-testid="composer-ctx-fuel"
-                    className="relative inline-flex items-center gap-1.5 h-[22px] px-2 rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] flex-shrink-0"
+                    className={cn(
+                        'relative inline-flex items-center gap-1.5 h-[22px] rounded-sm text-[11px] text-[#5a5a5a] dark:text-[#999999] flex-shrink-0',
+                        compact ? 'px-1' : 'px-2',
+                    )}
                     onMouseEnter={() => setCtxPopoverOpen(true)}
                     onMouseLeave={() => setCtxPopoverOpen(false)}
                     onClick={() => setCtxPopoverOpen(v => !v)}
                 >
-                    <span aria-hidden="true" className="font-mono text-[9px] uppercase tracking-wider opacity-60">ctx</span>
+                    <span
+                        aria-hidden="true"
+                        className={cn(
+                            'font-mono text-[9px] uppercase tracking-wider opacity-60',
+                            compact ? 'hidden' : '[@container_(max-width:159px)]:hidden',
+                        )}
+                    >
+                        ctx
+                    </span>
                     <span
                         data-testid="composer-ctx-bar"
-                        className="relative inline-block w-[64px] h-[6px] rounded-full bg-[#e8e8e8] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden flex-shrink-0"
+                        className={cn(
+                            'relative w-[64px] h-[6px] rounded-full bg-[#e8e8e8] dark:bg-[#2d2d2d] border border-[#e0e0e0] dark:border-[#3c3c3c] overflow-hidden flex-shrink-0',
+                            compact ? 'hidden' : 'inline-block [@container_(max-width:159px)]:hidden',
+                        )}
                     >
                         {hasBreakdown ? (
                             <>

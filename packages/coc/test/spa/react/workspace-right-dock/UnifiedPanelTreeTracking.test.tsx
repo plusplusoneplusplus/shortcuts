@@ -237,6 +237,22 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(activeTab.getAttribute('aria-selected')).toBe('true');
     });
 
+    it('copies the path of the clicked local tab instead of the active tab', () => {
+        const writeText = vi.fn(async () => undefined);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        renderWithTree({ workspaceRootPath: '/repos/local' });
+        fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
+        runTabAction('keep-open');
+        fireEvent.click(screen.getByTestId('mock-explorer-open-lib'));
+
+        const [appTab, libTab] = screen.getAllByRole('tab');
+        expect(libTab.getAttribute('aria-selected')).toBe('true');
+        fireEvent.contextMenu(appTab, { clientX: 20, clientY: 30 });
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-path'));
+
+        expect(writeText).toHaveBeenCalledWith('/repos/local/src/app.ts');
+    });
+
     it('sends an explicit reveal request each time, even for the already-tracked file', () => {
         renderWithTree();
         fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
@@ -251,7 +267,7 @@ describe('unified panel tree tracking (AC-06)', () => {
         expect(column().getAttribute('data-reveal')).toBe('src/app.ts#2');
     });
 
-    it('copies and reveals a remote-clone file without changing its active tab', () => {
+    it('omits Copy Path for a remote-clone file while preserving relative copy and reveal', () => {
         const writeText = vi.fn(async () => undefined);
         const setTarget = vi.fn(() => true);
         const selectMode = vi.fn();
@@ -263,9 +279,10 @@ describe('unified panel tree tracking (AC-06)', () => {
         });
         fireEvent.click(screen.getByTestId('mock-explorer-open-app'));
 
-        runTabAction('copy-path');
-        expect(writeText).toHaveBeenLastCalledWith('/remote/repo/src/app.ts');
-        runTabAction('copy-relative-path');
+        const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
+        fireEvent.contextMenu(activeTab, { clientX: 20, clientY: 30 });
+        expect(screen.queryByTestId('unified-panel-tab-menu-copy-path')).toBeNull();
+        fireEvent.click(screen.getByTestId('unified-panel-tab-menu-copy-relative-path'));
         expect(writeText).toHaveBeenLastCalledWith('src/app.ts');
 
         writeUnifiedTreeState(WS, { open: false, width: 220 });
@@ -277,8 +294,6 @@ describe('unified panel tree tracking (AC-06)', () => {
                 workspaceRootPath="/remote/repo"
             />,
         );
-        const activeTab = screen.getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
-
         runTabAction('reveal-in-explorer');
 
         expect(setTarget).toHaveBeenCalledWith(WS);

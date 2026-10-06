@@ -75,6 +75,15 @@ describe('useNativeViewPlacement', () => {
         await waitFor(() => expect(placement.setBounds).toHaveBeenCalledWith({ x: 500, y: 100, width: 400, height: 400 }));
     });
 
+    it('hides for an explicit native-view overlay even between probes and restores after dismissal', async () => {
+        mount();
+        const menu = addOverlay({ left: 890, top: 100, width: 8, height: 8 }, { role: 'menu', 'data-native-view-overlay': '' });
+        await waitFor(() => expect(placement.hide).toHaveBeenCalled());
+        placement.setBounds.mockClear();
+        menu.remove();
+        await waitFor(() => expect(placement.setBounds).toHaveBeenCalledWith({ x: 500, y: 100, width: 400, height: 400 }));
+    });
+
     it('hides the view for overlays without any menu or dialog role', async () => {
         mount();
         addOverlay({ left: 0, top: 0, width: 1200, height: 800 });

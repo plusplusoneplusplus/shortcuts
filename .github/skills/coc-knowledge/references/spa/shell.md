@@ -110,8 +110,13 @@ The Windows desktop helper enables OS-account SSO by default at environment crea
 Electron uses sandboxed `WebContentsView`s; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
 Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile and downloads go to the system browser.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
-WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
+WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays. `BrowserToolbarMenu` portals engine information and the current-page external-open action to the owning renderer document, positioned with `useAnchoredPanelPosition`. `useNativeViewPlacement` hides views while explicit `data-native-view-overlay` elements are mounted, including small menus between its hit-test probes; closing the menu restores eligible active views.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
+
+The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
+`onFocusAddressRequested` to the owning renderer after returning host keyboard
+focus. Only the matching active, visible browser tab focuses and selects its
+complete editable address, including unsent edits.
 
 Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores via `closeBrowserPanelView`. Window teardown closes every view. A full SPA reload (`manager.reloadOwner`) closes `url` views but only hides `file` views: the persisted `html-page` tab reopens the same view id and gets the live page, history and scroll back. A file view not reopened before the next reload closes then.
 Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.
@@ -256,8 +261,12 @@ The desktop workspace header exposes one visibility toggle for the resource-tabb
 right panel. The classic repository header and remote/virtual TopBar use the same
 persisted panel-scope open store. Search and Explorer are peer controls inside the
 panel; they select or collapse the right-edge navigator without closing the panel.
-Repository-group mode stays scoped to the group while panel requests use the
-selected dock target.
+Ctrl/Cmd+T opens the shared `+` menu when the visible panel owns focus, preserving
+editable bindings. Native browser hosts forward a source-qualified
+`onOpenMenuRequested` after transferring keyboard focus to the SPA; the matching
+active browser tab opens the menu. Repeats preserve its query and Escape restores
+trigger focus. Repository-group mode stays scoped to the group while panel
+requests use the selected dock target.
 
 The desktop three-column layout keeps the flexible middle pane usable by sharing
 the left column's live, workspace-scoped width through `WorkspaceLeftWidth.ts`.
@@ -318,10 +327,13 @@ across it. It has a searchable `+` menu and one right-edge navigator that switch
 the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
 first use, share the panel-scope navigator width, and route through the selected
 dock target. The Search/Explorer pair moves between the file toolbar and tab strip,
-and the navigator open state persists per panel scope. The
-docked Explorer omits its internal Files/Search switch; the standalone Explorer
-page retains it. Tab descriptors (never document bodies, terminal output, or
-credentials) persist per panel scope in localStorage. Chat-owned `paste`
+and the navigator open state persists per panel scope.
+The tab context menu resolves commands against the clicked descriptor. `Copy Path`
+appears only for file tabs whose owner and workspace root resolve on the local
+server; remote clone paths and non-file resources do not expose it. The docked
+Explorer omits its internal Files/Search switch; the standalone Explorer page
+retains it. Tab descriptors (never document bodies, terminal output, or credentials)
+persist per panel scope in localStorage. Chat-owned `paste`
 descriptors use a stable content hash, dedupe by chat and concrete owner, and
 are excluded from storage and the `+` menu. `openUnifiedPasteTab` captures raw
 text in a panel-scope/resource-id memory map. Panel writes release snapshots

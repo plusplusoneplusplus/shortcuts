@@ -14,8 +14,9 @@ import { isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusonepluspl
 import { APIError } from '../errors';
 import type { MessagingJobOrigin } from './job-notices';
 import type { CompactProcessOutcome } from '../processes/compact-process';
-import { listRecentTopics, resolveChatWorkspace, resolveTopic, resolveWorkspace } from './chat-target';
-import { formatTopicList, listRemotesReply, localTopicListFooter, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
+import { resolveChatWorkspace, resolveWorkspace } from './chat-target';
+import { listRemotesReply, listRemoteTopicsReply, type MessagingRemoteDirectory, type RemoteRefSlot } from './remote-browse';
+import { localTopicsReply, resolveLocalTopic, type LocalTopicSlot } from './local-topics';
 
 export type MessagingQuotaSource = () => Promise<AgentProvidersQuotaResponse | null | undefined>;
 /** Compacts a chat's provider session; throws `APIError` on guard failures. */
@@ -59,6 +60,8 @@ export interface MessagingCommandContext {
     remotes?: MessagingRemoteDirectory;
     /** This chat's last `list remotes` numbering, so `n.m` refs resolve. */
     remoteRefs?: RemoteRefSlot;
+    /** This chat's last local list, preserving cross-repo numbering across activity changes. */
+    localTopics?: LocalTopicSlot;
     /** Clock for topic ages; `Date.now` by default. */
     now?: () => number;
 }
@@ -179,31 +182,25 @@ export async function handleMessagingCommand(command: MessagingControlCommand, c
         return `✅ Selected repo: ${strong(selected.name ?? selected.id)}. Your next message starts a new chat.`;
     }
 
+    if (command.type === 'list-topics') {
+        return localTopicsReply(ctx.store, workspaces, ctx.localTopics, format,
+            id => resolveChatWorkspace(workspaces, ctx.selection.repoId())?.id === id ? ctx.selection.topicId(id) : null, now, command.verbose);
+    }
+    if (command.type === 'select-topic') {
+        const topic = await resolveLocalTopic(ctx.store, workspaces, ctx.localTopics, command.args, now);
+        if (!topic) return '❌ Topic not found or ambiguous. Use `list topics -v`.';
+        const workspaceId = String(topic.metadata?.workspaceId);
+        ctx.selection.selectRepo(workspaceId);
+        ctx.selection.selectTopic(workspaceId, topic.id);
+        return `✅ Selected topic: ${strong(topic.title ?? topic.customTitle ?? topic.id)}`;
+    }
     const repo = resolveChatWorkspace(workspaces, ctx.selection.repoId());
     if (!repo) return NO_CHAT_WORKSPACE_REPLY;
     const workspaceId = repo.id;
-    const repoName = repo.name ?? repo.id;
 
-    if (command.type === 'list-topics') {
-        const topics = await listRecentTopics(ctx.store, workspaceId);
-        if (!topics.length) return 'No chat topics found.';
-        return formatTopicList(topics, {
-            ...format,
-            header: `${strong('Topics')} · ${format.escape(repoName)}`,
-            footer: localTopicListFooter(code, command.verbose),
-            currentId: ctx.selection.topicId(workspaceId),
-            verbose: command.verbose,
-            now,
-        });
-    }
     if (command.type === 'create-topic') {
         ctx.selection.selectTopic(workspaceId, null);
         return '✅ Ready for a new topic. Send a message to start.';
     }
-    const topic = await resolveTopic(ctx.store, workspaceId, command.args);
-    if (!topic || topic.metadata?.workspaceId !== workspaceId) {
-        return `❌ Topic not found in ${strong(repoName)}. Use \`list topics\`.`;
-    }
-    ctx.selection.selectTopic(workspaceId, topic.id);
-    return `✅ Selected topic: ${strong(topic.title ?? topic.customTitle ?? topic.id)}`;
+    return invalidCommandReply(ctx.helpFormat);
 }

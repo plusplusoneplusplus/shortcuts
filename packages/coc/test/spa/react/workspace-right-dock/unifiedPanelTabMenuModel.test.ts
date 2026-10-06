@@ -34,7 +34,7 @@ function tab(
 }
 
 describe('unified panel tab menu model', () => {
-    it('offers common close commands for every tab kind and file commands only for files', () => {
+    it('offers common close commands for every tab kind and local-file commands only for files', () => {
         const kinds: UnifiedPanelTab['kind'][] = ['terminal', 'notes', 'note', 'file', 'canvas', 'diff', 'external'];
         for (const kind of kinds) {
             const current = tab(kind, kind);
@@ -50,6 +50,19 @@ describe('unified panel tab menu model', () => {
             expect(actions).not.toContain('split-right');
             expect(actions).not.toContain('pin');
         }
+    });
+
+    it('omits Copy Path when the file does not resolve to the local filesystem', () => {
+        const remote = tab('file', 'src/remote.ts', { ownerRoutingRef: 'remote:server-b:ws-1' });
+        const actions = unifiedPanelTabMenuItems(
+            remote,
+            [remote],
+            new Set(),
+            unifiedPanelFileActionAvailability(remote, '/remote/repo'),
+        ).map(item => item.action);
+
+        expect(actions).not.toContain('copy-path');
+        expect(actions).toContain('copy-relative-path');
     });
 
     it('puts Keep Open before close commands only for a preview tab', () => {
@@ -95,7 +108,7 @@ describe('unified panel tab menu model', () => {
             .not.toContain(hiddenId);
     });
 
-    it('resolves local, Windows, trusted, and unavailable absolute paths', () => {
+    it('resolves local, Windows, trusted, remote, and unavailable absolute paths', () => {
         const file = tab('file', 'src/a.ts');
         expect(unifiedPanelAbsoluteFilePath(file, '/repo/root/')).toBe('/repo/root/src/a.ts');
         expect(unifiedPanelAbsoluteFilePath(file, 'C:\\repo\\root\\')).toBe('C:\\repo\\root\\src\\a.ts');
@@ -104,6 +117,9 @@ describe('unified panel tab menu model', () => {
         const trusted = tab('file', `${TRUSTED_PATH_PREFIX}/home/user/.config/file.json`);
         expect(unifiedPanelAbsoluteFilePath(trusted, undefined)).toBe('/home/user/.config/file.json');
         expect(unifiedPanelRelativeFilePath(trusted)).toBeNull();
+        const remote = { ...file, ownerRoutingRef: 'remote:server-b:ws-1' };
+        expect(unifiedPanelAbsoluteFilePath(remote, '/remote/repo')).toBeNull();
+        expect(unifiedPanelFileActionAvailability(remote, '/remote/repo').copyPath).toBe(false);
         expect(unifiedPanelFileActionAvailability(file, undefined)).toEqual({
             copyPath: false,
             copyRelativePath: true,

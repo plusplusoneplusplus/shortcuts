@@ -16,14 +16,15 @@ import {
 import { TeamsUserStateStore } from './teams-user-state';
 import type { TeamsEventType } from './teams-attempt-store';
 import { escapeTeamsMarkdown, teamsCodeSpan } from './teams-outbound-format';
-import { listRecentTopics, resolveChatWorkspace, resolveTopic, resolveWorkspace } from './chat-target';
+import { resolveChatWorkspace, resolveWorkspace } from './chat-target';
 import {
     compactChatReply, handleMessagingCommand, invalidCommandReply, NO_CHAT_WORKSPACE_REPLY, readQuotaReply,
     type MessagingCompactor, type MessagingQuotaSource,
 } from './messaging-commands';
-import { formatTopicList, localTopicListFooter, RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
+import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 import type { MessagingHandOff } from './job-handoff';
 import type { MessagingJobOrigin } from './job-notices';
+import { LocalTopicMemory, localTopicsReply, resolveLocalTopic } from './local-topics';
 
 const EMPTY_CHAT_REPLY = 'Send a message to start a chat.';
 
@@ -83,6 +84,7 @@ export class TeamsCommandRouter {
     private readonly userState: TeamsUserStateStore;
     private readonly hydratingRoots = new Set<string>();
     private readonly threadDispatches = new Map<string, Promise<void>>();
+    private readonly localTopics = new LocalTopicMemory();
     private readonly remoteRefs = new RemoteRefMemory();
 
     constructor(deps: TeamsCommandRouterDeps) {
@@ -233,6 +235,7 @@ export class TeamsCommandRouter {
             compactOrigin,
             remotes: this.deps.remotes,
             remoteRefs: this.remoteRefs.slot(chatKey),
+            localTopics: this.localTopics.slot(`user\0${chatKey}`),
             // Compact the chat plain messages currently continue.
             compactTarget: () => {
                 const state = this.userState.get(userKey);
@@ -291,43 +294,37 @@ export class TeamsCommandRouter {
             return;
         }
         const workspaces = await this.deps.store.getWorkspaces();
+        const slot = this.localTopics.slot(`thread\0${msg.channelId}\0${root}`);
+        if (command.type === 'list-topics') {
+            this.deps.recordThreadCommand?.(msg);
+            await reply(await localTopicsReply(this.deps.store, workspaces, slot, TEAMS_FORMAT,
+                id => id === selection?.workspaceId ? (selection as { process?: AIProcess })?.process?.id : null,
+                Date.now(), command.verbose, '/'));
+            return;
+        }
+        if (command.type === 'select-topic') {
+            const process = await resolveLocalTopic(this.deps.store, workspaces, slot, command.args, Date.now());
+            if (!process || ['failed', 'cancelled'].includes(process.status)) {
+                this.deps.recordThreadCommand?.(msg);
+                await reply('❌ Topic not found or unavailable. Use `/list topics -v` here.');
+                return;
+            }
+            const workspace = workspaces.find(w => w.id === process.metadata?.workspaceId)!;
+            await this.deps.selectThreadTarget(msg, workspace.id, process.id);
+            const title = process.title ?? process.customTitle ?? process.id;
+            await reply(`✅ Selected topic: **${escapeTeamsMarkdown(title)}** in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question continues this chat.`);
+            return;
+        }
         const workspace = workspaces.find(w => w.id === selection?.workspaceId);
         if (!workspace) {
             this.deps.recordThreadCommand?.(msg);
             await reply('❌ Selected repo is unavailable. Use `/select repo <name>` here.');
             return;
         }
-        if (command.type === 'list-topics') {
-            const recent = await listRecentTopics(this.deps.store, workspace.id);
-            this.deps.recordThreadCommand?.(msg);
-            await reply(recent.length
-                ? formatTopicList(recent, {
-                    ...TEAMS_FORMAT,
-                    header: `**Topics** · ${escapeTeamsMarkdown(workspace.name ?? workspace.id)}`,
-                    footer: localTopicListFooter(teamsCodeSpan, command.verbose, '/'),
-                    currentId: (selection as { process?: AIProcess } | null | undefined)?.process?.id,
-                    verbose: command.verbose,
-                    now: Date.now(),
-                })
-                : 'No chat topics found.');
-            return;
-        }
         if (command.type === 'create-topic') {
             await this.deps.selectThreadTarget(msg, workspace.id, null);
             await reply(`✅ Ready for a new topic in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question starts a new chat.`);
             return;
-        }
-        if (command.type === 'select-topic') {
-            const process = await resolveTopic(this.deps.store, workspace.id, command.args);
-            if (!process || process.metadata?.workspaceId !== workspace.id
-                || ['failed', 'cancelled'].includes(process.status)) {
-                this.deps.recordThreadCommand?.(msg);
-                await reply('❌ Topic not found in the selected repo. Use `/list topics` here.');
-                return;
-            }
-            await this.deps.selectThreadTarget(msg, workspace.id, process.id);
-            const title = process.title ?? process.customTitle ?? process.id;
-            await reply(`✅ Selected topic: **${escapeTeamsMarkdown(title)}** in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question continues this chat.`);
         }
     }
 

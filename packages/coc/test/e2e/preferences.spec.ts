@@ -123,7 +123,8 @@ async function pickModel(page: import('@playwright/test').Page, scope: DialogSco
 /** Open the provider menu and switch to a provider. Persists lastChatProvider. */
 async function switchProvider(scope: DialogScope, providerId: string): Promise<void> {
     await providerChip(scope).click();
-    const menu = scope.locator('[data-testid="agent-selector-menu"]');
+    // The menu is portaled to document.body, so it lives outside the dialog.
+    const menu = scope.page().locator('[data-testid="agent-selector-menu"]');
     await expect(menu).toBeVisible({ timeout: 5000 });
     await menu.locator(`[data-testid="agent-option-${providerId}"]`).click();
     await expect(menu).toBeHidden({ timeout: 3000 });

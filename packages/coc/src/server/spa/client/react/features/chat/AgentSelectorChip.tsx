@@ -8,7 +8,9 @@
  * Visual style mirrors the existing model picker chip in NewChatArea/FollowUpInputArea.
  */
 
-import { useRef, useState, useEffect, type RefObject } from 'react';
+import { useRef, useState, useEffect, useId, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
+import { useAnchoredPanelPosition, type AnchoredPanelPlacement } from '../../shared/useAnchoredPanelPosition';
 import { cn } from '../../ui/cn';
 import type { AgentSelectorProvider, ChatProvider, ConcreteChatProvider } from '../../utils/providerSelection';
 export type { AgentSelectorProvider, ChatProvider, ConcreteChatProvider };
@@ -32,6 +34,8 @@ export interface AgentSelectorChipProps {
     labelClassName?: string;
     /** Optional focus target for dialogs opened from this chip. */
     buttonRef?: RefObject<HTMLButtonElement>;
+    /** Composers open upward; inline/modal job controls prefer below. */
+    menuPlacement?: AnchoredPanelPlacement;
 }
 
 function CodexIcon() {
@@ -85,15 +89,31 @@ function ProviderIcon({ id }: { id: string }) {
     return <CopilotIcon />;
 }
 
-export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false, iconOnly = false, labelClassName, buttonRef }: AgentSelectorChipProps) {
+export function AgentSelectorChip({ providers, loading, selected, onChange, disabled, disabledReason, mobileTapTarget = false, iconOnly = false, labelClassName, buttonRef, menuPlacement = 'up' }: AgentSelectorChipProps) {
     const [open, setOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const localButtonRef = useRef<HTMLButtonElement>(null);
+    const triggerRef = buttonRef ?? localButtonRef;
+    const panelRef = useRef<HTMLDivElement>(null);
+    const menuId = useId();
+    const position = useAnchoredPanelPosition({
+        open, placement: menuPlacement, align: 'left', constrainHeight: true,
+        triggerRef, panelRef,
+    });
+
+    useEffect(() => {
+        if (open) {
+            const panel = panelRef.current;
+            (panel?.querySelector<HTMLButtonElement>('[aria-selected="true"]:not(:disabled)')
+                ?? panel?.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();
+        }
+    }, [open]);
 
     // Close the menu when clicking outside
     useEffect(() => {
         if (!open) return;
         function handleClick(e: MouseEvent) {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+            if (!containerRef.current?.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node)) {
                 setOpen(false);
             }
         }
@@ -117,10 +137,16 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
     return (
         <div ref={containerRef} className="relative shrink-0" data-testid="agent-selector-chip-container">
             <button
-                ref={buttonRef}
+                ref={triggerRef}
                 type="button"
                 disabled={disabled || loading}
                 onClick={() => setOpen(o => !o)}
+                onKeyDown={e => {
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setOpen(true);
+                    }
+                }}
                 className={cn(
                     'ctool shrink-0 inline-flex items-center gap-1 rounded-sm text-[11px]',
                     mobileTapTarget ? 'h-8 w-8 justify-center px-0 sm:w-auto sm:px-2 lg:h-[22px] lg:px-1.5' : 'h-[22px] px-1.5',
@@ -134,6 +160,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                 data-testid="agent-selector-chip-btn"
                 aria-haspopup="listbox"
                 aria-expanded={open}
+                aria-controls={open ? menuId : undefined}
                 aria-label={title}
             >
                 <ProviderIcon id={selected} />
@@ -160,16 +187,51 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                 </svg>
             </button>
 
-            {open && (
+            {open && createPortal(
                 <div
+                    ref={panelRef}
+                    id={menuId}
+                    style={{ position: 'fixed', ...position, maxWidth: 'calc(100vw - 16px)' }}
                     className={cn(
-                        'absolute bottom-full mb-1 left-0 z-[10000]',
-                        'min-w-[140px] py-0.5 rounded-md shadow-lg',
+                        'z-[10003] overflow-y-auto',
+                        'min-w-[min(140px,calc(100vw-16px))] py-0.5 rounded-md shadow-lg',
                         'bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]',
                     )}
                     role="listbox"
                     aria-label="Select agent provider"
                     data-testid="agent-selector-menu"
+                    onBlur={e => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node) && e.relatedTarget !== triggerRef.current) setOpen(false);
+                    }}
+                    onKeyDown={e => {
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setOpen(false);
+                            triggerRef.current?.focus();
+                        } else if (e.key === 'Tab') {
+                            e.preventDefault();
+                            // Move in the trigger's tab order, excluding the portal.
+                            const controls = Array.from(document.querySelectorAll<HTMLElement>(
+                                'button, a[href], input, select, textarea, [tabindex], [contenteditable="true"]',
+                            )).filter(control => control.tabIndex >= 0 && !control.matches(':disabled')
+                                && !panelRef.current?.contains(control)
+                                && !control.closest('[inert]') && control.getClientRects().length > 0
+                                && getComputedStyle(control).visibility !== 'hidden');
+                            controls.sort((a, b) => (a.tabIndex || Infinity) - (b.tabIndex || Infinity));
+                            const current = controls.indexOf(triggerRef.current!);
+                            const next = (current + (e.shiftKey ? -1 : 1) + controls.length) % controls.length;
+                            (controls[next] ?? triggerRef.current)?.focus();
+                            setOpen(false);
+                        } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+                            e.preventDefault();
+                            const options = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+                            const current = options.indexOf(document.activeElement as HTMLButtonElement);
+                            const index = e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1
+                                : (current + (e.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+                            options[index]?.focus();
+                        }
+                    }}
                 >
                     {providers.map(provider => {
                         const isSelected = provider.id === selected;
@@ -185,6 +247,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                                     if (!isDisabled) {
                                         onChange(provider.id as ChatProvider);
                                         setOpen(false);
+                                        triggerRef.current?.focus();
                                     }
                                 }}
                                 title={isDisabled
@@ -221,7 +284,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                             </button>
                         );
                     })}
-                </div>
+                </div>, document.body,
             )}
         </div>
     );

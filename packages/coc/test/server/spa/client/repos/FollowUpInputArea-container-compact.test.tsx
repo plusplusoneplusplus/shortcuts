@@ -21,9 +21,9 @@
  *  - AC-02: the cwd chip collapses to the last folder name (basename) with the
  *    full path in its title, driven by the same container-narrow signal threaded
  *    down into ComposerMetaStrip.
- *  - Single-line regression: compaction already fires in the `medium` tier, and
- *    the meta strip lives inside a flex-basis-0 middle so it can never wrap the
- *    toolbar onto a second row.
+ *  - Single-line regression: compaction already fires in the `medium` tier, the
+ *    context gauge retains its percentage, and the meta strip lives inside a
+ *    flex-basis-0 middle so it can never wrap the toolbar onto a second row.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -118,10 +118,11 @@ vi.mock('../../../../../src/server/spa/client/react/repos/modeConfig', () => ({
         ask: { border: '', ring: '' },
         plan: { border: '', ring: '' },
         autopilot: { border: '', ring: '' },
+        sentinel: { border: '', ring: '' },
     },
-    MODE_ICONS: { ask: '?', plan: 'P', autopilot: 'A' },
-    MODE_LABELS: { ask: 'Ask', plan: 'Plan', autopilot: 'Autopilot' },
-    MODE_TOOLTIPS: { ask: 'Ask', plan: 'Plan', autopilot: 'Autopilot' },
+    MODE_ICONS: { ask: '?', plan: 'P', autopilot: 'A', sentinel: 'S' },
+    MODE_LABELS: { ask: 'Ask', plan: 'Plan', autopilot: 'Autopilot', sentinel: 'Sentinel' },
+    MODE_TOOLTIPS: { ask: 'Ask', plan: 'Plan', autopilot: 'Autopilot', sentinel: 'Sentinel' },
     cycleMode: (m: string) => (m === 'ask' ? 'plan' : 'ask'),
 }));
 
@@ -244,7 +245,7 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
             expect(middle.contains(strip)).toBe(true);
         });
 
-        it('hides the strip via container query instead of overlapping when free space runs out', () => {
+        it('collapses context to its percentage before hiding the strip when free space runs out', () => {
             setContainerWidth(900);
             render(<FollowUpInputArea {...defaultProps({
                 workingDirectory: '/Users/yihengtao/Documents/Projects/nanochat',
@@ -252,19 +253,43 @@ describe('FollowUpInputArea – container-driven compact footer', () => {
                 sessionCurrentTokens: 28_000,
             })} />);
             // The middle is an inline-size @container whose width equals the
-            // toolbar's free space (basis-0). The strip's unshrinkable pieces
-            // hide via container queries below their fit widths — regression
-            // for the ctx gauge bleeding over the tools/send zone.
+            // toolbar's free space (basis-0). The cwd hides first, then the ctx
+            // label/bar collapse while its percentage remains. Only the final
+            // compact percentage can hide when less than 44px remains.
             const middle = screen.getByTestId('chat-toolbar-flex-middle');
             expect(middle.className).toContain('[container-type:inline-size]');
             const fitGate = screen.getByTestId('chat-toolbar-meta-fit-gate');
-            expect(fitGate.className).toContain('[@container_(max-width:159px)]:hidden');
+            expect(fitGate.className).toContain('[@container_(max-width:43px)]:hidden');
             expect(fitGate.contains(screen.getByTestId('composer-meta-strip'))).toBe(true);
+            expect(screen.getByText('ctx').className).toContain('[@container_(max-width:159px)]:hidden');
+            expect(screen.getByTestId('composer-ctx-bar').className).toContain('[@container_(max-width:159px)]:hidden');
+            expect(screen.getByTestId('composer-ctx-pct').textContent).toBe('14%');
             // The cwd group (chip + divider) is the first to go, keeping the
-            // ctx gauge; the divider hides together with the chip.
+            // context percentage; the divider hides together with the chip.
             const cwdGroup = screen.getByTestId('composer-cwd-group');
             expect(cwdGroup.className).toContain('[@container_(max-width:319px)]:hidden');
             expect(cwdGroup.contains(screen.getByTestId('composer-cwd-chip'))).toBe(true);
+        });
+
+        it.each([
+            { label: 'idle Send', props: {} },
+            { label: 'busy Stop', props: { isActiveGeneration: true, onStop: vi.fn() } },
+            { label: 'Sentinel', props: { selectedMode: 'sentinel' as const, allowedModes: ['sentinel' as const] } },
+        ])('keeps compact context usage beside the $label action in a narrow pane', ({ props }) => {
+            setContainerWidth(560);
+            render(<FollowUpInputArea {...defaultProps({
+                sessionTokenLimit: 200_000,
+                sessionCurrentTokens: 58_000,
+                ...props,
+            })} />);
+
+            expect(screen.getByTestId('composer-ctx-pct').textContent).toBe('29%');
+            expect(screen.getByText('ctx').className).toContain('hidden');
+            expect(screen.getByTestId('composer-ctx-bar').className).toContain('hidden');
+            expect(screen.getByTestId('chat-input-toolbar').className).toContain('flex-nowrap');
+            expect(screen.getByTestId(
+                props.isActiveGeneration ? 'activity-chat-stop-btn' : 'activity-chat-send-btn',
+            )).toBeTruthy();
         });
 
         it('keeps the flexible middle as a spacer when no meta content is present', () => {

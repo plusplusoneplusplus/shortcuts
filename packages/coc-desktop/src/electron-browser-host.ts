@@ -179,11 +179,19 @@ function wireView(entry: BrowserEntry): void {
     wireNavigation(entry, wc);
     wc.on('before-input-event', (event, input) => {
         // Only the embedded view, never authentication popups, owns this shortcut.
+        const key = input.key.toLowerCase();
         const modifier = process.platform === 'darwin' ? input.meta : input.control;
         if (entry.closed || !entry.view.getVisible() || input.type !== 'keyDown'
-            || input.key.toLowerCase() !== 'w' || !modifier || input.alt) { return; }
+            || !['w', 't', 'l'].includes(key) || !modifier || input.alt
+            || (key !== 'w' && input.shift) || (key === 'l' && !entry.sink.focusAddressRequested)) { return; }
         event.preventDefault();
-        if (!input.isAutoRepeat) { entry.sink.closeRequested(); }
+        if (!input.isAutoRepeat) {
+            if (key === 't' || key === 'l') {
+                entry.win.webContents.focus();
+                if (key === 'l') { entry.sink.focusAddressRequested!(); }
+                else { entry.sink.openMenuRequested(); }
+            } else { entry.sink.closeRequested(); }
+        }
     });
     const update = () => pushState(entry);
     wc.on('did-start-loading', () => {

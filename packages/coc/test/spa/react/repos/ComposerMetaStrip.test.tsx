@@ -80,6 +80,24 @@ describe('ComposerMetaStrip', () => {
         expect(fill.getAttribute('style')).toContain('width: 42');
     });
 
+    it('collapses context usage to the existing percentage when compact', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={58_000} compact />);
+
+        const fuel = screen.getByTestId('composer-ctx-fuel');
+        expect(screen.getByTestId('composer-ctx-pct').textContent).toBe('29%');
+        expect(screen.getByText('ctx').className.split(/\s+/)).toContain('hidden');
+        expect(screen.getByTestId('composer-ctx-bar').className.split(/\s+/)).toContain('hidden');
+        expect(fuel.getAttribute('aria-label')).toContain('58.0k / 200.0k (29.0%)');
+    });
+
+    it('keeps the full context label and progress bar when not compact', () => {
+        render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={58_000} />);
+
+        expect(screen.getByText('ctx').className.split(/\s+/)).not.toContain('hidden');
+        expect(screen.getByTestId('composer-ctx-bar').className).toContain('inline-block');
+        expect(screen.getByTestId('composer-ctx-pct').textContent).toBe('29%');
+    });
+
     it('uses green fill at low usage (<60%)', () => {
         render(<ComposerMetaStrip sessionTokenLimit={200_000} sessionCurrentTokens={50_000} />);
         const fill = screen.getByTestId('composer-ctx-fill');

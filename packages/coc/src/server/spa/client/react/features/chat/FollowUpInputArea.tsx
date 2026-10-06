@@ -1320,26 +1320,22 @@ export function FollowUpInputArea({
                                  makes its width equal the toolbar's free space
                                  regardless of content, it doubles as an
                                  inline-size @container: the strip's fixed-width
-                                 pieces (ctx gauge, cwd chip) hide via container
-                                 queries when the free space can't fit them —
+                                 pieces (ctx gauge, cwd chip) collapse or hide via
+                                 container queries when the free space can't fit them —
                                  they must never overlap the tools/send zone.
-                                 The strip itself is desktop-only (≤1023px hides
-                                 it) — below lg this div still provides the
-                                 spacer that pushes the tools/send zone right. */}
+                                 The numeric ctx percentage remains visible until
+                                 even its compact 44px footprint cannot fit. */}
                             <div
                                 className="flex-1 basis-0 min-w-0 [container-type:inline-size] flex items-center justify-end"
                                 data-testid="chat-toolbar-flex-middle"
                             >
-                                <div className="hidden lg:flex items-center min-w-0">
-                                    {/* Fit gate: the ctx gauge cluster is ~160px of
-                                         unshrinkable content — below that free space
-                                         the whole strip hides rather than bleeding
-                                         over its neighbours. Kept as a separate
-                                         element from the lg: gate above so the two
-                                         display rules can never fight in the CSS
-                                         cascade. */}
+                                <div className="flex items-center min-w-0">
+                                    {/* Fit gate: compact context usage is ~44px of
+                                         unshrinkable content. Below that free space
+                                         the strip hides rather than bleeding over
+                                         the tools/send zone. */}
                                     <div
-                                        className="flex items-center min-w-0 [@container_(max-width:159px)]:hidden"
+                                        className="flex items-center min-w-0 [@container_(max-width:43px)]:hidden"
                                         data-testid="chat-toolbar-meta-fit-gate"
                                     >
                                         <ComposerMetaStrip

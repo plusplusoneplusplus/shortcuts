@@ -12,6 +12,8 @@ import { admitBotControlledFollowUp } from './bot-control-admission';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
 import type { MessagingHandOff } from './job-handoff';
 
+import { LocalTopicMemory } from './local-topics';
+
 const WHATSAPP_HELP_FORMAT = { strong: (text: string) => `*${text}*` };
 
 export interface WhatsAppRouterDeps {
@@ -44,6 +46,7 @@ function matchesBinding(task: QueuedTask | undefined, binding: WhatsAppBinding):
 }
 
 export class WhatsAppCommandRouter {
+    private readonly localTopics = new LocalTopicMemory();
     private readonly remoteRefs = new RemoteRefMemory();
 
     constructor(private readonly deps: WhatsAppRouterDeps) {}
@@ -57,6 +60,13 @@ export class WhatsAppCommandRouter {
             this.deps.bindings.recordOutbound(id);
         };
         let admitted = false;
+        const react = async () => {
+            try {
+                await this.deps.react(msg.messageId);
+            } catch (error) {
+                console.error('[whatsapp-messaging] Reaction failed:', error);
+            }
+        };
         try {
             if (await this.deps.questions?.tryAnswer('whatsapp', {
                 chatKey: msg.chatJid, messageId: msg.messageId, replyToId: msg.quotedMessageId, text: msg.text,
@@ -65,6 +75,10 @@ export class WhatsAppCommandRouter {
             if (command.type === 'invalid') { await reply(invalidCommandReply(WHATSAPP_HELP_FORMAT)); return; }
             if (isMessagingControlCommand(command)) {
                 const bindings = this.deps.bindings;
+                // Reserve the command before awaiting transport or dispatch, including concurrent redelivery.
+                if (bindings.isKnownMessage(msg.messageId)) return;
+                bindings.recordOutbound(msg.messageId);
+                await react();
                 await reply(await handleMessagingCommand(command, {
                     store: this.deps.store,
                     helpFormat: WHATSAPP_HELP_FORMAT,
@@ -73,6 +87,7 @@ export class WhatsAppCommandRouter {
                     compactOrigin: { connector: 'whatsapp', chatKey: msg.chatJid },
                     remotes: this.deps.remotes,
                     remoteRefs: this.remoteRefs.slot(msg.chatJid),
+                    localTopics: this.localTopics.slot(msg.chatJid),
                     // A quote-reply to an answer compacts that answer's chat.
                     compactTarget: () => msg.quotedMessageId ? bindings.findMessage(msg.quotedMessageId) : undefined,
                     selection: {
@@ -132,13 +147,6 @@ export class WhatsAppCommandRouter {
                     }
                 }
             }
-            const react = async () => {
-                try {
-                    await this.deps.react(msg.messageId);
-                } catch (error) {
-                    console.error('[whatsapp-messaging] Reaction failed:', error);
-                }
-            };
             const handOff = await this.deps.handOff?.resolve(targetId, command.mode);
             if (handOff) {
                 await this.deps.handOff!.start(handOff, command.args, { connector: 'whatsapp', chatKey: msg.chatJid });

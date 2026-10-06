@@ -103,9 +103,10 @@ space — container queries hide unshrinkable pieces rather than letting them ov
 
 The toolbar measures itself with `useContainerWidth` (`wideThreshold` 820px,
 `mediumThreshold` 640px) and sheds progressively: below 820px an icon-only model chip and
-cwd basename; below 640px mobile controls (mode pills become tap-to-cycle, slash/attach fold
-into a "⋯" menu) driven by the container signal, not the `lg:` viewport gate; below 380px
-provider chip and Send go `iconOnly` with accessible names preserved. The toolbar is
+cwd basename while context usage collapses to its existing percentage; below 640px mobile
+controls (mode pills become tap-to-cycle, slash/attach fold into a "⋯" menu) driven by the
+container signal, not the `lg:` viewport gate; below 380px provider chip and Send go
+`iconOnly` with accessible names preserved. The toolbar is
 `flex-nowrap` at every viewport and never wraps to a second row. With `features.chatProviderSwitching` enabled, idle Ask and Autopilot conversations
 list concrete providers from the owning server. Workflow-owned, active, queued, cancelling,
 compacting, rewinding, and interactive-waiting conversations expose an accessible disabled

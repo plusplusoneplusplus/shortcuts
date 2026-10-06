@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { BrowserToolbarMenu } from './BrowserToolbarMenu';
+import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
 import {
@@ -49,16 +51,30 @@ export function UnifiedBrowserTab({
     const [engine, setEngine] = useState<BrowserEngine | undefined>();
     const [startupError, setStartupError] = useState<{ reason: string; message: string } | null>(null);
     const [retry, setRetry] = useState(0);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const addressRef = useRef<HTMLInputElement>(null);
     const latestUrl = useRef(url);
     latestUrl.current = url;
     const onPageStateRef = useRef(onPageState);
     onPageStateRef.current = onPageState;
+
+    useEffect(() => { setMenuOpen(false); }, [active, visible, viewId, sessionKey]);
 
     // The page's own navigation moves the address unless the user is editing.
     useEffect(() => {
         setAddress(url ?? '');
         setError(null);
     }, [url]);
+
+    useEffect(() => {
+        if (!active || !visible) return;
+        return bridge?.onFocusAddressRequested?.(event => {
+            if (event.viewId !== viewId) return;
+            setMenuOpen(false);
+            addressRef.current?.focus();
+            addressRef.current?.select();
+        });
+    }, [bridge, active, visible, viewId]);
 
     const hasUrl = Boolean(url);
     useEffect(() => {
@@ -134,23 +150,32 @@ export function UnifiedBrowserTab({
 
     const toolbar = (
         <form
-            className="flex flex-shrink-0 items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
+            className="flex min-w-0 flex-shrink-0 items-center gap-1 border-b border-[#e5e5e5] px-2 py-1 text-xs dark:border-[#333]"
             onSubmit={submit}
+            onKeyDown={event => {
+                const mac = isMacPlatform();
+                if (!active || !visible || event.defaultPrevented || event.key.toLowerCase() !== 'l'
+                    || !(mac ? event.metaKey : event.ctrlKey) || event.altKey || event.shiftKey
+                    || !addressRef.current) return;
+                setMenuOpen(false);
+                addressRef.current.focus();
+                addressRef.current.select();
+                event.preventDefault();
+                event.stopPropagation();
+            }}
         >
             {bridge && (
-                <>
-                    <NativeViewNavButtons
-                        canGoBack={Boolean(page?.canGoBack)}
-                        canGoForward={Boolean(page?.canGoForward)}
-                        loading={page?.loading}
-                        disabled={!opened}
-                        onNav={nav}
-                        testIdPrefix="browser"
-                    />
-                    {engine && <span className="flex-shrink-0 rounded bg-[#f0f0f0] px-1.5 py-0.5 text-[10px] text-[#616161] dark:bg-[#2d2d2d] dark:text-[#9d9d9d]" title="This tab's browser engine" data-testid="browser-engine">{engine === 'electron' ? 'Electron' : 'WebView2'}</span>}
-                </>
+                <NativeViewNavButtons
+                    canGoBack={Boolean(page?.canGoBack)}
+                    canGoForward={Boolean(page?.canGoForward)}
+                    loading={page?.loading}
+                    disabled={!opened}
+                    onNav={nav}
+                    testIdPrefix="browser"
+                />
             )}
             <input
+                ref={addressRef}
                 type="text"
                 value={address}
                 onChange={event => { setAddress(event.target.value); setError(null); }}
@@ -162,15 +187,14 @@ export function UnifiedBrowserTab({
                 className="min-w-0 flex-1 rounded border border-[#c8c8c8] bg-transparent px-2 py-1 outline-none focus:border-[#007acc] dark:border-[#3c3c3c]"
                 data-testid="browser-address"
             />
-            <button
-                className={toolbarButton}
-                type="button"
-                disabled={!currentUrl}
-                onClick={openExternal}
-                data-testid="browser-open-external"
-            >
-                Open in system browser
-            </button>
+            <BrowserToolbarMenu
+                key={`${sessionKey}:${viewId}`}
+                open={menuOpen && active && visible}
+                onOpenChange={setMenuOpen}
+                engine={engine}
+                canOpenExternal={Boolean(currentUrl)}
+                onOpenExternal={openExternal}
+            />
         </form>
     );
 
@@ -178,7 +202,7 @@ export function UnifiedBrowserTab({
         <NativeViewTab
             bridge={bridge}
             viewId={viewId}
-            shown={opened && active && visible && !failed}
+            shown={opened && active && visible && !failed && !menuOpen}
             surfaceHidden={failed || !url}
             placeholderTestId="browser-placeholder"
             toolbar={toolbar}

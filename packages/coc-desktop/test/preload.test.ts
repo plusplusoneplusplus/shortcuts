@@ -69,6 +69,8 @@ import {
     BROWSER_PREFERENCES_SET_CHANNEL,
     BROWSER_CLEAR_DATA_CHANNEL,
     BROWSER_PREFERENCES_CHANGED_CHANNEL,
+    BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL,
+    BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL,
     BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL,
     BROWSER_VIEW_CLOSED_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
@@ -406,6 +408,8 @@ describe('preload bridge', () => {
     });
 
     it.each([
+        ['onFocusAddressRequested', BROWSER_VIEW_FOCUS_ADDRESS_REQUESTED_CHANNEL, { viewId: 'b1' }],
+        ['onOpenMenuRequested', BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, { viewId: 'b1' }],
         ['onCloseRequested', BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, { viewId: 'b1' }],
         ['onState', BROWSER_VIEW_STATE_CHANNEL, { viewId: 'b1', url: 'https://a.test/', title: 'A', canGoBack: false, canGoForward: false, loading: false }],
         ['onNewTab', BROWSER_VIEW_NEW_TAB_CHANNEL, { openerViewId: 'b1', url: 'https://b.test/' }],

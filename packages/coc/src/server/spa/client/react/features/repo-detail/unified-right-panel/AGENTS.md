@@ -77,14 +77,14 @@ from same-id clones never merge into one tab.
 | `unifiedPanelNavigationHistory.ts` | Pure file-location history: panel-scope/tab identity, VS Code-style ten-line coalescing, branching, the 50-entry bound, replay suppression, missing-file drop, and the versioned codec. Each entry carries its file's reopen descriptor, so closing a tab keeps its entries; Back/Forward onto a closed file reopens it as a preview (through the preview slot's unsaved-edits guard) in the current chat's view, and never steps onto another scope's entries. |
 | `unifiedPanelNavigationStore.ts` + `fileNavigationRouting.ts` | History per panel scope, cached in memory and persisted to `unified-right-panel:<scope>:navigation` (unreadable or entry-less-reopen-data is dropped on load), plus pure Go Back/Forward key (Alt+Arrow, or Ctrl+-/Ctrl+Shift+- on macOS) and auxiliary mouse-button classification. |
 | `quickOpenRouting.ts`, `closeTabRouting.ts`, `findRouting.ts` | Pure ownership rules for the panel's document-level keyboard shortcuts. Find ownership is scoped to focus inside the Explorer navigator column. |
-| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip and accessible VS Code-style tab menu. Four or more canvas tabs compress into the readable active tab plus a searchable count chip (shown in the active canvas's header beside its title, or in the strip when no canvas is active); the chip switches, closes, and bulk-closes through the same guarded tab callbacks without changing stored order. A dedicated divider separates tools (Terminal, Notes, notes, Git, and canvases) from resources (files, diffs, external). File tabs use Explorer's shared `FileNameIcon`; other kinds use fixed icons. The pure menu model owns per-kind action availability, path resolution, and visible-order bulk targets. |
+| `UnifiedPanelTabStrip.tsx` + `UnifiedPanelCanvasStack.tsx` + `UnifiedPanelTabContextMenu.tsx` + `unifiedPanelTabMenuModel.ts` | Presentational strip and accessible VS Code-style tab menu. Four or more canvas tabs compress into the readable active tab plus a searchable count chip (shown in the active canvas's header beside its title, or in the strip when no canvas is active); the chip switches, closes, and bulk-closes through the same guarded tab callbacks without changing stored order. A dedicated divider separates tools (Terminal, Notes, notes, Git, and canvases) from resources (files, diffs, external). File tabs use Explorer's shared `FileNameIcon`; other kinds use fixed icons. The pure menu model owns per-kind action availability, local-only absolute-path resolution, and visible-order bulk targets. |
 | `unifiedPanelBreadcrumbs.ts` + `UnifiedPanelToolbar.tsx` | The toolbar row under the strip: breadcrumbs for the active file tab, an in-place directory picker, and the Search/Explorer navigator controls. The model decides whether the path can use repo browsing. **Do not** name the model `unifiedPanelToolbar.ts` — esbuild resolves module paths case-insensitively and collides it with the component. |
 | `UnifiedPanelRepoPicker.tsx` | The dock target, as a button + listbox on the tab strip left of the `+` (the strip's `leadingControls`). Renders nothing below two targets. The label comes from the `target` prop, so a refused switch (`onSelectTarget` returning `false`) keeps reporting the real scope; below 340px of strip width the label drops to a chevron via a container query. |
 | `UnifiedPanelExpandToggle.tsx` | The expand/restore button in the strip's `endControls` slot, the strip's last control on every tab state. It drives `setWorkspaceDockExpanded` (see `../AGENTS.md`); expanded, the panel root is `flex-1`, the body drops its fixed width, and the resize handle is not rendered. |
 | `UnifiedPanelTreeToggle.tsx` | The Explorer half of the panel's navigator controls. It renders with Search in the file toolbar or, when that toolbar is absent, in the tab strip. |
 | `UnifiedTabView.tsx` | The kind switch. Every kind maps onto a view that already exists. |
 | `UnifiedPanelOpenMenu.tsx` + `unifiedPanelOpenMenuModel.ts` | The searchable `+` popover. It reads `targets` for labels and the unavailable reason but does not change the target — the strip picker owns that. A query that normalizes to an http(s) URL adds an "Open … Browser" row (first for an explicit scheme, after file hits for a bare domain); a query written with another scheme adds an unselectable inline error row. Plain text stays a file search. |
-| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns the editable address bar with inline rejection and an Open in system browser fallback. |
+| `unifiedBrowserTabs.ts` + `UnifiedBrowserTab.tsx` | Browser tab rules and view: `normalizeBrowserUrl` (http(s) only, `https://` for a bare domain, `http://` for loopback, no search fallback), `browserOpenInput`, and `browserSessionKey` (the concrete owner route, else workspace id). The view owns the editable address bar with inline rejection and an Open in system browser fallback. Ctrl+L (Cmd+L on macOS) focuses and selects its complete editable value from toolbar controls or owner-qualified native `onFocusAddressRequested` events, only while active and visible. |
 | `NativeViewTab.tsx` + `useNativeViewPlacement.ts` | Shared frame for native desktop views (browser and HTML page tabs): toolbar slot, the placeholder the view is kept over, and Back/Forward/Reload(Stop) buttons. |
 | `unifiedSourceLinks.ts`, `unifiedNoteTabs.ts`, `unifiedExplorerFiles.ts`, `unifiedCanvasEmbeds.ts`, `unifiedCanvasEvents.ts`, `unifiedDiffSources.ts`, `unifiedChatChanges.ts` | One descriptor builder per entry point. Each returns `OpenUnifiedTabInput | null`; a null means "not ours" and the caller keeps its existing surface. |
 | `unifiedGitTabHost.ts` + `UnifiedGitTab.tsx` | The one Git tab per panel scope (fixed `GIT_TAB_RESOURCE_ID`, not in the "+" menu). Its body is an empty host published by panel scope; in the desktop split view `RepoDetail` hands it to `RepoGitTab` as the detail portal target and opens the tab on every new git selection, so the middle pane keeps the chat. The descriptor's `gitView` holds only the serializable view (`PersistedGitView`: hashes/paths, never commit data or diffs); after a reload `RepoDetail` passes it to `RepoGitTab` as `restoreView`, which refetches it (a vanished commit shows a not-found notice) without re-focusing the tab. |
@@ -483,6 +483,14 @@ Reveal retargets the dock to the file owner, selects Explorer mode, opens the tr
 and relies on `activeFilePath` tracking to expand and highlight the row without
 changing the active tab.
 
+## Add-tab shortcut
+
+Ctrl/Cmd+T opens `UnifiedPanelOpenMenu` with the same actions as `+`, scoped to
+focus inside a visible panel. Editable content and handled events retain their
+bindings; the open menu consumes repeats without resetting its search. Escape
+returns focus to `+`. Native browser pages forward `onOpenMenuRequested` with
+the source view id; only its matching active browser tab opens the menu.
+
 ## Entry points
 
 Every entry point follows one shape: build a descriptor, and with a matching host
@@ -549,7 +557,10 @@ and `browserSessionKey(tab)` the routing owner. Browser profiles persist per
 engine across all installation workspaces; browser tab descriptors stay
 ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
-Back/Forward/Reload|Stop, the actual engine, the page title, a load-error panel
+Back/Forward/Reload|Stop, an editable address, and `BrowserToolbarMenu`
+with the actual engine and the current-page system-browser action. The menu
+portals to the document body, uses `useAnchoredPanelPosition`, and closes when
+the tab loses visibility or ownership. The tab also shows the page title, a load-error panel
 with Retry and Desktop Preferences/runtime guidance, and
 download-handoff notices. Unmounting only hides the view (chat switch, collapse
 keep live history); `closeTab` closes it. `onState` feeds `updateBrowserTab`
@@ -560,7 +571,8 @@ The SPA entry point subscribes to `onClosed` and removes target-engine tabs
 from every cached workspace via `closeBrowserPanelView`, including unmounted
 panels. The frame, placement, and history buttons are shared with HTML pages via
 `NativeViewTab` (see Desktop HTML pages). Native views paint above all DOM, so the hook hides
-the view while a modal dialog or the tab menu is open, or while a 5x5
+the view while a modal dialog, the tab menu, or a `data-native-view-overlay`
+is open, or while a 5x5
 `elementFromPoint` hit test (inset 12px from the edges, so splitters don't count)
 finds any other element above the placeholder — dropdowns, popovers, and
 overlays need no opt-in. Overlays that should stay under the view mark

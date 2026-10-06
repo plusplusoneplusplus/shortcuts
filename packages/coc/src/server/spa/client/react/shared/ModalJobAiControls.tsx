@@ -427,6 +427,7 @@ export function ModalJobAiControls({
                 selected={provider}
                 onChange={setProvider}
                 disabled={disabled}
+                menuPlacement="down"
             />
             <span
                 aria-hidden="true"

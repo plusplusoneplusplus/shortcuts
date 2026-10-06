@@ -363,10 +363,13 @@ describe('UnifiedRightPanel', () => {
             try {
                 renderPanel({ chatId: 'chat-1' });
                 openViaMenu('unified-panel-open-browser');
+                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
                 expect((screen.getByTestId('browser-open-external') as HTMLButtonElement).disabled).toBe(true);
+                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
                 const address = screen.getByTestId('browser-address') as HTMLInputElement;
                 fireEvent.change(address, { target: { value: 'https://example.com' } });
                 fireEvent.submit(address.form!);
+                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
                 fireEvent.click(screen.getByTestId('browser-open-external'));
                 expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer');
                 expect(screen.getByTestId('browser-web-fallback').textContent).toContain('desktop app');
@@ -656,10 +659,12 @@ describe('UnifiedRightPanel', () => {
                 expect(screen.getByTestId('browser-notice').textContent).toContain('no handler');
 
                 act(() => onState?.(page(viewId, { url: 'https://example.com/after' })));
+                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
                 fireEvent.click(screen.getByTestId('browser-open-external'));
                 await waitFor(() => expect(bridge.openExternal).toHaveBeenCalledWith('https://example.com/after'));
                 expect(open).not.toHaveBeenCalled();
                 bridge.openExternal.mockResolvedValueOnce(false);
+                fireEvent.click(screen.getByRole('button', { name: 'Browser options' }));
                 fireEvent.click(screen.getByTestId('browser-open-external'));
                 await waitFor(() => expect(screen.getByTestId('browser-notice').textContent).toContain('Could not open your system browser'));
             } finally {

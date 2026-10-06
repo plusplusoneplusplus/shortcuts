@@ -30,11 +30,16 @@ export interface AnchoredPanelPositionOptions {
     gap?: number;
     /** Viewport margin in px kept clear on every edge. Default 8. */
     margin?: number;
+    /** Override the placement's default horizontal alignment. */
+    align?: 'left' | 'right';
+    /** Keep a scrollable panel beside the trigger when neither side fits. */
+    constrainHeight?: boolean;
 }
 
 export interface AnchoredPanelPosition {
     top: number;
     left: number;
+    maxHeight?: number;
 }
 
 export function useAnchoredPanelPosition({
@@ -44,6 +49,8 @@ export function useAnchoredPanelPosition({
     panelRef,
     gap = 4,
     margin = 8,
+    align,
+    constrainHeight = false,
 }: AnchoredPanelPositionOptions): AnchoredPanelPosition {
     const [pos, setPos] = useState<AnchoredPanelPosition>({ top: 0, left: 0 });
 
@@ -58,12 +65,26 @@ export function useAnchoredPanelPosition({
         const vh = window.innerHeight;
 
         // Horizontal anchor: `up` left-aligns, `down` right-aligns.
-        let left = placement === 'up' ? t.left : t.right - p.width;
+        let left = (align ?? (placement === 'up' ? 'left' : 'right')) === 'left' ? t.left : t.right - p.width;
         if (left + p.width > vw - margin) left = vw - p.width - margin;
         if (left < margin) left = margin;
 
         // Vertical anchor: `up` opens above, `down` opens below — flip if it
         // doesn't fit, then clamp to keep the whole panel on-screen.
+        if (constrainHeight) {
+            const above = Math.max(0, t.top - gap - margin);
+            const below = Math.max(0, vh - margin - t.bottom - gap);
+            const height = Math.max(p.height, panel.scrollHeight);
+            const preferred = placement === 'up' ? above : below;
+            const opposite = placement === 'up' ? below : above;
+            const side = height > preferred && opposite > preferred
+                ? (placement === 'up' ? 'down' : 'up') : placement;
+            const maxHeight = side === 'up' ? above : below;
+            const top = side === 'up' ? t.top - gap - Math.min(height, maxHeight) : t.bottom + gap;
+            setPos(prev => prev.top === top && prev.left === left && prev.maxHeight === maxHeight
+                ? prev : { top, left, maxHeight });
+            return;
+        }
         let top = placement === 'up' ? t.top - p.height - gap : t.bottom + gap;
         if (placement === 'up' && top < margin) {
             top = t.bottom + gap;
@@ -74,7 +95,7 @@ export function useAnchoredPanelPosition({
         if (top < margin) top = margin;
 
         setPos(prev => (prev.top === top && prev.left === left ? prev : { top, left }));
-    }, [placement, triggerRef, panelRef, gap, margin]);
+    }, [placement, triggerRef, panelRef, gap, margin, align, constrainHeight]);
 
     useLayoutEffect(() => {
         if (!open) return;
@@ -82,7 +103,11 @@ export function useAnchoredPanelPosition({
         window.addEventListener('resize', recompute);
         // Capture-phase so we react to scrolls in any ancestor scroll container.
         window.addEventListener('scroll', recompute, true);
+        const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(recompute);
+        if (triggerRef.current) observer?.observe(triggerRef.current);
+        if (panelRef.current) observer?.observe(panelRef.current);
         return () => {
+            observer?.disconnect();
             window.removeEventListener('resize', recompute);
             window.removeEventListener('scroll', recompute, true);
         };

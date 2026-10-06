@@ -20,10 +20,11 @@ describe('WhatsApp workspace command routing', () => {
     let getAllProcesses: ReturnType<typeof vi.fn>;
     let store: WhatsAppRouterDeps['store'];
     const workspaces = [{ id: 'ws-a', name: 'Alpha' }, { id: 'ws-b', name: 'Beta' }, { id: GLOBAL, name: 'Global' }];
+    const createdAt = new Date(Date.now() - 1000);
     const processes = [
-        { id: 'topic-g', metadata: { workspaceId: GLOBAL }, startTime: new Date(), title: 'Topic G' },
-        { id: 'topic-a', metadata: { workspaceId: 'ws-a' }, startTime: new Date(), title: 'Topic A' },
-        { id: 'topic-b', metadata: { workspaceId: 'ws-b' }, startTime: new Date(), title: 'Topic B' },
+        { id: 'topic-g', metadata: { workspaceId: GLOBAL }, startTime: createdAt, title: 'Topic G' },
+        { id: 'topic-a', metadata: { workspaceId: 'ws-a' }, startTime: createdAt, title: 'Topic A' },
+        { id: 'topic-b', metadata: { workspaceId: 'ws-b' }, startTime: createdAt, title: 'Topic B' },
     ];
     const inbound = (text: string, id = 'msg-1', patch: Partial<InboundWAMessage> = {}): InboundWAMessage => ({
         chatJid: 'group@g.us', senderJid: 'group@g.us', participantJid: 'self@s.whatsapp.net',
@@ -34,7 +35,7 @@ describe('WhatsApp workspace command routing', () => {
         dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-router-'));
         bindings = new WhatsAppBindings(dir);
         getAllProcesses = vi.fn().mockImplementation(async ({ workspaceId }: { workspaceId: string }) =>
-            processes.filter(proc => proc.metadata.workspaceId === workspaceId));
+            processes.filter(proc => !workspaceId || proc.metadata.workspaceId === workspaceId));
         store = {
             getWorkspaces: vi.fn().mockResolvedValue(workspaces),
             getAllProcesses,
@@ -99,19 +100,20 @@ describe('WhatsApp workspace command routing', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it('selects topics only in the chosen workspace and creates a fresh topic on demand', async () => {
+    it('selects topics across accessible workspaces and creates a fresh topic on demand', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));
         expect(send).toHaveBeenCalledWith(
-            'Topics · Alpha\n\u2002\u20021. ❔ Topic A · now\nReply select topic <n> · list topics -v for ids', 'list');
+            'Topics · all repos · last24hours · top5\n\u2002\u20021. ❔ Topic G · Global · now\n\u2002\u20022. ❔ Topic A · Alpha · now\n\u2002\u20023. ❔ Topic B · Beta · now\nReply select topic <n> · list topics -v for ids', 'list');
         await router.handle(inbound('list topics -v', 'list-v'));
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic A · now · topic-a'), 'list-v');
-        expect(send).not.toHaveBeenCalledWith(expect.stringContaining('topic-b'), 'list-v');
-        await router.handle(inbound('select topic topic-b', 'bad'));
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic not found'), 'bad');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic A · Alpha · now · ws-a/topic-a'), 'list-v');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('ws-b/topic-b'), 'list-v');
+        await router.handle(inbound('select topic topic-b', 'beta'));
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('topic-b');
         await router.handle(inbound('select topic topic-a', 'good'));
         await router.handle(inbound('list topics', 'marked'));
-        expect(send).toHaveBeenCalledWith(expect.stringMatching(/^Topics · Alpha\n▶ 1\. ❔ Topic A · now\n/), 'marked');
+        expect(send).toHaveBeenCalledWith(expect.stringMatching(/▶ 2\. ❔ Topic A · Alpha · now/), 'marked');
         await router.handle(inbound('list topics -q', 'malformed'));
         expect(send).toHaveBeenLastCalledWith(expect.stringContaining('Unknown command'), 'malformed');
         await router.handle(inbound('/autopilot fix this', 'autopilot'));
@@ -124,12 +126,27 @@ describe('WhatsApp workspace command routing', () => {
     it('reads topics with a bounded, conversation-free query so large stores cannot stall replies', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));
-        await router.handle(inbound('select topic 1', 'pick'));
-        expect(getAllProcesses).toHaveBeenCalledTimes(2);
+        await router.handle(inbound('select topic 2', 'pick'));
+        expect(getAllProcesses).toHaveBeenCalledTimes(1);
         for (const [filter] of getAllProcesses.mock.calls) {
-            expect(filter).toEqual({ workspaceId: 'ws-a', limit: 10, exclude: ['conversation', 'toolCalls'] });
+            expect(filter).toEqual({ since: expect.any(Date), offset: 0, limit: 100, exclude: ['conversation', 'toolCalls'] });
         }
         expect(send).toHaveBeenCalledWith('✅ Selected topic: Topic A', 'pick');
+    });
+
+    it('keeps cross-repo numbered selection stable and routes the following message to its owner', async () => {
+        await router.handle(inbound('select repo Alpha', 'repo'));
+        const beta = { ...processes[2], status: 'running', pinnedAt: new Date().toISOString() };
+        getAllProcesses.mockResolvedValue([processes[1], beta]);
+        await router.handle(inbound('list topics -v', 'list'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('1. ⏳ Topic B · Beta · now · ws-b/topic-b'), 'list');
+        // Changes to store order/rank after display must not change the selected target.
+        getAllProcesses.mockResolvedValue([processes[1]]);
+        await router.handle(inbound('select topic 1', 'pick'));
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('topic-b');
+        await router.handle(inbound('continue beta', 'follow'));
+        expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual(['ws-b', 'continue beta', undefined, 'topic-b']);
     });
 
     it('routes quoted answers to their original workspace regardless of selected repo', async () => {
@@ -206,7 +223,66 @@ describe('WhatsApp workspace command routing', () => {
         expect(bindings.selectedRepo).toBe('ws-b');
         expect(bindings.topic('ws-b')).toBe('topic-b');
         expect(enqueue).not.toHaveBeenCalled();
-        expect(react).not.toHaveBeenCalled();
+        expect(react.mock.calls).toEqual([['styled-help']]);
+    });
+
+    it.each(['help', '/help', 'quota', 'list repos', 'select repo Beta', 'create topic', 'compact'])(
+        'acknowledges %s once without invoking the LLM, including redelivery after reload', async text => {
+            await router.handle(inbound(text, 'command'));
+            await router.handle(inbound(text, 'command'));
+            const restored = new WhatsAppBindings(dir);
+            await restored.restore(store);
+            const restarted = new WhatsAppCommandRouter({
+                store, bindings: restored, groupJid: () => 'group@g.us', enqueue, send, react,
+                getTask: () => undefined,
+            });
+            await restarted.handle(inbound(text, 'command'));
+            expect(react.mock.calls).toEqual([['command']]);
+            expect(send).toHaveBeenCalledOnce();
+            expect(send.mock.calls[0][1]).toBe('command');
+            expect(react.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
+            expect(enqueue).not.toHaveBeenCalled();
+        },
+    );
+
+    it('reserves concurrent commands before reacting and preserves sender and group guards', async () => {
+        bindings.selectRepo('ws-b');
+        bindings.selectTopic('ws-b', 'topic-b');
+        let finishReaction!: () => void;
+        react.mockImplementationOnce(() => new Promise<void>(resolve => { finishReaction = resolve; }));
+        const first = router.handle(inbound('help', 'concurrent'));
+        try {
+            await router.handle(inbound('help', 'concurrent'));
+            await router.handle(inbound('help', 'other-author', { fromMe: false }));
+            await router.handle(inbound('help', 'other-group', { chatJid: 'other@g.us' }));
+            expect(react.mock.calls).toEqual([['concurrent']]);
+            expect(send).not.toHaveBeenCalled();
+        } finally {
+            finishReaction();
+            await first;
+        }
+        expect(send).toHaveBeenCalledOnce();
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('topic-b');
+    });
+
+    it('still answers commands when reactions fail, without a text acknowledgement or duplicate retry', async () => {
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+        react.mockRejectedValueOnce(new Error('reaction down'));
+        try {
+            await router.handle(inbound('help', 'failed-like'));
+            await router.handle(inbound('help', 'failed-like'));
+            await router.handle(inbound('quota', 'next-command'));
+            expect(react.mock.calls).toEqual([['failed-like'], ['next-command']]);
+            expect(send.mock.calls).toEqual([
+                [expect.stringContaining('*CoC help*'), 'failed-like'],
+                ['Quota data is unavailable.', 'next-command'],
+            ]);
+            expect(enqueue).not.toHaveBeenCalled();
+            expect(errors).toHaveBeenCalledWith('[whatsapp-messaging] Reaction failed:', expect.any(Error));
+        } finally {
+            errors.mockRestore();
+        }
     });
 
     it('answers help, list agents and quota without enqueueing, and records the replies as own messages', async () => {
@@ -278,7 +354,7 @@ describe('WhatsApp workspace command routing', () => {
             expect(compact).toHaveBeenCalledWith(expect.objectContaining({ id: 'topic-a' }), 'focus on the WhatsApp relay work', { connector: 'whatsapp', chatKey: 'group@g.us' });
             expect(send).toHaveBeenLastCalledWith('🗜️ Compacted "Topic A" — context 82k → 14k tokens', 'compact');
             expect(enqueue).not.toHaveBeenCalled();
-            expect(react).not.toHaveBeenCalled();
+            expect(react.mock.calls).toEqual([['select'], ['pick'], ['compact']]);
             expect(bindings.topic('ws-a')).toBe('topic-a');
             // The reply is guarded as an own message, never a new request.
             expect(bindings.isKnownMessage('compact-reply')).toBe(true);
@@ -330,11 +406,11 @@ describe('WhatsApp workspace command routing', () => {
         });
     });
 
-    it('lists, selects and creates topics in Global when no repo is selected', async () => {
+    it('lists all repos without a selection and routes cross-repo ids correctly', async () => {
         await router.handle(inbound('list topics', 'list'));
-        expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^Topics · Global\n.*Topic G/), 'list');
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('Topic G · Global'), 'list');
         await router.handle(inbound('select topic topic-a', 'other-repo'));
-        expect(send).toHaveBeenLastCalledWith('❌ Topic not found in Global. Use `list topics`.', 'other-repo');
+        expect(bindings.selectedRepo).toBe('ws-a');
         await router.handle(inbound('select topic 1', 'pick'));
         expect(bindings.topic(GLOBAL)).toBe('topic-g');
         await router.handle(inbound('continue', 'continue'));
@@ -388,12 +464,12 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('hello', 'stale'));
         expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual([GLOBAL, 'hello', undefined, 'topic-g']);
         await router.handle(inbound('list topics', 'list'));
-        expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^Topics · Global\n/), 'list');
+        expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^Topics · all repos · last24hours · top5\n/), 'list');
     });
 
     it('replies with a fixed error, never crashing, when Global is missing', async () => {
         vi.mocked(store.getWorkspaces).mockResolvedValue(workspaces.slice(0, 2));
-        for (const text of ['hello', 'list topics', 'create topic', 'select topic 1']) {
+        for (const text of ['hello', 'create topic']) {
             await router.handle(inbound(text, `missing-${text}`));
             expect(send).toHaveBeenLastCalledWith(NO_GLOBAL, `missing-${text}`);
         }

@@ -21,6 +21,8 @@ export interface BrowserEventSink {
     newTab(url: string): void;
     download(event: BrowserDownloadEvent): void;
     closeRequested(): void;
+    openMenuRequested(): void;
+    focusAddressRequested?(): void;
 }
 
 export interface BrowserHostedView {

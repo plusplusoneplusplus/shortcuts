@@ -73,6 +73,9 @@ export interface TopicListOptions extends RemoteBrowseFormat {
     header: string;
     footer: string;
     currentId?: string | null;
+    isCurrent?: (topic: TopicSummary) => boolean;
+    repoName?: (topic: TopicSummary) => string;
+    selectionId?: (topic: TopicSummary) => string;
     /** Append each topic's id. */
     verbose?: boolean;
     now: number;
@@ -105,11 +108,12 @@ function truncateTitle(text: string): string {
 export function formatTopicList(topics: readonly TopicSummary[], options: TopicListOptions): string {
     const lines = topics.map((topic, i) => {
         const title = truncateTitle(topic.title ?? topic.customTitle ?? topic.promptPreview ?? '') || '(untitled)';
-        const marker = topic.id === options.currentId ? CURRENT_TOPIC_MARKER : TOPIC_INDENT;
+        const marker = (options.isCurrent?.(topic) ?? (topic.id === options.currentId)) ? CURRENT_TOPIC_MARKER : TOPIC_INDENT;
         return [
             `${marker}${i + 1}. ${TOPIC_STATUS_EMOJI.get(topic.status ?? '') ?? '❔'} ${options.escape(title)}`,
+            options.repoName ? options.escape(options.repoName(topic)) : undefined,
             formatRelativeAge(topicActivityMs(topic), options.now),
-            options.verbose ? options.code(topic.id) : undefined,
+            options.verbose ? options.code(options.selectionId?.(topic) ?? topic.id) : undefined,
         ].filter(Boolean).join(' · ');
     });
     return [options.header, ...lines, options.footer].join('\n');
