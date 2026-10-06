@@ -350,6 +350,21 @@ vi.mock('../../../../src/server/spa/client/react/ui', async (importOriginal) => 
 });
 
 // Now import the component under test (after mocks)
+vi.mock('../../../../src/server/spa/client/react/features/chat/RalphStartPanel', () => ({
+    RalphStartPanel: (props: any) => React.createElement('div', {
+        'data-testid': 'ralph-start-banner',
+        'data-goal-path': props.goalFilePath,
+        'data-direct-launch': String(!!props.useLaunchEndpoint),
+    }),
+}));
+vi.mock('../../../../src/server/spa/client/react/features/chat/ImplementPlanCard', () => ({
+    ImplementPlanCard: (props: any) => React.createElement('div', {
+        'data-testid': 'implementation-banner',
+        'data-plan-path': props.planFilePath,
+        'data-canvas-id': props.planCanvasId,
+    }),
+}));
+
 import { ChatDetail } from '../../../../src/server/spa/client/react/features/chat/ChatDetail';
 import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
@@ -516,6 +531,84 @@ afterEach(() => {
 });
 
 // ── Tests ──────────────────────────────────────────────────────────────────
+
+describe('ChatDetail Sentinel implementation banners', () => {
+    const cases = [
+        { name: 'direct goal launch', metadata: { goalFilePath: '/repo/goal.md' }, ralph: true },
+        { name: 'grilling launch', metadata: { goalFilePath: '/repo/goal.md', ralph: { phase: 'grilling' } }, ralph: true },
+        { name: 'plan file implementation', metadata: { planFilePath: '/repo/work.plan.md' }, ralph: false },
+        { name: 'plan canvas implementation', metadata: { planFilePath: 'Implementation plan', planCanvasId: 'canvas-plan' }, ralph: false },
+    ];
+
+    function expectBanners(testCase: typeof cases[number], visible: boolean) {
+        expect(!!screen.queryByTestId('ralph-start-banner')).toBe(visible && testCase.ralph);
+        expect(!!screen.queryByTestId('implementation-banner')).toBe(visible && !testCase.ralph);
+    }
+
+    it.each(cases)('hides $name on reload when persisted mode overrides an Ask payload and draft', async testCase => {
+        mockState.getDraft.mockReturnValue({ text: '', mode: 'ask' });
+        const process = makeProcess({
+            id: 'queue_task-1',
+            payload: { kind: 'chat', mode: 'ask' },
+            metadata: { ...testCase.metadata, mode: 'sentinel', sessionId: 'sess-default' },
+        });
+        setupStandardFetch(undefined, process);
+        const view = render(<Wrap><ChatDetail taskId="queue_task-1" workspaceId="ws-sentinel" /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy());
+        expectBanners(testCase, false);
+        view.unmount();
+
+        render(<Wrap><ChatDetail taskId="queue_task-1" workspaceId="ws-sentinel" /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy());
+        expectBanners(testCase, false);
+        expect(process.metadata).toMatchObject(testCase.metadata);
+    });
+
+    it.each(cases)('updates $name across live mode transitions without losing metadata', async testCase => {
+        const task = makeTask({
+            payload: { kind: 'chat', mode: 'ask' },
+            metadata: testCase.metadata,
+        });
+        const process = makeProcess({ metadata: { mode: 'ask', sessionId: 'sess-default' } });
+        setupStandardFetch(task, process);
+        const view = render(<Wrap><ProcessStateChatDetail taskId="task-1" workspaceId="ws-a" processes={[process]} /></Wrap>);
+        await waitFor(() => expectBanners(testCase, true));
+
+        const sentinel = { ...process, metadata: { ...process.metadata, mode: 'sentinel' } };
+        view.rerender(<Wrap><ProcessStateChatDetail taskId="task-1" workspaceId="ws-a" processes={[
+            sentinel,
+            makeProcess({ id: 'other-workspace-process', metadata: { mode: 'ask' } }),
+        ]} /></Wrap>);
+        await waitFor(() => expectBanners(testCase, false));
+
+        view.rerender(<Wrap><ProcessStateChatDetail taskId="task-1" workspaceId="ws-a" processes={[
+            process,
+            makeProcess({ id: 'other-workspace-process', metadata: { mode: 'sentinel' } }),
+        ]} /></Wrap>);
+        await waitFor(() => expectBanners(testCase, true));
+        if (testCase.ralph) {
+            expect(screen.getByTestId('ralph-start-banner').getAttribute('data-goal-path')).toBe('/repo/goal.md');
+        } else {
+            expect(screen.getByTestId('implementation-banner').getAttribute('data-plan-path')).toBe(testCase.metadata.planFilePath);
+        }
+    });
+
+    it.each(['ask', 'autopilot', 'ralph'])('preserves Ralph launch in %s mode', async mode => {
+        const metadata = { mode, goalFilePath: '/repo/goal.md' };
+        setupStandardFetch(makeTask({ payload: { kind: 'chat', mode }, metadata }), makeProcess({ metadata }));
+        render(<Wrap><ChatDetail taskId="task-1" workspaceId="ws-b" /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('ralph-start-banner')).toBeTruthy());
+    });
+
+    it('still suppresses both banners in embedded Ask conversations', async () => {
+        const metadata = { mode: 'ask', goalFilePath: '/repo/goal.md', planFilePath: '/repo/work.plan.md' };
+        setupStandardFetch(makeTask({ payload: { kind: 'chat', mode: 'ask' }, metadata }), makeProcess({ metadata }));
+        render(<Wrap><ChatDetail taskId="task-1" hidePlanBanners /></Wrap>);
+        await waitFor(() => expect(screen.getByTestId('activity-chat-send-btn')).toBeTruthy());
+        expect(screen.queryByTestId('ralph-start-banner')).toBeNull();
+        expect(screen.queryByTestId('implementation-banner')).toBeNull();
+    });
+});
 
 describe('ChatDetail', () => {
     it('keeps remote bot presentation on its exact owner despite colliding local process IDs', async () => {
