@@ -159,7 +159,20 @@ export class WhatsAppCommandRouter {
             }
             const handOff = await this.deps.handOff?.resolve(targetId, command.mode);
             if (handOff && hasImages) {
-                await reply('Images in sentinel job handoffs are not available yet. Send them to a regular chat topic.');
+                const taskId = randomUUID();
+                const binding: WhatsAppBinding = {
+                    groupJid: msg.chatJid, workspaceId: handOff.workspaceId,
+                    processId: toQueueProcessId(taskId), taskId, inboundId: msg.messageId,
+                    outboundIds: [], nextPart: 0, status: 'delivered', notice: true,
+                };
+                if (!await this.deps.bindings.admit(binding, async () => {
+                    if (!this.deps.dataDir) throw new IncomingImagesError('storage');
+                    images = await prepareIncomingImages(this.deps.dataDir, handOff.workspaceId, msg.images!);
+                    await this.deps.handOff!.start(handOff, command.args,
+                        { connector: 'whatsapp', chatKey: msg.chatJid }, { taskId, images });
+                })) return;
+                admitted = true;
+                await react();
                 return;
             }
             if (handOff) {

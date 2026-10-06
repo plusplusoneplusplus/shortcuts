@@ -11,6 +11,7 @@ import { TaskQueueManager, toQueueProcessId, type CreateTaskInput } from '@plusp
 import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsapp';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { createMessagingHandOff, type MessagingHandOff } from '../../../src/server/messaging/job-handoff';
+import { prepareIncomingImages } from '../../../src/server/messaging/incoming-images';
 import { MessagingJobNotices } from '../../../src/server/messaging/job-notices';
 import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-bindings';
 import { WhatsAppCommandRouter, type WhatsAppRouterDeps } from '../../../src/server/messaging/whatsapp-command-router';
@@ -85,6 +86,24 @@ describe('createMessagingHandOff', () => {
             context: { spawnedFromProcessId: 'sentinel-a', messagingOrigin: origin },
         } });
         expect(ledger('ws-a')).toEqual([expect.objectContaining({ processId, origin })]);
+    });
+
+    it.each(['workspace', 'parent', 'directory', 'origin'])('rejects observer reconciliation for a mismatched %s', async field => {
+        const images = await prepareIncomingImages(dir, 'ws-a', [{ mimeType: 'image/png',
+            download: async () => Buffer.from('89504e470d0a1a0a010203', 'hex') }]);
+        const track = vi.fn();
+        const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const mismatched = createMessagingHandOff({ store: { getProcess }, queue, jobNotices: { track }, enqueue: async input => {
+            const bad = { ...input, payload: { ...input.payload, context: { ...input.payload.context } } };
+            if (field === 'workspace') bad.repoId = 'ws-other';
+            if (field === 'parent') bad.payload.context.spawnedFromProcessId = 'other-parent';
+            if (field === 'directory') bad.payload.imageTempDir = 'other-files';
+            if (field === 'origin') bad.payload.context.messagingOrigin = { connector: 'whatsapp', chatKey: 'other-group' };
+            queue.enqueue(bad); throw new Error('observer failed');
+        } });
+        await expect(mismatched.start({ mode: 'ask', workspaceId: 'ws-a', parentProcessId: 'sentinel-a' }, 'inspect',
+            { connector: 'whatsapp', chatKey: 'group' }, { taskId: 'reserved', images })).rejects.toThrow('observer failed');
+        expect(track).not.toHaveBeenCalled(); errorLog.mockRestore();
     });
 
     it('keeps an enqueued job when notice tracking fails', async () => {

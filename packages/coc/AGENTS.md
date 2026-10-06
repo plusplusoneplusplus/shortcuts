@@ -239,7 +239,7 @@ references before editing. Paths are package-relative.
   receipts when answer delivery and bot control are disabled. Image captions bypass
   question-answer consumption and reject control commands. Failed
   queue admission removes prepared files. Main-server receiveImages stays disabled
-  until pending-image, handoff and provider checks are ready.
+  until pending-image and provider checks are ready.
 - Teams/WhatsApp command grammar is one spec table in
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`,
   `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp
@@ -269,7 +269,12 @@ references before editing. Paths are package-relative.
   enqueues a separate job in the sentinel's workspace with `spawnedFromProcessId` +
   `messagingOrigin` and tracks it in the notice ledger; selection is unchanged. WhatsApp
   reacts 👍 and records the inbound id against redelivery; Teams replies in the thread and
-  dedupes bound-thread replies like thread commands. An empty prefix replies
+  dedupes text bound-thread replies like thread commands. Image handoffs reserve a job
+  id and persist a workspace receipt before download; the job payload includes files,
+  history and temporary-directory ownership. WhatsApp uses delivered notice receipts;
+  Teams uses admission-only receipts with the sentinel as selectedProcessId/selectedTaskId.
+  Rejected admission cleans files and permits retry; matching accepted tasks retain
+  files/receipts after observer failures. An empty prefix replies
   "Send a message to start a chat."
   `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
   `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`

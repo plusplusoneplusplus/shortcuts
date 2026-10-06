@@ -272,6 +272,14 @@ export function registerTeamsMessagingRoutes(
             compact: opts.compact,
             remotes: opts.remotes,
             handOff: opts.handOff,
+            ...(relay && opts.handOff ? {
+                admitImageHandOff: (msg, target, message, origin) => relay.admitNew(msg, target.workspaceId,
+                    taskId => withImages(msg, target.workspaceId, taskId, async images => {
+                        if (!images) throw new IncomingImagesError('storage');
+                        await opts.handOff!.start(target, message, origin, { taskId, images });
+                        return taskId;
+                    }), undefined, { admissionOnly: true, prompt: message, handOffParentProcessId: target.parentProcessId }),
+            } : {}),
             handOffOrigin: msg => {
                 const teamId = manager.getStatus().teamId;
                 return teamId ? {

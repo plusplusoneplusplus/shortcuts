@@ -22,7 +22,7 @@ import {
     type MessagingCompactor, type MessagingQuotaSource,
 } from './messaging-commands';
 import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
-import type { MessagingHandOff } from './job-handoff';
+import type { MessagingHandOff, MessagingHandOffTarget } from './job-handoff';
 import type { MessagingJobOrigin } from './job-notices';
 import { LocalTopicMemory, localTopicsReply, resolveLocalTopic } from './local-topics';
 import { IncomingImagesError } from './incoming-images';
@@ -68,6 +68,7 @@ export interface TeamsCommandRouterDeps {
     remotes?: MessagingRemoteDirectory;
     /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
     handOff?: MessagingHandOff;
+    admitImageHandOff?: (msg: InboundTeamsMessage, target: MessagingHandOffTarget, message: string, origin: MessagingJobOrigin) => Promise<{ taskId: string; duplicate: boolean }>;
     /** Where a job handed off from `msg` reports back; undefined while the channel is unknown. */
     handOffOrigin?: (msg: InboundTeamsMessage) => MessagingJobOrigin | undefined;
     /** Send a reply back to Teams. */
@@ -458,18 +459,20 @@ export class TeamsCommandRouter {
     ): Promise<boolean> {
         const target = await this.deps.handOff?.resolve(targetProcessId, mode);
         if (!target) return false;
-        if (msg.images?.length) {
-            await this.deps.sendReply('Images in sentinel job handoffs are not available yet. Send them to a regular chat topic.', msg.replyToMessageId || msg.messageId);
-            return true;
-        }
         const origin = this.deps.handOffOrigin?.(msg);
         if (!origin) throw new Error('Teams hand-off origin is unavailable');
-        // Bound-thread replies are deduplicated by message id, like thread commands.
-        if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
-            if (this.deps.hasThreadCommand?.(msg)) return true;
-            this.deps.recordThreadCommand?.(msg);
+        if (msg.images?.length) {
+            if (!this.deps.admitImageHandOff) throw new IncomingImagesError('storage');
+            const admission = await this.deps.admitImageHandOff(msg, target, message, origin);
+            if (admission.duplicate) return true;
+        } else {
+            // Bound-thread replies are deduplicated by message id, like thread commands.
+            if (msg.replyToMessageId && this.deps.isAnswerRelayEnabled?.() === true) {
+                if (this.deps.hasThreadCommand?.(msg)) return true;
+                this.deps.recordThreadCommand?.(msg);
+            }
+            await this.deps.handOff!.start(target, message, origin);
         }
-        await this.deps.handOff!.start(target, message, origin);
         observe?.('dispatch-queued');
         await this.sendAcceptance(`🚀 Started a separate ${target.mode} job. A notice follows when it finishes.`, msg, () => undefined);
         return true;

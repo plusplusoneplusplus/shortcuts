@@ -221,7 +221,7 @@ and temporary directories through queue payloads. Rejected admission cleans file
 accepted tasks retain ownership through observer failures. The shared lifecycle persists
 follow-up image history before execution. Image captions bypass question-answer
 consumption and reject control commands. Main-server image reception stays disabled
-until pending-image, sentinel handoff and provider checks are ready.
+until pending-image and provider checks are ready.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
@@ -254,8 +254,12 @@ hand off instead: `messaging/job-handoff.ts` `createMessagingHandOff` (one insta
 `routes/index.ts`, passed to both routers) resolves the sentinel's workspace, enqueues a
 separate job with `context.spawnedFromProcessId` + `context.messagingOrigin`, and calls
 `MessagingJobNotices.track`, so it gets notices and `ask_user` relay like a model hand-off.
-No sentinel turn runs and selection is unchanged; `/sentinel` or no prefix reaches the
-sentinel. An empty mode prefix replies "Send a message to start a chat.".
+Image handoffs reserve a job id before workspace-scoped receipt admission and download.
+WhatsApp keeps a delivered notice receipt; Teams keeps an admission-only receipt whose
+selected target remains the sentinel (including its queued task id). Matching queue
+payloads retain files and notice tracking after observer failures; rejected admission
+cleans files and allows redelivery. No sentinel turn runs and selection is unchanged;
+`/sentinel` or no prefix reaches the sentinel. An empty mode prefix replies "Send a message to start a chat.".
 `list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
 `list topics <n.m|name@server> [-v]` (10 most recent remote chats, read-only footer) are
 answered by `messaging/remote-browse.ts` over the route-layer `WorkspaceDirectory`

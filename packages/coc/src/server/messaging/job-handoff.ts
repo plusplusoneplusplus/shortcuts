@@ -17,6 +17,7 @@ import { isQueueProcessId, toQueueProcessId, toTaskId, type CreateTaskInput, typ
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { normalizeChatMode } from '../tasks/task-types';
 import type { MessagingJobNotices, MessagingJobOrigin } from './job-notices';
+import { incomingImageTaskPayload, type PreparedIncomingImages } from './incoming-images';
 
 export type HandOffMode = Exclude<MessagingChatMode, 'sentinel'>;
 
@@ -32,7 +33,7 @@ export interface MessagingHandOff {
     /** Set when a message to `targetProcessId` with `mode` hands off instead of continuing that chat. */
     resolve(targetProcessId: string | null | undefined, mode: MessagingChatMode | undefined): Promise<MessagingHandOffTarget | undefined>;
     /** Enqueue the job and track its notices; resolves the new job's process id. */
-    start(target: MessagingHandOffTarget, prompt: string, origin: MessagingJobOrigin): Promise<string>;
+    start(target: MessagingHandOffTarget, prompt: string, origin: MessagingJobOrigin, admission?: { taskId: string; images: PreparedIncomingImages }): Promise<string>;
 }
 
 export function createMessagingHandOff(deps: {
@@ -53,17 +54,39 @@ export function createMessagingHandOff(deps: {
             if (targetMode !== 'sentinel' || typeof workspaceId !== 'string' || !workspaceId) return undefined;
             return { mode, workspaceId, parentProcessId: process?.id ?? targetProcessId };
         },
-        async start({ mode, workspaceId, parentProcessId }, prompt, origin) {
-            const taskId = await deps.enqueue({
+        async start({ mode, workspaceId, parentProcessId }, prompt, origin, admission) {
+            const input: CreateTaskInput = {
+                ...(admission ? { id: admission.taskId, processId: toQueueProcessId(admission.taskId) } : {}),
                 type: 'chat',
                 repoId: workspaceId,
                 priority: 'normal',
                 payload: {
                     kind: 'chat', mode, prompt, workspaceId,
                     context: { spawnedFromProcessId: parentProcessId, messagingOrigin: origin },
+                    ...incomingImageTaskPayload(admission?.images),
                 },
                 config: {},
-            });
+            };
+            let taskId: string;
+            try {
+                taskId = await deps.enqueue(input);
+            } catch (error) {
+                const task = admission && deps.queue.getTask(admission.taskId);
+                const context = task?.payload.context as { spawnedFromProcessId?: unknown; messagingOrigin?: MessagingJobOrigin } | undefined;
+                // Queue observers can fail after persistence. Keep the admitted
+                // job and its files only when the reserved task matches this turn.
+                if (!task || task.type !== 'chat' || task.repoId !== workspaceId
+                    || task.processId !== toQueueProcessId(admission!.taskId)
+                    || task.payload.kind !== 'chat' || task.payload.prompt !== prompt
+                    || task.payload.workspaceId !== workspaceId || task.payload.mode !== mode
+                    || task.payload.imageTempDir !== admission!.images.imageTempDir
+                    || context?.spawnedFromProcessId !== parentProcessId
+                    || context.messagingOrigin?.connector !== origin.connector
+                    || context.messagingOrigin?.chatKey !== origin.chatKey
+                    || context.messagingOrigin?.threadId !== origin.threadId) throw error;
+                console.error('[messaging-handoff] Queued job observer failed; admission retained');
+                taskId = task.id;
+            }
             const processId = toQueueProcessId(taskId);
             try {
                 deps.jobNotices.track({ processId, workspaceId, origin });

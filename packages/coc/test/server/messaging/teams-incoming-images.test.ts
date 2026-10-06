@@ -12,6 +12,7 @@ import { incomingImageTaskPayload } from '../../../src/server/messaging/incoming
 import { MultiRepoQueueRouter } from '../../../src/server/queue/multi-repo-queue-router';
 import { SqliteQueuePersistence } from '../../../src/server/queue/sqlite-queue-persistence';
 import { createMockSDKService } from '../../helpers/mock-sdk-service';
+import { createMessagingHandOff } from '../../../src/server/messaging/job-handoff';
 import { getRepoDataPath } from '../../../src/server/paths';
 
 const PNG = Buffer.from('89504e470d0a1a0a010203', 'hex');
@@ -271,13 +272,67 @@ describe('Teams admitted captioned-image delivery', () => {
         expect(media.download).not.toHaveBeenCalled();
     });
 
-    it('rejects sentinel handoff images before recording a command or starting a job', async () => {
-        await existing();
-        options.handOff = { resolve: vi.fn(async () => ({ parentProcessId: 'topic', workspaceId: 'ws-a', mode: 'autopilot' as const })), start: vi.fn() };
-        register();
-        const media = image('handoff');
-        await handle(inbound('handoff', '/autopilot [topic] fix', undefined, [media]));
-        expect(tasks()).toEqual([]); expect(media.download).not.toHaveBeenCalled(); expect(options.handOff.start).not.toHaveBeenCalled();
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('sentinel job handoffs'), 'handoff');
+    const installHandOff = async (enqueueJob = async (input: Parameters<typeof queue.enqueue>[0]) => queue.enqueue(input)) => {
+        await store.addProcess({ id: 'sentinel', type: 'chat', status: 'completed', title: 'sentinel', startTime: new Date(),
+            promptPreview: '', fullPrompt: '', metadata: { workspaceId: 'ws-a', mode: 'sentinel' } });
+        new TeamsUserStateStore(dir).update('sender', { selectedRepo: 'ws-a', selectedTopic: 'sentinel', lastActiveTopic: 'sentinel' });
+        const track = vi.fn();
+        options.handOff = createMessagingHandOff({ store, queue: queue.createAggregateQueueFacade(), enqueue: enqueueJob, jobNotices: { track } });
+        register(); return track;
+    };
+
+    it.each([true, false])('admits sentinel image jobs durably with relay=%s without changing selection', async enabled => {
+        relayEnabled = enabled;
+        const track = await installHandOff();
+        const media = image('handoff'); const msg = inbound('handoff', '/autopilot fix', undefined, [media]);
+        await Promise.all([handle(msg), handle(msg)]);
+        const [task] = tasks();
+        expect(tasks()).toHaveLength(1); checkMedia(task);
+        expect(task.payload).toMatchObject({ prompt: 'fix', mode: 'autopilot',
+            context: { spawnedFromProcessId: 'sentinel', messagingOrigin: { connector: 'teams', chatKey: 'team\0channel', threadId: 'handoff' } } });
+        expect(track).toHaveBeenCalledOnce(); expect(media.download).toHaveBeenCalledOnce();
+        expect(new TeamsUserStateStore(dir).get('sender').selectedTopic).toBe('sentinel');
+        if (enabled) {
+            // A reply to the handoff message continues the sentinel, never the separate job.
+            await handle(inbound('continue', 'keep going', 'handoff', [image('continue')]));
+            expect(tasks()[1].processId).toBe('sentinel');
+        }
+        manager.dispose(); register(); await handle(msg);
+        expect(media.download).toHaveBeenCalledOnce();
+    });
+
+    it('keeps bound-thread selection on the sentinel during image handoff', async () => {
+        await installHandOff();
+        await handle(inbound('root', '/sentinel dispatch'));
+        const rootTask = tasks()[0];
+        await handle(inbound('handoff', '/ask inspect', 'root', [image('handoff')]));
+        checkMedia(tasks()[1]);
+        expect(tasks()[1].payload.context).toMatchObject({ spawnedFromProcessId: 'sentinel', messagingOrigin: { threadId: 'root' } });
+        await handle(inbound('continue', 'continue', 'root', [image('continue')]));
+        expect(tasks()[2].processId).toBe(rootTask.processId);
+    });
+
+    it('cleans rejected handoff files and permits durable retry', async () => {
+        await installHandOff(async () => { throw new Error('queue rejected'); });
+        const media = image('handoff'); const msg = inbound('handoff', '/ask fix', undefined, [media]);
+        await handle(msg); expect(tasks()).toEqual([]); expect(files()).toEqual([]);
+        options.handOff = createMessagingHandOff({ store, queue: queue.createAggregateQueueFacade(), enqueue: async input => queue.enqueue(input), jobNotices: { track: vi.fn() } });
+        register(); await handle(msg); expect(tasks()).toHaveLength(1); checkMedia(tasks()[0]);
+        expect(media.download).toHaveBeenCalledTimes(2);
+    });
+
+    it('retains admitted handoff media and notices after an observer failure', async () => {
+        const track = await installHandOff(async input => { await queue.enqueue(input); throw new Error('observer'); });
+        const media = image('handoff'); const msg = inbound('handoff', '/ask fix', undefined, [media]);
+        await handle(msg); await handle(msg);
+        expect(tasks()).toHaveLength(1); checkMedia(tasks()[0]); expect(track).toHaveBeenCalledOnce(); expect(media.download).toHaveBeenCalledOnce();
+    });
+
+    it('does not start a sentinel job when media download fails', async () => {
+        const track = await installHandOff();
+        const media = { mimeType: 'image/png', download: vi.fn(async () => { throw new ImageDownloadError('size-limit'); }) };
+        await handle(inbound('handoff', '/ask fix', undefined, [media]));
+        expect(tasks()).toEqual([]); expect(files()).toEqual([]); expect(track).not.toHaveBeenCalled();
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('large'), 'handoff');
     });
 });

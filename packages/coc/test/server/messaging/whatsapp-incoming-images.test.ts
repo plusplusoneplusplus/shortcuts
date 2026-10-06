@@ -8,6 +8,7 @@ import type { InboundWAMessage } from '@plusplusoneplusplus/coc-connector/whatsa
 import { WhatsAppCommandRouter, type WhatsAppRouterDeps } from '../../../src/server/messaging/whatsapp-command-router';
 import { WhatsAppBindings } from '../../../src/server/messaging/whatsapp-bindings';
 import { incomingImageTaskPayload, type PreparedIncomingImages } from '../../../src/server/messaging/incoming-images';
+import { createMessagingHandOff } from '../../../src/server/messaging/job-handoff';
 import { getRepoDataPath } from '../../../src/server/paths';
 
 const PNG = Buffer.from('89504e470d0a1a0a010203', 'hex');
@@ -190,14 +191,56 @@ describe('WhatsApp admitted captioned-image delivery', () => {
         expect(send).toHaveBeenLastCalledWith('Could not save the images. Check server storage and send them again.', 'image-message');
     });
 
-    it('fails closed for sentinel image handoffs until their media admission is wired', async () => {
-        const handOff = { resolve: vi.fn(async () => ({ workspaceId: GLOBAL, parentProcessId: 'sentinel', mode: 'ask' as const })), start: vi.fn() };
+    const sentinelHandOff = (enqueueJob = async (input: Parameters<typeof queue.enqueue>[0]) => queue.enqueue(input)) => {
+        const jobs = createMessagingHandOff({ store, queue, enqueue: enqueueJob, jobNotices: { track: vi.fn() } });
+        return { ...jobs, resolve: vi.fn(async () => ({ workspaceId: GLOBAL, parentProcessId: 'sentinel', mode: 'ask' as const })) };
+    };
+
+    it('admits a sentinel image job once, keeps selection and restores dedup', async () => {
+        const handOff = sentinelHandOff();
         router = createRouter({ handOff });
         const media = image();
-        await router.handle(message('/ask describe', { images: [media] }));
-        expect(handOff.start).not.toHaveBeenCalled();
-        expect(enqueue).not.toHaveBeenCalled();
-        expect(media.download).not.toHaveBeenCalled();
-        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('regular chat topic'), 'image-message');
+        const msg = message('/ask describe', { images: [media] });
+        await Promise.all([router.handle(msg), router.handle(msg)]);
+        const [task] = queue.getAll();
+        expect(queue.getAll()).toHaveLength(1);
+        expect(task.payload).toMatchObject({ prompt: 'describe', mode: 'ask',
+            images: [`data:image/png;base64,${PNG.toString('base64')}`],
+            context: { spawnedFromProcessId: 'sentinel', messagingOrigin: { connector: 'whatsapp', chatKey: GROUP } } });
+        expect(fs.readFileSync((task.payload.attachments as Array<{path: string}>)[0].path)).toEqual(PNG);
+        expect(bindings.entries()[0]).toMatchObject({ processId: toQueueProcessId(task.id), status: 'delivered', notice: true });
+        expect(bindings.topic(GLOBAL)).toBeNull();
+        expect(enqueue).not.toHaveBeenCalled(); expect(media.download).toHaveBeenCalledTimes(1);
+        bindings = new WhatsAppBindings(dir); await bindings.restore(store);
+        await createRouter({ handOff }).handle(msg);
+        expect(queue.getAll()).toHaveLength(1); expect(media.download).toHaveBeenCalledTimes(1);
+    });
+
+    it('cleans rejected sentinel job files and allows the same delivery to retry', async () => {
+        router = createRouter({ handOff: sentinelHandOff(async () => { throw new Error('queue rejected'); }) });
+        const media = image(); const msg = message('/ask describe', { images: [media] });
+        await router.handle(msg);
+        expect(queue.getAll()).toEqual([]); expect(files()).toEqual([]); expect(bindings.isKnownMessage(msg.messageId)).toBe(false);
+        router = createRouter({ handOff: sentinelHandOff() }); await router.handle(msg);
+        expect(queue.getAll()).toHaveLength(1); expect(media.download).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['download', 'storage'])('does not launch an incomplete sentinel image turn on %s failure', async failure => {
+        router = createRouter({ handOff: sentinelHandOff(), ...(failure === 'storage' ? { dataDir: undefined } : {}) });
+        const media = { mimeType: 'image/png', download: vi.fn(async () => { throw new ImageDownloadError('size-limit'); }) };
+        await router.handle(message('/ask inspect', { images: [media] }));
+        expect(queue.getAll()).toEqual([]); expect(files()).toEqual([]); expect(bindings.isKnownMessage('image-message')).toBe(false);
+        expect(send).toHaveBeenCalledWith(expect.stringContaining(failure === 'storage' ? 'Could not save' : 'large'), 'image-message');
+    });
+
+    it('retains sentinel job files and dedup when an accepted observer throws', async () => {
+        const handOff = sentinelHandOff(async input => { queue.enqueue(input); throw new Error('observer'); });
+        router = createRouter({ handOff });
+        const media = image(); const msg = message('/ask describe', { images: [media] });
+        await router.handle(msg); await router.handle(msg);
+        const [task] = queue.getAll();
+        expect(queue.getAll()).toHaveLength(1); expect(files()).toHaveLength(1);
+        expect(fs.existsSync(task.payload.imageTempDir as string)).toBe(true);
+        expect(media.download).toHaveBeenCalledTimes(1);
     });
 });
