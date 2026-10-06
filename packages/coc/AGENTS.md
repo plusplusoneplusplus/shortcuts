@@ -111,7 +111,13 @@ references before editing. Paths are package-relative.
   preserves queue ordering, rejects stopped parents and never steers. Review pending IDs equal
   their request receipts; drain reuses those IDs and reconciles accepted tasks/turns before replay.
   Correlation repair and drain share process admission with follow-up delivery. Active tasks take
-  precedence over history in process lookup. Use this boundary for ledger review scheduling.
+  precedence over history in process lookup. `delegated-job-reviews.ts` admits ordinary
+  success/failure reviews on recording/startup, using a stable parent/job/event receipt and
+  bounded untrusted result context. Resolve the parent's mode into pending/task payloads.
+  Reconcile receipt admission before ledger acknowledgement; reuse emits no realtime intents.
+  Review completion settles delivery; permanent routing rejection settles failure, while
+  transient storage errors remain recoverable. Cancellation, Ralph and remote delivery use
+  separate boundaries. Child completion grants no additional action authority.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 

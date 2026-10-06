@@ -27,6 +27,8 @@ import {
 } from './process-operation-admission';
 import { pendingMessageTask } from './queued-pending-message';
 import { truncateDisplayName } from '../shared/queue-utils';
+import { resolveFollowUpMode } from '../executors/follow-up-mode';
+import { emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../streaming/sse-handler';
 import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
 
@@ -265,6 +267,26 @@ export interface DeliveryResult {
     events: DeliveryEvent[];
 }
 
+/** Emit accepted admission intents; reused receipts contain no intents. */
+export function emitDeliveryEvents(store: ProcessStore, processId: string, events: DeliveryEvent[]): void {
+    for (const event of events) {
+        switch (event.kind) {
+            case 'pending-message-added':
+                emitPendingMessageAdded(store, processId, event.pendingMessage);
+                break;
+            case 'message-queued':
+                emitMessageQueued(store, processId, event);
+                break;
+            case 'message-steering':
+                emitMessageSteering(store, processId, event);
+                break;
+        }
+    }
+}
+
+/** A permanent routing/admission rejection; transient storage errors remain retryable. */
+export class ReviewDeliveryRejectedError extends Error {}
+
 /** Thrown when the underlying enqueue/dispatch fails; the route maps it to 500. */
 export class FollowUpDeliveryError extends Error {
     constructor(public readonly originalError?: unknown) {
@@ -342,21 +364,21 @@ export class ProcessMessageDeliveryService {
         receiptId: string,
         input: Pick<FollowUpMessageInput, 'content' | 'displayContent'>,
     ): Promise<DeliveryResult> {
-        if (!receiptId.trim()) throw new Error('A stable review receipt is required');
+        if (!receiptId.trim()) throw new ReviewDeliveryRejectedError('A stable review receipt is required');
         if (!this.bridge.enqueue || !this.bridge.getTask) {
-            throw new Error('Durable review delivery requires queue admission and lookup');
+            throw new ReviewDeliveryRejectedError('Durable review delivery requires queue admission and lookup');
         }
         return this.admission.runExclusive(processId, async () => {
             const proc = await this.store.getProcess(processId, workspaceId);
             if (!proc || proc.metadata?.workspaceId !== workspaceId) {
-                throw new Error('Review parent is unavailable in its originating workspace');
+                throw new ReviewDeliveryRejectedError('Review parent is unavailable in its originating workspace');
             }
             const pending = proc.pendingMessages?.find(message => message.relayRequestId === receiptId);
             const turn = proc.conversationTurns?.find(message => message.role === 'user'
                 && message.relayRequestId === receiptId);
             const task = this.bridge.getTask!(receiptId);
             if (task && !this.isReviewTask(task, proc, receiptId)) {
-                throw new Error('Review receipt conflicts with another queue task');
+                throw new ReviewDeliveryRejectedError('Review receipt conflicts with another queue task');
             }
             if (pending || turn || task) {
                 return {
@@ -368,10 +390,11 @@ export class ProcessMessageDeliveryService {
                 };
             }
             if (proc.status === 'cancelled' || proc.status === 'cancelling') {
-                throw new Error('Review parent has been stopped');
+                throw new ReviewDeliveryRejectedError('Review parent has been stopped');
             }
             return this.deliverAdmitted(proc, {
                 ...input, relayRequestId: receiptId, deliveryMode: 'enqueue', pasteExternalized: false,
+                mode: await resolveFollowUpMode(this.store, processId),
             }, receiptId);
         });
     }

@@ -192,15 +192,28 @@ children, preferring a scoped queue task to process status; cleared queue histor
 back to the child's scoped process. Event IDs derive from child workspace/process identity.
 Summaries use response text or the last request's finished assistant turn, with process
 and result-file links. Cancellation stores a fixed notice summary without partial output.
-Missing children settle with failed delivery. Ralph/remote rows and Ralph steps are excluded;
-parent review scheduling, whole-session results and return transport require integration.
+Missing children settle with failed delivery. Ralph/remote rows and Ralph steps are excluded.
+Recorded results and registered terminal rows at startup invoke `DelegatedJobReviews`.
+Recovery isolates each job's admission failure so other pending results can proceed.
+
+`server/delegation/delegated-job-reviews.ts` admits ordinary success/failure reviews to the
+stored parent. A SHA-256 receipt covers immutable parent/child/job/event identity. Bounded
+JSON includes repository identity/name/path and stored outcome/links. Review guidance treats
+child output as untrusted data, grants no new authority, respects latest user instructions,
+and retains Sentinel dispatcher behavior. Cancellation and whole-session/remote delivery
+use separate boundaries. Reused admissions reconcile ledger-write crash windows without new
+realtime intents; parent review completion settles delivery, while review failure/cancellation
+settles a diagnostic failure. Permanent routing rejection settles; transient writes remain
+recoverable. Buffered review startup drain requires queue lifecycle integration.
 
 `ProcessMessageDeliveryService.deliverOnce` provides server-owned review admission with an
 explicit parent workspace/process and stable receipt. It checks pending messages, queue tasks
 and user turns under shared process admission before enqueueing. Busy reviews buffer after
 existing messages; stopped or missing parents reject. The receipt travels as `relayRequestId`
-and as the review's pending/task ID. Drain reconciles accepted tasks and persisted turns;
-executor correlation repair shares admission. Reused receipts produce no new realtime events.
+and as the review's pending/task ID. Admission resolves the parent's follow-up mode into
+the pending message or task. Drain reconciles accepted tasks and persisted turns; executor
+correlation repair shares admission. `emitDeliveryEvents` shares intent emission with HTTP
+delivery. Reused receipts produce no new realtime events.
 
 ### list_workspaces
 

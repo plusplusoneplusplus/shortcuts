@@ -65,7 +65,7 @@ describe('durable review admission', () => {
         expect(queue.getTask(receiptId)).toMatchObject({
             processId, payload: { processId, workspaceId, relayRequestId: receiptId, deliveryMode: 'enqueue' },
         });
-        expect(queue.getTask(receiptId)?.payload.mode).toBeUndefined();
+        expect(queue.getTask(receiptId)?.payload.mode).toBe('sentinel');
         const proc = await store.getProcess(processId, workspaceId);
         expect(proc?.metadata?.mode).toBe('sentinel');
         expect(proc?.conversationTurns?.[0]).toMatchObject({ role: 'user', content: review.displayContent, relayRequestId: receiptId });

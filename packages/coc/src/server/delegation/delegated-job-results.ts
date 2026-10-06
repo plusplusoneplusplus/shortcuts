@@ -49,6 +49,7 @@ export class DelegatedJobResults {
         jobs: DelegatedJobStore;
         store: Pick<ProcessStore, 'getWorkspaces' | 'getProcess'>;
         queue: Pick<ScheduleQueueEventBus, 'on' | 'off' | 'getTask'>;
+        onResult?: (job: DelegatedJob) => Promise<void>;
     }) {
         this.unsubscribe = onTaskTerminal(deps.queue, task => {
             // Queue task objects can be reused by follow-ups before async reads finish.
@@ -69,8 +70,12 @@ export class DelegatedJobResults {
             if (this.disposed) return;
             try {
                 for (const job of this.deps.jobs.list(workspace.id)) {
-                    if (!this.isOrdinaryPending(job)) continue;
                     try {
+                        if (job.terminal) {
+                            await this.deps.onResult?.(job);
+                            continue;
+                        }
+                        if (!this.isOrdinaryPending(job)) continue;
                         const task = this.deps.queue.getTask(toTaskId(job.child.processId));
                         if (task && matchesChild(job, task)) {
                             if (getRalphContext(task)) continue;
@@ -82,7 +87,7 @@ export class DelegatedJobResults {
                         if (this.disposed) return;
                         if (getRalphContext(process)) continue;
                         if (process && isTerminalStatus(process.status)) {
-                            this.saveResult(job, process.status, storedResponse(process), process.error, process.resultFilePath);
+                            await this.saveResult(job, process.status, storedResponse(process), process.error, process.resultFilePath);
                         } else if (!process) {
                             // Registration is durable before admission. A crash in that gap
                             // must not leave an undeliverable job pending indefinitely.
@@ -114,7 +119,7 @@ export class DelegatedJobResults {
             if (this.disposed) return;
             try {
                 const job = this.deps.jobs.list(workspace.id).find(row =>
-                    this.isOrdinaryPending(row) && matchesChild(row, task));
+                    !row.child.sessionId && !row.child.serverId && matchesChild(row, task));
                 if (job) await this.recordJob(job, task);
             } catch (error) {
                 console.error(`[delegated-job-results] Could not record workspace ${workspace.id}:`, error);
@@ -124,22 +129,26 @@ export class DelegatedJobResults {
 
     private async recordJob(job: DelegatedJob, task: QueuedTask): Promise<void> {
         if (!isTerminalStatus(task.status)) return;
+        if (job.terminal) {
+            await this.deps.onResult?.(job);
+            return;
+        }
         const outcome = task.status;
         const summary = responseText(task.result);
         const reason = task.error;
         const process = await this.deps.store.getProcess(job.child.processId, job.child.workspaceId);
         if (this.disposed) return;
-        this.saveResult(job, outcome, summary ?? storedResponse(process),
+        await this.saveResult(job, outcome, summary ?? storedResponse(process),
             reason ?? process?.error, process?.resultFilePath);
     }
 
-    private saveResult(
+    private async saveResult(
         job: DelegatedJob,
         outcome: 'completed' | 'failed' | 'cancelled',
         summary?: string,
         reason?: string,
         resultFilePath?: string,
-    ): void {
+    ): Promise<void> {
         this.deps.jobs.recordResult(job.parent.workspaceId, job.id, {
             terminalEventId: this.terminalEventId(job), outcome,
             // A cancelled job receives a notice, never a review of partial output.
@@ -148,6 +157,8 @@ export class DelegatedJobResults {
             ...(outcome === 'failed' && reason ? { reason } : {}),
             links: this.links(job, resultFilePath),
         });
+        const recorded = this.deps.jobs.list(job.parent.workspaceId).find(row => row.id === job.id);
+        if (recorded) await this.deps.onResult?.(recorded);
     }
 
     private terminalEventId(job: DelegatedJob): string {

@@ -20,7 +20,7 @@ import {
 } from '../core/api-handler';
 import type { QueueExecutorBridge } from '../core/api-handler';
 import { handleAPIError, missingFields, notFound, badRequest, internalError, APIError } from '../errors';
-import { handleProcessStream, emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../streaming/sse-handler';
+import { handleProcessStream, emitPendingMessageAdded } from '../streaming/sse-handler';
 import { saveImagesToTempFiles, isImageDataUrl } from '../core/image-utils';
 import { processMessageAttachments } from '../core/attachment-utils';
 import { parseBodyOrReject } from '../shared/handler-utils';
@@ -32,7 +32,7 @@ import { isChatStyle, type ChatStyle } from '@plusplusoneplusplus/coc-client';
 import { getStoppedChatResumeUnavailableMessage, normalizeChatMode, normalizeChatModeOrDefault, resolveChatProvider, serializeCommitChatMetadata } from '../tasks/task-types';
 import type { ChatProvider } from '../tasks/task-types';
 import {
-    ProcessMessageDeliveryService,
+    ProcessMessageDeliveryService, emitDeliveryEvents,
     normalizeFollowUpInput,
     isIdleForProviderSwitch,
     FollowUpDeliveryError,
@@ -1290,24 +1290,7 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
             }
 
             // Emit the delivery service's event intents exactly once, in order.
-            for (const event of result.events) {
-                switch (event.kind) {
-                    case 'pending-message-added':
-                        emitPendingMessageAdded(store, id, event.pendingMessage);
-                        break;
-                    case 'message-queued':
-                        emitMessageQueued(store, id, {
-                            turnIndex: event.turnIndex,
-                            deliveryMode: event.deliveryMode,
-                            queuePosition: event.queuePosition,
-                            optimisticId: event.optimisticId,
-                        });
-                        break;
-                    case 'message-steering':
-                        emitMessageSteering(store, id, { turnIndex: event.turnIndex, optimisticId: event.optimisticId });
-                        break;
-                }
-            }
+            emitDeliveryEvents(store, id, result.events);
 
             globalThis.process.stderr.write(`[Process] message id=${id} turnIndex=${result.turnIndex}\n`);
 

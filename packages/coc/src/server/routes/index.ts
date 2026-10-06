@@ -26,6 +26,8 @@ import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { createSendMessageCapability } from '../processes/send-message-capability';
 import { DelegatedJobStore } from '../delegation/delegated-job-store';
 import { DelegatedJobResults } from '../delegation/delegated-job-results';
+import { DelegatedJobReviews } from '../delegation/delegated-job-reviews';
+import { ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
 import { createSentinelDelegationEnqueue } from '../delegation/sentinel-delegation-enqueue';
 import { compactProcess } from '../processes/compact-process';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
@@ -481,7 +483,13 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
-    const delegatedJobResults = new DelegatedJobResults({ jobs: delegatedJobs, store, queue: queueFacade });
+    const delegatedJobReviews = new DelegatedJobReviews({
+        jobs: delegatedJobs, store, queue: queueFacade,
+        delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
+    });
+    const delegatedJobResults = new DelegatedJobResults({
+        jobs: delegatedJobs, store, queue: queueFacade, onResult: job => delegatedJobReviews.schedule(job),
+    });
     const delegatedResultsRestored = delegatedJobResults.restore().catch(error =>
         console.error('[delegated-job-results] Could not restore results:', error));
     const registerSentinelDelegation = createSentinelDelegationEnqueue({
@@ -1075,6 +1083,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         whatsappRelay.dispose();
         jobNotices.dispose();
         delegatedJobResults.dispose();
+        delegatedJobReviews.dispose();
     });
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime
