@@ -147,7 +147,12 @@ references before editing. Paths are package-relative.
   parent terminal events/startup retry admission, and transcript receipts reconcile ledger
   write failures. Stopped parents can receive notices without resuming. Missing/mis-scoped
   parents settle delivery failure. Ralph uses session terminal receipts; remote delivery remains separate.
-  Child completion grants no additional action authority.
+  Child completion grants no additional action authority. Connector origins are immutable
+  delegation data captured before admission. Parent review answers and passive cancellation
+  notices enter `MessagingJobNotices.queueResult` in the parent workspace before ledger
+  acknowledgement. Extract only the receipt-correlated parent answer; connector output binds
+  to the parent and uses its captured group/thread independently of topic selection. Existing
+  notice persistence handles reconnect/restart and quarantines uncertain multipart sends.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 

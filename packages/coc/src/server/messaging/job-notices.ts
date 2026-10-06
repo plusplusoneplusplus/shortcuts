@@ -29,7 +29,7 @@ export type MessagingConnector = 'whatsapp' | 'teams';
 export interface MessagingJobOrigin {
     connector: MessagingConnector;
     chatKey: string;
-    /** Original Teams thread root for questions; completion notices remain top-level. */
+    /** Original Teams thread root for questions and parent results; child notices remain top-level. */
     threadId?: string;
 }
 
@@ -42,7 +42,9 @@ export function isMessagingJobOrigin(value: unknown): value is MessagingJobOrigi
 }
 
 export interface JobNotice {
-    operation?: 'compact';
+    operation?: 'compact' | 'result';
+    /** Parent review answer or fixed cancellation notice, already scoped to its receipt. */
+    body?: string;
     threadId?: string;
     workspaceId: string;
     processId: string;
@@ -76,7 +78,7 @@ export interface JobNoticeTransport {
 }
 
 interface NoticeJob {
-    /** A single compaction operation; ordinary jobs notice every turn. */
+    /** A single compaction/result receipt; ordinary jobs notice every turn. */
     taskId?: string;
     processId: string;
     workspaceId: string;
@@ -89,6 +91,7 @@ interface NoticeJob {
     /** Task id of the send in flight. */
     sending?: string;
     noticeIds: string[];
+    result?: Pick<JobNotice, 'repo' | 'title' | 'body' | 'status'>;
 }
 
 const FILE = 'messaging-job-notices.json';
@@ -135,6 +138,24 @@ export class MessagingJobNotices {
         this.save(job.workspaceId);
     }
 
+    /** Persist a parent result before the delegation ledger acknowledges delivery. */
+    queueResult(job: {
+        processId: string; workspaceId: string; origin: MessagingJobOrigin; receiptId: string;
+        repo: string; title: string; body: string; status: RelayTerminalStatus;
+    }): void {
+        const rows = this.load(job.workspaceId);
+        if (rows.some(row => row.taskId === job.receiptId && row.result)) return;
+        rows.push({ processId: job.processId, workspaceId: job.workspaceId, origin: { ...job.origin },
+            taskId: job.receiptId, createdAt: new Date().toISOString(), done: [], noticeIds: [],
+            pending: [{ taskId: job.receiptId, status: job.status }],
+            result: { repo: job.repo, title: job.title, body: job.body.slice(0, 16_000), status: job.status },
+        });
+        try { this.save(job.workspaceId); }
+        catch (error) { rows.pop(); throw error; }
+        void this.reconcile(job.origin.connector).catch(error =>
+            console.error('[job-notices] Could not deliver parent result:', error));
+    }
+
     /**
      * Load every workspace's ledger, settle sends a restart interrupted, queue
      * notices for first turns that ended while the server was down, and post
@@ -151,7 +172,7 @@ export class MessagingJobNotices {
                     job.sending = undefined;
                     changed = true;
                 }
-                if (job.done.length || job.pending.length) continue;
+                if (job.result || job.done.length || job.pending.length) continue;
                 if (job.taskId) {
                     const task = this.deps.queue.getAll?.().find(task => task.id === job.taskId);
                     const process = await this.deps.store.getProcess(job.processId, job.workspaceId);
@@ -190,7 +211,7 @@ export class MessagingJobNotices {
         if (!isTerminalStatus(task.status)) return;
         const processId = task.processId ?? toQueueProcessId(task.id);
         const rows = typeof task.repoId === 'string' && task.repoId ? this.load(task.repoId) : [...this.jobs.values()].flat();
-        const job = rows.find(row => row.processId === processId && (row.taskId ? row.taskId === task.id : task.payload?.kind !== 'compact'));
+        const job = rows.find(row => !row.result && row.processId === processId && (row.taskId ? row.taskId === task.id : task.payload?.kind !== 'compact'));
         if (!job || job.done.includes(task.id) || job.sending === task.id
             || job.pending.some(entry => entry.taskId === task.id)) return;
         job.pending.push({ taskId: task.id, status: task.status });
@@ -241,6 +262,8 @@ export class MessagingJobNotices {
     }
 
     private async buildNotice(job: NoticeJob, status: RelayTerminalStatus): Promise<JobNotice> {
+        if (job.result) return { ...job.result, operation: 'result',
+            workspaceId: job.workspaceId, processId: job.processId, threadId: job.origin.threadId };
         const process = await this.deps.store.getProcess(job.processId, job.workspaceId);
         const workspace = (await this.deps.store.getWorkspaces()).find(ws => ws.id === job.workspaceId);
         const turns = process?.conversationTurns ?? [];
@@ -270,6 +293,8 @@ export class MessagingJobNotices {
             || typeof row.processId !== 'string' || !row.processId || !isMessagingJobOrigin(row.origin)
             || typeof row.createdAt !== 'string' || !Array.isArray(row.done) || !Array.isArray(row.pending)
             || !Array.isArray(row.noticeIds) || row.pending.some(entry => !isTerminalStatus(entry?.status))
+            || (row.result !== undefined && (!row.taskId || typeof row.result.body !== 'string'
+                || typeof row.result.repo !== 'string' || typeof row.result.title !== 'string' || !isTerminalStatus(row.result.status)))
             || (row.sending !== undefined && typeof row.sending !== 'string'))) {
             throw new Error(`Invalid messaging job notices for workspace ${workspaceId}`);
         }

@@ -74,6 +74,18 @@ describe('Sentinel delegation admission', () => {
         expect(job.terminal).toBeUndefined();
     });
 
+    it.each(['whatsapp', 'teams'] as const)('captures the %s route before child admission and rejects rerouting', async connector => {
+        const task = input();
+        task.id = 'origin-job';
+        const origin = { connector, chatKey: 'original-chat', threadId: 'original-thread' };
+        task.payload.context = { spawnedFromProcessId: parentId, messagingOrigin: origin };
+        await admit(task, enqueue);
+        expect(new DelegatedJobStore(dataDir).list(parentWorkspace)[0].messagingOrigin).toEqual(origin);
+        task.payload.context = { spawnedFromProcessId: parentId, messagingOrigin: { ...origin, chatKey: 'new-chat' } };
+        await expect(admit(task, enqueue)).rejects.toThrow('another parent or child');
+        expect(enqueue).toHaveBeenCalledOnce();
+    });
+
     it('preserves supplied IDs and registers duplicate admission identity once', async () => {
         const task = input();
         task.id = 'reserved';

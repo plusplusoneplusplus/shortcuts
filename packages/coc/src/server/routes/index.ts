@@ -484,8 +484,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
     const delegatedJobs = new DelegatedJobStore(dataDir);
+    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade });
     const delegatedJobReviews = new DelegatedJobReviews({
         jobs: delegatedJobs, store, queue: queueFacade,
+        queueMessagingResult: result => jobNotices.queueResult(result),
         delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
         recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
     });
@@ -493,7 +495,10 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         jobs: delegatedJobs, store, queue: queueFacade, sessions: new RalphSessionStore({ dataDir }),
         onResult: job => delegatedJobReviews.schedule(job),
     });
-    const delegatedResultsRestored = delegatedJobResults.restore().catch(error =>
+    // Quarantine interrupted outbound sends before recovered results can add new receipts.
+    const delegatedResultsRestored = jobNotices.restore().catch(error =>
+        console.error('[job-notices] Could not restore notices:', error))
+        .then(() => delegatedJobResults.restore()).catch(error =>
         console.error('[delegated-job-results] Could not restore results:', error));
     const registerSentinelDelegation = createSentinelDelegationEnqueue({
         store, jobs: delegatedJobs, hasTask: taskId => !!bridge.getTask(taskId),
@@ -599,9 +604,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
     // name / remote clone-key targets, and messaging `list remotes`.
     const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
-    // Completion notices for chats a WhatsApp/Teams turn hands off; connectors
-    // register their transports below.
-    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade });
+    // Connectors register their completion/result transports below.
     opts.setSendToConversationRuntime?.({
         cancelConversation: (processId, workspaceId) => cancelConversation(store, bridge, processId, workspaceId),
         isAutoProviderRoutingAvailable: () => isAutoProviderRoutingActive() && !!agentProvidersQuotaCache,
@@ -1040,8 +1043,9 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         groupJid: () => whatsappMessagingManager.getStatus().groupJid,
         send: text => whatsappMessagingManager.send(text),
     }));
-    // Load notice ledgers, then post what a restart or disconnect left pending.
-    void jobNotices.restore().catch(error => console.error('[job-notices] Could not restore notices:', error));
+    // Registered transports can now drain restored notices and recovered result receipts.
+    void delegatedResultsRestored.then(() => jobNotices.reconcile()).catch(error =>
+        console.error('[job-notices] Could not reconcile notices:', error));
     const whatsappRouter = new WhatsAppCommandRouter({
         store,
         dataDir,

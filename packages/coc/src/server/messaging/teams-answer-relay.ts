@@ -1284,16 +1284,26 @@ export class TeamsAnswerRelay {
             post: async (chatKey, notice) => {
                 if (!connected(chatKey)) return undefined;
                 const { line, detail } = formatJobNotice(notice);
-                let id: string;
+                let id: string | undefined;
                 try {
-                    const body = `<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`;
-                    id = notice.threadId ? await this.deps.send(body, notice.threadId) : await this.deps.send(body);
+                    const bodies = notice.body !== undefined ? formatTeamsAnswerChunks(notice.body, 'result', line)
+                        : [`<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`];
+                    for (const body of bodies) {
+                        if (!connected(chatKey)) {
+                            if (!id) return undefined;
+                            throw new Error('Teams route unavailable after partial result delivery');
+                        }
+                        const sent = notice.threadId ? await this.deps.send(body, notice.threadId) : await this.deps.send(body);
+                        if (!/^[A-Za-z0-9:_@.-]{1,256}$/.test(sent)) throw new Error('Teams send confirmation missing');
+                        id = sent;
+                        if (notice.operation !== 'compact' && !notice.threadId) {
+                            this.saveThreadSelection(this.deps.target().channelId!, id, notice.workspaceId, notice.processId);
+                        }
+                    }
                 } catch (error) {
-                    if (error instanceof TeamsMessageNotSentError || error instanceof TeamsMcpSendRejectedError) return undefined;
+                    if (!id && (error instanceof TeamsMessageNotSentError || error instanceof TeamsMcpSendRejectedError)) return undefined;
                     throw error;
                 }
-                if (!/^[A-Za-z0-9:_@.-]{1,256}$/.test(id)) throw new Error('Teams send confirmation missing');
-                if (notice.operation !== 'compact') this.saveThreadSelection(this.deps.target().channelId!, id, notice.workspaceId, notice.processId);
                 return id;
             },
         };

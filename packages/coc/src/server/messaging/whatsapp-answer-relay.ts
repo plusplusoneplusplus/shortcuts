@@ -155,14 +155,25 @@ export function createWhatsAppNoticeTransport(
         post: async (chatKey, notice) => {
             if (!connected(chatKey)) return undefined;
             const { line, detail } = formatJobNotice(notice);
-            let id: string;
-            try {
-                id = await deps.send(detail ? `${line}\n${detail}` : line);
-            } catch (error) {
-                if (error instanceof WhatsAppNotConnectedError) return undefined;
-                throw error;
+            const text = notice.body !== undefined ? `${line}\n\n${formatWhatsAppAnswer(notice.body)}`
+                : detail ? `${line}\n${detail}` : line;
+            let id: string | undefined;
+            for (const part of chunkWhatsAppText(text)) {
+                if (!connected(chatKey)) {
+                    if (!id) return undefined;
+                    throw new WhatsAppNotConnectedError();
+                }
+                try {
+                    const sent = await deps.send(part);
+                    if (!sent) throw new Error('WhatsApp send confirmation missing');
+                    id = sent;
+                    deps.bindings.recordNotice({ groupJid: chatKey, workspaceId: notice.workspaceId, processId: notice.processId }, sent);
+                } catch (error) {
+                    // A later rejection cannot retry already posted parts.
+                    if (!id && error instanceof WhatsAppNotConnectedError) return undefined;
+                    throw error;
+                }
             }
-            deps.bindings.recordNotice({ groupJid: chatKey, workspaceId: notice.workspaceId, processId: notice.processId }, id);
             return id;
         },
     };

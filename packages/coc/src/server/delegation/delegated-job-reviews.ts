@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { toQueueProcessId, type ProcessStore, type QueuedTask, type WorkspaceInfo } from '@plusplusoneplusplus/forge';
 import { onTaskTerminal } from '../messaging/chat-target';
-import { isTerminalStatus } from '../messaging/relay-answer';
+import type { MessagingJobNotices } from '../messaging/job-notices';
+import { findRequestAnswer, findRequestTurn, RELAY_ANSWER_TEXT, isTerminalStatus } from '../messaging/relay-answer';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import {
     emitDeliveryEvents, ProcessMessageDeliveryService, ReviewDeliveryRejectedError,
@@ -38,6 +39,7 @@ export class DelegatedJobReviews {
         store: ProcessStore;
         delivery: Pick<ProcessMessageDeliveryService, 'deliverOnce' | 'deliverNoticeOnce'>;
         queue: ScheduleQueueEventBus;
+        queueMessagingResult?: MessagingJobNotices['queueResult'];
         recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
     }) {
         this.unsubscribe = onTaskTerminal(deps.queue, task => {
@@ -75,6 +77,7 @@ export class DelegatedJobReviews {
                     job.parent.workspaceId, job.parent.processId, receiptId, text,
                 );
                 if (delivered === 'delivered') {
+                    this.queueMessagingResult(job, receiptId, text, 'cancelled', repository);
                     this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'pending', { state: 'queued', receiptId });
                     this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'queued', { state: 'delivered', receiptId });
                 }
@@ -92,7 +95,7 @@ export class DelegatedJobReviews {
                 await this.deps.recoverPendingMessages?.(job.parent.workspaceId, job.parent.processId);
             }
             const task = this.deps.queue.getTask(receiptId);
-            if (task && isTerminalStatus(task.status)) this.settle(job, task, receiptId);
+            if (task && isTerminalStatus(task.status)) await this.settle(job, task, receiptId);
         } catch (error) {
             if (!(error instanceof ReviewDeliveryRejectedError)) throw error;
             this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, job.terminal!.delivery.state,
@@ -100,14 +103,38 @@ export class DelegatedJobReviews {
         }
     }
 
-    private settle(job: DelegatedJob, task: QueuedTask, receiptId: string): void {
+    private async settle(job: DelegatedJob, task: QueuedTask, receiptId: string): Promise<void> {
         if (task.type !== 'chat' || task.processId !== job.parent.processId
             || task.payload.processId !== job.parent.processId
             || task.payload.workspaceId !== job.parent.workspaceId
             || task.payload.relayRequestId !== receiptId) return;
+        if (task.status === 'completed' && job.messagingOrigin && this.deps.queueMessagingResult) {
+            const parent = await this.deps.store.getProcess(job.parent.processId, job.parent.workspaceId);
+            if (!parent || parent.metadata?.workspaceId !== job.parent.workspaceId) {
+                this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'queued',
+                    { state: 'failed', reason: 'Parent unavailable when returning the review answer.' });
+                return;
+            }
+            const turns = parent.conversationTurns ?? [];
+            const start = findRequestTurn(turns, receiptId);
+            const answer = start >= 0 ? findRequestAnswer(turns, start).answer : undefined;
+            const repository = (await this.deps.store.getWorkspaces()).find(ws => ws.id === job.child.workspaceId);
+            this.queueMessagingResult(job, receiptId, answer?.content?.trim() || RELAY_ANSWER_TEXT.empty,
+                job.terminal?.result.outcome === 'failed' ? 'failed' : 'completed', repository);
+        }
         this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'queued', task.status === 'completed'
             ? { state: 'delivered', receiptId }
             : { state: 'failed', reason: `Parent result review ${task.status}.` });
+    }
+
+    private queueMessagingResult(job: DelegatedJob, receiptId: string, body: string,
+        status: 'completed' | 'failed' | 'cancelled', repository?: WorkspaceInfo): void {
+        if (!job.messagingOrigin) return;
+        this.deps.queueMessagingResult?.({
+            workspaceId: job.parent.workspaceId, processId: job.parent.processId,
+            origin: job.messagingOrigin, receiptId, body, status,
+            repo: repository?.name ?? job.child.workspaceId, title: job.title,
+        });
     }
 
     private async settleTask(task: QueuedTask): Promise<void> {
@@ -130,6 +157,6 @@ export class DelegatedJobReviews {
         if (!task.payload.relayRequestId) return;
         const job = rows.find(row => row.terminal?.delivery.state === 'queued'
             && row.terminal.delivery.receiptId === task.id);
-        if (job) this.settle(job, task, task.id);
+        if (job) await this.settle(job, task, task.id);
     }
 }

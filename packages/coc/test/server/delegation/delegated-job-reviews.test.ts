@@ -26,12 +26,13 @@ describe('delegated success/failure review scheduling', () => {
     let delivery: ProcessMessageDeliveryService;
     let reviews: DelegatedJobReviews;
     let recorder: DelegatedJobResults;
+    let queueMessagingResult: ReturnType<typeof vi.fn>;
 
     function wire() {
         delivery = new ProcessMessageDeliveryService({ store, bridge });
         const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service });
         executor.setQueueManager(queue);
-        reviews = new DelegatedJobReviews({ jobs, store, delivery, queue,
+        reviews = new DelegatedJobReviews({ jobs, store, delivery, queue, queueMessagingResult,
             recoverPendingMessages: (workspaceId, processId) => executor.recoverPendingMessages(workspaceId, processId),
         });
         recorder = new DelegatedJobResults({ jobs, store, queue, onResult: job => reviews.schedule(job) });
@@ -59,6 +60,7 @@ describe('delegated success/failure review scheduling', () => {
                 return tasks.find(task => task.status === 'running' || task.status === 'queued') ?? tasks[0];
             }, steerProcess: vi.fn(), executeFollowUp: vi.fn(),
         } as unknown as QueueExecutorBridge;
+        queueMessagingResult = vi.fn();
         wire();
     });
 
@@ -232,6 +234,93 @@ describe('delegated success/failure review scheduling', () => {
         expect(row().terminal?.delivery.state).toBe(status === 'completed' ? 'delivered' : 'failed');
         await restart();
         expect(bridge.enqueue).toHaveBeenCalledOnce();
+    });
+
+    function recordConnector(outcome: 'completed' | 'failed' | 'cancelled' = 'completed') {
+        jobs.register({ id: 'connector-child', title: 'Connector job',
+            parent: { workspaceId: parentWorkspace, processId: parentId },
+            child: { workspaceId: childWorkspace, processId: 'connector-child' },
+            messagingOrigin: { connector: 'teams', chatKey: 'original-channel', threadId: 'original-thread' } });
+        jobs.recordResult(parentWorkspace, 'connector-child', { terminalEventId: 'connector-terminal',
+            outcome, summary: 'Untrusted child answer', links: [] });
+        return jobs.list(parentWorkspace).find(job => job.id === 'connector-child')!;
+    }
+
+    it('returns only the correlated parent answer to the captured channel before settling', async () => {
+        const job = recordConnector();
+        const id = delegatedReviewReceipt(job);
+        await reviews.schedule(job);
+        for (const turn of [{ role: 'assistant', content: 'Reviewed result; next step' },
+            { role: 'user', content: 'Later request' }, { role: 'assistant', content: 'Later answer' }] as const) {
+            await store.appendConversationTurn(parentId, turnIndex => ({ ...turn, timestamp: new Date(), turnIndex }));
+        }
+        queueMessagingResult.mockImplementation(() => {
+            expect(jobs.list(parentWorkspace).find(row => row.id === job.id)?.terminal?.delivery.state).toBe('queued');
+        });
+        queue.markStarted(id); queue.markCompleted(id, 'Ignored queue response');
+        await flush();
+        expect(queueMessagingResult).toHaveBeenCalledWith({ receiptId: id, workspaceId: parentWorkspace, processId: parentId,
+            origin: job.messagingOrigin, repo: 'Child repository', title: job.title, status: 'completed', body: 'Reviewed result; next step' });
+        expect(jobs.list(parentWorkspace).find(row => row.id === job.id)?.terminal?.delivery.state).toBe('delivered');
+    });
+
+    it('marks the external job outcome failed even when its parent review succeeds', async () => {
+        const job = recordConnector('failed');
+        const id = delegatedReviewReceipt(job);
+        await reviews.schedule(job);
+        await store.appendConversationTurn(parentId, turnIndex => ({ role: 'assistant', content: 'Job failed; suggest examining logs',
+            timestamp: new Date(), turnIndex }));
+        queue.markStarted(id); queue.markCompleted(id, 'Reviewed');
+        await flush();
+        expect(queueMessagingResult).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', body: 'Job failed; suggest examining logs' }));
+    });
+
+    it('fails return delivery when the parent is removed after review admission', async () => {
+        const job = recordConnector();
+        const id = delegatedReviewReceipt(job);
+        await reviews.schedule(job);
+        await store.removeProcess(parentId);
+        queue.markStarted(id); queue.markCompleted(id, 'Saved answer');
+        await flush();
+        expect(queueMessagingResult).not.toHaveBeenCalled();
+        expect(jobs.list(parentWorkspace).find(row => row.id === job.id)?.terminal?.delivery)
+            .toMatchObject({ state: 'failed', reason: 'Parent unavailable when returning the review answer.' });
+    });
+
+    it('recovers an outbound write failure without another parent review', async () => {
+        const job = recordConnector();
+        const id = delegatedReviewReceipt(job);
+        await reviews.schedule(job);
+        await store.appendConversationTurn(parentId, turnIndex => ({ role: 'assistant', content: 'Saved answer', timestamp: new Date(), turnIndex }));
+        queueMessagingResult.mockImplementationOnce(() => { throw new Error('outbox write failed'); });
+        queue.markStarted(id); queue.markCompleted(id, 'Saved answer');
+        await flush();
+        expect(jobs.list(parentWorkspace).find(row => row.id === job.id)?.terminal?.delivery.state).toBe('queued');
+        await restart();
+        expect(queueMessagingResult).toHaveBeenLastCalledWith(expect.objectContaining({ receiptId: id, body: 'Saved answer' }));
+        expect(bridge.enqueue).toHaveBeenCalledOnce();
+        expect(jobs.list(parentWorkspace).find(row => row.id === job.id)?.terminal?.delivery.state).toBe('delivered');
+    });
+
+    it('returns fixed cancellation text without an AI task or child output', async () => {
+        const job = recordConnector('cancelled');
+        await reviews.schedule(job);
+        expect(queue.getAll()).toEqual([]);
+        expect(queueMessagingResult).toHaveBeenCalledWith(expect.objectContaining({ origin: job.messagingOrigin,
+            processId: parentId, status: 'cancelled', body: 'Delegated job "Connector job" in "Child repository" was cancelled.' }));
+        await restart();
+        expect(queueMessagingResult).toHaveBeenCalledOnce();
+    });
+
+    it.each(['failed', 'cancelled'] as const)('does not forward partial output when the review %s', async status => {
+        const job = recordConnector();
+        const id = delegatedReviewReceipt(job);
+        await reviews.schedule(job);
+        queue.markStarted(id);
+        if (status === 'failed') queue.markFailed(id, new Error('review failed'));
+        else queue.cancelTask(id);
+        await flush();
+        expect(queueMessagingResult).not.toHaveBeenCalled();
     });
 
     it('reconciles a parent completion racing ledger acknowledgement', async () => {

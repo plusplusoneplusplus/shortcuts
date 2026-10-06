@@ -21,6 +21,7 @@ import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/tea
 import { TeamsMessagingManager } from '../../src/server/messaging/teams-messaging-manager';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { isChatPayload } from '../../src/server/tasks/task-types';
+import { MessagingJobNotices } from '../../src/server/messaging/job-notices';
 import { DelegatedJobResults } from '../../src/server/delegation/delegated-job-results';
 import { DelegatedJobStore } from '../../src/server/delegation/delegated-job-store';
 import { TeamsUserStateStore } from '../../src/server/messaging/teams-user-state';
@@ -366,12 +367,26 @@ describe('registerAllRoutes', () => {
         expect(queueFacade.on.mock.calls.map(([event]: [string]) => event)).toEqual([
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
-            'ralphSessionComplete',
             'taskCompleted', 'taskFailed', 'taskCancelled',
+            'ralphSessionComplete',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
         ]);
         expect(opts.runtimeConfigService?.onChange).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it('restores outbound receipts before result recovery can schedule connector sends', async () => {
+        let finishNotices!: () => void;
+        const notices = vi.spyOn(MessagingJobNotices.prototype, 'restore').mockImplementation(() =>
+            new Promise<void>(resolve => { finishNotices = resolve; }));
+        const results = vi.spyOn(DelegatedJobResults.prototype, 'restore').mockResolvedValue(undefined);
+        registerAllRoutes([], makeOpts());
+        expect(notices).toHaveBeenCalledOnce();
+        expect(results).not.toHaveBeenCalled();
+        finishNotices();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(results).toHaveBeenCalledOnce();
+        expect(notices).toHaveBeenCalledOnce();
     });
 
     it('waits for delegated-result recovery before registering a new tool launch', async () => {

@@ -83,6 +83,39 @@ describe('MessagingJobNotices', () => {
         fs.rmSync(dataDir, { recursive: true, force: true });
     });
 
+    it('persists parent review output and replays once after reconnect and restart', async () => {
+        online = false;
+        const hub = makeHub();
+        const result = { workspaceId: WS, processId: 'sentinel', origin: { connector: 'whatsapp' as const, chatKey: GROUP },
+            receiptId: 'review-receipt', repo: 'Child', title: 'Job', body: 'Reviewed result', status: 'completed' as const };
+        hub.queueResult(result);
+        hub.queueResult({ ...result, body: 'Duplicate content' });
+        const file = getRepoDataPath(dataDir, WS, 'messaging-job-notices.json');
+        expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject([{ processId: 'sentinel', result: { body: 'Reviewed result' } }]);
+        hub.dispose();
+        const restarted = makeHub();
+        await restarted.restore();
+        online = true;
+        await restarted.reconcile();
+        expect(posted).toHaveLength(1);
+        expect(posted[0]).toMatchObject({ processId: 'sentinel', chatKey: GROUP });
+        restarted.queueResult(result);
+        await restarted.reconcile();
+        expect(posted).toHaveLength(1);
+        expect(JSON.parse(fs.readFileSync(file, 'utf8'))[0].done).toEqual(['review-receipt']);
+    });
+
+    it('does not treat other parent turns as result notifications', async () => {
+        online = false;
+        const hub = makeHub();
+        hub.queueResult({ workspaceId: WS, processId: JOB, origin: { connector: 'whatsapp', chatKey: GROUP },
+            receiptId: 'review-receipt', repo: 'Child', title: 'Job', body: 'Result', status: 'completed' });
+        terminal(queue, 'later-parent-turn', 'completed');
+        await flush();
+        const rows = JSON.parse(fs.readFileSync(getRepoDataPath(dataDir, WS, 'messaging-job-notices.json'), 'utf8'));
+        expect(rows[0].pending).toEqual([{ taskId: 'review-receipt', status: 'completed' }]);
+    });
+
     it('notices only the admitted compaction and recovers its completion after restart', async () => {
         const hub = makeHub();
         hub.track({ processId: JOB, workspaceId: WS, origin: { connector: 'whatsapp', chatKey: GROUP }, taskId: 'compact' });
@@ -228,6 +261,26 @@ describe('WhatsApp job notices', () => {
         expect(bindings.isKnownMessage('notice-1')).toBe(true);
     });
 
+    it('posts a parent review despite topic selection changes and binds replies to the parent', async () => {
+        bindings.selectRepo('different-workspace');
+        bindings.selectTopic('different-workspace', 'different-topic');
+        const send = vi.fn().mockResolvedValue('parent-result');
+        const transport = createWhatsAppNoticeTransport({ bindings, connected: () => true, groupJid: () => GROUP, send });
+        await transport.post(GROUP, { ...notice, operation: 'result', processId: 'sentinel', body: 'Review & next step' });
+        expect(send).toHaveBeenCalledWith('Alpha · Fix login · ✅\n\nReview & next step');
+        expect(bindings.findMessage('parent-result')).toMatchObject({ workspaceId: WS, processId: 'sentinel' });
+        expect(bindings.selectedRepo).toBe('different-workspace');
+        expect(bindings.topic('different-workspace')).toBe('different-topic');
+    });
+
+    it('does not retry a multipart review after an already posted part', async () => {
+        const send = vi.fn().mockResolvedValueOnce('first-part').mockRejectedValueOnce(new WhatsAppNotConnectedError());
+        const transport = createWhatsAppNoticeTransport({ bindings, connected: () => true, groupJid: () => GROUP, send });
+        await expect(transport.post(GROUP, { ...notice, operation: 'result', body: 'Long answer. '.repeat(2000) }))
+            .rejects.toBeInstanceOf(WhatsAppNotConnectedError);
+        expect(bindings.findMessage('first-part')).toMatchObject({ processId: JOB });
+    });
+
     it('reports a definitely-unsent notice as undefined', async () => {
         const send = vi.fn().mockRejectedValue(new WhatsAppNotConnectedError());
         const transport = createWhatsAppNoticeTransport({ bindings, connected: () => true, groupJid: () => GROUP, send });
@@ -308,6 +361,24 @@ describe('Teams job notices', () => {
         expect(restored.threadRoots('team-1', 'channel-1')).toContain('notice-root');
         const reply = { messageId: 'reply-1', channelId: 'channel-1', text: 'also add tests', replyToMessageId: 'notice-root', senderAadId: 'u' };
         expect((await restored.resolveThread(reply))?.process?.id).toBe(JOB);
+    });
+
+    it('returns safe review text to the original thread without changing selection', async () => {
+        const relay = makeRelay();
+        await relay.noticeTransport().post(chatKey, { ...notice, operation: 'result', processId: 'sentinel',
+            threadId: 'original-thread', body: 'Review <script>bad()</script> & next step' });
+        expect(send.mock.calls[0][1]).toBe('original-thread');
+        expect(send.mock.calls[0][0]).not.toContain('<script>');
+        expect(send.mock.calls[0][0]).toContain('next step');
+        expect(relay.threadRoots('team-1', 'channel-1')).not.toContain('notice-root');
+    });
+
+    it('does not retry a multipart review after an already posted Teams part', async () => {
+        send.mockResolvedValueOnce('first-part').mockRejectedValueOnce(new TeamsMessageNotSentError());
+        const relay = makeRelay();
+        await expect(relay.noticeTransport().post(chatKey, { ...notice, operation: 'result',
+            body: 'Long answer. '.repeat(4000), threadId: 'original-thread' })).rejects.toBeInstanceOf(TeamsMessageNotSentError);
+        expect(send).toHaveBeenCalledTimes(2);
     });
 
     it('reports a definite send rejection as undefined and skips other channels', async () => {

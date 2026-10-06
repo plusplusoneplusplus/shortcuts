@@ -171,7 +171,7 @@ turns record nothing.
 `server/delegation/delegated-job-store.ts` provides `DelegatedJobStore`, a server-owned
 ledger at `getRepoDataPath(dataDir, parentWorkspaceId, 'delegated-jobs.json')`. Rows
 capture immutable parent/child workspace and process identities, optional remote server
-and Ralph session IDs, and a title. Explicit registration limits tracking to new
+and Ralph session IDs, a title, and the connector origin supplied by admission context. Explicit registration limits tracking to new
 relationships. The first terminal result wins across event replay; outcome is
 `completed | failed | cancelled | capped`, with bounded summary/reason and artifact links.
 

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { isQueueProcessId, toTaskId, toQueueProcessId, type CreateTaskInput, type ProcessStore, type TaskQueueManager } from '@plusplusoneplusplus/forge';
+import { isMessagingJobOrigin } from '../messaging/job-notices';
 import { normalizeChatMode } from '../tasks/task-types';
 import { DelegatedJobStore } from './delegated-job-store';
 
@@ -40,6 +41,7 @@ export function createSentinelDelegationEnqueue(deps: {
                 workspaceId: childWorkspaceId, processId,
                 ...(ralph?.sessionId ? { sessionId: ralph.sessionId } : {}),
             },
+            ...(isMessagingJobOrigin(context?.messagingOrigin) ? { messagingOrigin: context.messagingOrigin } : {}),
             title: (input.displayName?.trim() || 'Delegated job').slice(0, 80),
         });
         try {

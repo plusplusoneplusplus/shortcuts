@@ -399,6 +399,16 @@ top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots`
 replies route to the job by root (a reply inside the dispatcher's thread would route to the
 dispatcher) and user selection is untouched.
 
+Parent Sentinel results use `MessagingJobNotices.queueResult` with the stable review receipt
+and the connector origin captured in `delegated-jobs.json` before admission. The owning
+parent workspace persists the bounded review answer or fixed cancellation notice before
+acknowledging result delivery. Completed review answers come from the matching parent user
+turn, bounded by the next user turn; failed/cancelled reviews do not forward partial output.
+Result rows replay on reconnect/restart and ignore unrelated parent terminal turns. WhatsApp
+binds each outbound part to the parent; Teams uses the saved thread without changing its
+selection, or binds a new top-level post to the parent. Multipart sends quarantine unknown
+or partially sent outcomes under the existing notice rules.
+
 ### Teams IC3 connection contract
 
 IC3 credentials, account identity and explicit `ic3Region` (`amer`, `emea`, `apac`)

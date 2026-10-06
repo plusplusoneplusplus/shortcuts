@@ -28,6 +28,9 @@ const jobSchema = z.object({
     parent: parentSchema,
     child: childSchema,
     title: z.string().min(1).max(80),
+    messagingOrigin: z.object({
+        connector: z.enum(['whatsapp', 'teams']), chatKey: id, threadId: id.optional(),
+    }).optional(),
     createdAt: z.iso.datetime(),
     terminal: z.object({ result: resultSchema, delivery: deliverySchema }).optional(),
 });
@@ -69,7 +72,8 @@ export class DelegatedJobStore {
         const existing = rows.find(row => row.id === job.id);
         if (existing) {
             if (JSON.stringify(existing.parent) !== JSON.stringify(job.parent)
-                || JSON.stringify(existing.child) !== JSON.stringify(job.child)) {
+                || JSON.stringify(existing.child) !== JSON.stringify(job.child)
+                || JSON.stringify(existing.messagingOrigin) !== JSON.stringify(job.messagingOrigin)) {
                 throw new Error(`Delegated job ${job.id} already belongs to another parent or child`);
             }
             return existing;
