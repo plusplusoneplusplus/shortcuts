@@ -483,6 +483,14 @@ Reveal retargets the dock to the file owner, selects Explorer mode, opens the tr
 and relies on `activeFilePath` tracking to expand and highlight the row without
 changing the active tab.
 
+## Add-tab shortcut
+
+Ctrl/Cmd+T opens `UnifiedPanelOpenMenu` with the same actions as `+`, scoped to
+focus inside a visible panel. Editable content and handled events retain their
+bindings; the open menu consumes repeats without resetting its search. Escape
+returns focus to `+`. Native browser pages forward `onOpenMenuRequested` with
+the source view id; only its matching active browser tab opens the menu.
+
 ## Entry points
 
 Every entry point follows one shape: build a descriptor, and with a matching host

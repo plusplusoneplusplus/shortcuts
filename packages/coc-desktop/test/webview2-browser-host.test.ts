@@ -32,7 +32,7 @@ vi.mock('../src/webview2-process', () => ({
     },
 }));
 
-const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn() };
+const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn() };
 const bounds = { x: 10, y: 20, width: 300, height: 200 };
 
 describe('WebView2 native focus handoff', () => {
@@ -40,6 +40,7 @@ describe('WebView2 native focus handoff', () => {
         mocks.request.mockReset().mockResolvedValue(undefined);
         mocks.owner.focus.mockClear();
         vi.mocked(sink.closeRequested).mockClear();
+        vi.mocked(sink.openMenuRequested).mockClear();
         mocks.running = true;
     });
 
@@ -57,6 +58,23 @@ describe('WebView2 native focus handoff', () => {
         await view.close();
         mocks.onEvent({ event: 'close-requested', viewId: '7:tab:1' });
         expect(sink.closeRequested).toHaveBeenCalledOnce();
+    });
+
+    it('returns focus and forwards add-menu only for a live visible source view', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'remote-workspace', url: 'https://example.test' }, sink);
+        mocks.onEvent({ event: 'open-menu-requested', viewId: '7:tab:1' });
+        expect(sink.openMenuRequested).not.toHaveBeenCalled();
+        await view.setBounds(bounds);
+        mocks.onEvent({ event: 'open-menu-requested', viewId: '8:tab:1' });
+        expect(sink.openMenuRequested).not.toHaveBeenCalled();
+        mocks.onEvent({ event: 'open-menu-requested', viewId: '7:tab:1' });
+        await vi.waitFor(() => expect(sink.openMenuRequested).toHaveBeenCalledOnce());
+        expect(mocks.owner.focus).toHaveBeenCalled();
+        expect(mocks.request).toHaveBeenCalledWith('focus-host', { viewId: '7:tab:1' });
+        await view.close();
+        mocks.onEvent({ event: 'open-menu-requested', viewId: '7:tab:1' });
+        expect(sink.openMenuRequested).toHaveBeenCalledOnce();
     });
 
     it('does not start a helper when no browser view is present', async () => {

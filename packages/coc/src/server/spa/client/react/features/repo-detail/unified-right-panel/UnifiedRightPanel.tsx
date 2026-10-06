@@ -77,6 +77,7 @@ import {
     quickOpenOwner,
     quickOpenShortcut,
 } from './quickOpenRouting';
+import { isEditableTarget } from '../../../hooks/useScopedFindShortcut';
 import { closeTabOutcome, closeTabShortcut, shouldCollapseAfterClose } from './closeTabRouting';
 import { findFilterOwner, findFilterShortcut } from './findRouting';
 import {
@@ -1480,6 +1481,43 @@ export function UnifiedRightPanel({
             document.removeEventListener('keydown', onKeyDown);
         };
     }, [menuOpen]);
+
+    const openMenuFromShortcut = useCallback(() => {
+        if (menuOpen) { return; }
+        // Use the shared trigger for native pages, which have no DOM focus here.
+        menuTriggerRef.current = panelRootRef.current?.querySelector<HTMLElement>(
+            '[data-testid="unified-panel-open-menu"]',
+        ) ?? null;
+        setMenuOpen(true);
+    }, [menuOpen]);
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || event.isComposing
+                || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey
+                || event.key.toLowerCase() !== 't') { return; }
+            const root = panelRootRef.current;
+            const focused = document.activeElement;
+            if (!isOpen || !root || root.offsetParent === null
+                || !focused || focused === document.body || !root.contains(focused)) { return; }
+            // Leave editor and terminal bindings alone. The menu's search field
+            // still consumes held/repeated chords without resetting its query.
+            if (!menuRef.current?.contains(focused) && (isEditableTarget(focused)
+                || focused.closest('[contenteditable="true"], .monaco-editor, .xterm'))) { return; }
+            event.preventDefault();
+            event.stopPropagation();
+            if (!event.repeat) { openMenuFromShortcut(); }
+        };
+        document.addEventListener('keydown', onKeyDown);
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [isOpen, menuOpen, openMenuFromShortcut]);
+
+    useEffect(() => desktopBrowserBridge()?.onOpenMenuRequested?.(({ viewId }) => {
+        const root = panelRootRef.current;
+        if (!isOpen || !root || root.offsetParent === null
+            || active?.kind !== 'browser' || active.resourceId !== viewId) { return; }
+        openMenuFromShortcut();
+    }), [isOpen, active, openMenuFromShortcut]);
 
     // A concrete resource picked in the menu (a searched file, a chat canvas).
     // The menu decides the descriptor — owning clone, chat scope, normalized

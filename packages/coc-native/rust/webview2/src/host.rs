@@ -21,7 +21,7 @@ use windows::{
         System::{Com::*, Threading::*},
         UI::{
             HiDpi::*,
-            Input::KeyboardAndMouse::{GetKeyState, SetFocus, VK_CONTROL, VK_MENU},
+            Input::KeyboardAndMouse::{GetKeyState, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT},
             WindowsAndMessaging::*,
         },
     },
@@ -1014,7 +1014,14 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 let mut key = 0;
                 args.KeyEventKind(&mut kind)?;
                 args.VirtualKey(&mut key)?;
-                if !protocol::close_shortcut(
+                let open_menu = protocol::open_menu_shortcut(
+                    key,
+                    kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
+                    GetKeyState(VK_CONTROL.0 as i32) < 0,
+                    GetKeyState(VK_MENU.0 as i32) < 0,
+                    GetKeyState(VK_SHIFT.0 as i32) < 0,
+                );
+                if !open_menu && !protocol::close_shortcut(
                     key,
                     kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
                     GetKeyState(VK_CONTROL.0 as i32) < 0,
@@ -1026,7 +1033,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 let mut status = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
                 args.PhysicalKeyStatus(&mut status)?;
                 if !status.WasKeyDown.as_bool() {
-                    protocol::emit(json!({ "event": "close-requested", "viewId": view.id }));
+                    protocol::emit(json!({ "event": if open_menu { "open-menu-requested" } else { "close-requested" }, "viewId": view.id }));
                 }
                 Ok(())
             })),

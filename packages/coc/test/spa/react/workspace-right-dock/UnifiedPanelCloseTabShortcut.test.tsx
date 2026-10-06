@@ -13,7 +13,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { TerminalSessionSummary } from '../../../../src/server/spa/client/react/features/terminal/TerminalView';
 
 // A terminal view with something focusable in it, so "focus is inside the
@@ -49,6 +49,24 @@ vi.mock('../../../../src/server/spa/client/react/repos/cloneRegistry', () => ({
         workspaces: { deleteTerminal: async () => undefined },
     }),
     lookupCloneBaseUrl: () => null,
+}));
+
+const nativeMenu = vi.hoisted(() => ({
+    enabled: false,
+    callback: (_event: { viewId: string }) => {},
+}));
+vi.mock('../../../../src/server/spa/client/react/shared/file-path/browser-bridge', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/shared/file-path/browser-bridge')>(),
+    desktopBrowserBridge: () => nativeMenu.enabled ? {
+        onNewTab: () => () => {},
+        onOpenMenuRequested: (callback: (event: { viewId: string }) => void) => {
+            nativeMenu.callback = callback;
+            return () => { nativeMenu.callback = () => {}; };
+        },
+    } : undefined,
+}));
+vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab', () => ({
+    UnifiedBrowserTab: () => <div data-testid="mock-browser-page" />,
 }));
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
@@ -285,5 +303,150 @@ describe('unified panel close-tab shortcut', () => {
         document.removeEventListener('keydown', bubbled);
 
         expect(bubbled).not.toHaveBeenCalled();
+    });
+});
+
+function pressAddTab(init: KeyboardEventInit = {}) {
+    const event = new KeyboardEvent('keydown', {
+        key: 't', ctrlKey: true, bubbles: true, cancelable: true, ...init,
+    });
+    act(() => { (document.activeElement ?? document).dispatchEvent(event); });
+    return event;
+}
+
+describe('unified panel add-tab shortcut', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        clearUnifiedPanelState();
+        clearUnifiedTreeState();
+        stubOffsetParent();
+    });
+    afterEach(() => { cleanup(); nativeMenu.enabled = false; clearUnifiedPanelState(); clearUnifiedTreeState(); });
+
+    it.each([{ ctrlKey: true }, { ctrlKey: false, metaKey: true }])(
+        'opens the shared menu, navigates and restores trigger focus (%j)', async modifiers => {
+            renderPanel();
+            focusIn('unified-panel-open-menu');
+            expect(pressAddTab(modifiers).defaultPrevented).toBe(true);
+            const input = screen.getByTestId('unified-panel-open-menu-search');
+            await waitFor(() => expect(document.activeElement).toBe(input));
+            expect(tabKinds()).toEqual([]);
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            fireEvent.keyDown(input, { key: 'ArrowDown' });
+            fireEvent.keyDown(input, { key: 'Enter' });
+            expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+            expect(tabKinds()).toEqual(['notes']);
+            focusIn('unified-panel-open-menu');
+            pressAddTab(modifiers);
+            fireEvent.keyDown(screen.getByTestId('unified-panel-open-menu-search'), { key: 'Escape' });
+            expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+            expect(document.activeElement).toBe(screen.getByTestId('unified-panel-open-menu'));
+        },
+    );
+
+    it('keeps an open menu and query intact on repeated chords and preserves click toggling', () => {
+        renderPanel();
+        focusIn('unified-panel-empty-open');
+        pressAddTab();
+        const input = screen.getByTestId('unified-panel-open-menu-search');
+        fireEvent.change(input, { target: { value: 'abc' } });
+        expect(pressAddTab({ repeat: true }).defaultPrevented).toBe(true);
+        expect(pressAddTab().defaultPrevented).toBe(true);
+        expect(screen.getByTestId('unified-panel-open-menu-search')).toBe(input);
+        expect((input as HTMLInputElement).value).toBe('abc');
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        expect(screen.getByTestId('unified-panel-open-menu-search')).toBeTruthy();
+    });
+
+    it('ignores unrelated focus, modifiers, composition and previously handled events', () => {
+        renderPanel();
+        const outside = document.createElement('button');
+        document.body.appendChild(outside);
+        outside.focus();
+        expect(pressAddTab().defaultPrevented).toBe(false);
+        outside.remove();
+        expect(pressAddTab().defaultPrevented).toBe(false);
+        focusIn('unified-panel-open-menu');
+        for (const init of [{ altKey: true }, { shiftKey: true }, { ctrlKey: false }, { isComposing: true }, { key: 'w', altKey: true }]) {
+            expect(pressAddTab(init).defaultPrevented).toBe(false);
+        }
+        const consumed = new KeyboardEvent('keydown', { key: 't', ctrlKey: true, bubbles: true, cancelable: true });
+        consumed.preventDefault();
+        act(() => { document.activeElement!.dispatchEvent(consumed); });
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+    });
+
+    it('preserves editable and terminal content, while allowing the strip shortcut', () => {
+        renderPanel();
+        for (const kind of ['notes', 'terminal'] as const) {
+            openResource(kind);
+            focusIn(`mock-${kind}-input`);
+            expect(pressAddTab().defaultPrevented).toBe(false);
+        }
+        const editable = document.createElement('div');
+        editable.contentEditable = 'true';
+        editable.setAttribute('contenteditable', 'true');
+        editable.tabIndex = 0;
+        screen.getByTestId('unified-right-panel').appendChild(editable);
+        editable.focus();
+        expect(pressAddTab().defaultPrevented).toBe(false);
+        editable.remove();
+        focusIn('unified-panel-open-menu');
+        expect(pressAddTab().defaultPrevented).toBe(true);
+    });
+
+    it('opens the menu for only the focused workspace panel', async () => {
+        render(<>
+            <UnifiedRightPanel workspaceId={WS} dock={dockStub()} />
+            <UnifiedRightPanel workspaceId="ws-2" dock={dockStub({ target: 'ws-2' })} />
+        </>);
+        const panels = screen.getAllByTestId('unified-right-panel');
+        const trigger = panels[1].querySelector<HTMLElement>('[data-testid="unified-panel-open-menu"]')!;
+        trigger.focus();
+        expect(pressAddTab().defaultPrevented).toBe(true);
+        expect(panels[0].querySelector('[data-testid="unified-panel-open-menu-popover"]')).toBeNull();
+        expect(panels[1].querySelector('[data-testid="unified-panel-open-menu-popover"]')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('unified-panel-open-notes'));
+        const { readUnifiedPanelState } = await import('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore');
+        expect(readUnifiedPanelState(WS).workspaceTabs).toEqual([]);
+        expect(readUnifiedPanelState('ws-2').workspaceTabs.map(tab => tab.ownerWorkspaceId)).toEqual(['ws-2']);
+    });
+
+    it('opens only for the active native browser view and restores DOM menu focus', async () => {
+        nativeMenu.enabled = true;
+        const view = renderPanel();
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        fireEvent.click(screen.getByTestId('unified-panel-open-browser'));
+        const tab = document.querySelector('[role="tab"][data-kind="browser"]') as HTMLElement;
+        const { readUnifiedPanelState } = await import('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore');
+        const state = readUnifiedPanelState(WS);
+        const browser = state.workspaceTabs.find(candidate => candidate.kind === 'browser')!;
+        act(() => { nativeMenu.callback({ viewId: 'unrelated-view' }); });
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
+        const input = screen.getByTestId('unified-panel-open-menu-search');
+        await waitFor(() => expect(document.activeElement).toBe(input));
+        expect(tabKinds()).toEqual(['browser']);
+        fireEvent.keyDown(input, { key: 'Escape' });
+        expect(document.activeElement).toBe(screen.getByTestId('unified-panel-open-menu'));
+        openResource('notes');
+        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        fireEvent.click(tab);
+        view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);
+        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+    });
+
+    it('does not handle hidden panels or open a menu for an initial auto-repeat', () => {
+        const view = renderPanel();
+        focusIn('unified-panel-open-menu');
+        expect(pressAddTab({ repeat: true }).defaultPrevented).toBe(true);
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);
+        expect(pressAddTab().defaultPrevented).toBe(false);
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
     });
 });

@@ -63,6 +63,7 @@ export interface DesktopBrowserBridge {
     clearData(engine: BrowserEngine): Promise<BrowserOperationResult>;
     onPreferencesChanged(callback: () => void): () => void;
     /** Native page shortcuts cannot bubble into the SPA document. */
+    onOpenMenuRequested?(callback: (event: { viewId: string }) => void): () => void;
     onCloseRequested?(callback: (event: { viewId: string }) => void): () => void;
     onClosed(callback: (event: { viewId: string; engine: BrowserEngine }) => void): () => void;
 }

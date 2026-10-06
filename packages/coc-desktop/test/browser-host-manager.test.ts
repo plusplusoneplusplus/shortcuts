@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { BrowserHostManager } from '../src/browser-host-manager';
 import { BrowserHostError, type BrowserEngineHost, type BrowserEventSink, type BrowserHostedView, type BrowserViewRequest, type FilePreviewHost, type FileViewRequest } from '../src/browser-host-contract';
-import { BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
+import { BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, BROWSER_VIEW_CLOSED_CHANNEL, BROWSER_VIEW_NEW_TAB_CHANNEL, BROWSER_VIEW_STATE_CHANNEL, type BrowserEngine } from '../src/browser-view-policy';
 import { htmlPageFileUrl, toHtmlPageLoadState, toHtmlPageOpenResult } from '../src/html-page-policy';
 
 function deferred<T>() {
@@ -136,6 +136,22 @@ describe.each<BrowserEngine>(['electron', 'webview2'])('%s shared browser manage
         expect(h.send).not.toHaveBeenCalled();
         h.created[1].sink.closeRequested();
         expect(h.send).toHaveBeenCalledExactlyOnceWith(2, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, { viewId: 'same-id' });
+    });
+
+    it('routes add-menu requests by source window and ignores closed entries', async () => {
+        const h = harness(engine);
+        await h.manager.open(1, 'same-id', 'https://example.test/', 'remote:workspace');
+        await h.manager.open(2, 'same-id', 'https://example.test/', 'local-workspace');
+        h.send.mockClear();
+        h.created[0].sink.openMenuRequested();
+        expect(h.send).toHaveBeenCalledExactlyOnceWith(1, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, { viewId: 'same-id' });
+        expect(h.created[0].view.close).not.toHaveBeenCalled();
+        await h.manager.close(1, 'same-id');
+        h.send.mockClear();
+        h.created[0].sink.openMenuRequested();
+        expect(h.send).not.toHaveBeenCalled();
+        h.created[1].sink.openMenuRequested();
+        expect(h.send).toHaveBeenCalledExactlyOnceWith(2, BROWSER_VIEW_OPEN_MENU_REQUESTED_CHANNEL, { viewId: 'same-id' });
     });
 
     it('reports partial cleanup failure, unblocks the engine and permits explicit retry', async () => {
