@@ -10,6 +10,7 @@ export interface ImageDownloadOptions {
 
 /** A lazy, transport-authenticated image; download only after inbound admission. */
 export interface InboundImage {
+    /** Authenticated response MIME; transports may resolve it during download. */
     mimeType: string;
     download(options: ImageDownloadOptions): Promise<Buffer>;
 }
@@ -41,7 +42,7 @@ const IMAGE_SIGNATURES: Record<string, (data: Buffer) => boolean> = {
 
 /** Bound acquisition and streaming together, including transports that stall before returning a stream. */
 export async function downloadInboundImage(
-    mimeType: string,
+    mimeType: string | (() => string),
     openStream: (signal: AbortSignal) => Promise<Readable>,
     options: ImageDownloadOptions,
     lifetimeSignal?: AbortSignal,
@@ -51,8 +52,9 @@ export async function downloadInboundImage(
         || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
         throw new RangeError('Invalid image download limits');
     }
-    if (!Object.hasOwn(IMAGE_SIGNATURES, mimeType)) throw new ImageDownloadError('unsupported');
-    const checkSignature = IMAGE_SIGNATURES[mimeType];
+    if (typeof mimeType === 'string' && !Object.hasOwn(IMAGE_SIGNATURES, mimeType)) {
+        throw new ImageDownloadError('unsupported');
+    }
 
     const controller = new AbortController();
     const cancel = () => controller.abort(new ImageDownloadError('cancelled'));
@@ -76,6 +78,9 @@ export async function downloadInboundImage(
                 stream.destroy();
                 controller.signal.throwIfAborted();
             }
+            const resolvedMime = typeof mimeType === 'string' ? mimeType : mimeType();
+            if (!Object.hasOwn(IMAGE_SIGNATURES, resolvedMime)) throw new ImageDownloadError('unsupported');
+            const checkSignature = IMAGE_SIGNATURES[resolvedMime];
             const chunks: Buffer[] = [];
             let size = 0;
             for await (const chunk of stream) {

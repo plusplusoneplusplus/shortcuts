@@ -397,6 +397,80 @@ describe('Graph pages through durable channel admission', () => {
         return { bot, onMessage, fetch };
     }
 
+    it('admits captionless/captioned images through normal routing without downloading skipped history or duplicates', async () => {
+        const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+        const imageBody = '<p><img src="../hostedContents/content/$value"></p>';
+        const known = new Set(['known']);
+        const s = botSetup({ receiveImages: true, isOwnChannelReply: msg => msg.messageId === 'own',
+            isKnownChannelReply: msg => known.has(msg.messageId) });
+        const downloads: string[] = [];
+        s.onMessage.mockImplementation(async msg => {
+            expect(msg.images).toHaveLength(1);
+            expect(await msg.images![0].download({ maxBytes: 100 })).toEqual(png);
+            known.add(msg.messageId);
+        });
+        await s.bot.start();
+        s.fetch.mockImplementation(async url => {
+            const path = new URL(url).pathname;
+            if (path.endsWith('/$value')) {
+                downloads.push(path);
+                return new Response(png, { headers: { 'content-type': 'image/png' } });
+            }
+            return response(path.endsWith('/messages') ? [message('new-image', imageBody),
+                message('historic-image', imageBody, '2025-01-01T00:00:00Z')]
+                : path === new URL(replyUrl('tracked')).pathname ? [
+                    message('historic-reply', imageBody, '2025-01-01T00:00:00Z'),
+                    { ...message('undated-image', imageBody), createdDateTime: '' },
+                    message('own', imageBody), message('known', imageBody),
+                    message('image-only', imageBody), message('caption', `<p>/ask [chat] explain</p>${imageBody}`),
+                ] : []);
+        });
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(s.onMessage.mock.calls.map(([msg]) => msg.messageId)).toEqual(['new-image', 'image-only', 'caption']);
+        expect(s.onMessage.mock.calls[0][0].text).toBe('');
+        expect(s.onMessage.mock.calls[1][0]).toMatchObject({ text: '', replyToMessageId: 'tracked',
+            reference: { backend: 'graph', rootMessageId: 'tracked', destination: { teamId: 'team', channelId: 'channel' } } });
+        expect(s.onMessage.mock.calls[2][0].text).toBe('/ask [chat] explain');
+        expect(downloads).toEqual([
+            '/v1.0/teams/team/channels/channel/messages/new-image/hostedContents/content/$value',
+            '/v1.0/teams/team/channels/channel/messages/tracked/replies/image-only/hostedContents/content/$value',
+            '/v1.0/teams/team/channels/channel/messages/tracked/replies/caption/hostedContents/content/$value',
+        ]);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(s.onMessage).toHaveBeenCalledTimes(3);
+        expect(downloads).toHaveLength(3);
+        await s.bot.stop();
+    });
+
+    it('keeps image-only posts suppressed for default connector consumers', async () => {
+        const s = botSetup();
+        await s.bot.start();
+        s.fetch.mockImplementation(async () => response([message('image-only', '<img src="../hostedContents/id/$value">')]));
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(s.onMessage).not.toHaveBeenCalled();
+        expect(s.fetch.mock.calls.every(([url]) => !String(url).includes('/hostedContents/'))).toBe(true);
+        await s.bot.stop();
+    });
+
+    it('retries image admission failures and cancels retained descriptors across reconnect', async () => {
+        const s = botSetup({ receiveImages: true });
+        await s.bot.start();
+        s.fetch.mockImplementation(async url => response(new URL(url).pathname === new URL(replyUrl('tracked')).pathname
+            ? [message('image', '<img src="../hostedContents/id/$value">')] : []));
+        s.onMessage.mockRejectedValueOnce(new Error('admission unavailable'));
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(s.onMessage).toHaveBeenCalledOnce();
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(s.onMessage).toHaveBeenCalledTimes(2);
+        const image = s.onMessage.mock.calls[1][0].images![0];
+        await s.bot.stop();
+        await s.bot.start();
+        s.fetch.mockClear();
+        await expect(image.download({ maxBytes: 100 })).rejects.toMatchObject({ code: 'cancelled' });
+        expect(s.fetch).not.toHaveBeenCalled();
+        await s.bot.stop();
+    });
+
     it('suppresses history/own/duplicates, restores dated selections, and admits roots/replies once in order', async () => {
         const admitted = new Set(['known']);
         const s = botSetup({ isOwnChannelReply: msg => msg.messageId === 'own',

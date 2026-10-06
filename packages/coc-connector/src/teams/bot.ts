@@ -34,6 +34,7 @@ export function createTransport(mode: TeamsTransportMode, opts: {
     graphOutboundOptions?: GraphOutboundOptions;
     channelReadBackend?: 'mcp' | 'graph';
     graphReadOptions?: GraphOutboundOptions;
+    receiveImages?: boolean;
     onTokenRefresh?: () => Promise<string | null>;
 }): TeamsTransport {
     if (mode === 'mcp') {
@@ -42,7 +43,8 @@ export function createTransport(mode: TeamsTransportMode, opts: {
             opts.onChannelRootDiscovered, opts.ic3DirectMessageOptions,
             { connectionId: opts.connectionId, routes: opts.operationRoutes, onTokenRefresh: opts.onTokenRefresh,
                 graphOutboundOptions: opts.graphOutboundOptions,
-                channelReadBackend: opts.channelReadBackend, graphReadOptions: opts.graphReadOptions });
+                channelReadBackend: opts.channelReadBackend, graphReadOptions: opts.graphReadOptions,
+                receiveImages: opts.receiveImages });
     }
     if (opts.operationRoutes?.selfSend === 'ic3' || opts.operationRoutes?.chatSend === 'ic3') {
         throw new Error('IC3 direct messages require MCP mode');
@@ -536,7 +538,7 @@ export class TeamsBot implements MessagingConnector {
                     this.observeInbound('skipped', 'unchanged');
                 } else if (notProvenPostStart && !historicalSelectionReplay) {
                     this.observeInbound('skipped', 'initial');
-                } else if (!msg.text.trim()) {
+                } else if (!msg.text.trim() && !(this.opts.receiveImages && msg.images?.length)) {
                     this.observeInbound('skipped', 'empty');
                 } else if (this.isBotFormattedMessage(msg.text)) {
                     this.observeInbound('skipped', 'bot');
