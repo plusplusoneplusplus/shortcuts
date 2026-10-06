@@ -14,6 +14,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { createPortal } from 'react-dom';
 import type { TerminalSessionSummary } from '../../../../src/server/spa/client/react/features/terminal/TerminalView';
 
 // A terminal view with something focusable in it, so "focus is inside the
@@ -73,8 +74,18 @@ import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/featu
 import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
+import { getUnifiedGitTabDirtyBridge, openUnifiedGitTab, useUnifiedGitTabHost } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
 
 const WS = 'ws-1';
+
+function GitDetailPortal({ scope = WS }: { scope?: string }) {
+    const host = useUnifiedGitTabHost(scope);
+    return host ? createPortal(<div>
+        <span data-testid={`git-line-${scope}`}>diff content</span>
+        <div className="monaco-editor"><textarea data-testid={`git-editor-${scope}`} /></div>
+        <button data-testid={`git-action-${scope}`}>Save</button>
+    </div>, host) : null;
+}
 
 function dockStub(overrides: Partial<WorkspaceDockController> = {}): WorkspaceDockController {
     return {
@@ -152,6 +163,78 @@ describe('unified panel close-tab shortcut', () => {
         cleanup();
         clearUnifiedPanelState();
         clearUnifiedTreeState();
+    });
+
+    it.each([false, true])('closes Git after clicking portaled diff content (meta=%s)', metaKey => {
+        render(<><UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal /></>);
+        act(() => { openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: null }); });
+        expect(pressCloseTab({ metaKey }).defaultPrevented).toBe(false);
+        fireEvent.mouseDown(screen.getByTestId(`git-line-${WS}`));
+        expect(document.activeElement).toBe(screen.getByTestId('unified-git-tab'));
+        expect(pressCloseTab({ metaKey }).defaultPrevented).toBe(true);
+        expect(tabKinds()).toEqual([]);
+    });
+
+    it('preserves editor and control focus and closes Git before editor key handlers', () => {
+        render(<><UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal /></>);
+        openResource('notes');
+        act(() => { openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: null }); });
+        for (const target of [`git-editor-${WS}`, `git-action-${WS}`]) {
+            focusIn(target);
+            fireEvent.mouseDown(screen.getByTestId(target));
+            expect(document.activeElement).toBe(screen.getByTestId(target));
+        }
+        focusIn(`git-editor-${WS}`);
+        const editorHandler = vi.fn((event: Event) => event.stopPropagation());
+        const editor = screen.getByTestId(`git-editor-${WS}`);
+        editor.addEventListener('keydown', editorHandler);
+        const event = new KeyboardEvent('keydown', { key: 'w', ctrlKey: true, bubbles: true, cancelable: true });
+        act(() => { editor.dispatchEvent(event); });
+        expect(event.defaultPrevented).toBe(true);
+        expect(editorHandler).not.toHaveBeenCalled();
+        expect(tabKinds()).toEqual(['notes']);
+    });
+
+    it('closes only the focused panel and yields when the composer regains focus', () => {
+        render(<>
+            <textarea data-testid="composer" />
+            <UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal />
+            <UnifiedRightPanel workspaceId="ws-2" dock={dockStub({ target: 'ws-2' })} /><GitDetailPortal scope="ws-2" />
+        </>);
+        act(() => {
+            for (const scope of [WS, 'ws-2']) openUnifiedGitTab(scope, { ownerWorkspaceId: scope, chatId: null });
+        });
+        fireEvent.mouseDown(screen.getByTestId('git-line-ws-2'));
+        focusIn('composer');
+        expect(pressCloseTab().defaultPrevented).toBe(false);
+        expect(tabKinds()).toEqual(['git', 'git']);
+        fireEvent.mouseDown(screen.getByTestId('git-line-ws-2'));
+        expect(pressCloseTab().defaultPrevented).toBe(true);
+        expect(tabKinds()).toEqual(['git']);
+        expect(screen.getByTestId(`git-line-${WS}`)).toBeTruthy();
+    });
+
+    it('uses the dirty Git close guard, preserving Cancel and failed saves', async () => {
+        render(<><UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal /></>);
+        act(() => { openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: null }); });
+        const save = vi.fn(async () => false);
+        act(() => {
+            const bridge = getUnifiedGitTabDirtyBridge(WS)!;
+            bridge.onRegisterSave(save);
+            bridge.onDirtyChange(true);
+        });
+        fireEvent.mouseDown(screen.getByTestId(`git-line-${WS}`));
+        pressCloseTab();
+        fireEvent.click(screen.getByTestId('explorer-close-cancel-btn'));
+        expect(tabKinds()).toEqual(['git']);
+        focusIn(`git-editor-${WS}`);
+        pressCloseTab({ metaKey: true });
+        fireEvent.click(screen.getByTestId('explorer-close-save-btn'));
+        await screen.findByTestId('explorer-close-tabs-error');
+        expect(tabKinds()).toEqual(['git']);
+        fireEvent.click(screen.getByTestId('explorer-close-dont-save-btn'));
+        expect(tabKinds()).toEqual([]);
+        expect(save).toHaveBeenCalledOnce();
     });
 
     it('closes the active tab on Ctrl+W with focus inside the panel', () => {

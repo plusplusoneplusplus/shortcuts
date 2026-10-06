@@ -385,8 +385,12 @@ its active tab is a file, and a destination exists; otherwise browser behavior
 is left untouched. Alt+Arrow on a focused strip tab reorders the tab instead
 of stepping history.
 
-Unified-panel tabs close on middle-click through the same dirty-buffer and live
-terminal guards as their close buttons. Their accessible context menu provides
+Unified-panel tabs close on Ctrl/Cmd+W when the visible panel owns keyboard
+focus, and on middle-click, through the same dirty-buffer and live terminal
+guards as their close buttons. Git's portal host takes focus on clicks in
+nonfocusable diff content through a native DOM capture listener; editor and
+control focus stay intact. Plain Ctrl+W inside the active terminal retains its
+shell binding. The tab strip's accessible context menu provides
 preview promotion, visible-strip bulk close commands, and file-only path copy and
 Explorer reveal. Bulk close targets span the tools/resources divider in
 rendered order, exclude tabs hidden under other chats, and run each target through

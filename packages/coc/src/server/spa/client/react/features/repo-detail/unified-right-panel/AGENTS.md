@@ -331,7 +331,10 @@ so while the panel holds the focus it must claim the key **even with an empty
 strip**: falling through would shut the user's window because they tidied a tab
 strip. Panel focus is a live DOM check against `panelRootRef` plus
 `offsetParent !== null` (the collapsed panel is `display:none`), never focus
-state in the store.
+state in the store. `UnifiedGitTab` makes its portal host focusable and uses a
+native capture-phase mousedown listener to focus it when reading nonfocusable
+Git content. Editors and controls retain their own focus. Native DOM handling
+follows the portal host even though React events belong to the left Git list.
 
 The one `ignore` beyond "not our focus" is the terminal: a plain Ctrl+W is
 readline's delete-previous-word, so it is handed to xterm — which sends `\x17`
