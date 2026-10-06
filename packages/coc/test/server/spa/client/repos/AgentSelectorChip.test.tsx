@@ -6,6 +6,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AgentSelectorChip } from '../../../../../src/server/spa/client/react/features/chat/AgentSelectorChip';
+import { FloatingDialog } from '../../../../../src/server/spa/client/react/ui/FloatingDialog';
 import type { AgentProviderStatus } from '@plusplusoneplusplus/coc-client';
 
 const COPILOT: AgentProviderStatus = {
@@ -91,6 +92,18 @@ describe('AgentSelectorChip', () => {
             move(700);
             fireEvent(window, new Event('resize'));
             expect(menu).toHaveStyle({ top: '576px' });
+        });
+
+        it('stacks the portaled menu above the floating dialog that hosts the chip', () => {
+            render(<FloatingDialog open onClose={vi.fn()} title="Run Skill">
+                <AgentSelectorChip providers={[COPILOT, CODEX_ENABLED]} loading={false}
+                    selected="copilot" onChange={vi.fn()} menuPlacement="down" />
+            </FloatingDialog>);
+            fireEvent.click(screen.getByTestId('agent-selector-chip-btn'));
+            const zIndex = (el: HTMLElement) => Number(/\bz-\[(\d+)\]/.exec(el.className)?.[1]);
+            const dialogZ = zIndex(screen.getByTestId('floating-dialog-panel'));
+            expect(dialogZ).toBeGreaterThan(0);
+            expect(zIndex(screen.getByTestId('agent-selector-menu'))).toBeGreaterThan(dialogZ);
         });
 
         it('keeps portal option clicks inside and dismisses outside clicks', () => {

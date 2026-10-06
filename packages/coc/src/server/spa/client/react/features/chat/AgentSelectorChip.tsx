@@ -193,7 +193,7 @@ export function AgentSelectorChip({ providers, loading, selected, onChange, disa
                     id={menuId}
                     style={{ position: 'fixed', ...position, maxWidth: 'calc(100vw - 16px)' }}
                     className={cn(
-                        'z-[10000] overflow-y-auto',
+                        'z-[10003] overflow-y-auto',
                         'min-w-[min(140px,calc(100vw-16px))] py-0.5 rounded-md shadow-lg',
                         'bg-white dark:bg-[#252526] border border-[#e0e0e0] dark:border-[#3c3c3c]',
                     )}
