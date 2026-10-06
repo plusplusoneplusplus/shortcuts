@@ -2406,7 +2406,7 @@ export function ChatListPane({
         // Individual pins render in Pinned (or Running), never inside a spawn
         // tree. Keep parent links intact so unpinning restores normal grouping.
         const treeTasks = [...tabFilteredRunning, ...queueTasks, ...tabFilteredHistory]
-            .filter(task => !taskIdentityMatches(task, pinnedChatIds));
+            .filter(task => !pinnedChatIds || !taskIdentityMatches(task, pinnedChatIds));
         return buildSpawnedTreeChatView(
             treeTasks,
             { enabled: spawnedTreeEnabled, unseenIds: unseenProcessIds, excludeIds: workflowGroupedTaskIds },
