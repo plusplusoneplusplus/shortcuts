@@ -80,7 +80,12 @@ export class DelegatedJobStore {
     }
 
     /** First terminal result wins, including duplicate events with different IDs. */
-    recordResult(workspaceId: string, jobId: string, result: DelegatedJobResult): boolean {
+    recordResult(
+        workspaceId: string,
+        jobId: string,
+        result: DelegatedJobResult,
+        initialDelivery: Extract<DelegatedJobDelivery, { state: 'pending' | 'failed' }> = { state: 'pending' },
+    ): boolean {
         const rows = this.list(workspaceId);
         const job = rows.find(row => row.id === jobId);
         if (!job || job.terminal) return false;
@@ -91,7 +96,7 @@ export class DelegatedJobStore {
                 ...(result.reason !== undefined ? { reason: result.reason.slice(0, 2_000) } : {}),
                 links: result.links.slice(0, 20),
             }),
-            delivery: { state: 'pending' },
+            delivery: deliverySchema.parse(initialDelivery),
         };
         this.save(workspaceId, rows);
         return true;

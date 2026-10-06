@@ -24,6 +24,8 @@ import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } f
 import { cancelConversation } from '../processes/cancel-conversation';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { createSendMessageCapability } from '../processes/send-message-capability';
+import { DelegatedJobStore } from '../delegation/delegated-job-store';
+import { createSentinelDelegationEnqueue } from '../delegation/sentinel-delegation-enqueue';
 import { compactProcess } from '../processes/compact-process';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
@@ -477,12 +479,21 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // can offer the `send_to_conversation` tool. Reuses the exact machinery
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
+    const enqueueSentinelDelegation = createSentinelDelegationEnqueue({
+        store, jobs: new DelegatedJobStore(dataDir), hasTask: taskId => !!bridge.getTask(taskId),
+    });
+    const delegatedRalphBridge = Object.create(bridgeWithResolvedDefaults) as MultiRepoQueueRouter;
+    Object.defineProperty(delegatedRalphBridge, 'enqueue', {
+        value: (task: CreateTaskInput) => enqueueSentinelDelegation(task,
+            prepared => bridgeWithResolvedDefaults.enqueue(prepared)),
+    });
     opts.setEnqueueChat?.(async (input: CreateTaskInput): Promise<string> => {
         await prepareEnqueueTask(input);
-        return enqueueViaBridge(input, bridge, queueGlobalState, globalWorkspaceRootPath, store);
+        return enqueueSentinelDelegation(input, task =>
+            enqueueViaBridge(task, bridge, queueGlobalState, globalWorkspaceRootPath, store));
     });
     opts.setLaunchRalph?.((input) => launchRalphSession(input, {
-        bridge: bridgeWithResolvedDefaults,
+        bridge: delegatedRalphBridge,
         dataDir,
         store,
         getGitWorktreeExecutionEnabled,

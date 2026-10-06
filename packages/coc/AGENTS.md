@@ -100,6 +100,9 @@ references before editing. Paths are package-relative.
   parent workspace. Preserve parent/child identities, first terminal result, and conditional
   delivery state transitions; child output cannot change routing. Operational receipts are
   wiped through the snapshot registry and excluded from export/import.
+  Tool-bound local Sentinel admission reserves the child ID and persists the relationship
+  before queue execution; Ralph registration identifies the session at launch only.
+  Rejected admission settles delivery as failed; accepted observer errors retain tracking.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 

@@ -173,10 +173,18 @@ relationships. The first terminal result wins across event replay; outcome is
 
 Terminal delivery moves conditionally from `pending` to `queued` (receipt ID) to
 `delivered`, or to a diagnosable `failed` state. Settled rows cannot reopen. Atomic writes
-and fresh reads keep disk failure from advancing state. This store provides persistence;
-dispatch, terminal subscriptions, and parent review delivery require runtime integration.
+and fresh reads keep disk failure from advancing state. Rejected queue admissions atomically
+record their terminal result with delivery already `failed`, preventing restart reviews.
 The snapshot registry clears these machine-local receipts on wipe and excludes them
 from export/import to prevent portable backups from replaying delivery.
+
+`server/delegation/sentinel-delegation-enqueue.ts` wraps the route-bound tool enqueue and
+Ralph-launch capabilities. It resolves the stored Sentinel parent's workspace independently
+of the target, reserves a child task ID, and registers before queue admission. Local
+ordinary jobs and whole Ralph sessions are registered; Ralph continuation/final-check tasks
+use the ordinary lifecycle bridge. Accepted tasks retain tracking after observer errors.
+Non-Sentinel and remote dispatch keep their existing paths. Terminal subscriptions and
+parent review delivery require runtime integration.
 
 ### list_workspaces
 
