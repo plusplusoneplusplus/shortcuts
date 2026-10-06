@@ -16,7 +16,7 @@
  *     precede `[chatid] message` to combine mode and target.
  *   - `list topics <ref>` lists a remote repo's chats read-only; `<ref>` is a
  *     `n.m` number from `list remotes` or `name@server`. Bare `list topics`
- *     stays local. A trailing `-v` on either form also shows topic ids.
+ *     lists local repos together (last24hours, top5). A trailing `-v` on either form also shows topic ids.
  */
 
 export type MessagingChatMode = 'ask' | 'autopilot' | 'ralph' | 'sentinel';
@@ -58,7 +58,7 @@ export const MESSAGING_COMMAND_SPECS: readonly CommandSpec[] = [
     { type: 'list-repos', group: 'Repos', pattern: /^list\s+(?:repos?|agents?)$/i, usage: 'list repos', summary: 'Show repos (alias: list agents)' },
     { type: 'select-repo', group: 'Repos', pattern: /^select\s+repos?\s+(.+)$/i, usage: 'select repo <n|name|id>', summary: 'Choose a repo; next message starts a new chat', example: 'select repo 2' },
     { type: 'list-remotes', group: 'Repos', pattern: /^list\s+remotes?$/i, usage: 'list remotes', summary: 'Show remote servers and repos' },
-    { type: 'list-topics', group: 'Topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?(\s+-v)?$/i, usage: 'list topics [ref] [-v]', summary: 'Show chats; -v adds ids. Remote ref: n.m or repo@server (read-only)', example: 'list topics 1.2 -v' },
+    { type: 'list-topics', group: 'Topics', pattern: /^list\s+(?:chat\s+)?topics?(?:\s+(\d+\.\d+|[^\s@]+@[^\s@]+))?(\s+-v)?$/i, usage: 'list topics [ref] [-v]', summary: 'Local: all repos, last24hours, top5; -v adds ids. Remote ref: n.m or repo@server (read-only)', example: 'list topics 1.2 -v' },
     { type: 'create-topic', group: 'Topics', pattern: /^create\s+(?:chat\s+)?topic$/i, usage: 'create topic', summary: 'Next message starts a new chat' },
     { type: 'select-topic', group: 'Topics', pattern: /^select\s+(?:chat\s+)?topic\s+(.+)$/i, usage: 'select topic <n|id>', summary: 'Continue an existing chat', example: 'select topic 1' },
     { type: 'compact', group: 'Topics', pattern: /^compact(?:\s+(.+))?$/is, usage: 'compact [instructions]', summary: 'Summarize context: replied-to chat, else selected topic' },

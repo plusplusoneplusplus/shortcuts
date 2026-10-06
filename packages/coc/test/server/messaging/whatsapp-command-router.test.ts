@@ -20,10 +20,11 @@ describe('WhatsApp workspace command routing', () => {
     let getAllProcesses: ReturnType<typeof vi.fn>;
     let store: WhatsAppRouterDeps['store'];
     const workspaces = [{ id: 'ws-a', name: 'Alpha' }, { id: 'ws-b', name: 'Beta' }, { id: GLOBAL, name: 'Global' }];
+    const createdAt = new Date(Date.now() - 1000);
     const processes = [
-        { id: 'topic-g', metadata: { workspaceId: GLOBAL }, startTime: new Date(), title: 'Topic G' },
-        { id: 'topic-a', metadata: { workspaceId: 'ws-a' }, startTime: new Date(), title: 'Topic A' },
-        { id: 'topic-b', metadata: { workspaceId: 'ws-b' }, startTime: new Date(), title: 'Topic B' },
+        { id: 'topic-g', metadata: { workspaceId: GLOBAL }, startTime: createdAt, title: 'Topic G' },
+        { id: 'topic-a', metadata: { workspaceId: 'ws-a' }, startTime: createdAt, title: 'Topic A' },
+        { id: 'topic-b', metadata: { workspaceId: 'ws-b' }, startTime: createdAt, title: 'Topic B' },
     ];
     const inbound = (text: string, id = 'msg-1', patch: Partial<InboundWAMessage> = {}): InboundWAMessage => ({
         chatJid: 'group@g.us', senderJid: 'group@g.us', participantJid: 'self@s.whatsapp.net',
@@ -34,7 +35,7 @@ describe('WhatsApp workspace command routing', () => {
         dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-router-'));
         bindings = new WhatsAppBindings(dir);
         getAllProcesses = vi.fn().mockImplementation(async ({ workspaceId }: { workspaceId: string }) =>
-            processes.filter(proc => proc.metadata.workspaceId === workspaceId));
+            processes.filter(proc => !workspaceId || proc.metadata.workspaceId === workspaceId));
         store = {
             getWorkspaces: vi.fn().mockResolvedValue(workspaces),
             getAllProcesses,
@@ -99,19 +100,20 @@ describe('WhatsApp workspace command routing', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it('selects topics only in the chosen workspace and creates a fresh topic on demand', async () => {
+    it('selects topics across accessible workspaces and creates a fresh topic on demand', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));
         expect(send).toHaveBeenCalledWith(
-            'Topics · Alpha\n\u2002\u20021. ❔ Topic A · now\nReply select topic <n> · list topics -v for ids', 'list');
+            'Topics · all repos · last24hours · top5\n\u2002\u20021. ❔ Topic G · Global · now\n\u2002\u20022. ❔ Topic A · Alpha · now\n\u2002\u20023. ❔ Topic B · Beta · now\nReply select topic <n> · list topics -v for ids', 'list');
         await router.handle(inbound('list topics -v', 'list-v'));
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic A · now · topic-a'), 'list-v');
-        expect(send).not.toHaveBeenCalledWith(expect.stringContaining('topic-b'), 'list-v');
-        await router.handle(inbound('select topic topic-b', 'bad'));
-        expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic not found'), 'bad');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('Topic A · Alpha · now · ws-a/topic-a'), 'list-v');
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('ws-b/topic-b'), 'list-v');
+        await router.handle(inbound('select topic topic-b', 'beta'));
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('topic-b');
         await router.handle(inbound('select topic topic-a', 'good'));
         await router.handle(inbound('list topics', 'marked'));
-        expect(send).toHaveBeenCalledWith(expect.stringMatching(/^Topics · Alpha\n▶ 1\. ❔ Topic A · now\n/), 'marked');
+        expect(send).toHaveBeenCalledWith(expect.stringMatching(/▶ 2\. ❔ Topic A · Alpha · now/), 'marked');
         await router.handle(inbound('list topics -q', 'malformed'));
         expect(send).toHaveBeenLastCalledWith(expect.stringContaining('Unknown command'), 'malformed');
         await router.handle(inbound('/autopilot fix this', 'autopilot'));
@@ -124,12 +126,27 @@ describe('WhatsApp workspace command routing', () => {
     it('reads topics with a bounded, conversation-free query so large stores cannot stall replies', async () => {
         await router.handle(inbound('select repo Alpha', 'select'));
         await router.handle(inbound('list topics', 'list'));
-        await router.handle(inbound('select topic 1', 'pick'));
-        expect(getAllProcesses).toHaveBeenCalledTimes(2);
+        await router.handle(inbound('select topic 2', 'pick'));
+        expect(getAllProcesses).toHaveBeenCalledTimes(1);
         for (const [filter] of getAllProcesses.mock.calls) {
-            expect(filter).toEqual({ workspaceId: 'ws-a', limit: 10, exclude: ['conversation', 'toolCalls'] });
+            expect(filter).toEqual({ since: expect.any(Date), offset: 0, limit: 100, exclude: ['conversation', 'toolCalls'] });
         }
         expect(send).toHaveBeenCalledWith('✅ Selected topic: Topic A', 'pick');
+    });
+
+    it('keeps cross-repo numbered selection stable and routes the following message to its owner', async () => {
+        await router.handle(inbound('select repo Alpha', 'repo'));
+        const beta = { ...processes[2], status: 'running', pinnedAt: new Date().toISOString() };
+        getAllProcesses.mockResolvedValue([processes[1], beta]);
+        await router.handle(inbound('list topics -v', 'list'));
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('1. ⏳ Topic B · Beta · now · ws-b/topic-b'), 'list');
+        // Changes to store order/rank after display must not change the selected target.
+        getAllProcesses.mockResolvedValue([processes[1]]);
+        await router.handle(inbound('select topic 1', 'pick'));
+        expect(bindings.selectedRepo).toBe('ws-b');
+        expect(bindings.topic('ws-b')).toBe('topic-b');
+        await router.handle(inbound('continue beta', 'follow'));
+        expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual(['ws-b', 'continue beta', undefined, 'topic-b']);
     });
 
     it('routes quoted answers to their original workspace regardless of selected repo', async () => {
@@ -330,11 +347,11 @@ describe('WhatsApp workspace command routing', () => {
         });
     });
 
-    it('lists, selects and creates topics in Global when no repo is selected', async () => {
+    it('lists all repos without a selection and routes cross-repo ids correctly', async () => {
         await router.handle(inbound('list topics', 'list'));
-        expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^Topics · Global\n.*Topic G/), 'list');
+        expect(send).toHaveBeenLastCalledWith(expect.stringContaining('Topic G · Global'), 'list');
         await router.handle(inbound('select topic topic-a', 'other-repo'));
-        expect(send).toHaveBeenLastCalledWith('❌ Topic not found in Global. Use `list topics`.', 'other-repo');
+        expect(bindings.selectedRepo).toBe('ws-a');
         await router.handle(inbound('select topic 1', 'pick'));
         expect(bindings.topic(GLOBAL)).toBe('topic-g');
         await router.handle(inbound('continue', 'continue'));
@@ -388,12 +405,12 @@ describe('WhatsApp workspace command routing', () => {
         await router.handle(inbound('hello', 'stale'));
         expect(enqueue.mock.calls.at(-1)?.slice(0, 4)).toEqual([GLOBAL, 'hello', undefined, 'topic-g']);
         await router.handle(inbound('list topics', 'list'));
-        expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^Topics · Global\n/), 'list');
+        expect(send).toHaveBeenLastCalledWith(expect.stringMatching(/^Topics · all repos · last24hours · top5\n/), 'list');
     });
 
     it('replies with a fixed error, never crashing, when Global is missing', async () => {
         vi.mocked(store.getWorkspaces).mockResolvedValue(workspaces.slice(0, 2));
-        for (const text of ['hello', 'list topics', 'create topic', 'select topic 1']) {
+        for (const text of ['hello', 'create topic']) {
             await router.handle(inbound(text, `missing-${text}`));
             expect(send).toHaveBeenLastCalledWith(NO_GLOBAL, `missing-${text}`);
         }

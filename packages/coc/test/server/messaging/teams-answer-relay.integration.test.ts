@@ -283,7 +283,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
         await handle(inbound('thread-a-1', '/select topic ignored', 'root-a'));
         await handle(inbound('thread-b-1', 'beta threaded reply', 'root-b'));
         await handle(inbound('thread-a-2', 'alpha again', 'root-a'));
-        expect(repliesFor('root-a').at(-1)).toContain('not found in the selected repo');
+        expect(repliesFor('root-a').at(-1)).toContain('not found or unavailable');
         expect(repliesFor('root-a')).toHaveLength(3);
         expect(repliesFor('root-b')).toHaveLength(3);
         await until(() => entered.includes('beta threaded reply'));

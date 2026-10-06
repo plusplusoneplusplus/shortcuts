@@ -231,10 +231,10 @@ describe('list topics <remote ref>', () => {
         expect(await run('list topics shortcuts@devbox', ctx)).toBe('Topics · shortcuts @ devbox\nNo chat topics found.');
     });
 
-    it('leaves bare list topics on the local selected repo', async () => {
+    it('keeps bare list topics on the serving server with all-repo scope', async () => {
         const ctx = makeContext();
         const reply = await run('list topics', ctx);
-        expect(reply).toBe(`Topics · local-repo\n${IN}1. ⏳ Local chat · now\nReply select topic <n> · list topics -v for ids`);
+        expect(reply).toBe(`Topics · all repos · last24hours · top5\n${IN}1. ⏳ Local chat · local-repo · now\nReply select topic <n> · list topics -v for ids`);
     });
 
     it('appends ids with -v on the remote form', async () => {
@@ -279,7 +279,7 @@ describe('local list topics', () => {
             store: {
                 getWorkspaces: vi.fn().mockResolvedValue([{ id: 'local-ws', name: 'local *repo*' }]),
                 getAllProcesses: vi.fn().mockResolvedValue(processes.map(p => ({ metadata: { workspaceId: 'local-ws' }, ...p }))),
-                getProcess: vi.fn(),
+                getProcess: vi.fn(async (id: string) => { const p = processes.find(p => (p as any).id === id); return p ? { metadata: { workspaceId: 'local-ws' }, ...p } : undefined; }),
             } as any,
             selection: { repoId: () => 'local-ws', selectRepo: vi.fn(), topicId: () => current, selectTopic: vi.fn() },
             strong: (t: string) => `*${t}*`,
@@ -290,17 +290,17 @@ describe('local list topics', () => {
 
     const processes = [
         { id: 'queue_1790998775041-9c24qu7', status: 'completed', title: 'Late-bound executor capabilities and a very long tail', startTime: new Date(NOW - 2 * HOUR) },
-        { id: 'p-current', status: 'running', title: 'Fix *autopilot* follow up mode', startTime: new Date(NOW - 5 * 24 * HOUR), lastEventAt: new Date(NOW - 10_000) },
-        { id: 'p-failed', status: 'failed', title: 'WhatsApp remote browsing', startTime: new Date(NOW - 26 * HOUR) },
+        { id: 'p-current', status: 'running', title: 'Fix *autopilot* follow up mode', startTime: new Date(NOW - 3 * HOUR), lastEventAt: new Date(NOW - 10_000) },
+        { id: 'p-failed', status: 'failed', title: 'WhatsApp remote browsing', startTime: new Date(NOW - 23 * HOUR) },
     ];
 
     it('renders the phone-friendly list: current marker, emoji, escaped truncated title, age, footer, no ids', async () => {
         const reply = await run('list topics', localContext(processes, 'p-current'));
         expect(reply).toBe([
-            '*Topics* · local \\*repo\\*',
-            '▶ 1. ⏳ Fix \\*autopilot\\* follow up mode · now',
-            `${IN}2. ✅ Late-bound executor capabilities and a… · 2h`,
-            `${IN}3. ❌ WhatsApp remote browsing · 1d`,
+            '*Topics · all repos · last24hours · top5*',
+            '▶ 1. ⏳ Fix \\*autopilot\\* follow up mode · local \\*repo\\* · now',
+            `${IN}2. ✅ Late-bound executor capabilities and a… · local \\*repo\\* · 2h`,
+            `${IN}3. ❌ WhatsApp remote browsing · local \\*repo\\* · 23h`,
             'Reply `select topic <n>` · `list topics -v` for ids',
         ].join('\n'));
         expect(reply).not.toContain('queue_');
@@ -309,8 +309,8 @@ describe('local list topics', () => {
 
     it('appends ids with -v and drops the -v hint', async () => {
         const lines = (await run('/list topics -v', localContext(processes))).split('\n');
-        expect(lines[1]).toBe(`${IN}1. ⏳ Fix \\*autopilot\\* follow up mode · now · \`p-current\``);
-        expect(lines[2]).toContain('· `queue_1790998775041-9c24qu7`');
+        expect(lines[1]).toBe(`${IN}1. ⏳ Fix \\*autopilot\\* follow up mode · local \\*repo\\* · now · \`local-ws/p-current\``);
+        expect(lines[2]).toContain('· `local-ws/queue_1790998775041-9c24qu7`');
         expect(lines.at(-1)).toBe('Reply `select topic <n>`');
     });
 

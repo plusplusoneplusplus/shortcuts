@@ -94,12 +94,12 @@ describe('TeamsCommandRouter', () => {
                     { id: 'global-workspace-00', name: 'Global', rootPath: '/coc/global-workspace' },
                 ]),
                 getAllProcesses: vi.fn().mockResolvedValue([
-                    { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: '2025-01-02T00:00:00Z', promptPreview: 'Fix the bug', metadata: { workspaceId: 'ws-1' } },
-                    { id: 'proc-222', status: 'running', title: 'Add feature', startTime: '2025-01-01T00:00:00Z', promptPreview: 'Add a feature', metadata: { workspaceId: 'ws-1' } },
+                    { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: new Date(Date.now() - 1000), promptPreview: 'Fix the bug', metadata: { workspaceId: 'ws-1' } },
+                    { id: 'proc-222', status: 'running', title: 'Add feature', startTime: new Date(Date.now() - 2000), promptPreview: 'Add a feature', metadata: { workspaceId: 'ws-1' } },
                 ]),
                 getProcess: vi.fn().mockImplementation(async (id: string) => {
-                    if (id === 'proc-111') return { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: '2025-01-02T00:00:00Z', promptPreview: 'Fix the bug', metadata: { workspaceId: 'ws-1' } };
-                    if (id === 'proc-222') return { id: 'proc-222', status: 'running', title: 'Add feature', startTime: '2025-01-01T00:00:00Z', promptPreview: 'Add feature', metadata: { workspaceId: 'ws-1' } };
+                    if (id === 'proc-111') return { id: 'proc-111', status: 'completed', title: 'Fix bug', startTime: new Date(Date.now() - 1000), promptPreview: 'Fix the bug', metadata: { workspaceId: 'ws-1' } };
+                    if (id === 'proc-222') return { id: 'proc-222', status: 'running', title: 'Add feature', startTime: new Date(Date.now() - 2000), promptPreview: 'Add feature', metadata: { workspaceId: 'ws-1' } };
                     return undefined;
                 }),
             } as any,
@@ -200,9 +200,9 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('/list topics'));
         const reply = sendReplySpy.mock.calls[0][0] as string;
         expect(reply.split('\n')).toEqual([
-            '**Topics** · ProjectA',
-            expect.stringMatching(/^\u2002\u20021\. ✅ Fix bug · \d+d$/),
-            expect.stringMatching(/^\u2002\u20022\. ⏳ Add feature · \d+d$/),
+            '**Topics · all repos · last24hours · top5**',
+            expect.stringMatching(/^\u2002\u20021\. ⏳ Add feature · ProjectA · now$/),
+            expect.stringMatching(/^\u2002\u20022\. ✅ Fix bug · ProjectA · now$/),
             'Reply `select topic <n>` · `list topics -v` for ids',
         ]);
         expect(reply).not.toContain('proc-');
@@ -217,17 +217,18 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
         await router.handle(makeMsg('/list topics -v'));
         const reply = sendReplySpy.mock.calls[0][0] as string;
-        expect(reply.split('\n')[1]).toBe('▶ 1. ❌ Fix \\*the\\* <b>bug</b> · now · `proc-111`');
+        expect(reply.split('\n')[1]).toBe('▶ 1. ❌ Fix \\*the\\* <b>bug</b> · ProjectA · now · `ws-1/proc-111`');
         expect(reply.split('\n')[2]).toBe('Reply `select topic <n>`');
     });
 
     it('renders the topic list as safe Teams HTML lines, not a renumbered Markdown list', async () => {
         (deps.store.getAllProcesses as any).mockResolvedValue([
             { id: 'p1', status: 'running', title: 'One', startTime: new Date(), metadata: { workspaceId: 'ws-1' } },
-            { id: 'p2', status: 'queued', title: 'Two <script>', startTime: new Date(0), metadata: { workspaceId: 'ws-1' } },
-            { id: 'p3', status: 'cancelled', title: 'Three', startTime: new Date(0), metadata: { workspaceId: 'ws-1' } },
+            { id: 'p2', status: 'queued', title: 'Two <script>', startTime: new Date(Date.now() - 2000), metadata: { workspaceId: 'ws-1' } },
+            { id: 'p3', status: 'cancelled', title: 'Three', startTime: new Date(Date.now() - 3000), metadata: { workspaceId: 'ws-1' } },
         ]);
         await router.handle(makeMsg('/select repo ProjectA'));
+        vi.mocked(deps.store.getProcess).mockResolvedValue({ id: 'p2', status: 'queued', metadata: { workspaceId: 'ws-1' } } as any);
         await router.handle(makeMsg('/select topic 2'));
         sendReplySpy.mockClear();
         await router.handle(makeMsg('/list topics'));
@@ -276,10 +277,10 @@ describe('TeamsCommandRouter', () => {
     it('selects a topic by numeric index', async () => {
         await router.handle(makeMsg('/select repo ProjectA'));
         sendReplySpy.mockClear();
-        // proc-111 (2025-01-02) sorts first, proc-222 (2025-01-01) second
+        // Running topics sort before completed topics.
         await router.handle(makeMsg('/select topic 1'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
-        expect(sendReplySpy.mock.calls[0][0]).toContain('Fix bug');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Add feature');
     });
 
     it('selects second topic by numeric index', async () => {
@@ -287,7 +288,7 @@ describe('TeamsCommandRouter', () => {
         sendReplySpy.mockClear();
         await router.handle(makeMsg('/select topic 2'));
         expect(sendReplySpy.mock.calls[0][0]).toContain('Selected topic');
-        expect(sendReplySpy.mock.calls[0][0]).toContain('Add feature');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('Fix bug');
     });
 
     it('errors on out-of-range numeric index', async () => {
@@ -307,13 +308,11 @@ describe('TeamsCommandRouter', () => {
         await router.handle(makeMsg('/select repo ProjectA'));
         await router.handle(makeMsg('/list topics'));
         await router.handle(makeMsg('/select topic 2'));
-        expect(getAllProcesses.mock.calls.map(([filter]) => filter)).toEqual([
-            { workspaceId: 'global-workspace-00', limit: 10, exclude: ['conversation', 'toolCalls'] },
-            { workspaceId: 'global-workspace-00', limit: 10, exclude: ['conversation', 'toolCalls'] },
-            { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
-            { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
-        ]);
-        expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('Add feature'), expect.anything());
+        expect(getAllProcesses).toHaveBeenCalledTimes(2);
+        for (const [filter] of getAllProcesses.mock.calls) {
+            expect(filter).toEqual({ since: expect.any(Date), limit: 100, offset: 0, exclude: ['conversation', 'toolCalls'] });
+        }
+        expect(sendReplySpy).toHaveBeenLastCalledWith(expect.stringContaining('Fix bug'), expect.anything());
     });
 
     // ── explicit chat [chatid] message ────────────────────────
@@ -365,15 +364,15 @@ describe('TeamsCommandRouter', () => {
         expect(deps.enqueueChat).toHaveBeenCalledWith('global-workspace-00', 'Hello', undefined);
         sendReplySpy.mockClear();
         await router.handle(makeMsg('/list topics'));
-        expect(sendReplySpy.mock.calls[0][0]).toBe('No chat topics found.');
+        expect(sendReplySpy.mock.calls[0][0]).toContain('all repos · last24hours · top5');
     });
 
     it('replies with a fixed error when neither the selected repo nor Global exists', async () => {
         (deps.store.getWorkspaces as any).mockResolvedValue([{ id: 'ws-1', name: 'ProjectA' }]);
-        for (const text of ['Hello', '/list topics', '/create topic', '/select topic 1']) {
+        for (const text of ['Hello', '/create topic']) {
             await router.handle(makeMsg(text));
         }
-        expect(sendReplySpy.mock.calls.map(([reply]) => reply)).toEqual(Array(4).fill(
+        expect(sendReplySpy.mock.calls.map(([reply]) => reply)).toEqual(Array(2).fill(
             '❌ The Global workspace is unavailable. Use `list repos`, then `select repo <n|name>`.'));
         expect(deps.enqueueChat).not.toHaveBeenCalled();
     });
@@ -519,7 +518,7 @@ describe('TeamsCommandRouter', () => {
             expect(sendReplySpy).toHaveBeenLastCalledWith('🗜️ Compacted "Fix bug" — context 82k → 14k tokens', expect.any(String));
             noTurnStarted();
             await router.handle(makeMsg('/list topics'));
-            expect(sendReplySpy.mock.lastCall?.[0]).toMatch(/^▶ 1\. ✅ Fix bug · /m);
+            expect(sendReplySpy.mock.lastCall?.[0]).toMatch(/^▶ 2\. ✅ Fix bug · /m);
         });
 
         it('maps busy, unsupported, no-session and unknown failures to short replies', async () => {
@@ -591,11 +590,30 @@ describe('TeamsCommandRouter', () => {
             const getAllProcesses = deps.store.getAllProcesses as ReturnType<typeof vi.fn>;
             await router.handle(makeMsg('/list topics', { replyToMessageId: 'root-a' }));
             await router.handle(makeMsg('/select topic 1', { replyToMessageId: 'root-a' }));
-            expect(getAllProcesses.mock.calls.map(([filter]) => filter)).toEqual([
-                { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
-                { workspaceId: 'ws-1', limit: 10, exclude: ['conversation', 'toolCalls'] },
-            ]);
-            expect(deps.selectThreadTarget).toHaveBeenCalledWith(expect.any(Object), 'ws-1', 'proc-111');
+            expect(getAllProcesses).toHaveBeenCalledOnce();
+            expect(getAllProcesses).toHaveBeenCalledWith({ since: expect.any(Date), limit: 100, offset: 0, exclude: ['conversation', 'toolCalls'] });
+            expect(deps.selectThreadTarget).toHaveBeenCalledWith(expect.any(Object), 'ws-1', 'proc-222');
+        });
+
+        it('shares cross-repo ranking with channel commands while keeping each thread numbering isolated', async () => {
+            const beta = { id: 'beta', title: 'Beta pinned', status: 'completed', startTime: new Date(), pinnedAt: new Date().toISOString(), metadata: { workspaceId: 'ws-2' } };
+            const alpha = { id: 'alpha', title: 'Alpha running', status: 'running', startTime: new Date(), metadata: { workspaceId: 'ws-1' } };
+            vi.mocked(deps.store.getAllProcesses).mockResolvedValue([alpha, beta] as any);
+            vi.mocked(deps.store.getProcess).mockImplementation(async (id, workspaceId) => [alpha, beta].find(p => p.id === id && p.metadata.workspaceId === workspaceId) as any);
+            await router.handle(makeMsg('/list topics -v'));
+            await router.handle(makeMsg('/list topics -v', { replyToMessageId: 'root-a' }));
+            const channel = sendReplySpy.mock.calls[0][0];
+            const thread = sendReplySpy.mock.calls[1][0];
+            expect(channel.split('\n').slice(0, 3)).toEqual(thread.split('\n').slice(0, 3));
+            expect(thread).toContain('1. ✅ Beta pinned · ProjectB · now · `ws-2/beta`');
+            vi.mocked(deps.store.getAllProcesses).mockResolvedValue([alpha] as any);
+            await router.handle(makeMsg('/list topics', { replyToMessageId: 'root-b' }));
+            await router.handle(makeMsg('/select topic 1', { replyToMessageId: 'root-a' }));
+            expect(deps.selectThreadTarget).toHaveBeenLastCalledWith(expect.objectContaining({ replyToMessageId: 'root-a' }), 'ws-2', 'beta');
+            await router.handle(makeMsg('/select topic 1', { replyToMessageId: 'root-b' }));
+            expect(deps.selectThreadTarget).toHaveBeenLastCalledWith(expect.objectContaining({ replyToMessageId: 'root-b' }), 'ws-1', 'alpha');
+            await router.handle(makeMsg('/select topic ws-2/beta', { replyToMessageId: 'root-b' }));
+            expect(deps.selectThreadTarget).toHaveBeenLastCalledWith(expect.objectContaining({ replyToMessageId: 'root-b' }), 'ws-2', 'beta');
         });
 
         it('lists thread topics in the shared format, marking the bound chat, with / footer commands', async () => {
@@ -603,14 +621,14 @@ describe('TeamsCommandRouter', () => {
             router = new TeamsCommandRouter(deps);
             await router.handle(makeMsg('/list topics', { replyToMessageId: 'root-a' }));
             expect(sendReplySpy.mock.calls[0][0].split('\n')).toEqual([
-                '**Topics** · ProjectA',
-                expect.stringMatching(/^\u2002\u20021\. ✅ Fix bug · \d+d$/),
-                expect.stringMatching(/^▶ 2\. ⏳ Add feature · \d+d$/),
+                '**Topics · all repos · last24hours · top5**',
+                expect.stringMatching(/^▶ 1\. ⏳ Add feature · ProjectA · now$/),
+                expect.stringMatching(/^\u2002\u20022\. ✅ Fix bug · ProjectA · now$/),
                 'Reply `/select topic <n>` · `/list topics -v` for ids',
             ]);
             await router.handle(makeMsg('/list topics -v', { replyToMessageId: 'root-a' }));
             expect(sendReplySpy.mock.calls[1][0]).toContain('Fix bug · ');
-            expect(sendReplySpy.mock.calls[1][0]).toMatch(/Add feature · \d+d · `proc-222`/);
+            expect(sendReplySpy.mock.calls[1][0]).toMatch(/Add feature · ProjectA · now · `ws-1\/proc-222`/);
             expect(sendReplySpy.mock.calls[1][0].split('\n').at(-1)).toBe('Reply `/select topic <n>`');
         });
 
@@ -665,13 +683,13 @@ describe('TeamsCommandRouter', () => {
             expect(deps.acknowledgeFollowUp).toHaveBeenCalledWith(expect.objectContaining({ text: '/autopilot ship it' }));
         });
 
-        it('rejects cross-workspace and missing topics without changing the thread', async () => {
+        it('rejects mismatched workspace ownership and missing topics without changing the thread', async () => {
             const msg = (text: string) => makeMsg(text, { replyToMessageId: 'root-a' });
             vi.mocked(deps.store.getProcess).mockResolvedValueOnce({ id: 'proc-other', status: 'completed', metadata: { workspaceId: 'ws-2' } } as any);
             await router.handle(msg('/select topic proc-other'));
             await router.handle(msg('/select topic missing'));
-            expect(sendReplySpy.mock.calls[0][0]).toContain('not found in the selected repo');
-            expect(sendReplySpy.mock.calls[1][0]).toContain('not found in the selected repo');
+            expect(sendReplySpy.mock.calls[0][0]).toContain('not found or unavailable');
+            expect(sendReplySpy.mock.calls[1][0]).toContain('not found or unavailable');
             expect(deps.selectThreadTarget).not.toHaveBeenCalled();
             expect(deps.admitFollowUp).not.toHaveBeenCalled();
         });

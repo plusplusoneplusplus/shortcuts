@@ -12,6 +12,7 @@ const cases: Array<[string, MessagingCommand]> = [
     ['/List Agent', { type: 'list-repos', args: '' }],
     ['select repo 2', { type: 'select-repo', args: '2' }],
     ['/Select Repos My Repo', { type: 'select-repo', args: 'My Repo' }],
+    ['select topic ws-b/topic-b', { type: 'select-topic', args: 'ws-b/topic-b' }],
     ['list topics', { type: 'list-topics', args: '', verbose: false }],
     ['/list chat topic', { type: 'list-topics', args: '', verbose: false }],
     ['list remotes', { type: 'list-remotes', args: '' }],
