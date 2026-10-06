@@ -148,14 +148,6 @@ describe('client errors', () => {
     expect(error.status).toBe(status);
   });
 
-  it.skip('TODO exposes numeric Retry-After metadata on 429 and 503 API errors', async () => {
-    // Retry-After is not currently represented on CocApiError.
-  });
-
-  it.skip('TODO exposes HTTP-date Retry-After metadata on 429 and 503 API errors', async () => {
-    // Retry-After is not currently represented on CocApiError.
-  });
-
   it.each(['NETWORK_ERROR', 'TIMEOUT', 'ABORTED'] as const)('exposes %s network failure details', code => {
     const cause = new Error(`${code} cause`);
     const error = new CocNetworkError('failed', { url: '/api/health', code, cause });
