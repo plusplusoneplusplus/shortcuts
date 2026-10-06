@@ -42,7 +42,9 @@ references before editing. Paths are package-relative.
 - `list_workspaces`, `send_to_conversation` remote targets and messaging `list remotes` share one route-layer
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
-  local fallback; output never carries paths, URLs, or credentials.
+  local fallback; output never carries paths, URLs, or credentials. Successful remote
+  launches expose unavailable automatic parent result return through `resultDelivery`
+  and retain the clone chat link for inspecting the outcome.
 - `send_to_conversation` create mode defaults to Medium when model/tier are omitted;
   resolve tiers on the destination server after provider selection. Post/cancel have no default tier.
 - Remote group selection uses a server-qualified clone key; decode the raw

@@ -153,6 +153,10 @@ capability endpoint selects the local parent's concrete provider, validated thro
 explicit provider/model/tier overrides travel; remote defaults own model/effort, and no local
 spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once. The
 result's `openLink` is the dashboard clone route `#repos/<encoded clone key>/chats/<processId>`.
+Successful remote queue and Ralph launches also return `resultDelivery: { status: 'unavailable',
+reason }`: existing transport launches jobs but cannot return terminal results to the originating
+Sentinel or its WhatsApp/Teams chat. Tool guidance directs the AI to inspect the link, avoid
+promising automatic return, and avoid launching a duplicate job. Local responses omit this field.
 Post mode with a `remote:` processId is rejected as not supported yet.
 
 When the invoking turn came from WhatsApp/Teams, local (non-Ralph) create mode records the
