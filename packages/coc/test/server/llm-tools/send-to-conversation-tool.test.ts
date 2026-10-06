@@ -131,7 +131,7 @@ describe('createSendToConversationTool — shape & description', () => {
         expect(props.provider).toMatchObject({ type: 'string', enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'] });
         expect(props.effortTier).toMatchObject({ type: 'string', enum: ['very-low', 'low', 'medium', 'high'] });
         expect(props.effortTier).toMatchObject({
-            description: expect.stringContaining('Defaults to `medium` in create mode'),
+            description: expect.stringContaining('New-chat default: medium'),
         });
     });
 
@@ -140,25 +140,40 @@ describe('createSendToConversationTool — shape & description', () => {
         const { tool } = makeTool();
         const desc = tool.description ?? '';
         expect(desc).toMatch(/processId/);
-        expect(desc.indexOf('With `processId`')).toBeLessThan(desc.indexOf('Without `processId`'));
+        expect(desc).toContain('without it, create a separate fire-and-forget chat');
+        expect(desc.indexOf('With `processId`')).toBeLessThan(desc.indexOf('without it'));
     });
 
     it('documents persistent task-specific titles without making them required', () => {
         const { tool } = makeTool();
         expect(tool.parameters).not.toHaveProperty('required');
         expect(tool.description).toContain('short, task-specific `title`');
-        expect(tool.description).toContain('visible custom title even after AI title generation');
         expect(tool.parameters).toMatchObject({
             properties: {
                 title: {
                     type: 'string',
-                    description: expect.stringContaining('optional persistent custom title'),
+                    description: expect.stringContaining('persistent title'),
                 },
             },
         });
         const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;
-        expect(props.title.description).toContain('Trimmed, non-empty, max 80 characters');
-        expect(props.title.description).toContain('Ignored in post mode');
+        expect(props.title.description).toContain('trimmed, non-empty, max 80 characters');
+        expect(props.title.description).toContain('ignored in post mode');
+    });
+
+    it('keeps tool and parameter descriptions concise with key defaults and boundaries', () => {
+        const { tool } = makeTool();
+        expect(tool.description!.length).toBeLessThan(900);
+        const props = (tool.parameters as { properties: Record<string, { description: string }> }).properties;
+        for (const property of Object.values(props)) {
+            expect(property.description.length).toBeLessThan(200);
+        }
+        expect(props.effortTier.description).toContain('No post default');
+        expect(props.effortTier.description).toContain('Explicit model wins');
+        expect(props.provider.description).toContain('destination routing without parent settings');
+        expect(props.workspaceId.description).toContain('remote:<serverId>:<workspaceId>');
+        expect(tool.description).toContain('Omit send-only fields');
+        expect(tool.description).toContain('retaining history');
     });
 });
 

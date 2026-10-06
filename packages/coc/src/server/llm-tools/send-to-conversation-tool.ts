@@ -248,57 +248,40 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
 
     const tool = defineTool<SendToConversationArgs>('send_to_conversation', {
         description:
-            'Send a message to a conversation. With `processId`, posts `content` into that EXISTING conversation and ' +
-            'returns `{ processId, openLink, turnIndex }`. Without `processId`, starts a brand-new, separate ' +
-            'fire-and-forget chat with `content` as its first prompt (it does NOT continue the current chat) and ' +
-            'returns `{ processId, openLink }`. Omitted `action` or `action: "send"` keeps this behavior; `content` is required for send. ' +
-            'Use `{ action: "cancel", processId }` to stop a known local conversation, including a queued `queue_<taskId>` before execution. ' +
-            'Cancel requires no content and sends no message; omit all send-only fields. It returns `{ processId, openLink, cancelled, status, workspaceId? }`; ' +
-            '`cancelled: false` means already terminal (completed, failed, or cancelled). Unknown IDs and cancellation failures return an error. ' +
-            'Cancel is local-only: remote process IDs or workspace routes are rejected; optional cancel `workspaceId` must match the owning local workspace ID. ' +
-            'Cancellation retains conversation history. In create mode `mode` defaults to `ask` (`autopilot` from a sentinel chat); in post ' +
-            'mode omitting `mode` keeps the conversation\'s current mode. Create mode defaults to the current workspace. Create-mode `workspaceId` accepts an id from `list_workspaces` ' +
-            '(including remote `remote:<serverId>:<workspaceId>` ids, which start the chat on that remote CoC ' +
-            'server), or a repo name, with `name@server` to disambiguate. Post mode is local-only. For new conversations, provide a short, task-specific `title` ' +
-            '(optional, max 80 characters); it remains the visible custom title even after AI title generation. ' +
-            'Create mode with `mode: "ralph"` launches an autonomous Ralph session straight into iteration 1 ' +
-            '(no clarifying questions) with `content` as a self-contained goal spec and returns ' +
-            '`{ processId, sessionId, openLink }`; use it for long, multi-step build-until-done goals that write ' +
-            'to the repo. `ralph` is rejected in post mode; `plan` is not supported. Prefer `provider: "auto"` for delegation ' +
-            'unless the user requests a particular provider/model. Enabled Auto uses target workspace/server routing rules ' +
-            'without inheriting parent provider, model, or effort. Disabled/unavailable Auto falls back to the parent concrete provider ' +
-            'after target validation. Omitted provider inherits the parent provider. Create mode defaults to Medium effort ' +
-            'when neither `model` nor `effortTier` is supplied; post mode keeps existing settings.',
+            'With `processId`, post to an existing local chat; without it, create a separate fire-and-forget chat. ' +
+            'Returns `{ processId, openLink, turnIndex? }`. Supply a short, task-specific `title` for new chats. ' +
+            '`mode: "ralph"` starts an autonomous goal loop without clarification; returns `sessionId` too. `plan` is not supported. ' +
+            'Prefer `provider: "auto"` unless a provider/model was requested. ' +
+            'Use `{ action: "cancel", processId }` to stop local queued/running work, retaining history. ' +
+            'Omit send-only fields; optional `workspaceId` asserts ownership. Returns `cancelled` and `status`; ' +
+            '`cancelled: false` means already terminal. Unknown IDs and failures return errors.',
         parameters: {
             type: 'object',
             properties: {
                 action: {
                     type: 'string',
                     enum: ['send', 'cancel'],
-                    description: 'Omit or use `send` for ordinary create/post behavior. Use `cancel` with a known local processId to stop work without sending content.',
+                    description: 'Default `send`; `cancel` stops a local process without sending content.',
                 },
                 content: {
                     type: 'string',
-                    description: 'The message (post mode), first prompt (create mode), or goal spec (`ralph` mode). Required for send; omit for cancel.',
+                    description: 'Message or new-chat prompt; Ralph goal spec. Required for send; omit for cancel.',
                 },
                 processId: {
                     type: 'string',
                     description:
-                        'Mode switch. When given, posts `content` into that existing conversation; ' +
-                        'when omitted, starts a new conversation. Required for cancel; accepts local process IDs including queue_<taskId>.',
+                        'Local chat to post to or cancel, including queue_<taskId>. Omit to create.',
                 },
                 workspaceId: {
                     type: 'string',
-                    description: 'Create mode: target repo — an id from `list_workspaces` (local or ' +
-                        '`remote:<serverId>:<workspaceId>`), or a repo name / `name@server`. Defaults to the current workspace. ' +
-                        'Cancel: optional exact local workspace ID assertion; must match the target owner. Remote routes are unsupported.',
+                    description: 'New-chat target: ID from `list_workspaces`, remote:<serverId>:<workspaceId>, repo name, or name@server. ' +
+                        'Default: current workspace. Cancel: optional local owner ID.',
                 },
                 mode: {
                     type: 'string',
                     enum: ['autopilot', 'ask', 'ralph'],
-                    description: 'Chat mode: `ask` (read-only), `autopilot` (can edit/run), or `ralph` ' +
-                        '(create mode only: launch a Ralph build loop with `content` as the goal spec). ' +
-                        'Create mode defaults to `ask` (`autopilot` from a sentinel chat); post mode keeps the conversation\'s current mode when omitted.',
+                    description: 'Ask: read-only; Autopilot: edit/run; Ralph: new goal loop only. ' +
+                        'New-chat default: ask (autopilot from Sentinel). Post default: unchanged.',
                 },
                 deliveryMode: {
                     type: 'string',
@@ -307,8 +290,7 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 },
                 title: {
                     type: 'string',
-                    description: 'Create mode: optional persistent custom title. Trimmed, non-empty, max 80 characters. ' +
-                        'Use a short, task-specific title; omitted titles are auto-generated. Ignored in post mode.',
+                    description: 'New-chat persistent title; trimmed, non-empty, max 80 characters. Omit for auto-title; ignored in post mode.',
                 },
                 model: {
                     type: 'string',
@@ -317,15 +299,12 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
                 provider: {
                     type: 'string',
                     enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'],
-                    description: 'Create mode: prefer `auto` for target workspace/server routing unless the user requests ' +
-                        'a particular provider/model. Enabled Auto inherits no parent AI settings; unavailable Auto falls back to the parent concrete provider. Omitted provider inherits the parent provider. ' +
-                        'Post mode ignores this selection and keeps the existing provider.',
+                    description: 'New-chat provider. Auto uses destination routing without parent settings; unavailable Auto or omission uses the parent provider. Ignored in post mode.',
                 },
                 effortTier: {
                     type: 'string',
                     enum: ['very-low', 'low', 'medium', 'high'],
-                    description: 'Provider-specific effort tier. Defaults to `medium` in create mode when `model` is omitted. ' +
-                        'Post mode has no default tier. Ignored when `model` is also provided.',
+                    description: 'Provider-specific tier. New-chat default: medium. No post default. Explicit model wins.',
                 },
                 priority: {
                     type: 'string',
