@@ -15,10 +15,13 @@ scoped final process summary, session API link and journal path; reviews retain 
 and Sentinel dispatcher constraints.
 
 Startup recovery reads the registered session journal and prefers its durable `completion`
-outcome, including the exact reason, final process and iteration count. Final-check terminal
-publication requires this independent record even when check metadata writes fail; replay
-publishes the stored first outcome without starting another loop or repair. Explicit extension,
-new-loop and awaiting-input transitions clear it. Unavailable sessions publish their existing
+outcome, including the exact reason, final process and iteration count. Iteration caps,
+missing signals, rejected iteration/check admission and final-check terminal publication
+require this independent record even when iteration/check metadata writes fail. Replay
+publishes the stored first outcome without admitting further work. Missing signals use
+`no-signal`; rejected next-iteration admission uses `iteration-enqueue-failed`. Explicit
+extension, new-loop, awaiting-input and admitted resume transitions clear the record;
+rejected resume restores it. Unavailable sessions publish their existing
 live failure and recover as unavailable children.
 
 Awaiting-input, format repair and continuing gap loops remain silent. Journals without a
@@ -176,8 +179,8 @@ context so the originating run stays active for the whole session.
 
 The queue bridge exposes an internal `ralphSessionComplete` callback alongside the dashboard
 WebSocket event. `ScheduleExecutor` uses it to finalize scheduled runs only at a terminal
-reason: queue failures and terminal final-check failure reasons mark the run failed; clean,
-capped, user-stopped, or normal terminal reasons complete it. An awaiting-input session
+reason: queue failures, missing signals and terminal iteration/final-check failure reasons
+mark the run failed; clean, capped, user-stopped, or normal terminal reasons complete it. An awaiting-input session
 emits no completion event, so its scheduled run stays active until the user submits or stops.
 
 ## Final Check Automation
@@ -244,7 +247,8 @@ The parser accepts the result block either after a bare `RALPH_FINAL_CHECK_RESUL
 or as any fenced ```json block whose `marker` field equals `RALPH_FINAL_CHECK_RESULT`.
 
 Terminal paths broadcast `ralph-session-complete` with `reason`: `signal` (clean), `cap`,
-`final-check-failed` (parse failure, after the repair attempt), `final-check-enqueue-failed`,
+`no-signal`, `iteration-enqueue-failed`, `final-check-failed` (parse failure, after the repair attempt),
+`final-check-enqueue-failed`,
 `final-check-session-missing`, `final-check-gap-loop-start-failed`,
 `final-check-gap-enqueue-failed`. A successful gap-fix enqueue broadcasts nothing because the
 next loop continues the session.

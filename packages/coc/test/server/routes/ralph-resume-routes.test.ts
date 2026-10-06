@@ -153,6 +153,18 @@ describe('POST /api/workspaces/:wsId/ralph-sessions/:sessionId/resume', () => {
         expect(md).toMatch(/Session resumed at .* picking up from iteration 3/);
     });
 
+    it.each([false, true])('resets a terminal admission failure only when explicit resume is admitted (rejected=%s)', async rejected => {
+        const completion = { reason: 'iteration-enqueue-failed', processId: 'queue_p3', totalIterations: 3,
+            completedAt: '2026-05-11T01:30:00Z' };
+        await seedSession(dataDir, 'ws-1', 'sess-admission', { completion });
+        if (rejected) bridgeStub.enqueue.mockRejectedValueOnce(new Error('queue full'));
+        const res = await post(baseUrl, '/api/workspaces/ws-1/ralph-sessions/sess-admission/resume', {});
+        expect(res.status).toBe(rejected ? 500 : 200);
+        const record = await new RalphSessionStore({ dataDir }).readSessionRecord('ws-1', 'sess-admission');
+        expect(record?.completion).toEqual(rejected ? completion : undefined);
+        expect(record?.phase).toBe('executing');
+    });
+
     it('replays saved human answers when the input route could not enqueue', async () => {
         await seedSession(dataDir, 'ws-1', 'sess-answered', {
             humanInputs: [{

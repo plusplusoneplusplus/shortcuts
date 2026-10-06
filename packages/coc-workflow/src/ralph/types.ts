@@ -33,6 +33,8 @@ export type RalphSessionCompleteReason =
     | 'signal'
     | 'manual-verification-only'
     | 'cap'
+    | 'no-signal'
+    | 'iteration-enqueue-failed'
     | 'user-stopped'
     | 'final-check-failed'
     | 'final-check-enqueue-failed'

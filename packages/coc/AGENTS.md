@@ -108,8 +108,10 @@ references before editing. Paths are package-relative.
   Ralph step events and remote jobs; unavailable children settle with a diagnosable failed delivery.
   Whole-session Ralph events match registered workspace/session identity, preserving the first
   terminal outcome. Journal recovery prefers the durable session `completion` record, then
-  terminal reasons or final-check evidence. Final-check terminal publication persists this
-  independent outcome before emitting; replay cannot start another loop/repair. Complete
+  terminal reasons or final-check evidence. Iteration caps/missing signals, rejected follow-on
+  admission and final-check terminal publication persist this outcome before emitting. Replay
+  cannot admit further work. Explicit resume clears it before admission and restores it on
+  rejection; the delegation ledger retains its first outcome. Complete
   iteration loops with pending checks remain silent. Caps do not assert goal completion.
   `ProcessMessageDeliveryService.deliverOnce` admits server-owned reviews with a stable
   receipt in pending messages, queue tasks and user turns. It verifies the parent's workspace,

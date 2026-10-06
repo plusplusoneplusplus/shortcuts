@@ -8,6 +8,8 @@ import { DelegatedJobStore, MAX_RESULT_SUMMARY } from '../../../src/server/deleg
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { createSentinelDelegationEnqueue } from '../../../src/server/delegation/sentinel-delegation-enqueue';
 import { RalphSessionStore } from '../../../src/server/ralph/ralph-session-store';
+import { orchestrateRalphIteration } from '../../../src/server/ralph/orchestrate-iteration';
+import { _clearFinalCheckEnqueuedSet } from '../../../src/server/ralph/enqueue-final-check';
 import { orchestrateFinalCheck } from '../../../src/server/ralph/orchestrate-final-check';
 import type { RalphSessionRecord } from '../../../src/server/ralph/types';
 import type { RalphSessionCompleteEvent } from '../../../src/server/queue/queue-executor-bridge';
@@ -466,6 +468,40 @@ describe('ordinary delegated job result recording', () => {
             const first = persisted();
             complete('signal'); await flush();
             expect(persisted()).toEqual(first);
+        });
+
+        it.each([
+            ['RALPH_NEXT', 2, 'failed', 'iteration-enqueue-failed'],
+            ['RALPH_COMPLETE', 2, 'failed', 'final-check-enqueue-failed'],
+            ['RALPH_NEXT', 20, 'capped', 'cap'],
+            ['no signal', 2, 'failed', 'no-signal'],
+        ])('recovers an iteration outcome after publication interruption: %s/%s', async (response, iteration, outcome, reason) => {
+            const journal = new RalphSessionStore({ dataDir });
+            await journal.initSession(childWorkspace, sessionId, { originalGoal: 'Fix search', maxIterations: 20 });
+            // Independent terminal durability must survive failure of the journal write.
+            vi.spyOn(RalphSessionStore.prototype, 'appendProgressSection').mockRejectedValue(new Error('journal failed'));
+            await child({ result: 'Final iteration output' });
+            _clearFinalCheckEnqueuedSet();
+            try {
+                await expect(orchestrateRalphIteration({
+                    workspaceId: childWorkspace, sessionId, responseText: response, currentIteration: iteration,
+                    maxIterations: 20, originalGoal: 'Fix search', completedTaskId: 'child', processId: childId,
+                    deps: { dataDir, enqueueTask: () => { throw new Error('queue full'); },
+                        broadcastSessionComplete: () => { throw new Error('publication interrupted'); } },
+                })).rejects.toThrow('publication interrupted');
+                const restarted = new RalphSessionStore({ dataDir });
+                const { results, sessions, onResult } = ralph();
+                sessions.readSessionRecord.mockImplementation(() => restarted.readSessionRecord(childWorkspace, sessionId));
+                await results.restore();
+                expect(persisted().terminal?.result).toMatchObject({ outcome, reason });
+                expect(persisted().terminal?.result.summary).toContain('Final iteration output');
+                expect(onResult).toHaveBeenCalledOnce();
+                const first = persisted();
+                complete('signal'); await flush();
+                expect(persisted()).toEqual(first);
+            } finally {
+                _clearFinalCheckEnqueuedSet();
+            }
         });
 
         it('disposes session listeners and pending journal reads', async () => {

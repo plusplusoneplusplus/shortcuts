@@ -123,8 +123,19 @@ export function registerRalphResumeRoutes(routes: Route[], ctx: RalphResumeRoute
 
             let taskId: string;
             try {
+                if (record.completion) {
+                    await journal.updateSessionRecord(workspaceId, sessionId, current => {
+                        if (!current) throw new Error('Ralph session disappeared before resume');
+                        const next = { ...current };
+                        delete next.completion;
+                        return next;
+                    });
+                }
                 taskId = await bridge.enqueue(taskInput as any);
             } catch (err) {
+                if (record.completion) {
+                    await journal.recordCompletion(workspaceId, sessionId, record.completion);
+                }
                 getLogger().warn(
                     LogCategory.AI,
                     `[Ralph] resume enqueue failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`,
