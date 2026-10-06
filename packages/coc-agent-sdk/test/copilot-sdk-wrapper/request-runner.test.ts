@@ -791,6 +791,34 @@ describe('RequestRunner.transform()', () => {
         expect(result.text).toBe('');
         expect(result.error).toBe('AI error');
     });
+
+    it('returns a failure result when send throws', async () => {
+        const { runner } = makeRunner();
+        vi.spyOn(runner, 'send').mockRejectedValue(new Error('Network failure'));
+
+        const result = await runner.transform('prompt');
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Network failure');
+    });
+
+    it('returns empty text when response is undefined', async () => {
+        const { runner } = makeRunner();
+        vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: undefined });
+
+        const result = await runner.transform('prompt');
+        expect(result.success).toBe(true);
+        expect(result.text).toBe('');
+    });
+
+    it('maps options.cwd to workingDirectory on send', async () => {
+        const { runner } = makeRunner();
+        const sendSpy = vi.spyOn(runner, 'send').mockResolvedValue({ success: true, response: 'ok' });
+
+        await runner.transform('prompt', { cwd: '/my/project' });
+        expect(sendSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ workingDirectory: '/my/project' }),
+        );
+    });
 });
 
 // ============================================================================

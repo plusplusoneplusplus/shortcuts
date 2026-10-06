@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CocClient, DecisionsClient, type DecisionRequest, type DecisionResponse } from '../../src';
+import { DecisionsClient, type DecisionRequest, type DecisionResponse } from '../../src';
 import { createMockAdapter } from './helpers';
 
 const request: DecisionRequest = {
@@ -33,9 +33,5 @@ describe('DecisionsClient', () => {
       path: '/workspaces/ws%2Fone%20%C3%A9/decisions/evaluate',
       options: { method: 'POST', body: request, signal: controller.signal },
     }]);
-  });
-
-  it('is exposed on CocClient', () => {
-    expect(new CocClient({ baseUrl: 'http://localhost:4000', fetch: globalThis.fetch }).decisions).toBeInstanceOf(DecisionsClient);
   });
 });

@@ -190,9 +190,15 @@ describe('E2E: Full Agent → Repo → Process flow', () => {
             });
         });
 
-        // The SSE relay may or may not have connected to the mock agent's SSE by now
-        // (depends on timing). The important thing is the stream endpoint works.
-        expect(true).toBe(true); // stream connected successfully
+        // Relay timing is flaky; when events arrive they must be wrapped relay payloads.
+        for (const raw of receivedEvents) {
+            const envelope = JSON.parse(raw) as { agentName?: string; payload?: string };
+            expect(envelope.agentName).toEqual(expect.any(String));
+            expect(JSON.parse(envelope.payload ?? '{}')).toMatchObject({
+                type: 'process-updated',
+                processId: 'p1',
+            });
+        }
     });
 
     it('step 6: dashboard HTML served', async () => {

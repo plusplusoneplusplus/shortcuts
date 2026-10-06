@@ -321,14 +321,3 @@ describe('StaleTaskDetector.detectAndFailStale (extended edge cases)', () => {
     });
 });
 
-// ============================================================================
-// TODO tests — require additional infrastructure
-// ============================================================================
-
-describe('StaleTaskDetector — TODO / pending features', () => {
-    it.todo('stale task continues receiving SSE events (not killed by detector) — requires SSE integration test');
-    it.todo('GET /api/processes/:id for stale task includes stale: true field — requires HTTP server integration');
-    it.todo('GET /api/processes response includes stale field for stale tasks — requires HTTP server integration');
-    it.todo('stale detection sends process-updated WebSocket event — requires wsServer injection into StaleTaskDetector');
-    it.todo('task completes after being marked stale → stale: false cleared on completion — requires executor integration');
-});

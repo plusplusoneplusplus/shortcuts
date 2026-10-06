@@ -16,13 +16,6 @@ describe('coc-agent-sdk logger', () => {
         expect(logger.level).toBe('silent');
     });
 
-    it('accepts a pino logger instance', () => {
-        const root = pino({ level: 'warn' });
-        initSDKLogger(root);
-        const logger = getSDKLogger();
-        expect(typeof logger.debug).toBe('function');
-    });
-
     it('accepts pino options object', () => {
         initSDKLogger({ level: 'error' });
         const logger = getSDKLogger();

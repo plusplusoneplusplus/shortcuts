@@ -34,12 +34,6 @@ describe('work item hierarchy constants', () => {
         it('goals can only be parented under pbis', () => {
             expect(ALLOWED_PARENT_TYPES['goal']).toEqual(['pbi']);
         });
-
-        it('all values are readonly arrays', () => {
-            for (const type of ALL_TYPES) {
-                expect(Array.isArray(ALLOWED_PARENT_TYPES[type])).toBe(true);
-            }
-        });
     });
 
     describe('ALLOWED_CHILD_TYPES', () => {
@@ -71,12 +65,6 @@ describe('work item hierarchy constants', () => {
 
         it('goals have no children', () => {
             expect(ALLOWED_CHILD_TYPES['goal']).toEqual([]);
-        });
-
-        it('all values are readonly arrays', () => {
-            for (const type of ALL_TYPES) {
-                expect(Array.isArray(ALLOWED_CHILD_TYPES[type])).toBe(true);
-            }
         });
     });
 

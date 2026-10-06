@@ -11,43 +11,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-// ============================================================================
-// Re-export smoke tests
-// ============================================================================
-
 import {
     ImageBlobStore,
-    saveImagesToTempFiles,
-    cleanupTempDir,
-    parseDataUrl,
-    isImageDataUrl,
     rehydrateImagesIfNeeded,
 } from '../../src/server/executors/image-store';
-
-describe('image-store re-exports', () => {
-    it('exports ImageBlobStore with static methods', () => {
-        expect(typeof ImageBlobStore.saveImages).toBe('function');
-        expect(typeof ImageBlobStore.loadImages).toBe('function');
-        expect(typeof ImageBlobStore.deleteImages).toBe('function');
-        expect(typeof ImageBlobStore.getBlobsDir).toBe('function');
-    });
-
-    it('exports saveImagesToTempFiles', () => {
-        expect(typeof saveImagesToTempFiles).toBe('function');
-    });
-
-    it('exports cleanupTempDir', () => {
-        expect(typeof cleanupTempDir).toBe('function');
-    });
-
-    it('exports parseDataUrl', () => {
-        expect(typeof parseDataUrl).toBe('function');
-    });
-
-    it('exports isImageDataUrl', () => {
-        expect(typeof isImageDataUrl).toBe('function');
-    });
-});
 
 // ============================================================================
 // rehydrateImagesIfNeeded

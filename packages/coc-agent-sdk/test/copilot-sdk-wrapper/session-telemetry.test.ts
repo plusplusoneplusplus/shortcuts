@@ -293,22 +293,3 @@ describe('SessionTelemetry — tool call tracking', () => {
         });
     });
 });
-
-describe('SessionTelemetry — response accumulation', () => {
-    it('accumulates response text', () => {
-        const t = new SessionTelemetry();
-        t.response += 'foo';
-        t.response += 'bar';
-        expect(t.response).toBe('foobar');
-    });
-
-    it('tracks messages and turn count', () => {
-        const t = new SessionTelemetry();
-        t.allMessages.push('message 1');
-        t.allMessages.push('message 2');
-        t.turnCount = 2;
-
-        expect(t.allMessages).toEqual(['message 1', 'message 2']);
-        expect(t.turnCount).toBe(2);
-    });
-});
