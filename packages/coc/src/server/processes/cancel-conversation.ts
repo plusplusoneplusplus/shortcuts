@@ -26,17 +26,17 @@ export async function cancelConversation(
     if (workspaceId !== undefined && (!workspaceId.trim() || workspaceId.startsWith('remote:') || workspaceId.includes('@'))) {
         throw badRequest('Cancel requires an exact local workspace ID, not a remote route.');
     }
-    let process = await store.getProcess(processId);
-    if (!process && isQueueProcessId(processId)) process = await store.getProcess(toTaskId(processId));
+    let existing = await store.getProcess(processId);
+    if (!existing && isQueueProcessId(processId)) existing = await store.getProcess(toTaskId(processId));
     const taskId = isQueueProcessId(processId) ? toTaskId(processId) : processId;
-    const queueTaskId = process && !isQueueProcessId(process.id) ? undefined : taskId;
+    const queueTaskId = existing && !isQueueProcessId(existing.id) ? undefined : taskId;
     const task = queueTaskId === undefined ? undefined : bridge?.getTask?.(queueTaskId);
     // A follow-up task's identity must not alias the conversation it targets.
     const taskProcessId = task?.processId ?? task?.payload.processId;
-    if (!process && taskProcessId && taskProcessId !== toQueueProcessId(taskId)) {
+    if (!existing && taskProcessId && taskProcessId !== toQueueProcessId(taskId)) {
         throw badRequest('Use the conversation processId, not a follow-up task ID.');
     }
-    const canonicalId = process?.id ?? toQueueProcessId(taskId);
+    const canonicalId = existing?.id ?? toQueueProcessId(taskId);
     return processOperationAdmission.runExclusive(canonicalId, async () => {
         const current = await store.getProcess(canonicalId);
         const queuedTask = queueTaskId === undefined ? undefined : bridge?.getTask?.(queueTaskId);
@@ -66,6 +66,7 @@ export async function cancelConversation(
         if (current && !TERMINAL_STATUSES.has(current.status)) {
             await store.updateProcess(canonicalId, { status: 'cancelling' });
         }
+        process.stderr.write(`[Process] cancel id=${canonicalId} prevStatus=${status}\n`);
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
             await Promise.race([

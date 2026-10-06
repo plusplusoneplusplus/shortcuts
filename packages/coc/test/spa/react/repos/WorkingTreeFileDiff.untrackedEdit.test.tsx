@@ -64,6 +64,7 @@ vi.mock('../../../../src/server/spa/client/react/features/git/hooks/useDiffComme
 
 vi.mock('../../../../src/server/spa/client/react/api/cocClient', () => ({
     getSpaCocClient: () => ({ git: { getWorkingTreeFileDiff: vi.fn(() => Promise.resolve({ diff: '' })) } }),
+    getCocClientFor: () => ({}),
 }));
 
 vi.mock('../../../../src/server/spa/client/react/hooks/ui/useBreakpoint', () => ({
@@ -75,6 +76,7 @@ vi.mock('../../../../src/server/spa/client/react/contexts/QueueContext', () => (
 }));
 
 import { WorkingTreeFileDiff } from '../../../../src/server/spa/client/react/features/git/working-tree/WorkingTreeFileDiff';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 function typeInEditor(text: string) {
     const textarea = screen.getByTestId('mock-monaco-textarea');
@@ -88,6 +90,7 @@ describe('WorkingTreeFileDiff — editable untracked file', () => {
         vi.clearAllMocks();
         mockMonaco.onSave = undefined;
         mockMonaco.selectionContext = undefined;
+        resetCloneRegistryForTests();
         mockExplorerApi.readBlob.mockResolvedValue({ content: 'new file', encoding: 'utf-8', mimeType: 'text/plain' });
         mockExplorerApi.writeBlob.mockResolvedValue({ success: true });
     });
@@ -119,6 +122,11 @@ describe('WorkingTreeFileDiff — editable untracked file', () => {
     it('retains the concrete clone for selection attachments and edits across owner changes', async () => {
         const firstOwner = 'remote:server-a:ws-untracked';
         const secondOwner = 'remote:server-b:ws-untracked';
+        // Remote owners must be live clones; PreviewPane refuses unresolved remotes.
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-untracked', serverId: 'server-a', baseUrl: 'https://alpha.example' },
+            { workspaceId: 'ws-untracked', serverId: 'server-b', baseUrl: 'https://beta.example' },
+        ]);
         mockExplorerApi.readBlob.mockImplementation(async (_workspace, _path, _options, owner) => ({
             content: owner === firstOwner ? 'first clone content' : 'second clone content',
             encoding: 'utf-8', mimeType: 'text/plain',
