@@ -90,8 +90,10 @@ export function unifiedPanelTabMenuItems(
         },
     );
     if (tab.kind === 'file') {
+        if (fileActions.copyPath) {
+            items.push({ action: 'copy-path', label: 'Copy Path', group: 'file', disabled: false });
+        }
         items.push(
-            { action: 'copy-path', label: 'Copy Path', group: 'file', disabled: !fileActions.copyPath },
             {
                 action: 'copy-relative-path',
                 label: 'Copy Relative Path',
@@ -118,7 +120,7 @@ export function unifiedPanelAbsoluteFilePath(
     tab: UnifiedPanelTab,
     workspaceRootPath: string | null | undefined,
 ): string | null {
-    if (tab.kind !== 'file') return null;
+    if (tab.kind !== 'file' || typeof tab.ownerRoutingRef === 'string') return null;
     if (tab.resourceId.startsWith(TRUSTED_PATH_PREFIX)) {
         const trustedPath = tab.resourceId.slice(TRUSTED_PATH_PREFIX.length);
         return trustedPath || null;

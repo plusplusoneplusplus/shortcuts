@@ -327,10 +327,13 @@ across it. It has a searchable `+` menu and one right-edge navigator that switch
 the file tree and `ContentSearchPanel`. Both navigator bodies stay mounted after
 first use, share the panel-scope navigator width, and route through the selected
 dock target. The Search/Explorer pair moves between the file toolbar and tab strip,
-and the navigator open state persists per panel scope. The
-docked Explorer omits its internal Files/Search switch; the standalone Explorer
-page retains it. Tab descriptors (never document bodies, terminal output, or
-credentials) persist per panel scope in localStorage. Chat-owned `paste`
+and the navigator open state persists per panel scope.
+The tab context menu resolves commands against the clicked descriptor. `Copy Path`
+appears only for file tabs whose owner and workspace root resolve on the local
+server; remote clone paths and non-file resources do not expose it. The docked
+Explorer omits its internal Files/Search switch; the standalone Explorer page
+retains it. Tab descriptors (never document bodies, terminal output, or credentials)
+persist per panel scope in localStorage. Chat-owned `paste`
 descriptors use a stable content hash, dedupe by chat and concrete owner, and
 are excluded from storage and the `+` menu. `openUnifiedPasteTab` captures raw
 text in a panel-scope/resource-id memory map. Panel writes release snapshots
