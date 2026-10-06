@@ -18,6 +18,9 @@ import { TRUSTED_PATH_PREFIX } from '../../../../../src/server/spa/client/react/
 import { resetLanguageDocumentStoresForTests } from '../../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import { MAX_FILE_VIEW_SIZE } from '../../../../../src/server/spa/client/react/shared/file-viewer/useFileContent';
 import {
+    registerCloneBaseUrls, resetCloneRegistryForTests,
+} from '../../../../../src/server/spa/client/react/repos/cloneRegistry';
+import {
     SHADOW_LANGUAGE_PREFIX,
     registerShadowLanguages,
     resetShadowLanguagesForTests,
@@ -221,6 +224,7 @@ function renderPane(props: Partial<Parameters<typeof PreviewPane>[0]> = {}) {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    resetCloneRegistryForTests();
     resetLanguageDocumentStoresForTests();
     resetExternalSourceStoreForTests();
     monacoStub.reset();
@@ -241,6 +245,7 @@ beforeEach(() => {
 
 afterEach(() => {
     resetLanguageDocumentStoresForTests();
+    resetCloneRegistryForTests();
 });
 
 describe('PreviewPane — language providers (AC-03)', () => {
@@ -458,6 +463,10 @@ describe('PreviewPane — language providers (AC-03)', () => {
     });
 
     it('routes repo-group definition previews across live members and rejects outsiders', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'member-1', serverId: 'server-a', baseUrl: 'https://alpha.example' },
+            { workspaceId: 'member-2', serverId: 'server-a', baseUrl: 'https://alpha.example' },
+        ]);
         const first = renderPane({
             repoId: 'member-1',
             routingRef: 'remote:server-a:member-1',
@@ -617,6 +626,9 @@ describe('PreviewPane — language providers (AC-03)', () => {
     });
 
     it('reads an external definition through this document\'s own attachment', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: 'ws-1', serverId: 'server-a', baseUrl: 'https://alpha.example' },
+        ]);
         monacoStub.model.languageId = 'cpp';
         renderPane({ filePath: 'src/a.cpp', fileName: 'a.cpp', routingRef: 'remote:server-a:ws-1' });
         const attachment = await attachmentFor('src/a.cpp');

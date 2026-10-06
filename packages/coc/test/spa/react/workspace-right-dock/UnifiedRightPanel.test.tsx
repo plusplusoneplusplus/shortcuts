@@ -20,8 +20,12 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalView'
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel', () => ({
-    ExplorerPanel: ({ workspaceId, deepLink }: { workspaceId: string; deepLink?: boolean }) => (
-        <div data-testid="mock-explorer">explorer:{workspaceId}:{String(deepLink)}</div>
+    ExplorerPanel: ({ workspaceId, deepLink, revealRequest }: {
+        workspaceId: string; deepLink?: boolean; revealRequest?: { path: string; directory?: boolean };
+    }) => (
+        <div data-testid="mock-explorer" data-reveal-path={revealRequest?.path} data-reveal-directory={revealRequest?.directory}>
+            explorer:{workspaceId}:{String(deepLink)}
+        </div>
     ),
 }));
 vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/ContentSearchPanel', () => ({
@@ -134,6 +138,31 @@ function openViaMenu(testId: string) {
 }
 
 describe('UnifiedRightPanel', () => {
+    it('claims directory clicks for its selected chat and opens Explorer without a file tab', () => {
+        const dock = dockStub({ setTarget: vi.fn(() => true) });
+        renderPanel({ chatId: 'chat-1', dock });
+        const detail = { scopeWorkspaceId: WS, chatId: 'chat-1', ownerWorkspaceId: WS,
+            ownerRoutingRef: null, path: 'src', handled: false };
+        act(() => window.dispatchEvent(new CustomEvent('coc-open-panel-directory', { detail })));
+        expect(detail.handled).toBe(true);
+        expect(dock.setTarget).toHaveBeenCalledWith(WS);
+        expect(dock.selectMode).toHaveBeenCalledWith('explorer');
+        expect(screen.getByTestId('mock-explorer')).toHaveAttribute('data-reveal-path', 'src');
+        expect(screen.getByTestId('mock-explorer')).toHaveAttribute('data-reveal-directory', 'true');
+        expect(readUnifiedPanelState(WS).chatTabs['chat-1']).toBeUndefined();
+    });
+
+    it('ignores directory requests for another chat or clone owner', () => {
+        const dock = dockStub({ setTarget: vi.fn(() => true) });
+        renderPanel({ chatId: 'chat-1', dock, routingRef: null });
+        for (const override of [{ chatId: 'chat-2' }, { ownerRoutingRef: 'remote:server-b:ws-1' }]) {
+            const detail = { scopeWorkspaceId: WS, chatId: 'chat-1', ownerWorkspaceId: WS,
+                ownerRoutingRef: null as string | null, path: 'src', handled: false, ...override };
+            act(() => window.dispatchEvent(new CustomEvent('coc-open-panel-directory', { detail })));
+            expect(detail.handled).toBe(false);
+        }
+        expect(dock.setTarget).not.toHaveBeenCalled();
+    });
     beforeEach(() => {
         localStorage.clear();
         clearUnifiedPanelState();
@@ -213,7 +242,7 @@ describe('UnifiedRightPanel', () => {
                 fireEvent.click(screen.getByRole('button', { name: 'View source' }));
                 expect(bridge.reload).toHaveBeenCalledWith('page-1');
                 expect(bridge.openExternal).toHaveBeenCalledWith('page-1');
-                expect(sourceEvents[0].detail).toEqual({ filePath, wsId: WS, forceSourceViewer: true });
+                expect(sourceEvents[0].detail).toEqual({ filePath, wsId: WS, chatId: 'chat-1', forceSourceViewer: true });
 
                 act(() => stateListener?.({ pageId: 'page-1', status: 'failed', error: 'File not found' }));
                 expect(screen.getByRole('alert').textContent).toContain('File not found');

@@ -838,7 +838,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                             assistantTurnIndex,
                         ) ?? forEachMetadata;
                         return {
-                            status: 'completed' as const,
+                            status: turnAbort.signal.aborted || current.status === 'cancelling' || current.status === 'cancelled'
+                                ? 'cancelled' as const : 'completed' as const,
                             endTime: new Date(),
                             result: result.response || undefined,
                             metadata,
@@ -894,6 +895,7 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 logLabel: FOLLOW_UP_LOG_LABEL,
             });
 
+            const finalStatus = (await this.store.getProcess(processId))?.status === 'cancelled' ? 'cancelled' : 'completed';
             this.settleTurnPerformance(processId, {
                 turnIndex: turnPerformanceOrdinal,
                 workspaceId: wsId,
@@ -903,10 +905,10 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 mode: currentMode,
                 kind: (process.metadata?.type as string | undefined) ?? process.type,
                 tokenUsage: result.tokenUsage,
-                status: 'completed',
+                status: finalStatus,
             });
 
-            this.store.emitProcessComplete(processId, 'completed', `${duration}ms`);
+            this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
 
             this.onTitleNeeded?.(processId, allTurns);
 
@@ -950,7 +952,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 {
                     filterStreaming: true,
                     additionalUpdates: (current: AIProcess) => ({
-                        status: 'failed',
+                        status: turnAbort.signal.aborted || current.status === 'cancelling' || current.status === 'cancelled'
+                            ? 'cancelled' : 'failed',
                         endTime: failedAt,
                         error: errorMsg,
                         ...(continuation.strictResume
@@ -980,7 +983,8 @@ export class FollowUpExecutor extends ChatBaseExecutor {
                 kind: (process.metadata?.type as string | undefined) ?? process.type,
                 status: turnAbort.signal.aborted ? 'cancelled' : 'errored',
             });
-            this.store.emitProcessComplete(processId, 'failed', `${duration}ms`);
+            const finalStatus = (await this.store.getProcess(processId))?.status === 'cancelled' ? 'cancelled' : 'failed';
+            this.store.emitProcessComplete(processId, finalStatus, `${duration}ms`);
             if (continuation.strictResume) {
                 throw error instanceof Error ? error : new Error(errorMsg);
             }

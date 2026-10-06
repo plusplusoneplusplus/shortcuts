@@ -106,7 +106,7 @@ export interface ExplorerPanelProps {
      * which only reveals when the tracked path changes, every new `nonce`
      * reveals and selects `path` again — even if it is already tracked.
      */
-    revealRequest?: { path: string; nonce: number };
+    revealRequest?: { path: string; nonce: number; directory?: boolean };
 }
 
 /** Recursively walk a depth-2 tree response and pre-populate a childrenMap. */
@@ -949,13 +949,14 @@ export function ExplorerPanel({
      * Distinct from `explorerApi.reveal`, which reveals a path in the OS file
      * manager; this is purely client-side tree navigation.
      */
-    const revealPath = useCallback(async (target: string | null, options?: { silent?: boolean }) => {
+    const revealPath = useCallback(async (target: string | null, options?: { silent?: boolean; directory?: boolean }) => {
         // A trusted absolute path is outside the repo tree — it has no row to reveal.
         if (!target || target.startsWith(TRUSTED_PATH_PREFIX)) return;
         const silent = options?.silent === true;
 
         if (!silent) setError(null);
         const ancestors = getAncestorPaths(target);
+        if (options?.directory && target !== '.') ancestors.push(target);
         const known = new Set(childrenMap.keys());
         const toExpand: string[] = [];
         // A level that fails to load stops the walk: its own row still exists (its
@@ -1027,10 +1028,11 @@ export function ExplorerPanel({
     revealPathRef.current = revealPath;
     const revealNonce = revealRequest?.nonce;
     const revealRequestPath = revealRequest?.path;
+    const revealRequestDirectory = revealRequest?.directory;
     useEffect(() => {
         if (revealNonce === undefined || revealRequestPath === undefined) return;
-        void revealPathRef.current(revealRequestPath);
-    }, [revealNonce, revealRequestPath]);
+        void revealPathRef.current(revealRequestPath, { directory: revealRequestDirectory });
+    }, [revealNonce, revealRequestPath, revealRequestDirectory]);
 
     // Centre the revealed row once the expansion above has rendered. Runs against
     // the tree's own scroll container so nothing outside the sidebar moves.

@@ -107,8 +107,36 @@ describe('sourceLinkTabInput — what a chat source link opens', () => {
         expect(input({ fullPath: 'src/a.ts', wsId: 'group-1' }, 'group-1')).toBeNull();
     });
 
-    it('declines an absolute path outside every known workspace root', () => {
-        expect(input({ fullPath: '/elsewhere/src/a.ts', wsId: 'ws-1' })).toBeNull();
+    it('opens outside-root files through the workspace-authorized read-only transport', () => {
+        expect(input({ fullPath: '/elsewhere/src/a.ts', wsId: 'ws-1' })).toMatchObject({
+            kind: 'file', ownerWorkspaceId: 'ws-1', ownerRoutingRef: null,
+            resourceId: '__workspace_preview__:/elsewhere/src/a.ts', label: 'a.ts', chatId: 'task-A',
+        });
+    });
+
+    it.each(['plot.png', 'plot.svg', 'data.csv', 'data.tsv', 'page.html', 'paper.pdf', 'bundle.zip'])(
+        'routes outside-root %s to a right-panel file tab', name => {
+            expect(input({ fullPath: `/outputs/${name}`, wsId: 'ws-1' })?.resourceId)
+                .toBe(`__workspace_preview__:/outputs/${name}`);
+        },
+    );
+
+    it('preserves ranges in the right-panel descriptor', () => {
+        expect(input({ fullPath: '/outputs/log.txt', wsId: 'ws-1', line: 3, endLine: 7 }))
+            .toMatchObject({ line: 3, endLine: 7 });
+    });
+
+    it('does not resolve a remote path against a same-id local root', () => {
+        expect(sourceLinkTabInput({
+            fileRef: { fullPath: 'src/app.ts', wsId: 'ws-1' },
+            workspaces: [
+                WORKSPACES[0]!,
+                { id: 'ws-1', rootPath: '/remote/repo', remote: { cloneKey: 'remote:server-b:ws-1' } },
+            ],
+            sourceSelectionId: 'remote:server-b:ws-1',
+            scopeWorkspaceId: 'ws-1',
+            chatId: 'task-A',
+        })).toMatchObject({ resourceId: 'src/app.ts', ownerRoutingRef: 'remote:server-b:ws-1' });
     });
 
     it('declines a workspace with no known root', () => {

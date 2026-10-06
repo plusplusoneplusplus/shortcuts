@@ -79,6 +79,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
     send_to_conversation: {
         type: 'object',
         properties: {
+            action: { type: 'string' },
             content: { type: 'string' },
             processId: { type: 'string' },
             workspaceId: { type: 'string' },
@@ -90,7 +91,8 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
             effortTier: { type: 'string' },
             priority: { type: 'string' },
         },
-        required: ['content'],
+        // No top-level `required`: `content` is required only for `action: 'send'`
+        // and `processId` only for `action: 'cancel'` (conditional in the live schema).
     },
     list_workspaces: {
         type: 'object',

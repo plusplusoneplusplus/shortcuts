@@ -50,6 +50,7 @@ import { recordProviderSwitchServerTelemetry } from '../provider-switch-telemetr
 import { processOperationAdmission } from '../processes/process-operation-admission';
 import { pendingMessageTask } from '../processes/queued-pending-message';
 import { cancelQueuedCompaction, compactProcess } from '../processes/compact-process';
+import { cancelConversation } from '../processes/cancel-conversation';
 import { projectProcessBotControl, projectProcessIndexBotControl } from '../processes/bot-control-read-model';
 
 /** Valid AIProcessStatus values for validation. */
@@ -582,44 +583,12 @@ export function registerApiProcessRoutes(ctx: ApiRouteContext): void {
         handler: async ({ req, res, match }) => {
             const id = decodeURIComponent(match[1]);
             const wsId = parseQueryParams(req.url || '/').workspaceId;
-            const existing = await resolveProcess(store, id, wsId);
-            if (!existing) {
-                return void handleAPIError(res, notFound('Process'));
+            const result = await cancelConversation(store, bridge, id, wsId);
+            if (!result.cancelled) {
+                throw new APIError(409, `Process is already in terminal state: ${result.status}`, 'CONFLICT');
             }
-
-            if (TERMINAL_STATUSES.has(existing.status)) {
-                return void handleAPIError(res, new APIError(409, `Process is already in terminal state: ${existing.status}`, 'CONFLICT'));
-            }
-
-            await store.updateProcess(existing.id, {
-                status: 'cancelling' as any,
-            });
-
-            process.stderr.write(`[Process] cancel id=${existing.id} prevStatus=${existing.status}\n`);
-
-            // Await the abort with a timeout so we don't hang the HTTP response
-            const CANCEL_TIMEOUT_MS = 30_000;
-            try {
-                await Promise.race([
-                    bridge?.cancelProcess?.(existing.id),
-                    new Promise<void>((_, reject) =>
-                        setTimeout(() => reject(new Error('Cancel timeout')), CANCEL_TIMEOUT_MS)),
-                ]);
-            } catch {
-                // Timeout or abort error — fall through to finalize
-            }
-
-            // Finalize: set terminal cancelled status (unless lifecycle runner already did)
-            const current = await store.getProcess(existing.id, wsId);
-            if (current && !TERMINAL_STATUSES.has(current.status)) {
-                await store.updateProcess(existing.id, {
-                    status: 'cancelled',
-                    endTime: new Date(),
-                });
-            }
-
-            const updated = await store.getProcess(existing.id, wsId);
-            return { process: updated ? projectProcess(updated) : undefined };
+            const updated = await store.getProcess(result.processId, wsId);
+            return { ...result, process: updated ? projectProcess(updated) : undefined };
         },
     }));
 

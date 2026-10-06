@@ -140,8 +140,10 @@ workspace.
 
 Both NoteEditorIO adapters (`tasks/TasksNoteEditorIO.ts`,
 `tasks/WorkspaceFileNoteEditorIO.ts`) route load/save/upload through
-`getCocClientForWorkspace(workspaceId)` and prefix image URLs with
-`remoteCloneApiBase(workspaceId)`.
+the optional concrete tab route, rejecting unresolved remote owners; ordinary
+callers retain `getCocClientForWorkspace(workspaceId)`. Image URLs use the same
+owning server. Source-link resolution filters workspaces to the originating
+chat's server before path matching and group probing.
 
 ## Per-feature wiring
 

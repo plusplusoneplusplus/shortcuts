@@ -38,6 +38,8 @@ import { GitPanelHeader } from './GitPanelHeader';
 import type { BranchPickerAnchor } from './branches/BranchPickerModal';
 import { clearBranchRangeCache } from './hooks/useBranchRangeCache';
 import { useApp } from '../../contexts/AppContext';
+import { useReposOptional } from '../../contexts/ReposContext';
+import { findRepoBySelectionId } from '../../repos/cloneIdentity';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../contexts/GitReviewPopOutContext';
 import { buildGitReviewPopOutUrl } from '../../layout/Router';
 import { buildFixupGroups } from './fixup-utils';
@@ -304,7 +306,13 @@ function RepoGitTabView({ workspaceId, sourceSelectionId, routeWorkspaceId, repo
         () => state.workspaces.find((w: any) => w.id === workspaceId),
         [state.workspaces, workspaceId],
     );
-    const repoRoot = sourceWorkspace?.rootPath as string | undefined;
+    // `state.workspaces` lists only page-origin workspaces, so a remote clone's
+    // root comes from the repos list, matched by its clone key.
+    const reposList = useReposOptional()?.repos;
+    const repoRoot = useMemo(() => {
+        const owner = reposList ? findRepoBySelectionId(reposList, sourceSelectionId ?? workspaceId) : null;
+        return (owner?.workspace ?? sourceWorkspace)?.rootPath as string | undefined;
+    }, [reposList, sourceSelectionId, workspaceId, sourceWorkspace]);
 
     // A manual pull changes what the repo's last-run row should say, so re-read
     // the server-owned auto-pull status; the schedule itself is the server's.

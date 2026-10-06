@@ -16,6 +16,7 @@ import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { translateSpaCocClientError } from '../api/cocClient';
 import { getCocClientForWorkspace, remoteCloneApiBase } from '../repos/cloneRegistry';
 import { type NoteEditorIO } from '../features/notes/editor/NoteEditorIO';
+import { workspacePreviewClient, workspaceFileApiBase } from '../shared/file-viewer/workspacePreview';
 
 async function withConflictError<T>(request: Promise<T>): Promise<T> {
     try {
@@ -54,18 +55,22 @@ function imageApiBase(workspaceId: string): string {
  * Call once per editor mount (or memoize at the component level) —
  * the returned object is stateless so sharing is fine.
  */
-export function createTasksNoteEditorIO(): NoteEditorIO {
+export function createTasksNoteEditorIO(routingRef?: string | null): NoteEditorIO {
+    const client = (workspaceId: string) => routingRef === undefined
+        ? getCocClientForWorkspace(workspaceId) : workspacePreviewClient(workspaceId, routingRef);
+    const apiBase = (workspaceId: string) => routingRef === undefined
+        ? imageApiBase(workspaceId) : workspaceFileApiBase(workspaceId, routingRef);
     return {
         async loadContent(workspaceId, path, root?) {
             const res = await withSpaErrors(
-                getCocClientForWorkspace(workspaceId).tasks.getContent(workspaceId, path, root ? { folder: root } : undefined),
+                client(workspaceId).tasks.getContent(workspaceId, path, root ? { folder: root } : undefined),
             );
             return { content: res.content, path: res.path, mtime: res.mtime };
         },
 
         async saveContent(workspaceId, path, markdown, expectedMtime?, root?) {
             const res = await withConflictError(
-                getCocClientForWorkspace(workspaceId).tasks.writeContent(workspaceId, {
+                client(workspaceId).tasks.writeContent(workspaceId, {
                     path,
                     content: markdown,
                     expectedMtime,
@@ -78,17 +83,17 @@ export function createTasksNoteEditorIO(): NoteEditorIO {
         async uploadImage(workspaceId, fileName, dataUrl) {
             // Reuse the notes image endpoint for V1; images land in .attachments/.
             const res = await withSpaErrors(
-                getCocClientForWorkspace(workspaceId).notes.uploadImage(workspaceId, fileName, dataUrl),
+                client(workspaceId).notes.uploadImage(workspaceId, fileName, dataUrl),
             );
             return { path: res.path };
         },
 
         imageApiUrl(workspaceId, relativePath) {
-            return `${imageApiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`;
+            return `${apiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`;
         },
 
         localImageApiUrl(workspaceId, absolutePath) {
-            return `${imageApiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`;
+            return `${apiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`;
         },
     };
 }

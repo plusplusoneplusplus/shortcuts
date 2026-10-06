@@ -1,4 +1,5 @@
 import { TRUSTED_PATH_PREFIX } from '../explorer/ExactOpen';
+import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 export type UnifiedPanelBulkCloseAction =
@@ -112,7 +113,8 @@ export function unifiedPanelTabMenuItems(
 }
 
 export function unifiedPanelRelativeFilePath(tab: UnifiedPanelTab): string | null {
-    if (tab.kind !== 'file' || tab.resourceId.startsWith(TRUSTED_PATH_PREFIX)) return null;
+    if (tab.kind !== 'file' || tab.resourceId.startsWith(TRUSTED_PATH_PREFIX)
+        || tab.resourceId.startsWith(WORKSPACE_PREVIEW_PREFIX)) return null;
     return tab.resourceId;
 }
 
@@ -121,6 +123,9 @@ export function unifiedPanelAbsoluteFilePath(
     workspaceRootPath: string | null | undefined,
 ): string | null {
     if (tab.kind !== 'file' || typeof tab.ownerRoutingRef === 'string') return null;
+    if (tab.resourceId.startsWith(WORKSPACE_PREVIEW_PREFIX)) {
+        return tab.resourceId.slice(WORKSPACE_PREVIEW_PREFIX.length) || null;
+    }
     if (tab.resourceId.startsWith(TRUSTED_PATH_PREFIX)) {
         const trustedPath = tab.resourceId.slice(TRUSTED_PATH_PREFIX.length);
         return trustedPath || null;

@@ -273,8 +273,11 @@ describe('remote-clone routing sweep', () => {
             // NoteEditor; on the local singleton every call 404'd ("Workspace not found").
             expect(io).toContain('getCocClientForWorkspace(workspaceId)');
             expect(io).not.toContain('getSpaCocClient');
-            // Bare /api/... image URLs would load from the wrong server.
-            expect(io).toContain('${imageApiBase(workspaceId)}/workspaces/');
+            // Bare /api/... image URLs would load from the wrong server. Without an
+            // explicit owner the base comes from the clone registry; an explicit
+            // owner resolves through the workspace preview route.
+            expect(io).toContain('? imageApiBase(workspaceId) : workspaceFileApiBase(workspaceId, routingRef)');
+            expect(io).toContain('${apiBase(workspaceId)}/workspaces/');
             expect(io).not.toContain('return `/api/workspaces/');
         }
     });

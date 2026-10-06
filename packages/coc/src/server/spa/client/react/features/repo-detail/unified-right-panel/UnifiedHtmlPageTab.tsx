@@ -10,6 +10,7 @@ export interface UnifiedHtmlPageTabProps {
     pageId: string;
     filePath: string;
     wsId: string;
+    chatId?: string | null;
     active: boolean;
     visible: boolean;
     onErrorChange: (id: string, hasError: boolean) => void;
@@ -20,7 +21,7 @@ export interface UnifiedHtmlPageTabProps {
  * path read-only; back/forward need the merged desktop browser API.
  */
 export function UnifiedHtmlPageTab({
-    tabId, pageId, filePath, wsId, active, visible, onErrorChange,
+    tabId, pageId, filePath, wsId, chatId, active, visible, onErrorChange,
 }: UnifiedHtmlPageTabProps) {
     const bridge = desktopHtmlPageBridge();
     const [loadState, setLoadState] = useState<HtmlPageLoadState | null>(null);
@@ -57,7 +58,7 @@ export function UnifiedHtmlPageTab({
     const failed = loadState?.status === 'failed';
     const viewSource = () => {
         window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
-            detail: { filePath, wsId, forceSourceViewer: true },
+            detail: { filePath, wsId, chatId, forceSourceViewer: true },
         }));
     };
     const nav = (action: 'back' | 'forward' | 'reload' | 'stop') => {

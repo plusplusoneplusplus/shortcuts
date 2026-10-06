@@ -3,7 +3,7 @@ import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProv
 import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
-import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
+import { createQueueExecutor, DEFAULT_AI_TIMEOUT_MS, sdkServiceRegistry, SDK_PROVIDER_COPILOT, getLogger, LogCategory, normalizeExecutionPath, resolveModelForProvider, resolveWorkspaceExecutionContext, isQueueProcessId, toQueueProcessId, toTaskId } from '@plusplusoneplusplus/forge';
 import { processOperationAdmission } from '../processes/process-operation-admission';
 import { compactProcess } from '../processes/compact-process';
 import { pendingMessageTask } from '../processes/queued-pending-message';
@@ -724,13 +724,13 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
     }
 
     async cancelProcess(processId: string): Promise<void> {
-        const taskId = toTaskId(processId);
+        const taskId = isQueueProcessId(processId) ? toTaskId(processId) : undefined;
         // Route through QueueExecutor so both cancelledTasks sets are updated
         // and the queue slot is freed once the SDK abort propagates
         const queueExecutor = this.getQueueExecutorForControl('cancelProcess');
-        if (queueExecutor) {
+        if (queueExecutor && taskId) {
             queueExecutor.cancelTask(taskId);
-        } else {
+        } else if (taskId) {
             this.cancelledTasks.add(taskId);
         }
         // Abort by process id as well: covers turns whose queue task id is
@@ -752,6 +752,7 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
             if (sessionId) { await this.getAiServiceForProvider(provider).softAbortSession(sessionId); }
         } catch (err) {
             getLogger().debug(LogCategory.AI, `[Bridge] Failed to abort SDK session for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+            throw err;
         }
     }
 

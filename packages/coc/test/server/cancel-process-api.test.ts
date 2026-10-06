@@ -1,8 +1,7 @@
 /**
  * Tests that POST /api/processes/:id/cancel:
  * 1. Calls bridge.cancelProcess to abort the live AI session
- * 2. Still works when bridge has no cancelProcess (backwards compat)
- * 3. Does not propagate bridge errors to the HTTP response
+ * 2. Surfaces unavailable cancellation and abort errors without false success
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -130,7 +129,7 @@ describe('POST /api/processes/:id/cancel — bridge.cancelProcess integration', 
         expect(body.process.status).toBe('cancelled');
     });
 
-    it('should still return 200 even if bridge.cancelProcess rejects', async () => {
+    it('surfaces abort failure and retains cancelling status', async () => {
         const failingBridge = createMockBridge({
             cancelProcess: vi.fn().mockRejectedValue(new Error('abort failed')),
         });
@@ -138,13 +137,12 @@ describe('POST /api/processes/:id/cancel — bridge.cancelProcess integration', 
         await addRunningProcess('run-err');
 
         const res = await postJSON(`${baseUrl}/api/processes/run-err/cancel`);
-        // HTTP response should not be affected by the fire-and-forget rejection
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.process.status).toBe('cancelled');
+        expect(res.status).toBe(500);
+        expect(JSON.parse(res.body)).toHaveProperty('error');
+        expect((await store.getProcess('run-err'))?.status).toBe('cancelling');
     });
 
-    it('should return 200 when bridge has no cancelProcess method', async () => {
+    it('reports unavailable cancellation without changing process status', async () => {
         const noCancelBridge: QueueExecutorBridge = {
             executeFollowUp: vi.fn().mockResolvedValue(undefined),
             isSessionAlive: vi.fn().mockResolvedValue(true),
@@ -153,8 +151,17 @@ describe('POST /api/processes/:id/cancel — bridge.cancelProcess integration', 
         await addRunningProcess('run-nocancel');
 
         const res = await postJSON(`${baseUrl}/api/processes/run-nocancel/cancel`);
-        expect(res.status).toBe(200);
-        const body = JSON.parse(res.body);
-        expect(body.process.status).toBe('cancelled');
+        expect(res.status).toBe(503);
+        expect(JSON.parse(res.body).code).toBe('CANCEL_UNAVAILABLE');
+        expect((await store.getProcess('run-nocancel'))?.status).toBe('running');
+    });
+
+    it('retains REST terminal conflict behavior', async () => {
+        await startWithBridge(mockBridge);
+        await addRunningProcess('terminal');
+        await store.updateProcess('terminal', { status: 'completed' });
+        const res = await postJSON(`${baseUrl}/api/processes/terminal/cancel`);
+        expect(res.status).toBe(409);
+        expect(mockBridge.cancelProcess).not.toHaveBeenCalled();
     });
 });

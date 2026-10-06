@@ -9,7 +9,7 @@
  * tab close.
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
     clearUnifiedGitTabDirtyBridge, clearUnifiedGitTabHost, setUnifiedGitTabDirtyBridge, setUnifiedGitTabHost,
     type UnifiedGitTabDirtyBridge,
@@ -44,9 +44,29 @@ export function UnifiedGitTab({ scopeWorkspaceId, onDirtyChange, onRegisterSave 
         setUnifiedGitTabDirtyBridge(scopeWorkspaceId, bridge);
         setUnifiedGitTabHost(scopeWorkspaceId, node);
     }, [scopeWorkspaceId]);
+    useEffect(() => {
+        const node = nodeRef.current;
+        if (!node) return;
+        // Git detail is a React portal owned by the left Git list. A native
+        // capture listener follows its DOM host even when React events bubble
+        // through that other tree or a diff stops propagation.
+        const onMouseDown = (event: MouseEvent) => {
+            if (event.button !== 0 || node.offsetParent === null || !(event.target instanceof Element)) return;
+            const control = event.target.closest(
+                'input, textarea, select, button, a[href], [tabindex], [contenteditable], .monaco-editor',
+            );
+            // Editors and controls keep their own focus; reading nonfocusable
+            // diff content makes this host the shared panel shortcut target.
+            if (control && control !== node && node.contains(control)) return;
+            node.focus({ preventScroll: true });
+        };
+        node.addEventListener('mousedown', onMouseDown, true);
+        return () => node.removeEventListener('mousedown', onMouseDown, true);
+    }, [scopeWorkspaceId]);
     return (
         <div
             ref={ref}
+            tabIndex={-1}
             className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
             data-testid="unified-git-tab"
         />

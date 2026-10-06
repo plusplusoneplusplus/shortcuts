@@ -19,6 +19,7 @@ import { CocApiError } from '@plusplusoneplusplus/coc-client';
 import { translateSpaCocClientError } from '../api/cocClient';
 import { getCocClientForWorkspace, remoteCloneApiBase } from '../repos/cloneRegistry';
 import { type NoteEditorIO } from '../features/notes/editor/NoteEditorIO';
+import { workspacePreviewClient, workspaceFileApiBase } from '../shared/file-viewer/workspacePreview';
 
 async function withConflictError<T>(request: Promise<T>): Promise<T> {
     try {
@@ -72,11 +73,15 @@ function imageApiBase(workspaceId: string): string {
  * Create a NoteEditorIO that reads workspace-relative files via the
  * file-preview endpoint and writes them via the tasks content endpoint.
  */
-export function createWorkspaceFileNoteEditorIO(): NoteEditorIO {
+export function createWorkspaceFileNoteEditorIO(routingRef?: string | null): NoteEditorIO {
+    const client = (workspaceId: string) => routingRef === undefined
+        ? getCocClientForWorkspace(workspaceId) : workspacePreviewClient(workspaceId, routingRef);
+    const apiBase = (workspaceId: string) => routingRef === undefined
+        ? imageApiBase(workspaceId) : workspaceFileApiBase(workspaceId, routingRef);
     return {
         async loadContent(workspaceId, path) {
             const res = await withSpaErrors(
-                getCocClientForWorkspace(workspaceId).tasks.previewWorkspaceFile(workspaceId, path, { lines: 0 }),
+                client(workspaceId).tasks.previewWorkspaceFile(workspaceId, path, { lines: 0 }),
             );
             const content = extractContent(res as { content?: unknown; lines?: unknown });
             const mtime = typeof (res as { mtime?: unknown }).mtime === 'number'
@@ -87,7 +92,7 @@ export function createWorkspaceFileNoteEditorIO(): NoteEditorIO {
 
         async saveContent(workspaceId, path, markdown, expectedMtime?) {
             const res = await withConflictError(
-                getCocClientForWorkspace(workspaceId).tasks.writeContent(workspaceId, {
+                client(workspaceId).tasks.writeContent(workspaceId, {
                     path,
                     content: markdown,
                     expectedMtime,
@@ -98,17 +103,17 @@ export function createWorkspaceFileNoteEditorIO(): NoteEditorIO {
 
         async uploadImage(workspaceId, fileName, dataUrl) {
             const res = await withSpaErrors(
-                getCocClientForWorkspace(workspaceId).notes.uploadImage(workspaceId, fileName, dataUrl),
+                client(workspaceId).notes.uploadImage(workspaceId, fileName, dataUrl),
             );
             return { path: res.path };
         },
 
         imageApiUrl(workspaceId, relativePath) {
-            return `${imageApiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`;
+            return `${apiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/image?path=${encodeURIComponent(relativePath)}`;
         },
 
         localImageApiUrl(workspaceId, absolutePath) {
-            return `${imageApiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`;
+            return `${apiBase(workspaceId)}/workspaces/${encodeURIComponent(workspaceId)}/notes/local-image?path=${encodeURIComponent(absolutePath)}`;
         },
     };
 }

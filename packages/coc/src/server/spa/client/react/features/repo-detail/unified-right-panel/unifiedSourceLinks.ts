@@ -1,29 +1,8 @@
 /**
- * unifiedSourceLinks — turns a clicked chat source-file link into an editable
- * `file` tab descriptor for the unified right panel (AC-04).
- *
- * An assistant response links a path, not a resource: the ref may be relative
- * to the file it was mentioned in, absolute on the agent's host, tilde-prefixed,
- * or workspace-relative, and the workspace it belongs to has to be inferred. All
- * of that already has one implementation — `resolveSourceCanvasTarget`, the
- * resolution the docked source canvas uses — so this module reuses it and then
- * answers the one extra question a panel tab asks: which clone owns the bytes,
- * and what path does that clone's blob API want?
- *
- * The panel's file view is the Explorer's `PreviewPane`, which reads
- * `repoId` + a repo-relative path. So a link only becomes a tab when the
- * resolution lands INSIDE a known workspace root:
- *
- *  - a repo-group ref stays relative on purpose (only the server can probe the
- *    live members in stored order), and
- *  - an absolute path outside every known root is not readable through a repo's
- *    blob endpoint at all.
- *
- * Both return `null`, which is the caller's signal to keep the existing docked
- * source canvas — whose `previewWorkspaceFile` transport does handle those —
- * rather than open a tab that could only render an error.
- *
- * In-repo files use the same editable `PreviewPane` path as Explorer selections.
+ * Source links become chat-owned file tabs on the resource's concrete server.
+ * In-repo paths use Explorer's editable blob transport; outside-root paths and
+ * forced source views use the workspace-authorized read-only preview transport.
+ * Group ownership and directory navigation are resolved by resolveChatFileLink.
  */
 
 import { isAbsolutePath } from '../../../utils/path-resolution';
@@ -37,9 +16,11 @@ import type { SourceCanvasFileRef } from '../../chat/source-canvas/types';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
 import { getRemoteCloneKey, parseRemoteCloneKey } from '../../../repos/cloneIdentity';
+import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 
 /** A workspace as this module needs it: resolution fields plus a display name. */
 export interface SourceLinkWorkspace extends SourceCanvasWorkspace {
+    rootPath?: string;
     name?: string;
     remote?: { serverId?: unknown; cloneKey?: unknown } | null;
 }
@@ -55,42 +36,51 @@ export interface SourceLinkTabInputArgs {
     scopeWorkspaceId: string;
     /** The chat the link was clicked in, never whichever chat is selected later. */
     chatId: string | null;
+    forceSourceViewer?: boolean;
+}
+
+export function sourceLinkWorkspaces(
+    workspaces: ReadonlyArray<SourceLinkWorkspace>, sourceSelectionId?: string,
+): ReadonlyArray<SourceLinkWorkspace> {
+    const sourceRemote = parseRemoteCloneKey(sourceSelectionId);
+    return sourceSelectionId ? workspaces.filter(ws => (
+        sourceRemote
+            ? parseRemoteCloneKey(getRemoteCloneKey(ws))?.serverId === sourceRemote.serverId
+            : !getRemoteCloneKey(ws)
+    )) : workspaces;
 }
 
 /**
- * The tab a chat source link opens, or `null` when this ref belongs on the
- * docked source canvas instead (a note or folder ref, or a path that does not
- * resolve to a file inside a known workspace root).
+ * Build a resolved file descriptor; notes, directories, and unprobed groups
+ * are handled separately by resolveChatFileLink.
  */
 export function sourceLinkTabInput(args: SourceLinkTabInputArgs): OpenUnifiedTabInput | null {
     const { fileRef, workspaces, sourceSelectionId, scopeWorkspaceId, chatId } = args;
 
-    // Notes and folders are their own views, not files. Notes are workspace-owned
-    // and folders open the Explorer; both keep the existing surface until their
-    // own entry points land.
     if (fileRef.kind === 'note' || fileRef.kind === 'dir') return null;
     if (!fileRef.fullPath) return null;
 
-    const resolved = resolveSourceCanvasTarget(fileRef, workspaces);
+    const sourceRemote = parseRemoteCloneKey(sourceSelectionId);
+    const candidates = sourceLinkWorkspaces(workspaces, sourceSelectionId);
+    const resolved = resolveSourceCanvasTarget(fileRef, candidates);
     if (isSourceCanvasResolveError(resolved)) return null;
 
     // A relative result is a repo-group ref left for server-side member probing;
     // there is no single clone to route a blob read at.
     if (!isAbsolutePath(resolved.path)) return null;
 
-    const sourceRemote = parseRemoteCloneKey(sourceSelectionId);
     const workspace = (
         sourceRemote?.workspaceId === resolved.wsId
-            ? workspaces.find(ws => getRemoteCloneKey(ws) === sourceSelectionId)
+            ? candidates.find(ws => getRemoteCloneKey(ws) === sourceSelectionId)
             : undefined
-    ) ?? workspaces.find(ws => ws.id === resolved.wsId);
+    ) ?? candidates.find(ws => ws.id === resolved.wsId);
     const rootPath = typeof workspace?.rootPath === 'string' ? workspace.rootPath.trim() : '';
     if (!rootPath) return null;
 
-    // Outside the root this returns the input path unchanged (still absolute),
-    // and `.` for the root itself — neither is a file the repo blob API can read.
+    // Outside-root paths must never reach the writable repo blob endpoint.
     const relativePath = getSourceCanvasWorkspaceRelativePath(resolved.path, rootPath);
-    if (relativePath === '.' || relativePath === '' || isAbsolutePath(relativePath)) return null;
+    if (relativePath === '.' || relativePath === '') return null;
+    const readOnlyPreview = args.forceSourceViewer || isAbsolutePath(relativePath);
 
     const repoLabel = resolved.wsId === scopeWorkspaceId ? undefined : workspace?.name;
 
@@ -102,9 +92,10 @@ export function sourceLinkTabInput(args: SourceLinkTabInputArgs): OpenUnifiedTab
         ownerRoutingRef: getRemoteCloneKey(workspace)
             ?? (sourceRemote?.workspaceId === resolved.wsId ? sourceSelectionId : null),
         chatId,
-        resourceId: relativePath,
-        label: resourcePathName(relativePath),
+        resourceId: readOnlyPreview ? WORKSPACE_PREVIEW_PREFIX + resolved.path : relativePath,
+        label: resourcePathName(resolved.path),
         ...(repoLabel === undefined ? {} : { repoLabel }),
         ...(fileRef.line === undefined ? {} : { line: fileRef.line }),
+        ...(fileRef.endLine === undefined ? {} : { endLine: fileRef.endLine }),
     };
 }

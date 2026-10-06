@@ -212,6 +212,7 @@ export function UnifiedTabView({
                     fileName={fileNameOf(tab)}
                     markdownPreview={markdownPreviewEnabled}
                     revealLine={tab.line}
+                    endLine={tab.endLine}
                     revealColumn={tab.column}
                     revealNonce={tab.revealNonce}
                     symbolCandidate={tab.symbolCandidate}
@@ -253,6 +254,7 @@ export function UnifiedTabView({
             return (
                 <UnifiedNoteTab
                     workspaceId={tab.ownerWorkspaceId}
+                    routingRef={tab.ownerRoutingRef}
                     resourceId={tab.resourceId}
                     label={tab.label}
                     line={tab.line}

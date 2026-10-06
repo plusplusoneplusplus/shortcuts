@@ -17,6 +17,7 @@ import {
     resolveSourceCanvasTarget,
 } from '../../features/chat/source-canvas/resolve';
 import { SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS } from '../../featureFlags';
+import { getLocalFileLinkKind } from '../../features/chat/conversation/markdownHtml';
 import { isAbsolutePath } from '../../utils/path-resolution';
 import { isHtmlPageTabEnabled } from '../../utils/config';
 import { requestPanelBrowserTab } from './browser-bridge';
@@ -87,6 +88,7 @@ interface FileReference {
     line?: number;
     endLine?: number;
     sourceFilePath?: string;
+    chatId?: string;
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -264,6 +266,7 @@ function dispatchOpenSourceCanvas(ref: FileReference, kind?: 'note' | 'dir'): vo
             line: ref.line,
             endLine: ref.endLine,
             sourceFilePath: ref.sourceFilePath,
+            chatId: ref.chatId,
             ...(kind ? { kind } : {}),
         },
     }));
@@ -315,7 +318,7 @@ async function openHtmlPageOrSource(ref: FileReference, bridge: DesktopHtmlPageB
             return;
         }
         const detail: OpenHtmlPageDetail = {
-            pageId, filePath, wsId: owner.id, scopeWsId: ref.wsId ?? owner.id,
+            pageId, filePath, wsId: owner.id, scopeWsId: ref.wsId ?? owner.id, chatId: ref.chatId,
         };
         window.dispatchEvent(new CustomEvent('coc-open-html-page', { detail }));
         if (!detail.handled) {
@@ -342,33 +345,24 @@ function dispatchOpenMarkdownReview(ref: FileReference): void {
 }
 
 /**
- * Open a clicked local file reference.
- *
- * When the source-canvas feature flag is ON, chat-message links route to the
- * docked canvas via `coc-open-source-canvas` (carrying any `:line`/`:start-end`
- * info separately from the bare path):
- *  - **directory** (a trailing-slash path) opens the read-only folder explorer
- *    from a `.chat-message.assistant` only, tagged `kind: 'dir'`;
- *  - **markdown** (`.md`/`.markdown`/`.mdx`) opens the editable NoteEditor from
- *    ANY `.chat-message` (user or assistant), tagged `kind: 'note'`;
- *  - **code** opens the read-only source viewer from a `.chat-message.assistant`
- *    only (user-message code keeps the floating dialog).
- *
- * Everywhere else (flag OFF, or non-chat surfaces like the tasks tree / notes)
- * it falls back to the floating `MarkdownReviewDialog`.
+ * Chat links and portaled tool previews share one file-opening event, carrying
+ * the originating chat, workspace, source path, and line range. The chat host
+ * chooses the unified panel or its mobile/embedded fallback. Other surfaces and
+ * flag-off links retain the floating review dialog.
  */
 function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
     hideTooltip();
+    const chat = sourceEl.closest('.chat-message,[data-chat-id]');
 
     if (SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS) {
-        if (isSourceCanvasDirectoryPath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
+        if (isSourceCanvasDirectoryPath(ref.filePath) && chat) {
             dispatchOpenSourceCanvas(ref, 'dir');
             return;
         }
         if (
             isSourceCanvasNotePath(ref.filePath)
             && ref.wsId?.startsWith('group-')
-            && sourceEl.closest('.chat-message.assistant')
+            && chat
         ) {
             // Repo-group access widens only the read-only preview route. Keep a
             // group-scoped Markdown ref in the source viewer so the server can
@@ -376,11 +370,11 @@ function openFileReference(sourceEl: HTMLElement, ref: FileReference): void {
             dispatchOpenSourceCanvas(ref);
             return;
         }
-        if (isSourceCanvasNotePath(ref.filePath) && sourceEl.closest('.chat-message')) {
+        if (isSourceCanvasNotePath(ref.filePath) && chat) {
             dispatchOpenSourceCanvas(ref, 'note');
             return;
         }
-        if (!isSourceCanvasNotePath(ref.filePath) && sourceEl.closest('.chat-message.assistant')) {
+        if (!isSourceCanvasNotePath(ref.filePath) && chat) {
             const bridge = desktopHtmlPageBridge();
             if (bridge && isHtmlPageTabEnabled() && /\.html?$/i.test(ref.filePath)) {
                 void openHtmlPageOrSource(ref, bridge);
@@ -406,6 +400,7 @@ function openFilePathLink(link: HTMLElement): void {
         line: readLineAttr(link, 'data-line'),
         endLine: readLineAttr(link, 'data-end-line'),
         sourceFilePath: readSourceFilePath(link),
+        chatId: link.closest('[data-chat-id]')?.getAttribute('data-chat-id') || undefined,
     });
 }
 
@@ -430,19 +425,11 @@ function findChatMarkdownAnchor(target: EventTarget | null): HTMLAnchorElement |
     if (!(target instanceof HTMLElement)) return null;
     const link = target.closest<HTMLAnchorElement>('a[href]');
     if (!link) return null;
-    const chatMessage = link.closest('.chat-message');
+    if (link.hasAttribute('download')) return null;
+    const chatMessage = link.closest('.chat-message,[data-chat-id]');
     if (!chatMessage) return null;
     const href = link.getAttribute('href') || '';
-    if (!href || isExternalFileReferenceHref(href) || href.startsWith('#')) return null;
-    // Assistant messages route every local anchor through the canvas (markdown →
-    // editable note, code → read-only source viewer). User messages only divert
-    // *markdown* note anchors — including tilde-style CoC note hrefs like
-    // `~/.coc/repos/<wsId>/notes/.../*.md` — so non-markdown local anchors keep
-    // their existing native navigation.
-    if (!chatMessage.classList.contains('assistant')
-        && !isSourceCanvasNotePath(parseFilePathRef(toForwardSlashes(href)).path)) {
-        return null;
-    }
+    if (!getLocalFileLinkKind(href)) return null;
     return link;
 }
 
@@ -482,6 +469,7 @@ function findChatWebAnchor(target: EventTarget | null): HTMLAnchorElement | null
     if (!(target instanceof HTMLElement)) return null;
     const link = target.closest<HTMLAnchorElement>('a[href]');
     if (!link || !link.closest('.chat-message')) return null;
+    if (link.hasAttribute('download')) return null;
     const href = link.getAttribute('href') || '';
     if (!/^https?:\/\//i.test(href)) return null;
     if (findLinkHandler(href, getLinkHandlersConfig())) return null;
@@ -501,6 +489,7 @@ function fileReferenceFromMarkdownHref(link: HTMLElement, href: string): FileRef
         line,
         endLine,
         sourceFilePath: readSourceFilePath(link),
+        chatId: link.closest('[data-chat-id]')?.getAttribute('data-chat-id') || undefined,
     };
 }
 
@@ -896,6 +885,7 @@ function initFilePathPreviewDelegation(): void {
 
     // Keep links from navigating when rendered as anchors in markdown.
     document.body.addEventListener('click', (event) => {
+        if (event.defaultPrevented) return;
         const target = findPathLink(event.target);
         if (!target) return;
         // Let browser handle Ctrl/Cmd+Click natively (open in new tab)
@@ -968,6 +958,7 @@ function initFilePathPreviewDelegation(): void {
     // Click delegation for markdown file links: `.md-link` spans from the shared
     // renderer, plus local `<a href>` links from chat's marked renderer.
     document.body.addEventListener('click', (event) => {
+        if (event.defaultPrevented) return;
         const target = findMarkdownReferenceLink(event.target);
         if (!target) return;
         // Let browser handle Ctrl/Cmd+Click natively (open in new tab)

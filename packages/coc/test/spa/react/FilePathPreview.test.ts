@@ -508,6 +508,46 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
         );
     }
 
+    it('portaled tool Markdown links retain their originating chat, owner, and source path', async () => {
+        document.body.innerHTML = `
+            <div data-chat-id="chat-a" data-ws-id="ws-1" data-source-file="/repo/notes/report.md">
+                <span class="md-link" data-href="../data/report.csv">data</span>
+            </div>
+        `;
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = clickLink('.md-link');
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')[0][0].detail).toMatchObject({
+            filePath: '../data/report.csv', wsId: 'ws-1', chatId: 'chat-a', sourceFilePath: '/repo/notes/report.md',
+        });
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
+    });
+
+    it('does not open a file viewer when the inline-image handler already claimed a linked image', async () => {
+        document.body.innerHTML = `<div class="chat-message assistant" data-ws-id="ws-1">
+            <a href="/repo/image.png"><img src="data:image/png;base64,AA==" /></a></div>`;
+        await import(PREVIEW_MODULE);
+        const image = document.querySelector('img')!;
+        image.addEventListener('click', event => event.preventDefault());
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        image.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+
+    it('leaves explicit download and custom-protocol anchors with their native handlers', async () => {
+        document.body.innerHTML = `<div class="chat-message user" data-ws-id="ws-1">
+            <a download href="/api/files/report.csv">download</a>
+            <a href="vscode://file/placeholder.ts">editor</a>
+        </div>`;
+        await import(PREVIEW_MODULE);
+        const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+        for (const link of document.querySelectorAll('a')) {
+            const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+            link.dispatchEvent(event);
+            expect(event.defaultPrevented).toBe(false);
+        }
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+    });
+
     it('flag ON + chat AI response → dispatches coc-open-source-canvas with line/range info', async () => {
         const fullPath = '/repo/src/foo.ts';
         document.body.innerHTML = `
@@ -667,7 +707,7 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
         expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
-    it('flag ON but link in a chat USER message → keeps floating dialog (AI response only)', async () => {
+    it('flag ON + user file path uses the same source event as assistant links', async () => {
         const fullPath = '/repo/src/foo.ts';
         document.body.innerHTML = `
             <div class="chat-message user">
@@ -679,9 +719,9 @@ describe('source-canvas routing for chat AI-response file-path links (AC-03)', (
         const dispatchSpy = clickLink();
 
         expect(dispatchSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'coc-open-markdown-review' })
+            expect.objectContaining({ type: 'coc-open-source-canvas' })
         );
-        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
     it('flag ON but non-chat surface (tasks tree) → keeps floating dialog', async () => {
@@ -843,7 +883,7 @@ describe('folder-canvas routing for chat AI-response directory links (AC-01/AC-0
         expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
-    it('folder link in a chat USER message → does NOT open the folder canvas (assistant only)', async () => {
+    it('folder links in user messages use the same directory event', async () => {
         const dirPath = '/repo/src/managers/';
         document.body.innerHTML = `
             <div class="chat-message user" data-ws-id="ws-1">
@@ -854,11 +894,9 @@ describe('folder-canvas routing for chat AI-response directory links (AC-01/AC-0
         await import(PREVIEW_MODULE);
         const dispatchSpy = clickLink();
 
-        // No folder canvas; falls back to the floating review dialog instead.
-        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
-        expect(dispatchSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'coc-open-markdown-review' })
-        );
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')[0][0].detail)
+            .toMatchObject({ filePath: dirPath, kind: 'dir', wsId: 'ws-1' });
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
     it('regression: a non-slash code path still opens the read-only file viewer (kind: code)', async () => {
@@ -1055,7 +1093,7 @@ describe('editable-note canvas routing for markdown chat links (AC-01)', () => {
         expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
-    it('code + USER message → keeps floating dialog (code stays assistant-only)', async () => {
+    it('code + USER message uses the shared file-opening event', async () => {
         const fullPath = '/repo/src/foo.ts';
         document.body.innerHTML = `
             <div class="chat-message user">
@@ -1067,9 +1105,9 @@ describe('editable-note canvas routing for markdown chat links (AC-01)', () => {
         const dispatchSpy = clickLink();
 
         expect(dispatchSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ type: 'coc-open-markdown-review' })
+            expect.objectContaining({ type: 'coc-open-source-canvas' })
         );
-        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+        expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 
     it('code + non-chat surface → keeps floating dialog', async () => {
@@ -1261,9 +1299,9 @@ describe('CoC note hrefs open the editable note canvas for user + assistant (scr
         expectNoteCanvas(dispatchSpy, NOTE_TILDE);
     });
 
-    it('USER-message NON-markdown `<a href>` (code) anchor is NOT diverted (native navigation preserved)', async () => {
+    it('user non-Markdown anchors use the same file route, retaining chat identity', async () => {
         document.body.innerHTML = `
-            <div class="chat-message user" data-ws-id="ws-hcv3mg">
+            <div class="chat-message user" data-ws-id="ws-hcv3mg" data-chat-id="chat-a">
                 <a href="/repo/src/foo.ts"><span class="label">open source</span></a>
             </div>
         `;
@@ -1271,9 +1309,8 @@ describe('CoC note hrefs open the editable note canvas for user + assistant (scr
         await import(PREVIEW_MODULE);
         const dispatchSpy = clickLink('.label');
 
-        // Neither the canvas nor the floating dialog is opened — the code anchor
-        // keeps its native navigation in a user message.
-        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')).toHaveLength(0);
+        expect(eventCalls(dispatchSpy, 'coc-open-source-canvas')[0][0].detail)
+            .toMatchObject({ filePath: '/repo/src/foo.ts', chatId: 'chat-a' });
         expect(eventCalls(dispatchSpy, 'coc-open-markdown-review')).toHaveLength(0);
     });
 

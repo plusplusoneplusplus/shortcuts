@@ -190,9 +190,9 @@ the file in the preview slot. The picker reads through the active tab's
 clone remains correctly routed even when the Explorer targets another repo. It
 does not change Explorer selection, expansion, mode, or focus.
 
-`unifiedToolbarBreadcrumbs` turns the crumbs off — the row falls back to a plain
-path label — for a `__trusted__:` absolute path because it is not repo-relative
-and cannot use the repo directory API.
+`unifiedToolbarBreadcrumbs` shows a plain path label for `__trusted__:` and
+`__workspace_preview__:` paths. These read-only resources do not use the repo
+directory API or expose relative-path copy and Explorer reveal actions.
 
 ## The Search/Explorer navigator
 
@@ -331,7 +331,10 @@ so while the panel holds the focus it must claim the key **even with an empty
 strip**: falling through would shut the user's window because they tidied a tab
 strip. Panel focus is a live DOM check against `panelRootRef` plus
 `offsetParent !== null` (the collapsed panel is `display:none`), never focus
-state in the store.
+state in the store. `UnifiedGitTab` makes its portal host focusable and uses a
+native capture-phase mousedown listener to focus it when reading nonfocusable
+Git content. Editors and controls retain their own focus. Native DOM handling
+follows the portal host even though React events belong to the left Git list.
 
 The one `ignore` beyond "not our focus" is the terminal: a plain Ctrl+W is
 readline's delete-previous-word, so it is handed to xterm — which sends `\x17`
@@ -437,6 +440,14 @@ and concrete route select the existing blob write endpoint. Trusted absolute
 paths keep the `__trusted__:` prefix and rely on `PreviewPane`'s path guard,
 which omits the write route, Save button, and registered save handler.
 
+Outside-root links, group-probed files, and explicit HTML source views use
+`__workspace_preview__:<absolute path>` with the owning workspace and concrete
+clone route. `PreviewPane` loads them through the authorized workspace preview
+API, with no write route, live language document, or selection attachment.
+Images retain MIME/encoding; CSV is text, not a table viewer. Preview failures,
+oversized content, and binary blobs offer an owner-routed Download action.
+Concrete unresolved remote routes fail visibly without local fallback.
+
 ## Keep-alive and terminals
 
 A tab joins the mounted set when it **first becomes active**, and leaves on close.
@@ -493,16 +504,17 @@ the source view id; only its matching active browser tab opens the menu.
 
 ## Entry points
 
-Every entry point follows one shape: build a descriptor, and with a matching host
-call `openUnifiedPanelTab` and return; otherwise fall through to the pre-existing
-surface untouched.
+Entry points use `openUnifiedPanelTab` with the originating chat and concrete
+owner. Hosted file links resolve ownership before opening; only chats without a
+matching panel use the source dock.
 
 | Entry point | Lives in | Notes |
 |---|---|---|
 | Chat diff action | `ChatDetail` `WHISPER_DIFF_EVENT` handler | A whisper diff is rebuilt from an in-memory transcript, so `unifiedDiffSources` is the join between a persisted tab and its source. |
-| Chat source link | `ChatDetail` `coc-open-source-canvas` | Declines relative/group refs and paths outside a known root — `PreviewPane` reads repo-relative blobs, so a tab for those could only render an error. The chat's clone-qualified selection disambiguates same-id local and remote workspaces. |
+| Chat source link | `ChatDetail` `coc-open-source-canvas` | `resolveChatFileLink` uses the source chat's server-specific workspace set, probes group ownership with `files/preview?resolve=true`, and builds permanent file tabs. Outside-root and group-probed paths are read-only workspace previews. Requests are aborted on chat/owner changes; late results cannot open the destination chat's panel. |
+| Directory link | `resolveChatFileLink` / `coc-open-panel-directory` | Preflights the folder owner, targets the matching panel/chat/clone, runs the dock's dirty-buffer guard, and reveals/expands the folder in Explorer. Outside-workspace folders show an explicit unsupported error. |
 | Desktop HTML link | `file-path-preview.ts` `coc-open-html-page` | The local server authorizes and canonicalizes the path before the main process verifies the file and the panel claims the event. Approved roots include local workspaces, repo output data, OS temp, and the provider data folders under `~/.copilot`, `~/.codex`, and `~/.claude`; remote-server paths stay on the source-viewer path. The tab uses `UnifiedHtmlPageTab` to align a native view with its placeholder. Without a matching panel host the native view closes and the link takes the source-viewer path. |
-| Note link | same handler, `kind: 'note'` branch | `resourceId` is `<fetchMode>\|<root>\|<path>`: the note root is part of the identity, resolved once at open time because the link is gone by restore time. |
+| Note link | same handler, `kind: 'note'` branch | `resourceId` is `<fetchMode>\|<root>\|<path>`; concrete owner routing reaches both NoteEditor IO adapters. Group-probed Markdown stays read-only. |
 | Explorer selection | `ExplorerPanel` `onOpenFile` | The tree column (and navigator mode elsewhere): `options.preview` picks the preview slot vs a permanent tab. |
 | Language navigation | `UnifiedTabView` `onOpenFile` | A "go to definition" out of a file tab. The descriptor takes its workspace id, concrete route, and repo label from the SOURCE tab, never from the dock's current target, so the target read and language document stay on the initiating clone. Always a permanent tab. |
 | Canvas embed | `shared/CanvasEmbed.tsx` "Open in panel" | Gated on `useUnifiedPanelHostForChat`; the chat id arrives through `ChatRenderContext.chatId` because the embed is portaled. |
@@ -511,12 +523,12 @@ surface untouched.
 | `+` menu | the panel itself | Reuses QuickOpen's search behavior: nothing before the first keystroke, debounce, abort the previous request. |
 | Chat-wide **Changes** | the `+` menu, via `unifiedChatChanges.ts` | See below. |
 
-`dir` refs and conversation-candidate navigation stay on the docked source
-canvas. The chat header's Explorer toggle uses this panel when it hosts the
-selected chat, falling back to the source canvas elsewhere. AI canvases use
-this panel as their only host; a chat with no panel (a pop-out or an embedded
-chat) keeps inline previews and the standalone canvas window and opens no
-sidebar for AI canvases.
+User and assistant file links, tool-result paths, and portaled Markdown tool
+previews share the source event with originating chat/workspace metadata.
+Inline images/lightboxes, tables, and canvas embeds remain inline. Mobile,
+pop-out, embedded, and background chats without a matching panel keep the source
+dock. The chat header's Explorer toggle follows the same hosting rule.
+Unresolved hosted links surface an error rather than opening a second panel.
 
 ## Desktop HTML pages
 
@@ -531,8 +543,9 @@ disabled). The tab updates bounds on resize, scroll,
 and layout changes, hides while inactive/collapsed or covered by DOM content,
 and closes the view on tab close or unmount (a full page reload runs no unmount). Its toolbar shows the file path
 read-only, goes back/forward, reloads
-the page, opens the file in the system browser, or requests the read-only source
-canvas (`forceSourceViewer` bypasses editable unified file tabs). Load errors
+the page, opens the file in the system browser, or requests a read-only source
+tab (`forceSourceViewer` uses the workspace preview transport). The event carries
+the selected chat so other mounted conversations cannot claim it. Load errors
 surface inline with the same source fallback. The view survives a full SPA
 reload: the main process hides it on reload, the restored tab reopens the same
 `htmlPageId`, and the desktop replays its page, history and scroll. Views not
@@ -559,8 +572,11 @@ ephemeral. A blank tab opens no view until it
 has a URL; address submits on a live view call `navigate`. The toolbar has
 Back/Forward/Reload|Stop, an editable address, and `BrowserToolbarMenu`
 with the actual engine and the current-page system-browser action. The menu
-portals to the document body, uses `useAnchoredPanelPosition`, and closes when
-the tab loses visibility or ownership. The tab also shows the page title, a load-error panel
+occupies an in-flow toolbar row, keeping the native page visible below it;
+placement follows the resized placeholder without reopening or navigating the
+view. Escape, outside clicks, repeated trigger clicks, and loss of tab visibility
+or ownership dismiss it. Focus returning to the trigger leaves dismissal to its
+click handler. The tab also shows the page title, a load-error panel
 with Retry and Desktop Preferences/runtime guidance, and
 download-handoff notices. Unmounting only hides the view (chat switch, collapse
 keep live history); `closeTab` closes it. `onState` feeds `updateBrowserTab`

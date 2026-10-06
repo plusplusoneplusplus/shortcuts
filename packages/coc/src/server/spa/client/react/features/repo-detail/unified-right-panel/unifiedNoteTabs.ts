@@ -35,6 +35,8 @@ import {
 import type { SourceCanvasFileRef } from '../../chat/source-canvas/types';
 import { resourcePathName } from './unifiedPanelOpenMenuModel';
 import type { OpenUnifiedTabInput } from './unifiedPanelTabsModel';
+import { getRemoteCloneKey } from '../../../repos/cloneIdentity';
+import { sourceLinkWorkspaces, type SourceLinkWorkspace } from './unifiedSourceLinks';
 
 /** Everything `NoteEditor` needs, recovered from a persisted `resourceId`. */
 export interface UnifiedNoteResource {
@@ -80,18 +82,19 @@ export interface NoteTabInputArgs {
     /** The clicked reference, exactly as the `coc-open-source-canvas` event carried it. */
     fileRef: SourceCanvasFileRef;
     /** Every workspace resolution may choose from — remote clones included. */
-    workspaces: ReadonlyArray<WorkspaceLike>;
+    workspaces: ReadonlyArray<WorkspaceLike & Pick<SourceLinkWorkspace, 'remote'>>;
     /** The panel's own workspace (a group id in a repo group); only for repo labelling. */
     scopeWorkspaceId: string;
+    sourceSelectionId?: string;
 }
 
 /**
- * The tab a note link opens, or `null` when no workspace owns the path — in
- * which case the caller keeps the existing docked surface, which shows its own
- * "no matching workspace" message rather than an empty tab.
+ * Resolve an editable note descriptor, or null for an unknown owner. Hosted
+ * callers report the error instead of opening a competing chat-local panel.
  */
 export function noteTabInput(args: NoteTabInputArgs): OpenUnifiedTabInput | null {
-    const { fileRef, workspaces, scopeWorkspaceId } = args;
+    const { fileRef, scopeWorkspaceId } = args;
+    const workspaces = sourceLinkWorkspaces(args.workspaces, args.sourceSelectionId);
     if (!fileRef.fullPath) return null;
 
     const target = resolveMarkdownReviewTarget(
@@ -100,7 +103,7 @@ export function noteTabInput(args: NoteTabInputArgs): OpenUnifiedTabInput | null
             wsId: fileRef.wsId,
             sourceFilePath: fileRef.sourceFilePath,
         },
-        workspaces as WorkspaceLike[],
+        [...workspaces],
     );
     if (!target) return null;
 
@@ -112,6 +115,7 @@ export function noteTabInput(args: NoteTabInputArgs): OpenUnifiedTabInput | null
         // The clone that owns the note, which the resolution may have moved off
         // the clicked container's hint (a group member's root wins).
         ownerWorkspaceId: target.wsId,
+        ownerRoutingRef: getRemoteCloneKey(workspace) ?? null,
         // Workspace-owned: `openTab` ignores this for a note, and passing the
         // chat id would only misrepresent the ownership at the call site.
         chatId: null,

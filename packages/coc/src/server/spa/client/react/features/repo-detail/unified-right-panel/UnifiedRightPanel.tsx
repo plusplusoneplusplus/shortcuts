@@ -147,6 +147,7 @@ import {
     dirtyCloseLabel,
     needsDirtyCloseConfirm,
 } from './unifiedDirtyClose';
+import { OPEN_PANEL_DIRECTORY_EVENT, type OpenPanelDirectoryDetail } from './resolveChatFileLink';
 import {
     unifiedTabId,
     type OpenUnifiedPreviewTabInput,
@@ -647,6 +648,7 @@ export function UnifiedRightPanel({
         const onOpenPage = (event: Event) => {
             const detail = (event as CustomEvent<OpenHtmlPageDetail>).detail;
             if (!detail || detail.scopeWsId !== workspaceId || !desktopHtmlPageBridge()) return;
+            if (detail.chatId && detail.chatId !== chatId) return;
             detail.handled = true;
             open({
                 kind: 'html-page',
@@ -828,8 +830,32 @@ export function UnifiedRightPanel({
     // "Reveal in Explorer" asks the tree to reveal a specific tab's file even when
     // the passive tracking above already points at it (and so would not re-fire).
     const [treeRevealRequest, setTreeRevealRequest] = useState<
-        { ownerWorkspaceId: string; path: string; nonce: number } | null
+        { ownerWorkspaceId: string; path: string; nonce: number; directory?: boolean } | null
     >(null);
+    useEffect(() => {
+        const onOpenDirectory = (event: Event) => {
+            const detail = (event as CustomEvent<OpenPanelDirectoryDetail>).detail;
+            if (!detail || detail.scopeWorkspaceId !== workspaceId || detail.chatId !== chatId) return;
+            if ((detail.ownerRoutingRef ?? null) !== (routingRefForPanelOwner(routingRef, detail.ownerWorkspaceId) ?? null)) return;
+            if (detail.ownerWorkspaceId !== target && !targetOptions.some(option =>
+                option.workspaceId === detail.ownerWorkspaceId && !option.disabled)) return;
+            if (!dock.setTarget(detail.ownerWorkspaceId)) {
+                detail.handled = true; // A declined dirty-buffer prompt is not a routing error.
+                return;
+            }
+            detail.handled = true;
+            dock.selectMode('explorer');
+            tree.setOpen(true);
+            setTreeRevealRequest(prev => ({
+                ownerWorkspaceId: detail.ownerWorkspaceId,
+                path: detail.path,
+                directory: true,
+                nonce: (prev?.nonce ?? 0) + 1,
+            }));
+        };
+        window.addEventListener(OPEN_PANEL_DIRECTORY_EVENT, onOpenDirectory);
+        return () => window.removeEventListener(OPEN_PANEL_DIRECTORY_EVENT, onOpenDirectory);
+    }, [workspaceId, chatId, routingRef, dock, tree, target, targetOptions]);
 
     const handleTabMenuAction = useCallback((action: UnifiedPanelTabMenuAction, tabId: string) => {
         const tab = tabs.find(candidate => candidate.id === tabId);
@@ -1681,6 +1707,7 @@ export function UnifiedRightPanel({
                                         tabId={tab.id}
                                         pageId={tab.htmlPageId}
                                         filePath={tab.resourceId}
+                                        chatId={chatId}
                                         wsId={tab.ownerWorkspaceId}
                                         active={tab.id === activeId}
                                         visible={isOpen && !menuOpen && !quickOpenVisible && !exactOpenVisible

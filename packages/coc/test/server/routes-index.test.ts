@@ -23,6 +23,7 @@ import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { isChatPayload } from '../../src/server/tasks/task-types';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
+import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -190,6 +191,28 @@ describe('registerAllRoutes', () => {
     afterEach(async () => {
         vi.restoreAllMocks();
         await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('publishes the shared conversation cancellation capability through tool runtime', async () => {
+        const store = createMockProcessStore();
+        await store.addProcess({
+            id: 'fixture', type: 'chat', status: 'running', startTime: new Date(), promptPreview: 'test',
+            metadata: { workspaceId: 'ws-fixture' },
+        });
+        const bridge = makeBridge();
+        bridge.cancelProcess = vi.fn().mockResolvedValue(undefined);
+        let runtime: SendToConversationRuntimeOptions | undefined;
+        registerAllRoutes([], makeOpts({
+            store, bridge, dataDir: tmpDir,
+            setSendToConversationRuntime: value => { runtime = value; },
+        }));
+        expect(runtime?.cancelConversation).toBeTypeOf('function');
+        expect(await runtime!.cancelConversation!('fixture', 'ws-fixture')).toEqual({
+            processId: 'fixture', workspaceId: 'ws-fixture', cancelled: true, status: 'cancelled',
+        });
+        expect(bridge.cancelProcess).toHaveBeenCalledExactlyOnceWith('fixture');
+        expect((await store.getProcess('fixture'))?.status).toBe('cancelled');
+        expect(bridge.enqueue).not.toHaveBeenCalled();
     });
 
     it('executes ordinary Teams messages as workspace-scoped chats with assistant turns', async () => {

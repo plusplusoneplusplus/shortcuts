@@ -109,13 +109,16 @@ function asSuccess(result: SendToConversationResult): SendToConversationSuccess 
 }
 
 describe('createSendToConversationTool — shape & description', () => {
-    it('returns a valid Tool shape named send_to_conversation with content required', () => {
+    it('requires content for send or processId for explicit cancel', () => {
         const { tool } = makeTool();
         expect(tool.name).toBe('send_to_conversation');
         expect(typeof tool.handler).toBe('function');
         expect(tool.parameters).toMatchObject({
             type: 'object',
-            required: ['content'],
+            anyOf: [
+                { properties: { action: { const: 'cancel' } }, required: ['action', 'processId'] },
+                { properties: { action: { enum: ['send'] } }, required: ['content'] },
+            ],
         });
     });
 
@@ -123,10 +126,13 @@ describe('createSendToConversationTool — shape & description', () => {
         const { tool } = makeTool();
         const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
         expect(Object.keys(props).sort()).toEqual(
-            ['content', 'deliveryMode', 'effortTier', 'mode', 'model', 'priority', 'processId', 'provider', 'title', 'workspaceId'].sort(),
+            ['action', 'content', 'deliveryMode', 'effortTier', 'mode', 'model', 'priority', 'processId', 'provider', 'title', 'workspaceId'].sort(),
         );
         expect(props.provider).toMatchObject({ type: 'string', enum: ['auto', 'copilot', 'codex', 'claude', 'opencode'] });
         expect(props.effortTier).toMatchObject({ type: 'string', enum: ['very-low', 'low', 'medium', 'high'] });
+        expect(props.effortTier).toMatchObject({
+            description: expect.stringContaining('New-chat default: medium'),
+        });
     });
 
     // AC-05: description leads with the processId (post) branch before the create branch.
@@ -134,26 +140,119 @@ describe('createSendToConversationTool — shape & description', () => {
         const { tool } = makeTool();
         const desc = tool.description ?? '';
         expect(desc).toMatch(/processId/);
-        expect(desc.indexOf('With `processId`')).toBeLessThan(desc.indexOf('Without `processId`'));
+        expect(desc).toContain('without it, create a separate fire-and-forget chat');
+        expect(desc.indexOf('With `processId`')).toBeLessThan(desc.indexOf('without it'));
     });
 
     it('documents persistent task-specific titles without making them required', () => {
         const { tool } = makeTool();
-        expect((tool.parameters as { required: string[] }).required).toEqual(['content']);
+        expect(tool.parameters).not.toHaveProperty('required');
         expect(tool.description).toContain('short, task-specific `title`');
-        expect(tool.description).toContain('visible custom title even after AI title generation');
         expect(tool.parameters).toMatchObject({
-            required: ['content'],
             properties: {
                 title: {
                     type: 'string',
-                    description: expect.stringContaining('optional persistent custom title'),
+                    description: expect.stringContaining('persistent title'),
                 },
             },
         });
         const props = (tool.parameters as { properties: Record<string, { description?: string }> }).properties;
-        expect(props.title.description).toContain('Trimmed, non-empty, max 80 characters');
-        expect(props.title.description).toContain('Ignored in post mode');
+        expect(props.title.description).toContain('trimmed, non-empty, max 80 characters');
+        expect(props.title.description).toContain('ignored in post mode');
+    });
+
+    it('keeps tool and parameter descriptions concise with key defaults and boundaries', () => {
+        const { tool } = makeTool();
+        expect(tool.description!.length).toBeLessThan(900);
+        const props = (tool.parameters as { properties: Record<string, { description: string }> }).properties;
+        for (const property of Object.values(props)) {
+            expect(property.description.length).toBeLessThan(200);
+        }
+        expect(props.effortTier.description).toContain('No post default');
+        expect(props.effortTier.description).toContain('Explicit model wins');
+        expect(props.provider.description).toContain('destination routing without parent settings');
+        expect(props.workspaceId.description).toContain('remote:<serverId>:<workspaceId>');
+        expect(tool.description).toContain('Omit send-only fields');
+        expect(tool.description).toContain('retaining history');
+    });
+});
+
+describe('createSendToConversationTool — cancel dispatch', () => {
+    it('cancels without content, enqueueing, posting, or launching Ralph', async () => {
+        const cancelConversation = vi.fn().mockResolvedValue({
+            processId: 'queue_target', workspaceId: 'ws-2', cancelled: true, status: 'cancelled',
+        });
+        const sendMessage = vi.fn();
+        const launchRalph = vi.fn();
+        const { tool, enqueueChat } = makeTool({ sendMessage, launchRalph, runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', processId: ' queue_target ', workspaceId: 'ws-2' }, invocationStub)).toEqual({
+            processId: 'queue_target', workspaceId: 'ws-2', cancelled: true, status: 'cancelled',
+            openLink: '#repos/ws-2/chats/queue_target',
+        });
+        expect(cancelConversation).toHaveBeenCalledWith('queue_target', 'ws-2');
+        expect(enqueueChat).not.toHaveBeenCalled();
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect(launchRalph).not.toHaveBeenCalled();
+    });
+
+    it.each([undefined, '', '  ', 42])('rejects missing/invalid processId %j', async processId => {
+        const cancelConversation = vi.fn();
+        const { tool, enqueueChat } = makeTool({ runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', processId: processId as never }, invocationStub)).toMatchObject({ error: expect.stringContaining('processId') });
+        expect(cancelConversation).not.toHaveBeenCalled();
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        { processId: 'remote:server:queue_target' },
+        { processId: 'queue_target', workspaceId: 'remote:server:ws-1' },
+        { processId: 'queue_target', workspaceId: 'repo@server' },
+        { processId: 'queue_target', workspaceId: 42 },
+    ])('rejects unsupported routes before dispatch: %j', async fields => {
+        const cancelConversation = vi.fn();
+        const { tool } = makeTool({ runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', ...fields } as never, invocationStub)).toHaveProperty('error');
+        expect(cancelConversation).not.toHaveBeenCalled();
+    });
+
+    it.each(['content', 'mode', 'deliveryMode', 'title', 'model', 'provider', 'effortTier', 'priority'])('rejects send-only %s for cancellation', async field => {
+        const cancelConversation = vi.fn();
+        const { tool } = makeTool({ runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', processId: 'queue_target', [field]: 'dummy' }, invocationStub)).toHaveProperty('error');
+        expect(cancelConversation).not.toHaveBeenCalled();
+    });
+
+    it('reports an unavailable capability and dispatch errors without success fields', async () => {
+        const { tool } = makeTool();
+        expect(await tool.handler({ action: 'cancel', processId: 'target' }, invocationStub)).toMatchObject({ error: expect.stringContaining('not available') });
+        const cancelConversation = vi.fn().mockRejectedValue(new Error('abort failed'));
+        const wired = makeTool({ runtime: { cancelConversation } });
+        expect(await wired.tool.handler({ action: 'cancel', processId: 'target' }, invocationStub)).toEqual({ error: 'Failed to cancel conversation: abort failed' });
+    });
+
+    it('returns terminal no-op status distinctly', async () => {
+        const cancelConversation = vi.fn().mockResolvedValue({ processId: 'target', cancelled: false, status: 'completed' });
+        const { tool } = makeTool({ runtime: { cancelConversation } });
+        expect(await tool.handler({ action: 'cancel', processId: 'target' }, invocationStub)).toEqual({
+            processId: 'target', openLink: '#/process/target', cancelled: false, status: 'completed',
+        });
+    });
+
+    it('rejects unknown actions instead of creating a conversation', async () => {
+        const { tool, enqueueChat } = makeTool();
+        expect(await tool.handler({ action: 'delete' as never, content: 'hello' }, invocationStub)).toHaveProperty('error');
+        expect(enqueueChat).not.toHaveBeenCalled();
+    });
+
+    it('preserves explicit send creation and posting', async () => {
+        const sendMessage = vi.fn().mockResolvedValue({ turnIndex: 2 });
+        const cancelConversation = vi.fn();
+        const { tool, enqueueChat } = makeTool({ sendMessage, runtime: { cancelConversation } });
+        asSuccess(await tool.handler({ action: 'send', content: 'create' }, invocationStub));
+        asSuccess(await tool.handler({ action: 'send', processId: 'queue_target', content: 'post' }, invocationStub));
+        expect(enqueueChat).toHaveBeenCalledTimes(1);
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(cancelConversation).not.toHaveBeenCalled();
     });
 });
 
@@ -228,6 +327,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         const { tool, captured } = makeTool();
         await tool.handler({ content: 'hi', model: 'claude-opus-4-8' }, invocationStub);
         expect(captured.input!.config?.model).toBe('claude-opus-4-8');
+        expect(captured.input!.config?.effortTier).toBeUndefined();
     });
 
     it('targets a different registered workspace when workspaceId is provided', async () => {
@@ -325,6 +425,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(payloadOf(captured.input!).model).toBeUndefined();
         expect(captured.input!.config?.model).toBeUndefined();
         expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+        expect(captured.input!.config?.effortTier).toBe('medium');
         expect(validateProvider).not.toHaveBeenCalled();
         expect(getEffortTiersForProvider).not.toHaveBeenCalled();
     });
@@ -346,16 +447,31 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(captured.input!.config?.reasoningEffort).toBeUndefined();
     });
 
-    it('inherits provider/model/reasoningEffort from the parent for { content } only', async () => {
+    it('inherits only the provider and defaults to Medium for { content } only', async () => {
         const { tool, captured } = makeTool({
             parentMeta: { provider: 'claude', model: 'claude-sonnet-4-6', reasoningEffort: 'high' },
         });
         await tool.handler({ content: 'spawned' }, invocationStub);
         const payload = payloadOf(captured.input!);
         expect(payload.provider).toBe('claude');
-        expect(captured.input!.config?.model).toBe('claude-sonnet-4-6');
-        expect(captured.input!.config?.reasoningEffort).toBe('high');
+        expect(captured.input!.config?.effortTier).toBe('medium');
+        expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
     });
+
+    it.each(['copilot', 'codex', 'claude', 'opencode'] as const)(
+        'defaults an explicit %s provider to Medium without inheriting model or effort',
+        async provider => {
+            const { tool, captured } = makeTool({
+                parentMeta: { provider: 'copilot', model: 'gpt-5', reasoningEffort: 'high' },
+            });
+            asSuccess(await tool.handler({ content: 'work', provider }, invocationStub));
+            expect(payloadOf(captured.input!).provider).toBe(provider);
+            expect(captured.input!.config?.effortTier).toBe('medium');
+            expect(captured.input!.config?.model).toBeUndefined();
+            expect(captured.input!.config?.reasoningEffort).toBeUndefined();
+        },
+    );
 
     it('reads the parent process via store.getProcess(parentProcessId)', async () => {
         const getProcess = vi.fn(async (_id: string) => ({
@@ -471,11 +587,11 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 
-    it('reasoningEffort is inherited but not exposed as a raw schema param', async () => {
+    it('reasoningEffort is inherited with an explicit model but not exposed as a raw schema param', async () => {
         const { tool, captured } = makeTool({
             parentMeta: { provider: 'claude', model: 'claude-opus-4-8', reasoningEffort: 'xhigh' },
         });
-        await tool.handler({ content: 'hi' }, invocationStub);
+        await tool.handler({ content: 'hi', model: 'opus' }, invocationStub);
         expect(captured.input!.config?.reasoningEffort).toBe('xhigh');
 
         const props = (tool.parameters as { properties: Record<string, unknown> }).properties;
@@ -483,13 +599,14 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(props.provider).toBeDefined();
     });
 
-    it('falls back to provider default (no error) when parent has provider but no model', async () => {
+    it('defaults to Medium when parent has provider but no model', async () => {
         const { tool, enqueueChat, captured } = makeTool({ parentMeta: { provider: 'claude' } });
         const result = await tool.handler({ content: 'hi' }, invocationStub);
         expect('error' in result).toBe(false);
         expect(enqueueChat).toHaveBeenCalledTimes(1);
         expect(payloadOf(captured.input!).provider).toBe('claude');
         expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.effortTier).toBe('medium');
     });
 
     it('errors (and does NOT enqueue) with no resolvable parent to inherit a provider from', async () => {
@@ -505,7 +622,7 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         expect(payloadOf(captured.input!).provider).toBe('claude');
     });
 
-    it('inherits parent settings even when targeting a different workspace', async () => {
+    it('inherits the provider with default Medium when targeting a different workspace', async () => {
         const { tool, captured } = makeTool({
             workspaceId: 'ws-1',
             storeWorkspaces: ['ws-1', 'ws-2'],
@@ -515,7 +632,9 @@ describe('createSendToConversationTool — create mode (no processId)', () => {
         const payload = payloadOf(captured.input!);
         expect(payload.workspaceId).toBe('ws-2');
         expect(payload.provider).toBe('claude');
-        expect(captured.input!.config?.reasoningEffort).toBe('high');
+        expect(captured.input!.config?.effortTier).toBe('medium');
+        expect(captured.input!.config?.model).toBeUndefined();
+        expect(captured.input!.config?.reasoningEffort).toBeUndefined();
     });
 
     // ---- spawn link -------------------------------------------------------
@@ -828,7 +947,7 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
         return vi.fn<LaunchRalphFn>(async () => result);
     }
 
-    it('launches with the trimmed goal, caller workspace, and inherited AI selection', async () => {
+    it('launches with the trimmed goal, caller workspace, inherited provider, and default Medium', async () => {
         const launchRalph = makeLaunch();
         const { tool, enqueueChat } = makeTool({
             launchRalph,
@@ -843,7 +962,7 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
             workspaceId: 'ws-1',
             aiSelection: {
                 provider: 'claude',
-                config: { model: 'claude-opus-5-5', reasoningEffort: 'high' },
+                config: { effortTier: 'medium' },
             },
             spawnedFromProcessId: DEFAULT_PARENT_ID,
         });
@@ -865,10 +984,10 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
             parentMeta: { provider: 'claude', model: 'claude-opus-5-5', reasoningEffort: 'high' },
         });
         asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', provider: 'copilot' }, invocationStub));
-        expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'copilot', config: {} });
+        expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'copilot', config: { effortTier: 'medium' } });
     });
 
-    it('launches Auto Ralph with target routing and only explicit overrides', async () => {
+    it('launches Auto Ralph with target routing, default Medium, and explicit overrides', async () => {
         const launchRalph = makeLaunch();
         const { tool } = makeTool({
             launchRalph, storeWorkspaces: ['ws-1', 'ws-2'],
@@ -880,7 +999,10 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
                 workspaceId: 'ws-2', spawnedFromProcessId: DEFAULT_PARENT_ID,
                 aiSelection: { autoProviderRouting: true, config: overrides },
             });
-            expect(launchRalph.mock.lastCall![0].aiSelection).toEqual({ autoProviderRouting: true, config: overrides });
+            expect(launchRalph.mock.lastCall![0].aiSelection).toEqual({
+                autoProviderRouting: true,
+                config: 'model' in overrides ? overrides : { effortTier: 'medium', ...overrides },
+            });
         }
     });
 
@@ -1041,15 +1163,16 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
                 workspaceId: 'w-web',
                 displayName: 'T',
                 payload: { kind: 'chat', mode: 'autopilot', prompt: 'build it', workspaceId: 'w-web', customTitle: 'T' },
+                config: { effortTier: 'medium' },
             },
         });
         // Clone-key targets skip the directory listing entirely.
         expect(directory.list).not.toHaveBeenCalled();
     });
 
-    it.each(['ask', 'autopilot', 'ralph'] as const)('forwards explicit Auto %s to remote routing without parent selections', async mode => {
+    it.each(['ask', 'autopilot', 'ralph'] as const)('forwards default Medium and Auto %s to remote routing without parent selections', async mode => {
         const { tool, directory } = makeTargetTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' } });
-        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w-web', effortTier: 'medium' }, invocationStub));
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w-web' }, invocationStub));
         const call = (directory.startRemoteChat as any).mock.calls[0][0];
         expect(call.kind).toBe(mode === 'ralph' ? 'ralph' : 'queue');
         expect(call.body.config).toEqual({ effortTier: 'medium' });
@@ -1090,7 +1213,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         expect((directory.startRemoteChat as any).mock.calls[0][0]).toEqual({
             serverId: 'srv-1',
             kind: 'ralph',
-            body: { goalSpec: 'goal', workspaceId: 'w-web', config: {}, title: 'G' },
+            body: { goalSpec: 'goal', workspaceId: 'w-web', config: { effortTier: 'medium' }, title: 'G' },
         });
         expect(result.sessionId).toBe('ralph-1');
     });
@@ -1224,7 +1347,7 @@ describe('createSendToConversationTool — messaging completion notices', () => 
 });
 
 describe('Auto delegation capability fallback', () => {
-    it.each(['ask', 'autopilot', 'ralph'] as const)('inherits parent settings for disabled local Auto %s across workspaces', async mode => {
+    it.each(['ask', 'autopilot', 'ralph'] as const)('inherits the provider with default Medium for disabled local Auto %s across workspaces', async mode => {
         const launchRalph = vi.fn().mockResolvedValue({ ok: true, processId: 'queue_r', sessionId: 'r' });
         const validateProvider = vi.fn();
         const { tool, captured } = makeTool({ storeWorkspaces: ['ws-1', 'ws-2'], launchRalph,
@@ -1234,16 +1357,18 @@ describe('Auto delegation capability fallback', () => {
         asSuccess(await tool.handler({ content: 'goal', provider: 'auto', workspaceId: 'ws-2', mode }, invocationStub));
         expect(validateProvider).toHaveBeenCalledExactlyOnceWith('claude');
         if (mode === 'ralph') {
-            expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'claude', config: { model: 'sonnet', reasoningEffort: 'high' } });
+            expect(launchRalph.mock.calls[0][0].aiSelection).toEqual({ provider: 'claude', config: { effortTier: 'medium' } });
         } else {
             expect(payloadOf(captured.input!).provider).toBe('claude');
             expect((payloadOf(captured.input!).context as any).autoProviderRouting).toBeUndefined();
-            expect(captured.input!.config).toMatchObject({ model: 'sonnet', reasoningEffort: 'high' });
+            expect(captured.input!.config).toMatchObject({ effortTier: 'medium' });
+            expect(captured.input!.config?.model).toBeUndefined();
+            expect(captured.input!.config?.reasoningEffort).toBeUndefined();
         }
     });
 
     it.each([
-        [{}, { model: 'sonnet', reasoningEffort: 'high' }],
+        [{}, { effortTier: 'medium' }],
         [{ model: 'opus' }, { model: 'opus', reasoningEffort: 'high' }],
         [{ effortTier: 'medium' }, { effortTier: 'medium' }],
         [{ model: 'opus', effortTier: 'medium' }, { model: 'opus', reasoningEffort: 'high' }],
@@ -1303,6 +1428,8 @@ describe('Auto delegation capability fallback', () => {
         const { tool } = makeTool({ sendMessage, runtime: { isAutoProviderRoutingAvailable } });
         asSuccess(await tool.handler({ content: 'continue', processId: 'queue_existing', provider: 'auto' }, invocationStub));
         expect(sendMessage).toHaveBeenCalledTimes(1);
+        expect(sendMessage.mock.calls[0][0]).not.toHaveProperty('model');
+        expect(sendMessage.mock.calls[0][0]).not.toHaveProperty('effort');
         expect(isAutoProviderRoutingAvailable).not.toHaveBeenCalled();
     });
 
@@ -1317,7 +1444,7 @@ describe('Auto delegation capability fallback', () => {
         });
         const validateProvider = vi.fn().mockRejectedValue(new Error('Local Codex disabled'));
         const { tool, enqueueChat } = makeTool({ parentMeta: { provider: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' }, runtime: { workspaceDirectory, validateProvider } });
-        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w1', effortTier: 'medium' }, invocationStub));
+        asSuccess(await tool.handler({ content: 'goal', provider: 'auto', mode, workspaceId: 'remote:srv-1:w1' }, invocationStub));
         expect(fetchImpl).toHaveBeenCalledTimes(3);
         const body = JSON.parse(fetchImpl.mock.calls[2][1]!.body as string);
         expect(mode === 'ralph' ? body.provider : body.payload.provider).toBe('codex');

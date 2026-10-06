@@ -31,6 +31,7 @@ export interface OpenHtmlPageDetail {
     filePath: string;
     wsId: string;
     scopeWsId: string;
+    chatId?: string;
     handled?: boolean;
 }
 

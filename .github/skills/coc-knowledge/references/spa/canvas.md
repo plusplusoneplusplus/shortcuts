@@ -19,10 +19,10 @@ provider-neutral selected-skill path. The skill chooses among Markdown, code,
 Mermaid, SVG, Excalidraw, and extension canvases using the existing canvas tools;
 it does not add a canvas route, tool, or storage location.
 
-The source canvas (files, notes, folders) and the whisper diff are still chat-owned
-columns, mutually exclusive with the scratchpad, with a session-only per-chat restore
-memory (`features/chat/openCanvasMemory.ts`). No AI-canvas preference affects them; the
-retired `coc.canvasPanel.closed.*` and `coc.canvasPanel.width.*` keys are inert.
+Source files, notes, folders, and whisper diffs use the unified panel when it hosts
+their chat. Mobile, embedded, pop-out, and background chats retain chat-owned source
+or diff docks and session-only restore memory (`features/chat/openCanvasMemory.ts`).
+Inline content remains in the transcript.
 
 ## CanvasPanel
 
@@ -230,18 +230,21 @@ Global delegation in `shared/file-path/file-path-preview.ts` normalizes bare
 terminal punctuation outside the clickable span and its metadata; explicit Markdown
 hrefs and paths inside code or preformatted blocks stay literal.
 
-With `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS` enabled, assistant-response clicks dispatch
-`coc-open-source-canvas` carrying the bare path, workspace hint, optional `sourceFilePath`,
-and optional line/range metadata. Local `file://` hrefs convert to filesystem paths and
-GitHub-style `#L<line>` / `#L<start>-L<end>` hashes carry as line metadata, so the resolver
-never treats a file URI as workspace-relative text. `ChatDetail` owns the listener, closes
-sibling right-side panels, and mounts `SourceCanvasPanel` as the desktop right column or a
-mobile bottom sheet; flag-off, user-message, and non-chat references route to
-`MarkdownReviewDialog` instead. File-backed plan paths in `ImplementPlanCard` go through
-`onOpenPlanFile` into the same `openFileRef` routing as in-chat links, as a `kind: 'note'`
-ref scoped to the chat's source workspace (remote clones included): an editable note tab in
-the unified right panel when one hosts the chat, otherwise the docked canvas; canvas-backed
-plan labels stay static because they name no on-disk file.
+With `SHOW_SOURCE_CANVAS_FOR_CHAT_LINKS` enabled, user/assistant file clicks and
+portaled tool previews dispatch `coc-open-source-canvas` with originating chat,
+workspace, source-file, and line/range metadata. File URIs and GitHub line hashes
+normalize through the shared parser. `ChatDetail` uses `resolveChatFileLink` to open
+or focus a permanent right-panel tab; group ownership is preflighted without reading
+content. Outside-root and group-probed paths use read-only workspace preview tabs.
+Directories reveal the owning Explorer folder. Hosted resolution errors are surfaced,
+not redirected into another column. Without a matching panel, the source dock remains;
+flag-off and non-chat links use `MarkdownReviewDialog`.
+
+File-backed plans use the same routing with `kind: 'note'`, preserving editable
+workspace-owned note tabs and concrete remote routes. Inline thumbnails, lightboxes,
+tables, and canvas embeds stay inline. CSV files render as text; PDF, Office, media,
+and archives have no general file viewer. File tabs offer Download for unsupported,
+oversized, and binary previews through the same owning server's authorized endpoint.
 
 With `features.htmlPageTab` on in the desktop host, assistant `.html`/`.htm`
 links resolve through `resolveSourceCanvasTarget` and open through
@@ -255,9 +258,8 @@ path still names an existing HTML file. A successful open emits `coc-open-html-p
 event and opens a workspace-scoped, session-only tab. Without a matching panel
 the native view closes and the ordinary source-canvas event fires. Rejected,
 unresolved, remote, and browser-hosted links use that source-canvas path too.
-The page tab's View source action sets `forceSourceViewer` on the source-canvas
-event so `ChatDetail` opens the read-only viewer even when an editable file tab
-would otherwise be eligible.
+The page tab's View source action carries `forceSourceViewer` and the selected chat:
+a matching host opens a read-only source tab, and non-hosted chats use the source dock.
 
 Separately, the shared `MarkdownView` intercepts assistant-prose deep-links with
 `#/process/<id>`, `#/session/<id>`, or `#/processes/<id>` hrefs; the router resolves the

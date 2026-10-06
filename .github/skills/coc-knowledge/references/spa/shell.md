@@ -110,7 +110,9 @@ The Windows desktop helper enables OS-account SSO by default at environment crea
 Electron uses sandboxed `WebContentsView`s; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
 Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile and downloads go to the system browser.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
-WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays. `BrowserToolbarMenu` portals engine information and the current-page external-open action to the owning renderer document, positioned with `useAnchoredPanelPosition`. `useNativeViewPlacement` hides views while explicit `data-native-view-overlay` elements are mounted, including small menus between its hit-test probes; closing the menu restores eligible active views.
+WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
+
+`BrowserToolbarMenu` renders engine information and the current-page external-open action in a reserved toolbar row. The native page stays visible below the menu and follows its placeholder bounds without reopening or navigating. `useNativeViewPlacement` hides views for overlapping DOM content and explicit `data-native-view-overlay` elements, including small overlays between its hit-test probes; dismissal restores eligible active views.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
 
 The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
@@ -385,8 +387,12 @@ its active tab is a file, and a destination exists; otherwise browser behavior
 is left untouched. Alt+Arrow on a focused strip tab reorders the tab instead
 of stepping history.
 
-Unified-panel tabs close on middle-click through the same dirty-buffer and live
-terminal guards as their close buttons. Their accessible context menu provides
+Unified-panel tabs close on Ctrl/Cmd+W when the visible panel owns keyboard
+focus, and on middle-click, through the same dirty-buffer and live terminal
+guards as their close buttons. Git's portal host takes focus on clicks in
+nonfocusable diff content through a native DOM capture listener; editor and
+control focus stay intact. Plain Ctrl+W inside the active terminal retains its
+shell binding. The tab strip's accessible context menu provides
 preview promotion, visible-strip bulk close commands, and file-only path copy and
 Explorer reveal. Bulk close targets span the tools/resources divider in
 rendered order, exclude tabs hidden under other chats, and run each target through

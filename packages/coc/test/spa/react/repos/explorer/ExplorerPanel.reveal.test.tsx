@@ -112,6 +112,13 @@ afterEach(() => {
 });
 
 describe('AC-01 — Collapse All', () => {
+    it('expands the clicked folder itself when the panel requests a directory reveal', async () => {
+        render(<ExplorerPanel workspaceId={WS} mode="sidebar"
+            revealRequest={{ path: 'a/b/c', nonce: 1, directory: true }} />);
+        await waitFor(() => expect(screen.getByTestId('tree-node-a/b/c/deep.ts')).toBeInTheDocument());
+        expect(storedExpanded()).toContain('a/b/c');
+        expect(storedSelected()).toBe('a/b/c');
+    });
     it('clears every expanded folder in one click', async () => {
         await mount({ expanded: ['a', 'a/b'] });
         expect(screen.getByTestId('tree-node-a/b')).toBeInTheDocument();

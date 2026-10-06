@@ -18,6 +18,7 @@ import { UnifiedTabView } from '../../../../src/server/spa/client/react/features
 import type { UnifiedPanelTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTabsModel';
 import { resetLanguageDocumentStoresForTests } from '../../../../src/server/spa/client/react/features/language-servers/documentStore';
 import { FakeClient, readyState, diagnostic } from '../language-servers/fakeLanguageTransport';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 const MEMBER_A = 'member-a';
 const MEMBER_B = 'member-b';
@@ -118,6 +119,7 @@ beforeEach(() => {
 
 afterEach(() => {
     resetLanguageDocumentStoresForTests();
+    resetCloneRegistryForTests();
 });
 
 describe('right panel — language routing by tab owner (AC-04)', () => {
@@ -204,6 +206,10 @@ describe('right panel — language routing by tab owner (AC-04)', () => {
     });
 
     it('keeps same-id clones on different hosts in separate routed stores', async () => {
+        registerCloneBaseUrls([
+            { workspaceId: SHARED_MEMBER, serverId: 'server-a', baseUrl: 'https://alpha.example' },
+            { workspaceId: SHARED_MEMBER, serverId: 'server-b', baseUrl: 'https://beta.example' },
+        ]);
         const first = renderTab(SHARED_MEMBER, 'group-a', SHARED_ROUTE_A);
         const second = renderTab(SHARED_MEMBER, 'group-b', SHARED_ROUTE_B);
         const clientA = transport.clients.get(SHARED_ROUTE_A);

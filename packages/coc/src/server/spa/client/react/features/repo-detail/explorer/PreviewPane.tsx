@@ -55,6 +55,9 @@ import {
 } from '../../language-servers/editorNavigation';
 import { TRUSTED_PATH_PREFIX } from './ExactOpen';
 import { explorerApi } from './explorerApi';
+import { WORKSPACE_PREVIEW_PREFIX, readWorkspacePreview, workspacePreviewClient, workspacePreviewUrl } from '../../../shared/file-viewer/workspacePreview';
+import { resolveLineRange, toLines } from '../../../shared/file-viewer/lineRange';
+import { parseRemoteCloneKey } from '../../../repos/cloneIdentity';
 
 export interface PreviewPaneProps {
     repoId: string;
@@ -76,6 +79,7 @@ export interface PreviewPaneProps {
      * when the file is opened from a content-search hit.
      */
     revealLine?: number;
+    endLine?: number;
     /**
      * One-based column within `revealLine` for the cursor. A search hit leaves it
      * unset; a language-server navigation supplies the target symbol's column.
@@ -167,27 +171,35 @@ function RenderedMarkdown({ content }: { content: string }) {
     );
 }
 
-export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
+export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, filePath, fileName, markdownPreview = false, revealLine, endLine, revealColumn, revealNonce, symbolCandidate, onClose, onDirtyChange, onRegisterSave, onStatusChange, onNotFound, onNavigate, onNavigateExternal, onNavigationMount, onNavigationLocation }: PreviewPaneProps) {
     const isTrusted = filePath.startsWith(TRUSTED_PATH_PREFIX);
-    const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length) : filePath;
+    const isWorkspacePreview = filePath.startsWith(WORKSPACE_PREVIEW_PREFIX);
+    const readOnly = isTrusted || isWorkspacePreview;
+    const actualPath = isTrusted ? filePath.slice(TRUSTED_PATH_PREFIX.length)
+        : isWorkspacePreview ? filePath.slice(WORKSPACE_PREVIEW_PREFIX.length) : filePath;
 
-    const read = useCallback((signal: AbortSignal) => (
-        isTrusted
+    const read = useCallback(async (signal: AbortSignal) => {
+        if (!isTrusted && parseRemoteCloneKey(routingRef)) workspacePreviewClient(repoId, routingRef);
+        return isWorkspacePreview
+            ? readWorkspacePreview(repoId, actualPath, routingRef, signal)
+            : isTrusted
             ? explorerApi.readTrustedBlob(actualPath, { signal })
             : routingRef === undefined
                 ? explorerApi.readBlob(repoId, actualPath, { signal })
                 : explorerApi.readBlob(repoId, actualPath, { signal }, routingRef)
-    ), [actualPath, isTrusted, repoId, routingRef]);
+    }, [actualPath, isTrusted, isWorkspacePreview, repoId, routingRef]);
 
     const write = useMemo(() => (
-        isTrusted
+        readOnly
             ? undefined
-            : (content: string) => (
-                routingRef === undefined
+            : (content: string) => {
+                if (parseRemoteCloneKey(routingRef)) workspacePreviewClient(repoId, routingRef);
+                return (routingRef === undefined
                     ? explorerApi.writeBlob(repoId, actualPath, content)
                     : explorerApi.writeBlob(repoId, actualPath, content, routingRef)
-            ).then(() => undefined)
-    ), [isTrusted, repoId, actualPath, routingRef]);
+                ).then(() => undefined);
+            }
+    ), [readOnly, repoId, actualPath, routingRef]);
 
     const handleNotFound = useCallback((err: Error) => {
         if ((err as { status?: number }).status === 404) onNotFound?.();
@@ -197,7 +209,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         blob, displayBlob, isOversized, loading, error, status, retry,
         isDirty, isSaving, editedContent, onChange: recordEdit, save: writeFile, discard: discardEdits,
     } = useFileContent({
-        key: `${isTrusted ? 'trusted' : repoId}:${actualPath}`,
+        key: `${routingRef ?? repoId}:${filePath}`,
         read,
         write,
         onError: handleNotFound,
@@ -215,7 +227,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     // A live repo document, or not. A trusted absolute path belongs to no
     // workspace, an oversize file is shown truncated and must never be sent as
     // if it were complete, and a binary blob has no text to synchronize.
-    const languageEnabled = !isTrusted && !loading && !error
+    const languageEnabled = !readOnly && !loading && !error
         && blob?.encoding === 'utf-8' && !isOversized;
     const canPreviewMarkdown = markdownPreview && !isTrusted && !isOversized
         && displayBlob?.encoding === 'utf-8' && /\.(md|markdown)$/i.test(fileName);
@@ -496,22 +508,51 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     saveRef.current = handleSave;
     useEffect(() => {
         if (!onRegisterSave) return;
-        if (isTrusted) {
+        if (readOnly) {
             onRegisterSave(null);
             return;
         }
         onRegisterSave(() => saveRef.current());
         return () => onRegisterSave(null);
-    }, [onRegisterSave, isTrusted]);
+    }, [onRegisterSave, readOnly]);
+
+    const [downloadError, setDownloadError] = useState('');
+    const [downloading, setDownloading] = useState(false);
+    useEffect(() => setDownloadError(''), [repoId, routingRef, actualPath]);
+    const download = async () => {
+        setDownloadError('');
+        setDownloading(true);
+        try {
+            const response = await fetch(workspacePreviewUrl(repoId, actualPath, routingRef));
+            if (!response.ok) throw new Error(`Download failed (${response.status}).`);
+            const url = URL.createObjectURL(await response.blob());
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = fileName;
+            anchor.click();
+            setTimeout(() => URL.revokeObjectURL(url), 0);
+        } catch (err) {
+            setDownloadError(err instanceof Error ? err.message : 'Download failed.');
+        } finally {
+            setDownloading(false);
+        }
+    };
 
     return (
         <div className="relative w-full h-full overflow-hidden" data-testid="preview-pane">
             {/* Floating toolbar: close + save controls */}
-            {!loading && !error && (
+            {!loading && (
                 <div
                     className="absolute top-2 right-6 z-10 flex items-center gap-1.5"
                     data-testid="preview-toolbar"
                 >
+                    {!isTrusted && (error || isOversized || displayBlob?.encoding === 'base64') && (
+                        <button type="button" onClick={download} disabled={downloading}
+                            className="text-xs px-2 py-0.5 rounded bg-white dark:bg-[#2d2d2d] border border-[#c8c8c8] dark:border-[#555]"
+                            data-testid="preview-download">
+                            {downloading ? 'Downloading...' : 'Download'}
+                        </button>
+                    )}
                     {isDirty && !isTrusted && (
                         <button
                             className="text-[10px] px-2 py-0.5 rounded bg-[#0078d4] text-white hover:bg-[#106ebe] disabled:opacity-50 transition-colors shadow-sm"
@@ -580,7 +621,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
             ) : displayBlob ? (
                 showRendered ? <RenderedMarkdown content={displayBlob.content} /> :
                 <FileViewer
-                    selectionContext={isTrusted ? undefined : {
+                    selectionContext={readOnly ? undefined : {
                         workspaceId: repoId,
                         filePath: actualPath,
                         destinationId: routingRef ?? repoId,
@@ -588,17 +629,21 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     blob={displayBlob}
                     fileName={fileName}
                     onChange={handleEditorChange}
-                    onSave={isTrusted ? undefined : handleSave}
+                    onSave={readOnly ? undefined : handleSave}
+                    markdown={isWorkspacePreview && !canPreviewMarkdown ? 'toggle' : 'off'}
                     revealLine={revealLine}
+                    highlightRange={endLine !== undefined && displayBlob.encoding === 'utf-8'
+                        ? resolveLineRange(revealLine, endLine, toLines(displayBlob.content).length) : null}
                     revealColumn={revealColumn}
                     revealNonce={revealNonce}
                     markers={languageEnabled ? languageDocument.markers : undefined}
                     onModelMount={displayBlob.encoding === 'utf-8'
-                        ? (isTrusted ? mountNonEditableModel : handleModelMount)
+                        ? (readOnly ? mountNonEditableModel : handleModelMount)
                         : undefined}
                     codeTestId="monaco-container"
                 />
             ) : null}
+            {downloadError && <div role="alert" className="absolute bottom-2 left-2 text-xs text-red-600">{downloadError}</div>}
 
             {!loading && !error && languageEnabled && (
                 <div className="absolute bottom-1 right-3 z-10 max-w-[70%] pointer-events-none">

@@ -174,6 +174,7 @@ export interface UnifiedPanelTab {
     repoLabel?: string;
     /** One-based line to reveal when the resource loads, for a deep link. */
     line?: number;
+    endLine?: number;
     /**
      * One-based column within `line` for the cursor. Only a language-server
      * navigation supplies one; a deep link lands at the start of the line.
@@ -362,6 +363,7 @@ function sameTab(a: UnifiedPanelTab, b: UnifiedPanelTab): boolean {
         && a.label === b.label
         && a.repoLabel === b.repoLabel
         && a.line === b.line
+        && a.endLine === b.endLine
         && a.column === b.column
         && a.revealNonce === b.revealNonce
         && a.symbolCandidate === b.symbolCandidate
@@ -495,6 +497,7 @@ export interface OpenUnifiedTabInput {
     label: string;
     repoLabel?: string;
     line?: number;
+    endLine?: number;
     column?: number;
     /** Present when a fuzzy repository symbol lookup opened this location. */
     symbolCandidate?: true;
@@ -512,10 +515,11 @@ let revealSequence = 0;
 
 /** The reveal fields a tab already holds, nonce included, so re-focusing it
  * neither forgets the position nor asks for a fresh reveal. */
-function keptReveal(tab: UnifiedPanelTab): Pick<UnifiedPanelTab, 'line' | 'column' | 'revealNonce'> {
+function keptReveal(tab: UnifiedPanelTab): Pick<UnifiedPanelTab, 'line' | 'endLine' | 'column' | 'revealNonce'> {
     if (tab.line === undefined) return {};
     return {
         line: tab.line,
+        ...(tab.endLine === undefined ? {} : { endLine: tab.endLine }),
         ...(tab.column === undefined ? {} : { column: tab.column }),
         ...(tab.revealNonce === undefined ? {} : { revealNonce: tab.revealNonce }),
     };
@@ -528,11 +532,12 @@ function keptReveal(tab: UnifiedPanelTab): Pick<UnifiedPanelTab, 'line' | 'colum
  * Naming a line always mints a fresh `revealNonce`, which is what makes a
  * second jump to a position the tab already stores still re-centre the editor.
  */
-function revealFields(input: { line?: number; column?: number }): Pick<UnifiedPanelTab, 'line' | 'column' | 'revealNonce'> {
+function revealFields(input: { line?: number; endLine?: number; column?: number }): Pick<UnifiedPanelTab, 'line' | 'endLine' | 'column' | 'revealNonce'> {
     if (input.line === undefined) return {};
     revealSequence += 1;
     return {
         line: input.line,
+        ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
         ...(input.column === undefined ? {} : { column: input.column }),
         revealNonce: revealSequence,
     };
@@ -983,6 +988,8 @@ function parseTab(raw: unknown, expectedScopeKey: string): UnifiedPanelTab | nul
         ...(typeof value.line === 'number' && Number.isFinite(value.line) && value.line > 0
             ? {
                 line: value.line,
+                ...(typeof value.endLine === 'number' && Number.isInteger(value.endLine) && value.endLine >= value.line
+                    ? { endLine: value.endLine } : {}),
                 ...(typeof value.column === 'number' && Number.isFinite(value.column) && value.column > 0
                     ? { column: value.column }
                     : {}),

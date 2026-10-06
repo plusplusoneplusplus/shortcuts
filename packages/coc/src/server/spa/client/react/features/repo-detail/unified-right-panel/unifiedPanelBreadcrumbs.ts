@@ -21,6 +21,7 @@
  */
 
 import { TRUSTED_PATH_PREFIX } from '../explorer/ExactOpen';
+import { WORKSPACE_PREVIEW_PREFIX } from '../../../shared/file-viewer/workspacePreview';
 import type { UnifiedPanelTab } from './unifiedPanelTabsModel';
 
 /** What the toolbar row renders for one active file tab. */
@@ -49,8 +50,9 @@ export function unifiedToolbarBreadcrumbs(
 ): UnifiedToolbarBreadcrumbs | null {
     if (!tab || tab.kind !== 'file') return null;
 
-    const trusted = tab.resourceId.startsWith(TRUSTED_PATH_PREFIX);
-    const path = trusted ? tab.resourceId.slice(TRUSTED_PATH_PREFIX.length) : tab.resourceId;
+    const prefix = [TRUSTED_PATH_PREFIX, WORKSPACE_PREVIEW_PREFIX].find(value => tab.resourceId.startsWith(value));
+    const trusted = prefix !== undefined;
+    const path = prefix ? tab.resourceId.slice(prefix.length) : tab.resourceId;
     const interactive = !trusted;
 
     return {
