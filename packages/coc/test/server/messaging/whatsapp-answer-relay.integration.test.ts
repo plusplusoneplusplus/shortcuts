@@ -40,7 +40,7 @@ describe('WhatsApp answer relay through real multi-repo queues', () => {
         }
         const ai = createMockSDKService();
         ai.mockSendMessage.mockImplementation(async ({ prompt }: { prompt: string }) => ({
-            success: true, response: `Answer for ${prompt.trimEnd().split('\n').at(-1)}`,
+            success: true, response: `Answer for ${prompt.trimEnd().split('\n').at(-1)}\n\n| Key | Value |\n| --- | --- |\n| Status | **Ready** |`,
             sessionId: 'test-session',
         }));
         const registry = new RepoQueueRegistry();
@@ -108,6 +108,9 @@ describe('WhatsApp answer relay through real multi-repo queues', () => {
         await until(() => bindings.findMessage('follow-a')?.status === 'delivered');
         expect(bindings.findMessage('follow-a')?.workspaceId).toBe('ws-a');
         expect(sends.find(row => row.quotedId === 'follow-a')?.text).toContain('Answer for one more');
+        for (const id of ['question-a', 'question-b', 'pending-a', 'follow-a']) {
+            expect(sends.find(row => row.quotedId === id)?.text).toContain('Key → Value\nStatus: *Ready*');
+        }
         expect(bindings.selectedRepo).toBe('ws-b');
         expect((await store.getProcess(alpha.processId, 'ws-a'))?.conversationTurns
             ?.filter(turn => turn.role === 'user').length).toBe(3);
