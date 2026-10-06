@@ -60,6 +60,92 @@ describe('durable review admission', () => {
             .drainPendingMessages(processId, 'prior-turn');
     }
 
+    async function recover(owner = workspaceId) {
+        const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service });
+        executor.setQueueManager(queue);
+        await executor.recoverPendingMessages(owner, processId);
+    }
+
+    it.each(['cancelled', 'cancelling', 'running', 'queued', 'created'] as const)(
+        'does not recover buffers for a %s parent', async status => {
+            await store.updateProcess(processId, { status: 'running' });
+            await deliver();
+            await store.updateProcess(processId, { status });
+            await recover();
+            expect(queue.getAll()).toEqual([]);
+            expect((await store.getProcess(processId))?.pendingMessages).toHaveLength(1);
+        });
+
+    it('does not recover a foreign workspace or a parent awaiting an answer', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await deliver();
+        await store.updateProcess(processId, { status: 'completed' });
+        await recover('foreign');
+        expect(queue.getAll()).toEqual([]);
+        await store.updateProcess(processId, { pendingAskUser: [{ toolCallId: 'question', questions: [] }] } as any);
+        await recover();
+        expect(queue.getAll()).toEqual([]);
+    });
+
+    it('leaves a persisted answer for ask-user resume before draining reviews', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await deliver();
+        await store.updateProcess(processId, { status: 'failed', pendingAskUserAnswer: {
+            batchId: 'batch', submittedAt: new Date().toISOString(), answers: [],
+        } });
+        await recover();
+        expect(queue.getAll()).toEqual([]);
+        expect((await store.getProcess(processId))?.pendingMessages).toHaveLength(1);
+    });
+
+    it('recovers a failed parent after a transient enqueue failure without duplicating its turn', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await deliver();
+        await store.updateProcess(processId, { status: 'failed' });
+        vi.spyOn(queue, 'enqueue').mockImplementationOnce(() => { throw new Error('queue write'); });
+        await expect(recover()).rejects.toThrow('queue write');
+        restart();
+        await recover();
+        expect(queue.getTask(receiptId)).toBeDefined();
+        expect((await store.getProcess(processId))?.conversationTurns).toHaveLength(1);
+        expect((await store.getProcess(processId))?.pendingMessages ?? []).toEqual([]);
+    });
+
+    it.each(['queued', 'running'] as const)('leaves an idle snapshot with a %s task alone', async status => {
+        await store.updateProcess(processId, { status: 'running' });
+        await deliver();
+        await store.updateProcess(processId, { status: 'completed' });
+        queue.enqueue({ id: 'human', processId, type: 'chat', priority: 'normal', payload: { kind: 'chat' } });
+        if (status === 'running') queue.markStarted('human');
+        await recover();
+        expect(queue.getAll()).toHaveLength(1);
+        expect(queue.getTask(receiptId)).toBeUndefined();
+    });
+
+    it('serializes concurrent idle recovery without duplicate reviews', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await deliver();
+        await store.updateProcess(processId, { status: 'completed' });
+        await Promise.all([recover(), recover(), recover()]);
+        expect(queue.getAll()).toHaveLength(1);
+        expect((await store.getProcess(processId))?.conversationTurns).toHaveLength(1);
+    });
+
+    it('reconciles a terminal head receipt before recovering the next review', async () => {
+        await store.updateProcess(processId, { status: 'running' });
+        await deliver();
+        await deliver('second');
+        vi.spyOn(store, 'updateProcess').mockRejectedValueOnce(new Error('remove failed'));
+        await expect(drain()).rejects.toThrow('remove failed');
+        queue.markStarted(receiptId);
+        queue.markCompleted(receiptId, {});
+        await store.updateProcess(processId, { status: 'completed' });
+        await recover();
+        expect(queue.getTask('second')).toBeDefined();
+        expect((await store.getProcess(processId))?.pendingMessages ?? []).toEqual([]);
+        expect((await store.getProcess(processId))?.conversationTurns).toHaveLength(2);
+    });
+
     it('admits an idle review in the parent workspace and preserves its mode', async () => {
         expect(await deliver()).toMatchObject({ path: 'enqueued', taskId: receiptId, turnIndex: 0 });
         expect(queue.getTask(receiptId)).toMatchObject({

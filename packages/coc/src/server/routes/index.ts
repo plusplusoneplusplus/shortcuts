@@ -486,6 +486,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const delegatedJobReviews = new DelegatedJobReviews({
         jobs: delegatedJobs, store, queue: queueFacade,
         delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
+        recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
     });
     const delegatedJobResults = new DelegatedJobResults({
         jobs: delegatedJobs, store, queue: queueFacade, onResult: job => delegatedJobReviews.schedule(job),

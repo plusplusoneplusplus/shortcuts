@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SqliteProcessStore, TaskQueueManager, type CreateTaskInput } from '@plusplusoneplusplus/forge';
 import type { QueueExecutorBridge } from '../../../src/server/core/api-handler';
 import { ProcessMessageDeliveryService } from '../../../src/server/processes/process-message-delivery-service';
+import { CLITaskExecutor } from '../../../src/server/queue/queue-executor-bridge';
+import { createMockSDKService } from '../../helpers/mock-sdk-service';
 import { DelegatedJobStore } from '../../../src/server/delegation/delegated-job-store';
 import { DelegatedJobResults } from '../../../src/server/delegation/delegated-job-results';
 import { DelegatedJobReviews, delegatedReviewReceipt } from '../../../src/server/delegation/delegated-job-reviews';
@@ -27,7 +29,11 @@ describe('delegated success/failure review scheduling', () => {
 
     function wire() {
         delivery = new ProcessMessageDeliveryService({ store, bridge });
-        reviews = new DelegatedJobReviews({ jobs, store, delivery, queue });
+        const executor = new CLITaskExecutor(store, { aiService: createMockSDKService().service });
+        executor.setQueueManager(queue);
+        reviews = new DelegatedJobReviews({ jobs, store, delivery, queue,
+            recoverPendingMessages: (workspaceId, processId) => executor.recoverPendingMessages(workspaceId, processId),
+        });
         recorder = new DelegatedJobResults({ jobs, store, queue, onResult: job => reviews.schedule(job) });
     }
 
@@ -77,6 +83,33 @@ describe('delegated success/failure review scheduling', () => {
         wire();
         await recorder.restore();
     }
+
+    it('recovers the idle parent buffer on restart, preserving earlier user messages', async () => {
+        await store.updateProcess(parentId, { status: 'running' });
+        await store.appendPendingMessage(parentId, { id: 'human', content: 'User first', mode: 'sentinel',
+            createdAt: new Date().toISOString() });
+        await reviews.schedule(record());
+        await store.updateProcess(parentId, { status: 'completed' });
+        await restart();
+        expect(queue.getAll()).toHaveLength(1);
+        expect(queue.getAll()[0].payload).toMatchObject({ prompt: 'User first', workspaceId: parentWorkspace });
+        expect((await store.getProcess(parentId))?.pendingMessages?.map(message => message.id)).toEqual([receipt()]);
+        await restart();
+        expect(queue.getAll()).toHaveLength(1);
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+    });
+
+    it('recovers an idle review receipt once after restart', async () => {
+        await store.updateProcess(parentId, { status: 'running' });
+        await reviews.schedule(record());
+        await store.updateProcess(parentId, { status: 'completed' });
+        await restart();
+        expect(queue.getTask(receipt())?.payload).toMatchObject({ workspaceId: parentWorkspace, mode: 'sentinel' });
+        expect((await store.getProcess(parentId))?.pendingMessages ?? []).toEqual([]);
+        await restart();
+        expect(queue.getAll()).toHaveLength(1);
+        expect((await store.getProcess(parentId))?.conversationTurns).toHaveLength(1);
+    });
 
     it('queues one live cross-workspace success review in the recorded parent', async () => {
         queue.enqueue({ id: 'child', processId: childId, type: 'chat', priority: 'normal',

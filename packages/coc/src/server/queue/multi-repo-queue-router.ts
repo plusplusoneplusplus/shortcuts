@@ -471,6 +471,14 @@ export class MultiRepoQueueRouter extends EventEmitter {
         return action(this.getOrCreateBridge(rootPath));
     }
 
+    /** Recover buffered results on the original parent's queue, independent of topic selection. */
+    async recoverPendingMessages(workspaceId: string, processId: string): Promise<void> {
+        const proc = await this.store.getProcess(processId);
+        if (proc?.metadata?.workspaceId !== workspaceId) return;
+        await this.withOwnerBridge(processId, async bridge =>
+            bridge.recoverPendingMessages?.(workspaceId, processId));
+    }
+
     /** Answer a pending ask-user question on the owning per-repo bridge. */
     async answerAskUserQuestion(processId: string, questionId: string, answer: AskUserAnswerValue): Promise<boolean> {
         const handled = await this.withOwnerBridge(processId, async (bridge) =>

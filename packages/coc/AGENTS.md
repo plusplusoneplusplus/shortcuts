@@ -116,7 +116,10 @@ references before editing. Paths are package-relative.
   bounded untrusted result context. Resolve the parent's mode into pending/task payloads.
   Reconcile receipt admission before ledger acknowledgement; reuse emits no realtime intents.
   Review completion settles delivery; permanent routing rejection settles failure, while
-  transient storage errors remain recoverable. Cancellation, Ralph and remote delivery use
+  transient storage errors remain recoverable. Buffered admission invokes owner-queue recovery
+  outside admission; idle completed/failed parents drain the head in order, reconciling terminal
+  receipts first. Active queues, stopped parents and pending questions/answers block recovery.
+  Cancellation, Ralph and remote delivery use
   separate boundaries. Child completion grants no additional action authority.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.

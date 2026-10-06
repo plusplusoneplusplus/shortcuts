@@ -62,6 +62,26 @@ describe('MultiRepoQueueRouter', () => {
         sdkMocks.resetAll();
     });
 
+    it('recovers pending messages only on the recorded parent workspace queue', async () => {
+        const { bridge, registry, store } = createBridge();
+        try {
+            const parentRoot = process.cwd();
+            await store.addProcess({ id: 'parent', type: 'chat', status: 'completed', startTime: new Date(),
+                promptPreview: 'Dispatch', workingDirectory: parentRoot,
+                metadata: { workspaceId: 'ws-parent', mode: 'sentinel' } });
+            await store.appendPendingMessage('parent', { id: 'receipt', relayRequestId: 'receipt',
+                content: 'Result review', mode: 'sentinel', createdAt: new Date().toISOString() });
+            await bridge.recoverPendingMessages('ws-child', 'parent');
+            expect(registry.getAllQueues().size).toBe(0);
+            await bridge.recoverPendingMessages('ws-parent', 'parent');
+            expect(registry.getQueueForRepo(parentRoot).getTask('receipt')).toMatchObject({ processId: 'parent',
+                payload: { workspaceId: 'ws-parent', prompt: 'Result review', mode: 'sentinel' } });
+            expect((await store.getProcess('parent'))?.pendingMessages).toEqual([]);
+        } finally {
+            bridge.dispose();
+        }
+    });
+
     // --------------------------------------------------------------------
     // Lazy creation
     // --------------------------------------------------------------------

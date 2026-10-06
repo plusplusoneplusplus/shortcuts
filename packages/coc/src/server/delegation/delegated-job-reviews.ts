@@ -38,6 +38,7 @@ export class DelegatedJobReviews {
         store: ProcessStore;
         delivery: Pick<ProcessMessageDeliveryService, 'deliverOnce'>;
         queue: ScheduleQueueEventBus;
+        recoverPendingMessages?: (workspaceId: string, processId: string) => Promise<void>;
     }) {
         this.unsubscribe = onTaskTerminal(deps.queue, task => {
             void this.settleTask({ ...task, payload: { ...task.payload } }).catch(error =>
@@ -75,6 +76,9 @@ export class DelegatedJobReviews {
             // Reused receipts carry no intents, even when the ledger acknowledgement failed.
             emitDeliveryEvents(this.deps.store, job.parent.processId, result.events);
             this.deps.jobs.updateDelivery(job.parent.workspaceId, job.id, 'pending', { state: 'queued', receiptId });
+            if (result.path === 'buffered') {
+                await this.deps.recoverPendingMessages?.(job.parent.workspaceId, job.parent.processId);
+            }
             const task = this.deps.queue.getTask(receiptId);
             if (task && isTerminalStatus(task.status)) this.settle(job, task, receiptId);
         } catch (error) {

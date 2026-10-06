@@ -88,6 +88,11 @@ through queue events. `queue/queue-executor-bridge.ts` wires references before s
 
 `executors/executor-registry.ts` dispatches task types to chat, workflow, shell and
 specialized executors. `process-lifecycle-runner.ts` owns lifecycle and pending-message draining.
+Delegated review admission also invokes `MultiRepoQueueRouter.recoverPendingMessages` on the
+recorded parent workspace. The owning bridge serializes recovery with follow-up admission,
+reconciles terminal head receipts and admits one live head task. Completed/failed parents can
+recover; active tasks, stopped parents and pending questions/answers keep buffers untouched.
+Later messages drain through the normal lifecycle, preserving user-before-review ordering.
 Chat modes are Ask, Autopilot and Ralph; incoming `mode: 'plan'` normalizes to Ask.
 
 First turns (`ChatBaseExecutor.execute`) and follow-ups (`FollowUpExecutor.executeFollowUp`) share:

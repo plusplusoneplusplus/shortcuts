@@ -109,6 +109,8 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
+    /** Recover the head of an idle conversation's durable buffer through its queue. */
+    recoverPendingMessages?(workspaceId: string, processId: string): Promise<void>;
     executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
@@ -929,6 +931,27 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
 
     async executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: ChatMode, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void> {
         return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort, strictResumeSessionId, options);
+    }
+
+    /** Recover buffered work only when the recorded parent is idle and can continue. */
+    async recoverPendingMessages(workspaceId: string, processId: string): Promise<void> {
+        await processOperationAdmission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId);
+            if (!proc || proc.metadata?.workspaceId !== workspaceId || !this.queueManager
+                || !['completed', 'failed'].includes(proc.status)
+                || proc.pendingAskUser?.length || proc.pendingAskUserAnswer) return;
+            // Queue state wins over a stale terminal process snapshot. Recovery
+            // admits only the head; subsequent turns use the normal lifecycle drain.
+            if (this.queueManager.getAll().some(task => task.processId === processId
+                && ['queued', 'running', 'cancelling'].includes(task.status))) return;
+            // Terminal receipts may remain buffered after a failed removal.
+            // Reconcile those first, stopping as soon as one live task exists.
+            for (let remaining = proc.pendingMessages?.length ?? 0; remaining > 0; remaining--) {
+                await this.drainPendingMessageAdmitted(processId);
+                if (this.queueManager.getAll().some(task => task.processId === processId
+                    && ['queued', 'running', 'cancelling'].includes(task.status))) break;
+            }
+        });
     }
 
     /**
