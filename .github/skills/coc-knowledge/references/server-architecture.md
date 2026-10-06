@@ -205,13 +205,15 @@ partial output and raw exceptions stay out of relay messages.
 Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
 
-`messaging/incoming-images.ts` prepares admitted images after local workspace
-resolution, using `core/attachment-utils.ts` for SDK file attachments, history
-images and display metadata. Batches allow five images, 10 MB decoded total and
-a 30-second acquisition/download deadline. Temporary files use
-`getRepoDataPath(dataDir, workspaceId, 'attachments')/incoming-*`; callers own
-cleanup until executor delivery takes ownership. Download and storage failures
-reject the whole batch with fixed feedback; partial writes are removed.
+`messaging/incoming-images.ts` prepares admitted images through `core/attachment-utils.ts`:
+five images, 10 MB decoded total and 30 seconds per batch. SDK files/history use
+`getRepoDataPath(dataDir, workspaceId, 'attachments')/incoming-*`; callers own cleanup
+until executor delivery. Download/storage failures reject whole batches and remove partial writes.
+`messaging/pending-images.ts` supplies connection-owned lazy descriptor retention:
+five per sender/conversation/thread, 256 contexts, 30 minutes from first arrival.
+Consumption is once-only and rejects expired or changed workspace/topic bindings.
+Callers discard on explicit selection changes, leave controls non-consuming, and dispose
+on disconnect. Restart requires resending; preparation applies dispatch-time byte limits.
 
 Teams/WhatsApp captioned-image preparation runs inside durable binding admission after
 workspace/topic/mode resolution. Teams uses relay receipts for initial, active and

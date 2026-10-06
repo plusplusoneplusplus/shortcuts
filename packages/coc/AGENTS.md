@@ -240,6 +240,12 @@ references before editing. Paths are package-relative.
   question-answer consumption and reject control commands. Failed
   queue admission removes prepared files. Main-server receiveImages stays disabled
   until pending-image and provider checks are ready.
+- `src/server/messaging/pending-images.ts` supplies connection-owned lazy image retention:
+  five images per sender/conversation/thread, 30 minutes from the first arrival and
+  256 contexts maximum. Workspace/topic changes reject consumption; explicit selection
+  controls discard their context. Callers admit messages first, skip `take` for controls,
+  and dispose on disconnect. Restart requires resending images; dispatch uses the
+  existing workspace-scoped preparation and batch-byte limits.
 - Teams/WhatsApp command grammar is one spec table in
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`,
   `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp
