@@ -4,6 +4,7 @@ import { chunkWhatsAppText, formatWhatsAppQuestion } from '@plusplusoneplusplus/
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 import { WhatsAppBindings, type WhatsAppBinding } from './whatsapp-bindings';
 import { WhatsAppNotConnectedError } from './whatsapp-messaging-manager';
+import { formatWhatsAppAnswer } from './whatsapp-answer-format';
 import { onTaskTerminal } from './chat-target';
 import type { QuestionTransport, QuestionRelayLocation } from './ask-user-relay';
 import { formatJobNotice, type JobNoticeTransport } from './job-notices';
@@ -76,7 +77,7 @@ export class WhatsAppAnswerRelay {
         const workspace = (await this.deps.store.getWorkspaces()).find(ws => ws.id === binding.workspaceId);
         const header = binding.header
             ?? `${workspace?.name ?? binding.workspaceId} · ${process?.title ?? process?.customTitle ?? binding.processId.slice(0, 8)}`.slice(0, 140);
-        const parts = chunkWhatsAppText(`${header}\n\n${text}`);
+        const parts = chunkWhatsAppText(`${header}\n\n${formatWhatsAppAnswer(text)}`);
         const hash = createHash('sha256').update(parts.join('')).digest('hex');
         if (binding.answerHash && binding.answerHash !== hash) {
             console.error('[whatsapp-answer-relay] Answer changed during delivery');

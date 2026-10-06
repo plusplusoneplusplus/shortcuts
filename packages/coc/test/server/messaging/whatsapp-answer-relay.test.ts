@@ -114,6 +114,20 @@ describe('WhatsApp final-answer relay', () => {
         expect(bindings.findMessage('part-two')?.status).toBe('delivered');
     });
 
+    it('renders final-answer tables before chunking without changing stored Markdown', async () => {
+        const rows = Array.from({ length: 180 }, (_, i) => `| Item ${i} | Ready | Ada |`);
+        const markdown = `Name | Status | Owner\n--- | --- | ---\n${rows.join('\n')}`;
+        turns[2].content = markdown;
+        bindings.add(receipt());
+        await relay.reconcileTask('task-a');
+        expect(send.mock.calls.length).toBeGreaterThan(1);
+        expect(send.mock.calls.every(call => call[0].length <= 4096 && call[1] === 'inbound')).toBe(true);
+        expect(send.mock.calls.map(call => call[0]).join('')).toBe('Alpha · Topic\n\n'
+            + rows.map((_, i) => `Name: Item ${i}\nStatus: Ready\nOwner: Ada`).join('\n\n'));
+        expect(turns[2].content).toBe(markdown);
+        expect(bindings.findMessage('answer-id')?.status).toBe('delivered');
+    });
+
     it('keeps the original header and resumes at the confirmed part after restart', async () => {
         turns[2].content = 'answer '.repeat(1400);
         bindings.add(receipt());
