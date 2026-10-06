@@ -78,6 +78,15 @@ function request(
     });
 }
 
+/**
+ * `server.url` says `localhost`, which can resolve to `::1` first. Sibling test
+ * workers bind CoC servers on `::1`, so a same-numbered port there would answer
+ * these requests instead. Target the address this server actually bound.
+ */
+function boundUrl(server: ExecutionServer): string {
+    return `http://${server.host}:${server.port}`;
+}
+
 function getJSON(url: string) {
     return request(url);
 }
@@ -1659,7 +1668,7 @@ describe('Preferences REST API', () => {
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-prefs-api-'));
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
     });
 
     afterEach(async () => {
@@ -1817,7 +1826,7 @@ describe('Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
@@ -1874,7 +1883,7 @@ describe('Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body)).toEqual({ theme: 'dark' });
@@ -1930,7 +1939,7 @@ describe('Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).gitGroupOrder).toEqual(order);
@@ -1979,7 +1988,7 @@ describe('Preferences REST API', () => {
 
         await server.close();
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).hasSeenWelcome).toBe(true);
@@ -2016,7 +2025,7 @@ describe('Preferences REST API', () => {
 
         await server.close();
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).onboardingProgress).toEqual({ hasCompletedTour: true });
@@ -2069,7 +2078,7 @@ describe('Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(`${baseUrl}/api/preferences`);
         expect(JSON.parse(res.body).activityFilters).toEqual(filters);
@@ -2122,7 +2131,7 @@ describe('Per-Repo Preferences REST API', () => {
     beforeEach(async () => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-repo-prefs-'));
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
     });
 
     afterEach(async () => {
@@ -2571,7 +2580,7 @@ describe('Per-Repo Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(repoUrl(repoId));
         expect(JSON.parse(res.body)).toEqual({ lastModel: 'gpt-4', lastDepth: 'deep' });
@@ -2787,7 +2796,7 @@ describe('Per-Repo Preferences REST API', () => {
         await server.close();
 
         server = await createExecutionServer({ port: 0, dataDir: tmpDir });
-        baseUrl = server.url;
+        baseUrl = boundUrl(server);
 
         const res = await getJSON(repoUrl(repoId));
         expect(JSON.parse(res.body).activityFilters).toEqual({ statusFilter: 'queued', typeFilter: 'run-workflow' });
