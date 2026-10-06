@@ -6,6 +6,7 @@ import type { RalphSessionCompleteEvent } from '../queue/queue-executor-bridge';
 import type { RalphSessionRecord } from '../ralph/types';
 import type { RalphSessionStore } from '../ralph/ralph-session-store';
 import { getRalphTaskKind } from '../ralph/task-kind';
+import { buildChatOpenLink } from '../servers/workspace-directory';
 import { isRalphFinalCheckRepairTurn, getRalphContext } from '../tasks/task-types';
 import { DelegatedJobStore, type DelegatedJob } from './delegated-job-store';
 
@@ -100,7 +101,7 @@ export class DelegatedJobResults {
                             // A restored queued/running task wins over stale process status.
                             continue;
                         }
-                        const process = await this.deps.store.getProcess(job.child.processId, job.child.workspaceId);
+                        const process = await this.childProcess(job);
                         if (this.disposed) return;
                         if (getRalphContext(process)) continue;
                         if (process && isTerminalStatus(process.status)) {
@@ -314,7 +315,7 @@ export class DelegatedJobResults {
         const outcome = task.status;
         const summary = responseText(task.result);
         const reason = task.error;
-        const process = await this.deps.store.getProcess(job.child.processId, job.child.workspaceId);
+        const process = await this.childProcess(job);
         if (this.disposed) return;
         await this.saveResult(job, outcome, summary ?? storedResponse(process),
             reason ?? process?.error, process?.resultFilePath);
@@ -339,12 +340,19 @@ export class DelegatedJobResults {
         if (recorded) await this.deps.onResult?.(recorded);
     }
 
+    private async childProcess(job: DelegatedJob): Promise<AIProcess | undefined> {
+        const process = await this.deps.store.getProcess(job.child.processId, job.child.workspaceId);
+        // The native store looks up by ID and ignores the optional workspace scope.
+        return process?.id === job.child.processId && process.metadata?.workspaceId === job.child.workspaceId
+            ? process : undefined;
+    }
+
     private terminalEventId(job: DelegatedJob): string {
         return `ordinary:${job.child.workspaceId}:${job.child.processId}:terminal`;
     }
 
     private links(job: DelegatedJob, resultFilePath?: string): string[] {
-        return [`#/process/${encodeURIComponent(job.child.processId)}`,
+        return [buildChatOpenLink(job.child.workspaceId, job.child.processId),
             ...(resultFilePath ? [resultFilePath.slice(0, 2_000)] : [])];
     }
 }

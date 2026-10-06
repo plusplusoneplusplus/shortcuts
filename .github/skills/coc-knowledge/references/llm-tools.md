@@ -197,9 +197,11 @@ for startup result recovery. Connector Ralph grilling requires separate session 
 `server/delegation/delegated-job-results.ts` subscribes through `onTaskTerminal` and
 records ordinary outcomes in the parent ledger. Startup recovery examines only registered
 children, preferring a scoped queue task to process status; cleared queue history falls
-back to the child's scoped process. Event IDs derive from child workspace/process identity.
-Summaries use response text or the last request's finished assistant turn, with process
-and result-file links. Cancellation stores a fixed notice summary without partial output.
+back to the child's process after explicitly verifying its ID and stored workspace; native
+lookups ignore the optional scope argument. Scoped queue outcomes remain valid when process
+context is unavailable. Event IDs derive from child workspace/process identity. Summaries
+use response text or the last request's finished assistant turn, with child-workspace chat
+links and validated result-file paths. Cancellation stores a fixed notice summary without partial output.
 Missing children settle with failed delivery. Remote rows and Ralph step events are excluded.
 Whole-session Ralph events match registered workspace/session identity and store a stable terminal
 receipt, outcome, final process summary, session API link and journal path. Recovery uses terminal

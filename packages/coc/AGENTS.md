@@ -111,7 +111,10 @@ references before editing. Paths are package-relative.
   grilling requires separate session registration.
   Rejected admission settles delivery as failed; accepted observer errors retain tracking.
   `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
-  from scoped queue/process records at startup. Registered admission waits for recovery. Ordinary
+  from scoped queue/process records at startup. Verify child process ID and stored workspace
+  explicitly before borrowing summary/error/artifact data; native reads ignore optional scope.
+  Result chat links include the child workspace through `buildChatOpenLink`.
+  Registered admission waits for recovery. Ordinary
   recording excludes Ralph steps and remote jobs; unavailable children settle with a diagnosable failed delivery.
   Whole-session Ralph events match registered workspace/session identity, preserving the first
   terminal outcome. Journal recovery prefers the durable session `completion` record, then

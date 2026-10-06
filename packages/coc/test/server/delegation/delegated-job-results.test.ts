@@ -84,7 +84,7 @@ describe('ordinary delegated job result recording', () => {
         expect(persisted()).toMatchObject({
             parent: { workspaceId: parentWorkspace, processId: parentId },
             terminal: { result: { outcome: 'completed', summary: 'Fixed search. Tests passed.',
-                terminalEventId: `ordinary:${childWorkspace}:${childId}:terminal`, links: [`#/process/${childId}`] },
+                terminalEventId: `ordinary:${childWorkspace}:${childId}:terminal`, links: [`#repos/${childWorkspace}/chats/${childId}`] },
             delivery: { state: 'pending' } },
         });
         expect(jobs.list(childWorkspace)).toEqual([]);
@@ -202,7 +202,7 @@ describe('ordinary delegated job result recording', () => {
         const artifact = path.join(dataDir, 'result.txt');
         await child({ result: JSON.stringify({ response: 'Stored result', timeline: ['large transcript'] }), resultFilePath: artifact });
         await service().restore();
-        expect(persisted().terminal?.result).toMatchObject({ outcome: 'completed', summary: 'Stored result', links: [`#/process/${childId}`, artifact] });
+        expect(persisted().terminal?.result).toMatchObject({ outcome: 'completed', summary: 'Stored result', links: [`#repos/${childWorkspace}/chats/${childId}`, artifact] });
         expect(store.getProcess).toHaveBeenCalledWith(childId, childWorkspace);
     });
 
@@ -256,11 +256,48 @@ describe('ordinary delegated job result recording', () => {
             delivery: { state: 'failed', reason: 'Delegated child unavailable during startup recovery.' } });
     });
 
-    it('does not substitute a process owned by another workspace during recovery', async () => {
-        register(); await child({ metadata: { workspaceId: 'wrong-workspace' }, result: 'Wrong result' });
+    it.each(['wrong-workspace', undefined])('rejects unscoped process ownership %s during recovery', async workspaceId => {
+        register();
+        const foreign = createProcessFixture({ id: childId, metadata: { workspaceId },
+            result: 'Wrong result', error: 'Wrong error', resultFilePath: 'wrong-artifact' });
+        // Match the native store, which accepts but ignores the scope argument.
+        store.getProcess = vi.fn(async () => foreign);
         await service().restore();
-        expect(persisted().terminal?.delivery.state).toBe('failed');
-        expect(persisted().terminal?.result.summary).not.toContain('Wrong result');
+        expect(persisted().terminal).toMatchObject({ delivery: { state: 'failed' },
+            result: { summary: 'The delegated job is unavailable after restart.',
+                links: [`#repos/${childWorkspace}/chats/${childId}`] } });
+        expect(JSON.stringify(persisted())).not.toContain('Wrong');
+        expect(JSON.stringify(persisted())).not.toContain('wrong-artifact');
+    });
+
+    it.each(['completed', 'failed'] as const)('keeps scoped queue %s without borrowing foreign process context', async outcome => {
+        register(); service(); enqueue();
+        store.getProcess = vi.fn(async () => createProcessFixture({ id: childId,
+            metadata: { workspaceId: 'wrong-workspace' }, result: 'Wrong result',
+            error: 'Wrong error', resultFilePath: 'wrong-artifact' }));
+        if (outcome === 'completed') queue.markCompleted('child', { response: 'Queue result' });
+        else queue.markFailed('child', new Error('Queue failure'));
+        await flush();
+        expect(persisted().terminal?.result).toMatchObject({ outcome,
+            summary: outcome === 'completed' ? 'Queue result' : 'The delegated job failed; no result summary was stored.',
+            links: [`#repos/${childWorkspace}/chats/${childId}`] });
+        if (outcome === 'failed') expect(persisted().terminal?.result.reason).toBe('Queue failure');
+        expect(JSON.stringify(persisted())).not.toContain('Wrong');
+        expect(JSON.stringify(persisted())).not.toContain('wrong-artifact');
+    });
+
+    it('encodes the child workspace and process in the result link independently of the parent', async () => {
+        const workspaceId = 'child/workspace #1';
+        const processId = 'queue_child /?#';
+        jobs.register({ id: processId, title: 'Scoped link',
+            parent: { workspaceId: parentWorkspace, processId: parentId },
+            child: { workspaceId, processId } });
+        store.getProcess = vi.fn(async () => createProcessFixture({ id: processId,
+            metadata: { workspaceId }, result: 'Done' }));
+        await service().restore();
+        expect(jobs.list(parentWorkspace)[0].terminal?.result.links).toEqual([
+            `#repos/${encodeURIComponent(workspaceId)}/chats/${encodeURIComponent(processId)}`,
+        ]);
     });
 
     it('recovers other workspaces despite a corrupt parent ledger', async () => {
