@@ -62,6 +62,27 @@ test("release workflow builds the native addon on all six supported targets", ()
     }
 });
 
+test("release runs Rust, Teams SDK and CLI suites once with SDK-scoped features", () => {
+    const job = jobBlock("build-native");
+    const commands = [...job.matchAll(/^\s+run: (cargo test [^\n]+)/gm)].map(match => match[1]);
+    assert.equal(commands.length, 1);
+    const command = commands[0];
+    assert.match(command, /--locked\b/);
+    assert.match(command, /--manifest-path packages\/coc-native\/rust\/Cargo\.toml\b/);
+    assert.deepEqual([...command.matchAll(/-p (\S+)/g)].map(match => match[1]).sort(),
+        ["coc-native-core", "teams-cli", "teams-sdk"]);
+    assert.doesNotMatch(command, /--all-features|--no-default-features/);
+
+    const sdk = readFileSync(new URL("../packages/coc-native/rust/teams-sdk/Cargo.toml", import.meta.url), "utf8");
+    const features = sdk.match(/\[features\]\n([\s\S]*?)(?=\n\[)/)[1];
+    const expected = [...features.matchAll(/^([\w-]+) =/gm)]
+        .map(match => match[1]).filter(name => name !== "default")
+        .map(name => `teams-sdk/${name}`).sort();
+    const actual = command.match(/--features (\S+)/)[1].split(",").sort();
+    assert.deepEqual(actual, expected, "enable every SDK feature without enabling the core's N-API feature");
+    assert.ok(job.indexOf(command) < job.indexOf("npm run build:native -w packages/coc-native"));
+});
+
 test("release workflow ships the symbols language server with the addon", () => {
     // One build job produces both artifacts, and every consumer resolves them
     // from the same `prebuilt/<triple>/` directory. A release that uploads only

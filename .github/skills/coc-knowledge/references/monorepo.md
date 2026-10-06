@@ -19,8 +19,10 @@ See [server architecture](server-architecture.md) for CoC internals.
 | `forge/` | Queue/process stores, Git, policies, connectors and utilities; SDK/workflow re-exports |
 | `coc-agent-sdk/` | Providers, sessions, streaming, MCP and models; [SDK](sdk-wrapper.md) |
 | `coc-memory/` | Memory stores, search, embeddings, capture and safety; [memory](memory-system.md) |
-| `coc-native/` | Rust/N-API capabilities, symbol language server and desktop-only Windows x64 WebView2 helper; [native contracts](../../../../packages/coc-native/AGENTS.md) |
+| `coc-native/` | Rust/N-API capabilities, symbol language server, teams-sdk and desktop-only Windows x64 WebView2 helper; [native contracts](../../../../packages/coc-native/AGENTS.md) |
 | `coc-connector/` | Dependency-independent messaging contract; `/teams` and lazy `/whatsapp` exports; [connector contracts](../../../../packages/coc-connector/AGENTS.md) |
+
+### Node package dependencies
 
 Reusable behavior belongs behind package contracts. Workspace dependencies
 resolve through npm symlinks during development; published manifests use
@@ -91,10 +93,18 @@ manifest.
 the committed bindings, N-API addon and symbol-server executable. Windows x64
 also builds the `coc-webview2` desktop helper with a statically linked loader; other platforms
 do not initialize WebView2.
-`ensure:native` refreshes missing/stale binaries and can provision Rust;
+`ensure:native` recursively checks the native Rust tree, including `teams-sdk`,
+for stale binaries, and can provision Rust;
 `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning.
 Production server persistence/index capabilities require the addon and fail
 without it, rather than falling back to JavaScript.
+
+`packages/coc-native/rust/teams-cli` is a standalone Cargo workspace project providing
+the `teams-cli` chat CLI through `teams-sdk`. It shares the native lockfile and CI gates
+and always includes MCP and IC3/Trouter; Graph is a default feature.
+It is installed separately with `cargo install --locked --path teams-cli` from the
+native Rust workspace. Usage and authentication contracts belong in the
+[Teams SDK instructions](../../../../packages/coc-native/rust/teams-sdk/AGENTS.md).
 
 The loader accepts `COC_NATIVE_PATH`, local binaries and target-specific prebuilts.
 N-API binaries work in Node and Electron. Desktop packaging unpacks native

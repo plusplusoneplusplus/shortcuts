@@ -93,7 +93,38 @@ Core `repo_files::tracked_content_candidates` prepares bounded `ls-files` comman
 
 The `*Status()` accessors never throw, because `/api/health` reports them and has to be able to describe a failed load rather than become one.
 
+## Teams capability
+
+`rust/napi/src/teams/` links the `rust/teams-sdk/` workspace crate with Graph,
+MCP and experimental IC3. `src/teams.ts` exports generated DTO aliases,
+`loadNativeTeams()` and sanitized `decodeNativeTeamsError()`. `NativeTeamsSession`
+owns one pinned account, immutable write routes, a bounded opaque cursor map and
+cancellable operations. Async Teams methods run on Tokio, not libuv workers.
+Trusted JS credential/verifier callbacks use bounded, unreferenced TSFNs; close
+revokes requests/subscriptions and releases callbacks even if a provider hangs.
+Optional HTTP/socket callbacks are trusted test boundaries, never URL overrides.
+Production HTTP and WebSockets stay in Rust. Cursor IDs never expose provider URLs.
+Notifications are bounded reconciliation hints, not message authority. SDK errors
+preserve delivery outcome without provider payloads; unknown writes are not replayed.
+Notification health uses an independent watch snapshot while hint receives wait.
+`latestChatMessages` selects bounded raw entries before exclusions and returns only
+metadata with fetched/skipped counts, including across short provider pages.
+Actual-addon coverage lives in `test/teams.test.ts`.
+
 ## Layout
+
+- `rust/teams-sdk/` -- pure Rust Teams protocols, independent of Node and CoC policy;
+  shares the native workspace lockfile, target directory, audit and cross-platform CI.
+  MCP and IC3/Trouter are always compiled; Graph is a default feature.
+  Native CI tests builds with and without Graph
+  with `cargo test --locked -p teams-sdk`; its local rustfmt config retains default layout.
+
+- `rust/teams-cli/` -- standalone `teams-cli` binary using `teams-sdk`, sharing the native
+  lockfile and cross-platform CI. Install with `cargo install --locked --path teams-cli`
+  from `rust/`; run with `cargo run --locked -p teams-cli -- list`. Tests include real
+  binary help/version/error handling and mock-backed credential/chat reads. CLI defaults
+  to IC3 in `amer`; `--backend graph` selects Graph. It is independent of Node and is
+  not bundled into the addon or desktop installer.
 
 - `rust/core/` — `coc-native-core`: the logic layer, `pub mod <capability>` per capability. `git` runs `git -C <repo> <args>` with the timeout and buffer caps Node's `execFile` used to enforce. `repo_index` contains the gitignore-aware walker, scorer, immutable file-list snapshot, fuzzy matcher, and atomic refresh state. `content_search` searches file *contents* across the same walk, on ripgrep's `grep-searcher`/`grep-regex`; an optional exact repo-relative candidate set bypasses ignore rejection but prunes traversal to candidate files and their ancestor directories, preserving Git-tracked ignored files without enumerating unrelated ignored trees. Candidates still compose with scope and include/exclude globs. It holds no state, so every query is a fresh parallel walk bounded only by its caps. `notes_index` contains immutable Markdown-content snapshots, JavaScript-compatible lowercase caches, bounded search, full rebuilds, and bounded root-relative incremental upserts/removals under a root-specific symlink policy. Refresh writers serialize per index, build against the last complete snapshot, and atomically swap only on success. `sqlite` owns the general database core: one re-entrant writer per handle, a bounded read pool for typed async operations, cached synchronous writer statements, language-neutral values, and callback transactions. Each read connection limits its SQLite memory map to 64 MiB; the writer retains SQLite's default. Nested transactions use savepoints, and named binding ignores unused object keys so store row objects keep the better-sqlite3-compatible call shape. `dangerous_command` is a hardcoded disallow list of shell-command shapes, holding no state and touching no filesystem. N-API is only behind the optional `napi` feature, which the addon enables so result/DTO structs in `repo_files` and `content_search` derive their JS object shape in place (`#[cfg_attr(feature = "napi", napi_derive::napi(object, ...))]`) instead of being mirrored in the binding crate; add new boundary DTOs the same way. Without the feature (the LSP binary, `cargo test -p coc-native-core`) nothing links Node. All Rust unit tests live here under `tests/`.
 - `rust/napi/` — `coc-native`: a thin `cdylib` wrapper, one `src/<capability>.rs` per Node-facing capability registering its own classes and functions (`repo_files.rs` exposes the `RepoFiles` handle over core's `repo_files`, including the whole-root `repo_index` behind quick-open). `RepoFiles.searchFiles()` returns the public match shape; `searchFilesRanked()` returns the same matches with the complete native ordering tuple for server-side cross-repo merges. Everything that touches the filesystem or scans a large structure returns an `AsyncTask`, so work happens on a libuv worker and the event loop is never blocked. It has no tests: the crate links against Node's symbols, so a test binary would not link.
@@ -104,7 +135,7 @@ The `*Status()` accessors never throw, because `/api/health` reports them and ha
 - `src/<capability>.ts` — one module per Node-facing capability (`repo-files.ts`, `notes-index.ts`): aliases of the generated types, a type guard over the loaded module, `loadNative<X>()` and `nativeXStatus()`. `sqlite.ts` wraps the synchronous `NativeDatabase`/`NativeStatement` API: positional and named parameters, iterators, callback transactions, pragma simple values, and SQLite error codes. `NativeDatabase.searchConversations()`, `getConversationTurns()`, `getAllProcesses()`, `getProcessSummaries()`, and `listRecentProcesses()` dispatch typed Rust `AsyncTask`s over pooled read connections. `getConversationTurns()` serializes ordered turn rows as JSON; `getAllProcesses()` streams each process's ordered turns into grouped JSON buffers across bounded process-ID batches; `getProcessSummaries()` reads the count, page, and chat-folder membership in one snapshot; `listRecentProcesses()` serializes its filtered page. The wrapper restores BLOB and non-finite REAL values in all JSON paths before exposing row objects. `upsertStreamingTurn()` dispatches an atomic `AsyncTask` under the writer lock. All typed process operations reject unsupported schema versions. Forge converts returned rows to its JSON/date-rich `ProcessStore` shapes, maps folder IDs on summaries, and emits process-change events after streaming writes complete.
 - `scripts/build-native.mjs` — `npm run build:native`. Drives `@napi-rs/cli` to compile the addon *and* emit the type surface, then rewrites the header. The CLI is used for the build only; the loader still resolves binaries from disk rather than through napi-rs's per-platform npm packages.
 - `scripts/build-symbols-lsp.mjs` — a plain `cargo build -p coc-symbols-lsp`, no napi involved, renaming the output to the triple-qualified name `src/symbols-lsp.ts` computes. `build-native.mjs` calls it, so one `npm run build:native` produces both artifacts and neither can quietly lag the other; `npm run build:symbols-lsp` runs it alone when only the language server changed.
-- `scripts/ensure-native.mjs` — `npm run ensure:native`. A stale check in front of `build-native.mjs`: rebuilds only when either built binary — the `.node` or `coc-symbols-lsp` — is missing or older than a file under `rust/`, and otherwise exits 0 having run nothing. The serve loops call it before `coc:link`, because nothing else in the local build path compiles the addon. When cargo is absent, it downloads the official target-specific `rustup-init`, installs the minimal toolchain without modifying shell profiles, rediscovers `~/.cargo/bin/cargo`, and continues; `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning. A failed install or compile keeps a daemon up on an existing binary and only fails when no binary exists. It runs `build-native.mjs`, which rewrites the committed `src/native-bindings.ts`, so a serve loop can leave that file modified when the `#[napi]` surface has changed.
+- `scripts/ensure-native.mjs` — `npm run ensure:native`. A stale check in front of `build-native.mjs`: rebuilds only when either built binary — the `.node` or `coc-symbols-lsp` — is missing or older than a file under `rust/`, including `rust/teams-sdk/`, and otherwise exits 0 having run nothing. The serve loops call it before `coc:link`, because nothing else in the local build path compiles the addon. When cargo is absent, it downloads the official target-specific `rustup-init`, installs the minimal toolchain without modifying shell profiles, rediscovers `~/.cargo/bin/cargo`, and continues; `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning. A failed install or compile keeps a daemon up on an existing binary and only fails when no binary exists. It runs `build-native.mjs`, which rewrites the committed `src/native-bindings.ts`, so a serve loop can leave that file modified when the `#[napi]` surface has changed.
 
 Adding a capability means a `rust/core/src/<name>/` module, a `rust/napi/src/<name>.rs` registered in `rust/napi/src/lib.rs`, and a `src/<name>.ts` re-exported from `src/index.ts`. The loader does not change.
 

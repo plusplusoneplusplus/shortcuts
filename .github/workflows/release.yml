@@ -130,8 +130,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Rust unit tests
-        run: cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core
+      - name: Run Rust unit, Teams SDK and CLI tests
+        run: cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core -p teams-sdk -p teams-cli --features teams-sdk/graph
 
       - name: Build the addon
         run: npm run build:native -w packages/coc-native

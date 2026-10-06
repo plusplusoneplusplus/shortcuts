@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
@@ -221,4 +221,82 @@ test('the coc-native TypeScript build stays free of the Rust toolchain', () => {
     const pkg = JSON.parse(readFileSync(new URL('../packages/coc-native/package.json', import.meta.url), 'utf8'));
     assert.equal(pkg.scripts.build, 'tsc');
     assert.equal(pkg.scripts['ensure:native'], 'node scripts/ensure-native.mjs');
+});
+
+test('Teams SDK feature coverage is required by the aggregate CI gate', () => {
+    const gate = jobBlock(ci, 'ci');
+    assert.match(gate, /^    needs: \[[^\n]*\bcoc-native\b/m);
+    assert.match(gate, /\[coc-native\]="\$\{\{ needs\.coc-native\.result \}\}"/);
+    assert.doesNotMatch(ci, /^  teams-sdk:|needs\.teams-sdk\.result/m);
+    const sdk = jobBlock(ci, 'coc-native');
+    for (const os of ['ubuntu-latest', 'macos-latest', 'windows-latest']) {
+        assert.ok(sdk.includes(`os: ${os}`), `native CI must test Teams SDK on ${os}`);
+    }
+    assert.match(sdk, /workspaces: packages\/coc-native\/rust/);
+    assert.ok(sdk.includes('cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-sdk --all-targets --all-features -- -D warnings'));
+    for (const features of ['', '--no-default-features', '--all-features']) {
+        assert.ok(sdk.includes(`cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-sdk${features ? ` ${features}` : '\n'}`));
+    }
+});
+
+test('Teams SDK keeps IC3 and MCP unconditional with Graph default', () => {
+    const sdk = readFileSync(new URL('../packages/coc-native/rust/teams-sdk/Cargo.toml', import.meta.url), 'utf8');
+    const defaults = sdk.match(/^default = \[([^\]]*)\]$/m);
+    assert.ok(defaults, 'Teams SDK must declare its default features');
+    assert.deepEqual([...defaults[1].matchAll(/"([^"]+)"/g)].map(match => match[1]).sort(),
+        ['graph']);
+    assert.doesNotMatch(sdk, /experimental-ic3|optional = true/);
+    assert.doesNotMatch(sdk, /^mcp =/m);
+    const root = new URL('../packages/coc-native/rust/teams-sdk/', import.meta.url);
+    const capabilities = readFileSync(new URL('src/capabilities.rs', root), 'utf8');
+    assert.match(capabilities, /Backend::Ic3 => true/);
+    assert.match(capabilities, /Backend::Mcp => true/);
+    const lib = readFileSync(new URL('src/lib.rs', root), 'utf8');
+    assert.match(lib, /^pub mod ic3;$/m);
+    assert.match(lib, /^pub mod notifications;$/m);
+    assert.match(lib, /^pub mod mcp;$/m);
+    assert.doesNotMatch(lib, /experimental-ic3/);
+    assert.doesNotMatch(lib, /cfg\(feature = "mcp"\)/);
+});
+
+test('Teams CLI is an installable native workspace project covered by CI and release', () => {
+    const root = new URL('../packages/coc-native/rust/', import.meta.url);
+    const workspace = readFileSync(new URL('Cargo.toml', root), 'utf8');
+    const cli = readFileSync(new URL('teams-cli/Cargo.toml', root), 'utf8');
+    const sdk = readFileSync(new URL('teams-sdk/Cargo.toml', root), 'utf8');
+    assert.match(workspace, /^members = \[.*"teams-cli"/m);
+    assert.match(cli, /\[\[bin\]\]\r?\nname = "teams-cli"\r?\npath = "src\/main.rs"/);
+    assert.match(cli, /teams-sdk = \{ path = "\.\.\/teams-sdk", default-features = false \}/);
+    assert.doesNotMatch(sdk, /name = "read_chats"/);
+    assert.equal(existsSync(new URL('teams-sdk/examples/read_chats.rs', root)), false);
+    assert.match(readFileSync(new URL('Cargo.lock', root), 'utf8'), /^name = "teams-cli"$/m);
+    const job = jobBlock(ci, 'coc-native');
+    assert.ok(job.includes('cargo clippy --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli --all-targets --all-features -- -D warnings'));
+    for (const features of ['', '--no-default-features',
+        '--no-default-features --features graph']) {
+        assert.ok(job.includes(`cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p teams-cli${features ? ` ${features}` : '\n'}`));
+    }
+    const release = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+    assert.match(jobBlock(release, 'build-native'), /cargo test [^\n]*-p teams-cli\b/);
+});
+
+test('Teams SDK shares the native workspace, lockfile, and release validation', () => {
+    const rustRoot = new URL('../packages/coc-native/rust/', import.meta.url);
+    const workspace = readFileSync(new URL('Cargo.toml', rustRoot), 'utf8');
+    const sdk = readFileSync(new URL('teams-sdk/Cargo.toml', rustRoot), 'utf8');
+    const addon = readFileSync(new URL('napi/Cargo.toml', rustRoot), 'utf8');
+    const lock = readFileSync(new URL('Cargo.lock', rustRoot), 'utf8');
+    assert.match(workspace, /^members = \[.*"teams-sdk"/m);
+    assert.doesNotMatch(sdk, /^\[workspace\]/m);
+    assert.match(addon, /^teams-sdk = \{ path = "\.\.\/teams-sdk"/m);
+    assert.match(lock, /^name = "teams-sdk"$/m);
+    assert.equal(existsSync(new URL('teams-sdk/Cargo.lock', rustRoot)), false);
+    assert.equal(existsSync(new URL('../packages/teams-sdk', import.meta.url)), false);
+
+    const security = jobBlock(ci, 'dependency-security');
+    assert.ok(security.includes('cargo audit --file packages/coc-native/rust/Cargo.lock'));
+    assert.equal((security.match(/cargo audit --file /g) ?? []).length, 1);
+    const release = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+    assert.ok(jobBlock(release, 'build-native').includes(
+        'cargo test --locked --manifest-path packages/coc-native/rust/Cargo.toml -p coc-native-core -p teams-sdk'));
 });
