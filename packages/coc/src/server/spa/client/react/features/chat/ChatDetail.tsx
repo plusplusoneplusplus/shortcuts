@@ -2351,6 +2351,14 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
     const rewindUnsupportedProvider = conversationProvider === 'codex';
     const rewindAction = planChatBusy || rewindUnsupportedProvider ? undefined : rewind.requestRewind;
     const loadedConversationMode = resolveLoadedTaskMode(task);
+    // Persisted/live conversation identity wins over the original queue payload
+    // and the draft mode. Sentinel dispatches implementation through tools.
+    const liveConversation = appState.processes.find(p => p.id === processId);
+    const effectiveConversationMode = normalizeChatMode(liveConversation?.metadata?.mode)
+        ?? normalizeChatMode(metadataProcess?.metadata?.mode)
+        ?? loadedConversationMode
+        ?? selectedMode;
+    const showImplementationBanners = !hidePlanBanners && effectiveConversationMode !== 'sentinel';
     const workflowOwnsProvider = !!getRalphContext(task)
         || !!forEachGeneration
         || !!mapReduceGeneration
@@ -2889,7 +2897,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                     {/* Ralph grilling complete — show Start Ralph panel (thread view only).
                         hidePlanBanners suppresses both launch paths together in embedded
                         surfaces (e.g. NoteChatPanel) alongside the ImplementPlanCard below. */}
-                    {effectiveNav.kind === 'thread' && !hidePlanBanners && (() => {
+                    {effectiveNav.kind === 'thread' && showImplementationBanners && (() => {
                         const ralphCtx = getRalphContext(task);
                         const goalPath = detectedGoalFile || (task?.metadata?.goalFilePath as string | undefined) || '';
                         // Path 1: traditional grilling-phase → start
@@ -2937,7 +2945,7 @@ export function ChatDetail({ taskId, onBack, workspaceId, sourceSelectionId, sou
                         return null;
                     })()}
                     {/* Plan file complete — offer one-click handoff to autopilot (thread view only) */}
-                    {effectiveNav.kind === 'thread' && !hidePlanBanners && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
+                    {effectiveNav.kind === 'thread' && showImplementationBanners && isTerminal && !planChatBusy && resolveLoadedTaskMode(task) === 'ask' && effectivePlanPath && (
                         <ImplementPlanCard
                             planFilePath={effectivePlanPath}
                             planFiles={switchablePlanFiles}
