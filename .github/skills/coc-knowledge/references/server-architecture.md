@@ -209,21 +209,30 @@ remain connector-specific.
 five images, 10 MB decoded total and 30 seconds per batch. SDK files/history use
 `getRepoDataPath(dataDir, workspaceId, 'attachments')/incoming-*`; callers own cleanup
 until executor delivery. Download/storage failures reject whole batches and remove partial writes.
-`messaging/pending-images.ts` supplies connection-owned lazy descriptor retention:
+`messaging/pending-images.ts` owns connection-scoped captionless descriptor retention:
 five per sender/conversation/thread, 256 contexts, 30 minutes from first arrival.
 Consumption is once-only and rejects expired or changed workspace/topic bindings.
-Callers discard on explicit selection changes, leave controls non-consuming, and dispose
-on disconnect. Restart requires resending; preparation applies dispatch-time byte limits.
+Explicit selections discard the sender's root batch or every sender in a shared thread.
+Controls do not consume; disconnect/restart requires resend. Consumption and failed/expired
+instruction IDs are deduplicated; download still applies dispatch-time byte/deadline limits.
 
-Teams/WhatsApp captioned-image preparation runs inside durable binding admission after
+Teams/WhatsApp image preparation runs inside durable binding admission after
 workspace/topic/mode resolution. Teams uses relay receipts for initial, active and
 pending follow-ups; admission-only image receipts remain enabled when answer delivery
 and bot control are off. `incomingImageTaskPayload` carries SDK files, image history
 and temporary directories through queue payloads. Rejected admission cleans files;
 accepted tasks retain ownership through observer failures. The shared lifecycle persists
 follow-up image history before execution. Image captions bypass question-answer
-consumption and reject control commands. Main-server image reception stays disabled
-until pending-image and provider checks are ready.
+consumption and reject control commands. Normal managers enable image reception. Following
+instructions consume pending images in the same resolved context, with overflow preserving
+the retained batch. WhatsApp forwards a connection signal through route initialization;
+Teams pins per-arrival signals through serialized dispatch and receipt callbacks.
+Unsupported image transports fail before SDK execution; cancelled initial/follow-up
+tasks clean prepared directories.
+Captionless Teams roots seed an instruction thread without an AI task, retaining queued
+targets and linking grouped roots to the admitted chat. WhatsApp image/prompt references
+preserve captured routing and transfer `sourceMessageIds` into durable receipts;
+answer-part ordering stays independent.
 
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
@@ -317,8 +326,8 @@ image references encode into fixed beta `/shares/u!…/driveItem/contentStream` 
 Both use identity-pinned read credentials, one 401 refresh and no redirects.
 File reads require delegated `Files.Read` (or documented higher read consent) and
 SharePoint access; 403 yields safe permission feedback. MIME, raster signatures,
-byte/deadline limits, ordinary admission and stop cancellation apply. Main-server
-managers retain text-only delivery.
+byte/deadline limits, ordinary admission and stop cancellation apply. Normal managers
+opt in; standalone connector/container consumers retain their existing defaults.
 
 `teams-messaging.json` persists `outboundBackend: mcp | graph` (default `graph`, including missing saved settings);
 Graph fixes channel send/reply routes to `GraphOperations`; explicit MCP remains supported. Its separate Azure CLI

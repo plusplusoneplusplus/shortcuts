@@ -47,6 +47,13 @@ function contextKey(context: PendingImageContext): string {
     return JSON.stringify([context.platform, context.conversationId, context.threadId ?? null, context.senderId]);
 }
 
+function conversationKey(context: { platform: 'whatsapp' | 'teams'; conversationId: string; threadId?: string }): string {
+    if (!context.conversationId) {
+        throw new PendingImagesError('identity');
+    }
+    return JSON.stringify([context.platform, context.conversationId, context.threadId ?? null]);
+}
+
 function scopeKey(scope: PendingImageScope): string {
     if (!scope.workspaceId || (scope.chatId !== null && !scope.chatId)) throw new PendingImagesError('identity');
     return contextKey(scope);
@@ -64,6 +71,7 @@ export class PendingImages {
     private readonly seen = createCache<true>({
         namespace: 'messaging-pending-image-ids', maxSize: 2_000, ttlMs: PENDING_IMAGE_TTL_MS,
     });
+    private readonly conversationIndex = new Map<string, Set<string>>();
 
     /** Caller must apply platform admission before retaining a captionless message. */
     add(scope: PendingImageScope, messageId: string, images: readonly InboundImage[]): { duplicate: boolean } {
@@ -76,10 +84,12 @@ export class PendingImages {
         let batch = this.batches.get(key);
         if (batch && (batch.workspaceId !== scope.workspaceId || batch.chatId !== scope.chatId)) {
             this.batches.delete(key);
+            this.removeFromConversationIndex(key);
             batch = undefined;
         }
         if (batch && batch.expiresAt <= Date.now()) {
             this.batches.delete(key);
+            this.removeFromConversationIndex(key);
             throw new PendingImagesError('expired');
         }
         if ((batch?.images.length ?? 0) + images.length > MAX_MESSAGING_IMAGES) {
@@ -87,6 +97,9 @@ export class PendingImages {
         }
         // Reject overload explicitly rather than silently evicting another user's intended images.
         if (!batch && this.batches.size >= MAX_PENDING_IMAGE_CONTEXTS) throw new PendingImagesError('capacity');
+        if (!batch) {
+            this.addToConversationIndex(key, scope);
+        }
         this.batches.set(key, {
             workspaceId: scope.workspaceId,
             chatId: scope.chatId,
@@ -102,12 +115,20 @@ export class PendingImages {
         return this.batches.has(contextKey(context));
     }
 
+    /** Count a current binding without consuming; take reports stale/expired batches. */
+    count(scope: PendingImageScope): number {
+        const key = scopeKey(scope);
+        const batch = this.batches.get(key);
+        return batch && batch.workspaceId === scope.workspaceId && batch.chatId === scope.chatId
+            && batch.expiresAt > Date.now() ? batch.images.length : 0;
+    }
+
     /** Transfers descriptor ownership once; invalid bindings and expiry reject the whole turn. */
     take(scope: PendingImageScope): InboundImage[] | undefined {
         const key = scopeKey(scope);
         const batch = this.batches.get(key);
         if (!batch) return undefined;
-        this.batches.delete(key);
+        this.discard(scope);
         if (batch.workspaceId !== scope.workspaceId || batch.chatId !== scope.chatId) {
             throw new PendingImagesError('binding-changed');
         }
@@ -117,7 +138,48 @@ export class PendingImages {
 
     /** Invoke on explicit selection changes, including selecting the same repo/topic. */
     discard(context: PendingImageContext): void {
-        this.batches.delete(contextKey(context));
+        const key = contextKey(context);
+        if (this.batches.delete(key)) {
+            this.removeFromConversationIndex(key);
+        }
+    }
+
+    /**
+     * Clear all pending senders in a conversation thread on explicit repo/topic/create changes
+     * (including selecting the same target). Clears all senderId variants for this conversation.
+     */
+    discardConversation(context: { platform: 'whatsapp' | 'teams'; conversationId: string; threadId?: string }): void {
+        const targetKey = conversationKey(context);
+        const keysToDelete = this.conversationIndex.get(targetKey);
+        if (keysToDelete) {
+            for (const key of keysToDelete) {
+                this.batches.delete(key);
+            }
+            this.conversationIndex.delete(targetKey);
+        }
+    }
+
+    private addToConversationIndex(contextKey: string, scope: PendingImageScope): void {
+        const targetKey = conversationKey({
+            platform: scope.platform,
+            conversationId: scope.conversationId,
+            threadId: scope.threadId,
+        });
+        let keys = this.conversationIndex.get(targetKey);
+        if (!keys) {
+            keys = new Set();
+            this.conversationIndex.set(targetKey, keys);
+        }
+        keys.add(contextKey);
+    }
+
+    private removeFromConversationIndex(contextKey: string): void {
+        for (const [conversation, keys] of this.conversationIndex) {
+            if (keys.delete(contextKey)) {
+                if (keys.size === 0) this.conversationIndex.delete(conversation);
+                return;
+            }
+        }
     }
 
     /** Connector shutdown drops descriptors; reconnect/restart requires resending images. */
@@ -125,5 +187,6 @@ export class PendingImages {
         this.disposed = true;
         this.batches.dispose();
         this.seen.dispose();
+        this.conversationIndex.clear();
     }
 }

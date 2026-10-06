@@ -233,19 +233,27 @@ references before editing. Paths are package-relative.
   temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
   batch on failure. Limits are five images, 10 MB decoded total and 30 seconds total.
   Callers own temporary-directory cleanup until delivery transfers it to executors. Teams/WhatsApp
-  captioned-image preparation runs inside durable binding admission; queue payloads
+  image preparation runs inside durable binding admission; queue payloads
   carry SDK attachments, image history and the temporary directory together. Teams prepares
   initial, active and pending follow-ups inside relay receipts, including admission-only
   receipts when answer delivery and bot control are disabled. Image captions bypass
   question-answer consumption and reject control commands. Failed
-  queue admission removes prepared files. Main-server receiveImages stays disabled
-  until pending-image and provider checks are ready.
-- `src/server/messaging/pending-images.ts` supplies connection-owned lazy image retention:
+  queue admission removes prepared files. Normal managers opt into `receiveImages`;
+  connector defaults and container consumers remain text-only.
+- `src/server/messaging/pending-images.ts` owns lazy captionless-image retention:
   five images per sender/conversation/thread, 30 minutes from the first arrival and
-  256 contexts maximum. Workspace/topic changes reject consumption; explicit selection
-  controls discard their context. Callers admit messages first, skip `take` for controls,
-  and dispose on disconnect. Restart requires resending images; dispatch uses the
-  existing workspace-scoped preparation and batch-byte limits.
+  256 contexts maximum. Workspace/topic changes reject consumption; explicit root
+  selections discard their sender, shared Teams-thread selections discard all senders.
+  Controls do not consume; following instructions bypass `ask_user` answers and merge
+  pending/captioned images only within batch limits. Failed/expired instructional IDs
+  stay deduplicated, never replaying as text-only turns. Dispose on disconnect;
+  restart requires resend. WhatsApp forwards a connection signal through route
+  initialization; Teams pins per-arrival signals through serialized dispatch. Native
+  Copilot/Codex/Claude receive SDK files; unsupported image transports fail before SDK execution.
+  Captionless Teams roots bind their instruction thread without creating an AI turn;
+  grouped root references link to the admitted chat, including queued targets.
+  WhatsApp image/prompt quotes retain captured routing and transfer `sourceMessageIds`
+  to the durable receipt without changing answer-part ordering.
 - Teams/WhatsApp command grammar is one spec table in
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`,
   `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp

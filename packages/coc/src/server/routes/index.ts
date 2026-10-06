@@ -1037,9 +1037,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         queued: binding => { void whatsappRelay.reconcileTask(binding.taskId).catch(error =>
             console.error('[whatsapp-answer-relay] Could not reconcile queued request:', error)); },
     });
-    whatsappMessagingManager.setMessageHandler(async message => {
+    whatsappMessagingManager.setConnectionResetHandler(() => whatsappRouter.resetPendingImages());
+    whatsappMessagingManager.setMessageHandler(async (message, signal) => {
         await restoreWhatsAppBindings();
-        await whatsappRouter.handle(message);
+        if (signal) await whatsappRouter.handle(message, signal);
+        else await whatsappRouter.handle(message);
     });
     whatsappMessagingManager.setConnectedHandler(async () => {
         await restoreWhatsAppBindings();
@@ -1048,6 +1050,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     // Server shutdown: drop both queue subscriptions.
     whatsappMessagingManager.setDisposeHandler(() => {
+        whatsappRouter.dispose();
         whatsappRelay.dispose();
         jobNotices.dispose();
     });

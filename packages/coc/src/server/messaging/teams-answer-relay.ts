@@ -291,7 +291,7 @@ export class TeamsAnswerRelay {
         return { taskId: taskId!, workspaceId };
     }
 
-    async selectThreadTarget(msg: InboundTeamsMessage, workspaceId: string, processId: string | null): Promise<void> {
+    async selectThreadTarget(msg: InboundTeamsMessage, workspaceId: string, processId: string | null, allowQueued = false): Promise<void> {
         if (this.disposed || !this.deps.isEnabled()) throw new Error('Teams thread selection is unavailable');
         const target = this.deps.target();
         if (!target.connected || !target.teamId || target.channelId !== msg.channelId || !msg.replyToMessageId) {
@@ -300,14 +300,22 @@ export class TeamsAnswerRelay {
         if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) {
             throw new Error('Teams thread workspace is unavailable');
         }
+        let taskId: string | undefined;
         if (processId) {
             const process = await this.deps.store.getProcess(processId, workspaceId);
-            if (!process || process.id !== processId || process.metadata?.workspaceId !== workspaceId
+            const queued = !process && allowQueued && isQueueProcessId(processId)
+                ? this.deps.queue.getTask(toTaskId(processId)) : undefined;
+            if (queued?.repoId === workspaceId && queued.processId === processId
+                && queued.type === 'chat' && queued.payload.kind === 'chat'
+                && queued.payload.workspaceId === workspaceId && !queued.payload.processId
+                && ['queued', 'running'].includes(queued.status)) {
+                taskId = queued.id;
+            } else if (!process || process.id !== processId || process.metadata?.workspaceId !== workspaceId
                 || ['failed', 'cancelled'].includes(process.status)) {
                 throw new Error('Teams thread chat is unavailable');
             }
         }
-        this.saveThreadSelection(msg.channelId, msg.replyToMessageId!, workspaceId, processId, undefined, msg.messageId);
+        this.saveThreadSelection(msg.channelId, msg.replyToMessageId!, workspaceId, processId, taskId, msg.messageId);
     }
 
     private saveThreadSelection(channelId: string, rootId: string, workspaceId: string, processId: string | null, taskId?: string, commandId?: string): void {

@@ -42,9 +42,11 @@ export class WhatsAppMessagingManager {
     private error: string | null = null;
     private qr: string | null = null;
     private generation = 0;
-    private messageHandler: ((message: InboundWAMessage) => Promise<void>) | null = null;
+    private messageHandler: ((message: InboundWAMessage, signal?: AbortSignal) => Promise<void>) | null = null;
     private reconnectHandler: (() => Promise<void> | void) | null = null;
     private disposeHandler: (() => void) | null = null;
+    private connectionResetHandler: (() => void) | null = null;
+    private inboundLifetime = new AbortController();
     private readonly createBot: BotFactory;
     private readonly pendingStarts = new Set<Promise<void>>();
 
@@ -85,7 +87,7 @@ export class WhatsAppMessagingManager {
         return { ...this.config, status: this.status, error: this.error, qr: this.qr };
     }
 
-    setMessageHandler(handler: (message: InboundWAMessage) => Promise<void>): void {
+    setMessageHandler(handler: (message: InboundWAMessage, signal?: AbortSignal) => Promise<void>): void {
         this.messageHandler = handler;
     }
 
@@ -101,9 +103,23 @@ export class WhatsAppMessagingManager {
         this.disposeHandler = handler;
     }
 
+    setConnectionResetHandler(handler: () => void): void {
+        this.connectionResetHandler = handler;
+    }
+
+    private resetConnection(): void {
+        this.inboundLifetime.abort();
+        this.inboundLifetime = new AbortController();
+        this.connectionResetHandler?.();
+    }
+
     dispose(): void {
+        ++this.generation;
+        this.resetConnection();
+        this.inboundLifetime.abort();
         this.disposeHandler?.();
         this.disposeHandler = null;
+        this.messageHandler = null;
     }
 
     async updateConfig(patch: Partial<WhatsAppMessagingConfig>): Promise<void> {
@@ -113,6 +129,7 @@ export class WhatsAppMessagingManager {
         fs.mkdirSync(this.directory, { recursive: true });
         fs.writeFileSync(this.configPath, JSON.stringify(next, null, 2), { mode: 0o600 });
         this.config = next;
+        if (patch.groupJid !== undefined) this.resetConnection();
         if (!next.enabled) this.error = null;
         if (next.enabled && !wasEnabled) await this.connect();
     }
@@ -120,6 +137,7 @@ export class WhatsAppMessagingManager {
     async connect(repair = false): Promise<void> {
         if (!this.config.enabled) throw new Error('WhatsApp integration is disabled');
         const generation = ++this.generation;
+        this.resetConnection();
         const oldBot = this.bot;
         this.bot = null;
         this.status = 'connecting';
@@ -142,8 +160,12 @@ export class WhatsAppMessagingManager {
             const bot = await this.createBot({
                 sessionDir: this.authPath,
                 deviceName: this.config.deviceName,
+                receiveImages: true,
                 onMessage: async message => {
-                    if (generation === this.generation && this.config.enabled) await this.messageHandler?.(message);
+                    if (generation === this.generation && this.config.enabled
+                        && (this.status === 'connected' || this.status === 'creating-group')) {
+                        await this.messageHandler?.(message, this.inboundLifetime.signal);
+                    }
                 },
                 onQR: qr => {
                     if (generation === this.generation) {
@@ -155,10 +177,14 @@ export class WhatsAppMessagingManager {
                     if (generation !== this.generation) return;
                     const previous = this.status;
                     this.status = status;
+                    if ((previous === 'connected' || previous === 'creating-group')
+                        && status !== 'connected' && status !== 'creating-group') this.resetConnection();
                     // Returning from group creation is not a reconnect.
                     if (status === 'connected' && previous !== 'creating-group') {
                         this.qr = null;
-                        void Promise.resolve().then(() => this.reconnectHandler?.()).catch(err => {
+                        void Promise.resolve().then(() => {
+                            if (generation === this.generation) return this.reconnectHandler?.();
+                        }).catch(err => {
                             console.error('[whatsapp-messaging] Reconnect callback failed:', err);
                         });
                     }
@@ -179,6 +205,7 @@ export class WhatsAppMessagingManager {
             if (generation !== this.generation || !this.config.enabled) await bot.stop();
         } catch (err) {
             if (generation !== this.generation) return;
+            this.resetConnection();
             const bot = this.bot;
             this.bot = null;
             if (bot) {
@@ -193,6 +220,7 @@ export class WhatsAppMessagingManager {
 
     async disconnect(): Promise<void> {
         ++this.generation;
+        this.resetConnection();
         const bot = this.bot;
         this.bot = null;
         this.status = 'disconnected';

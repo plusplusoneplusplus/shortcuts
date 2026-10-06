@@ -198,3 +198,117 @@ describe('pending-image resource and identity boundaries', () => {
         expect(pending.take(left)).toEqual([first]);
     });
 });
+
+describe('pending-image conversation-scoped operations', () => {
+    it('keeps stale bindings and expiry visible to take after a non-consuming count', () => {
+        vi.useFakeTimers();
+        const pending = store();
+        pending.add(scope, 'image', [image()]);
+        expect(pending.count({ ...scope, workspaceId: 'other' })).toBe(0);
+        expect(pending.count(scope)).toBe(1);
+        vi.advanceTimersByTime(PENDING_IMAGE_TTL_MS);
+        expect(pending.count(scope)).toBe(0);
+        expect(() => pending.take(scope)).toThrow('expired');
+    });
+
+    it('count returns the number of pending images for a scope', () => {
+        const pending = store();
+        const context = { ...scope, platform: 'whatsapp' as const };
+        expect(pending.count(context)).toBe(0);
+        const first = image();
+        pending.add(context, 'message-1', [first]);
+        expect(pending.count(context)).toBe(1);
+        const second = image();
+        pending.add(context, 'message-2', [second]);
+        expect(pending.count(context)).toBe(2);
+        pending.take(context);
+        expect(pending.count(context)).toBe(0);
+    });
+
+    it('count does not include images from different senders in same conversation', () => {
+        const pending = store();
+        const base = { ...scope, platform: 'whatsapp' as const };
+        const sender1 = { ...base, senderId: 'sender-1' };
+        const sender2 = { ...base, senderId: 'sender-2' };
+        pending.add(sender1, 'msg1', [image()]);
+        pending.add(sender2, 'msg2', [image(), image()]);
+        // Count is sender-specific
+        expect(pending.count(sender1)).toBe(1);
+        expect(pending.count(sender2)).toBe(2);
+    });
+
+    it('discardConversation clears all senders in a thread', () => {
+        const pending = store();
+        const base = { platform: 'teams' as const, conversationId: 'channel-1', threadId: 'root-msg' };
+        const sender1 = { ...base, senderId: 'sender-1', workspaceId: 'ws', chatId: null };
+        const sender2 = { ...base, senderId: 'sender-2', workspaceId: 'ws', chatId: null };
+        const sender3 = { ...base, senderId: 'sender-3', workspaceId: 'ws', chatId: null };
+        pending.add(sender1, 'msg1', [image()]);
+        pending.add(sender2, 'msg2', [image()]);
+        pending.add(sender3, 'msg3', [image()]);
+        expect(pending.has(sender1)).toBe(true);
+        expect(pending.has(sender2)).toBe(true);
+        expect(pending.has(sender3)).toBe(true);
+        // Discard entire conversation thread
+        pending.discardConversation(base);
+        expect(pending.has(sender1)).toBe(false);
+        expect(pending.has(sender2)).toBe(false);
+        expect(pending.has(sender3)).toBe(false);
+    });
+
+    it('discardConversation does not affect other threads in the same channel', () => {
+        const pending = store();
+        const channel = 'channel-1';
+        const thread1 = { platform: 'teams' as const, conversationId: channel, threadId: 'root-1', senderId: 'sender', workspaceId: 'ws', chatId: null };
+        const thread2 = { platform: 'teams' as const, conversationId: channel, threadId: 'root-2', senderId: 'sender', workspaceId: 'ws', chatId: null };
+        pending.add(thread1, 'msg1', [image()]);
+        pending.add(thread2, 'msg2', [image()]);
+        // Discard only thread1
+        pending.discardConversation({ platform: 'teams', conversationId: channel, threadId: 'root-1' });
+        expect(pending.has(thread1)).toBe(false);
+        expect(pending.has(thread2)).toBe(true);
+    });
+
+    it('discardConversation handles root selection (no threadId) to clear sender in channel roots', () => {
+        const pending = store();
+        const base = { platform: 'teams' as const, conversationId: 'channel-1' };
+        const sender1 = { ...base, senderId: 'sender-1', workspaceId: 'ws', chatId: null };
+        const sender2 = { ...base, senderId: 'sender-2', workspaceId: 'ws', chatId: null };
+        pending.add(sender1, 'msg1', [image()]);
+        pending.add(sender2, 'msg2', [image()]);
+        // Discard all senders in channel root (no threadId)
+        pending.discardConversation(base);
+        expect(pending.has(sender1)).toBe(false);
+        expect(pending.has(sender2)).toBe(false);
+    });
+
+    it('discardConversation in one platform does not affect other platforms', () => {
+        const pending = store();
+        const teamsContext = { platform: 'teams' as const, conversationId: 'conv', senderId: 'user', workspaceId: 'ws', chatId: null };
+        const whatsappContext = { platform: 'whatsapp' as const, conversationId: 'conv', senderId: 'user', workspaceId: 'ws', chatId: null };
+        pending.add(teamsContext, 'msg1', [image()]);
+        pending.add(whatsappContext, 'msg2', [image()]);
+        // Discard Teams conversation
+        pending.discardConversation({ platform: 'teams', conversationId: 'conv' });
+        expect(pending.has(teamsContext)).toBe(false);
+        expect(pending.has(whatsappContext)).toBe(true);
+    });
+
+    it('allows caller to validate combined captioned+pending count before take', () => {
+        const pending = store();
+        const context = { ...scope, platform: 'whatsapp' as const };
+        // Add 3 pending images
+        pending.add(context, 'msg1', Array.from({ length: 3 }, image));
+        // Caller checks count before adding new images
+        const existingCount = pending.count(context);
+        expect(existingCount).toBe(3);
+        // Caller can now validate: captioned (2) + pending (3) = 5, which is ok
+        expect(existingCount + 2).toBe(5);
+        // But captioned (3) + pending (3) = 6 would exceed limit
+        expect(existingCount + 3 > MAX_MESSAGING_IMAGES).toBe(true);
+        // Take works without silent discard
+        const taken = pending.take(context);
+        expect(taken).toHaveLength(3);
+    });
+
+});

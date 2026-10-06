@@ -7,7 +7,7 @@
  * router keeps Teams threads, relay receipts and per-user state.
  */
 
-import { toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import {
     ImageDownloadError, formatMessagingHelp, isMessagingControlCommand, parseMessagingCommand,
@@ -24,10 +24,31 @@ import {
 import { RemoteRefMemory, type MessagingRemoteDirectory } from './remote-browse';
 import type { MessagingHandOff, MessagingHandOffTarget } from './job-handoff';
 import type { MessagingJobOrigin } from './job-notices';
+<<<<<<< HEAD
 import { LocalTopicMemory, localTopicsReply, resolveLocalTopic } from './local-topics';
 import { IncomingImagesError } from './incoming-images';
+=======
+import { IncomingImagesError, MAX_MESSAGING_IMAGES } from './incoming-images';
+import { PendingImages, PendingImagesError, PENDING_IMAGE_TTL_MS, type PendingImageContext, type PendingImageScope } from './pending-images';
+import { createCache } from '../cache';
+>>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
 
 const EMPTY_CHAT_REPLY = 'Send a message to start a chat.';
+
+interface ImageRootFrame {
+    scope: PendingImageScope;
+    roots: string[];
+}
+
+function createImageRootCache() {
+    return createCache<ImageRootFrame>({ namespace: 'teams-pending-image-roots', maxSize: 2_000 });
+}
+
+function createInstructionCache() {
+    return createCache<true>({
+        namespace: 'teams-consumed-image-instructions', maxSize: 2_000, ttlMs: PENDING_IMAGE_TTL_MS,
+    });
+}
 
 const TEAMS_FORMAT = {
     strong: (text: string) => `**${escapeTeamsMarkdown(text)}**`,
@@ -69,6 +90,9 @@ export interface TeamsCommandRouterDeps {
     /** Mode-prefixed messages to a sentinel start a separate handed-off job. */
     handOff?: MessagingHandOff;
     admitImageHandOff?: (msg: InboundTeamsMessage, target: MessagingHandOffTarget, message: string, origin: MessagingJobOrigin) => Promise<{ taskId: string; duplicate: boolean }>;
+    resolvePendingImageTarget?: (processId: string) => { workspaceId: string; chatId: string } | null;
+    validateImageTarget?: (msg: InboundTeamsMessage, workspaceId: string) => Promise<void>;
+    bindImageRoot?: (msg: InboundTeamsMessage, workspaceId: string, processId: string | null) => Promise<void>;
     /** Where a job handed off from `msg` reports back; undefined while the channel is unknown. */
     handOffOrigin?: (msg: InboundTeamsMessage) => MessagingJobOrigin | undefined;
     /** Send a reply back to Teams. */
@@ -88,6 +112,47 @@ export class TeamsCommandRouter {
     private readonly threadDispatches = new Map<string, Promise<void>>();
     private readonly localTopics = new LocalTopicMemory();
     private readonly remoteRefs = new RemoteRefMemory();
+    private pendingImages = new PendingImages();
+    private consumedImageInstructions = createInstructionCache();
+    private stopped = false;
+    private imageGeneration = 0;
+    private imageRoots = createImageRootCache();
+
+    private imageRootKey(channelId: string, rootId: string): string {
+        return JSON.stringify(['root', channelId, rootId]);
+    }
+
+    private latestImageRootKey(msg: InboundTeamsMessage): string {
+        return JSON.stringify(['latest', msg.channelId, msg.senderAadId]);
+    }
+
+    private rootFrame(msg: InboundTeamsMessage): ImageRootFrame | undefined {
+        const frame = msg.replyToMessageId
+            ? this.imageRoots.get(this.imageRootKey(msg.channelId, msg.replyToMessageId))
+            : this.imageRoots.get(this.latestImageRootKey(msg));
+        return frame?.scope.senderId === msg.senderAadId ? frame : undefined;
+    }
+
+    private clearRootFrame(frame: ImageRootFrame): void {
+        for (const rootId of frame.roots) this.imageRoots.delete(this.imageRootKey(frame.scope.conversationId, rootId));
+        const latestKey = JSON.stringify(['latest', frame.scope.conversationId, frame.scope.senderId]);
+        if (this.imageRoots.get(latestKey) === frame) this.imageRoots.delete(latestKey);
+    }
+
+    private instructionKey(msg: InboundTeamsMessage): string {
+        return JSON.stringify([msg.channelId, msg.replyToMessageId ?? null, msg.senderAadId, msg.messageId]);
+    }
+
+    private discardThreadImages(msg: InboundTeamsMessage): void {
+        this.pendingImages.discardConversation({
+            platform: 'teams', conversationId: msg.channelId, threadId: msg.replyToMessageId,
+        });
+        const frame = this.imageRoots.get(this.imageRootKey(msg.channelId, msg.replyToMessageId!));
+        if (frame) {
+            this.pendingImages.discard(frame.scope);
+            this.clearRootFrame(frame);
+        }
+    }
 
     constructor(deps: TeamsCommandRouterDeps) {
         this.deps = deps;
@@ -95,14 +160,13 @@ export class TeamsCommandRouter {
     }
 
     async handle(msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
-        if (!msg.replyToMessageId || this.deps.isAnswerRelayEnabled?.() !== true) {
-            await this.handleMessage(msg, observe);
-            return;
-        }
-        const key = `${msg.channelId}\0${msg.replyToMessageId}`;
+        if (this.stopped) return;
+        const key = JSON.stringify([msg.channelId, msg.replyToMessageId ?? null,
+            msg.replyToMessageId ? null : msg.senderAadId ?? msg.senderName]);
         const previous = this.threadDispatches.get(key);
+        const generation = this.imageGeneration;
         const pending = (previous ?? Promise.resolve()).catch(() => undefined)
-            .then(() => this.handleMessage(msg, observe));
+            .then(() => generation === this.imageGeneration ? this.handleMessage(msg, observe) : undefined);
         this.threadDispatches.set(key, pending);
         try {
             await pending;
@@ -111,18 +175,136 @@ export class TeamsCommandRouter {
         }
     }
 
+    stop(): void {
+        this.stopped = true;
+        this.imageGeneration++;
+        this.threadDispatches.clear();
+        this.pendingImages.dispose();
+        this.consumedImageInstructions.dispose();
+        this.imageRoots.dispose();
+    }
+
+    start(): void {
+        this.pendingImages.dispose();
+        this.pendingImages = new PendingImages();
+        this.imageGeneration++;
+        this.threadDispatches.clear();
+        this.consumedImageInstructions.dispose();
+        this.consumedImageInstructions = createInstructionCache();
+        this.imageRoots.dispose();
+        this.imageRoots = createImageRootCache();
+        this.stopped = false;
+    }
+
+    private imageContext(msg: InboundTeamsMessage): PendingImageContext {
+        if (msg.replyToMessageId) {
+            const frame = this.rootFrame(msg);
+            if (frame) return frame.scope;
+        }
+        return { platform: 'teams', conversationId: msg.channelId, threadId: msg.replyToMessageId,
+            senderId: msg.senderAadId ?? '' };
+    }
+
+    hasPendingImageInstructions(msg: InboundTeamsMessage): boolean {
+        if (this.stopped || !msg.senderAadId || msg.botAuthored || msg.initializationReplay || msg.historicalSelectionReplay) return false;
+        const command = parseMessagingCommand(msg.text);
+        return (command.type === 'chat' || command.type === 'chat-explicit')
+            && !!command.args && (this.pendingImages.has(this.rootFrame(msg)?.scope ?? this.imageContext(msg))
+                || this.consumedImageInstructions.has(this.instructionKey(msg)));
+    }
+
+    private async imageScope(msg: InboundTeamsMessage, command: MessagingCommand): Promise<PendingImageScope> {
+        const generation = this.imageGeneration;
+        let workspaceId: string | undefined;
+        let chatId: string | null = null;
+        if (msg.replyToMessageId) {
+            if (this.deps.isAnswerRelayEnabled?.() !== true) throw new Error('Teams thread target is unavailable');
+            const binding = await this.deps.resolveThreadReply?.(msg);
+            if (!binding) throw new Error('Teams thread target is unavailable');
+            workspaceId = binding.workspaceId;
+            chatId = binding.process?.id ?? (binding.taskId ? toQueueProcessId(binding.taskId) : null);
+        } else {
+            const state = this.userState.get(msg.senderAadId ?? msg.senderName ?? 'anonymous');
+            const targetId = command.type === 'chat-explicit' ? command.chatId : state.selectedTopic ?? state.lastActiveTopic;
+            if (targetId) {
+                const process = await this.deps.store.getProcess(targetId)
+                    ?? (!isQueueProcessId(targetId) ? await this.deps.store.getProcess(toQueueProcessId(targetId)) : undefined);
+                if (process) {
+                    workspaceId = typeof process.metadata?.workspaceId === 'string' ? process.metadata.workspaceId : undefined;
+                    chatId = process.id;
+                } else {
+                    const queued = this.deps.resolvePendingImageTarget?.(targetId);
+                    if (!queued) throw new Error('Teams conversation target is unavailable');
+                    workspaceId = queued.workspaceId;
+                    chatId = queued.chatId;
+                }
+            } else {
+                workspaceId = resolveChatWorkspace(await this.deps.store.getWorkspaces(), state.selectedRepo)?.id;
+            }
+        }
+        if (!workspaceId || !(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) throw new IncomingImagesError('workspace');
+        if (!this.deps.validateImageTarget) throw new IncomingImagesError('storage');
+        await this.deps.validateImageTarget(msg, workspaceId);
+        if (this.stopped || generation !== this.imageGeneration) throw new PendingImagesError('cancelled');
+        const frame = this.rootFrame(msg);
+        const context = !msg.replyToMessageId && frame && this.pendingImages.has(frame.scope) ? frame.scope : this.imageContext(msg);
+        return { ...context, workspaceId, chatId };
+    }
+
     private async handleMessage(msg: InboundTeamsMessage, observe?: (type: TeamsEventType) => void): Promise<void> {
         let command: MessagingCommand | undefined;
         let boundThread = false;
+        const imageRequest = !!msg.images?.length || this.hasPendingImageInstructions(msg);
+        const generation = this.imageGeneration;
+        let consumedRoots: ImageRootFrame | undefined;
 
         try {
-            if (msg.images?.length && (msg.botAuthored || msg.initializationReplay || msg.historicalSelectionReplay)) return;
+            if (this.stopped) return;
+            const instructionKey = this.instructionKey(msg);
+            if (this.consumedImageInstructions.has(instructionKey)) return;
+            if (msg.botAuthored) return;
+            if ((msg.images?.length || (msg.senderAadId && this.pendingImages.has(this.imageContext(msg))))
+                && (msg.initializationReplay || msg.historicalSelectionReplay)) return;
             if (msg.images?.length) {
                 const mediaCommand = parseMessagingCommand(msg.text);
                 if (mediaCommand.type === 'invalid' || isMessagingControlCommand(mediaCommand)) {
                     await this.deps.sendReply('Send the images with chat instructions, separately from control commands.', msg.replyToMessageId || msg.messageId);
                     return;
                 }
+            }
+            const parsedImageCommand = parseMessagingCommand(msg.text);
+            const explicit = msg.images?.length && !msg.replyToMessageId && parsedImageCommand.type === 'chat'
+                ? /^\[([^\]]+)\]$/.exec(parsedImageCommand.args) : null;
+            const imageCommand = explicit && parsedImageCommand.type === 'chat'
+                ? { type: 'chat-explicit' as const, chatId: explicit[1].trim(), args: '', mode: parsedImageCommand.mode }
+                : parsedImageCommand;
+            if (msg.images?.length && (imageCommand.type === 'chat' || imageCommand.type === 'chat-explicit') && !imageCommand.args) {
+                if (!msg.replyToMessageId && this.deps.hasThreadCommand?.({ ...msg, replyToMessageId: msg.messageId })) return;
+                let scope = await this.imageScope(msg, imageCommand);
+                let frame = this.rootFrame(msg);
+                if (!msg.replyToMessageId && (!frame || frame.scope.workspaceId !== scope.workspaceId || frame.scope.chatId !== scope.chatId)) {
+                    scope = { ...scope, threadId: msg.messageId };
+                    frame = { scope, roots: [] };
+                }
+                if (!this.pendingImages.add(scope, msg.messageId, msg.images).duplicate) {
+                    if (!msg.replyToMessageId && frame) {
+                        frame.roots.push(msg.messageId);
+                        this.imageRoots.set(this.latestImageRootKey(msg), frame);
+                        this.imageRoots.set(this.imageRootKey(msg.channelId, msg.messageId), frame);
+                        await this.deps.bindImageRoot?.(msg, scope.workspaceId, scope.chatId);
+                    }
+                    await this.deps.sendReply('Images received. Send instructions here within 30 minutes.', msg.replyToMessageId || msg.messageId);
+                }
+                return;
+            }
+            if (this.hasPendingImageInstructions(msg)) {
+                const scope = await this.imageScope(msg, imageCommand);
+                if (this.pendingImages.count(scope) + (msg.images?.length ?? 0) > MAX_MESSAGING_IMAGES) throw new PendingImagesError('batch-limit');
+                this.consumedImageInstructions.set(instructionKey, true);
+                consumedRoots = this.rootFrame(msg);
+                const pending = this.pendingImages.take(scope) ?? [];
+                if (consumedRoots) this.clearRootFrame(consumedRoots);
+                msg = { ...msg, images: [...pending, ...(msg.images ?? [])] };
             }
             if (msg.replyToMessageId && this.deps.resolveThreadReply
                 && this.deps.isAnswerRelayEnabled?.() !== true) {
@@ -188,6 +370,13 @@ export class TeamsCommandRouter {
                 if (admission.duplicate) {
                     return;
                 }
+                if (consumedRoots) {
+                    const processId = binding.process?.id ?? (binding.taskId ? toQueueProcessId(binding.taskId)
+                        : admission.taskId ? toQueueProcessId(admission.taskId) : null);
+                    for (const root of consumedRoots.roots) {
+                        await this.deps.bindImageRoot?.({ ...msg, messageId: root }, binding.workspaceId, processId);
+                    }
+                }
                 observe?.(newChat ? 'dispatch-queued' : 'dispatch-follow-up');
                 if (newChat) {
                     await this.sendAcceptance(
@@ -211,11 +400,24 @@ export class TeamsCommandRouter {
             } else if (command.type === 'chat') {
                 await this.handleChat(userKey, command.args, command.mode, msg, observe);
             } else {
+<<<<<<< HEAD
                 await this.deps.sendReply(await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, this.deps.handOffOrigin?.(msg) ? { ...this.deps.handOffOrigin(msg)!, threadId: msg.messageId } : undefined), msg.messageId);
+=======
+                await this.deps.sendReply(await this.handleControlCommand(userKey, command, `${msg.channelId}\0${userKey}`, msg), msg.messageId);
+            }
+            if (consumedRoots && !msg.replyToMessageId) {
+                const state = this.userState.get(userKey);
+                const processId = consumedRoots.scope.chatId ?? state.selectedTopic ?? state.lastActiveTopic;
+                for (const root of consumedRoots.roots) {
+                    await this.deps.bindImageRoot?.({ ...msg, messageId: root }, consumedRoots.scope.workspaceId, processId);
+                }
+>>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
             }
         } catch (err: any) {
+            if (consumedRoots) this.clearRootFrame(consumedRoots);
+            if (this.stopped || generation !== this.imageGeneration) return;
             observe?.('dispatch-failed');
-            if (err instanceof ImageDownloadError || err instanceof IncomingImagesError) {
+            if (err instanceof ImageDownloadError || err instanceof IncomingImagesError || err instanceof PendingImagesError) {
                 await this.deps.sendReply(err.message, msg.replyToMessageId || msg.messageId);
                 return;
             }
@@ -230,7 +432,7 @@ export class TeamsCommandRouter {
                         ? '❌ This chat is unavailable. Use `/select topic <id>` or `/create topic` here.'
                         : '❌ Teams thread target is unavailable. Retry the command or question shortly.';
                 await this.deps.sendReply(text, msg.replyToMessageId);
-            } else if (msg.images?.length || (this.deps.isAnswerRelayEnabled?.() === true && (msg.replyToMessageId || command?.type === 'chat' || command?.type === 'chat-explicit'))) {
+            } else if (imageRequest || (this.deps.isAnswerRelayEnabled?.() === true && (msg.replyToMessageId || command?.type === 'chat' || command?.type === 'chat-explicit'))) {
                 await this.deps.sendReply('❌ Unable to accept the request. Please try again later.', msg.replyToMessageId || msg.messageId);
             } else {
                 await this.deps.sendReply(`❌ Error: ${err.message ?? 'Unknown error'}`, msg.messageId);
@@ -239,7 +441,15 @@ export class TeamsCommandRouter {
     }
 
     /** `chatKey` scopes the `list remotes` numbering: a bound thread, or a user in a channel. */
+<<<<<<< HEAD
     private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, compactOrigin?: MessagingJobOrigin): Promise<string> {
+=======
+    private handleControlCommand(userKey: string, command: MessagingControlCommand, chatKey: string, msg?: InboundTeamsMessage): Promise<string> {
+        const discard = () => {
+            if (msg?.senderAadId) this.pendingImages.discard(this.imageContext(msg));
+            if (msg) this.imageRoots.delete(this.latestImageRootKey(msg));
+        };
+>>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
         return handleMessagingCommand(command, {
             store: this.deps.store,
             getQuota: this.deps.getQuota,
@@ -258,11 +468,11 @@ export class TeamsCommandRouter {
             },
             selection: {
                 repoId: () => this.userState.get(userKey).selectedRepo,
-                selectRepo: workspaceId => this.userState.update(userKey, { selectedRepo: workspaceId }),
+                selectRepo: workspaceId => { discard(); this.userState.update(userKey, { selectedRepo: workspaceId }); },
                 topicId: () => this.userState.get(userKey).selectedTopic,
-                selectTopic: (_workspaceId, processId) => this.userState.update(userKey, processId
+                selectTopic: (_workspaceId, processId) => { discard(); this.userState.update(userKey, processId
                     ? { selectedTopic: processId }
-                    : { selectedTopic: null, lastActiveTopic: null }),
+                    : { selectedTopic: null, lastActiveTopic: null }); },
             },
         });
     }
@@ -304,6 +514,7 @@ export class TeamsCommandRouter {
                 return;
             }
             await this.deps.selectThreadTarget(msg, workspace.id, null);
+            if (!silent) this.discardThreadImages(msg);
             await reply(`✅ Selected repo: **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question starts a new chat.`);
             return;
         }
@@ -337,9 +548,26 @@ export class TeamsCommandRouter {
         }
         if (command.type === 'create-topic') {
             await this.deps.selectThreadTarget(msg, workspace.id, null);
+            if (!silent) this.discardThreadImages(msg);
             await reply(`✅ Ready for a new topic in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question starts a new chat.`);
             return;
         }
+<<<<<<< HEAD
+=======
+        if (command.type === 'select-topic') {
+            const process = await resolveTopic(this.deps.store, workspace.id, command.args);
+            if (!process || process.metadata?.workspaceId !== workspace.id
+                || ['failed', 'cancelled'].includes(process.status)) {
+                this.deps.recordThreadCommand?.(msg);
+                await reply('❌ Topic not found in the selected repo. Use `/list topics` here.');
+                return;
+            }
+            await this.deps.selectThreadTarget(msg, workspace.id, process.id);
+            if (!silent) this.discardThreadImages(msg);
+            const title = process.title ?? process.customTitle ?? process.id;
+            await reply(`✅ Selected topic: **${escapeTeamsMarkdown(title)}** in **${escapeTeamsMarkdown(workspace.name ?? workspace.id)}**. Your next question continues this chat.`);
+        }
+>>>>>>> 68f706c9a (feat(coc): route pending messaging images through captured chat contexts)
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -409,6 +637,7 @@ export class TeamsCommandRouter {
                         this.deps.acknowledgeFollowUp?.(msg));
                     return;
                 }
+                if (msg.images?.length) throw new Error('Teams conversation target is unavailable');
                 targetId = null;
             }
         }
