@@ -118,6 +118,46 @@ describe('Teams channel Like admission', () => {
         expect(react).toHaveBeenCalledTimes(2);
     });
 
+    it.each(['help', '/help', 'quota', 'list repos', 'compact'])(
+        'acknowledges %s in a bound thread once and preserves command replies without LLM dispatch', async text => {
+            const { handle, message, react, send, events, setEnabled } = setup(true);
+            setEnabled(true);
+            await handle(message('root', 'new request'));
+            react.mockClear();
+            send.mockClear();
+            events.length = 0;
+            const command = message('command', text, 'root');
+            await handle(command);
+            await handle(command);
+            expect(react).toHaveBeenCalledExactlyOnceWith(command);
+            expect(send).toHaveBeenCalledOnce();
+            expect(send.mock.calls[0][1]).toBe('root');
+            expect(events).toEqual(['like:command', expect.stringContaining('reply:root:')]);
+        },
+    );
+
+    it('answers help when its Like fails and does not retry the reaction on redelivery', async () => {
+        const { handle, message, react, send, events, setEnabled } = setup(true);
+        setEnabled(true);
+        await handle(message('root', 'new request'));
+        react.mockClear();
+        send.mockClear();
+        events.length = 0;
+        react.mockRejectedValueOnce(new Error('reaction down'));
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            const command = message('help', '/help', 'root');
+            await handle(command);
+            await handle(command);
+            expect(react).toHaveBeenCalledExactlyOnceWith(command);
+            expect(send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('CoC help'), 'root');
+            expect(events).toEqual([expect.stringContaining('reply:root:')]);
+            expect(errors).toHaveBeenCalled();
+        } finally {
+            errors.mockRestore();
+        }
+    });
+
     it('does not react to bot authors, empty posts, or unsupported thread replies', async () => {
         const { handle, message, react, events, setEnabled } = setup();
         setEnabled(true);

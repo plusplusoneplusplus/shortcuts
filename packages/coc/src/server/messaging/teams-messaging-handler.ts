@@ -272,6 +272,7 @@ export function registerTeamsMessagingRoutes(
                 && !!relay?.threadRoots(manager.getStatus().teamId ?? '', msg.channelId).includes(msg.replyToMessageId);
             if (opts.getMessageReactionEnabled?.() === true && msg.text.trim() && !msg.botAuthored
                 && !msg.initializationReplay
+                && !relay?.hasCommand(msg)
                 && (!msg.replyToMessageId || boundReply)) {
                 void manager.reactToChannelMessage(msg).catch(err => {
                     console.error('[teams-messaging] Teams Like reaction unavailable or failed:',
