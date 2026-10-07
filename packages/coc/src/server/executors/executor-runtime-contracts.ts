@@ -41,6 +41,7 @@ import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } f
 import type { McpOauthManager } from '../mcp-oauth';
 import type { LaunchRalphFn } from '../ralph/ralph-launch-service';
 import type { ProcessWebSocketServer } from '../streaming/websocket';
+import type { CreateTriggerFn } from '../triggers/create-trigger-service';
 import type { TriggerManager } from '../triggers/trigger-manager';
 import type { TurnPerformanceRecorder } from './turn-performance-tracker';
 
@@ -68,6 +69,7 @@ export interface CronInfraDeps {
 /** Late-bound trigger infrastructure deps (created after the executor registry). */
 export interface TriggerInfraDeps {
     manager: TriggerManager;
+    createTrigger?: CreateTriggerFn;
 }
 
 // ============================================================================
@@ -105,7 +107,7 @@ export interface ExecutorRuntimeCapabilities {
     readonly getWsServer?: () => ProcessWebSocketServer | undefined;
     /** Cron infrastructure powering the `cron` and `scheduleWakeup` tools. */
     readonly getCronInfra?: () => CronInfraDeps | undefined;
-    /** Trigger infrastructure; consumed by the bridge's action-completion hook. */
+    /** Trigger infrastructure for PR auto-fix creation and the bridge's action-completion hook. */
     readonly getTriggerInfra?: () => TriggerInfraDeps | undefined;
     /**
      * In-process enqueue capability bound at the route layer (where the queue
@@ -184,14 +186,14 @@ export interface ExecutorRuntimeCapabilities {
 // ============================================================================
 
 /**
- * Capabilities visible to the chat-mode executors. Deliberately excludes
- * trigger infrastructure, the Dreams runner and the chat-style flag, which
- * belong to the bridge, the Dreams executor and the lifecycle runner.
+ * Capabilities visible to the chat-mode executors. Excludes the Dreams runner
+ * and chat-style flags, which belong to the Dreams executor and lifecycle runner.
  */
 export type ChatExecutorRuntime = Pick<
     ExecutorRuntimeCapabilities,
     | 'getWsServer'
     | 'getCronInfra'
+    | 'getTriggerInfra'
     | 'getEnqueueChat'
     | 'getSendMessage'
     | 'getLaunchRalph'

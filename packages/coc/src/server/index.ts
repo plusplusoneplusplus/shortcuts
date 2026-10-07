@@ -449,7 +449,7 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         // can clear a trigger's in-flight guard when its fix turn completes.
         // triggerInfra is created after queue infra (like cronInfra), so read it
         // lazily through this closure.
-        () => triggerInfra ? { manager: triggerInfra.triggerManager } : undefined,
+        () => triggerInfra ? { manager: triggerInfra.triggerManager, createTrigger: triggerInfra.createTrigger } : undefined,
         // Late-bound enqueue capability for the `send_to_conversation` tool;
         // bound at the route layer below, read here once routes register.
         () => enqueueChatCapability,

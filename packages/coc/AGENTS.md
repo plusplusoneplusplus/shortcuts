@@ -90,6 +90,9 @@ references before editing. Paths are package-relative.
   runtime once, then forwards by identity through registry/chat layers.
   Narrow views exclude static config.
   `test/server/executors/executor-runtime-wiring.test.ts` guards every hop.
+- PR tool `autoFix` uses late-bound `getTriggerInfra().createTrigger` and the shared
+  `triggers/create-trigger-service.ts` creation path. Scope monitors to the calling
+  workspace/conversation and canonical PR origin; arming failures preserve PR success.
 - Use `QueueRuntimeConfig`, not `loadConfigFile()`/startup captures.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated

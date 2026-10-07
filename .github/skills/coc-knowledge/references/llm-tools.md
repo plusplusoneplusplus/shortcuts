@@ -64,6 +64,16 @@ means the PR exists but its chat binding was not written. Auto-merge warnings do
 not undo creation. Before retrying uncertain creation, inspect branches and PR
 state in the owning workspace to avoid duplicate submissions.
 
+`autoFix: true` arms a workspace-scoped `ci-failure` monitor after the PR binding
+succeeds, using its canonical origin and the calling conversation. It requires
+`triggers.enabled`; omitted/false leaves existing monitors unchanged. The shared
+`triggers/create-trigger-service.ts` validates ownership, persists, schedules and
+broadcasts creation for REST and tools. Tool retries reuse active monitors or resume
+paused monitors without resetting CI history or retry limits. Results include
+`autoFix: { requested, enabled, triggerId?, warning? }`; arming failures preserve PR
+success and report a warning. `getTriggerInfra().createTrigger` reaches the tool
+through the late-bound executor runtime.
+
 ### send_to_conversation
 
 Omitted `action` or `action: "send"` selects ordinary create/post dispatch and requires

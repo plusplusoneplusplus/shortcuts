@@ -22,6 +22,7 @@ import { createSendToConversationTool } from '../../src/server/llm-tools/send-to
 import { createScheduleWakeupTool } from '../../src/server/llm-tools/cron-tools';
 import { createAskUserTool } from '../../src/server/llm-tools/ask-user-tool';
 import { createMemoryStoreFactTool, createMemoryRecallTool } from '../../src/server/llm-tools/memory-v2-tools';
+import { createCreatePullRequestTool } from '../../src/server/llm-tools/create-pull-request-tool';
 import { createSystemOneTool } from '../../src/server/llm-tools/system-one-tool';
 
 /**
@@ -108,6 +109,7 @@ describe('schema mirror drift guard', () => {
     // Tools whose factories are side-effect-free to construct (no fs/store
     // instantiation) so we can read their live `parameters` and compare.
     const liveSchemas: Array<{ name: string; parameters: unknown }> = [
+        { name: 'create_pull_request', parameters: createCreatePullRequestTool({} as any).tool.parameters },
         { name: 'suggest_follow_ups', parameters: createSuggestFollowUpsTool().parameters },
         { name: 'search_conversations', parameters: createSearchConversationsTool({} as any).tool.parameters },
         { name: 'get_conversation', parameters: createGetConversationTool({} as any).tool.parameters },

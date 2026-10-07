@@ -129,6 +129,7 @@ describe('Executor runtime capability wiring', () => {
         ]> = [
             ['getWsServer', 'chat executors', p => p.chatExecutor.runtime.getWsServer],
             ['getCronInfra', 'chat executors', p => p.chatExecutor.runtime.getCronInfra],
+            ['getTriggerInfra', 'chat executors', p => p.chatExecutor.runtime.getTriggerInfra],
             ['getEnqueueChat', 'chat executors', p => p.chatExecutor.runtime.getEnqueueChat],
             ['getSendMessage', 'chat executors', p => p.chatExecutor.runtime.getSendMessage],
             ['getLaunchRalph', 'chat executors', p => p.chatExecutor.runtime.getLaunchRalph],
@@ -153,6 +154,17 @@ describe('Executor runtime capability wiring', () => {
                 expect(read(internals(executor))).toBe(runtime[capability]);
             },
         );
+
+        it('passes the late-bound trigger creation capability to the PR tool', () => {
+            const runtime = makeSentinelRuntime();
+            const { executor } = makeBridge(runtime);
+            const { chatExecutor } = internals(executor);
+            const deps = chatExecutor.buildCreatePullRequestDeps('process', 'workspace', undefined);
+            expect(deps.getCreateTrigger()).toBeUndefined();
+            const createTrigger = vi.fn();
+            runtime.getTriggerInfra.mockReturnValue({ createTrigger } as any);
+            expect(deps.getCreateTrigger()).toBe(createTrigger);
+        });
 
         it('shares one capability object with every chat executor, by identity', () => {
             const runtime = makeSentinelRuntime();

@@ -24,7 +24,8 @@ import {
     type CreatePullRequestResult,
     type PullRequestMergeMethod,
 } from '../git/create-pull-request-service';
-import { recordPullRequestBinding, type PrBindingWriterStore } from '../processes/record-pull-request-binding';
+import type { CreateTriggerFn } from '../triggers/create-trigger-service';
+import { recordPullRequestBinding, type RecordPullRequestBindingResult, type PrBindingWriterStore } from '../processes/record-pull-request-binding';
 
 export const CREATE_PULL_REQUEST_TOOL_NAME = 'create_pull_request';
 
@@ -37,6 +38,8 @@ export interface CreatePullRequestToolDeps {
     workingDirectory?: string;
     /** Process store used to resolve the workspace and write the binding. */
     store: PrBindingWriterStore;
+    /** Late-bound, absent when triggers are disabled or unavailable. */
+    getCreateTrigger?: () => CreateTriggerFn | undefined;
     /** Injectable service (tests). Defaults to the shared create-PR service. */
     createPullRequest?: (input: CreatePullRequestInput) => Promise<CreatePullRequestResult>;
 }
@@ -47,6 +50,7 @@ export interface CreatePullRequestArgs {
     base?: string;
     draft?: boolean;
     autoMerge?: boolean;
+    autoFix?: boolean;
     mergeMethod?: PullRequestMergeMethod;
     commits?: string | string[];
 }
@@ -79,6 +83,7 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 body: { type: 'string', description: 'PR description (markdown).' },
                 base: { type: 'string', description: 'Target branch. Defaults to the repo\'s default branch.' },
                 draft: { type: 'boolean', description: 'Open as a draft PR. Default false.' },
+                autoFix: { type: 'boolean', description: 'Enable automatic CI fixes in this conversation for the PR. Default false; false or omitted leaves existing monitoring unchanged. Requires triggers.enabled. Set true only when authorized by the user.' },
                 autoMerge: { type: 'boolean', description: 'Turn on auto-merge. Default false. Set true only when authorized by the user, including invoking a skill with a documented auto-merge default; pass false when the user disables it.' },
                 mergeMethod: { type: 'string', enum: [...MERGE_METHODS], description: 'Auto-merge method. Default "merge".' },
                 commits: {
@@ -93,6 +98,9 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
             const a = args ?? ({} as CreatePullRequestArgs);
             const title = typeof a.title === 'string' ? a.title.trim() : '';
             if (!title) return { success: false, code: 'invalid-input', error: 'title is required' };
+            if (a.autoFix !== undefined && typeof a.autoFix !== 'boolean') {
+                return { success: false, code: 'invalid-input', error: 'autoFix must be a boolean' };
+            }
             if (a.mergeMethod !== undefined && !MERGE_METHODS.includes(a.mergeMethod)) {
                 return { success: false, code: 'invalid-input', error: `mergeMethod must be one of ${MERGE_METHODS.join(', ')}` };
             }
@@ -127,9 +135,9 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 return { success: false, code: 'command-failed', error: err instanceof Error ? err.message : String(err) };
             }
 
-            let bound = false;
+            let binding: RecordPullRequestBindingResult | undefined;
             try {
-                bound = (await recordPullRequestBinding(deps.store, deps.workspaceId, deps.processId, result.id)) !== undefined;
+                binding = await recordPullRequestBinding(deps.store, deps.workspaceId, deps.processId, result.id);
             } catch (err) {
                 getLogger().warn(
                     LogCategory.AI,
@@ -137,7 +145,30 @@ export function createCreatePullRequestTool(deps: CreatePullRequestToolDeps): { 
                 );
             }
 
-            return { success: true, ...result, bound };
+            const autoFix: { requested: boolean; enabled: boolean; triggerId?: string; warning?: string } = {
+                requested: a.autoFix === true, enabled: false,
+            };
+            if (a.autoFix === true) {
+                try {
+                    const createTrigger = deps.getCreateTrigger?.();
+                    if (!createTrigger) {
+                        throw new Error('Triggers are disabled or unavailable.');
+                    }
+                    if (!binding) {
+                        throw new Error('The PR could not be bound to this conversation.');
+                    }
+                    const trigger = await createTrigger(deps.workspaceId, {
+                        processId: deps.processId,
+                        event: { type: 'condition-monitor', monitor: 'ci-failure',
+                            originId: binding.originId, prId: binding.prId },
+                    }, true);
+                    autoFix.enabled = trigger.status === 'active';
+                    autoFix.triggerId = trigger.id;
+                } catch (err) {
+                    autoFix.warning = err instanceof Error ? err.message : String(err);
+                }
+            }
+            return { success: true, ...result, bound: binding !== undefined, autoFix };
         },
     });
 
