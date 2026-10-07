@@ -66,12 +66,9 @@ vi.mock('../../../../src/server/spa/client/react/shared/file-path/browser-bridge
         },
     } : undefined,
 }));
-vi.mock('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab', () => ({
-    UnifiedBrowserTab: () => <div data-testid="mock-browser-page" />,
-}));
 
 import { UnifiedRightPanel } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedRightPanel';
-import { clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { readUnifiedPanelState, clearUnifiedPanelState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { clearUnifiedTreeState } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelTree';
 import type { WorkspaceDockController } from '../../../../src/server/spa/client/react/features/repo-detail/useWorkspaceDock';
 import { getUnifiedGitTabDirtyBridge, openUnifiedGitTab, useUnifiedGitTabHost } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedGitTabHost';
@@ -397,7 +394,7 @@ function pressAddTab(init: KeyboardEventInit = {}) {
     return event;
 }
 
-describe('unified panel add-tab shortcut', () => {
+describe('unified panel new-browser shortcut', () => {
     beforeEach(() => {
         localStorage.clear();
         clearUnifiedPanelState();
@@ -406,41 +403,53 @@ describe('unified panel add-tab shortcut', () => {
     });
     afterEach(() => { cleanup(); nativeMenu.enabled = false; clearUnifiedPanelState(); clearUnifiedTreeState(); });
 
+    function expectNewBrowser(count: number) {
+        expect(tabKinds()).toEqual(Array(count).fill('browser'));
+        expect(screen.getByRole('tab', { selected: true }).textContent).toContain('New Tab');
+        const addresses = screen.getAllByTestId('browser-address');
+        expect(document.activeElement).toBe(addresses[count - 1]);
+        expect((document.activeElement as HTMLInputElement).value).toBe('');
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+    }
+
     it.each([{ ctrlKey: true }, { ctrlKey: false, metaKey: true }])(
-        'opens the shared menu, navigates and restores trigger focus (%j)', async modifiers => {
+        'creates and activates one blank browser with address focus from an empty panel (%j)', modifiers => {
             renderPanel();
-            focusIn('unified-panel-open-menu');
+            expect(document.activeElement).toBe(document.body);
             expect(pressAddTab(modifiers).defaultPrevented).toBe(true);
-            const input = screen.getByTestId('unified-panel-open-menu-search');
-            await waitFor(() => expect(document.activeElement).toBe(input));
-            expect(tabKinds()).toEqual([]);
-            fireEvent.keyDown(input, { key: 'ArrowDown' });
-            fireEvent.keyDown(input, { key: 'ArrowDown' });
-            fireEvent.keyDown(input, { key: 'Enter' });
-            expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
-            expect(tabKinds()).toEqual(['notes']);
-            focusIn('unified-panel-open-menu');
-            pressAddTab(modifiers);
-            fireEvent.keyDown(screen.getByTestId('unified-panel-open-menu-search'), { key: 'Escape' });
-            expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
-            expect(document.activeElement).toBe(screen.getByTestId('unified-panel-open-menu'));
+            expectNewBrowser(1);
+            // The freshly focused address must accept the next chord, too.
+            expect(pressAddTab(modifiers).defaultPrevented).toBe(true);
+            expectNewBrowser(2);
+            act(() => { (document.activeElement as HTMLElement).blur(); });
+            expect(pressAddTab(modifiers).defaultPrevented).toBe(true);
+            expectNewBrowser(3);
+            expect(pressAddTab({ ...modifiers, repeat: true }).defaultPrevented).toBe(true);
+            expectNewBrowser(3);
         },
     );
 
-    it('keeps an open menu and query intact on repeated chords and preserves click toggling', () => {
+    it.each(['unified-panel-empty-open', 'unified-panel-open-menu'])(
+        'opens directly from panel chrome (%s)', trigger => {
+            renderPanel();
+            focusIn(trigger);
+            expect(pressAddTab().defaultPrevented).toBe(true);
+            expectNewBrowser(1);
+        },
+    );
+
+    it('replaces an open add menu and preserves click toggling', () => {
         renderPanel();
-        focusIn('unified-panel-empty-open');
-        pressAddTab();
-        const input = screen.getByTestId('unified-panel-open-menu-search');
-        fireEvent.change(input, { target: { value: 'abc' } });
-        expect(pressAddTab({ repeat: true }).defaultPrevented).toBe(true);
-        expect(pressAddTab().defaultPrevented).toBe(true);
-        expect(screen.getByTestId('unified-panel-open-menu-search')).toBe(input);
-        expect((input as HTMLInputElement).value).toBe('abc');
         fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
-        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        const input = screen.getByTestId('unified-panel-open-menu-search');
+        input.focus();
+        fireEvent.change(input, { target: { value: 'abc' } });
+        expect(pressAddTab().defaultPrevented).toBe(true);
+        expectNewBrowser(1);
         fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
         expect(screen.getByTestId('unified-panel-open-menu-search')).toBeTruthy();
+        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
+        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
     });
 
     it('ignores unrelated focus, modifiers, composition and previously handled events', () => {
@@ -450,7 +459,6 @@ describe('unified panel add-tab shortcut', () => {
         outside.focus();
         expect(pressAddTab().defaultPrevented).toBe(false);
         outside.remove();
-        expect(pressAddTab().defaultPrevented).toBe(false);
         focusIn('unified-panel-open-menu');
         for (const init of [{ altKey: true }, { shiftKey: true }, { ctrlKey: false }, { isComposing: true }, { key: 'w', altKey: true }]) {
             expect(pressAddTab(init).defaultPrevented).toBe(false);
@@ -458,7 +466,7 @@ describe('unified panel add-tab shortcut', () => {
         const consumed = new KeyboardEvent('keydown', { key: 't', ctrlKey: true, bubbles: true, cancelable: true });
         consumed.preventDefault();
         act(() => { document.activeElement!.dispatchEvent(consumed); });
-        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        expect(tabKinds()).toEqual([]);
     });
 
     it('preserves editable and terminal content, while allowing the strip shortcut', () => {
@@ -469,7 +477,6 @@ describe('unified panel add-tab shortcut', () => {
             expect(pressAddTab().defaultPrevented).toBe(false);
         }
         const editable = document.createElement('div');
-        editable.contentEditable = 'true';
         editable.setAttribute('contenteditable', 'true');
         editable.tabIndex = 0;
         screen.getByTestId('unified-right-panel').appendChild(editable);
@@ -478,58 +485,75 @@ describe('unified panel add-tab shortcut', () => {
         editable.remove();
         focusIn('unified-panel-open-menu');
         expect(pressAddTab().defaultPrevented).toBe(true);
+        expect(tabKinds()).toEqual(['notes', 'terminal', 'browser']);
+        expect(document.activeElement).toBe(screen.getByTestId('browser-address'));
     });
 
-    it('opens the menu for only the focused workspace panel', async () => {
+    it('preserves Monaco bindings even on non-editable editor chrome', () => {
+        render(<><UnifiedRightPanel workspaceId={WS} dock={dockStub()} /><GitDetailPortal /></>);
+        act(() => { openUnifiedGitTab(WS, { ownerWorkspaceId: WS, chatId: null }); });
+        const editor = screen.getByTestId(`git-editor-${WS}`).parentElement!;
+        editor.tabIndex = 0;
+        editor.focus();
+        expect(pressAddTab().defaultPrevented).toBe(false);
+        expect(tabKinds()).toEqual(['git']);
+    });
+
+    it('uses only the focused workspace and declines ambiguous body focus', () => {
         render(<>
             <UnifiedRightPanel workspaceId={WS} dock={dockStub()} />
             <UnifiedRightPanel workspaceId="ws-2" dock={dockStub({ target: 'ws-2' })} />
         </>);
+        expect(pressAddTab().defaultPrevented).toBe(false);
         const panels = screen.getAllByTestId('unified-right-panel');
-        const trigger = panels[1].querySelector<HTMLElement>('[data-testid="unified-panel-open-menu"]')!;
-        trigger.focus();
+        panels[1].querySelector<HTMLElement>('[data-testid="unified-panel-open-menu"]')!.focus();
         expect(pressAddTab().defaultPrevented).toBe(true);
-        expect(panels[0].querySelector('[data-testid="unified-panel-open-menu-popover"]')).toBeNull();
-        expect(panels[1].querySelector('[data-testid="unified-panel-open-menu-popover"]')).toBeTruthy();
-        fireEvent.click(screen.getByTestId('unified-panel-open-notes'));
-        const { readUnifiedPanelState } = await import('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore');
+        expectNewBrowser(1);
         expect(readUnifiedPanelState(WS).workspaceTabs).toEqual([]);
         expect(readUnifiedPanelState('ws-2').workspaceTabs.map(tab => tab.ownerWorkspaceId)).toEqual(['ws-2']);
     });
 
-    it('opens only for the active native browser view and restores DOM menu focus', async () => {
-        nativeMenu.enabled = true;
-        const view = renderPanel();
-        fireEvent.click(screen.getByTestId('unified-panel-open-menu'));
-        fireEvent.click(screen.getByTestId('unified-panel-open-browser'));
-        const tab = document.querySelector('[role="tab"][data-kind="browser"]') as HTMLElement;
-        const { readUnifiedPanelState } = await import('../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore');
-        const state = readUnifiedPanelState(WS);
-        const browser = state.workspaceTabs.find(candidate => candidate.kind === 'browser')!;
-        act(() => { nativeMenu.callback({ viewId: 'unrelated-view' }); });
-        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
-        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
-        const input = screen.getByTestId('unified-panel-open-menu-search');
-        await waitFor(() => expect(document.activeElement).toBe(input));
-        expect(tabKinds()).toEqual(['browser']);
-        fireEvent.keyDown(input, { key: 'Escape' });
-        expect(document.activeElement).toBe(screen.getByTestId('unified-panel-open-menu'));
-        openResource('notes');
-        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
-        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
-        fireEvent.click(tab);
-        view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);
-        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
-        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+    it('retains the selected remote group member route and workspace scope', () => {
+        renderPanel({
+            workspaceId: 'group-acme', routingRef: 'remote:server-1:group-acme', chatId: 'chat-1',
+            dock: dockStub({ target: 'ws-member', targets: [{ workspaceId: 'ws-member', label: 'api' }] }),
+        });
+        pressAddTab();
+        expectNewBrowser(1);
+        expect(readUnifiedPanelState('group-acme').workspaceTabs[0]).toMatchObject({
+            kind: 'browser', ownerWorkspaceId: 'ws-member', ownerRoutingRef: 'remote:server-1:ws-member',
+            chatId: null, repoLabel: 'api',
+        });
     });
 
-    it('does not handle hidden panels or open a menu for an initial auto-repeat', () => {
+    it('opens only for the active visible native browser source and focuses the new address', () => {
+        nativeMenu.enabled = true;
         const view = renderPanel();
-        focusIn('unified-panel-open-menu');
+        pressAddTab();
+        const browser = readUnifiedPanelState(WS).workspaceTabs[0];
+        act(() => { nativeMenu.callback({ viewId: 'unrelated-view' }); });
+        expectNewBrowser(1);
+        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
+        expectNewBrowser(2);
+        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
+        expectNewBrowser(2);
+        openResource('notes');
+        act(() => { nativeMenu.callback({ viewId: browser.resourceId }); });
+        expect(tabKinds()).toEqual(['browser', 'browser', 'notes']);
+        const latest = readUnifiedPanelState(WS).workspaceTabs[1];
+        fireEvent.click(screen.getAllByRole('tab')[1]);
+        view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);
+        act(() => { nativeMenu.callback({ viewId: latest.resourceId }); });
+        expect(readUnifiedPanelState(WS).workspaceTabs).toHaveLength(3);
+    });
+
+    it('ignores hidden panels and swallows initial repeats without creating tabs', () => {
+        const view = renderPanel();
         expect(pressAddTab({ repeat: true }).defaultPrevented).toBe(true);
-        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        expect(tabKinds()).toEqual([]);
+        focusIn('unified-panel-open-menu');
         view.rerender(<UnifiedRightPanel workspaceId={WS} dock={dockStub({ isOpen: false })} />);
         expect(pressAddTab().defaultPrevented).toBe(false);
-        expect(screen.queryByTestId('unified-panel-open-menu-popover')).toBeNull();
+        expect(readUnifiedPanelState(WS).workspaceTabs).toEqual([]);
     });
 });

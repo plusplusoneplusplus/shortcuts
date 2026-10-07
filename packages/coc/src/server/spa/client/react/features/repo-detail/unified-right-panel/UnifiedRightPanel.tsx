@@ -1511,14 +1511,15 @@ export function UnifiedRightPanel({
         };
     }, [menuOpen]);
 
-    const openMenuFromShortcut = useCallback(() => {
-        if (menuOpen) { return; }
-        // Use the shared trigger for native pages, which have no DOM focus here.
-        menuTriggerRef.current = panelRootRef.current?.querySelector<HTMLElement>(
-            '[data-testid="unified-panel-open-menu"]',
-        ) ?? null;
-        setMenuOpen(true);
-    }, [menuOpen]);
+    const openBrowserFromShortcut = useCallback(() => {
+        setMenuOpen(false);
+        open(browserOpenInput({
+            ownerWorkspaceId: target,
+            ...(targetRoutingRef === undefined ? {} : { ownerRoutingRef: targetRoutingRef }),
+            chatId,
+            ...(target !== workspaceId && targetLabel ? { repoLabel: targetLabel } : {}),
+        }));
+    }, [open, target, targetRoutingRef, chatId, workspaceId, targetLabel]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -1527,26 +1528,37 @@ export function UnifiedRightPanel({
                 || event.key.toLowerCase() !== 't') { return; }
             const root = panelRootRef.current;
             const focused = document.activeElement;
-            if (!isOpen || !root || root.offsetParent === null
-                || !focused || focused === document.body || !root.contains(focused)) { return; }
-            // Leave editor and terminal bindings alone. The menu's search field
-            // still consumes held/repeated chords without resetting its query.
-            if (!menuRef.current?.contains(focused) && (isEditableTarget(focused)
+            if (!isOpen || !root || root.offsetParent === null || !focused) { return; }
+            if (focused === document.body) {
+                // Empty panels have no focused resource. Claim neutral focus only
+                // when there is one visible panel, never an arbitrary workspace.
+                const visiblePanels = Array.from(document.querySelectorAll<HTMLElement>(
+                    '[data-testid="unified-right-panel"][data-open="true"]',
+                )).filter(panel => panel.offsetParent !== null);
+                if (visiblePanels.length !== 1 || visiblePanels[0] !== root) { return; }
+            } else if (!root.contains(focused)) { return; }
+            const inBrowser = active?.kind === 'browser'
+                && focused.closest('[data-testid^="unified-panel-view-"]')?.getAttribute('data-testid')
+                    === `unified-panel-view-${active.id}`;
+            // Browser address editing uses browser shortcuts; other editors and
+            // terminal inputs retain their own bindings.
+            if (!inBrowser && !menuRef.current?.contains(focused) && (isEditableTarget(focused)
                 || focused.closest('[contenteditable="true"], .monaco-editor, .xterm'))) { return; }
             event.preventDefault();
             event.stopPropagation();
-            if (!event.repeat) { openMenuFromShortcut(); }
+            if (!event.repeat) { openBrowserFromShortcut(); }
         };
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [isOpen, menuOpen, openMenuFromShortcut]);
+    }, [isOpen, active, openBrowserFromShortcut]);
 
+    // Native guests send this source-qualified event after returning host focus.
     useEffect(() => desktopBrowserBridge()?.onOpenMenuRequested?.(({ viewId }) => {
         const root = panelRootRef.current;
         if (!isOpen || !root || root.offsetParent === null
             || active?.kind !== 'browser' || active.resourceId !== viewId) { return; }
-        openMenuFromShortcut();
-    }), [isOpen, active, openMenuFromShortcut]);
+        openBrowserFromShortcut();
+    }), [isOpen, active, openBrowserFromShortcut]);
 
     // A concrete resource picked in the menu (a searched file, a chat canvas).
     // The menu decides the descriptor — owning clone, chat scope, normalized
