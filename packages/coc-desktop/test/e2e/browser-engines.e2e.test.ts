@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { diskCookies } from './browser-cookie-diagnostics';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1') || (process.platform === 'linux' && !process.env.DISPLAY) || !existsSync(path.join(here, '..', '..', 'dist', 'browser-view-host.js'));
@@ -34,23 +34,6 @@ async function scenario(engine: string, userData: string, ...args: string[]) {
             }
             resolve(records);
         });
-    });
-}
-
-/** On-disk Electron profile cookies, for persistence diagnostics. */
-function diskCookies(directory: string) {
-    const profile = path.join(directory, 'coc', 'browser', 'electron');
-    if (!existsSync(profile)) return null;
-    const files = readdirSync(profile, { recursive: true, encoding: 'utf8' }).filter(file => /cookies/i.test(file));
-    return files.map(file => {
-        const full = path.join(profile, file);
-        let rows: unknown;
-        try {
-            const db = new DatabaseSync(full, { readOnly: true });
-            rows = db.prepare('select host_key, name, length(value) as plain, length(encrypted_value) as encrypted, is_persistent from cookies').all();
-            db.close();
-        } catch (error) { rows = String(error); }
-        return { file, size: statSync(full).size, rows };
     });
 }
 
