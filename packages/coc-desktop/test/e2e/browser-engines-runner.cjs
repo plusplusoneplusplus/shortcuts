@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, session, shell } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs');
@@ -113,6 +113,9 @@ app.whenReady().then(async () => {
     const spa = js => main.webContents.executeJavaScript(js);
     const call = (win, method, ...args) => win.webContents.executeJavaScript(`window.__browser.${method}(${args.map(value => JSON.stringify(value)).join(',')})`);
     const state = (win, id) => win.webContents.executeJavaScript(`window.states.filter(s=>s.viewId===${JSON.stringify(id)}).slice(-1)[0]`);
+    // Main-process view of the Electron profile cookie jar, for persistence diagnostics.
+    const jar = async () => engine !== 'electron' ? null : (await session.fromPath(path.join(dataDir, 'browser', 'electron')).cookies.get({}))
+        .map(({ name, domain, session: sessionOnly, expirationDate }) => ({ name, domain, sessionOnly, expirationDate }));
     const settled = (win, id, predicate) => waitFor(async () => { const current = await state(win, id); return current && !current.loading && predicate(current) ? current : null; }, `${id} state`);
     const pref = await call(main, 'getPreferences');
     if (engine === 'webview2' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error('Required real WebView2 capability is unavailable: ' + JSON.stringify(pref));
@@ -178,7 +181,7 @@ app.whenReady().then(async () => {
         }
         emit('composer-refocus', { value: await spa('document.getElementById("composer").value') });
     } else if (restart) {
-        emit('restart', { engine: home.engine, history: home.canGoBack, report: reports.get('main'), preference: pref.defaultEngine });
+        emit('restart', { engine: home.engine, history: home.canGoBack, report: reports.get('main'), preference: pref.defaultEngine, jar: await jar() });
         if (!afterClear) {
             const otherWindow = await makeWindow();
             await call(otherWindow, 'open', 'other', base + '/?tab=other', 'remote-workspace');
@@ -225,6 +228,7 @@ app.whenReady().then(async () => {
         emit('history', { second, back, forward });
         command('main', 'seed');
         await waitFor(() => reports.get('main')?.storage === 'stored', 'site data seeded');
+        emit('seeded', { report: reports.get('main'), jar: await jar() });
         await call(main, 'navigate', 'main', base + '/slow');
         await waitFor(async () => (await state(main, 'main'))?.loading, 'slow load starts');
         await call(main, 'nav', 'main', 'stop');
@@ -282,7 +286,9 @@ app.whenReady().then(async () => {
         await call(main, 'setDefaultEngine', engine);
         // Cross-window cleanup is checked after the persistence restart.
     }
+    const before = restart ? null : await jar();
     await disposeBrowserViews();
+    if (!restart) emit('disposed', { before, after: await jar() });
     windows.forEach(win => win.destroy());
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));

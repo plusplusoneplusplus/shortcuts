@@ -737,13 +737,30 @@ describe('RepoTreeService.readBlob', () => {
         expect(decoded).toEqual(binaryContent);
     });
 
-    it('throws for files exceeding 1 MB', async () => {
-        seedDefaultRepo();
-        // Write a file slightly over 1 MB
-        const largeContent = Buffer.alloc(1024 * 1024 + 1, 'a');
-        fs.writeFileSync(path.join(repoDir, 'large.bin'), largeContent);
+    // Assert on messages and lengths only: a multi-MB diff in a failure report
+    // stalls GitHub's log processing for tens of minutes.
+    const readError = (relative: string) =>
+        service.readBlob(REPO_ID, relative).then(() => 'resolved', (error: Error) => error.message);
 
-        await expect(service.readBlob(REPO_ID, 'large.bin')).rejects.toThrow(/exceeds maximum size/i);
+    it('throws for binary files exceeding 1 MB', async () => {
+        seedDefaultRepo();
+        // NUL-filled, so the binary cap applies
+        fs.writeFileSync(path.join(repoDir, 'large.bin'), Buffer.alloc(1024 * 1024 + 1));
+
+        expect(await readError('large.bin')).toMatch(/exceeds maximum size of 1048576 bytes/i);
+    });
+
+    it('reads source text over 1 MB and throws above 10 MB', async () => {
+        seedDefaultRepo();
+        const text = 'a'.repeat(1024 * 1024 + 1);
+        fs.writeFileSync(path.join(repoDir, 'large.txt'), text);
+        const blob = await service.readBlob(REPO_ID, 'large.txt');
+        expect(blob.encoding).toBe('utf-8');
+        expect(blob.content.length).toBe(text.length);
+        expect(blob.content === text).toBe(true);
+
+        fs.writeFileSync(path.join(repoDir, 'huge.txt'), Buffer.alloc(10 * 1024 * 1024 + 1, 'a'));
+        expect(await readError('huge.txt')).toMatch(/exceeds maximum size of 10485760 bytes/i);
     });
 
     it('throws for path traversal', async () => {

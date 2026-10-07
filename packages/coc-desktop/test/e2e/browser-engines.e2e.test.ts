@@ -82,7 +82,8 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         if (engine === 'webview2') expect(steps.get('profile-lock')?.result).toMatchObject({ ok: false, reason: 'profile-locked' });
         const restart = await scenario(engine, directory, '--restart-check');
         expect(restart.get('restart')).toMatchObject({ engine, history: false, preference: engine, report: { storage: 'stored' } });
-        expect(restart.get('restart')?.report.cookie).toContain('fixture=remembered');
+        const cookieTrail = JSON.stringify({ seeded: steps.get('seeded'), disposed: steps.get('disposed'), restart: restart.get('restart') });
+        expect(restart.get('restart')?.report.cookie, cookieTrail).toContain('fixture=remembered');
         expect(restart.get('clear')?.result).toEqual({ ok: true });
         expect(restart.get('clear')?.firstWindowClosed).toContainEqual({ viewId: 'main', engine });
         expect(restart.get('clear')?.secondWindowClosed).toContainEqual({ viewId: 'other', engine });
