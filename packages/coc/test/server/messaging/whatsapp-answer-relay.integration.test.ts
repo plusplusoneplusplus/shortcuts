@@ -66,7 +66,7 @@ describe('WhatsApp answer relay through real multi-repo queues', () => {
             store, bindings, groupJid: () => 'bound@g.us',
             getTask: id => facade.getTask(id),
             getBotManagedConversationsEnabled: () => true,
-            enqueue: (workspaceId, prompt, mode, processId, id, botControl, admissionHeld) => (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
+            enqueue: (workspaceId, prompt, mode, processId, id, botControl, _images, admissionHeld) => (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                 id, processId, type: 'chat', repoId: workspaceId, priority: 'normal',
                 botControl,
                 payload: { kind: 'chat', mode, workspaceId, prompt, relayRequestId: id,
