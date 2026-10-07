@@ -31,11 +31,9 @@ import type { HunkNavigationHandle } from '../hooks/useCrossFileNav';
 import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { buildDiffContext } from '../../../../comments/diff-context-utils';
 import { copyToClipboard } from '../../../utils/format';
-import { CommitChatPanel } from '../commits/CommitChatPanel';
-import { CommitChatPlacementFrame } from '../commits/CommitChatPlacementFrame';
-import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
+import { CommitReviewChat } from '../commits/CommitReviewChat';
 import { useFileDiff } from '../hooks/useFileDiff';
-import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
+import { useCommitChatPresentation, type UseCommitChatPresentationReturn } from '../hooks/useCommitChatPresentation';
 import type { DiffSource } from './diffSource';
 import type { DiffSelectionDragSource } from './diffSelectionContext';
 import type { DiffCommentSelection, DiffComment } from '../../../../comments/diff-comment-types';
@@ -54,6 +52,8 @@ export interface FileDiffPanelProps {
     workspaceId: string;
     /** Concrete repo owner for selection attachments. */
     attachmentDestinationId?: string;
+    /** Commit-level host keeps chat mounted across overview and file navigation. */
+    reviewChat?: UseCommitChatPresentationReturn;
     filePath: string;
     source: DiffSource;
     /** Called when cross-file nav requests switching to a different file. */
@@ -95,7 +95,8 @@ type PopupState = {
 
 type EditorContentState =
     | { key: string; status: 'loading' }
-    | { key: string; status: 'loaded'; content: GitFileDiffContentResponse }
+    | { key: string; status: 'loaded'; content: GitFileDiffContentResponse; workspaceId: string;
+        filePath: string; cacheKey: string; supportsWorkingCopyLanguage: boolean }
     | { key: string; status: 'failed' };
 
 export function FileDiffPanel({
@@ -116,6 +117,7 @@ export function FileDiffPanel({
     headerActions,
     createDiffEditor,
     onDiffEngineChange,
+    reviewChat,
 }: FileDiffPanelProps) {
     const { dispatch: queueDispatch } = useQueue();
 
@@ -152,17 +154,22 @@ export function FileDiffPanel({
     sourceRef.current = source;
 
     useEffect(() => {
-        const fetchFileContent = sourceRef.current.fetchFileContent;
+        const requestedSource = sourceRef.current;
+        const fetchFileContent = requestedSource.fetchFileContent;
         if (!wantsEditor || !fetchFileContent) return;
         let cancelled = false;
-        setEditorContent({ key: editorContentKey, status: 'loading' });
+        // Retain the last editor models while the next file loads.
+        setEditorContent(previous => previous?.status === 'loaded' ? previous : { key: editorContentKey, status: 'loading' });
         Promise.resolve().then(() => fetchFileContent(filePath))
             .then(content => {
                 if (!content || typeof content.binary !== 'boolean' || typeof content.tooLarge !== 'boolean'
                     || typeof content.base?.content !== 'string' || typeof content.head?.content !== 'string') {
                     throw new Error('Invalid file diff content response');
                 }
-                if (!cancelled) setEditorContent({ key: editorContentKey, status: 'loaded', content });
+                if (!cancelled) setEditorContent({
+                    key: editorContentKey, status: 'loaded', content, workspaceId, filePath,
+                    cacheKey: requestedSource.cacheKey, supportsWorkingCopyLanguage: requestedSource.supportsWorkingCopyLanguage === true,
+                });
             })
             .catch(() => { if (!cancelled) setEditorContent({ key: editorContentKey, status: 'failed' }); });
         return () => { cancelled = true; };
@@ -183,6 +190,9 @@ export function FileDiffPanel({
         : null;
     const showEditor = editorSides !== null;
     const editorLoading = engineSelection.engine === 'loading';
+    const displayedEditor = (showEditor || editorLoading) && editorContent?.status === 'loaded'
+        && editorContent.workspaceId === workspaceId && editorFailedKey !== editorContent.key
+        && !editorContent.content.binary && !editorContent.content.tooLarge ? editorContent : null;
     const classicActive = engineSelection.engine === 'legacy';
     const fallbackReason = classicActive ? engineSelection.fallback : null;
     const handleEditorError = useCallback(() => setEditorFailedKey(editorContentKey), [editorContentKey]);
@@ -200,6 +210,13 @@ export function FileDiffPanel({
     const monacoViewerRef = useRef<MonacoFileDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
+
+    useEffect(() => {
+        setPopupState(null);
+        setActivePopoverComment(null);
+        setPopoverPos(null);
+        setDiffLines([]);
+    }, [workspaceId, source.cacheKey, filePath]);
 
     // ── In-diff find (Ctrl/Cmd+F) ──
     // Searches the FULL diff model so off-screen matches in virtualized files
@@ -247,30 +264,11 @@ export function FileDiffPanel({
 
     // ── AI chat (conditional on source) ──
     const showChat = source.chat !== null;
-    const {
-        chatOpen,
-        toggleChat,
-        closeChat,
-        minimizeChat,
-        restoreChat,
-        pinChat,
-        unpinChat,
-        isPinned: chatPinned,
-        isMinimized: chatMinimized,
-        presentation: chatPresentation,
-        lensEnabled: chatLensEnabled,
-    } = useCommitChatPresentation({
-        workspaceId,
-        commitHash: source.chat?.commitHash,
-        supportsChat: showChat,
+    const localChat = useCommitChatPresentation({
+        workspaceId, commitHash: source.chat?.commitHash, supportsChat: showChat && !reviewChat,
     });
-    const chatResize = useResizablePanel({
-        initialWidth: 360,
-        minWidth: 200,
-        maxWidth: 600,
-        storageKey: 'coc.commitChatPanel.width',
-        direction: 'right',
-    });
+    const chat = reviewChat ?? localChat;
+    const { chatOpen, toggleChat } = chat;
 
     // ── Auto-scroll to target hunk ──
     const hasScrolledRef = useRef(false);
@@ -532,6 +530,7 @@ export function FileDiffPanel({
                             onClick={toggleChat}
                             title="Toggle AI chat"
                             className="text-xs px-2 py-0.5 rounded hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+                            aria-pressed={chatOpen}
                             data-testid="toggle-chat-btn"
                         >
                             🤖
@@ -567,32 +566,36 @@ export function FileDiffPanel({
                     {fallbackReason && (
                         <DiffEngineFallbackBanner reason={fallbackReason} onRetry={retryEditor} />
                     )}
-                    {showEditor ? (
-                        <MonacoFileDiffViewer
-                            key={editorContentKey}
-                            ref={monacoViewerRef}
-                            workspaceId={workspaceId}
-                            relativePath={filePath}
-                            stage={source.supportsWorkingCopyLanguage ? 'branch-range' : 'staged'}
-                            modelIdentity={`${source.cacheKey}\u0000${editorSides.base.ref}\u0000${editorSides.head.ref}`}
-                            modifiedMatchesWorkingCopy={editorSides.modifiedMatchesWorkingCopy}
-                            original={editorSides.base.content}
-                            modified={editorSides.head.content}
-                            viewMode={viewMode}
-                            initialHunkTarget={initialHunkTarget}
-                            onLinesReady={(lines) => { setDiffLines(lines); runRelocation(lines); }}
-                            comments={comments}
-                            renderCommentThread={renderCommentThread}
-                            onAddComment={handleAddComment}
-                            onAskAI={handleAskAIDiff}
-                            onCopyAsContext={handleCopyAsContext}
-                            diffSelectionDragSource={diffSelectionDragSource}
-                            languageFeatures={source.supportsWorkingCopyLanguage === true && editorSides.modifiedMatchesWorkingCopy === true}
-                            onEditorError={handleEditorError}
-                            createEditor={createDiffEditor}
-                            data-testid="file-diff-editor"
-                        />
-                    ) : editorLoading ? (
+                    {displayedEditor && (
+                        <div hidden={!showEditor} className="h-full" aria-hidden={!showEditor}>
+                            <MonacoFileDiffViewer
+                                key={editorAttempt}
+                                ref={monacoViewerRef}
+                                workspaceId={workspaceId}
+                                relativePath={displayedEditor.filePath}
+                                stage={displayedEditor.supportsWorkingCopyLanguage ? 'branch-range' : 'staged'}
+                                modelIdentity={`${displayedEditor.cacheKey}\u0000${displayedEditor.content.base.ref}\u0000${displayedEditor.content.head.ref}`}
+                                modifiedMatchesWorkingCopy={displayedEditor.content.modifiedMatchesWorkingCopy}
+                                original={displayedEditor.content.base.content}
+                                modified={displayedEditor.content.head.content}
+                                viewMode={viewMode}
+                                initialHunkTarget={initialHunkTarget}
+                                onLinesReady={showEditor ? (lines) => { setDiffLines(lines); runRelocation(lines); } : undefined}
+                                comments={showEditor ? comments : []}
+                                renderCommentThread={renderCommentThread}
+                                onAddComment={handleAddComment}
+                                onAskAI={handleAskAIDiff}
+                                onCopyAsContext={handleCopyAsContext}
+                                diffSelectionDragSource={showEditor ? diffSelectionDragSource : undefined}
+                                languageFeatures={showEditor && displayedEditor.supportsWorkingCopyLanguage === true && displayedEditor.content.modifiedMatchesWorkingCopy === true}
+                                onEditorError={handleEditorError}
+                                createEditor={createDiffEditor}
+                                data-testid="file-diff-editor"
+                            />
+
+                        </div>
+                    )}
+                    {showEditor ? null : editorLoading ? (
                         <div className="flex items-center gap-2 text-xs text-[#848484]" data-testid="file-diff-editor-loading">
                             <Spinner size="sm" /> Loading file content...
                         </div>
@@ -723,57 +726,13 @@ export function FileDiffPanel({
                     />
                 )}
 
-                {/* ── AI Chat panel (commit mode only) ── */}
-                {showChat && chatOpen && chatPresentation === 'lens' && (() => {
-                    const chat = source.chat;
-                    return chat ? (
-                        <CommitChatPlacementFrame
-                            workspaceId={chat.workspaceId}
-                            commitHash={chat.commitHash}
-                            commitMessage={chat.commitMessage}
-                            presentation="lens"
-                            onClose={closeChat}
-                            isMinimized={chatMinimized}
-                            onMinimize={minimizeChat}
-                            onRestore={restoreChat}
-                            onPin={pinChat}
-                        />
-                    ) : null;
-                })()}
+                {!reviewChat && source.chat && <CommitReviewChat
+                    workspaceId={source.chat.workspaceId}
+                    hash={source.chat.commitHash}
+                    commitMessage={source.chat.commitMessage}
+                    chat={chat}
+                />}
 
-                {showChat && chatOpen && chatPresentation === 'side-panel' && (() => {
-                    const chat = source.chat;
-                    return chat ? (
-                        <>
-                            <div
-                                className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 bg-[#e0e0e0] dark:bg-[#3c3c3c] shrink-0"
-                                onMouseDown={chatResize.handleMouseDown}
-                                onTouchStart={chatResize.handleTouchStart}
-                                role="separator"
-                                aria-label="Resize chat panel"
-                            />
-                            <div style={{ width: chatResize.width }} className="shrink-0 h-full">
-                                {chatLensEnabled && chatPinned ? (
-                                    <CommitChatPlacementFrame
-                                        workspaceId={chat.workspaceId}
-                                        commitHash={chat.commitHash}
-                                        commitMessage={chat.commitMessage}
-                                        presentation="side-panel"
-                                        onClose={closeChat}
-                                        onUnpin={unpinChat}
-                                    />
-                                ) : (
-                                    <CommitChatPanel
-                                        workspaceId={chat.workspaceId}
-                                        commitHash={chat.commitHash}
-                                        commitMessage={chat.commitMessage}
-                                        onClose={toggleChat}
-                                    />
-                                )}
-                            </div>
-                        </>
-                    ) : null;
-                })()}
             </div>
 
             {/* ── Overlays ── */}

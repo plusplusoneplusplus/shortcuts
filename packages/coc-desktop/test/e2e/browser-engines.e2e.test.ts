@@ -105,11 +105,12 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         const cookieTrail = JSON.stringify({ seeded: steps.get('seeded'), disposed: steps.get('disposed'), disk, restart: restart.get('restart') });
         expect(restart.get('restart')?.report.cookie, cookieTrail).toContain('fixture=remembered');
         expect(restart.get('clear')?.result).toEqual({ ok: true });
+        if (engine === 'electron') expect(restart.get('clear')?.jar).toEqual([]);
         expect(restart.get('clear')?.firstWindowClosed).toContainEqual({ viewId: 'main', engine });
         expect(restart.get('clear')?.secondWindowClosed).toContainEqual({ viewId: 'other', engine });
         expect(restart.get('clear')?.closedNavigation).toEqual({ ok: false, reason: 'not-found' });
         if (restart.get('clear')?.preserved) expect(restart.get('clear')?.preserved).toMatchObject({ ok: true, engine: engine === 'electron' ? 'webview2' : 'electron' });
         const cleared = await scenario(engine, directory, '--restart-check', '--after-clear');
-        expect(cleared.get('restart')?.report).toMatchObject({ storage: null, cookie: '' });
+        expect(cleared.get('restart')?.report, JSON.stringify([...cleared])).toMatchObject({ storage: null, cookie: '' });
     }, 180_000);
 });

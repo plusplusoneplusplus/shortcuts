@@ -82,13 +82,13 @@ function request(
 
 /** Poll the ops endpoint until the job leaves `running`. */
 async function waitForTerminal(base: string, wsId: string, jobId: string): Promise<any> {
-    for (let attempt = 0; attempt < 50; attempt++) {
+    return vi.waitFor(async () => {
         const res = await request(`${base}/api/workspaces/${wsId}/git/ops/${jobId}`);
+        expect(res.status).toBe(200);
         const job = res.json();
-        if (job.status !== 'running') return job;
-        await new Promise(resolve => setTimeout(resolve, 10));
-    }
-    throw new Error(`job ${jobId} never reached a terminal state`);
+        expect(job.status).not.toBe('running');
+        return job;
+    }, { timeout: 5000, interval: 20 });
 }
 
 describe('Async git op routes', () => {
@@ -296,6 +296,18 @@ describe('Async git op routes', () => {
     });
 
     describe('validation', () => {
+        it('waits for background work that exceeds half a second', async () => {
+            mockRewordCommit.mockImplementationOnce(() => new Promise(resolve => {
+                setTimeout(() => resolve({ success: true }), 1000);
+            }));
+            const response = await request(`${base()}/api/workspaces/${WS_A}/git/reword`, {
+                method: 'POST',
+                body: JSON.stringify({ hash: 'abc1234', title: 'fix: slow reword' }),
+            });
+            expect(response.status).toBe(202);
+            expect(await waitForTerminal(base(), WS_A, response.json().jobId)).toMatchObject({ status: 'success' });
+        });
+
         it('reword requires both hash and title', async () => {
             const noHash = await request(`${base()}/api/workspaces/${WS_A}/git/reword`, {
                 method: 'POST',

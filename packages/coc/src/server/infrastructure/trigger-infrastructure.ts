@@ -16,6 +16,7 @@
 import { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import type { TaskQueueManager, ProcessStore } from '@plusplusoneplusplus/forge';
 import { SqliteProcessStore, initializeDatabase, getLogger, LogCategory } from '@plusplusoneplusplus/forge';
+import { createTrigger, type CreateTriggerFn } from '../triggers/create-trigger-service';
 import { TriggerStore } from '../triggers/trigger-store';
 import { TriggerManager } from '../triggers/trigger-manager';
 import type { TriggerEventEmit } from '../triggers/trigger-manager';
@@ -32,6 +33,8 @@ import type { TriggerEvent } from '../triggers/trigger-types';
 export interface TriggerInfrastructure {
     triggerStore: TriggerStore;
     triggerManager: TriggerManager;
+    /** Shared creation path for server tools. */
+    createTrigger: CreateTriggerFn;
     /** Timer registry for scheduling trigger ticks. */
     timerRegistry: ScheduleTimerRegistry;
     /** Trigger event emitter (used by REST handler/LLM tools to broadcast state). */
@@ -139,5 +142,11 @@ export async function createTriggerInfrastructure(
         }
     };
 
-    return { triggerStore, triggerManager, timerRegistry, emit, dispose };
+    return {
+        triggerStore, triggerManager, timerRegistry, emit, dispose,
+        createTrigger: (workspaceId, body, reuseCiMonitor) => createTrigger({
+            store: triggerStore, manager: triggerManager, emit, enabled: true,
+            resolveWorkspaceId: options.resolveWorkspaceId, now: options.now,
+        }, workspaceId, body, reuseCiMonitor),
+    };
 }

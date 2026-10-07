@@ -221,8 +221,9 @@ it('clears a sticky editor failure when navigating to another file or source rev
         view.rerender(<FileDiffPanel workspaceId="ws-a" filePath="src/a.ts" source={{ ...source, cacheKey: 'commit:next' }} createDiffEditor={factory} />);
     });
     expect(screen.queryByTestId('diff-engine-fallback-banner')).toBeNull();
-    expect(fakes).toHaveLength(2);
-    expect(fakes[0].disposals).toBe(1);
+    expect(fakes).toHaveLength(1);
+    expect(fakes[0].disposals).toBe(0);
+    expect(fakes[0].models.at(-1)?.modified.uri).toContain('commit');
 });
 
 it('ignores an old content failure after switching files', async () => {
@@ -318,3 +319,70 @@ it.each<SourceKind>(['commit', 'branch-range', 'pull-request'])(
         expect(fakes[0].models[0].modified.uri).not.toBe(fakes[1].models[0].modified.uri);
     },
 );
+
+
+it('reuses Monaco across delayed file loads and discards superseded responses', async () => {
+    let resolveB!: (value: GitFileDiffContentResponse) => void;
+    let resolveC!: (value: GitFileDiffContentResponse) => void;
+    const fetchContent = vi.fn(async () => content())
+        .mockReturnValueOnce(Promise.resolve(content()))
+        .mockReturnValueOnce(new Promise<GitFileDiffContentResponse>(resolve => { resolveB = resolve; }))
+        .mockReturnValueOnce(new Promise<GitFileDiffContentResponse>(resolve => { resolveC = resolve; }));
+    const source = makeSource('commit', fetchContent);
+    const view = await mount(source);
+    const host = screen.getByTestId('file-diff-editor');
+    await act(async () => {
+        view.rerender(<FileDiffPanel workspaceId="ws-a" filePath="src/b.ts" source={source} createDiffEditor={createEditor} />);
+    });
+    expect(screen.getByTestId('file-diff-editor-loading')).toBeTruthy();
+    expect(screen.getByTestId('file-diff-editor')).toBe(host);
+    expect(host.closest('[hidden]')).toBeTruthy();
+    expect(fakes[0].disposals).toBe(0);
+    await act(async () => {
+        view.rerender(<FileDiffPanel workspaceId="ws-a" filePath="src/c.ts" source={source} createDiffEditor={createEditor} />);
+    });
+    await act(async () => { resolveC(content({ head: { content: 'file C', ref: 'head', exists: true } })); });
+    expect(screen.queryByTestId('file-diff-editor-loading')).toBeNull();
+    expect(screen.getByTestId('file-diff-editor')).toBe(host);
+    expect(host.closest('[hidden]')).toBeNull();
+    expect(fakes).toHaveLength(1);
+    expect(fakes[0].models.at(-1)?.modified.text).toBe('file C');
+    expect(fakes[0].models.at(-1)?.modified.uri).toContain('c.ts');
+    await act(async () => { resolveB(content({ head: { content: 'file B', ref: 'head', exists: true } })); });
+    expect(fakes[0].models.at(-1)?.modified.text).toBe('file C');
+    expect(fakes[0].disposals).toBe(0);
+    view.unmount();
+    expect(fakes[0].disposals).toBe(1);
+});
+
+it('disposes the retained editor when the next file requires Classic fallback', async () => {
+    const fetchContent = vi.fn(async () => content())
+        .mockResolvedValueOnce(content()).mockResolvedValueOnce(content({ binary: true }));
+    const source = makeSource('commit', fetchContent);
+    const view = await mount(source);
+    await act(async () => {
+        view.rerender(<FileDiffPanel workspaceId="ws-a" filePath="image.png" source={source} createDiffEditor={createEditor} />);
+    });
+    expect(screen.getByTestId('diff-engine-fallback-banner')).toBeTruthy();
+    expect(screen.queryByTestId('file-diff-editor')).toBeNull();
+    expect(fakes[0].disposals).toBe(1);
+});
+
+
+it.each(['binary', 'tooLarge'] as const)('never mounts the previous %s content while loading another file', async reason => {
+    let resolveNext!: (value: GitFileDiffContentResponse) => void;
+    const fetchContent = vi.fn(async () => content())
+        .mockResolvedValueOnce(content({ [reason]: true }))
+        .mockReturnValueOnce(new Promise<GitFileDiffContentResponse>(resolve => { resolveNext = resolve; }));
+    const source = makeSource('commit', fetchContent);
+    const view = await mount(source);
+    await act(async () => {
+        view.rerender(<FileDiffPanel workspaceId="ws-a" filePath="src/b.ts" source={source} createDiffEditor={createEditor} />);
+    });
+    expect(screen.getByTestId('file-diff-editor-loading')).toBeTruthy();
+    expect(screen.queryByTestId('file-diff-editor')).toBeNull();
+    expect(fakes).toHaveLength(0);
+    await act(async () => { resolveNext(content()); });
+    expect(screen.getByTestId('file-diff-editor')).toBeTruthy();
+    expect(fakes).toHaveLength(1);
+});

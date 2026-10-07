@@ -147,4 +147,62 @@ describe('create_pull_request tool', () => {
 
         expect(out).toMatchObject({ success: true, url: RESULT.url, bound: false });
     });
+    it('arms CI auto-fix after binding using canonical origin and owning conversation', async () => {
+        const createTrigger = vi.fn(async () => ({ id: 'trigger-test', status: 'active' } as any));
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store, createPullRequest: async () => RESULT, getCreateTrigger: () => createTrigger });
+        const out = await invoke(tool, { title: 'T', autoFix: true, commits: ['abc1234'] });
+        expect(createTrigger).toHaveBeenCalledWith(WORKSPACE_ID, {
+            processId: PROCESS_ID,
+            event: { type: 'condition-monitor', monitor: 'ci-failure', originId: ORIGIN_ID, prId: '77' },
+        }, true);
+        expect(out).toMatchObject({ success: true, bound: true,
+            autoFix: { requested: true, enabled: true, triggerId: 'trigger-test' } });
+        expect(rows()).toEqual([{ workspace_id: ORIGIN_ID, pr_id: '77', task_id: BARE_TASK_ID }]);
+        expect(tool.parameters?.properties?.autoFix.description).toContain('Default false');
+    });
+
+    it.each([false, undefined])('does not mutate monitors when autoFix=%s', async autoFix => {
+        const getter = vi.fn();
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store, createPullRequest: async () => RESULT, getCreateTrigger: getter });
+        expect(await invoke(tool, { title: 'T', autoFix })).toMatchObject({
+            success: true, autoFix: { requested: false, enabled: false },
+        });
+        expect(getter).not.toHaveBeenCalled();
+    });
+
+    it('preserves PR success when triggers are unavailable', async () => {
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store, createPullRequest: async () => RESULT });
+        expect(await invoke(tool, { title: 'T', autoFix: true })).toMatchObject({ success: true, url: RESULT.url,
+            autoFix: { requested: true, enabled: false, warning: 'Triggers are disabled or unavailable.' } });
+    });
+
+    it('does not arm a monitor without a successful binding', async () => {
+        const createTrigger = vi.fn();
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store: { getWorkspaces: async () => [workspace()] }, createPullRequest: async () => RESULT,
+            getCreateTrigger: () => createTrigger });
+        expect(await invoke(tool, { title: 'T', autoFix: true })).toMatchObject({ success: true, bound: false,
+            autoFix: { requested: true, enabled: false, warning: 'The PR could not be bound to this conversation.' } });
+        expect(createTrigger).not.toHaveBeenCalled();
+    });
+
+    it('preserves the created PR and binding when arming fails', async () => {
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store, createPullRequest: async () => RESULT,
+            getCreateTrigger: () => async () => { throw new Error('Trigger limit reached'); } });
+        expect(await invoke(tool, { title: 'T', autoFix: true })).toMatchObject({ success: true, bound: true,
+            autoFix: { requested: true, enabled: false, warning: 'Trigger limit reached' } });
+    });
+
+    it('rejects an invalid autoFix value before creating the PR', async () => {
+        const service = vi.fn(async () => RESULT);
+        const { tool } = createCreatePullRequestTool({ workspaceId: WORKSPACE_ID, processId: PROCESS_ID,
+            store, createPullRequest: service });
+        expect(await invoke(tool, { title: 'T', autoFix: 'true' })).toMatchObject({ success: false, code: 'invalid-input' });
+        expect(service).not.toHaveBeenCalled();
+    });
+
 });

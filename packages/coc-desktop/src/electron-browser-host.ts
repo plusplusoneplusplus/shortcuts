@@ -337,8 +337,8 @@ export class ElectronBrowserHost implements BrowserEngineHost {
 
     async clearData(): Promise<void> {
         const profile = this.profile();
-        await profile.clearStorageData();
-        await profile.clearCache();
+        // Clear the complete browsing-data set, including the network cookie store.
+        await profile.clearData();
         await profile.clearAuthCache();
         await profile.clearCodeCaches({});
         await profile.cookies.flushStore();

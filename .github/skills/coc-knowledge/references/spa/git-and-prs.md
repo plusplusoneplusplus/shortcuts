@@ -31,6 +31,17 @@ timer pauses while hidden and restarts when shown. `RepoGroupGitTab` gives
 server-qualified `selectionId` as `routeWorkspaceId`, keeping commit and file
 navigation on the owning group even when another server has the same group id.
 
+### Commit review lifetime
+
+`RepoGitDetailPane` keys its review host by workspace and commit, owns shared
+`useCommitChatPresentation` state, and renders `CommitReviewChat` independently
+of overview/file content. `CommitDetail` and `FileDiffPanel` accept those controls
+through `reviewChat`; standalone callers own their presentation locally. File
+navigation keeps the conversation mounted and reuses `FileDiffPanel`. During
+content loading, Monaco retains hidden prior models, then replaces models in the
+same editor. File popovers reset; stale responses are cancelled. Workspace/commit
+changes replace the host; Classic fallback and explicit retries dispose editors.
+
 ### Git panel header
 
 `GitPanelHeader` is one compact row: a `repo ▾ / branch ▾` breadcrumb (the

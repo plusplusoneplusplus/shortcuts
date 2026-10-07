@@ -171,13 +171,20 @@ app.whenReady().then(async () => {
             value: await spa('document.getElementById("composer").value'),
             browserInput: reports.get('main').input,
         });
+        reports.delete('main');
         await call(main, 'focus', 'main');
+        command('main', 'focus-input');
+        await waitFor(() => reports.get('main')?.inputFocused, 'repeat browser input focus');
         click(30, 30);
+        await waitFor(() => spa('document.activeElement.id === "composer" && document.hasFocus()'), 'repeat composer DOM focus');
         await nativeInput();
         await waitFor(() => spa('document.getElementById("composer").value === "///"'), 'repeat composer click');
         if (engine === 'webview2') {
             await spa('document.getElementById("address").focus()');
+            reports.delete('main');
             await call(main, 'focus', 'main');
+            command('main', 'focus-input');
+            await waitFor(() => reports.get('main')?.inputFocused, 'programmatic browser input focus');
             await spa('document.getElementById("composer").focus()');
             await nativeInput();
             await waitFor(() => spa('document.getElementById("composer").value === "////"'), 'programmatic composer focus');
@@ -201,6 +208,7 @@ app.whenReady().then(async () => {
             const result = await call(main, 'clearData', engine);
             emit('clear', {
                 result,
+                jar: await jar(),
                 firstWindowClosed: await spa('window.closedViews'),
                 secondWindowClosed: await otherWindow.webContents.executeJavaScript('window.closedViews'),
                 closedNavigation: await call(otherWindow, 'navigate', 'other', base + '/second'),

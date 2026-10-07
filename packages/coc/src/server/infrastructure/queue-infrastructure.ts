@@ -65,7 +65,7 @@ export function createQueueInfrastructure(
     resolveAiServiceForProvider?: (provider: import('../tasks/task-types').ChatProvider) => import('@plusplusoneplusplus/forge').ISDKService,
     ralphMultiAgentGrillEnabled?: boolean,
     getGlobalSystemPrompt?: () => string | undefined,
-    getTriggerInfra?: () => { manager: import('../triggers/trigger-manager').TriggerManager } | undefined,
+    getTriggerInfra?: () => import('../executors/executor-runtime-contracts').TriggerInfraDeps | undefined,
     getEnqueueChat?: () => import('../llm-tools/send-to-conversation-tool').EnqueueChatFn | undefined,
     getSendMessage?: () => import('../llm-tools/send-to-conversation-tool').SendMessageFn | undefined,
     getSendToConversationRuntime?: () => import('../llm-tools/send-to-conversation-tool').SendToConversationRuntimeOptions | undefined,

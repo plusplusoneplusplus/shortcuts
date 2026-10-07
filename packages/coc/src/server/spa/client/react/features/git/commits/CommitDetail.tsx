@@ -21,10 +21,8 @@ import { useDiffFind } from '../diff/useDiffFind';
 import { useDiffFindShortcut } from '../diff/useDiffFindShortcut';
 import { useAllCommitComments } from '../hooks/useAllCommitComments';
 import { CommentSidebar } from '../../../tasks/comments/CommentSidebar';
-import { CommitChatPanel } from './CommitChatPanel';
-import { CommitChatPlacementFrame } from './CommitChatPlacementFrame';
-import { useResizablePanel } from '../../../hooks/ui/useResizablePanel';
-import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
+import { CommitReviewChat } from './CommitReviewChat';
+import { useCommitChatPresentation, type UseCommitChatPresentationReturn } from '../hooks/useCommitChatPresentation';
 import { shouldSkipResolveDialog } from '../../../shared/ResolveContextDialog';
 import { useQueue } from '../../../contexts/QueueContext';
 import { useGitReviewPopOut, gitReviewPopOutKey } from '../../../contexts/GitReviewPopOutContext';
@@ -48,6 +46,8 @@ import { popOutOpened } from '../../../utils/popOutWindow';
 export interface CommitDetailProps {
     workspaceId: string;
     attachmentDestinationId?: string;
+    /** Commit-level host keeps chat mounted across overview and file navigation. */
+    reviewChat?: UseCommitChatPresentationReturn;
     hash?: string;
     commit?: GitCommitItem;
     isPopOut?: boolean;
@@ -57,35 +57,18 @@ export interface CommitDetailProps {
     onClassified?: () => void;
 }
 
-export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified }: CommitDetailProps) {
+export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commit, isPopOut, scrollToFilePath, onClassified, reviewChat }: CommitDetailProps) {
     const diffSelectionDragSource = useMemo<DiffSelectionDragSource>(
         () => ({ workspaceId, ref: { type: 'commit', commitHash: hash } }),
         [workspaceId, hash],
     );
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const {
-        chatOpen,
-        toggleChat,
-        closeChat,
-        minimizeChat,
-        restoreChat,
-        pinChat,
-        unpinChat,
-        isPinned: chatPinned,
-        isMinimized: chatMinimized,
-        presentation: chatPresentation,
-        lensEnabled: chatLensEnabled,
-    } = useCommitChatPresentation({ workspaceId, commitHash: hash });
+    const localChat = useCommitChatPresentation({ workspaceId, commitHash: hash, supportsChat: !reviewChat });
+    const chat = reviewChat ?? localChat;
+    const { chatOpen, toggleChat } = chat;
     // Track currently-navigated file (for priority nav within the unified diff)
     const [navFilePath, setNavFilePath] = useState<string | null>(null);
 
-    const chatResize = useResizablePanel({
-        initialWidth: 360,
-        minWidth: 200,
-        maxWidth: 600,
-        storageKey: 'coc.commitChatPanel.width',
-        direction: 'right',
-    });
     const viewerRef = useRef<UnifiedDiffViewerHandle>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [diffLines, setDiffLines] = useState<DiffLine[]>([]);
@@ -659,50 +642,8 @@ export function CommitDetail({ workspaceId, attachmentDestinationId, hash, commi
                     />
                 )}
 
-                {chatOpen && hash && chatPresentation === 'lens' && (
-                    <CommitChatPlacementFrame
-                        workspaceId={workspaceId}
-                        commitHash={hash}
-                        commitMessage={commit?.subject}
-                        presentation="lens"
-                        onClose={closeChat}
-                        isMinimized={chatMinimized}
-                        onMinimize={minimizeChat}
-                        onRestore={restoreChat}
-                        onPin={pinChat}
-                    />
-                )}
+                {!reviewChat && <CommitReviewChat workspaceId={workspaceId} hash={hash} commitMessage={commit?.subject} chat={chat} />}
 
-                {chatOpen && hash && chatPresentation === 'side-panel' && (
-                    <>
-                        <div
-                            className="hidden lg:flex items-center justify-center w-1 cursor-col-resize hover:bg-[#007acc]/30 active:bg-[#007acc]/50 bg-[#e0e0e0] dark:bg-[#3c3c3c] shrink-0"
-                            onMouseDown={chatResize.handleMouseDown}
-                            onTouchStart={chatResize.handleTouchStart}
-                            role="separator"
-                            aria-label="Resize chat panel"
-                        />
-                        <div style={{ width: chatResize.width }} className="shrink-0 h-full">
-                            {chatLensEnabled && chatPinned ? (
-                                <CommitChatPlacementFrame
-                                    workspaceId={workspaceId}
-                                    commitHash={hash}
-                                    commitMessage={commit?.subject}
-                                    presentation="side-panel"
-                                    onClose={closeChat}
-                                    onUnpin={unpinChat}
-                                />
-                            ) : (
-                                <CommitChatPanel
-                                    workspaceId={workspaceId}
-                                    commitHash={hash}
-                                    commitMessage={commit?.subject}
-                                    onClose={toggleChat}
-                                />
-                            )}
-                        </div>
-                    </>
-                )}
             </div>
         </div>
     );

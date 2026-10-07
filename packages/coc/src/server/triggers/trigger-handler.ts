@@ -8,51 +8,27 @@
  * `send-message` action are implemented this iteration.
  */
 
-import * as crypto from 'crypto';
 import type * as http from 'http';
 import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import { logAutomationScopeMismatch } from '../shared/automation-scope';
 import type { Route } from '../types';
 import type { TriggerStore } from './trigger-store';
-import type { TriggerManager, TriggerEventEmit } from './trigger-manager';
+import type { TriggerEventEmit } from './trigger-manager';
 import type {
     Trigger,
     TriggerEvent,
-    TriggerAction,
     TriggerChangeEvent,
 } from './trigger-types';
-import {
-    DEFAULT_TRIGGER_TTL_MS,
-    DEFAULT_CI_POLL_INTERVAL_MS,
-    MIN_POLL_INTERVAL_MS,
-} from './trigger-types';
+import { DEFAULT_CI_POLL_INTERVAL_MS } from './trigger-types';
+import { createTrigger, CreateTriggerError, type CreateTriggerContext } from './create-trigger-service';
+export { validateCreateTriggerBody, buildTriggerFromCreateRequest, type CreateTriggerValidation } from './create-trigger-service';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface TriggerRouteContext {
-    store: TriggerStore;
-    manager: TriggerManager;
-    /** Optional WebSocket emitter for broadcasting trigger state changes. */
-    emit?: TriggerEventEmit;
-    /**
-     * Feature-flag gate (`triggers.enabled`). When false, mutating endpoints
-     * (create) are rejected so the API is a no-op while the flag is off.
-     */
-    enabled: boolean;
-    /** Clock injection for deterministic tests. Defaults to `Date.now`. */
-    now?: () => number;
-    /**
-     * Resolve a process (conversation) ID to its owning workspace. Used on
-     * create to verify that `processId` and `action.processId` belong to the
-     * route workspace, so a trigger cannot be stored under one workspace while
-     * firing follow-ups into another. When omitted, cross-workspace process
-     * verification is skipped.
-     */
-    resolveWorkspaceId?: (processId: string) => Promise<string | undefined>;
-}
+export type TriggerRouteContext = CreateTriggerContext;
 
 /**
  * Resolve a trigger by ID, returning it only when it belongs to the requested
@@ -69,20 +45,6 @@ export function resolveTriggerForWorkspace(
     if (trigger.workspaceId === workspaceId) return trigger;
     logAutomationScopeMismatch('trigger', triggerId, workspaceId, trigger.workspaceId);
     return null;
-}
-
-/**
- * Verify that a process ID resolves to the given route workspace. Returns `true`
- * when the process is unowned/unresolvable (cannot prove a violation) or when it
- * resolves to the same workspace; returns `false` only on a definite mismatch.
- */
-async function processBelongsToWorkspace(
-    resolveWorkspaceId: (processId: string) => Promise<string | undefined>,
-    routeWorkspaceId: string,
-    processId: string,
-): Promise<boolean> {
-    const resolved = await resolveWorkspaceId(processId);
-    return resolved === undefined || resolved === routeWorkspaceId;
 }
 
 function safeEmit(emit: TriggerEventEmit | undefined, event: TriggerChangeEvent): void {
@@ -118,120 +80,6 @@ function serializeTrigger(trigger: Trigger): Record<string, unknown> {
 // Validation & construction
 // ============================================================================
 
-function isNonEmptyString(value: unknown): value is string {
-    return typeof value === 'string' && value.trim().length > 0;
-}
-
-export interface CreateTriggerValidation {
-    valid: boolean;
-    error?: string;
-}
-
-/**
- * Validate the body of a create-trigger request. Only the
- * `condition-monitor` / `ci-failure` event and `send-message` action are
- * accepted this iteration.
- */
-export function validateCreateTriggerBody(body: Record<string, unknown>): CreateTriggerValidation {
-    if (!isNonEmptyString(body.processId)) {
-        return { valid: false, error: 'processId must be a non-empty string' };
-    }
-
-    const event = body.event as Record<string, unknown> | undefined;
-    if (!event || typeof event !== 'object') {
-        return { valid: false, error: 'event is required' };
-    }
-    if (event.type !== 'condition-monitor') {
-        return { valid: false, error: `Unsupported event.type: ${String(event.type)}. Only 'condition-monitor' is supported` };
-    }
-    if (event.monitor !== 'ci-failure') {
-        return { valid: false, error: `Unsupported event.monitor: ${String(event.monitor)}. Only 'ci-failure' is supported` };
-    }
-    if (!isNonEmptyString(event.originId)) {
-        return { valid: false, error: 'event.originId must be a non-empty string' };
-    }
-    if (!isNonEmptyString(event.prId)) {
-        return { valid: false, error: 'event.prId must be a non-empty string' };
-    }
-    if (event.pollIntervalMs !== undefined) {
-        if (typeof event.pollIntervalMs !== 'number' || event.pollIntervalMs < MIN_POLL_INTERVAL_MS) {
-            return { valid: false, error: `event.pollIntervalMs must be a number ≥ ${MIN_POLL_INTERVAL_MS}` };
-        }
-    }
-
-    const action = body.action as Record<string, unknown> | undefined;
-    if (action !== undefined) {
-        if (typeof action !== 'object' || action === null) {
-            return { valid: false, error: 'action must be an object' };
-        }
-        if (action.type !== undefined && action.type !== 'send-message') {
-            return { valid: false, error: `Unsupported action.type: ${String(action.type)}. Only 'send-message' is supported` };
-        }
-        if (action.mode !== undefined && action.mode !== 'autopilot') {
-            return { valid: false, error: `Unsupported action.mode: ${String(action.mode)}. Only 'autopilot' is supported` };
-        }
-        if (action.prompt !== undefined && typeof action.prompt !== 'string') {
-            return { valid: false, error: 'action.prompt must be a string' };
-        }
-        if (action.processId !== undefined && !isNonEmptyString(action.processId)) {
-            return { valid: false, error: 'action.processId must be a non-empty string' };
-        }
-    }
-
-    return { valid: true };
-}
-
-/**
- * Build a full `Trigger` record from a validated create request. Exposed for
- * unit testing. Fills server-owned fields (id, status, timestamps, TTL,
- * suppression guard, and the initial `nextTickAt`).
- */
-export function buildTriggerFromCreateRequest(
-    workspaceId: string,
-    body: Record<string, unknown>,
-    now: () => number = Date.now,
-): Trigger {
-    const nowMs = now();
-    const eventBody = body.event as Record<string, unknown>;
-    const actionBody = (body.action as Record<string, unknown> | undefined) ?? {};
-
-    const pollIntervalMs = typeof eventBody.pollIntervalMs === 'number'
-        ? Math.max(MIN_POLL_INTERVAL_MS, eventBody.pollIntervalMs)
-        : DEFAULT_CI_POLL_INTERVAL_MS;
-
-    const processId = body.processId as string;
-
-    const event: TriggerEvent = {
-        type: 'condition-monitor',
-        monitor: 'ci-failure',
-        originId: eventBody.originId as string,
-        prId: String(eventBody.prId),
-        pollIntervalMs,
-        lastSeenChecks: {},
-    };
-
-    const action: TriggerAction = {
-        type: 'send-message',
-        processId: isNonEmptyString(actionBody.processId) ? actionBody.processId : processId,
-        prompt: typeof actionBody.prompt === 'string' ? actionBody.prompt : '',
-        mode: 'autopilot',
-    };
-
-    return {
-        id: `trigger_${crypto.randomUUID()}`,
-        workspaceId,
-        processId,
-        status: 'active',
-        event,
-        action,
-        inFlight: false,
-        createdAt: new Date(nowMs).toISOString(),
-        expiresAt: new Date(nowMs + DEFAULT_TRIGGER_TTL_MS).toISOString(),
-        lastTickAt: null,
-        nextTickAt: new Date(nowMs + pollIntervalMs).toISOString(),
-    };
-}
-
 const VALID_PATCH_STATUSES = new Set(['active', 'paused', 'disarmed']);
 
 // ============================================================================
@@ -256,38 +104,13 @@ export function registerTriggerRoutes(routes: Route[], ctx: TriggerRouteContext)
             const body = await parseBodyOrReject(req, res);
             if (body === null) return;
 
-            const validation = validateCreateTriggerBody(body);
-            if (!validation.valid) {
-                return sendError(res, 400, validation.error!);
-            }
-
-            // The trigger is stamped with the route workspace; refuse to arm it
-            // if its target process(es) live in a different workspace, which
-            // would let it fire follow-ups across the multi-repo boundary.
-            if (ctx.resolveWorkspaceId) {
-                const targetProcessId = body.processId as string;
-                if (!(await processBelongsToWorkspace(ctx.resolveWorkspaceId, workspaceId, targetProcessId))) {
-                    return sendError(res, 400, 'processId belongs to a different workspace');
-                }
-                const actionBody = body.action as Record<string, unknown> | undefined;
-                const actionProcessId = actionBody && isNonEmptyString(actionBody.processId) ? actionBody.processId : undefined;
-                if (
-                    actionProcessId !== undefined &&
-                    actionProcessId !== targetProcessId &&
-                    !(await processBelongsToWorkspace(ctx.resolveWorkspaceId, workspaceId, actionProcessId))
-                ) {
-                    return sendError(res, 400, 'action.processId belongs to a different workspace');
-                }
-            }
-
-            const trigger = buildTriggerFromCreateRequest(workspaceId, body, now);
+            let trigger: Trigger;
             try {
-                store.insert(trigger);
+                trigger = await createTrigger(ctx, workspaceId, body);
             } catch (err) {
-                return sendError(res, 409, err instanceof Error ? err.message : String(err));
+                return sendError(res, err instanceof CreateTriggerError ? err.statusCode : 500,
+                    err instanceof Error ? err.message : String(err));
             }
-            manager.arm(trigger);
-            safeEmit(emit, { type: 'trigger-created', trigger });
             sendJSON(res, 201, { trigger: serializeTrigger(trigger) });
         },
     });

@@ -70,6 +70,7 @@ export const LLM_TOOL_PARAMETER_SCHEMAS: Record<string, Record<string, unknown>>
             body: { type: 'string' },
             base: { type: 'string' },
             draft: { type: 'boolean' },
+            autoFix: { type: 'boolean' },
             autoMerge: { type: 'boolean' },
             mergeMethod: { type: 'string' },
             commits: { type: 'array', items: { type: 'string' } },

@@ -150,6 +150,23 @@ describe('createTriggerInfrastructure', () => {
         infra.dispose();
     });
 
+    it('creates monitors through the tool capability with workspace validation and scheduling', async () => {
+        const infra = await build(makeFetcher({ prStatus: 'open', prNumber: 42, checks: [] }));
+        try {
+            const body = { processId: 'proc_a', event: {
+                type: 'condition-monitor', monitor: 'ci-failure', originId: 'origin_1', prId: '42',
+            } };
+            const trigger = await infra.createTrigger('ws_a', body, true);
+            expect(infra.timerRegistry.has(trigger.id)).toBe(true);
+            expect(infra.triggerStore.getById(trigger.id)).toEqual(trigger);
+            expect((await infra.createTrigger('ws_a', body, true)).id).toBe(trigger.id);
+            await expect(infra.createTrigger('ws_b', body, true)).rejects.toThrow('different workspace');
+            expect(infra.triggerStore.getAll()).toHaveLength(1);
+        } finally {
+            infra.dispose();
+        }
+    });
+
     it('dispose cancels armed timers', async () => {
         const infra = await build(makeFetcher({ prStatus: 'open', prNumber: 1, checks: [] }));
         const future = new Date(BASE + 60_000).toISOString();

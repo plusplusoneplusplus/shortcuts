@@ -432,7 +432,10 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         workingDirectory: string | undefined,
     ): CreatePullRequestToolDeps | undefined {
         if (!workspaceId) return undefined;
-        return { workspaceId, processId, workingDirectory, store: this.store };
+        return {
+            workspaceId, processId, workingDirectory, store: this.store,
+            getCreateTrigger: () => this.runtime.getTriggerInfra?.()?.createTrigger,
+        };
     }
 
     protected async getModelMetadataForReasoning(

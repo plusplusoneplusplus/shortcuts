@@ -867,12 +867,13 @@ describe('RepoGitTab', () => {
             expect(source).toContain('filePath={view.filePath}');
         });
 
-        it('uses compound key for commit-file FileDiffPanel', () => {
-            expect(source).toContain('key={`${view.hash}-${view.filePath}`}');
+        it('keys the review host by workspace and commit, preserving file navigation', () => {
+            expect(source).toContain('key={`${workspaceId}:${hash}`}');
+            expect(source).not.toContain('key={`${view.hash}-${view.filePath}`}');
         });
 
-        it('uses key prop on CommitDetail to force remount on hash change', () => {
-            expect(source).toContain('key={view.commit.hash}');
+        it('replaces the whole review host on commit change', () => {
+            expect(source).toContain('key={`${workspaceId}:${hash}`}');
         });
 
         it('passes branchRangeData to BranchChanges', () => {
