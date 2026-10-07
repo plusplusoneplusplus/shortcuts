@@ -296,6 +296,8 @@ export class OpenCodeSDKService implements ISDKService {
 
     // ── Availability ─────────────────────────────────────────────────────────
 
+    public async isTransformAvailable(): Promise<IAvailabilityResult> { return this.isAvailable(); }
+
     public async isAvailable(): Promise<IAvailabilityResult> {
         if (this.disposed) return { available: false, error: 'OpenCodeSDKService has been disposed' };
         if (this.availabilityCache) return this.availabilityCache;

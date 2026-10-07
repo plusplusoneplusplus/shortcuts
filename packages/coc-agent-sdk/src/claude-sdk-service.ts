@@ -711,6 +711,8 @@ export class ClaudeSDKService implements ISDKService {
 
     // ── Availability ─────────────────────────────────────────────────────────
 
+    public async isTransformAvailable(): Promise<IAvailabilityResult> { return this.isAvailable(); }
+
     public async isAvailable(): Promise<IAvailabilityResult> {
         if (this.disposed) return { available: false, error: 'ClaudeSDKService has been disposed' };
         if (this.availabilityCache) return this.availabilityCache;

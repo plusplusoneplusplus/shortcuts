@@ -213,3 +213,12 @@ describe('invokeOneShotAI', () => {
         });
     });
 });
+
+
+describe('direct one-shot provider errors', () => {
+    it('preserves the stable provider category and sanitized request ID', async () => {
+        mockRegistryThrows = false;
+        mockTransformResult = { success: false, text: '', error: 'Rate limited', errorCode: 'DIRECT_RATE_LIMITED', requestId: 'req-1' };
+        expect(await invokeOneShotAI('prompt', { model: 'gpt-5.4-mini' })).toEqual({ success: false, error: 'Rate limited', unavailable: false, errorCode: 'DIRECT_RATE_LIMITED', requestId: 'req-1' });
+    });
+});

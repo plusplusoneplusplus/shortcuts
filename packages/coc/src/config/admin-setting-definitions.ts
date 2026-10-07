@@ -760,6 +760,16 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     bool({ key: 'claude.enabled', default: false, runtime: 'live', runtimeFlag: 'claudeEnabled' }),
     bool({ key: 'opencode.enabled', default: false, runtime: 'live', runtimeFlag: 'opencodeEnabled' }),
     {
+        key: 'copilot.transformTransport',
+        value: { kind: 'enum', values: ['sdk', 'direct'] },
+        default: 'sdk',
+        runtime: 'restartRequired',
+        ui: { tab: 'ai', group: 'aiModes', order: 42, label: 'Copilot one-shot transport',
+            hint: 'Used by System One, titles, and other one-shot requests. Direct HTTP uses the Copilot CLI login. Restart the server to apply.',
+            badge: 'restart', control: { type: 'select', options: [{ value: 'sdk', label: 'SDK' }, { value: 'direct', label: 'Direct HTTP' }] },
+            testId: 'select-copilot-transform-transport' },
+    },
+    {
         key: 'defaultProvider',
         value: { kind: 'enum', values: ['copilot', 'codex', 'claude', 'opencode'], message: 'defaultProvider must be "copilot", "codex", "claude", or "opencode"' },
         default: 'copilot',

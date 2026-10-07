@@ -41,7 +41,7 @@ export interface OneShotAIOptions {
  */
 export type OneShotAIResult =
     | { success: true; response: string }
-    | { success: false; error: string; unavailable: boolean };
+    | { success: false; error: string; unavailable: boolean; errorCode?: string; requestId?: string };
 
 export async function invokeOneShotAI(
     prompt: string,
@@ -73,7 +73,8 @@ export async function invokeOneShotAI(
         const service = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
         const result = await service.transform(prompt, { model: options.model, timeoutMs });
         if (!result.success) {
-            return { success: false, error: result.error || 'AI request failed', unavailable: false };
+            return { success: false, error: result.error || 'AI request failed', unavailable: false,
+                ...(result.errorCode ? { errorCode: result.errorCode } : {}), ...(result.requestId ? { requestId: result.requestId } : {}) };
         }
         return { success: true, response: result.text || '' };
     } catch {

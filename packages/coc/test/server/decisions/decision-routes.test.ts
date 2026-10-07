@@ -24,12 +24,12 @@ describe('decision routes', () => {
     let server: http.Server;
     let baseUrl: string;
     let transform: ReturnType<typeof vi.fn>;
-    let isAvailable: ReturnType<typeof vi.fn>;
+    let isTransformAvailable: ReturnType<typeof vi.fn>;
 
     beforeEach(async () => {
         transform = vi.fn(async () => answerFor(0.7));
-        isAvailable = vi.fn().mockResolvedValue({ available: true });
-        const copilot = { transform, isAvailable } as unknown as ISDKService;
+        isTransformAvailable = vi.fn().mockResolvedValue({ available: true });
+        const copilot = { transform, isTransformAvailable } as unknown as ISDKService;
         const routes: Route[] = [];
         registerDecisionRoutes({
             routes,
@@ -104,7 +104,7 @@ describe('decision routes', () => {
     });
 
     it('maps Copilot unavailable to 503 and failed invocation to 502', async () => {
-        isAvailable.mockResolvedValueOnce({ available: false, error: 'not installed' });
+        isTransformAvailable.mockResolvedValueOnce({ available: false, error: 'not installed' });
         expect(await post('ws-one', body)).toMatchObject({ status: 503, body: { code: 'DECISION_BACKEND_UNAVAILABLE' } });
         transform.mockResolvedValueOnce({ success: false, text: '', error: 'boom' });
         expect(await post('ws-one', body)).toMatchObject({ status: 502, body: { code: 'DECISION_UPSTREAM_FAILED' } });

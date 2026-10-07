@@ -121,6 +121,10 @@ The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a
 
 `features.chatProviderSwitching` (Admin -> Configure -> Chat -> Features, live, default off, runtime flag `chatProviderSwitchingEnabled`) gates concrete provider changes between idle Ask/Autopilot follow-up turns. The follow-up REST route reads the flag live and rejects cross-provider requests while it is off. The dashboard resolves the capability from the server that owns the conversation; an absent flag on an older remote server means unsupported.
 
+## Copilot One-Shot Transport
+
+Admin → Configure → AI & Execution exposes `copilot.transformTransport` as SDK / Direct HTTP. The default is `sdk`; changes require a server restart. The setting applies to `transform()` consumers such as System One, titles and PR ranking. Agent conversations use the SDK. Direct HTTP reads the Copilot CLI's selected credentials automatically; tokens and credential-source controls stay outside Admin configuration. See [SDK wrapper](sdk-wrapper.md#cli-credentials) for authentication and lifecycle.
+
 ## AI Provider Routing
 
 `defaultProvider` is a top-level concrete fallback key accepting only `copilot`, `codex`, or `claude`, used for provider-omitted flows while Auto routing is off. Individual chat payloads can still set `payload.provider`, and follow-ups continue with the provider recorded on the original process.
