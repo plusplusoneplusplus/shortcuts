@@ -8,6 +8,8 @@
  */
 
 import type { SendMessageOptions, TokenUsage, PermissionHandler } from './types';
+import type { CopilotDirectErrorCode } from './copilot-http/errors';
+import type { CopilotCompletionDiagnostics } from './copilot-http/types';
 import type { WarmStateChangeListener, WarmStatus } from './warm-client-registry';
 
 // ============================================================================
@@ -47,6 +49,7 @@ export interface IAvailabilityResult {
     available: boolean;
     /** Human-readable error message when not available */
     error?: string;
+    errorCode?: string;
 }
 
 /**
@@ -222,7 +225,7 @@ export function isCompactUnsupportedError(err: unknown): err is CompactUnsupport
  * sanitization) is owned by the caller, not the SDK.
  */
 export interface TransformOptions {
-    /** Model id to use. Omitted means the provider default — the SDK owns no model default for transforms. */
+    /** Model id to use. SDK transport permits the provider default; Copilot direct transport requires an explicit model. */
     model?: string;
     /** Per-call timeout in milliseconds. */
     timeoutMs?: number;
@@ -252,6 +255,10 @@ export interface TransformOptions {
  * can verify the effective model and inspect provider diagnostics.
  */
 export interface TransformResult {
+    errorCode?: CopilotDirectErrorCode;
+    providerDiagnostics?: CopilotCompletionDiagnostics;
+    inferenceDispatched?: boolean;
+    requestId?: string;
     /** Whether the transform completed without error. */
     success: boolean;
     /** Transformed text. Empty string when the transform failed. */
@@ -306,6 +313,9 @@ export interface ISDKService {
 
     /** Check whether the underlying SDK is installed and loadable. */
     isAvailable(): Promise<IAvailabilityResult>;
+
+    /** Local readiness for the selected transform transport, without inference. */
+    isTransformAvailable(options?: TransformOptions): Promise<IAvailabilityResult>;
 
     /** Discard the cached availability result and re-check on next call. */
     clearAvailabilityCache(): void;

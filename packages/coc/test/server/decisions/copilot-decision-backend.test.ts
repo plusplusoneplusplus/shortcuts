@@ -30,7 +30,7 @@ function ok(text: string, extra: Record<string, unknown> = {}) {
 
 function createService(transform: TransformFn, available = true): ISDKService & { transform: ReturnType<typeof vi.fn> } {
     return {
-        isAvailable: vi.fn().mockResolvedValue(available ? { available: true } : { available: false, error: 'SDK missing' }),
+        isTransformAvailable: vi.fn().mockResolvedValue(available ? { available: true } : { available: false, error: 'SDK missing' }),
         transform: vi.fn(transform),
     } as unknown as ISDKService & { transform: ReturnType<typeof vi.fn> };
 }

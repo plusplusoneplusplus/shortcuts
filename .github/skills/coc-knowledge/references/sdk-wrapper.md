@@ -10,7 +10,8 @@ Forge imports directly from this package.
 
 | File | Purpose |
 |------|---------|
-| `copilot-sdk-service.ts` | `CopilotSDKService` facade singleton — Copilot backend |
+| `copilot-sdk-service.ts` | Copilot facade: agent SDK lifecycle and selected one-shot transport |
+| `copilot-http/` | Buffered direct completions, explicit credentials/bindings, bounded HTTP, catalog and wire adapters |
 | `codex-sdk-service.ts` | `CodexSDKService` — optional Codex backend |
 | `claude-sdk-service.ts` | `ClaudeSDKService` — optional Claude backend |
 | `opencode-sdk-service.ts` | `OpenCodeSDKService` — server-backed adapter starting/connecting to a local opencode HTTP server. No warm client (per-turn server requests). `softAbortSession` delegates to `abortSession`; `steerSession` returns false. |
@@ -51,21 +52,7 @@ Forge imports directly from this package.
 
 ## SDKServiceRegistry
 
-Providers register under a string key; callers look up by key. `sdkServiceRegistry` is the module-level singleton. `CopilotSDKService.getInstance()` re-registers itself if absent from the registry.
-
-```ts
-COPILOT_PROVIDER  / SDK_PROVIDER_COPILOT  = 'copilot'
-CODEX_PROVIDER    / SDK_PROVIDER_CODEX    = 'codex'
-CLAUDE_PROVIDER   / SDK_PROVIDER_CLAUDE   = 'claude'
-OPENCODE_PROVIDER / SDK_PROVIDER_OPENCODE = 'opencode'
-
-sdkServiceRegistry.register(SDK_PROVIDER_COPILOT, new CopilotSDKService());
-sdkServiceRegistry.register(SDK_PROVIDER_CODEX,   new CodexSDKService());
-registerClaudeSDKService();
-registerOpenCodeSDKService();
-
-const svc = sdkServiceRegistry.getOrThrow(SDK_PROVIDER_COPILOT);
-```
+`sdkServiceRegistry` registers `ISDKService` instances under `copilot`, `codex`, `claude`, or `opencode`; callers use `getOrThrow(provider)`. Each key has `<NAME>_PROVIDER` and `SDK_PROVIDER_<NAME>` constants. `CopilotSDKService.getInstance()` re-registers the singleton when absent. Hosts can register explicitly constructed providers, including a typed-configured Copilot instance.
 
 ## CopilotSDKService Architecture
 
@@ -73,7 +60,7 @@ A **facade singleton**; all logic lives in collaborators: `SdkLoader` (binary di
 
 ### Per-session client isolation
 
-Each `sendMessage()` spawns its **own `CopilotClient`** child process — no shared client, so concurrent tasks with different working directories cannot interfere.
+Copilot requests create fresh session objects. Cold requests own their client process; warm-scoped requests borrow the client managed by `WarmClientRegistry`. Per-request working directories and session options stay isolated.
 
 ### Copilot CLI spawn resolution
 
@@ -97,14 +84,27 @@ Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-
 
 ## One-shot `transform` primitive
 
-`ISDKService.transform(input: string, options?: TransformOptions): Promise<TransformResult>` is the provider-agnostic primitive for isolated single-shot text transformations.
+### Contract and readiness
 
-- **Structured result:** `{ success, text, error?, effectiveModel?, tokenUsage? }` — never throws on provider failure; callers branch on `success`.
-- **Fresh & isolated:** one provider request per call. No session resume, no session cache, no caller-visible thread reuse, no continuation.
-- **Safe defaults:** `loadDefaultMcpConfig` defaults to `false` (no MCP/tools) and `onPermissionRequest` to `denyAllPermissions`; both overridable.
-- **No model default:** the caller passes `options.model`; omitting it uses the provider default. Model choice, prompt construction and sanitization are product policy in the calling layer.
+`transform(input, options)` returns `{ success, text, error?, effectiveModel?, tokenUsage? }`; MCP defaults off and permissions default denied. `isTransformAvailable(options?)` checks the selected transform path; `isAvailable()` checks agent readiness. Admin → Configure → AI & Execution exposes `copilot.transformTransport` (`sdk` default or `direct`, restart required). Server startup configures the shared Copilot service before one-shot consumers capture it. Embedders can supply typed `CopilotProviderConfig`. SDK mode creates a fresh session; direct mode consumes supplied text with an explicit model.
 
-Production callers: `TitleGenerationService` (`coc/src/server/executors/title-generator.ts`) uses `gpt-5.4-mini` (`TITLE_GENERATION_MODEL`) for `generateTitle()`/`prewarm()`, throwing on `!success` and on `effectiveModel` mismatch so a silent provider fallback never persists a title under the wrong model. PR suggestion ranking (`coc/src/server/repos/pr-suggestions.ts`) uses `gpt-4.1` with a 30s timeout and throws on `!success`. Neither model is in `MODEL_REGISTRY`.
+### CLI credentials
+
+Direct HTTP defaults to `copilot-cli` credentials. A short-lived pinned CLI client reads `account.getCurrentAuth` and, for a stored user, the matching `account.getAllUsers` token. The CLI owns environment priority, active account, secure storage and GitHub CLI lookup. The client creates no agent session and stops on completion or cancellation. Credentials are read per request, remain on the executing server, and never enter Admin configuration. Missing or unsupported authentication fails without selecting another account.
+
+Typed embedding credentials also support explicit environment, config, gh and resolver sources. Config reads use `COPILOT_HOME` or `~/.copilot`, bounded JSONC reads, and an exact account key. Explicit keychain acquisition returns an unverified-platform error; automatic CLI acquisition uses the CLI's own secure storage.
+
+### Direct HTTP
+
+Exported `CopilotHttpClient.complete()` supports ordered text, both buffered wire APIs, and reviewed bindings: `gpt-5.4-mini` Responses and `gpt-4.1` Chat Completions, with listed dated identities. Catalog metadata validates bindings; absent endpoint metadata remains unknown. Known public/enterprise hosts are allowlisted. One deadline covers credentials, catalog waiting and inference; redirects and byte-limit violations fail. Embedders can inject bindings, endpoint policy, fetch and clock. Direct mode rejects ambient MCP, agent options, BYOK and offline configuration without retries or fallback.
+
+### Diagnostics and lifecycle
+
+`TransformResult` adds stable `DIRECT_*` errors, dispatch status/request ID on failure, and typed `providerDiagnostics` on success. Verified logical models retain raw reported identity. Missing shared usage/cache fields remain unavailable; known totals stay in diagnostic `tokenCounts`. Nano-AIU units stay separate from cost. Bounded five-minute metadata caches include endpoint/account/credential identity; waiters cancel independently. Identity changes, 401 and cleanup invalidate caches. Cleanup aborts HTTP work; disposal prevents new calls. Permission callbacks are accepted without invocation.
+
+### Product policy
+
+Decision readiness uses `isTransformAvailable`; `system_one` retains validation, one semantic repair maximum and summed known usage. Provider/model/usage failures never trigger repair. Titles use `gpt-5.4-mini`, retain generation-based prewarm and reject model mismatches; PR ranking uses `gpt-4.1`. Text-only one-shot failures retain provider categories; attachments and agent/session work use established runtimes. Ordinary tests use local fixtures. Live tests require `COC_COPILOT_HTTP_LIVE=1` and the Copilot CLI login. Platform secure-store and packaged deployment behavior require independent verification.
 
 ## Strict session resume
 
@@ -398,6 +398,5 @@ Status surfaces two ways, both off the same canonical `currentStatus(key)` calc:
 - **Shared `ISDKService` mock** in `packages/coc-agent-sdk/src/testing/` — vitest-free, exposed via the `@plusplusoneplusplus/coc-agent-sdk/testing` subpath. Factories: `createMockSDKService`, `createUnavailableMock`, `createStreamingMock`, `createFailingMock`, `createMockBridge`, `createExpiredSessionBridge`. Accepts an injectable mock-fn factory (`fn`); consumers pass `vi.fn` for spy assertions.
 - `packages/coc/test/helpers/mock-sdk-service.ts` is a thin wrapper binding `vi.fn` and re-exporting the shared mock.
 - Lower-level mock helpers in `packages/coc-agent-sdk/test/helpers/mock-sdk.ts` (`MockCopilotClient` — a different layer).
-- 580+ tests in `packages/coc-agent-sdk/test/`, covering session-manager, streaming-session, sdk-loader, sdk-client-factory, stream-error-guard, request-runner, logger, codex-sdk-service.
 - Set `serviceAny.sdkModule` and `serviceAny.availabilityCache` to bypass the real SDK.
 - Test provider SDK option mappings at the provider boundary: SDK module fakes, protocol fixtures, transcript/request assertions, stream-event assertions, or sanitized log assertions. Do not rely only on wrapper/adapter argument assertions for provider-owned option names.

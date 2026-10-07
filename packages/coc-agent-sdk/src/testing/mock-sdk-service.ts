@@ -35,6 +35,7 @@ export interface MockSDKServiceResult {
     mockSendMessage: MockFnHandle;
     mockTitleSendMessage: MockFnHandle;
     mockIsAvailable: MockFnHandle;
+    mockIsTransformAvailable: MockFnHandle;
     mockCreateClient: MockFnHandle;
     mockTransform: MockFnHandle;
     mockAbortSession: MockFnHandle;
@@ -95,6 +96,7 @@ export function createMockSDKService(
         return mockSendMessage(messageOptions);
     });
 
+    const mockIsTransformAvailable = fn(() => Promise.resolve(availableResult));
     const mockIsAvailable = fn(() => Promise.resolve(availableResult));
     const mockCreateClient = fn(() => Promise.resolve({ __mockClient: true }));
     const mockTransform = fn(() => Promise.resolve(transformResult));
@@ -117,6 +119,7 @@ export function createMockSDKService(
 
     const baseService: MockSDKService = {
         sendMessage: sendMessageRouter as unknown as ISDKService['sendMessage'],
+        isTransformAvailable: mockIsTransformAvailable as unknown as ISDKService['isTransformAvailable'],
         isAvailable: mockIsAvailable as unknown as ISDKService['isAvailable'],
         createClient: mockCreateClient,
         transform: mockTransform as unknown as ISDKService['transform'],
@@ -155,6 +158,7 @@ export function createMockSDKService(
             }
             return mockSendMessage(messageOptions);
         });
+        mockIsTransformAvailable.mockReset().mockResolvedValue(availableResult);
         mockIsAvailable.mockReset().mockResolvedValue(availableResult);
         mockCreateClient.mockReset().mockResolvedValue({ __mockClient: true });
         mockTransform.mockReset().mockResolvedValue(transformResult);
@@ -179,6 +183,7 @@ export function createMockSDKService(
         mockSendMessage,
         mockTitleSendMessage,
         mockIsAvailable,
+        mockIsTransformAvailable,
         mockCreateClient,
         mockTransform,
         mockAbortSession,

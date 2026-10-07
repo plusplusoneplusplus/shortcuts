@@ -161,6 +161,19 @@ export {
     type MergedEffortTiersMap,
     type StoredEffortTierEntry,
     type StoredEffortTiersMap,
+    CopilotHttpClient,
+    CopilotDirectError,
+    COPILOT_HTTP_BINDINGS,
+    type CopilotProviderConfig,
+    type CopilotHttpConfig,
+    type CopilotCredentialConfig,
+    type CopilotCredentialSnapshot,
+    type CopilotCompletionInput,
+    type CopilotCompletionResult,
+    type CopilotCompletionDiagnostics,
+    type CopilotModelBinding,
+    type CopilotWireApi,
+    type CopilotDirectErrorCode,
 } from '@plusplusoneplusplus/coc-agent-sdk';
 
 // AI Command Types

@@ -872,6 +872,7 @@ export interface SDKInvocationResult extends AIInvocationResult {
  * SDK availability check result
  */
 export interface SDKAvailabilityResult {
+    errorCode?: string;
     /** Whether the SDK is available and can be used */
     available: boolean;
     /** Path to the SDK if found */
