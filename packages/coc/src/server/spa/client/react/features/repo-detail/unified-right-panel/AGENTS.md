@@ -495,13 +495,19 @@ Reveal retargets the dock to the file owner, selects Explorer mode, opens the tr
 and relies on `activeFilePath` tracking to expand and highlight the row without
 changing the active tab.
 
-## Add-tab shortcut
+## New-browser shortcut
 
-Ctrl/Cmd+T opens `UnifiedPanelOpenMenu` with the same actions as `+`, scoped to
-focus inside a visible panel. Editable content and handled events retain their
-bindings; the open menu consumes repeats without resetting its search. Escape
-returns focus to `+`. Native browser pages forward `onOpenMenuRequested` with
-the source view id; only its matching active browser tab opens the menu.
+Ctrl/Cmd+T creates and activates a blank browser tab through `browserOpenInput`
+and the panel tab store; its address input receives the existing autofocus.
+The tab uses the dock target's concrete workspace and clone route. Focus inside
+an open, visible panel owns the chord, including browser address editing and
+the add menu; other editable content, Monaco, terminal bindings, and handled
+events retain their bindings. Body focus routes to the single visible panel;
+multiple visible panels require explicit panel focus. Repeats are consumed
+without creating tabs. Native browser pages forward `onOpenMenuRequested` with
+the source view id after returning host focus; only the matching active,
+visible browser tab creates a new tab. The `+` and empty-state Open buttons
+open `UnifiedPanelOpenMenu`.
 
 ## Entry points
 

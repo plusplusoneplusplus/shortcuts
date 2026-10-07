@@ -23,7 +23,13 @@ here.
   and chat placement (side panel vs. lens).
 - `CommitReviewContent.tsx`, `PrReviewContent.tsx`,
   `BranchRangeReviewContent.tsx` — per-review-type adapters: data loading, diff
-  source construction, and which capabilities they opt into.
+  source construction, and which capabilities they opt into. Commit descriptions
+  use the Git tab's `CommitInfoHeader`; PR descriptions use `PrDescription` and
+  `getPullRequestReviewSummaryText` from the inline PR overview. Description
+  sections remain above selected-file diffs and use bounded overflow. The shell
+  keeps loaded subjects/titles and identifiers available, with description
+  disclosure state scoped to the workspace and review target. Stale metadata
+  responses are discarded when adapters unmount or change targets.
 
 ## Conventions
 

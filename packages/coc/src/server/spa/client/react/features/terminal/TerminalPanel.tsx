@@ -34,6 +34,8 @@ export interface TerminalPanelProps {
      * tombstone, so swallowing it here avoids a stream of terminal-errors.
      */
     readOnly?: boolean;
+    /** Restart an exited session through the owning view's manual lifecycle. */
+    onRestart?: () => void;
     onExit?: (code: number) => void;
     onTitleChange?: (title: string) => void;
     onServerSessionCreated?: (session: TerminalSessionInfo) => void;
@@ -96,6 +98,7 @@ export function TerminalPanel({
     workspaceId,
     isActive,
     readOnly = false,
+    onRestart,
     onExit,
     onTitleChange,
     onServerSessionCreated,
@@ -294,6 +297,23 @@ export function TerminalPanel({
                 className="h-full w-full"
                 data-testid={`terminal-panel-${sessionId}`}
                 onContextMenu={handleContextMenu}
+                onKeyDownCapture={(event) => {
+                    // Listen to keys, not xterm data: pasted newlines are input,
+                    // and disableStdin keeps exited terminals read-only.
+                    if (!readOnly || !isActive || !onRestart || event.key !== 'Enter'
+                        || !event.currentTarget.contains(document.activeElement)) {
+                        return;
+                    }
+                    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
+                        || event.nativeEvent.isComposing) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!event.repeat) {
+                        onRestart();
+                    }
+                }}
             />
             {menu && (
                 <ContextMenu

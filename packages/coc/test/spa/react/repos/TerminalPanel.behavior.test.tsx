@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +10,8 @@ const terminalWebSocketMock = vi.hoisted(function () { return ({
     disconnect: vi.fn(),
     sendInput: vi.fn(),
     sendResize: vi.fn(),
+    status: 'closed' as 'closed' | 'connecting' | 'open',
+    onData: null as null | ((data: string) => void),
 }); });
 
 vi.mock('@xterm/xterm', function () { return ({
@@ -17,10 +19,15 @@ vi.mock('@xterm/xterm', function () { return ({
         cols: 98,
         rows: 41,
         loadAddon: vi.fn(),
-        open: vi.fn(),
+        open: vi.fn((container: HTMLElement) => {
+            container.appendChild(document.createElement('textarea'));
+        }),
         dispose: vi.fn(),
         write: vi.fn(),
-        onData: vi.fn(function () { return ({ dispose: vi.fn() }); }),
+        onData: vi.fn(function (callback: (data: string) => void) {
+            terminalWebSocketMock.onData = callback;
+            return { dispose: () => { terminalWebSocketMock.onData = null; } };
+        }),
         attachCustomKeyEventHandler: vi.fn(),
         getSelection: vi.fn(function () { return ''; }),
         selectAll: vi.fn(),
@@ -43,7 +50,7 @@ vi.mock('@xterm/xterm/css/xterm.css', function () { return ({}); });
 
 vi.mock('../../../../src/server/spa/client/react/features/terminal/hooks/useTerminalWebSocket', function () { return ({
     useTerminalWebSocket: function () { return ({
-        status: 'closed',
+        status: terminalWebSocketMock.status,
         connect: terminalWebSocketMock.connect,
         disconnect: terminalWebSocketMock.disconnect,
         sendInput: terminalWebSocketMock.sendInput,
@@ -76,8 +83,82 @@ function renderTerminalPanel(overrides: Partial<ComponentProps<typeof TerminalPa
 
 beforeEach(() => {
     vi.clearAllMocks();
+    terminalWebSocketMock.status = 'closed';
+    terminalWebSocketMock.onData = null;
     vi.stubGlobal('ResizeObserver', MockResizeObserver);
     vi.stubGlobal('MutationObserver', MockMutationObserver);
+});
+
+describe('TerminalPanel Enter restart', () => {
+    it('claims focused Enter for an exited terminal without sending shell input', () => {
+        const onRestart = vi.fn();
+        const { container } = renderTerminalPanel({ readOnly: true, isActive: true, onRestart });
+        const input = container.querySelector('textarea')!;
+        input.focus();
+
+        expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+        expect(onRestart).toHaveBeenCalledTimes(1);
+        expect(terminalWebSocketMock.sendInput).not.toHaveBeenCalled();
+        expect(terminalWebSocketMock.onData).toBeNull();
+    });
+
+    it('ignores held keys, composition and modified Enter', () => {
+        const onRestart = vi.fn();
+        const { container } = renderTerminalPanel({ readOnly: true, isActive: true, onRestart });
+        const input = container.querySelector('textarea')!;
+        input.focus();
+        for (const options of [
+            { repeat: true }, { isComposing: true }, { ctrlKey: true },
+            { metaKey: true }, { altKey: true }, { shiftKey: true },
+        ]) fireEvent.keyDown(input, { key: 'Enter', ...options });
+        fireEvent.keyDown(input, { key: 'a' });
+        fireEvent.keyUp(input, { key: 'Enter' });
+        fireEvent.paste(input, { clipboardData: { getData: () => '\n' } });
+        expect(onRestart).not.toHaveBeenCalled();
+    });
+
+    it('requires focus inside the active terminal', () => {
+        const onRestart = vi.fn();
+        const { container, rerender } = renderTerminalPanel({ readOnly: true, isActive: true, onRestart });
+        const input = container.querySelector('textarea')!;
+        const outside = document.createElement('input');
+        document.body.appendChild(outside);
+        outside.focus();
+        fireEvent.keyDown(outside, { key: 'Enter' });
+        fireEvent.keyDown(input, { key: 'Enter' });
+        outside.remove();
+        input.focus();
+        rerender(<TerminalPanel sessionId="client-session" workspaceId="ws-123"
+            isActive={false} readOnly onRestart={onRestart} />);
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onRestart).not.toHaveBeenCalled();
+    });
+
+    it.each(['open', 'closed', 'connecting'] as const)(
+        'preserves running Enter with transport %s', (status) => {
+            terminalWebSocketMock.status = status;
+            const onRestart = vi.fn();
+            const { container } = renderTerminalPanel({ isActive: true, onRestart });
+            const input = container.querySelector('textarea')!;
+            input.focus();
+            expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(true);
+            terminalWebSocketMock.onData!('\r');
+            expect(terminalWebSocketMock.sendInput).toHaveBeenCalledWith('\r');
+            expect(onRestart).not.toHaveBeenCalled();
+        },
+    );
+
+    it('uses current exit and restart props after a live terminal exits', () => {
+        const onRestart = vi.fn();
+        const { container, rerender } = renderTerminalPanel({ isActive: true, onRestart });
+        const input = container.querySelector('textarea')!;
+        input.focus();
+        rerender(<TerminalPanel sessionId="client-session" workspaceId="ws-123"
+            isActive readOnly onRestart={onRestart} />);
+        fireEvent.keyDown(input, { key: 'Enter' });
+        expect(onRestart).toHaveBeenCalledTimes(1);
+        expect(terminalWebSocketMock.onData).toBeNull();
+    });
 });
 
 afterEach(() => {

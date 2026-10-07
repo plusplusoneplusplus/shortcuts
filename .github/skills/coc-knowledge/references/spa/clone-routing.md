@@ -251,7 +251,13 @@ pills and duration menus consume the same routed quota. The Admin AI Providers p
 uses the page-origin administration client independently.
 
 The terminal PTY socket (`useTerminalWebSocket`) resolves the clone baseUrl from the
-registry and passes it into `cloneWsUrl`. The `/ws` comment subscriptions
+registry and passes it into `cloneWsUrl`. `TerminalView` owns exited-session restart
+through the workspace-routed REST client, shared by the manual control and a plain
+Enter keydown focused inside its active, read-only `TerminalPanel`. Restart admission
+uses a synchronous per-tab guard. Transport closure and pasted input do not trigger
+restart; failures use the existing terminal notice. The replacement attaches with
+the server's preserved scrollback and restart configuration.
+The `/ws` comment subscriptions
 (`useTaskComments`, `git/hooks/use*Comments`) already route through `cloneWsUrl`.
 
 ### Git diff layer

@@ -78,10 +78,11 @@ export function popOutGitReviewLabel(params: PopOutGitReviewParams): string {
 /** Full `document.title` for the pop-out window. */
 export function popOutGitReviewDocumentTitle(
     params: PopOutGitReviewParams,
-    options: { hostname?: string; prTitle?: string } = {},
+    options: { hostname?: string; prTitle?: string; commitTitle?: string } = {},
 ): string {
     const brand = options.hostname ? `CoC @ ${options.hostname}` : 'CoC';
     const base = popOutGitReviewLabel(params);
+    if (params.reviewType === 'commit' && options.commitTitle) return `${base}: ${options.commitTitle} — ${brand}`;
     const title = params.reviewType === 'pr' && options.prTitle ? `${base} — ${options.prTitle}` : base;
     return `${title} — ${brand}`;
 }

@@ -262,8 +262,10 @@ Classic classify-diff toolbars call `useModalJobAiSelection()` directly and rend
 one provider is selectable and shows either an effort-tier selector or the
 pickable-model command picker.
 
-`commits/CommitDetail.tsx` mounts those controls in a classification-settings
-disclosure, with selection owned by the workspace-scoped hook. Header and settings
+`commits/CommitDetail.tsx` shares `CommitInfoHeader` with commit pop-outs for
+subject, body, metadata, SHA copying, and header disclosure. It mounts those controls
+in a classification-settings disclosure, with selection owned by the workspace-scoped
+hook. Header and settings
 disclosures reset on workspace or commit changes. The collapsed header retains SHA
 copying and hides the metadata subtree from keyboard navigation. Its toolbar wraps
 review and view controls as independent groups; `DiffViewToggle` accepts a quiet
@@ -579,11 +581,15 @@ description, parsed/provider diff stats, checks, reviewers, and comment threads,
 findings derived from failing checks and unresolved threads.
 
 Review pop-outs carry the selected workspace's resolved origin ID in the pop-out URL,
-load title and head metadata through the origin detail API, and hydrate and persist
-reviewed/visited file progress through
+load title, description and head metadata through the origin detail API, and
+hydrate and persist reviewed/visited file progress through
 `client.pullRequests.getReviewProgressForOrigin` / `saveReviewProgressForOrigin`
 against `/api/origins/:originId/pull-requests/:prId/review-progress`, passing
-workspaceId/repoId metadata for pre-origin migration only.
+workspaceId/repoId metadata for pre-origin migration only. The pop-out description
+uses the overview's `getPullRequestReviewSummaryText` and `PrDescription` renderer,
+including its empty-description fallback. Description sections sit above selected
+file diffs with bounded scrolling. Loaded titles and review identifiers stay in
+the window header; target changes reset disclosure and discard stale responses.
 
 PR file data stays origin-scoped while `workspaceId` and optional `repoId` select a
 same-origin clone. Classic pop-out views call the per-file diff endpoint with

@@ -275,12 +275,16 @@ The desktop workspace header exposes one visibility toggle for the resource-tabb
 right panel. The classic repository header and remote/virtual TopBar use the same
 persisted panel-scope open store. Search and Explorer are peer controls inside the
 panel; they select or collapse the right-edge navigator without closing the panel.
-Ctrl/Cmd+T opens the shared `+` menu when the visible panel owns focus, preserving
-editable bindings. Native browser hosts forward a source-qualified
-`onOpenMenuRequested` after transferring keyboard focus to the SPA; the matching
-active browser tab opens the menu. Repeats preserve its query and Escape restores
-trigger focus. Repository-group mode stays scoped to the group while panel
-requests use the selected dock target.
+Ctrl/Cmd+T creates and activates a blank browser tab in the visible panel,
+using the selected dock target's workspace and concrete clone route. Its address
+input receives the existing autofocus. Panel and browser address focus own the
+shortcut; other editable and terminal bindings remain scoped to their content.
+Body focus routes to the single visible panel, and repeats create no tabs.
+Native browser hosts forward source-qualified `onOpenMenuRequested` after
+transferring keyboard focus to the SPA; only the matching active browser tab
+creates a tab. The `+` and empty-state Open buttons open the shared resource menu.
+Repository-group mode stays scoped to the group while panel requests use the
+selected dock target.
 
 The desktop three-column layout keeps the flexible middle pane usable by sharing
 the left column's live, workspace-scoped width through `WorkspaceLeftWidth.ts`.

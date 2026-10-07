@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 
 const mocks = vi.hoisted(() => ({
     getCommit: vi.fn(),
+    copyToClipboard: vi.fn().mockResolvedValue(undefined),
     commitDiffPath: vi.fn(),
     getPr: vi.fn(),
     getPrDiff: vi.fn(),
@@ -14,6 +15,11 @@ const mocks = vi.hoisted(() => ({
     useBreakpoint: vi.fn(),
     postMessage: vi.fn(),
     commentCounts: new Map<string, number>(),
+}));
+
+vi.mock('../../../../src/server/spa/client/react/utils/format', async importOriginal => ({
+    ...await importOriginal<typeof import('../../../../src/server/spa/client/react/utils/format')>(),
+    copyToClipboard: mocks.copyToClipboard,
 }));
 
 vi.mock('../../../../src/server/spa/client/react/contexts/AppContext', () => ({
@@ -352,6 +358,92 @@ describe('PopOutGitReviewShell selected-file rendering', () => {
             expect(screen.getByTestId('file-diff-panel').getAttribute('data-destination')).toBe('');
         },
     );
+
+    it('keeps the commit subject, full body and copyable metadata above selected-file diffs', async () => {
+        window.history.pushState({}, '', buildGitReviewPopOutUrl('ws1', 'abc123'));
+        mocks.getCommit.mockResolvedValue({
+            hash: 'abc123456789', shortHash: 'abc1234', subject: 'Explain the real commit',
+            author: 'Commit Author', authorEmail: 'author@example.test', date: '2026-01-01T00:00:00Z',
+            parentHashes: ['parent123456'], body: 'First paragraph\n\nSecond paragraph with details.',
+        });
+        render(<PopOutGitReviewShell />);
+        await screen.findByTestId('commit-info-header');
+        expect(screen.getByTestId('popout-git-review-title')).toHaveTextContent('Explain the real commit');
+        expect(screen.getByTestId('popout-git-review-identifier')).toHaveTextContent('Commit abc123');
+        expect(document.title).toContain('Explain the real commit');
+        expect(screen.getByTestId('commit-info-author')).toHaveTextContent('Commit Author');
+        expect(screen.getByTestId('commit-info-email')).toHaveTextContent('author@example.test');
+        expect(screen.getByTestId('commit-info-parents')).toHaveTextContent('parent1');
+        expect(screen.getByTestId('commit-info-body').textContent).toBe('First paragraph\n\nSecond paragraph with details.');
+        fireEvent.click(screen.getByText('src/app.ts'));
+        expect(await screen.findByTestId('file-diff-panel')).toHaveAttribute('data-file', 'src/app.ts');
+        expect(screen.getByTestId('commit-info-body')).toBeVisible();
+        fireEvent.click(screen.getByTestId('commit-info-copy-hash'));
+        expect(mocks.copyToClipboard).toHaveBeenCalledWith('abc123456789');
+        await waitFor(() => expect(screen.getByTestId('commit-info-copy-hash')).toHaveAttribute('aria-label', 'Copied!'));
+        fireEvent.click(screen.getByTestId('commit-info-collapse-btn'));
+        expect(screen.getByTestId('commit-info-body')).not.toBeVisible();
+        expect(screen.getByTestId('commit-info-summary')).toHaveTextContent('Explain the real commit');
+        expect(screen.getByTestId('commit-summary-copy-hash')).toHaveTextContent('abc12345');
+        fireEvent.click(screen.getByTestId('commit-info-summary'));
+        expect(screen.getByTestId('commit-info-body')).toBeVisible();
+        expect(screen.getByTestId('file-diff-panel')).toHaveAttribute('data-file', 'src/app.ts');
+    });
+
+    it.each(['**Markdown description**\n\n[Email](mailto:user@example.test)', '   '])(
+        'uses inline PR description resolution and rendering for %j', async description => {
+            window.history.pushState({}, '', buildGitPrPopOutUrl('ws1', 'repo1', 42, 'origin1', 'https://remote.example.test', 'remote:server:ws1'));
+            mocks.getPr.mockResolvedValue({
+                title: 'Describe the PR', description, headSha: 'head42',
+                author: { displayName: 'PR Author' }, sourceBranch: 'feature', targetBranch: 'main',
+                url: 'https://example.test/pr/42',
+            });
+            render(<PopOutGitReviewShell />);
+            await screen.findByTestId('popout-pr-details');
+            expect(mocks.getPr).toHaveBeenCalledWith('origin1', '42', { workspaceId: 'ws1', repoId: 'repo1' });
+            expect(lookupCloneBaseUrl('remote:server:ws1')).toBe('https://remote.example.test');
+            expect(screen.getByTestId('popout-git-review-title')).toHaveTextContent('Describe the PR');
+            expect(screen.getByTestId('popout-git-review-identifier')).toHaveTextContent('PR #42');
+            const body = screen.getByTestId('pr-review-summary-copy');
+            if (description.trim()) {
+                expect(body.querySelector('strong')).toHaveTextContent('Markdown description');
+                expect(body.querySelector('a')).toBeNull();
+                expect(body).toHaveTextContent('Email');
+            } else {
+                expect(body).toHaveTextContent('No PR description provided.');
+            }
+            expect(screen.getByTestId('popout-pr-details')).toHaveTextContent('feature → main');
+            fireEvent.click(screen.getByText('src/pr.ts'));
+            const panel = await screen.findByTestId('file-diff-panel');
+            expect(panel).toHaveAttribute('data-destination', 'remote:server:ws1');
+            fireEvent.click(screen.getByTestId('popout-pr-title-toggle'));
+            expect(screen.queryByTestId('popout-pr-details')).toBeNull();
+            expect(screen.getByTestId('popout-git-review-title')).toHaveTextContent('Describe the PR');
+            expect(panel).toHaveAttribute('data-file', 'src/pr.ts');
+            fireEvent.click(screen.getByTestId('popout-pr-title-toggle'));
+            expect(screen.getByTestId('pr-review-summary-copy')).toBeVisible();
+        },
+    );
+
+    it.each(['commit', 'pr'] as const)('ignores late %s descriptions after changing workspace', async reviewType => {
+        let resolveOld!: (value: any) => void;
+        const pending = new Promise(resolve => { resolveOld = resolve; });
+        const api = reviewType === 'commit' ? mocks.getCommit : mocks.getPr;
+        const oldData = { hash: 'abc123', shortHash: 'abc123', parentHashes: [], subject: 'Old commit', title: 'Old PR', description: 'Old body' };
+        const newData = { ...oldData, subject: 'New commit', title: 'New PR', description: 'New body' };
+        api.mockReturnValueOnce(pending).mockResolvedValue(newData);
+        const url = (ws: string) => reviewType === 'commit'
+            ? buildGitReviewPopOutUrl(ws, 'abc123')
+            : buildGitPrPopOutUrl(ws, 'repo1', 42, 'origin1');
+        window.history.pushState({}, '', url('ws1'));
+        const view = render(<PopOutGitReviewShell />);
+        window.history.pushState({}, '', url('ws2'));
+        view.rerender(<PopOutGitReviewShell />);
+        await waitFor(() => expect(screen.getByTestId('popout-git-review-title')).toHaveTextContent(reviewType === 'commit' ? 'New commit' : 'New PR'));
+        resolveOld(oldData);
+        await waitFor(() => expect(screen.getByTestId('popout-git-review-title')).toHaveTextContent(reviewType === 'commit' ? 'New commit' : 'New PR'));
+        expect(screen.queryByText('Old body')).toBeNull();
+    });
 
     it('switches commit popout selected files to comment-enabled FileDiffPanel', async () => {
         window.history.pushState({}, '', '/?workspace=ws1#popout/git-review/abc123');
