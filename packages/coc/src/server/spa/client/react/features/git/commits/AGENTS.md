@@ -16,6 +16,16 @@ The review opener carries `attachmentDestinationId` as URL `sourceSelectionId`;
 endpoint lookup uses that concrete owner, with explicit local owners staying on
 the page origin. Omitted owners retain workspace-based lookup.
 
+## Commit review lifetime
+
+`RepoGitDetailPane` owns one review host per `(workspaceId, hash)`. It passes
+`reviewChat` presentation controls into `CommitDetail` and `FileDiffPanel`, and
+renders `CommitReviewChat` beside their content. Same-commit overview/file
+navigation preserves the conversation, draft and scroll. File-to-file navigation
+reuses the file panel and Monaco editor while loading fresh models; hidden prior
+models cannot receive selections. Workspace or commit changes replace the host.
+Standalone surfaces own their chat locally through the same shared renderer.
+
 ## Review composer ownership
 
 `CommitChatPanel`, `PrChatPanel` and `CommitChatPlacementFrame` forward

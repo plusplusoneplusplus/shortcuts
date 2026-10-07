@@ -5,11 +5,13 @@
  * branch-range overview, a branch-range file diff, a working-tree file diff,
  * either all-comments view, a multi-commit summary, or the empty state.
  *
- * Presentational only — it holds no state and issues no requests, so the same
- * subtree renders identically inline (standalone layout) and portaled into the
- * shared detail region (split-workspace layout).
+ * Commit review keeps one chat host across overview/file navigation. The same
+ * subtree renders inline and portaled into the split-workspace detail region.
  */
 
+import { useMemo } from 'react';
+import { CommitReviewChat } from '../commits/CommitReviewChat';
+import { useCommitChatPresentation } from '../hooks/useCommitChatPresentation';
 import type { GitCommitItem } from '../commits/CommitList';
 import { CommitDetail } from '../commits/CommitDetail';
 import { BranchRangeOverview } from '../branches/BranchRangeOverview';
@@ -58,33 +60,19 @@ export function RepoGitDetailPane({
     onNavigateToBranchFile, onNavigateToCommitFile, onNavigateToWorkingTreeFile,
     onWorkingTreeFileMissing, onDetailDirtyChange, onDetailRegisterSave, workingChangesRefreshKey, onWorkingTreeFileSaved, onAllBranchCommentsClick, onBranchAskAI, onCommitClassified,
 }: RepoGitDetailPaneProps) {
-    if (view?.type === 'commit') {
-        return (
-            <CommitDetail
-                attachmentDestinationId={attachmentDestinationId}
-                key={view.commit.hash}
-                workspaceId={workspaceId}
-                hash={view.commit.hash}
-                commit={view.commit}
-                onClassified={onCommitClassified}
-            />
-        );
-    }
-
-    if (view?.type === 'commit-file') {
-        return (
-            <FileDiffPanel
-                attachmentDestinationId={attachmentDestinationId}
-                key={`${view.hash}-${view.filePath}`}
-                source={createCommitDiffSource(workspaceId, view.hash, {
-                    commit: commits.find(c => c.hash === view.hash),
-                })}
-                workspaceId={workspaceId}
-                filePath={view.filePath}
-                onNavigateToFile={(fp, target) => onNavigateToCommitFile(view.hash, fp, target)}
-                initialHunkTarget={hunkTarget}
-            />
-        );
+    if (view?.type === 'commit' || view?.type === 'commit-file') {
+        const hash = view.type === 'commit' ? view.commit.hash : view.hash;
+        return <CommitReviewDetail
+            key={`${workspaceId}:${hash}`}
+            workspaceId={workspaceId}
+            attachmentDestinationId={attachmentDestinationId}
+            hash={hash}
+            commit={view.type === 'commit' ? view.commit : commits.find(c => c.hash === hash)}
+            filePath={view.type === 'commit-file' ? view.filePath : undefined}
+            hunkTarget={hunkTarget}
+            onNavigateToCommitFile={onNavigateToCommitFile}
+            onCommitClassified={onCommitClassified}
+        />;
     }
 
     // A restored branch view can outlive its branch range (the user has since
@@ -193,4 +181,34 @@ export function RepoGitDetailPane({
             Select a commit to view details
         </div>
     );
+}
+
+/** Only workspace/commit changes replace the host and its conversation. */
+function CommitReviewDetail({ workspaceId, attachmentDestinationId, hash, commit, filePath,
+    hunkTarget, onNavigateToCommitFile, onCommitClassified }: {
+    workspaceId: string;
+    attachmentDestinationId?: string;
+    hash: string;
+    commit?: GitCommitItem;
+    filePath?: string;
+    hunkTarget?: HunkTarget;
+    onNavigateToCommitFile: RepoGitDetailPaneProps['onNavigateToCommitFile'];
+    onCommitClassified: RepoGitDetailPaneProps['onCommitClassified'];
+}) {
+    const chat = useCommitChatPresentation({ workspaceId, commitHash: hash });
+    const source = useMemo(() => createCommitDiffSource(workspaceId, hash, { commit }), [workspaceId, hash, commit]);
+    return <div className="relative flex h-full min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+            {filePath ? <FileDiffPanel
+                workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId}
+                source={source} filePath={filePath} reviewChat={chat}
+                onNavigateToFile={(fp, target) => onNavigateToCommitFile(hash, fp, target)}
+                initialHunkTarget={hunkTarget}
+            /> : <CommitDetail
+                workspaceId={workspaceId} attachmentDestinationId={attachmentDestinationId}
+                hash={hash} commit={commit} reviewChat={chat} onClassified={onCommitClassified}
+            />}
+        </div>
+        <CommitReviewChat workspaceId={workspaceId} hash={hash} commitMessage={commit?.subject} chat={chat} />
+    </div>;
 }

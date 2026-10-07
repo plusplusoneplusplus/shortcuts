@@ -531,8 +531,8 @@ describe.each<SourceKind>(['commit', 'branch-range', 'pull-request'])('%s Monaco
         }));
         await act(async () => { view.rerender(panel(source, 'src/b.ts')); });
         await act(async () => { fake().finishDiff(CHANGES); });
-        expect(firstEditor.zones.size).toBe(0);
-        expect(firstEditor.disposals).toBe(1);
+        expect(fake()).toBe(firstEditor);
+        expect(firstEditor.disposals).toBe(0);
         expect(fake().glyph).toBeNull();
         expect(fake().zones.size).toBe(1);
         expect(cardOf('b')).toBeTruthy();

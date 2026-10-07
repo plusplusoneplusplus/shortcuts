@@ -2,6 +2,8 @@ import { expect, test } from './fixtures/server-fixture';
 import { createMultiCommitRepo } from './fixtures/git-fixtures';
 import { request, seedProcess, seedWorkspace } from './fixtures/seed';
 import { execFileSync } from 'child_process';
+import { writeFileSync } from 'fs';
+import { join } from 'path';
 import { resolveCanonicalOriginId } from '@plusplusoneplusplus/forge';
 
 const WORKSPACE_ID = 'ws-commit-chat-lens';
@@ -205,6 +207,41 @@ async function gotoFresh(page: import('@playwright/test').Page, url: string): Pr
 }
 
 test.describe('feature-flagged commit chat lens', () => {
+    test('keeps the chat and Monaco mounted while clicking commit files', async ({ page, serverUrl, dataDir }) => {
+        const repoDir = createMultiCommitRepo(dataDir);
+        writeFileSync(join(repoDir, 'src', 'index.ts'), 'export default { version: 3 };\n');
+        writeFileSync(join(repoDir, 'src', 'utils.ts'), 'export function helper() { return 2; }\n');
+        execFileSync('git', ['add', 'src/index.ts', 'src/utils.ts'], { cwd: repoDir });
+        execFileSync('git', ['commit', '-m', 'Update two files for review'], { cwd: repoDir });
+        const commit = latestCommit(repoDir);
+        await seedWorkspace(serverUrl, WORKSPACE_ID, 'Commit Chat Persistence', repoDir);
+        await enableCommitChatLensFeature(serverUrl);
+        await page.goto(`${serverUrl}/?workspace=${WORKSPACE_ID}#repos/${WORKSPACE_ID}/git/${commit.hash}/${encodeURIComponent('src/index.ts')}`);
+        const editor = page.getByTestId('file-diff-editor');
+        await expect(editor).toBeVisible();
+        await page.getByTestId('toggle-chat-btn').click();
+        const lens = page.getByTestId('commit-chat-lens');
+        const input = lens.getByTestId('commit-chat-input');
+        await expect(input).toBeVisible();
+        await input.fill('Keep my review draft');
+        await lens.evaluate(node => node.setAttribute('data-persistence-probe', 'chat'));
+        await editor.evaluate(node => node.setAttribute('data-persistence-probe', 'editor'));
+
+        await page.getByTestId('commit-file-src/utils.ts').click();
+        await expect(page).toHaveURL(/utils\.ts/);
+        await expect(editor).toBeVisible();
+        await expect(editor).toHaveAttribute('data-persistence-probe', 'editor');
+        await expect(lens).toHaveAttribute('data-persistence-probe', 'chat');
+        await lens.hover();
+        await expect(input).toHaveText('Keep my review draft');
+
+        await page.getByTestId(`commit-row-${commit.shortHash}`).click();
+        await expect(page.getByTestId('diff-section')).toBeVisible();
+        await expect(lens).toHaveAttribute('data-persistence-probe', 'chat');
+        await lens.hover();
+        await expect(input).toHaveText('Keep my review draft');
+    });
+
     test('dormant pill passes hit testing and text selection through the old lens rectangle', async ({ page, serverUrl, dataDir }) => {
         const workspaceId = `${WORKSPACE_ID}-pill`;
         const repoDir = createMultiCommitRepo(dataDir);
