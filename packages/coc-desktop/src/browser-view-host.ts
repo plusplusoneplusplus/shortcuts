@@ -32,8 +32,10 @@ function wireOwner(window: BrowserWindow): void {
     if (owners.has(id)) { return; }
     owners.set(id, window);
     const failed = (error: unknown) => console.error('[coc-desktop] Browser cleanup failed:', error);
-    // A full SPA reload keeps file previews for the reloaded SPA to reattach; closing the window ends every view.
-    window.webContents.on('did-navigate', () => { void manager?.reloadOwner(id).catch(failed); });
+    // Reload closes guests without emitting onClosed into the next SPA document.
+    window.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) { void manager?.reloadOwner(id).catch(failed); }
+    });
     window.once('closed', () => { void manager?.closeOwner(id).catch(failed); owners.delete(id); });
 }
 

@@ -40,7 +40,7 @@ describe.skipIf(skip)('real SPA webview layer in Electron', () => {
             });
             expect(result.code, result.output).toBe(0);
             const steps = result.output.split('\n').filter(line => line.startsWith('E2E::')).map(line => JSON.parse(line.slice(5)));
-            expect(steps).toEqual(['persistence', 'overlays', 'toolbar', 'close'].map(step => ({ step, ok: true })));
+            expect(steps).toEqual(['persistence', 'overlays', 'toolbar', 'close', 'html'].map(step => ({ step, ok: true })));
         } finally {
             rmSync(data, { recursive: true, force: true });
         }

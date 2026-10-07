@@ -52,6 +52,17 @@ describe('validateBrowserUrl', () => {
         it.each(['file:///page.html', 'about:blank', 'data:text/html,page', 'javascript:alert(1)', 'ftp://example.test/', 'invalid'])('rejects %s before creating a guest', src => {
             expect(sanitizeWebviewAttach({}, { src }, profile)).toBe(false);
         });
+
+        it('permits only the exact file source explicitly authorized by main', () => {
+            const src = 'file:///preview/page.html';
+            const preferences = { nodeIntegration: true };
+            expect(sanitizeWebviewAttach(preferences, { src }, profile, src)).toBe(true);
+            expect(preferences).toMatchObject({ nodeIntegration: false, sandbox: true, session: profile });
+            for (const attempted of ['file:///preview/other.html', src + '#changed', 'https://example.test/', 'data:text/html,page']) {
+                expect(sanitizeWebviewAttach({}, { src: attempted }, profile, src)).toBe(false);
+            }
+            expect(sanitizeWebviewAttach({}, { src }, profile)).toBe(false);
+        });
     });
 
     it('rejects non-web schemes as unsupported', () => {

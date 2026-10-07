@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, webContents } = require('electron');
 const { buildSync } = require('esbuild');
 const { createServer } = require('node:http');
-const { readFileSync } = require('node:fs');
+const { readFileSync, writeFileSync } = require('node:fs');
 const path = require('node:path');
 
 app.setPath('userData', process.env.COC_WEBVIEW_LAYER_DATA);
@@ -16,20 +16,28 @@ const renderer = buildSync({
             import { createRoot } from 'react-dom/client';
             import { BrowserWebviewLayer } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/BrowserWebviewLayer';
             import { UnifiedBrowserTab } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
+            import { UnifiedHtmlPageTab } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedHtmlPageTab';
             import { closeBrowserPanelView } from './src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
             const bridge = window.cocDesktop.browser;
+            const ignore = () => {};
             bridge.onClosed(({viewId}) => closeBrowserPanelView(viewId));
             function Fixture() {
                 const [mounted, setMounted] = useState(true);
                 const [shown, setShown] = useState(true);
                 const [expanded, setExpanded] = useState(false);
                 const [overlay, setOverlay] = useState('');
-                window.fixture = { setMounted, setShown, setExpanded, setOverlay };
+                const [file, setFile] = useState(() => localStorage.getItem('fixture-file') || '');
+                window.fixture = { setMounted, setShown, setExpanded, setOverlay,
+                    setFile(path) { localStorage.setItem('fixture-file', path); setFile(path); },
+                    close(id) { closeBrowserPanelView(id); bridge.close(id); setMounted(false); },
+                };
                 return <>
                     <div style={{position:'fixed',left:100,top:40,width:expanded ? 650 : 500,height:500,display:'flex'}}>
-                        {mounted && <UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="workspace-a"
+                        {mounted && (file ? <UnifiedHtmlPageTab tabId="file-tab" pageId="file" wsId="workspace-a"
+                            filePath={file} active visible={shown} nativeCovered={!!overlay} onErrorChange={ignore} />
+                            : <UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="workspace-a"
                             url={location.origin + '/page'} active visible={shown} nativeCovered={!!overlay}
-                            onNavigate={() => {}} onPageState={() => {}} />}
+                            onNavigate={ignore} onPageState={ignore} />)}
                     </div>
                     {overlay && <div id="overlay" role={overlay === 'dialog' ? 'dialog' : 'menu'}
                         style={{position:'fixed',left:180,top:160,width:180,height:100,zIndex:50,background:'rgb(200,50,60)'}}
@@ -140,6 +148,43 @@ app.whenReady().then(async () => {
     await until(() => js(`!document.querySelector('webview')`), 'closed guest removed from layer');
     assert(guest.isDestroyed(), 'Closed guest survived');
     console.log('E2E::' + JSON.stringify({ step: 'close', ok: true }));
+
+    const filePath = path.join(process.env.COC_WEBVIEW_LAYER_DATA, 'page.html');
+    writeFileSync(filePath, '<!doctype html><title>Local fixture</title><style>html,body{margin:0;background:rgb(20,170,90)}body{height:1800px}</style><input id="draft">');
+    await js(`window.fixture.setFile(${JSON.stringify(filePath)})`);
+    const fileGuestId = await until(() => js(`(() => {
+        const view = document.querySelector('webview');
+        try { return view && view.getWebContentsId(); } catch { return false; }
+    })()`), 'HTML guest attachment', () => js('document.body.innerText'));
+    const fileGuest = webContents.fromId(fileGuestId);
+    await until(() => fileGuest.getTitle() === 'Local fixture' && !fileGuest.isLoading(), 'HTML load');
+    await fileGuest.executeJavaScript(`document.getElementById('draft').value = 'local draft'; location.hash = 'kept'; scrollTo(0, 240);`);
+    await js(`window.fixture.setOverlay('+ menu')`);
+    await until(() => js(`!!document.getElementById('overlay')`), 'HTML overlay');
+    await pause(80);
+    const fileImage = await win.webContents.capturePage();
+    assert(pixel(fileImage, 190, 230).join() === '200,50,60', 'HTML menu did not paint above the page');
+    assert(pixel(fileImage, 450, 300).join() === '20,170,90', 'HTML menu blanked the page');
+    await js(`window.fixture.setOverlay(''); window.fixture.setMounted(false)`);
+    await pause(80);
+    await js('window.fixture.setMounted(true)');
+    await until(() => js(`document.querySelector('[data-browser-view-id]').style.visibility === 'visible'`), 'HTML remount');
+    assert(await js(`document.querySelector('webview').getWebContentsId()`) === fileGuestId, 'HTML remount recreated guest');
+    assert(await fileGuest.executeJavaScript(`document.getElementById('draft').value === 'local draft' && scrollY === 240`), 'HTML remount lost state');
+    assert((await js(`window.cocDesktop.browser.clearData('electron')`)).ok, 'Profile cleanup failed');
+    assert(!fileGuest.isDestroyed(), 'Browser profile cleanup destroyed an HTML guest');
+    await win.loadURL(origin);
+    const reopenedId = await until(() => js(`(() => {
+        const view = document.querySelector('webview');
+        try { return view && view.getWebContentsId(); } catch { return false; }
+    })()`), 'HTML restored after SPA reload', () => js('document.body.innerText'));
+    assert(reopenedId !== fileGuestId && fileGuest.isDestroyed(), 'SPA reload retained an old HTML guest');
+    const reopened = webContents.fromId(reopenedId);
+    await until(() => reopened.getTitle() === 'Local fixture' && !reopened.isLoading(), 'HTML restored load');
+    assert(await reopened.executeJavaScript(`document.getElementById('draft').value === '' && scrollY === 0 && location.hash === ''`), 'HTML reload retained page-local state');
+    await js(`window.fixture.close('html-page:file')`);
+    await until(() => js(`!document.querySelector('webview')`), 'HTML tab close');
+    console.log('E2E::' + JSON.stringify({ step: 'html', ok: true }));
     await disposeBrowserViews();
     win.destroy();
     server.close();

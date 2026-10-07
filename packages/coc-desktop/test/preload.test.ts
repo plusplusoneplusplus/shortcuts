@@ -353,6 +353,7 @@ describe('preload bridge', () => {
 
     it.each([
         { ok: true, engine: 'electron', sourceKind: 'file' },
+        { ok: true, engine: 'electron', sourceKind: 'file', embed: 'webview', src: 'file:///preview/page.html', partition: 'attachment-token' },
         ...['invalid', 'not-absolute', 'not-html', 'missing', 'not-file', 'bad-id', 'busy', 'bad-session', 'no-window']
             .map(reason => ({ ok: false, reason, message: 'detail', engine: 'electron' })),
     ])('htmlPage.open keeps its reply shape for %o (in sync with html-page-policy)', async (result) => {

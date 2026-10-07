@@ -8,8 +8,9 @@ function installWebviewFixture() {
     window.__browser = {
         ...browser,
         async open(...args) {
-            const result = await browser.open(...args);
-            const id = args[0];
+            return this.mount(args[0], await browser.open(...args));
+        },
+        async mount(id, result) {
             if (!result.ok || result.embed !== 'webview' || views.has(id)) return result;
             const guest = document.createElement('webview');
             guest.dataset.viewId = id;
@@ -62,6 +63,14 @@ function installWebviewFixture() {
         views.get(viewId)?.remove();
         views.delete(viewId);
     });
+    const htmlPage = window.cocDesktop.htmlPage;
+    window.__htmlPage = {
+        ...htmlPage,
+        async open(id, file) { return window.__browser.mount('html-page:' + id, await htmlPage.open(id, file)); },
+        setBounds(id, rect) { window.__browser.setBounds('html-page:' + id, rect); },
+        hide(id) { window.__browser.hide('html-page:' + id); },
+        close(id) { window.__browser.close('html-page:' + id); },
+    };
 }
 
 module.exports = { fixtureScript: `(${installWebviewFixture.toString()})()` };

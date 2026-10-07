@@ -6,7 +6,7 @@ import { desktopBrowserBridge, type DesktopBrowserBridge } from './browser-bridg
  * older `cocDesktop.htmlPage` preload API (which has no history control).
  */
 export interface DesktopHtmlPageBridge {
-    open(pageId: string, filePath: string): Promise<{ ok: true } | { ok: false; reason: string }>;
+    open(pageId: string, filePath: string): Promise<{ ok: true; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string }>;
     setBounds(pageId: string, rect: { x: number; y: number; width: number; height: number } | null): void;
     hide(pageId: string): void;
     close(pageId: string): void;
@@ -51,7 +51,10 @@ export function htmlPageBridgeFromBrowser(browser: FileSourceBrowserBridge): Des
     return {
         open: async (pageId, filePath) => {
             const result = await browser.open(viewId(pageId), { kind: 'file', path: filePath }, HTML_PAGE_SESSION_KEY);
-            return result.ok ? { ok: true } : { ok: false, reason: result.reason };
+            return result.ok ? {
+                ok: true,
+                ...(result.embed ? { embed: result.embed, src: result.src, partition: result.partition } : {}),
+            } : { ok: false, reason: result.reason };
         },
         setBounds: (pageId, rect) => browser.setBounds(viewId(pageId), rect),
         hide: pageId => browser.hide(viewId(pageId)),

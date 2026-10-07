@@ -2,11 +2,13 @@ import { app, webContents, type BrowserWindow, type WebContents } from 'electron
 import { randomUUID } from 'node:crypto';
 import { BrowserHostError } from './browser-host-contract';
 import { sanitizeWebviewAttach } from './browser-view-policy';
+import { htmlPageFileUrl, validateHtmlPagePath } from './html-page-policy';
 
 const ATTACH_TTL_MS = 30_000;
 interface Authorization {
     ownerId: number;
     src: string;
+    fileSrc?: string;
     partition: string;
     session: Electron.Session;
     attached?: WebContents;
@@ -41,7 +43,7 @@ function guardContents(contents: WebContents): void {
         const authorization = pending.get(params.partition);
         if (!authorization || authorization.ownerId !== contents.id || authorization.attaching || creating.has(contents.id)
             || !isBrowserEmbedder(contents) || params.src !== authorization.src
-            || !sanitizeWebviewAttach(preferences, params, authorization.session)) {
+            || !sanitizeWebviewAttach(preferences, params, authorization.session, authorization.fileSrc)) {
             event.preventDefault();
             return;
         }
@@ -83,7 +85,16 @@ export function installBrowserWebviewGuard(): void {
 export function authorizeBrowserWebview(
     ownerId: number, src: string, profile: Electron.Session,
     attach: (guest: WebContents) => void, expired: () => void,
+    /** Main-only capability: supplied by the file host, never derived from renderer attributes. */
+    authorizedFilePath?: string,
 ): { embed: 'webview'; src: string; partition: string; adopt(guestId: number): void; dispose(): void } {
+    let fileSrc: string | undefined;
+    if (authorizedFilePath !== undefined) {
+        const checked = validateHtmlPagePath(authorizedFilePath);
+        if (!checked.ok) { throw new BrowserHostError(checked.reason, 'Preview file is unavailable.'); }
+        fileSrc = htmlPageFileUrl(checked.path);
+        if (src !== fileSrc) { throw new BrowserHostError('invalid', 'Preview source does not match the authorized file.'); }
+    }
     const partition = `coc-browser-${randomUUID()}`;
     const dispose = () => {
         clearTimeout(authorization.timer);
@@ -91,7 +102,7 @@ export function authorizeBrowserWebview(
         if (creating.get(ownerId) === authorization) { creating.delete(ownerId); }
     };
     const authorization: Authorization = {
-        ownerId, src, partition, session: profile, attaching: false, adopted: false, attach, expired,
+        ownerId, src, fileSrc, partition, session: profile, attaching: false, adopted: false, attach, expired,
         timer: setTimeout(() => { dispose(); expired(); }, ATTACH_TTL_MS),
     };
     authorization.timer.unref();

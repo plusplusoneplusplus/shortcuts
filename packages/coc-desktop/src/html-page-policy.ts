@@ -2,8 +2,8 @@
  * CoC Desktop — HTML page tab — pure policy.
  *
  * A local `.html`/`.htm` file clicked in a chat response can be opened as a
- * real rendered page in the SPA's right panel. The main process hosts it in a
- * `WebContentsView` loaded over `file://` (see `file-preview-host.ts`). Everything
+ * real rendered page in the SPA's right panel. Main authorizes a sandboxed
+ * `webview` loaded over `file://` (see `file-preview-host.ts`). Everything
  * decidable without Electron lives here so it is unit-testable under plain Node,
  * the same split as `popout-chrome.ts` / `popout-window-host.ts`.
  *
@@ -179,14 +179,14 @@ export function classifyHtmlPageWindowOpen(targetUrl: string): Exclude<HtmlPageN
 
 /** Reply to an open request. The SPA falls back to the source viewer when `ok` is false. */
 export type HtmlPageOpenResult =
-    | { ok: true }
+    | { ok: true; embed?: 'webview'; src?: string; partition?: string }
     | { ok: false; reason: Extract<HtmlPagePathCheck, { ok: false }>['reason'] | 'bad-id' | 'no-window' };
 
 const HTML_PAGE_OPEN_REASONS: ReadonlySet<string> = new Set(['invalid', 'not-absolute', 'not-html', 'missing', 'not-file', 'bad-id']);
 
 /** The `htmlPage.open` reply for a merged-API open result. */
-export function toHtmlPageOpenResult(result: { ok: boolean; reason?: string }): HtmlPageOpenResult {
-    if (result.ok) { return { ok: true }; }
+export function toHtmlPageOpenResult(result: { ok: boolean; reason?: string; embed?: 'webview'; src?: string; partition?: string }): HtmlPageOpenResult {
+    if (result.ok) { return { ok: true, ...(result.embed ? { embed: result.embed, src: result.src, partition: result.partition } : {}) }; }
     return { ok: false, reason: (HTML_PAGE_OPEN_REASONS.has(result.reason ?? '') ? result.reason : 'no-window') as Exclude<HtmlPageOpenResult, { ok: true }>['reason'] };
 }
 

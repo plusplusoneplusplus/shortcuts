@@ -89,7 +89,7 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
     it('runs the full scenario to completion', () => {
         expect(exitCode, raw).toBe(0);
         expect([...steps.keys()]).toEqual(
-            ['reject', 'open', 'isolation', 'source', 'reuse', 'resize', 'hide', 'navigate', 'open-external', 'reload', 'failure', 'close', 'quit'],
+            ['reject', 'open', 'isolation', 'source', 'reuse', 'resize', 'hide', 'navigate', 'open-external', 'clear', 'reload', 'failure', 'close', 'quit'],
         );
     });
 
@@ -103,7 +103,7 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
 
     it('renders the file over file:// with its sibling CSS, over the placeholder', () => {
         const open = steps.get('open')!;
-        expect(open.openResult).toEqual({ ok: true });
+        expect(open.openResult).toEqual({ ok: true, embed: 'webview', src: open.expectedUrl, partition: expect.stringMatching(/^coc-browser-/) });
         expect(open.viewCount).toBe(1);
         expect(open.url).toBe(open.expectedUrl);
         expect(open.title).toBe('Fixture');
@@ -165,14 +165,19 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
         expect(steps.get('open-external')!.last).toMatch(/^file:\/\/.*other\.html$/);
     });
 
-    it('keeps the preview live across a full SPA reload and reattaches it', () => {
+    it('excludes file guests from confirmed browser-data cleanup', () => {
+        expect(steps.get('clear')).toMatchObject({ clear: { ok: true }, fileAlive: true, siteClosed: true, viewCount: 1 });
+    });
+
+    it('closes the preview on a full SPA reload and reopens its persisted path as a fresh guest', () => {
         const reload = steps.get('reload')!;
         expect(reload).toMatchObject({
-            hiddenAfterReload: true, viewsAfterReload: 1, siteClosed: true,
-            reattach: { ok: true }, replayed: ['loaded'], canGoBack: true,
-            sameView: true, visible: true, scrollY: 400, inPage: 'kept',
+            previousPageClosed: true, viewsAfterReload: 0, siteClosed: true,
+            reattach: { ok: true, embed: 'webview' }, canGoBack: false,
+            sameView: false, visible: true, scrollY: 0, inPage: null,
         });
-        expect(reload.url).toMatch(/other\.html$/);
+        expect(reload.replayed).toContain('loaded');
+        expect(reload.url).toMatch(/index\.html$/);
         expect(reload.afterBackUrl).toMatch(/index\.html$/);
     });
 

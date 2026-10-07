@@ -114,7 +114,7 @@ interface PopOutState {
 }
 
 /** Reply to `htmlPage.open` (mirrors `HtmlPageOpenResult` in html-page-policy.ts). */
-type HtmlPageOpenResult = { ok: true } | { ok: false; reason: string };
+type HtmlPageOpenResult = { ok: true; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string };
 
 /** Load status of a page tab (mirrors `HtmlPageLoadState` in html-page-policy.ts). */
 interface HtmlPageLoadState {
@@ -178,7 +178,7 @@ const HTML_PAGE_OPEN_REASONS = ['invalid', 'not-absolute', 'not-html', 'missing'
 
 /** Mirrors `toHtmlPageOpenResult` in html-page-policy.ts. */
 function toHtmlPageOpenResult(result: BrowserOpenResult): HtmlPageOpenResult {
-    if (result.ok) { return { ok: true }; }
+    if (result.ok) { return { ok: true, ...(result.embed ? { embed: result.embed, src: result.src, partition: result.partition } : {}) }; }
     return { ok: false, reason: HTML_PAGE_OPEN_REASONS.includes(result.reason) ? result.reason : 'no-window' };
 }
 
@@ -385,7 +385,7 @@ const api = {
      * HTML page tab bridge — compatibility wrapper for SPAs that predate `file`
      * sources on {@link browser}. Each `pageId` maps to the browser view
      * `html-page:<pageId>`; `open` opens it as a `file` source and narrows the
-     * reply to `{ ok: true } | { ok: false, reason }` (a refusal lets the SPA
+     * reply to open metadata or `{ ok: false, reason }` (a refusal lets the SPA
      * fall back to the source viewer), and `onState` reports loading / loaded /
      * failed for those views only. All view logic lives behind `browser`.
      */

@@ -9,6 +9,7 @@ import {
 } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/browserWebviewLayerStore';
 import { closeBrowserPanelView } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/unifiedPanelStore';
 import { UnifiedBrowserTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedBrowserTab';
+import { UnifiedHtmlPageTab } from '../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/UnifiedHtmlPageTab';
 import type { BrowserOpenResult, DesktopBrowserBridge } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 
 const result: BrowserOpenResult = { ok: true, engine: 'electron', embed: 'webview', src: 'https://example.test/', partition: 'persist:coc-browser' };
@@ -156,5 +157,33 @@ describe('persistent browser webview layer', () => {
         act(() => guest().dispatchEvent(new Event('dom-ready')));
         expect(await screen.findByText('Guest attachment rejected.')).toBeInTheDocument();
         expect(host().style.visibility).toBe('hidden');
+    });
+
+    it('retains isolated HTML guests across workspace remounts and keeps them visible below overlays', async () => {
+        bridge.sources = ['url', 'file'];
+        bridge.openViewExternal = vi.fn();
+        vi.mocked(bridge.open).mockResolvedValue({
+            ok: true, engine: 'electron', sourceKind: 'file', embed: 'webview',
+            src: 'file:///preview/page.html', partition: 'file-attachment-token',
+        });
+        render(<BrowserWebviewLayer />);
+        const props = { tabId: 'html-tab', pageId: 'page', filePath: '/preview/page.html', wsId: 'workspace', active: true, visible: true, onErrorChange: vi.fn() };
+        const first = render(<UnifiedHtmlPageTab {...props} />);
+        await waitFor(() => expect(guest()).toBeTruthy());
+        const original = guest();
+        expect(original.getAttribute('src')).toBe('file:///preview/page.html');
+        expect(original.getAttribute('partition')).toBe('file-attachment-token');
+        expect(bridge.open).toHaveBeenCalledWith('html-page:page', { kind: 'file', path: '/preview/page.html' }, 'html-page');
+        expect(bridge.hide).not.toHaveBeenCalled();
+        first.rerender(<UnifiedHtmlPageTab {...props} nativeCovered />);
+        expect(host().style.visibility).toBe('visible');
+        first.unmount();
+        expect(host().style.visibility).toBe('hidden');
+        expect(bridge.close).not.toHaveBeenCalled();
+        render(<UnifiedHtmlPageTab {...props} />);
+        await waitFor(() => expect(host().style.visibility).toBe('visible'));
+        expect(guest()).toBe(original);
+        act(() => closeBrowserPanelView('html-page:page'));
+        expect(document.querySelector('webview')).toBeNull();
     });
 });

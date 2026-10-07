@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ app: undefined as any, contents: [] as any[] }));
@@ -43,6 +46,25 @@ beforeEach(() => { vi.resetModules(); vi.useFakeTimers(); mocks.app = new EventE
 afterEach(() => { vi.useRealTimers(); });
 
 describe('browser webview authorization boundary', () => {
+    it('authorizes only a validated exact file, without granting URL tokens file access', async () => {
+        const h = await harness();
+        const directory = mkdtempSync(path.join(process.cwd(), '.file-guard-'));
+        try {
+            const file = path.join(directory, 'index.html');
+            writeFileSync(file, '<html>preview</html>');
+            const src = pathToFileURL(file).href;
+            const urlToken = h.guard.authorizeBrowserWebview(1, src, h.profile as any, vi.fn(), vi.fn());
+            expect(h.attempt(h.owner, { src, partition: urlToken.partition }).event.preventDefault).toHaveBeenCalledOnce();
+            const fileToken = h.guard.authorizeBrowserWebview(1, src, h.profile as any, vi.fn(), vi.fn(), file);
+            expect(h.attempt(h.owner, { src: src + '#other', partition: fileToken.partition }).event.preventDefault).toHaveBeenCalledOnce();
+            expect(h.attempt(h.owner, { src, partition: fileToken.partition }).event.preventDefault).not.toHaveBeenCalled();
+            fileToken.adopt(h.createGuest().id);
+            expect(() => fileToken.adopt(2)).toThrow();
+            expect(() => h.guard.authorizeBrowserWebview(1, 'https://page.test/', h.profile as any, vi.fn(), vi.fn(), file)).toThrow('does not match');
+            expect(() => h.guard.authorizeBrowserWebview(1, src, h.profile as any, vi.fn(), vi.fn(), path.join(directory, 'missing.html'))).toThrow('unavailable');
+        } finally { rmSync(directory, { recursive: true, force: true }); }
+    });
+
     it('rejects unregistered, wrong-owner, wrong-source and unknown-token attachments', async () => {
         const h = await harness();
         const other = contents(3);

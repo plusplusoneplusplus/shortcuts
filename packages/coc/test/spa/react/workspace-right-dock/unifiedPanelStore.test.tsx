@@ -80,6 +80,18 @@ describe('unifiedPanelStore', () => {
         expect(readUnifiedPanelState('local-workspace').workspaceTabs).toHaveLength(1);
     });
 
+    it('removes only the matching HTML guest descriptor from inactive workspaces', () => {
+        for (const workspaceId of ['workspace-a', 'workspace-b']) {
+            writeUnifiedPanelState(workspaceId, openTab(EMPTY_UNIFIED_PANEL, {
+                kind: 'html-page', ownerWorkspaceId: workspaceId, chatId: null,
+                resourceId: '/preview/page.html', htmlPageId: workspaceId, label: 'page.html',
+            }));
+        }
+        closeBrowserPanelView('html-page:workspace-a');
+        expect(readUnifiedPanelState('workspace-a').workspaceTabs).toEqual([]);
+        expect(readUnifiedPanelState('workspace-b').workspaceTabs).toHaveLength(1);
+    });
+
     it('starts empty and persists opened tabs under the workspace key', () => {
         let api!: UnifiedPanelTabsApi;
         render(<Probe workspaceId={WS} chatId="chat-1" name="a" onApi={next => { api = next; }} />);

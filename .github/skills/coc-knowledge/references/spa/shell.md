@@ -94,10 +94,10 @@ Results/state identify the retained engine and `sourceKind`; `sessionKey` identi
 
 ### HTML page (file) views
 
-Local `.html`/`.htm` previews are `file` sources hosted in Electron `WebContentsView`s created by `file-preview-host.ts`, independent of the engine preference and `relatedEngine`, and never closed by browser-data cleanup. They have no preload, use a separate in-memory sandboxed partition, and follow `html-page-policy.ts`. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
+Local `.html`/`.htm` previews are `file` sources hosted as Electron webview guests by `file-preview-host.ts`, independent of engine preferences and browser-data cleanup. They have no preload, use the isolated in-memory `coc-html-page` session, and follow `html-page-policy.ts`. Only pending, main-validated exact file URLs pass the attachment guard. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
 `window.cocDesktop.htmlPage` is a compatibility wrapper for SPAs without `file` sources: it maps each `pageId` to view `html-page:<pageId>` (session key `html-page`) over the browser channels and narrows replies/states (`loading`/`loaded`/`failed`); it has no view logic of its own.
 
-SPA side: `desktopHtmlPageBridge()` (`shared/file-path/html-page-bridge.ts`) adapts the `file` source to the page API (view `html-page:<pageId>`) when `browser.sources` includes `file`, else returns the older `htmlPage`; web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab` (placeholder + placement) and `NativeViewNavButtons`; the HTML toolbar shows the file path read-only, with Back/Forward only on the merged API.
+SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment metadata to the page API (view `html-page:<pageId>`); web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab` and `NativeViewNavButtons`; their Electron placeholders register with the same persistent guest layer. The HTML toolbar shows a read-only path.
 
 ### Browser profiles and preferences
 
@@ -132,7 +132,7 @@ The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
 focus. Only the matching active, visible browser tab focuses and selects its
 complete editable address, including unsent edits.
 
-Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores via `closeBrowserPanelView`. Window teardown closes every view. A full SPA reload (`manager.reloadOwner`) closes `url` views but only hides `file` views: the persisted `html-page` tab reopens the same view id and gets the live page, history and scroll back. A file view not reopened before the next reload closes then.
+Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores and removes guest hosts via `closeBrowserPanelView`. Window teardown and full SPA reload (`manager.reloadOwner`) close all views. Persisted HTML descriptors reopen files from disk with fresh history, scroll and form state; URL tabs remain session-only.
 Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.
 
 Pop-out buttons draw the SVG `PopOutIcon` (`features/canvas/components/icons.tsx`),

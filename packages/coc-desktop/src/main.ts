@@ -1136,8 +1136,7 @@ async function bootstrap(): Promise<void> {
     // process the moment a pop-out window is built.
     registerPopOutIpc();
 
-    // HTML page tabs: the SPA asks the main process to host a local .html file
-    // in a WebContentsView over its right panel.
+    // Browser and HTML tabs share owner-validated hosting and guest authorization.
     registerBrowserViewIpc();
 
     // AC-01: bind the global screenshot-capture accelerator on app ready, so the

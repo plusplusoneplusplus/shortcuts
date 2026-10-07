@@ -136,8 +136,11 @@ export function hardenedBrowserPreferences(profile: Electron.Session): Electron.
 /** Replace renderer-supplied privileges, including preferences Electron does not type. */
 export function sanitizeWebviewAttach(
     preferences: Electron.WebPreferences, params: Record<string, string>, profile: Electron.Session,
+    authorizedFileSrc?: string,
 ): boolean {
-    if (!validateBrowserUrl(params.src).ok) return false;
+    if (authorizedFileSrc !== undefined) {
+        if (params.src !== authorizedFileSrc || parse(authorizedFileSrc)?.protocol !== 'file:') return false;
+    } else if (!validateBrowserUrl(params.src).ok) return false;
     for (const key of Object.keys(preferences)) Reflect.deleteProperty(preferences, key);
     Object.assign(preferences, hardenedBrowserPreferences(profile));
     for (const key of ['preload', 'preloadURL', 'webpreferences', 'allowpopups', 'disablewebsecurity']) delete params[key];

@@ -4,7 +4,7 @@
  * The SPA's right panel can show a local `.html`/`.htm` file as a real
  * rendered page. `browser-host-manager.ts` owns these views next to browser
  * tabs (bounds, focus, history, teardown); this host only creates them. Each
- * preview is one `WebContentsView` stacked over the SPA window, loaded over
+ * preview is one renderer-owned `webview`, loaded over
  * `file://` so relative CSS/JS/images work.
  *
  * SECURITY — previews are always Electron, whatever the browser-engine
@@ -20,17 +20,19 @@
  * logic here thin and push everything testable into `html-page-policy.ts`.
  */
 
-import { BrowserWindow, WebContentsView, shell, webContents } from 'electron';
+import { BrowserWindow, type WebContents, session, shell, webContents } from 'electron';
 import { BrowserHostError, type BrowserEventSink, type BrowserHostedView, type FilePreviewHost, type FileViewRequest } from './browser-host-contract';
 import type { BrowserViewState } from './browser-view-policy';
 import { classifyHtmlPageNavigation, classifyHtmlPageWindowOpen, htmlPageFileUrl, type HtmlPageBounds } from './html-page-policy';
+import { authorizeBrowserWebview, isBrowserEmbedder } from './browser-webview-guard';
 
 /** In-memory partition (no `persist:` prefix) shared by previews only. */
 export const HTML_PAGE_PARTITION = 'coc-html-page';
 
 interface FileEntry {
-    win: BrowserWindow;
-    view: WebContentsView;
+    contents?: WebContents;
+    shown: boolean;
+    authorization?: ReturnType<typeof authorizeBrowserWebview>;
     viewId: string;
     /** The file the preview was opened with; the navigation policy is rooted at its folder. */
     filePath: string;
@@ -41,9 +43,9 @@ interface FileEntry {
 }
 
 function snapshot(entry: FileEntry): BrowserViewState {
-    const wc = entry.view.webContents;
+    const wc = entry.contents;
     const fileUrl = htmlPageFileUrl(entry.filePath);
-    if (wc.isDestroyed()) {
+    if (!wc || wc.isDestroyed()) {
         return { viewId: entry.viewId, engine: 'electron', sourceKind: 'file', url: fileUrl, title: '', canGoBack: false, canGoForward: false, loading: false };
     }
     return {
@@ -61,7 +63,7 @@ function snapshot(entry: FileEntry): BrowserViewState {
 }
 
 function wireView(entry: FileEntry): void {
-    const wc = entry.view.webContents;
+    const wc = entry.contents!;
     const update = () => { if (!entry.closed) { entry.sink.state(snapshot(entry)); } };
     wc.setWindowOpenHandler(({ url }) => {
         if (classifyHtmlPageWindowOpen(url) === 'external') {
@@ -113,16 +115,17 @@ function wireView(entry: FileEntry): void {
 }
 
 function load(entry: FileEntry): void {
+    if (!entry.contents) { return; }
     entry.error = undefined;
     entry.errorCode = undefined;
-    void entry.view.webContents.loadURL(htmlPageFileUrl(entry.filePath)).catch(() => {
+    void entry.contents.loadURL(htmlPageFileUrl(entry.filePath)).catch(() => {
         /* surfaced by did-fail-load */
     });
 }
 
 function runNav(entry: FileEntry, action: string): void {
-    const wc = entry.view.webContents;
-    if (wc.isDestroyed()) {
+    const wc = entry.contents;
+    if (!wc || wc.isDestroyed()) {
         return;
     }
     switch (action) {
@@ -148,12 +151,7 @@ function runNav(entry: FileEntry, action: string): void {
 }
 
 function setBounds(entry: FileEntry, bounds: HtmlPageBounds | null): void {
-    if (!bounds) {
-        entry.view.setVisible(false);
-        return;
-    }
-    entry.view.setBounds(bounds);
-    entry.view.setVisible(true);
+    entry.shown = bounds !== null;
 }
 
 export class ElectronFilePreviewHost implements FilePreviewHost {
@@ -163,25 +161,36 @@ export class ElectronFilePreviewHost implements FilePreviewHost {
         const sender = webContents.fromId(request.ownerId);
         const win = sender ? BrowserWindow.fromWebContents(sender) : null;
         // Only a window's own SPA document may host previews — never a child view.
-        if (!sender || !win || win.isDestroyed() || win.webContents !== sender) {
+        if (!sender || !win || win.isDestroyed() || win.webContents !== sender || !isBrowserEmbedder(sender)) {
             throw new BrowserHostError('no-window', 'Preview window is closed.');
         }
-        const view = new WebContentsView({
-            webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: HTML_PAGE_PARTITION },
-        });
-        view.setVisible(false);
-        // Index 0: under any other overlay (the find bar) that shares the window.
-        win.contentView.addChildView(view, 0);
-        const entry: FileEntry = { win, view, viewId: request.viewId, filePath: request.path, sink, closed: false };
+        const entry: FileEntry = { shown: false, viewId: request.viewId, filePath: request.path, sink, closed: false };
+        entry.authorization = authorizeBrowserWebview(
+            sender.id, htmlPageFileUrl(request.path), session.fromPartition(HTML_PAGE_PARTITION),
+            guest => {
+                entry.contents = guest;
+                wireView(entry);
+                guest.once('destroyed', () => {
+                    if (!entry.closed) { this.destroy(entry); sink.closed?.(); }
+                });
+            },
+            () => { this.destroy(entry); sink.closed?.(); },
+            request.path,
+        );
         this.entries.add(entry);
-        wireView(entry);
-        load(entry);
         return {
+            embed: 'webview',
+            src: entry.authorization.src,
+            partition: entry.authorization.partition,
+            adopt: guestId => {
+                entry.authorization!.adopt(guestId);
+                sink.state(snapshot(entry));
+            },
             snapshot: () => snapshot(entry),
             navigate: () => { /* the manager never navigates previews */ },
             nav: action => runNav(entry, action),
             setBounds: bounds => setBounds(entry, bounds),
-            focus: () => entry.view.webContents.focus(),
+            focus: () => { if (entry.shown) { entry.contents?.focus(); } },
             close: () => this.destroy(entry),
         };
     }
@@ -190,11 +199,9 @@ export class ElectronFilePreviewHost implements FilePreviewHost {
         if (entry.closed) { return; }
         entry.closed = true;
         this.entries.delete(entry);
-        if (!entry.win.isDestroyed()) {
-            entry.win.contentView.removeChildView(entry.view);
-        }
-        if (!entry.view.webContents.isDestroyed()) {
-            entry.view.webContents.close();
+        entry.authorization?.dispose();
+        if (entry.contents && !entry.contents.isDestroyed()) {
+            entry.contents.close();
         }
     }
 

@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { desktopHtmlPageBridge, type HtmlPageLoadState } from '../../../../src/server/spa/client/react/shared/file-path/html-page-bridge';
-import type { BrowserViewState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
+import type { BrowserOpenResult, BrowserViewState } from '../../../../src/server/spa/client/react/shared/file-path/browser-bridge';
 
 function browserBridge(sources?: string[]) {
     let listener: ((state: BrowserViewState) => void) | undefined;
     return {
         ...(sources ? { sources } : {}),
-        open: vi.fn(async () => ({ ok: true as const, engine: 'electron' as const, sourceKind: 'file' as const })),
+        open: vi.fn(async (): Promise<BrowserOpenResult> => ({ ok: true, engine: 'electron', sourceKind: 'file' })),
         setBounds: vi.fn(), hide: vi.fn(), close: vi.fn(), nav: vi.fn(), openViewExternal: vi.fn(),
         onState: vi.fn((callback: (state: BrowserViewState) => void) => {
             listener = callback;
@@ -50,6 +50,18 @@ describe('desktopHtmlPageBridge selection', () => {
 });
 
 describe('browser file-source adapter', () => {
+    it('forwards the main-approved file guest attachment metadata', async () => {
+        const browser = browserBridge(['url', 'file']);
+        browser.open.mockResolvedValue({
+            ok: true, engine: 'electron', sourceKind: 'file', embed: 'webview',
+            src: 'file:///preview/page.html', partition: 'one-use-token',
+        });
+        install({ browser });
+        expect(await desktopHtmlPageBridge()!.open('p1', '/preview/page.html')).toEqual({
+            ok: true, embed: 'webview', src: 'file:///preview/page.html', partition: 'one-use-token',
+        });
+    });
+
     it('maps page calls onto html-page:<id> browser views', async () => {
         const browser = browserBridge(['url', 'file']);
         install({ browser });

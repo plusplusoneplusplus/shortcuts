@@ -113,7 +113,7 @@ import {
     OPEN_BROWSER_URL_EVENT,
     type OpenBrowserUrlDetail,
 } from '../../../shared/file-path/browser-bridge';
-import { desktopHtmlPageBridge, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
+import { desktopHtmlPageBridge, HTML_PAGE_VIEW_PREFIX, type OpenHtmlPageDetail } from '../../../shared/file-path/html-page-bridge';
 import { migrateUnifiedPanelState } from './unifiedPanelStore';
 import { useUnifiedPanelTabs } from './useUnifiedPanelTabs';
 import type {
@@ -705,6 +705,7 @@ export function UnifiedRightPanel({
     const closeTab = useCallback((id: string) => {
         const tab = tabsRef.current.find(candidate => candidate.id === id);
         if (tab?.kind === 'html-page' && tab.htmlPageId) {
+            removeBrowserWebview(HTML_PAGE_VIEW_PREFIX + tab.htmlPageId);
             desktopHtmlPageBridge()?.close(tab.htmlPageId);
         } else if (tab?.kind === 'browser') {
             removeBrowserWebview(tab.resourceId);
@@ -1712,8 +1713,8 @@ export function UnifiedRightPanel({
                                         chatId={chatId}
                                         wsId={tab.ownerWorkspaceId}
                                         active={tab.id === activeId}
-                                        visible={isOpen && !menuOpen && !quickOpenVisible && !exactOpenVisible
-                                            && pendingClose === null && pendingDirty === null}
+                                        visible={isOpen}
+                                        nativeCovered={menuOpen || quickOpenVisible || exactOpenVisible || pendingClose !== null || pendingDirty !== null}
                                         onErrorChange={handleErrorChange}
                                     />
                                 ) : tab.kind === 'browser' ? (

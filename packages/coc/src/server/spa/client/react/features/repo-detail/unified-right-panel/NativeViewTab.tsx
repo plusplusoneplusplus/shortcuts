@@ -26,8 +26,8 @@ export interface NativeViewTabProps {
 }
 
 /**
- * The shared frame for tabs backed by a native desktop view (browser and local
- * HTML page tabs): a toolbar, then a placeholder the view is kept over.
+ * Shared frame for Electron guests and native desktop views: a toolbar, then
+ * a placeholder registered with the guest layer or native placement hook.
  */
 export function NativeViewTab({
     bridge, viewId, embed, shown, surfaceHidden, placeholderTestId, toolbar, children,

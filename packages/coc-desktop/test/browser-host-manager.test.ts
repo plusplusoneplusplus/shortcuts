@@ -364,27 +364,26 @@ describe('file previews', () => {
         expect(h.send).not.toHaveBeenCalledWith(1, BROWSER_VIEW_CLOSED_CHANNEL, expect.objectContaining({ viewId: 'p' }));
     });
 
-    it('keeps file views hidden across a full SPA reload and replays them on reopen', async () => {
+    it('closes all sources on a full SPA reload without requesting removal of persisted tabs', async () => {
         const h = harness();
         await h.manager.openFile(1, 'p', page, 'owner');
         await h.manager.open(1, 'web', 'https://example.test/', 'owner');
         await h.manager.reloadOwner(1);
         expect(h.created[0].view.close).toHaveBeenCalledOnce();
-        expect(h.files[0].view.close).not.toHaveBeenCalled();
-        expect(h.files[0].view.setBounds).toHaveBeenLastCalledWith(null);
+        expect(h.files[0].view.close).toHaveBeenCalledOnce();
+        expect(h.send.mock.calls.some(([, channel]) => channel === BROWSER_VIEW_CLOSED_CHANNEL)).toBe(false);
         h.send.mockClear();
         expect(await h.manager.openFile(1, 'p', page, 'owner')).toEqual({ ok: true, engine: 'electron', sourceKind: 'file' });
-        expect(h.fileHost.create).toHaveBeenCalledOnce();
+        expect(h.fileHost.create).toHaveBeenCalledTimes(2);
         expect(h.send).toHaveBeenCalledWith(1, BROWSER_VIEW_STATE_CHANNEL, expect.objectContaining({ viewId: 'p', sourceKind: 'file', loading: false }));
-        // Reattached views survive the next reload too; the tab close still destroys them.
         await h.manager.reloadOwner(1);
         await h.manager.openFile(1, 'p', page, 'owner');
-        expect(h.files[0].view.close).not.toHaveBeenCalled();
+        expect(h.files[1].view.close).toHaveBeenCalledOnce();
         await h.manager.close(1, 'p');
-        expect(h.files[0].view.close).toHaveBeenCalledOnce();
+        expect(h.files[2].view.close).toHaveBeenCalledOnce();
     });
 
-    it('closes a file view left unclaimed by the SPA across two reloads', async () => {
+    it('closes every file on reload while preserving other windows', async () => {
         const h = harness();
         await h.manager.openFile(1, 'kept', page, 'owner');
         await h.manager.openFile(1, 'orphan', page, 'owner');
@@ -392,11 +391,11 @@ describe('file previews', () => {
         await h.manager.reloadOwner(1);
         await h.manager.openFile(1, 'kept', page, 'owner');
         await h.manager.reloadOwner(1);
-        expect(h.files[0].view.close).not.toHaveBeenCalled();
+        expect(h.files[0].view.close).toHaveBeenCalledOnce();
         expect(h.files[1].view.close).toHaveBeenCalledOnce();
         expect(h.files[2].view.close).not.toHaveBeenCalled();
         expect(await h.manager.openFile(1, 'orphan', page, 'owner')).toMatchObject({ ok: true });
-        expect(h.fileHost.create).toHaveBeenCalledTimes(4);
+        expect(h.fileHost.create).toHaveBeenCalledTimes(5);
     });
 
     it('closes previews with their window and on dispose', async () => {
