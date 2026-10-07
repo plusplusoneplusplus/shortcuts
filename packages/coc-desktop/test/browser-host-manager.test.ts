@@ -48,6 +48,26 @@ function harness(defaultEngine: BrowserEngine = 'electron') {
 }
 
 describe.each<BrowserEngine>(['electron', 'webview2'])('%s shared browser manager contract', engine => {
+    it('routes adoption to the exact owner and removes expired host handles', async () => {
+        const h = harness(engine);
+        await h.manager.open(1, 'view', 'https://example.test/', 'workspace');
+        const item = h.created[0];
+        item.view.adopt = vi.fn();
+        Object.assign(item.view, { embed: 'webview', src: 'https://example.test/', partition: 'token' });
+        expect(await h.manager.open(1, 'view', 'https://example.test/', 'workspace')).toMatchObject({ embed: 'webview', src: 'https://example.test/', partition: 'token' });
+        expect(await h.manager.adopt(2, 'view', 42)).toEqual({ ok: false, reason: 'not-found' });
+        expect(await h.manager.adopt(1, 'other', 42)).toEqual({ ok: false, reason: 'not-found' });
+        expect(await h.manager.adopt(1, 'view', '42')).toEqual({ ok: false, reason: 'not-found' });
+        expect(item.view.adopt).not.toHaveBeenCalled();
+        expect(await h.manager.adopt(1, 'view', 42)).toEqual({ ok: true });
+        expect(item.view.adopt).toHaveBeenCalledWith(42);
+        item.sink.closed!();
+        await Promise.resolve();
+        expect(await h.manager.adopt(1, 'view', 42)).toEqual({ ok: false, reason: 'not-found' });
+        expect(h.send).toHaveBeenCalledWith(1, BROWSER_VIEW_CLOSED_CHANNEL, { viewId: 'view', engine });
+        await h.manager.open(1, 'view', 'https://example.test/', 'workspace');
+        expect(h.created).toHaveLength(2);
+    });
     it('is idempotent and holds its engine when the global default changes', async () => {
         const h = harness(engine);
         expect(await h.manager.open(1, 'view', 'https://example.test/', 'workspace-a')).toEqual({ ok: true, engine, sourceKind: 'url' });

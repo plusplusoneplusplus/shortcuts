@@ -3,7 +3,6 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -44,7 +43,7 @@ afterEach(() => {
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
     it.skipIf(process.platform !== 'win32')('keeps native keyboard input in the composer after clicking away from the browser and updating layout', async () => {
-        const directory = mkdtempSync(path.join(os.tmpdir(), 'coc-browser-focus-'));
+        const directory = mkdtempSync(path.join(here, '..', '..', '.e2e-browser-focus-'));
         temporary.push(directory);
         const steps = await scenario(engine, directory, '--focus-check');
         expect(steps.get('browser-keyboard')?.value).toBe('/');
@@ -54,10 +53,10 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
     }, 90_000);
 
     it('supports navigation, popups, security policy, profiles, mixed engines and explicit cleanup', async () => {
-        const directory = mkdtempSync(path.join(os.tmpdir(), 'coc-browser-engines-'));
+        const directory = mkdtempSync(path.join(here, '..', '..', '.e2e-browser-engines-'));
         temporary.push(directory);
         const steps = await scenario(engine, directory);
-        expect(steps.get('open')?.result).toEqual({ ok: true, engine, sourceKind: 'url' });
+        expect(steps.get('open')?.result).toMatchObject({ ok: true, engine, sourceKind: 'url', ...(engine === 'electron' ? { embed: 'webview' } : {}) });
         expect(steps.get('open')?.report).toMatchObject({ bridge: 'undefined', require: 'undefined', storage: null });
         expect(steps.get('focus')?.focused).toBe(true);
         expect(steps.get('history')?.back).toMatchObject({ title: 'Home', canGoForward: true });
@@ -76,7 +75,7 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
             expect(steps.get('mixed')?.report).toMatchObject({ storage: null, cookie: '' });
             expect(steps.get('mixed')?.existing.engine).toBe(engine);
         }
-        expect(steps.get('related')?.result).toEqual({ ok: true, engine, sourceKind: 'url' });
+        expect(steps.get('related')?.result).toMatchObject({ ok: true, engine, sourceKind: 'url' });
         expect(steps.get('download')?.download.ok).toBe(true);
         expect(steps.get('cancel')?.result).toEqual({ ok: false, reason: 'cancelled' });
         expect(steps.get('cancel')?.tab).toEqual({ ok: true, engine });

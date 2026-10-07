@@ -2,7 +2,7 @@
 export type BrowserEngine = 'electron' | 'webview2';
 /** What `browser.open` loads; a bare string is a `url` source. */
 export type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
-export type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSource['kind'] } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
+export type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSource['kind']; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
 export interface BrowserPreferences {
     defaultEngine: BrowserEngine;
     engines: { engine: BrowserEngine; available: boolean; reason?: string; message?: string }[];
@@ -46,6 +46,7 @@ export interface DesktopBrowserBridge {
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
     sources?: readonly string[];
     open(viewId: string, source: string | BrowserSource, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult>;
+    adopt?(viewId: string, guestId: number): Promise<BrowserOperationResult>;
     navigate(viewId: string, url: string): Promise<BrowserOpenResult>;
     nav(viewId: string, action: 'back' | 'forward' | 'reload' | 'stop'): void;
     setBounds(viewId: string, rect: { x: number; y: number; width: number; height: number } | null): void;

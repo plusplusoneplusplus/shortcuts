@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { BrowserEngine } from '../../../shared/file-path/browser-bridge';
 import { nativeViewToolbarButton } from './NativeViewTab';
 
@@ -13,6 +14,22 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
     const panelRef = useRef<HTMLDivElement>(null);
     const actionRef = useRef<HTMLButtonElement>(null);
     const id = useId();
+    const [position, setPosition] = useState({ top: 0, right: 0 });
+
+    useLayoutEffect(() => {
+        if (!open) return;
+        const update = () => {
+            const rect = triggerRef.current?.getBoundingClientRect();
+            if (rect) setPosition({ top: rect.bottom + 4, right: Math.max(4, window.innerWidth - rect.right) });
+        };
+        update();
+        window.addEventListener('resize', update);
+        window.addEventListener('scroll', update, true);
+        return () => {
+            window.removeEventListener('resize', update);
+            window.removeEventListener('scroll', update, true);
+        };
+    }, [open]);
 
     useEffect(() => {
         if (!open) return;
@@ -43,15 +60,16 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                 }
             }}
         >…</button>
-        {/* Reserve toolbar space: native surfaces paint above DOM popovers. */}
-        {open && <div className="flex w-full justify-end">
+        {open && createPortal(
             <div
                 ref={panelRef}
                 id={id}
                 role="menu"
                 aria-label="Browser options"
                 tabIndex={-1}
-                className="w-56 max-w-full max-h-[25vh] overflow-auto rounded border border-[#c8c8c8] bg-white p-1 text-xs text-[#1f1f1f] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
+                data-native-view-overlay
+                style={position}
+                className="fixed z-50 w-56 max-w-[calc(100vw-8px)] max-h-[25vh] overflow-auto rounded border border-[#c8c8c8] bg-white p-1 text-xs text-[#1f1f1f] shadow-lg dark:border-[#3c3c3c] dark:bg-[#252526] dark:text-[#cccccc]"
                 onBlur={event => {
                     const next = event.relatedTarget as Node | null;
                     if (!event.currentTarget.contains(next) && !triggerRef.current?.contains(next)) onOpenChange(false);
@@ -84,7 +102,6 @@ export function BrowserToolbarMenu({ open, onOpenChange, engine, canOpenExternal
                     }}
                     data-testid="browser-open-external"
                 >Open in system browser</button>
-            </div>
-        </div>}
+            </div>, document.body)}
     </>;
 }

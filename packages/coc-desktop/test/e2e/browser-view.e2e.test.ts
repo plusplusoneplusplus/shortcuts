@@ -18,7 +18,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -81,7 +80,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
     let restart: Awaited<ReturnType<typeof runScenario>>;
 
     beforeAll(async () => {
-        userData = mkdtempSync(path.join(os.tmpdir(), 'coc-browser-e2e-ud-'));
+        userData = mkdtempSync(path.join(pkgRoot, '.e2e-browser-'));
         ({ steps, exitCode, raw } = await runScenario(userData));
         restart = await runScenario(userData, ['--restart-check']);
     }, 180_000);
@@ -93,7 +92,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
     it('runs the full scenario to completion', () => {
         expect(exitCode, raw).toBe(0);
         expect([...steps.keys()]).toEqual([
-            'reject', 'open', 'close-shortcut', 'navigate', 'history', 'stop-reload', 'failure', 'new-tab', 'popup',
+            'reject', 'open', 'dom-compositing', 'webview-security', 'close-shortcut', 'navigate', 'history', 'stop-reload', 'failure', 'new-tab', 'popup',
             'sessions', 'download', 'open-external', 'visibility', 'close', 'owner-reload',
         ]);
     });
@@ -109,7 +108,7 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
 
     it('renders the page over the placeholder in a sandboxed, persistent browser profile', () => {
         const open = steps.get('open')!;
-        expect(open.openResult).toEqual({ ok: true, engine: 'electron', sourceKind: 'url' });
+        expect(open.openResult).toMatchObject({ ok: true, engine: 'electron', sourceKind: 'url', embed: 'webview', partition: expect.stringMatching(/^coc-browser-/), src: open.home.url });
         expect(open.home).toMatchObject({ title: 'Home', loading: false, canGoBack: false });
         expect(open.home.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
         expect(open.viewCount).toBe(1);
@@ -126,6 +125,19 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
             afterHidden: 1, windowAlive: true, viewAlive: true,
         });
         expect(shortcut.pageCloseKeys).toBe(shortcut.beforePage);
+    });
+
+    it('composites and clicks a DOM menu above a live guest without hiding the page', () => {
+        expect(steps.get('dom-compositing')).toMatchObject({
+            menuPixel: [0, 0, 255, 255], pagePixel: [255, 0, 0, 255], clicked: true, pageStayedLive: true,
+        });
+    });
+
+    it('rejects unsafe, nested, subframe, untrusted and replayed guest attachments', () => {
+        expect(steps.get('webview-security')).toMatchObject({
+            rejectedUnsafe: true, hardenedGuest: { bridge: 'undefined', require: 'undefined', process: 'undefined' },
+            protectedBeforeAdopt: true, rejectedNestedAndSubframe: true, rejectedUntrusted: true, rejectedReplay: true,
+        });
     });
 
     it('follows links, redirects and in-page navigation', () => {
@@ -199,6 +211,9 @@ describe.skipIf(skip)('browser tab host E2E (real Electron, local HTTP fixtures)
             hiddenByHide: true, shownAgain: true, hiddenByNull: true,
             reopen: { ok: true, engine: 'electron', sourceKind: 'url' }, sameViewCount: true, keptHistory: true,
         });
+        const switched = steps.get('visibility')!.workspaceSwitch;
+        expect(switched.after).toEqual(switched.before);
+        expect(switched.retained).toEqual({ state: { input: 'draft text', workspace: 'workspace-a' }, scrollY: 350 });
     });
 
     it('destroys the view and its pop-ups when the tab closes', () => {

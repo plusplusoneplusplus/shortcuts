@@ -602,7 +602,7 @@ describe('UnifiedRightPanel', () => {
                 url: 'https://example.com/login', title: 'Sign in', canGoBack: true, canGoForward: true,
             })));
             expect(browserTabs()[0].textContent).toContain('Sign in');
-            expect(screen.getByTestId('browser-title').textContent).toBe('Sign in');
+            expect(screen.queryByTestId('browser-title')).toBeNull();
             expect(readUnifiedPanelState(WS).workspaceTabs[0].browserUrl).toBe('https://example.com/login');
             fireEvent.click(screen.getByTestId('browser-back'));
             fireEvent.click(screen.getByTestId('browser-forward'));

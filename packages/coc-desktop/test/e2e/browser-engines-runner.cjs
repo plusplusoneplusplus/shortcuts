@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const dist = path.join(__dirname, '..', '..', 'dist');
-const { registerBrowserViewIpc, disposeBrowserViews } = require(path.join(dist, 'browser-view-host.js'));
+const { registerBrowserViewIpc, registerBrowserEmbedder, disposeBrowserViews } = require(path.join(dist, 'browser-view-host.js'));
+const { fixtureScript } = require('./webview-fixture.cjs');
 const { loadWebView2Binary } = require('@plusplusoneplusplus/coc-native');
 const userData = process.env.COC_BROWSER_E2E_USER_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE || 'electron';
@@ -94,20 +95,23 @@ app.whenReady().then(async () => {
     base = `http://127.0.0.1:${server.address().port}`;
     const windows = [];
     const makeWindow = async () => {
-        const win = new BrowserWindow({ width: 900, height: 650, show: true, webPreferences: { preload: path.join(dist, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
-        await win.loadURL('data:text/html,' + encodeURIComponent(`<body><textarea id="composer" style="position:absolute;left:10px;top:10px;width:250px;height:40px"></textarea><input id="address" style="position:absolute;left:10px;top:70px"><script>
+        const win = new BrowserWindow({ width: 900, height: 650, show: true, webPreferences: { preload: path.join(dist, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: true } });
+        const spaUrl = 'data:text/html,' + encodeURIComponent(`<body><textarea id="composer" style="position:absolute;left:10px;top:10px;width:250px;height:40px"></textarea><input id="address" style="position:absolute;left:10px;top:70px"><script>
             window.states=[];window.newTabs=[];window.downloads=[];window.closedViews=[];
             document.addEventListener('pointerdown',e=>window.lastPointer={x:e.clientX,y:e.clientY,target:e.target.id});
             const b=window.cocDesktop.browser;
             b.onState(s=>window.states.push(s));b.onNewTab(e=>window.newTabs.push(e));
             b.onDownload(e=>window.downloads.push(e));b.onClosed(e=>window.closedViews.push(e));
-        </script></body>`));
+        </script></body>`);
+        registerBrowserEmbedder(win, spaUrl);
+        await win.loadURL(spaUrl);
+        await win.webContents.executeJavaScript(fixtureScript);
         windows.push(win);
         return win;
     };
     const main = await makeWindow();
     const spa = js => main.webContents.executeJavaScript(js);
-    const call = (win, method, ...args) => win.webContents.executeJavaScript(`window.cocDesktop.browser.${method}(${args.map(value => JSON.stringify(value)).join(',')})`);
+    const call = (win, method, ...args) => win.webContents.executeJavaScript(`window.__browser.${method}(${args.map(value => JSON.stringify(value)).join(',')})`);
     const state = (win, id) => win.webContents.executeJavaScript(`window.states.filter(s=>s.viewId===${JSON.stringify(id)}).slice(-1)[0]`);
     const settled = (win, id, predicate) => waitFor(async () => { const current = await state(win, id); return current && !current.loading && predicate(current) ? current : null; }, `${id} state`);
     const pref = await call(main, 'getPreferences');

@@ -106,6 +106,7 @@ import { unifiedToolbarBreadcrumbs } from './unifiedPanelBreadcrumbs';
 import { UnifiedTabView } from './UnifiedTabView';
 import { UnifiedHtmlPageTab } from './UnifiedHtmlPageTab';
 import { UnifiedBrowserTab } from './UnifiedBrowserTab';
+import { removeBrowserWebview } from './browserWebviewLayerStore';
 import { browserLabelForUrl, browserOpenInput, browserSessionKey, normalizeBrowserUrl } from './unifiedBrowserTabs';
 import {
     desktopBrowserBridge,
@@ -706,6 +707,7 @@ export function UnifiedRightPanel({
         if (tab?.kind === 'html-page' && tab.htmlPageId) {
             desktopHtmlPageBridge()?.close(tab.htmlPageId);
         } else if (tab?.kind === 'browser') {
+            removeBrowserWebview(tab.resourceId);
             desktopBrowserBridge()?.close(tab.resourceId);
         }
         close(id);
@@ -1722,8 +1724,8 @@ export function UnifiedRightPanel({
                                         url={tab.browserUrl}
                                         relatedEngine={tab.browserEngine}
                                         active={tab.id === activeId}
-                                        visible={isOpen && !menuOpen && !quickOpenVisible && !exactOpenVisible
-                                            && pendingClose === null && pendingDirty === null}
+                                        visible={isOpen}
+                                        nativeCovered={menuOpen || quickOpenVisible || exactOpenVisible || pendingClose !== null || pendingDirty !== null}
                                         onNavigate={navigateBrowser}
                                         onPageState={followBrowserPage}
                                     />

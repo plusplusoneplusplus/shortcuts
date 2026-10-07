@@ -135,7 +135,10 @@ export class BrowserHostManager {
             const view = await entry.ready;
             if (entry.closed) { return { ok: false, engine, reason: 'not-found' }; }
             this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, view.snapshot()));
-            return { ok: true, engine, sourceKind: entry.sourceKind };
+            return {
+                ok: true, engine, sourceKind: entry.sourceKind,
+                ...(view.embed ? { embed: view.embed, src: view.src, partition: view.partition } : {}),
+            };
         } catch (error) {
             // Failed startup keeps its selected engine but permits an explicit open retry.
             entry.startupFailed = true;
@@ -172,6 +175,7 @@ export class BrowserHostManager {
                 if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, { viewId: entry.viewId }); }
             },
             download: event => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_DOWNLOAD_CHANNEL, event); } },
+            closed: () => { void this.closeEntry(entry, true).catch(error => console.error('[coc-desktop] Browser guest cleanup failed:', error)); },
         });
         if (entry.closed) {
             await view.close();
@@ -179,6 +183,17 @@ export class BrowserHostManager {
         }
         entry.view = view;
         return view;
+    }
+
+    async adopt(ownerId: number, viewId: unknown, guestId: unknown): Promise<BrowserOperationResult> {
+        const entry = this.entry(ownerId, viewId);
+        if (!entry || entry.closed || typeof guestId !== 'number' || !Number.isSafeInteger(guestId)) { return { ok: false, reason: 'not-found' }; }
+        try {
+            const view = await entry.ready;
+            if (entry.closed || !view.adopt) { return { ok: false, reason: 'not-found' }; }
+            await view.adopt(guestId);
+            return { ok: true };
+        } catch (error) { return this.failure(error, 'not-found'); }
     }
 
     async navigate(ownerId: number, viewId: unknown, url: unknown): Promise<BrowserOpenResult> {

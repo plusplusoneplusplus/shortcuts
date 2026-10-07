@@ -16,10 +16,11 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, webContents } = require('electron');
 
 const distDir = path.join(__dirname, '..', '..', 'dist');
-const { registerBrowserViewIpc, disposeBrowserViews } = require(path.join(distDir, 'browser-view-host.js'));
+const { registerBrowserViewIpc, registerBrowserEmbedder, disposeBrowserViews } = require(path.join(distDir, 'browser-view-host.js'));
+const { fixtureScript } = require('./webview-fixture.cjs');
 const { HTML_PAGE_PARTITION } = require(path.join(distDir, 'file-preview-host.js'));
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-html-page-e2e-data-'));
 
@@ -72,11 +73,16 @@ app.whenReady().then(async () => {
             preload: path.join(distDir, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            webviewTag: true,
         },
     });
-    await main.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(spaHtml));
+    const spaUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(spaHtml);
+    registerBrowserEmbedder(main, spaUrl);
+    await main.loadURL(spaUrl);
+    await main.webContents.executeJavaScript(fixtureScript);
     await sleep(200);
-    const spa = (js) => main.webContents.executeJavaScript(js);
+    const spa = (js) => main.webContents.executeJavaScript(js.replaceAll('window.cocDesktop.browser.', 'window.__browser.'));
+    const browserContents = async id => webContents.fromId(await spa(`window.__webviews.get(${JSON.stringify(id)}).getWebContentsId()`));
 
     // 1. Open requests the main process must refuse.
     const rejectNotHtml = await spa(`window.cocDesktop.htmlPage.open('bad', ${JSON.stringify(path.join(fixtureDir, 'style.css'))})`);
@@ -117,8 +123,8 @@ app.whenReady().then(async () => {
     //     browser/electron profile and must stay invisible to the preview.
     const browserOpen = await spa(`window.cocDesktop.browser.open('site', ${JSON.stringify(siteUrl)}, 'workspace-a')`);
     await sleep(1000);
-    const siteView = main.contentView.children.find((v) => v.webContents.getURL().startsWith('http:'));
-    const profileCookies = siteView ? await siteView.webContents.session.cookies.get({ name: 'coc_profile_probe' }) : [];
+    const siteContents = await browserContents('site');
+    const profileCookies = await siteContents.session.cookies.get({ name: 'coc_profile_probe' });
     const previewCookies = await pageWc.session.cookies.get({});
     const previewDocumentCookie = await pageWc.executeJavaScript('document.cookie');
     emit('isolation', {
@@ -126,7 +132,7 @@ app.whenReady().then(async () => {
         profileCookieCount: profileCookies.length,
         previewCookieNames: previewCookies.map((c) => c.name),
         previewDocumentCookie,
-        sameSession: !!siteView && siteView.webContents.session === pageWc.session,
+        sameSession: siteContents.session === pageWc.session,
         previewPersistent: pageWc.session.isPersistent(),
         previewPartitionMatches: pageWc.session === require('electron').session.fromPartition(HTML_PAGE_PARTITION),
     });
@@ -203,10 +209,11 @@ app.whenReady().then(async () => {
     await pageWc.executeJavaScript('window.scrollTo(0, 400); window.__inPage = "kept"; 1');
     await spa(`window.cocDesktop.browser.open('site2', ${JSON.stringify(siteUrl)}, 'workspace-a')`);
     await sleep(800);
-    const siteWc = main.contentView.children.find((v) => v !== view && v.webContents.getURL().startsWith('http:')).webContents;
+    const siteWc = await browserContents('site2');
     const pageWcId = pageWc.id;
     main.webContents.reload();
     await new Promise((resolve) => main.webContents.once('did-finish-load', resolve));
+    await main.webContents.executeJavaScript(fixtureScript);
     await sleep(500);
     const hiddenAfterReload = !view.getVisible();
     const viewsAfterReload = main.contentView.children.length;

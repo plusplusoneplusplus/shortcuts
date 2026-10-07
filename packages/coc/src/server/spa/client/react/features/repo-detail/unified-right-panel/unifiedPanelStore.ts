@@ -33,6 +33,7 @@ import {
 import { readUnifiedTreeState, writeUnifiedTreeState } from './unifiedPanelTree';
 import { clearUnifiedPanelNavigationHistory } from './unifiedPanelNavigationStore';
 import { clearPasteSnapshots, prunePasteSnapshots } from './unifiedPasteTabs';
+import { removeBrowserWebview } from './browserWebviewLayerStore';
 
 const listeners = new Map<string, Set<() => void>>();
 
@@ -96,6 +97,7 @@ function writeState(storageKey: string, next: UnifiedPanelState): void {
 
 /** Native cleanup can close browser tabs in workspaces whose panels are unmounted. */
 export function closeBrowserPanelView(viewId: string): void {
+    removeBrowserWebview(viewId);
     for (const [storageKey, snapshot] of [...snapshotCache]) {
         const tab = snapshot.value.workspaceTabs.find(tab => tab.kind === 'browser' && tab.resourceId === viewId);
         if (tab) writeState(storageKey, closeTab(snapshot.value, tab.id));

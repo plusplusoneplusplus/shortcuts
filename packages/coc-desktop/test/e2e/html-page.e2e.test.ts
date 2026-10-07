@@ -119,7 +119,7 @@ describe.skipIf(skip)('HTML page tab host E2E (real Electron, file:// fixture)',
 
     it('never shares browser-profile cookies or storage with the preview', () => {
         const isolation = steps.get('isolation')!;
-        expect(isolation.browserOpen).toEqual({ ok: true, engine: 'electron', sourceKind: 'url' });
+        expect(isolation.browserOpen).toMatchObject({ ok: true, engine: 'electron', sourceKind: 'url', embed: 'webview' });
         expect(isolation.profileCookieCount).toBe(1);
         expect(isolation.previewCookieNames).not.toContain('coc_profile_probe');
         expect(isolation.previewDocumentCookie).toBe('');

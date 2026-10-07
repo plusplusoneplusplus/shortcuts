@@ -17,10 +17,8 @@ beforeEach(() => {
         setBounds: vi.fn(), hide: vi.fn(), close: vi.fn(), navigate: vi.fn(), nav: vi.fn(),
         onState: vi.fn(() => vi.fn()), onDownload: vi.fn(() => vi.fn()),
     } as unknown as DesktopBrowserBridge;
-    // Model the toolbar's in-flow menu taking 70px from the native placeholder.
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-        const top = this.parentElement?.querySelector('[role="menu"]') ? 170 : 100;
-        return { x: 500, y: top, left: 500, top, right: 900, bottom: 500, width: 400, height: 500 - top, toJSON: () => ({}) };
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => {
+        return { x: 500, y: 100, left: 500, top: 100, right: 900, bottom: 500, width: 400, height: 400, toJSON: () => ({}) };
     });
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => window.setTimeout(() => cb(0), 0));
     vi.stubGlobal('cancelAnimationFrame', (id: number) => window.clearTimeout(id));
@@ -36,10 +34,9 @@ afterEach(() => {
 
 const props = { tabId: 'tab', viewId: 'view', sessionKey: 'workspace-a', url: 'https://example.test/', active: true, visible: true, onNavigate: vi.fn(), onPageState: vi.fn() };
 const normal = { x: 500, y: 100, width: 400, height: 400 };
-const expanded = { x: 500, y: 170, width: 400, height: 330 };
 
 describe('browser toolbar native placement regression', () => {
-    it.each(['electron', 'webview2'] as const)('keeps the %s page placed during repeated toggles, Escape and outside dismissal without reopening or navigating', async engine => {
+    it.each(['webview2'] as const)('hides the native %s page under the dropdown and restores the same bounds without reopening or navigating', async engine => {
         vi.mocked(mocks.bridge!.open).mockResolvedValue({ ok: true, engine });
         render(<UnifiedBrowserTab {...props} />);
         const bridge = mocks.bridge!;
@@ -49,13 +46,14 @@ describe('browser toolbar native placement regression', () => {
         for (const dismiss of ['trigger', 'Escape', 'outside', 'trigger']) {
             await userEvent.click(trigger);
             expect(screen.getByRole('menu')).toBeInTheDocument();
-            await waitFor(() => expect(bridge.setBounds).toHaveBeenLastCalledWith('view', expanded));
+            await waitFor(() => expect(bridge.hide).toHaveBeenCalledWith('view'));
+            vi.mocked(bridge.hide).mockClear();
+            vi.mocked(bridge.setBounds).mockClear();
             if (dismiss === 'Escape') await userEvent.keyboard('{Escape}');
             else await userEvent.click(dismiss === 'outside' ? document.body : trigger);
             expect(screen.queryByRole('menu')).toBeNull();
             await waitFor(() => expect(bridge.setBounds).toHaveBeenLastCalledWith('view', normal));
         }
-        expect(bridge.hide).not.toHaveBeenCalled();
         expect(bridge.open).toHaveBeenCalledTimes(1);
         expect(bridge.close).not.toHaveBeenCalled();
         expect(bridge.navigate).not.toHaveBeenCalled();
