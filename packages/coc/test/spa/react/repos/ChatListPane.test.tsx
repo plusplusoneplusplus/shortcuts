@@ -27,6 +27,9 @@ import {
     getRalphSessionRangeId,
     resolveGroupSelectionState,
     resolveHistoryRangeSelection,
+    isChatTask,
+    getSessionCategory,
+    SESSION_CATEGORY_LABELS,
     taskMatchesFilter,
     taskMatchesSearch,
     getTaskTypeIcon,
@@ -4361,5 +4364,109 @@ describe('ChatListPane spawned-conversation tree (AC-03)', () => {
         expect(archivedTree).toBeTruthy();
         expect(archivedTree.querySelector('[data-testid="spawned-tree-child-count"]')?.textContent).toBe('2');
         expect(archivedTree.querySelector('[data-testid="spawned-tree-children"] [data-task-id="child"]')).toBeTruthy();
+    });
+});
+
+// ── isChatTask: tab routing logic (migrated from ChatListPane.test.ts) ────────
+
+describe('isChatTask: tab routing', () => {
+    it('returns true for a chat task with ask mode', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'ask' } })).toBe(true);
+    });
+
+    it('returns true for a chat task with plan mode', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'plan' } })).toBe(true);
+    });
+
+    it('returns true for a chat task with autopilot mode', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'autopilot' } })).toBe(true);
+    });
+
+    it('returns false for a work-item execution chat task (payload.workItemId)', () => {
+        expect(isChatTask({ type: 'chat', payload: { mode: 'ask', workItemId: 'wi-123' } })).toBe(false);
+    });
+
+    it('returns false for a work-item history item (top-level workItemId)', () => {
+        expect(isChatTask({ type: 'chat', workItemId: 'wi-456' })).toBe(false);
+    });
+
+    it('returns false for non-chat task types', () => {
+        expect(isChatTask({ type: 'run-workflow', payload: {} })).toBe(false);
+        expect(isChatTask({ type: 'run-script', payload: {} })).toBe(false);
+    });
+
+    it('returns true for a chat task without a mode (legacy)', () => {
+        expect(isChatTask({ type: 'chat', payload: {} })).toBe(true);
+    });
+
+    it('returns false for resolve-commit-comments task with workItemId', () => {
+        expect(isChatTask({
+            type: 'chat',
+            payload: { kind: 'chat', mode: 'autopilot', sessionCategory: 'resolve-commit-comments', workItemId: 'wi-456' },
+        })).toBe(false);
+    });
+
+    it('returns false for resolve-plan-comments task with workItemId', () => {
+        expect(isChatTask({
+            type: 'chat',
+            payload: { kind: 'chat', mode: 'autopilot', sessionCategory: 'resolve-plan-comments', workItemId: 'wi-789' },
+        })).toBe(false);
+    });
+
+    it('returns true for resolve task without workItemId (standalone)', () => {
+        expect(isChatTask({
+            type: 'chat',
+            payload: { kind: 'chat', mode: 'autopilot', sessionCategory: 'resolve-commit-comments' },
+        })).toBe(true);
+    });
+});
+
+// ── Session category helpers (migrated from ChatListPane.test.ts) ─────────────
+
+describe('getSessionCategory', () => {
+    it('returns undefined for tasks without sessionCategory', () => {
+        expect(getSessionCategory({ payload: {} })).toBeUndefined();
+        expect(getSessionCategory({ payload: { mode: 'ask' } })).toBeUndefined();
+        expect(getSessionCategory({})).toBeUndefined();
+    });
+
+    it('returns the category from payload', () => {
+        expect(getSessionCategory({ payload: { sessionCategory: 'generating-code' } })).toBe('generating-code');
+        expect(getSessionCategory({ payload: { sessionCategory: 'resolve-plan-comments' } })).toBe('resolve-plan-comments');
+        expect(getSessionCategory({ payload: { sessionCategory: 'resolve-commit-comments' } })).toBe('resolve-commit-comments');
+    });
+});
+
+describe('SESSION_CATEGORY_LABELS', () => {
+    it('has entries for all three categories', () => {
+        expect(SESSION_CATEGORY_LABELS['generating-code']).toBeDefined();
+        expect(SESSION_CATEGORY_LABELS['resolve-plan-comments']).toBeDefined();
+        expect(SESSION_CATEGORY_LABELS['resolve-commit-comments']).toBeDefined();
+    });
+
+    it('each entry has label, icon, and color', () => {
+        for (const key of ['generating-code', 'resolve-plan-comments', 'resolve-commit-comments']) {
+            const entry = SESSION_CATEGORY_LABELS[key];
+            expect(entry.label).toBeTruthy();
+            expect(entry.icon).toBeTruthy();
+            expect(entry.color).toBeTruthy();
+        }
+    });
+});
+
+describe('taskMatchesFilter: session category exclusion', () => {
+    it('excludes tasks when their cat:<category> is in excludedTypes', () => {
+        const task = { type: 'chat', payload: { mode: 'autopilot', sessionCategory: 'generating-code' } };
+        expect(taskMatchesFilter(task, new Set(['cat:generating-code']))).toBe(false);
+    });
+
+    it('includes tasks when cat:<category> is not in excludedTypes', () => {
+        const task = { type: 'chat', payload: { mode: 'autopilot', sessionCategory: 'generating-code' } };
+        expect(taskMatchesFilter(task, new Set(['cat:resolve-plan-comments']))).toBe(true);
+    });
+
+    it('tasks without sessionCategory are not affected by cat: exclusion', () => {
+        const task = { type: 'chat', payload: { mode: 'autopilot' } };
+        expect(taskMatchesFilter(task, new Set(['cat:generating-code']))).toBe(true);
     });
 });
