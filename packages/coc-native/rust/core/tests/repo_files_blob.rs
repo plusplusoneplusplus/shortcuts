@@ -6,6 +6,7 @@ use std::path::Path;
 
 use coc_native_core::repo_files::{
     mime_type, read_blob, resolve_in_root, write_blob, RepoFilesError, MAX_BLOB_SIZE,
+    MAX_TEXT_BLOB_SIZE,
 };
 
 fn repo() -> tempfile::TempDir {
@@ -68,8 +69,8 @@ fn nul_in_first_8k_is_binary_base64() {
 fn read_errors_keep_route_messages() {
     let dir = repo();
     fs::create_dir(dir.path().join("sub")).unwrap();
-    fs::write(dir.path().join("big.txt"), vec![b'a'; MAX_BLOB_SIZE as usize + 1]).unwrap();
-    fs::write(dir.path().join("cap.txt"), vec![b'a'; MAX_BLOB_SIZE as usize]).unwrap();
+    fs::write(dir.path().join("big.txt"), vec![b'a'; MAX_TEXT_BLOB_SIZE as usize + 1]).unwrap();
+    fs::write(dir.path().join("cap.txt"), vec![b'a'; MAX_TEXT_BLOB_SIZE as usize]).unwrap();
 
     assert_eq!(
         read_blob(dir.path(), "nope.txt").unwrap_err().to_string(),
@@ -78,10 +79,35 @@ fn read_errors_keep_route_messages() {
     assert_eq!(read_blob(dir.path(), "sub").unwrap_err().to_string(), "Not a file: sub");
     assert_eq!(
         read_blob(dir.path(), "big.txt").unwrap_err().to_string(),
-        "File exceeds maximum size of 1048576 bytes: big.txt"
+        "File exceeds maximum size of 10485760 bytes: big.txt"
     );
     assert!(read_blob(dir.path(), "cap.txt").is_ok());
     assert!(matches!(read_blob(dir.path(), "../x").unwrap_err(), RepoFilesError::PathTraversal));
+}
+
+#[test]
+fn large_source_text_round_trips_at_utf8_byte_boundary() {
+    let dir = repo();
+    let content = "😀".repeat(MAX_TEXT_BLOB_SIZE as usize / 4);
+    assert_eq!(content.len(), 10 * 1024 * 1024);
+    write_blob(dir.path(), "src/large.ts", &content).unwrap();
+    assert_eq!(read_blob(dir.path(), "src/large.ts").unwrap().content, content);
+    write_blob(dir.path(), "src/large.ts", &(content + "x")).unwrap();
+    assert!(matches!(read_blob(dir.path(), "src/large.ts"), Err(RepoFilesError::TextTooLarge(_))));
+}
+
+#[test]
+fn binary_and_image_caps_stay_at_one_mib() {
+    let dir = repo();
+    for (name, byte) in [("binary.bin", 0), ("image.svg", b'x')] {
+        fs::write(dir.path().join(name), vec![byte; MAX_BLOB_SIZE as usize]).unwrap();
+        assert!(read_blob(dir.path(), name).is_ok());
+        fs::write(dir.path().join(name), vec![byte; MAX_BLOB_SIZE as usize + 1]).unwrap();
+        assert_eq!(
+            read_blob(dir.path(), name).unwrap_err().to_string(),
+            format!("File exceeds maximum size of 1048576 bytes: {name}")
+        );
+    }
 }
 
 #[test]

@@ -120,14 +120,14 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 
 - **Given** a file is selected in the tree
 - **When** the user clicks the file
-- **Then** the preview pane shows the file content: rendered for images, syntax-highlighted for text (via Monaco Editor), or a message for binary/oversized files (512 KB cap)
+- **Then** the preview pane shows the file content: rendered for images, syntax-highlighted for text (via Monaco Editor), or a message for binary files. Source text up to 10 MB (`10 * 1024 * 1024` UTF-8 bytes) is shown in full; oversized text returned by a preview transport is truncated at a complete character and read-only; backend size errors retain the error/Retry view
 
 ---
 
 **US-10 — Edit and save a file**
 > As a developer, I want to edit a text file and save my changes.
 
-- **Given** a text file is open in the preview pane
+- **Given** an editable repository text file no larger than 10 MB is open in the preview pane
 - **When** the user edits the content
 - **Then** a dirty indicator appears and a floating Save button becomes visible
 - **When** the user clicks Save or presses Ctrl+S
@@ -188,7 +188,7 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 | Text files | Monaco Editor with syntax highlighting and theme sync |
 | Images | Rendered inline |
 | Binary files | "Binary file" message |
-| Oversized files | Message for files exceeding 512 KB |
+| Oversized files | Above 10 MB of UTF-8 text: truncated read-only preview when content is available, otherwise the backend size error |
 | Save | Floating Save button when dirty; Ctrl+S keyboard shortcut |
 | Close | Desktop: ✕ button to close preview |
 | Loading | Spinner during file fetch |
@@ -217,7 +217,7 @@ The **Repository Explorer Tab** provides a file browser for navigating, searchin
 | INV-01 | Lazy directory loading only fetches children when a directory is first expanded |
 | INV-02 | Server search results are merged into the existing tree structure, not replacing it |
 | INV-03 | Clearing the search restores the previously expanded directory state |
-| INV-04 | The preview pane file size cap is 512 KB; larger files show a message instead of content |
+| INV-04 | The source-text cap is 10 MB (`10 * 1024 * 1024` UTF-8 bytes), inclusive; larger text stays read-only with character-safe truncation or the existing backend error. Trusted files remain read-only |
 | INV-05 | Shift+right-click always opens the native browser context menu |
 | INV-06 | The `/` key focuses the search input when not already in an input or textarea |
 | INV-07 | Deep-link paths that look like files (last segment contains `.`) auto-open the preview |

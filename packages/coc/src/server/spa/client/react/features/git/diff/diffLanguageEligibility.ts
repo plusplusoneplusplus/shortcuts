@@ -12,14 +12,12 @@
  */
 
 import { browserDocumentUri } from '../../language-servers/documentStore';
-import { MAX_FILE_VIEW_SIZE } from '../../../shared/file-viewer/useFileContent';
 import { isDiffRefUri, type DiffModelsInput, type MonacoDiffStage } from './monacoDiffOptions';
 
 /**
- * Language features stop above the explorer's own threshold: the explorer
- * truncates such files and never offers them to a server either.
+ * Independent character limit for language features on working-tree diffs.
  */
-export const DIFF_LANGUAGE_MAX_CHARS = MAX_FILE_VIEW_SIZE;
+export const DIFF_LANGUAGE_MAX_CHARS = 512 * 1024;
 
 export type DiffLanguageIneligibleReason =
     | 'no-workspace'

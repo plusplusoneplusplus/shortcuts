@@ -354,6 +354,13 @@ Content-search rows group hits by repo-relative file path and consume the search
 response's line number plus adjacent `before`/`after` lines, so the navigator can
 show source context without issuing per-result file reads.
 
+Explorer source-file previews use `shared/file-viewer/useFileContent`: full text
+through 10 MB (`10 * 1024 * 1024` UTF-8 bytes), inclusive; larger returned text
+is truncated at a complete character and read-only with no save callback.
+Trusted/workspace-preview files remain read-only. Native repository blob reads
+accept text through 10 MB; larger reads retain the backend size error. Binary
+and image read caps, diff language limits, and chat-source API limits are separate.
+
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative
 search icon.

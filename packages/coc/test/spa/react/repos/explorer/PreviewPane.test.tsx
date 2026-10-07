@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
+import { MAX_FILE_VIEW_SIZE } from '../../../../../src/server/spa/client/react/shared/file-viewer/useFileContent';
 import { PreviewPane } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/PreviewPane';
 import {
     registerCloneBaseUrls, resetCloneRegistryForTests,
@@ -14,6 +15,7 @@ const mockExplorerApi = vi.hoisted(() => ({
 const mockMonaco = vi.hoisted(() => ({
     onSave: undefined as (() => void) | undefined,
     saveAction: undefined as (() => void) | undefined,
+    onModelMount: undefined as ((context: any) => (() => void) | void) | undefined,
 }));
 
 const mockLanguageDocument = vi.hoisted(() => ({
@@ -40,8 +42,9 @@ vi.mock('../../../../../src/server/spa/client/react/features/language-servers/us
 
 // Mock MonacoFileEditor since Monaco requires a real DOM/worker environment
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/MonacoFileEditor', () => ({
-    MonacoFileEditor: ({ value, language, selectionContext, onChange, onSave, revealLine, revealColumn, revealNonce }: any) => {
+    MonacoFileEditor: ({ value, language, selectionContext, onChange, onSave, revealLine, revealColumn, revealNonce, onModelMount }: any) => {
         mockMonaco.onSave = onSave;
+        mockMonaco.onModelMount = onModelMount;
         mockMonaco.saveAction ??= () => mockMonaco.onSave?.();
         return (
             <div data-testid="mock-monaco-editor" data-language={language} data-value={value} data-selection-context={JSON.stringify(selectionContext)}
@@ -67,6 +70,7 @@ describe('PreviewPane', () => {
         vi.clearAllMocks();
         resetCloneRegistryForTests();
         mockMonaco.onSave = undefined;
+        mockMonaco.onModelMount = undefined;
         mockMonaco.saveAction = undefined;
     });
 
@@ -266,9 +270,9 @@ describe('PreviewPane', () => {
         rerender(<PreviewPane repoId="r1" filePath="__trusted__:readme.md" fileName="readme.md" markdownPreview />);
         await waitFor(() => expect(mockExplorerApi.readTrustedBlob).toHaveBeenCalled());
         expect(screen.queryByRole('group', { name: 'Markdown view' })).not.toBeInTheDocument();
-        mockExplorerApi.readBlob.mockResolvedValueOnce({ ...text, content: 'x'.repeat(600 * 1024) });
+        mockExplorerApi.readBlob.mockResolvedValueOnce({ ...text, content: 'x'.repeat(MAX_FILE_VIEW_SIZE + 1) });
         rerender(<PreviewPane repoId="r1" filePath="large.md" fileName="large.md" markdownPreview />);
-        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-value')).toHaveLength(512 * 1024));
+        await waitFor(() => expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-value')).toHaveLength(MAX_FILE_VIEW_SIZE));
         expect(screen.queryByRole('group', { name: 'Markdown view' })).not.toBeInTheDocument();
         mockExplorerApi.readBlob.mockResolvedValueOnce({ content: 'AAAA', encoding: 'base64', mimeType: 'application/octet-stream' });
         rerender(<PreviewPane repoId="r1" filePath="binary.md" fileName="binary.md" markdownPreview />);
@@ -317,20 +321,41 @@ describe('PreviewPane', () => {
         expect(screen.getByTestId('mock-monaco-editor').getAttribute('data-value')).toBe('');
     });
 
-    it('truncates content exceeding 512 KB and still renders Monaco', async () => {
-        const largeContent = 'x'.repeat(600 * 1024); // 600 KB
+    it('fully views and edits source text above the old frontend and backend caps', async () => {
+        const content = 'é'.repeat(1024 * 1024);
+        mockExplorerApi.readBlob.mockResolvedValue({ content, encoding: 'utf-8', mimeType: 'text/plain' });
+        mockExplorerApi.writeBlob.mockResolvedValue({ success: true });
+        render(<PreviewPane repoId="r1" filePath="large.ts" fileName="large.ts" />);
+        await screen.findByTestId('mock-monaco-editor');
+        expect(screen.getByTestId('mock-monaco-textarea')).toHaveValue(content);
+        expect(screen.queryByTestId('preview-oversized')).toBeNull();
+        fireEvent.change(screen.getByTestId('mock-monaco-textarea'), { target: { value: content + 'x' } });
+        fireEvent.click(screen.getByTestId('save-btn'));
+        await waitFor(() => expect(mockExplorerApi.writeBlob).toHaveBeenCalledWith('r1', 'large.ts', content + 'x'));
+    });
+
+    it('truncates content exceeding 10 MB and still renders Monaco', async () => {
+        const largeContent = 'x'.repeat(MAX_FILE_VIEW_SIZE + 1); // Above the text cap
         mockExplorerApi.readBlob.mockResolvedValue({
             content: largeContent,
             encoding: 'utf-8',
             mimeType: 'text/plain',
         });
 
-        render(<PreviewPane repoId="r1" filePath="large.txt" fileName="large.txt" />);
+        const registerSave = vi.fn();
+        render(<PreviewPane repoId="r1" filePath="large.txt" fileName="large.txt" onRegisterSave={registerSave} />);
 
         await waitFor(() => expect(screen.getByTestId('mock-monaco-editor')).toBeInTheDocument());
-        // Content is truncated to 512 KB
+        // Content is truncated to 10 MB
         const editorValue = screen.getByTestId('mock-monaco-editor').getAttribute('data-value');
-        expect(editorValue!.length).toBe(512 * 1024);
+        expect(editorValue!.length).toBe(MAX_FILE_VIEW_SIZE);
+        expect(screen.getByTestId('preview-oversized')).toHaveTextContent('10 MB');
+        expect(mockMonaco.onSave).toBeUndefined();
+        expect(registerSave).toHaveBeenLastCalledWith(null);
+        const updateOptions = vi.fn();
+        const cleanup = mockMonaco.onModelMount?.({ editor: { updateOptions } });
+        expect(updateOptions).toHaveBeenCalledWith({ readOnly: true });
+        cleanup?.();
     });
 
     it('shows error state with Retry button on fetch failure', async () => {

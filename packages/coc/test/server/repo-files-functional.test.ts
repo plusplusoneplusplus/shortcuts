@@ -144,6 +144,26 @@ describe('repository files — functional multi-repo walk-through', () => {
         }
     });
 
+    it('reads and writes 10 MB source text through REST without crossing workspaces', async () => {
+        const content = '😀'.repeat((10 * 1024 * 1024) / 4);
+        const relative = 'src/large.ts';
+        try {
+            const written = await request(repo(A, `/blob?path=${relative}`), 'PUT', { content });
+            expect(written.status).toBe(200);
+            expect(fs.readFileSync(path.join(repoA, relative), 'utf-8')).toBe(content);
+            const read = await request(repo(A, `/blob?path=${relative}`));
+            expect(read.status).toBe(200);
+            expect(read.json).toEqual({ content, encoding: 'utf-8', mimeType: 'application/typescript' });
+            expect((await request(repo(B, `/blob?path=${relative}`))).status).toBe(404);
+            fs.appendFileSync(path.join(repoA, relative), 'x');
+            const oversized = await request(repo(A, `/blob?path=${relative}`));
+            expect(oversized.status).toBe(500);
+            expect(oversized.json.error).toBe(`File exceeds maximum size of 10485760 bytes: ${relative}`);
+        } finally {
+            fs.rmSync(path.join(repoA, relative), { force: true });
+        }
+    });
+
     it('searches tracked, ignored-tracked, untracked, regex and multiline content', async () => {
         expect(await contentPaths(A, 'alphaMarker')).toEqual(['README.md', 'notes.txt', 'src/main.ts']);
         expect(await contentPaths(A, 'alphaMarker', '&fileScope=tracked')).toEqual(['README.md', 'build/out.js', 'src/main.ts']);

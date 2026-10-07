@@ -363,6 +363,12 @@ edge.
 
 ## Language support in the preview
 
+`useFileContent` allows full source-text viewing/editing through 10 MB
+(`10 * 1024 * 1024` UTF-8 bytes), inclusive. Larger returned text is truncated
+at a complete character and read-only, with no registered save callback.
+Trusted and workspace-preview files remain read-only. Native repo blob reads
+accept text through 10 MB and retain backend errors above that cap.
+
 `PreviewPane` decides whether a blob is a *live repo document* — a real file in
 this workspace, read whole, not a trusted absolute path — and only then opens a
 language document and registers Monaco providers over its model
