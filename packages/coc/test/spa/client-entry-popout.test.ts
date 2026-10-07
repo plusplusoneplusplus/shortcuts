@@ -31,7 +31,8 @@ describe('client entry point: pop-out routes', () => {
 
     it('checks git-review route before fallback to App', () => {
         const gitReviewIdx = source.indexOf('#popout/git-review');
-        const appIdx = source.indexOf('root.render(<App />)');
+        const appIdx = source.indexOf('<App />');
+        expect(appIdx).toBeGreaterThan(-1);
         expect(gitReviewIdx).toBeLessThan(appIdx);
     });
 
@@ -45,6 +46,14 @@ describe('client entry point: pop-out routes', () => {
         expect(source).toContain("import { PopOutDevToolsShell }");
         expect(source).toContain('#popout/dev-tools');
         expect(source).toContain('<PopOutDevToolsShell />');
-        expect(source.indexOf('#popout/dev-tools')).toBeLessThan(source.indexOf('root.render(<App />)'));
+        const appIdx = source.indexOf('<App />');
+        expect(appIdx).toBeGreaterThan(-1);
+        expect(source.indexOf('#popout/dev-tools')).toBeLessThan(appIdx);
+    });
+
+    it('mounts the persistent browser layer only beside the main app, outside workspace routing', () => {
+        expect(source).toContain('root.render(<><App /><BrowserWebviewLayer /></>)');
+        expect(source.match(/<BrowserWebviewLayer\s*\/>/g)).toHaveLength(1);
+        expect(source.indexOf('<BrowserWebviewLayer />')).toBeGreaterThan(source.indexOf('#popout/dev-tools'));
     });
 });
