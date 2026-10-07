@@ -39,6 +39,9 @@ references before editing. Paths are package-relative.
   use `getCocClientForWorkspace`, `useCocClient(ref)`, or the clone-routed helpers.
   Unresolved remote selections never fall through locally; admin stays page-origin.
   Reject late responses after scope changes.
+- Exited-terminal Enter uses `TerminalView`'s manual restart lifecycle and synchronous
+  per-tab admission guard. Only a plain keydown focused inside the active viewport
+  triggers restart; pasted input and transport disconnection are not process exit.
 - `list_workspaces`, `send_to_conversation` remote targets and messaging `list remotes` share one route-layer
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no

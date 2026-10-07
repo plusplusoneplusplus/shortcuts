@@ -4,12 +4,13 @@
  * structural contracts via string matching).
  */
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { TerminalView } from '../../../../src/server/spa/client/react/features/terminal/TerminalView';
+import { registerCloneBaseUrls, resetCloneRegistryForTests } from '../../../../src/server/spa/client/react/repos/cloneRegistry';
 
 vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel', async () => {
     const React = await import('react');
@@ -20,6 +21,7 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel
             connectionMode?: 'create' | 'attach';
             isActive: boolean;
             readOnly?: boolean;
+            onRestart?: () => void;
             onServerSessionCreated?: (session: typeof runningSession) => void;
         }) => React.createElement('div', {
             'data-testid': `mock-terminal-panel-${props.sessionId}`,
@@ -27,6 +29,7 @@ vi.mock('../../../../src/server/spa/client/react/features/terminal/TerminalPanel
             'data-connection-mode': props.connectionMode ?? 'create',
             'data-active': String(props.isActive),
             'data-read-only': String(props.readOnly ?? false),
+            onKeyDown: () => props.onRestart?.(),
         }),
     };
 });
@@ -81,6 +84,7 @@ describe('TerminalView', () => {
 
     afterEach(() => {
         cleanup();
+        resetCloneRegistryForTests();
         vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
@@ -257,6 +261,61 @@ describe('TerminalView', () => {
     });
 
     describe('AC-05: restart shell here', () => {
+        it.each([undefined, 'http://127.0.0.1:4999'])('shares Enter and manual restart admission on %s', async (baseUrl) => {
+            if (baseUrl) registerCloneBaseUrls([
+                { workspaceId: 'ws-123', baseUrl },
+                { workspaceId: 'ws-other', baseUrl: 'http://127.0.0.1:4998' },
+            ]);
+            let resolveRestart!: (response: unknown) => void;
+            const fetchMock = vi.fn().mockImplementation((_url: string, init?: { method?: string }) => {
+                if (init?.method === 'POST') return new Promise(resolve => { resolveRestart = resolve; });
+                return Promise.resolve({ ok: true, status: 200, json: async () => ({ sessions: [exitedSession] }) });
+            });
+            vi.stubGlobal('fetch', fetchMock);
+            render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
+            const panel = await screen.findByTestId('mock-terminal-panel-server-sess-exited');
+            fireEvent.click(screen.getByTestId('terminal-picker-btn'));
+            const restart = screen.getByTestId('terminal-tab-restart-server-sess-exited');
+            act(() => {
+                fireEvent.keyDown(panel, { key: 'Enter' });
+                fireEvent.keyDown(panel, { key: 'Enter' });
+                fireEvent.click(restart);
+            });
+            expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+            expect(fetchMock).toHaveBeenCalledWith(
+                `${baseUrl ?? ''}/api/workspaces/ws-123/terminals/sess-exited/restart`,
+                expect.objectContaining({ method: 'POST' }),
+            );
+            await act(async () => {
+                resolveRestart({ ok: true, status: 200, json: async () => ({ session: { ...runningSession, id: 'sess-new' } }) });
+            });
+            const restarted = await screen.findByTestId('mock-terminal-panel-server-sess-new');
+            expect(restarted.getAttribute('data-active')).toBe('true');
+            expect(restarted.getAttribute('data-connection-mode')).toBe('attach');
+            expect(restarted.getAttribute('data-read-only')).toBe('false');
+            expect(screen.getByTestId('terminal-tab-title-server-sess-new').textContent).toBe('Terminal sess-e');
+            expect(screen.queryByTestId('terminal-count-badge')).toBeNull();
+            fireEvent.keyDown(restarted, { key: 'Enter' });
+            expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+        });
+
+        it('reports Enter restart failures and allows a deliberate retry', async () => {
+            const fetchMock = vi.fn().mockImplementation((_url: string, init?: { method?: string }) => {
+                if (init?.method === 'POST') return Promise.reject(new Error('offline'));
+                return Promise.resolve({ ok: true, status: 200, json: async () => ({ sessions: [exitedSession] }) });
+            });
+            vi.stubGlobal('fetch', fetchMock);
+            vi.spyOn(console, 'error').mockImplementation(() => {});
+            render(React.createElement(TerminalView, { workspaceId: 'ws-123' }));
+            const panel = await screen.findByTestId('mock-terminal-panel-server-sess-exited');
+            fireEvent.keyDown(panel, { key: 'Enter' });
+            await waitFor(() => expect(screen.getByTestId('terminal-notice').textContent).toBe('Failed to restart terminal.'));
+            expect(panel.getAttribute('data-read-only')).toBe('true');
+            fireEvent.keyDown(panel, { key: 'Enter' });
+            await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(2));
+            await waitFor(() => expect(screen.getByTestId('terminal-notice').textContent).toBe('Failed to restart terminal.'));
+        });
+
         it('POSTs to the restart endpoint and re-keys the tab onto the new session', async () => {
             const fetchMock = vi.fn().mockImplementation((url: string, init?: { method?: string }) => {
                 if (init?.method === 'POST') {

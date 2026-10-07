@@ -63,6 +63,7 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editValue, setEditValue] = useState('');
     const [restartingIds, setRestartingIds] = useState<Set<string>>(() => new Set());
+    const restartingIdsRef = useRef(new Set<string>());
     const [terminalNotice, setTerminalNotice] = useState<string | null>(null);
     // Compact picker: the terminal list collapses into a "Terminal N ▾" dropdown
     // so a narrow dock never overflows with a horizontal tab strip.
@@ -162,6 +163,12 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
     }, []);
 
     const markRestarting = useCallback((id: string, restarting: boolean) => {
+        // Keyboard and manual requests can race before React commits state.
+        if (restarting) {
+            restartingIdsRef.current.add(id);
+        } else {
+            restartingIdsRef.current.delete(id);
+        }
         setRestartingIds(prev => {
             const next = new Set(prev);
             if (restarting) {
@@ -191,7 +198,9 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
      */
     const restartTerminal = useCallback(async (id: string) => {
         const tab = terminals.find(t => t.id === id);
-        if (!tab || !tab.serverSessionId || tab.status !== 'exited' || restartingIds.has(id)) return;
+        if (!tab || !tab.serverSessionId || tab.status !== 'exited' || restartingIdsRef.current.has(id)) {
+            return;
+        }
 
         setTerminalNotice(null);
         markRestarting(id, true);
@@ -220,7 +229,7 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
         } finally {
             markRestarting(id, false);
         }
-    }, [client, markRestarting, markSessionMissing, restartingIds, terminals, workspaceId]);
+    }, [client, markRestarting, markSessionMissing, terminals, workspaceId]);
 
     const handleServerSessionCreated = useCallback((id: string, session: TerminalSessionInfo) => {
         setTerminals(prev =>
@@ -484,6 +493,7 @@ export function TerminalView({ workspaceId, toolbarPortalTarget, onSessionsChang
                             workspaceId={workspaceId}
                             isActive={tab.id === activeId}
                             readOnly={tab.status === 'exited'}
+                            onRestart={() => { void restartTerminal(tab.id); }}
                             onExit={(code) => handleExit(tab.id, code)}
                             onTitleChange={(title) =>
                                 setTerminals(prev =>
