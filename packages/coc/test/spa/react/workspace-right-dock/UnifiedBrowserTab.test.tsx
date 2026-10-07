@@ -146,8 +146,9 @@ describe('browser toolbar overflow', () => {
         const trigger = screen.getByRole('button', { name: 'Browser options' });
         await userEvent.click(trigger);
         const menu = screen.getByRole('menu', { name: 'Browser options' });
-        expect(screen.getByLabelText('Address').closest('form')).toContainElement(menu);
-        expect(menu).not.toHaveAttribute('data-native-view-overlay');
+        expect(screen.getByLabelText('Address').closest('form')).not.toContainElement(menu);
+        expect(menu.parentElement).toBe(document.body);
+        expect(menu).toHaveAttribute('data-native-view-overlay');
         expect(trigger).toHaveAttribute('aria-expanded', 'true');
         expect(trigger).toHaveAttribute('aria-controls', menu.id);
         expect(screen.getByTestId('browser-engine')).toHaveTextContent(engine === 'electron' ? 'Electron' : 'WebView2');

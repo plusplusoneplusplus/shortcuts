@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
     desktopHtmlPageBridge,
+    HTML_PAGE_VIEW_PREFIX,
     type HtmlPageLoadState,
 } from '../../../shared/file-path/html-page-bridge';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
+import { desktopBrowserBridge } from '../../../shared/file-path/browser-bridge';
+import { prepareBrowserWebview, useBrowserWebviewError } from './browserWebviewLayerStore';
 
 export interface UnifiedHtmlPageTabProps {
     tabId: string;
@@ -13,6 +16,7 @@ export interface UnifiedHtmlPageTabProps {
     chatId?: string | null;
     active: boolean;
     visible: boolean;
+    nativeCovered?: boolean;
     onErrorChange: (id: string, hasError: boolean) => void;
 }
 
@@ -21,10 +25,20 @@ export interface UnifiedHtmlPageTabProps {
  * path read-only; back/forward need the merged desktop browser API.
  */
 export function UnifiedHtmlPageTab({
-    tabId, pageId, filePath, wsId, chatId, active, visible, onErrorChange,
+    tabId, pageId, filePath, wsId, chatId, active, visible, nativeCovered, onErrorChange,
 }: UnifiedHtmlPageTabProps) {
     const bridge = desktopHtmlPageBridge();
+    const browser = desktopBrowserBridge();
+    const viewId = HTML_PAGE_VIEW_PREFIX + pageId;
+    const [opened, setOpened] = useState(false);
+    const [embed, setEmbed] = useState<'webview'>();
+    const attachError = useBrowserWebviewError(viewId);
     const [loadState, setLoadState] = useState<HtmlPageLoadState | null>(null);
+    const failed = loadState?.status === 'failed' || Boolean(attachError);
+
+    useEffect(() => {
+        onErrorChange(tabId, failed);
+    }, [failed, onErrorChange, tabId]);
 
     useEffect(() => {
         if (!bridge) return;
@@ -32,30 +46,31 @@ export function UnifiedHtmlPageTab({
         const unsubscribe = bridge.onState(state => {
             if (state.pageId !== pageId || disposed) return;
             setLoadState(state);
-            onErrorChange(tabId, state.status === 'failed');
         });
+        const attach = browser ? prepareBrowserWebview(viewId) : undefined;
         void bridge.open(pageId, filePath).then(result => {
-            if (disposed) {
-                bridge.close(pageId);
-            } else if (!result.ok) {
+            if (browser) attach?.(result.ok ? { ...result, engine: 'electron' } : result, browser);
+            if (disposed) return;
+            if (!result.ok) {
                 setLoadState({ pageId, status: 'failed', error: `Could not open page: ${result.reason}` });
-                onErrorChange(tabId, true);
+            } else {
+                setEmbed(result.embed);
+                setOpened(true);
             }
         }).catch(error => {
             if (disposed) return;
             console.error('Could not open HTML page:', error);
             setLoadState({ pageId, status: 'failed', error: 'Could not open this page.' });
-            onErrorChange(tabId, true);
         });
         return () => {
             disposed = true;
             unsubscribe();
-            bridge.close(pageId);
+            bridge.hide(pageId);
+            setOpened(false);
             onErrorChange(tabId, false);
         };
-    }, [bridge, filePath, onErrorChange, pageId, tabId]);
+    }, [bridge, browser, filePath, onErrorChange, pageId, tabId, viewId]);
 
-    const failed = loadState?.status === 'failed';
     const viewSource = () => {
         window.dispatchEvent(new CustomEvent('coc-open-source-canvas', {
             detail: { filePath, wsId, chatId, forceSourceViewer: true },
@@ -88,16 +103,17 @@ export function UnifiedHtmlPageTab({
 
     return (
         <NativeViewTab
-            bridge={bridge}
-            viewId={pageId}
-            shown={active && visible && !failed}
+            bridge={opened ? bridge : undefined}
+            viewId={embed === 'webview' ? viewId : pageId}
+            embed={embed}
+            shown={opened && active && visible && !failed && (embed === 'webview' || !nativeCovered)}
             surfaceHidden={failed}
             placeholderTestId="html-page-placeholder"
             toolbar={toolbar}
         >
             {failed && (
                 <div role="alert" className="p-4 text-sm">
-                    <p>Could not load page: {loadState?.error ?? 'Unknown error'}</p>
+                    <p>Could not load page: {attachError ?? loadState?.error ?? 'Unknown error'}</p>
                     <button className={toolbarButton} type="button" onClick={viewSource}>View source</button>
                 </div>
             )}

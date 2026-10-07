@@ -215,6 +215,8 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
         onError: handleNotFound,
     });
 
+    const viewOnly = readOnly || isOversized;
+
     // What the file holds on disk, as far as this pane knows. It starts as the
     // blob that was read and moves forward only when a write succeeds, because
     // `useFileContent` keeps serving the original `blob` after a save. Feeding
@@ -508,13 +510,13 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
     saveRef.current = handleSave;
     useEffect(() => {
         if (!onRegisterSave) return;
-        if (readOnly) {
+        if (viewOnly) {
             onRegisterSave(null);
             return;
         }
         onRegisterSave(() => saveRef.current());
         return () => onRegisterSave(null);
-    }, [onRegisterSave, readOnly]);
+    }, [onRegisterSave, viewOnly]);
 
     const [downloadError, setDownloadError] = useState('');
     const [downloading, setDownloading] = useState(false);
@@ -629,7 +631,7 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     blob={displayBlob}
                     fileName={fileName}
                     onChange={handleEditorChange}
-                    onSave={readOnly ? undefined : handleSave}
+                    onSave={viewOnly ? undefined : handleSave}
                     markdown={isWorkspacePreview && !canPreviewMarkdown ? 'toggle' : 'off'}
                     revealLine={revealLine}
                     highlightRange={endLine !== undefined && displayBlob.encoding === 'utf-8'
@@ -638,11 +640,16 @@ export function PreviewPane({ repoId, routingRef, definitionPreviewOwners, fileP
                     revealNonce={revealNonce}
                     markers={languageEnabled ? languageDocument.markers : undefined}
                     onModelMount={displayBlob.encoding === 'utf-8'
-                        ? (readOnly ? mountNonEditableModel : handleModelMount)
+                        ? (viewOnly ? mountNonEditableModel : handleModelMount)
                         : undefined}
                     codeTestId="monaco-container"
                 />
             ) : null}
+            {!loading && !error && isOversized && (
+                <div className="absolute bottom-1 left-3 text-xs text-[#848484]" data-testid="preview-oversized">
+                    File exceeds 10 MB; showing a truncated, read-only preview.
+                </div>
+            )}
             {downloadError && <div role="alert" className="absolute bottom-2 left-2 text-xs text-red-600">{downloadError}</div>}
 
             {!loading && !error && languageEnabled && (

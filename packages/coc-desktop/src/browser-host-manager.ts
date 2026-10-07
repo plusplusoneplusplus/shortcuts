@@ -19,8 +19,6 @@ interface Entry {
     ready: Promise<BrowserHostedView>;
     view?: BrowserHostedView;
     startupFailed?: boolean;
-    /** A file view kept hidden across a full SPA reload until the reloaded SPA reopens it. */
-    detached?: boolean;
 }
 
 function throwRejected(results: PromiseSettledResult<unknown>[]): void {
@@ -130,12 +128,14 @@ export class BrowserHostManager {
             entry.startupFailed = false;
             entry.ready = Promise.resolve().then(() => create(entry));
         }
-        entry.detached = false;
         try {
             const view = await entry.ready;
             if (entry.closed) { return { ok: false, engine, reason: 'not-found' }; }
             this.options.send(entry.ownerId, BROWSER_VIEW_STATE_CHANNEL, this.state(entry, view.snapshot()));
-            return { ok: true, engine, sourceKind: entry.sourceKind };
+            return {
+                ok: true, engine, sourceKind: entry.sourceKind,
+                ...(view.embed ? { embed: view.embed, src: view.src, partition: view.partition } : {}),
+            };
         } catch (error) {
             // Failed startup keeps its selected engine but permits an explicit open retry.
             entry.startupFailed = true;
@@ -172,6 +172,7 @@ export class BrowserHostManager {
                 if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_CLOSE_REQUESTED_CHANNEL, { viewId: entry.viewId }); }
             },
             download: event => { if (!entry.closed) { this.options.send(entry.ownerId, BROWSER_VIEW_DOWNLOAD_CHANNEL, event); } },
+            closed: () => { void this.closeEntry(entry, true).catch(error => console.error('[coc-desktop] Browser guest cleanup failed:', error)); },
         });
         if (entry.closed) {
             await view.close();
@@ -179,6 +180,17 @@ export class BrowserHostManager {
         }
         entry.view = view;
         return view;
+    }
+
+    async adopt(ownerId: number, viewId: unknown, guestId: unknown): Promise<BrowserOperationResult> {
+        const entry = this.entry(ownerId, viewId);
+        if (!entry || entry.closed || typeof guestId !== 'number' || !Number.isSafeInteger(guestId)) { return { ok: false, reason: 'not-found' }; }
+        try {
+            const view = await entry.ready;
+            if (entry.closed || !view.adopt) { return { ok: false, reason: 'not-found' }; }
+            await view.adopt(guestId);
+            return { ok: true };
+        } catch (error) { return this.failure(error, 'not-found'); }
     }
 
     async navigate(ownerId: number, viewId: unknown, url: unknown): Promise<BrowserOpenResult> {
@@ -252,20 +264,9 @@ export class BrowserHostManager {
         throwRejected(results);
     }
 
-    /**
-     * The owner's SPA did a full reload. URL views close; file views stay live
-     * but hidden, so reopening the same view id replays their page, history and
-     * scroll. A file view already detached by the previous reload and never
-     * reopened since is an orphan and closes.
-     */
+    /** A full renderer reload destroys all guests; persisted tab descriptors may reopen fresh views. */
     async reloadOwner(ownerId: number): Promise<void> {
-        const entries = [...this.owners.get(ownerId)?.values() ?? []];
-        const results = await Promise.allSettled(entries.map(entry => {
-            if (entry.sourceKind !== 'file' || entry.detached) { return this.closeEntry(entry); }
-            entry.detached = true;
-            return this.command(ownerId, entry.viewId, view => view.setBounds(null));
-        }));
-        throwRejected(results);
+        await this.closeOwner(ownerId);
     }
 
     async clear(engine: unknown): Promise<BrowserOperationResult> {

@@ -1,15 +1,19 @@
-//! Blob read/write: the MIME map, the 1 MiB read cap and NUL-probe binary
+//! Blob read/write: the MIME map, the text/binary read caps and NUL-probe binary
 //! detection the Explorer's file viewer depends on.
 
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 
 use base64::Engine;
 
 use super::{resolve_in_root, RepoFilesError};
 
-/// Largest file `read_blob` returns.
+/// Binary/image read cap (also used by content replacement).
 pub const MAX_BLOB_SIZE: u64 = 1024 * 1024;
+
+/// Explorer source-text read cap in UTF-8 bytes.
+pub const MAX_TEXT_BLOB_SIZE: u64 = 10 * 1024 * 1024;
 
 /// A file is binary when a NUL byte appears in its first 8 KiB.
 const BINARY_PROBE_SIZE: usize = 8192;
@@ -87,12 +91,30 @@ pub fn read_blob(root: &Path, relative: &str) -> Result<Blob, RepoFilesError> {
     if !metadata.is_file() {
         return Err(RepoFilesError::NotAFile(relative.to_owned()));
     }
-    if metadata.len() > MAX_BLOB_SIZE {
-        return Err(RepoFilesError::TooLarge(relative.to_owned()));
-    }
-    let bytes = fs::read(&path)?;
     let mime_type = mime_type(&path);
-    if is_binary(&bytes) {
+    let mut file = fs::File::open(&path)?;
+    let mut bytes = Vec::new();
+    (&mut file).take(BINARY_PROBE_SIZE as u64).read_to_end(&mut bytes)?;
+    let binary = is_binary(&bytes);
+    // Image previews retain their existing cap, including text-based SVGs.
+    let limit =
+        if binary || mime_type.starts_with("image/") { MAX_BLOB_SIZE } else { MAX_TEXT_BLOB_SIZE };
+    let too_large = || {
+        if limit == MAX_BLOB_SIZE {
+            RepoFilesError::TooLarge(relative.to_owned())
+        } else {
+            RepoFilesError::TextTooLarge(relative.to_owned())
+        }
+    };
+    if metadata.len() > limit {
+        return Err(too_large());
+    }
+    // Bound the read even if the file grows after stat.
+    file.take(limit + 1 - bytes.len() as u64).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Err(too_large());
+    }
+    if binary {
         let content = base64::engine::general_purpose::STANDARD.encode(&bytes);
         return Ok(Blob { content, encoding: "base64", mime_type });
     }

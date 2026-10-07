@@ -17,7 +17,6 @@ import {
     type DiffModelsInput,
 } from '../../../../../../src/server/spa/client/react/features/git/diff/monacoDiffOptions';
 import { browserDocumentUri } from '../../../../../../src/server/spa/client/react/features/language-servers/documentStore';
-import { MAX_FILE_VIEW_SIZE } from '../../../../../../src/server/spa/client/react/shared/file-viewer/useFileContent';
 
 const SRC = join(__dirname, '../../../../../../src/server/spa/client/react');
 const DIFF = join(SRC, 'features/git/diff');
@@ -98,8 +97,8 @@ describe('resolveDiffLanguageTarget', () => {
         expect(resolveDiffLanguageTarget(other)).toMatchObject({ eligible: true, uri: browserDocumentUri('ws-2', 'src/a.ts') });
     });
 
-    it('turns off above the explorer size threshold', () => {
-        expect(DIFF_LANGUAGE_MAX_CHARS).toBe(MAX_FILE_VIEW_SIZE);
+    it('turns off above the diff language size threshold', () => {
+        expect(DIFF_LANGUAGE_MAX_CHARS).toBe(512 * 1024);
         expect(resolveDiffLanguageTarget(input('unstaged', { modified: 'x'.repeat(DIFF_LANGUAGE_MAX_CHARS) })).eligible).toBe(true);
         expect(resolveDiffLanguageTarget(input('unstaged', { modified: 'x'.repeat(DIFF_LANGUAGE_MAX_CHARS + 1) })))
             .toEqual({ eligible: false, reason: 'oversized' });

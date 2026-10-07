@@ -23,9 +23,15 @@ export interface BrowserEventSink {
     closeRequested(): void;
     openMenuRequested(): void;
     focusAddressRequested?(): void;
+    /** The host expired or lost its guest; remove the manager handle as well. */
+    closed?(): void;
 }
 
 export interface BrowserHostedView {
+    readonly embed?: 'webview';
+    readonly src?: string;
+    readonly partition?: string;
+    adopt?(guestId: number): void | Promise<void>;
     snapshot(): BrowserViewState;
     navigate(url: string): void | Promise<void>;
     nav(action: BrowserNavAction): void | Promise<void>;

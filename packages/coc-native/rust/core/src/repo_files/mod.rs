@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use crate::notes_fs::resolve_lexically;
 
-pub use blob::{mime_type, read_blob, write_blob, Blob, MAX_BLOB_SIZE};
+pub use blob::{mime_type, read_blob, write_blob, Blob, MAX_BLOB_SIZE, MAX_TEXT_BLOB_SIZE};
 pub use candidates::{
     prepare_content_candidates, tracked_content_candidates, ContentCandidateCommand,
 };
@@ -46,6 +46,8 @@ pub enum RepoFilesError {
     NotADirectory(String),
     /// The target exceeds [`MAX_BLOB_SIZE`].
     TooLarge(String),
+    /// Source text exceeds [`MAX_TEXT_BLOB_SIZE`].
+    TextTooLarge(String),
     /// A bad query (empty, multi-line, or rejected by the regex engine).
     InvalidArg(String),
     /// Git could not enumerate tracked content-search candidates.
@@ -65,6 +67,9 @@ impl fmt::Display for RepoFilesError {
             Self::NotADirectory(path) => write!(f, "Not a directory: {path}"),
             Self::TooLarge(path) => {
                 write!(f, "File exceeds maximum size of {MAX_BLOB_SIZE} bytes: {path}")
+            }
+            Self::TextTooLarge(path) => {
+                write!(f, "File exceeds maximum size of {MAX_TEXT_BLOB_SIZE} bytes: {path}")
             }
             Self::InvalidArg(message) => f.write_str(message),
             Self::TrackedUnavailable(message) => {

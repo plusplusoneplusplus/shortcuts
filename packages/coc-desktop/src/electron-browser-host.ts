@@ -2,10 +2,8 @@
  * CoC Desktop — browser tab host (main-process side).
  *
  * The SPA's right panel can show general web pages in browser tabs. Each tab
- * is one `WebContentsView` stacked over the SPA window. The SPA owns the tab
- * UI (address bar, history buttons) and reports where its placeholder sits;
- * this module creates, places, hides and destroys the views and pushes live
- * navigation state back.
+ * is a renderer-owned `webview`. Main authorizes and adopts its WebContents,
+ * retains navigation policy and pushes state; the SPA owns DOM placement.
  *
  * Pages have no preload, run sandboxed with normal TLS, and share one persistent
  * installation-wide profile, isolated from the SPA and local HTML previews.
@@ -16,7 +14,7 @@
  * logic here thin and push everything testable into `browser-view-policy.ts`.
  */
 
-import { BrowserWindow, WebContents, WebContentsView, session, shell, webContents } from 'electron';
+import { BrowserWindow, WebContents, session, shell, webContents } from 'electron';
 import * as fs from 'node:fs';
 import type { NativeDatabase } from '@plusplusoneplusplus/coc-native';
 import { lockElectronProfile } from './browser-profile-lock';
@@ -31,15 +29,19 @@ import {
     classifyBrowserNavigation,
     classifyBrowserWindowOpen,
     isBrowserPermissionAllowed,
+    hardenedBrowserPreferences,
     validateBrowserUrl,
 } from './browser-view-policy';
 import type { HtmlPageBounds } from './html-page-policy';
+import { authorizeBrowserWebview, isBrowserEmbedder } from './browser-webview-guard';
 
 interface BrowserEntry {
     win: BrowserWindow;
     /** SPA webContents id, kept because `win.webContents` is unreadable once the window is destroyed. */
     ownerId: number;
-    view: WebContentsView;
+    contents?: WebContents;
+    shown: boolean;
+    authorization?: ReturnType<typeof authorizeBrowserWebview>;
     viewId: string;
     /** Last URL we were asked to load; reload after a failed load retries it. */
     requestedUrl: string;
@@ -64,8 +66,8 @@ function send(entry: BrowserEntry, channel: string, payload: unknown): void {
 }
 
 function snapshot(entry: BrowserEntry): BrowserViewState {
-    const wc = entry.view.webContents;
-    if (wc.isDestroyed()) {
+    const wc = entry.contents;
+    if (!wc || wc.isDestroyed()) {
         return { viewId: entry.viewId, engine: 'electron', url: entry.requestedUrl, title: '', canGoBack: false, canGoForward: false, loading: false };
     }
     return {
@@ -95,12 +97,10 @@ function destroyEntry(entry: BrowserEntry): void {
         }
     }
     entry.popups.clear();
-    if (!entry.win.isDestroyed()) {
-        entry.win.contentView.removeChildView(entry.view);
-    }
-    if (!entry.view.webContents.isDestroyed()) {
-        entryByContents.delete(entry.view.webContents.id);
-        entry.view.webContents.close();
+    entry.authorization?.dispose();
+    if (entry.contents && !entry.contents.isDestroyed()) {
+        entryByContents.delete(entry.contents.id);
+        entry.contents.close();
     }
 }
 
@@ -132,7 +132,7 @@ function configureProfile(): void {
 }
 
 function webPreferences(): Electron.WebPreferences {
-    return { contextIsolation: true, sandbox: true, nodeIntegration: false, session: profileSession };
+    return hardenedBrowserPreferences(profileSession!);
 }
 
 /** Navigation + `window.open` routing shared by the tab view and its pop-ups. */
@@ -175,13 +175,13 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
 }
 
 function wireView(entry: BrowserEntry): void {
-    const wc = entry.view.webContents;
+    const wc = entry.contents!;
     wireNavigation(entry, wc);
     wc.on('before-input-event', (event, input) => {
         // Only the embedded view, never authentication popups, owns this shortcut.
         const key = input.key.toLowerCase();
         const modifier = process.platform === 'darwin' ? input.meta : input.control;
-        if (entry.closed || !entry.view.getVisible() || input.type !== 'keyDown'
+        if (entry.closed || !entry.shown || input.type !== 'keyDown'
             || !['w', 't', 'l'].includes(key) || !modifier || input.alt
             || (key !== 'w' && input.shift) || (key === 'l' && !entry.sink.focusAddressRequested)) { return; }
         event.preventDefault();
@@ -219,13 +219,17 @@ function wireView(entry: BrowserEntry): void {
         entry.errorCode = 'runtime-crashed';
         update();
     });
+    wc.once('destroyed', () => {
+        if (!entry.closed) { destroyEntry(entry); entry.sink.closed?.(); }
+    });
 }
 
 function load(entry: BrowserEntry, url: string): void {
+    if (!entry.contents) { throw new BrowserHostError('busy', 'Browser guest is not attached yet.'); }
     entry.requestedUrl = url;
     entry.error = undefined;
     entry.errorCode = undefined;
-    void entry.view.webContents.loadURL(url).catch(() => {
+    void entry.contents.loadURL(url).catch(() => {
         /* surfaced by did-fail-load */
     });
 }
@@ -233,7 +237,7 @@ function load(entry: BrowserEntry, url: string): void {
 function ownWindow(sender: WebContents): BrowserWindow | null {
     const win = BrowserWindow.fromWebContents(sender);
     // Only a window's own SPA document may drive browser views — never a child view.
-    return win && !win.isDestroyed() && win.webContents === sender ? win : null;
+    return win && !win.isDestroyed() && win.webContents === sender && isBrowserEmbedder(sender) ? win : null;
 }
 
 function openView(sender: WebContents, request: BrowserViewRequest, sink: BrowserEventSink): BrowserEntry {
@@ -242,20 +246,21 @@ function openView(sender: WebContents, request: BrowserViewRequest, sink: Browse
     if (!win) {
         throw new BrowserHostError('no-window', 'Browser window is closed.');
     }
-    const view = new WebContentsView({ webPreferences: webPreferences() });
-    view.setVisible(false);
-    // Index 0: under any other overlay (the find bar) that shares the window.
-    win.contentView.addChildView(view, 0);
-    const entry: BrowserEntry = { win, ownerId: sender.id, view, viewId, requestedUrl: url, popups: new Set(), sink, closed: false };
+    const entry: BrowserEntry = { win, ownerId: sender.id, shown: false, viewId, requestedUrl: url, popups: new Set(), sink, closed: false };
     entries.add(entry);
-    wireView(entry);
-    load(entry, url);
+    entry.authorization = authorizeBrowserWebview(sender.id, url, profileSession!, guest => {
+        entry.contents = guest;
+        wireView(entry);
+    }, () => {
+        destroyEntry(entry);
+        sink.closed?.();
+    });
     return entry;
 }
 
 function runNav(entry: BrowserEntry, action: string): void {
-    const wc = entry.view.webContents;
-    if (wc.isDestroyed()) {
+    const wc = entry.contents;
+    if (!wc || wc.isDestroyed()) {
         return;
     }
     switch (action) {
@@ -281,12 +286,7 @@ function runNav(entry: BrowserEntry, action: string): void {
 }
 
 function setBounds(entry: BrowserEntry, bounds: HtmlPageBounds | null): void {
-    if (!bounds) {
-        entry.view.setVisible(false);
-        return;
-    }
-    entry.view.setBounds(bounds);
-    entry.view.setVisible(true);
+    entry.shown = bounds !== null;
 }
 
 export class ElectronBrowserHost implements BrowserEngineHost {
@@ -319,11 +319,18 @@ export class ElectronBrowserHost implements BrowserEngineHost {
         if (!sender) { throw new BrowserHostError('no-window', 'Browser window is closed.'); }
         const entry = openView(sender, request, sink);
         return {
+            embed: 'webview',
+            src: entry.authorization!.src,
+            partition: entry.authorization!.partition,
+            adopt: guestId => {
+                entry.authorization!.adopt(guestId);
+                pushState(entry);
+            },
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),
             setBounds: bounds => setBounds(entry, bounds),
-            focus: () => entry.view.webContents.focus(),
+            focus: () => entry.contents?.focus(),
             close: () => destroyEntry(entry),
         };
     }

@@ -90,29 +90,41 @@ there to re-issuing the named open, which focuses the existing window.
 ## Desktop browser and HTML page views
 
 `window.cocDesktop.browser` (`packages/coc-desktop/src/preload.ts`) is the one desktop view API, backed by `browser-host-manager.ts`. `open(viewId, source, sessionKey, relatedEngine?)` takes `{ kind: 'url', url }` (or a bare URL string) or `{ kind: 'file', path }`, validates HTTP(S)/file policy and ownership, and replays a live view's state and history; only `file` sources load `file:`. `browser.sources` (`['url', 'file']`) lets the SPA feature-detect file previews, and `openViewExternal(viewId)` opens a view's current page in the system browser.
-Results/state identify the retained engine and `sourceKind`; `sessionKey` identifies routing ownership, not a profile. `setBounds(viewId, getBoundingClientRect())` aligns a view in CSS px; `null`/`hide()` hides it and `close()` destroys it.
+Results/state identify the retained engine and `sourceKind`; `sessionKey` identifies routing ownership, not a profile. Electron browser opens return `embed: 'webview'`, `src` and `partition`; the renderer attaches the guest through `adopt(viewId, guestId)`. `setBounds` aligns native views in CSS px and reports guest visibility; `null`/`hide()` hides, and `close()` destroys.
 
 ### HTML page (file) views
 
-Local `.html`/`.htm` previews are `file` sources hosted in Electron `WebContentsView`s created by `file-preview-host.ts`, independent of the engine preference and `relatedEngine`, and never closed by browser-data cleanup. They have no preload, use a separate in-memory sandboxed partition, and follow `html-page-policy.ts`. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
+Local `.html`/`.htm` previews are `file` sources hosted as Electron webview guests by `file-preview-host.ts`, independent of engine preferences and browser-data cleanup. They have no preload, use the isolated in-memory `coc-html-page` session, and follow `html-page-policy.ts`. Only pending, main-validated exact file URLs pass the attachment guard. Invalid, relative or missing HTML files return `{ ok: false, reason }`, requiring the source-viewer fallback.
 `window.cocDesktop.htmlPage` is a compatibility wrapper for SPAs without `file` sources: it maps each `pageId` to view `html-page:<pageId>` (session key `html-page`) over the browser channels and narrows replies/states (`loading`/`loaded`/`failed`); it has no view logic of its own.
 
-SPA side: `desktopHtmlPageBridge()` (`shared/file-path/html-page-bridge.ts`) adapts the `file` source to the page API (view `html-page:<pageId>`) when `browser.sources` includes `file`, else returns the older `htmlPage`; web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab` (placeholder + placement) and `NativeViewNavButtons`; the HTML toolbar shows the file path read-only, with Back/Forward only on the merged API.
+SPA side: `desktopHtmlPageBridge()` adapts the `file` source and its attachment metadata to the page API (view `html-page:<pageId>`); web dashboards and remote-workspace paths keep the source viewer. `UnifiedHtmlPageTab` and `UnifiedBrowserTab` share `NativeViewTab` and `NativeViewNavButtons`; their Electron placeholders register with the same persistent guest layer. The HTML toolbar shows a read-only path.
 
 ### Browser profiles and preferences
 
 `desktop-browser.json` stores the default (Electron). The Admin **Browser** page (`#admin/browser`, Configure group after AI Provider; desktop shell only, hidden on the web) hosts Desktop Preferences, which uses local IPC, not workspace-server APIs.
 Separate persistent `browser/electron` and `browser/webview2` profiles share sign-ins across workspaces/windows, isolating the SPA/HTML previews. Confirmed cleanup closes target-engine tabs and excludes new views.
+Electron forces its locked `session.fromPath` profile onto each guest. The returned
+partition is a single-use attachment token, not a new storage partition; existing
+sign-ins and session permission/download hooks remain shared.
 The Windows desktop helper enables OS-account SSO by default at environment creation without an environment flag. Profiles remain separate from Edge. SSO does not guarantee Conditional Access compliance; clearing site data does not disconnect Windows accounts.
 
 ### Browser adapters and lifecycle
 
-Electron uses sandboxed `WebContentsView`s; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
+Electron browser tabs use sandboxed DOM `<webview>` guests; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
 Probes create no views; failures have no fallback/automatic installation. Navigation, layout and events are engine-neutral; related tabs/popups inherit engine/profile and downloads go to the system browser.
 Pages have no CoC bridge, use normal TLS and deny sensitive permissions; HTML previews stay Electron.
 WebView2 placement raises its child HWND above Electron's renderer without activation; null bounds hide it for inactive tabs and DOM overlays.
 
-`BrowserToolbarMenu` renders engine information and the current-page external-open action in a reserved toolbar row. The native page stays visible below the menu and follows its placeholder bounds without reopening or navigating. `useNativeViewPlacement` hides views for overlapping DOM content and explicit `data-native-view-overlay` elements, including small overlays between its hit-test probes; dismissal restores eligible active views.
+`browser-webview-guard.ts` registers exact main SPA documents and denies every
+other embedder. `sanitizeWebviewAttach` replaces renderer preferences and strips
+preloads and privilege attributes. Owner/source-bound tokens expire after 30
+seconds unless adopted; main wires navigation, popup, download and state handlers
+at guest creation, before loading. Renderer adoption uses the first `dom-ready`,
+when stock Electron exposes `getWebContentsId`, and rejects foreign/reused guests.
+
+`BrowserWebviewLayer` mounts once beside `App` and retains each guest outside keyed workspace subtrees. Placeholders register in `browserWebviewLayerStore`; fixed hosts track their rectangles and clip to ancestor overflow viewports. Hidden hosts use visibility and pointer-events, never display. Close and `onClosed` remove guests, with identity checks rejecting late open replies.
+
+`BrowserToolbarMenu` portals a dropdown above the live Electron page; the page title belongs in the tab label. Native surfaces use `useNativeViewPlacement` to hide for overlapping DOM content and explicit `data-native-view-overlay` elements. DOM webviews stay visible under menus, dialogs and toasts.
 The sandbox preload captures renderer pointer/focus events. Owner-validated `browser-host-focus` IPC restores renderer focus and sends the visible WebView2 view a `focus-host` command, which transfers native keyboard focus to its parent HWND without joining input queues.
 
 The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
@@ -120,7 +132,7 @@ The browser toolbar handles Ctrl+L (Cmd+L on macOS); native engines forward
 focus. Only the matching active, visible browser tab focuses and selects its
 complete editable address, including unsent edits.
 
-Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores via `closeBrowserPanelView`. Window teardown closes every view. A full SPA reload (`manager.reloadOwner`) closes `url` views but only hides `file` views: the persisted `html-page` tab reopens the same view id and gets the live page, history and scroll back. A file view not reopened before the next reload closes then.
+Both tabs hide on unmount and close with their tab; entry-point `onClosed` reaches inactive stores and removes guest hosts via `closeBrowserPanelView`. Window teardown and full SPA reload (`manager.reloadOwner`) close all views. Persisted HTML descriptors reopen files from disk with fresh history, scroll and form state; URL tabs remain session-only.
 Live desktop `test/e2e/browser-engines.e2e.test.ts` uses `COC_DESKTOP_E2E=1` and `--fileParallelism=false`; headless Linux needs Xvfb/`COC_DESKTOP_E2E_NO_SANDBOX=1`.
 
 Pop-out buttons draw the SVG `PopOutIcon` (`features/canvas/components/icons.tsx`),
@@ -353,6 +365,13 @@ native find.
 Content-search rows group hits by repo-relative file path and consume the search
 response's line number plus adjacent `before`/`after` lines, so the navigator can
 show source context without issuing per-result file reads.
+
+Explorer source-file previews use `shared/file-viewer/useFileContent`: full text
+through 10 MB (`10 * 1024 * 1024` UTF-8 bytes), inclusive; larger returned text
+is truncated at a complete character and read-only with no save callback.
+Trusted/workspace-preview files remain read-only. Native repository blob reads
+accept text through 10 MB; larger reads retain the backend size error. Binary
+and image read caps, diff language limits, and chat-source API limits are separate.
 
 Explorer editor tabs render the same filename-classified badge or generic
 document icon as the file tree. Search-result editor tabs render a decorative

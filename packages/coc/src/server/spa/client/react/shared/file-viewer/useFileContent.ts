@@ -1,6 +1,6 @@
 /**
  * useFileContent — the fetch/edit state machine a file viewer needs: abort and
- * refetch on `key` change, loading/error/retry, the 512 KB oversize cut, and
+ * refetch on `key` change, loading/error/retry, the 10 MB UTF-8 oversize cut, and
  * the edit buffer. Transport is injected, so no endpoint leaks in here. Host
  * callback plumbing (`onDirtyChange`/`onStatusChange`/`onRegisterSave`) stays
  * with the host as thin effects over the values returned here.
@@ -9,8 +9,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FileBlob, FileViewerStatus } from './types';
 
-/** Text past this is shown truncated and view-only. */
-export const MAX_FILE_VIEW_SIZE = 512 * 1024; // 512 KB
+/** UTF-8 byte limit; text past this is shown truncated and view-only. */
+export const MAX_FILE_VIEW_SIZE = 10 * 1024 * 1024; // 10 MB
 
 export interface UseFileContentOptions {
     /**
@@ -33,7 +33,7 @@ export interface UseFileContentOptions {
 export interface UseFileContent {
     /** The bytes as read, before truncation or edits. */
     blob: FileBlob | null;
-    /** What to render: the edit buffer, or the 512 KB slice when oversized. */
+    /** What to render: the edit buffer, or the 10 MB UTF-8 prefix when oversized. */
     displayBlob: FileBlob | null;
     isOversized: boolean;
     loading: boolean;
@@ -68,7 +68,18 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
     writeRef.current = write;
     // The text on disk as far as this buffer knows: the read, then each successful write.
     const savedContentRef = useRef('');
-    const canWrite = write !== undefined;
+    // Encode only when the read blob changes, never on each editor keystroke.
+    const textPreview = useMemo(() => {
+        if (blob?.encoding !== 'utf-8') return null;
+        const bytes = new TextEncoder().encode(blob.content);
+        if (bytes.length <= MAX_FILE_VIEW_SIZE) return { content: blob.content, isOversized: false };
+        // Streaming decode drops an incomplete trailing code point instead of
+        // inserting a replacement character or splitting a surrogate pair.
+        const content = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes.subarray(0, MAX_FILE_VIEW_SIZE), { stream: true });
+        return { content, isOversized: true };
+    }, [blob]);
+    const isOversized = textPreview?.isOversized ?? false;
+    const canWrite = write !== undefined && !isOversized;
 
     const load = useCallback(() => {
         abortRef.current?.abort();
@@ -124,7 +135,7 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
 
     const save = useCallback(async (): Promise<boolean> => {
         const writeFn = writeRef.current;
-        if (!writeFn) return false;
+        if (!writeFn || !canWrite) return false;
         setIsSaving(true);
         try {
             await writeFn(editedContent);
@@ -137,7 +148,7 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         } finally {
             setIsSaving(false);
         }
-    }, [editedContent]);
+    }, [editedContent, canWrite]);
 
     const discard = useCallback((): string => {
         const saved = savedContentRef.current;
@@ -146,12 +157,11 @@ export function useFileContent({ key, read, write, onError }: UseFileContentOpti
         return saved;
     }, []);
 
-    const isOversized = blob?.encoding === 'utf-8' && blob.content.length > MAX_FILE_VIEW_SIZE;
     const displayBlob = useMemo<FileBlob | null>(() => {
         if (!blob) return null;
         if (blob.encoding !== 'utf-8') return blob;
-        return { ...blob, content: isOversized ? blob.content.slice(0, MAX_FILE_VIEW_SIZE) : editedContent };
-    }, [blob, isOversized, editedContent]);
+        return { ...blob, content: isOversized ? textPreview!.content : editedContent };
+    }, [blob, textPreview, isOversized, editedContent]);
 
     return {
         blob,

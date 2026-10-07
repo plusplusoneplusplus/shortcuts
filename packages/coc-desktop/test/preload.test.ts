@@ -56,6 +56,7 @@ import {
 } from '../src/html-page-policy';
 import {
     BROWSER_VIEW_OPEN_CHANNEL,
+    BROWSER_VIEW_ADOPT_CHANNEL,
     BROWSER_VIEW_NAVIGATE_CHANNEL,
     BROWSER_VIEW_NAV_CHANNEL,
     BROWSER_VIEW_SET_BOUNDS_CHANNEL,
@@ -132,6 +133,15 @@ describe('preload bridge', () => {
         expect(send.mock.calls).toEqual([[BROWSER_HOST_FOCUS_CHANNEL], [BROWSER_HOST_FOCUS_CHANNEL]]);
         document.dispatchEvent(new Event('keydown'));
         expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not steal focus when the renderer webview receives DOM focus', () => {
+        const event = new Event('focusin');
+        const closest = vi.fn(() => ({}));
+        Object.defineProperty(event, 'target', { value: { closest } });
+        document.dispatchEvent(event);
+        expect(closest).toHaveBeenCalledWith('webview');
+        expect(send).not.toHaveBeenCalled();
     });
 
     it('routes local browser preferences, confirmed cleanup, focus and broadcasts through the desktop bridge', async () => {
@@ -343,6 +353,7 @@ describe('preload bridge', () => {
 
     it.each([
         { ok: true, engine: 'electron', sourceKind: 'file' },
+        { ok: true, engine: 'electron', sourceKind: 'file', embed: 'webview', src: 'file:///preview/page.html', partition: 'attachment-token' },
         ...['invalid', 'not-absolute', 'not-html', 'missing', 'not-file', 'bad-id', 'busy', 'bad-session', 'no-window']
             .map(reason => ({ ok: false, reason, message: 'detail', engine: 'electron' })),
     ])('htmlPage.open keeps its reply shape for %o (in sync with html-page-policy)', async (result) => {
@@ -389,6 +400,8 @@ describe('preload bridge', () => {
         invoke.mockResolvedValue({ ok: true });
         await expect(api.browser.open('b1', 'https://example.com/', 'ws-1')).resolves.toEqual({ ok: true });
         expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_OPEN_CHANNEL, 'b1', 'https://example.com/', 'ws-1', undefined);
+        await expect(api.browser.adopt('b1', 42)).resolves.toEqual({ ok: true });
+        expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_ADOPT_CHANNEL, 'b1', 42);
         await api.browser.navigate('b1', 'https://example.org/');
         expect(invoke).toHaveBeenCalledWith(BROWSER_VIEW_NAVIGATE_CHANNEL, 'b1', 'https://example.org/');
         invoke.mockResolvedValue(true);

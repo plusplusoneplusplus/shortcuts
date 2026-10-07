@@ -1,12 +1,13 @@
 'use strict';
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, session, shell } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const dist = path.join(__dirname, '..', '..', 'dist');
-const { registerBrowserViewIpc, disposeBrowserViews } = require(path.join(dist, 'browser-view-host.js'));
+const { registerBrowserViewIpc, registerBrowserEmbedder, disposeBrowserViews } = require(path.join(dist, 'browser-view-host.js'));
+const { fixtureScript } = require('./webview-fixture.cjs');
 const { loadWebView2Binary } = require('@plusplusoneplusplus/coc-native');
 const userData = process.env.COC_BROWSER_E2E_USER_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE || 'electron';
@@ -14,7 +15,10 @@ const restart = process.argv.includes('--restart-check');
 const afterClear = process.argv.includes('--after-clear');
 const focusCheck = process.argv.includes('--focus-check');
 const execFileAsync = promisify(execFile);
-app.setPath('userData', path.join(userData, 'shell'));
+// The profile (userData/coc/browser/electron) must sit inside Electron's userData:
+// macOS sandboxes the network service to userData and the user temp dir, and a
+// cookie DB anywhere else silently falls back to memory.
+app.setPath('userData', userData);
 const externalCalls = [];
 shell.openExternal = async url => { externalCalls.push(url); };
 let confirmation = 0;
@@ -94,21 +98,27 @@ app.whenReady().then(async () => {
     base = `http://127.0.0.1:${server.address().port}`;
     const windows = [];
     const makeWindow = async () => {
-        const win = new BrowserWindow({ width: 900, height: 650, show: true, webPreferences: { preload: path.join(dist, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false } });
-        await win.loadURL('data:text/html,' + encodeURIComponent(`<body><textarea id="composer" style="position:absolute;left:10px;top:10px;width:250px;height:40px"></textarea><input id="address" style="position:absolute;left:10px;top:70px"><script>
+        const win = new BrowserWindow({ width: 900, height: 650, show: true, webPreferences: { preload: path.join(dist, 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: true } });
+        const spaUrl = 'data:text/html,' + encodeURIComponent(`<body><textarea id="composer" style="position:absolute;left:10px;top:10px;width:250px;height:40px"></textarea><input id="address" style="position:absolute;left:10px;top:70px"><script>
             window.states=[];window.newTabs=[];window.downloads=[];window.closedViews=[];
             document.addEventListener('pointerdown',e=>window.lastPointer={x:e.clientX,y:e.clientY,target:e.target.id});
             const b=window.cocDesktop.browser;
             b.onState(s=>window.states.push(s));b.onNewTab(e=>window.newTabs.push(e));
             b.onDownload(e=>window.downloads.push(e));b.onClosed(e=>window.closedViews.push(e));
-        </script></body>`));
+        </script></body>`);
+        registerBrowserEmbedder(win, spaUrl);
+        await win.loadURL(spaUrl);
+        await win.webContents.executeJavaScript(fixtureScript);
         windows.push(win);
         return win;
     };
     const main = await makeWindow();
     const spa = js => main.webContents.executeJavaScript(js);
-    const call = (win, method, ...args) => win.webContents.executeJavaScript(`window.cocDesktop.browser.${method}(${args.map(value => JSON.stringify(value)).join(',')})`);
+    const call = (win, method, ...args) => win.webContents.executeJavaScript(`window.__browser.${method}(${args.map(value => JSON.stringify(value)).join(',')})`);
     const state = (win, id) => win.webContents.executeJavaScript(`window.states.filter(s=>s.viewId===${JSON.stringify(id)}).slice(-1)[0]`);
+    // Main-process view of the Electron profile cookie jar, for persistence diagnostics.
+    const jar = async () => engine !== 'electron' ? null : (await session.fromPath(path.join(dataDir, 'browser', 'electron')).cookies.get({}))
+        .map(({ name, domain, session: sessionOnly, expirationDate }) => ({ name, domain, sessionOnly, expirationDate }));
     const settled = (win, id, predicate) => waitFor(async () => { const current = await state(win, id); return current && !current.loading && predicate(current) ? current : null; }, `${id} state`);
     const pref = await call(main, 'getPreferences');
     if (engine === 'webview2' && !pref.engines.find(e => e.engine === engine)?.available) throw new Error('Required real WebView2 capability is unavailable: ' + JSON.stringify(pref));
@@ -174,7 +184,7 @@ app.whenReady().then(async () => {
         }
         emit('composer-refocus', { value: await spa('document.getElementById("composer").value') });
     } else if (restart) {
-        emit('restart', { engine: home.engine, history: home.canGoBack, report: reports.get('main'), preference: pref.defaultEngine });
+        emit('restart', { engine: home.engine, history: home.canGoBack, report: reports.get('main'), preference: pref.defaultEngine, jar: await jar() });
         if (!afterClear) {
             const otherWindow = await makeWindow();
             await call(otherWindow, 'open', 'other', base + '/?tab=other', 'remote-workspace');
@@ -221,6 +231,7 @@ app.whenReady().then(async () => {
         emit('history', { second, back, forward });
         command('main', 'seed');
         await waitFor(() => reports.get('main')?.storage === 'stored', 'site data seeded');
+        emit('seeded', { report: reports.get('main'), jar: await jar() });
         await call(main, 'navigate', 'main', base + '/slow');
         await waitFor(async () => (await state(main, 'main'))?.loading, 'slow load starts');
         await call(main, 'nav', 'main', 'stop');
@@ -278,7 +289,9 @@ app.whenReady().then(async () => {
         await call(main, 'setDefaultEngine', engine);
         // Cross-window cleanup is checked after the persistence restart.
     }
+    const before = restart ? null : await jar();
     await disposeBrowserViews();
+    if (!restart) emit('disposed', { before, after: await jar() });
     windows.forEach(win => win.destroy());
     server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));

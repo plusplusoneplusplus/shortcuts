@@ -227,12 +227,13 @@ describe('UnifiedRightPanel', () => {
             expect(screen.getAllByRole('tab')).toHaveLength(2);
             expect(screen.getByTestId(`unified-panel-tab-${tabId}`).getAttribute('aria-selected')).toBe('true');
             expect(bridge.open).toHaveBeenCalledWith('page-1', filePath);
-            expect(screen.getAllByTestId('html-page-placeholder')).toHaveLength(2);
+            await waitFor(() => expect(screen.getAllByTestId('html-page-placeholder')).toHaveLength(2));
         });
 
-        it('routes toolbar actions and inline failure fallback to the source viewer', () => {
+        it('routes toolbar actions and inline failure fallback to the source viewer', async () => {
             renderPanel({ chatId: 'chat-1' });
             openPage();
+            await screen.findByTestId('html-page-placeholder');
             const sourceEvents: CustomEvent[] = [];
             const collect = (event: Event) => sourceEvents.push(event as CustomEvent);
             window.addEventListener('coc-open-source-canvas', collect);
@@ -262,7 +263,7 @@ describe('UnifiedRightPanel', () => {
             try {
                 const { rerender } = renderPanel({ chatId: 'chat-1' });
                 openPage();
-                expect(bridge.setBounds).toHaveBeenCalledWith('page-1', { x: 50, y: 90, width: 300, height: 220 });
+                await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith('page-1', { x: 50, y: 90, width: 300, height: 220 }));
                 rect.mockReturnValue({ x: 80, y: 90, width: 250, height: 220 } as DOMRect);
                 fireEvent(window, new Event('resize'));
                 await waitFor(() => expect(bridge.setBounds).toHaveBeenCalledWith(
@@ -602,7 +603,7 @@ describe('UnifiedRightPanel', () => {
                 url: 'https://example.com/login', title: 'Sign in', canGoBack: true, canGoForward: true,
             })));
             expect(browserTabs()[0].textContent).toContain('Sign in');
-            expect(screen.getByTestId('browser-title').textContent).toBe('Sign in');
+            expect(screen.queryByTestId('browser-title')).toBeNull();
             expect(readUnifiedPanelState(WS).workspaceTabs[0].browserUrl).toBe('https://example.com/login');
             fireEvent.click(screen.getByTestId('browser-back'));
             fireEvent.click(screen.getByTestId('browser-forward'));

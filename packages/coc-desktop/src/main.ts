@@ -88,7 +88,7 @@ import {
 } from './report-issue';
 import { isPopOutChildUrl } from './popout-chrome';
 import { createPopOutWindow, registerPopOutIpc } from './popout-window-host';
-import { disposeBrowserViews, registerBrowserViewIpc } from './browser-view-host';
+import { disposeBrowserViews, registerBrowserViewIpc, registerBrowserEmbedder } from './browser-view-host';
 
 // Brand the app identity before anything builds the menu / dock / About panel.
 // In dev (electron launched against this package) this fixes the menu-bar name,
@@ -158,6 +158,8 @@ function createWindow(): BrowserWindow {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            sandbox: true,
+            webviewTag: true,
         },
     });
     // Keep the OS window title as "CoC" rather than letting the served page
@@ -225,7 +227,7 @@ function wireExternalLinkRouting(win: BrowserWindow, servedUrl: string): void {
             });
             return { action: 'deny' };
         }
-        return { action: 'allow' };
+        return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: { webviewTag: false } } };
     });
     win.webContents.on('will-navigate', (event, url) => {
         if (shouldOpenExternally(url, servedUrl)) {
@@ -276,6 +278,7 @@ function wireMacTitleBarInset(win: BrowserWindow): void {
  */
 async function showServedSpa(url: string): Promise<void> {
     mainWindow = createWindow();
+    registerBrowserEmbedder(mainWindow, url);
     wireExternalLinkRouting(mainWindow, url);
     attachFindBar(mainWindow);
     wireMacTitleBarInset(mainWindow);
@@ -1133,8 +1136,7 @@ async function bootstrap(): Promise<void> {
     // process the moment a pop-out window is built.
     registerPopOutIpc();
 
-    // HTML page tabs: the SPA asks the main process to host a local .html file
-    // in a WebContentsView over its right panel.
+    // Browser and HTML tabs share owner-validated hosting and guest authorization.
     registerBrowserViewIpc();
 
     // AC-01: bind the global screenshot-capture accelerator on app ready, so the

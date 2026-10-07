@@ -44,6 +44,7 @@ const MENU_COPY_HANDLED_CHANNEL = 'coc-desktop:menu-copy-handled';
 const HTML_PAGE_VIEW_PREFIX = 'html-page:';
 const HTML_PAGE_SESSION_KEY = 'html-page';
 const BROWSER_VIEW_OPEN_CHANNEL = 'coc-desktop:browser-view-open';
+const BROWSER_VIEW_ADOPT_CHANNEL = 'coc-desktop:browser-view-adopt';
 const BROWSER_VIEW_NAVIGATE_CHANNEL = 'coc-desktop:browser-view-navigate';
 const BROWSER_VIEW_NAV_CHANNEL = 'coc-desktop:browser-view-nav';
 const BROWSER_VIEW_SET_BOUNDS_CHANNEL = 'coc-desktop:browser-view-set-bounds';
@@ -68,7 +69,10 @@ const BROWSER_SOURCE_KINDS = ['url', 'file'] as const;
 
 // Chromium's DOM focus does not release the separate WebView2 process's native focus.
 if (typeof document !== 'undefined') {
-    const focusHost = () => ipcRenderer.send(BROWSER_HOST_FOCUS_CHANNEL);
+    const focusHost = (event: Event) => {
+        if ((event.target as Element | null)?.closest?.('webview')) { return; }
+        ipcRenderer.send(BROWSER_HOST_FOCUS_CHANNEL);
+    };
     document.addEventListener('pointerdown', focusHost, true);
     document.addEventListener('focusin', focusHost, true);
 }
@@ -110,7 +114,7 @@ interface PopOutState {
 }
 
 /** Reply to `htmlPage.open` (mirrors `HtmlPageOpenResult` in html-page-policy.ts). */
-type HtmlPageOpenResult = { ok: true } | { ok: false; reason: string };
+type HtmlPageOpenResult = { ok: true; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string };
 
 /** Load status of a page tab (mirrors `HtmlPageLoadState` in html-page-policy.ts). */
 interface HtmlPageLoadState {
@@ -131,7 +135,8 @@ interface HtmlPageRect {
 /** Reply to `browser.open` / `browser.navigate` (mirrors `BrowserOpenResult` in browser-view-policy.ts). */
 type BrowserEngine = 'electron' | 'webview2';
 type BrowserSourceKind = typeof BROWSER_SOURCE_KINDS[number];
-type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSourceKind } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
+type BrowserOpenResult = { ok: true; engine: BrowserEngine; sourceKind?: BrowserSourceKind; embed?: 'webview'; src?: string; partition?: string } | { ok: false; reason: string; message?: string; engine?: BrowserEngine };
+type BrowserOperationResult = { ok: true } | { ok: false; reason: string; message?: string };
 /** What `browser.open` loads (mirrors `BrowserSource`); a bare string is a `url` source. */
 type BrowserSource = { kind: 'url'; url: string } | { kind: 'file'; path: string };
 interface BrowserPreferences {
@@ -173,7 +178,7 @@ const HTML_PAGE_OPEN_REASONS = ['invalid', 'not-absolute', 'not-html', 'missing'
 
 /** Mirrors `toHtmlPageOpenResult` in html-page-policy.ts. */
 function toHtmlPageOpenResult(result: BrowserOpenResult): HtmlPageOpenResult {
-    if (result.ok) { return { ok: true }; }
+    if (result.ok) { return { ok: true, ...(result.embed ? { embed: result.embed, src: result.src, partition: result.partition } : {}) }; }
     return { ok: false, reason: HTML_PAGE_OPEN_REASONS.includes(result.reason) ? result.reason : 'no-window' };
 }
 
@@ -207,6 +212,8 @@ const browser = {
     sources: BROWSER_SOURCE_KINDS,
     open: (viewId: string, source: BrowserSource | string, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult> =>
         ipcRenderer.invoke(BROWSER_VIEW_OPEN_CHANNEL, viewId, source, sessionKey, relatedEngine),
+    adopt: (viewId: string, guestId: number): Promise<BrowserOperationResult> =>
+        ipcRenderer.invoke(BROWSER_VIEW_ADOPT_CHANNEL, viewId, guestId),
     navigate: (viewId: string, url: string): Promise<BrowserOpenResult> =>
         ipcRenderer.invoke(BROWSER_VIEW_NAVIGATE_CHANNEL, viewId, url),
     nav: (viewId: string, action: 'back' | 'forward' | 'reload' | 'stop') =>
@@ -378,7 +385,7 @@ const api = {
      * HTML page tab bridge — compatibility wrapper for SPAs that predate `file`
      * sources on {@link browser}. Each `pageId` maps to the browser view
      * `html-page:<pageId>`; `open` opens it as a `file` source and narrows the
-     * reply to `{ ok: true } | { ok: false, reason }` (a refusal lets the SPA
+     * reply to open metadata or `{ ok: false, reason }` (a refusal lets the SPA
      * fall back to the source viewer), and `onState` reports loading / loaded /
      * failed for those views only. All view logic lives behind `browser`.
      */

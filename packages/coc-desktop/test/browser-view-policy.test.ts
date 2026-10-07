@@ -13,6 +13,7 @@ import {
     isValidBrowserSessionKey,
     isValidBrowserViewId,
     validateBrowserUrl,
+    sanitizeWebviewAttach,
 } from '../src/browser-view-policy';
 
 describe('validateBrowserUrl', () => {
@@ -20,6 +21,48 @@ describe('validateBrowserUrl', () => {
         expect(validateBrowserUrl('https://example.com')).toEqual({ ok: true, url: 'https://example.com/' });
         expect(validateBrowserUrl('http://localhost:5173/app?x=1#h')).toEqual({ ok: true, url: 'http://localhost:5173/app?x=1#h' });
         expect(validateBrowserUrl('  http://127.0.0.1:8080  ')).toEqual({ ok: true, url: 'http://127.0.0.1:8080/' });
+    });
+
+    describe('sanitizeWebviewAttach', () => {
+        const profile = {} as Electron.Session;
+
+        it('strips renderer preload/preferences and forces the isolated browser session and security flags', () => {
+            const preferences: Electron.WebPreferences & Record<string, unknown> = {
+                preload: 'unsafe.js', preloadURL: 'file:///unsafe.js', sandbox: false,
+                nodeIntegration: true, contextIsolation: false, webviewTag: true,
+                nodeIntegrationInSubFrames: true, nodeIntegrationInWorker: true,
+                webSecurity: false, allowRunningInsecureContent: true, plugins: true,
+                partition: 'persist:renderer-chosen', additionalArguments: ['--unsafe'],
+            };
+            const params = {
+                src: 'https://example.test/', partition: 'authorization-token', preload: 'unsafe.js',
+                preloadURL: 'file:///unsafe.js', webpreferences: 'nodeIntegration=yes',
+                allowpopups: '', disablewebsecurity: '', useragent: 'renderer', httpreferrer: 'https://other.test/',
+            };
+            expect(sanitizeWebviewAttach(preferences, params, profile)).toBe(true);
+            expect(preferences).toEqual({
+                session: profile, sandbox: true, contextIsolation: true, nodeIntegration: false,
+                nodeIntegrationInSubFrames: false, nodeIntegrationInWorker: false, webSecurity: true,
+                allowRunningInsecureContent: false, webviewTag: false, plugins: false,
+                experimentalFeatures: false, disablePopups: false,
+            });
+            expect(params).toEqual({ src: 'https://example.test/', partition: 'authorization-token', useragent: '', httpreferrer: '' });
+        });
+
+        it.each(['file:///page.html', 'about:blank', 'data:text/html,page', 'javascript:alert(1)', 'ftp://example.test/', 'invalid'])('rejects %s before creating a guest', src => {
+            expect(sanitizeWebviewAttach({}, { src }, profile)).toBe(false);
+        });
+
+        it('permits only the exact file source explicitly authorized by main', () => {
+            const src = 'file:///preview/page.html';
+            const preferences = { nodeIntegration: true };
+            expect(sanitizeWebviewAttach(preferences, { src }, profile, src)).toBe(true);
+            expect(preferences).toMatchObject({ nodeIntegration: false, sandbox: true, session: profile });
+            for (const attempted of ['file:///preview/other.html', src + '#changed', 'https://example.test/', 'data:text/html,page']) {
+                expect(sanitizeWebviewAttach({}, { src: attempted }, profile, src)).toBe(false);
+            }
+            expect(sanitizeWebviewAttach({}, { src }, profile)).toBe(false);
+        });
     });
 
     it('rejects non-web schemes as unsupported', () => {

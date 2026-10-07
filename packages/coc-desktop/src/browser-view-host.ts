@@ -4,13 +4,15 @@ import { browserProfilePath, readBrowserEngine, writeBrowserEngine } from './bro
 import { BrowserHostManager } from './browser-host-manager';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
+import { installBrowserWebviewGuard, isBrowserEmbedder } from './browser-webview-guard';
+export { registerBrowserEmbedder } from './browser-webview-guard';
 import { WebView2BrowserHost } from './webview2-browser-host';
 import { toHtmlPageViewBounds } from './html-page-policy';
 import {
     BROWSER_CLEAR_DATA_CHANNEL, BROWSER_OPEN_EXTERNAL_CHANNEL, BROWSER_PREFERENCES_CHANGED_CHANNEL,
     BROWSER_PREFERENCES_GET_CHANNEL, BROWSER_PREFERENCES_SET_CHANNEL, BROWSER_VIEW_CLOSE_CHANNEL,
     BROWSER_VIEW_HIDE_CHANNEL, BROWSER_VIEW_NAV_CHANNEL, BROWSER_VIEW_NAVIGATE_CHANNEL,
-    BROWSER_VIEW_OPEN_CHANNEL, BROWSER_VIEW_SET_BOUNDS_CHANNEL,
+    BROWSER_VIEW_OPEN_CHANNEL, BROWSER_VIEW_ADOPT_CHANNEL, BROWSER_VIEW_SET_BOUNDS_CHANNEL,
     BROWSER_VIEW_FOCUS_CHANNEL,
     BROWSER_HOST_FOCUS_CHANNEL,
     BROWSER_VIEW_OPEN_EXTERNAL_CHANNEL,
@@ -30,13 +32,16 @@ function wireOwner(window: BrowserWindow): void {
     if (owners.has(id)) { return; }
     owners.set(id, window);
     const failed = (error: unknown) => console.error('[coc-desktop] Browser cleanup failed:', error);
-    // A full SPA reload keeps file previews for the reloaded SPA to reattach; closing the window ends every view.
-    window.webContents.on('did-navigate', () => { void manager?.reloadOwner(id).catch(failed); });
+    // Reload closes guests without emitting onClosed into the next SPA document.
+    window.webContents.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) { void manager?.reloadOwner(id).catch(failed); }
+    });
     window.once('closed', () => { void manager?.closeOwner(id).catch(failed); owners.delete(id); });
 }
 
 export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     if (manager) { return; }
+    installBrowserWebviewGuard();
     const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'));
     manager = new BrowserHostManager({
         hosts: {
@@ -59,10 +64,13 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     });
     ipcMain.handle(BROWSER_VIEW_OPEN_CHANNEL, (event, id: unknown, source: unknown, sessionKey: unknown, engine: unknown) => {
         const window = ownWindow(event.sender);
-        if (!window) { return { ok: false, reason: 'no-window' }; }
+        if (!window || event.senderFrame !== event.sender.mainFrame) { return { ok: false, reason: 'no-window' }; }
         wireOwner(window);
         return manager!.openSource(event.sender.id, id, source, sessionKey, engine);
     });
+    ipcMain.handle(BROWSER_VIEW_ADOPT_CHANNEL, (event, id: unknown, guestId: unknown) =>
+        event.senderFrame === event.sender.mainFrame && isBrowserEmbedder(event.sender)
+            ? manager!.adopt(event.sender.id, id, guestId) : { ok: false, reason: 'no-window' });
     ipcMain.handle(BROWSER_VIEW_NAVIGATE_CHANNEL, (event, id: unknown, url: unknown) =>
         ownWindow(event.sender) ? manager!.navigate(event.sender.id, id, url) : { ok: false, reason: 'no-window' });
     ipcMain.on(BROWSER_VIEW_NAV_CHANNEL, (event, id: unknown, action: unknown) => {

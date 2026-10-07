@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1') || (process.platform === 'linux' && !process.env.DISPLAY) || !existsSync(path.join(here, '..', '..', 'dist', 'browser-view-host.js'));
 const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2'] : ['electron'];
 const temporary: string[] = [];
+const profileRoot = (prefix: string) => mkdtempSync(path.join(here, '..', '..', `.e2e-${prefix}`));
 
 async function scenario(engine: string, userData: string, ...args: string[]) {
     return new Promise<Map<string, Record<string, any>>>((resolve, reject) => {
@@ -36,6 +37,23 @@ async function scenario(engine: string, userData: string, ...args: string[]) {
     });
 }
 
+/** On-disk Electron profile cookies, for persistence diagnostics. */
+function diskCookies(directory: string) {
+    const profile = path.join(directory, 'coc', 'browser', 'electron');
+    if (!existsSync(profile)) return null;
+    const files = readdirSync(profile, { recursive: true, encoding: 'utf8' }).filter(file => /cookies/i.test(file));
+    return files.map(file => {
+        const full = path.join(profile, file);
+        let rows: unknown;
+        try {
+            const db = new DatabaseSync(full, { readOnly: true });
+            rows = db.prepare('select host_key, name, length(value) as plain, length(encrypted_value) as encrypted, is_persistent from cookies').all();
+            db.close();
+        } catch (error) { rows = String(error); }
+        return { file, size: statSync(full).size, rows };
+    });
+}
+
 afterEach(() => {
     // Browser subprocesses can release profile handles just after Electron exits.
     temporary.forEach(dir => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
@@ -44,7 +62,7 @@ afterEach(() => {
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
     it.skipIf(process.platform !== 'win32')('keeps native keyboard input in the composer after clicking away from the browser and updating layout', async () => {
-        const directory = mkdtempSync(path.join(os.tmpdir(), 'coc-browser-focus-'));
+        const directory = profileRoot('browser-focus-');
         temporary.push(directory);
         const steps = await scenario(engine, directory, '--focus-check');
         expect(steps.get('browser-keyboard')?.value).toBe('/');
@@ -54,10 +72,10 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
     }, 90_000);
 
     it('supports navigation, popups, security policy, profiles, mixed engines and explicit cleanup', async () => {
-        const directory = mkdtempSync(path.join(os.tmpdir(), 'coc-browser-engines-'));
+        const directory = profileRoot('browser-engines-');
         temporary.push(directory);
         const steps = await scenario(engine, directory);
-        expect(steps.get('open')?.result).toEqual({ ok: true, engine, sourceKind: 'url' });
+        expect(steps.get('open')?.result).toMatchObject({ ok: true, engine, sourceKind: 'url', ...(engine === 'electron' ? { embed: 'webview' } : {}) });
         expect(steps.get('open')?.report).toMatchObject({ bridge: 'undefined', require: 'undefined', storage: null });
         expect(steps.get('focus')?.focused).toBe(true);
         expect(steps.get('history')?.back).toMatchObject({ title: 'Home', canGoForward: true });
@@ -76,14 +94,16 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
             expect(steps.get('mixed')?.report).toMatchObject({ storage: null, cookie: '' });
             expect(steps.get('mixed')?.existing.engine).toBe(engine);
         }
-        expect(steps.get('related')?.result).toEqual({ ok: true, engine, sourceKind: 'url' });
+        expect(steps.get('related')?.result).toMatchObject({ ok: true, engine, sourceKind: 'url' });
         expect(steps.get('download')?.download.ok).toBe(true);
         expect(steps.get('cancel')?.result).toEqual({ ok: false, reason: 'cancelled' });
         expect(steps.get('cancel')?.tab).toEqual({ ok: true, engine });
         if (engine === 'webview2') expect(steps.get('profile-lock')?.result).toMatchObject({ ok: false, reason: 'profile-locked' });
+        const disk = diskCookies(directory);
         const restart = await scenario(engine, directory, '--restart-check');
         expect(restart.get('restart')).toMatchObject({ engine, history: false, preference: engine, report: { storage: 'stored' } });
-        expect(restart.get('restart')?.report.cookie).toContain('fixture=remembered');
+        const cookieTrail = JSON.stringify({ seeded: steps.get('seeded'), disposed: steps.get('disposed'), disk, restart: restart.get('restart') });
+        expect(restart.get('restart')?.report.cookie, cookieTrail).toContain('fixture=remembered');
         expect(restart.get('clear')?.result).toEqual({ ok: true });
         expect(restart.get('clear')?.firstWindowClosed).toContainEqual({ viewId: 'main', engine });
         expect(restart.get('clear')?.secondWindowClosed).toContainEqual({ viewId: 'other', engine });

@@ -32,7 +32,7 @@ export interface NativeViewPlacement {
 }
 
 /**
- * Keep a native desktop view (an Electron WebContentsView drawn above the SPA)
+ * Keep a native desktop view (WebView2, drawn above the SPA)
  * over its placeholder while `shown`. Native views always paint over DOM
  * content, so the view is hidden whenever the placeholder has no size, a modal
  * dialog or the tab menu is up, or a hit test finds any other element (menu,

@@ -122,12 +122,40 @@ export function isBrowserPermissionAllowed(permission: string): boolean {
     return ALLOWED_PERMISSIONS.includes(permission);
 }
 
+export function hardenedBrowserPreferences(profile: Electron.Session): Electron.WebPreferences & { disablePopups: boolean } {
+    return {
+        session: profile, contextIsolation: true, sandbox: true,
+        nodeIntegration: false, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false,
+        webviewTag: false, webSecurity: true, allowRunningInsecureContent: false,
+        plugins: false, experimentalFeatures: false,
+        // Only the main-process window-open handler may authorize a popup.
+        disablePopups: false,
+    };
+}
+
+/** Replace renderer-supplied privileges, including preferences Electron does not type. */
+export function sanitizeWebviewAttach(
+    preferences: Electron.WebPreferences, params: Record<string, string>, profile: Electron.Session,
+    authorizedFileSrc?: string,
+): boolean {
+    if (authorizedFileSrc !== undefined) {
+        if (params.src !== authorizedFileSrc || parse(authorizedFileSrc)?.protocol !== 'file:') return false;
+    } else if (!validateBrowserUrl(params.src).ok) return false;
+    for (const key of Object.keys(preferences)) Reflect.deleteProperty(preferences, key);
+    Object.assign(preferences, hardenedBrowserPreferences(profile));
+    for (const key of ['preload', 'preloadURL', 'webpreferences', 'allowpopups', 'disablewebsecurity']) delete params[key];
+    params.httpreferrer = '';
+    params.useragent = '';
+    return true;
+}
+
 // ── IPC contract ────────────────────────────────────────────────────────────
 // preload.ts re-declares these as literals (its sandboxed `require` cannot load
 // this module); preload.test.ts keeps the two in sync.
 
 /** SPA → main (invoke): open a view `(viewId, source, sessionKey, relatedEngine?)` → {@link BrowserOpenResult}; `source` is a {@link BrowserSource} or a bare URL string. */
 export const BROWSER_VIEW_OPEN_CHANNEL = 'coc-desktop:browser-view-open';
+export const BROWSER_VIEW_ADOPT_CHANNEL = 'coc-desktop:browser-view-adopt';
 /** SPA → main (invoke): load a new URL in an existing view `(viewId, url)` → {@link BrowserOpenResult}. */
 export const BROWSER_VIEW_NAVIGATE_CHANNEL = 'coc-desktop:browser-view-navigate';
 /** SPA → main: history / load control `(viewId, action)` where action is a {@link BrowserNavAction}. */
@@ -226,7 +254,7 @@ export function isBrowserNavAction(action: unknown): action is BrowserNavAction 
 
 /** Reply to an open / navigate request. */
 export type BrowserOpenResult =
-    | { ok: true; engine: BrowserEngine; sourceKind?: BrowserSourceKind }
+    | { ok: true; engine: BrowserEngine; sourceKind?: BrowserSourceKind; embed?: 'webview'; src?: string; partition?: string }
     | { ok: false; reason: BrowserFailureReason; message?: string; engine?: BrowserEngine };
 
 /** Live navigation snapshot pushed to the SPA. */

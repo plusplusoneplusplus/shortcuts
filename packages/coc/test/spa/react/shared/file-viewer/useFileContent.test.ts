@@ -83,6 +83,53 @@ describe('useFileContent', () => {
         expect(result.current.blob?.content).toHaveLength(MAX_FILE_VIEW_SIZE + 10);
     });
 
+    it.each([MAX_FILE_VIEW_SIZE - 1, MAX_FILE_VIEW_SIZE])('fully displays and saves %i-byte text', async (size) => {
+        expect(MAX_FILE_VIEW_SIZE).toBe(10 * 1024 * 1024);
+        const content = 'x'.repeat(size);
+        const write = vi.fn().mockResolvedValue(undefined);
+        const { result } = renderHook(() => useFileContent({ key: 'a', read: vi.fn().mockResolvedValue(text(content)), write }));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.isOversized).toBe(false);
+        expect(result.current.displayBlob?.content).toBe(content);
+        act(() => result.current.onChange(content.slice(0, -1) + 'y'));
+        await act(async () => { expect(await result.current.save()).toBe(true); });
+        expect(write).toHaveBeenCalledWith(content.slice(0, -1) + 'y');
+    });
+
+    it('fully displays Unicode at the UTF-8 byte cap', async () => {
+        const content = '😀'.repeat(MAX_FILE_VIEW_SIZE / 4);
+        const { result } = renderHook(() => useFileContent({ key: 'a', read: vi.fn().mockResolvedValue(text(content)) }));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.isOversized).toBe(false);
+        expect(result.current.displayBlob?.content).toBe(content);
+    });
+
+    it('preserves a leading BOM when truncating', async () => {
+        const prefix = '\uFEFF' + 'x'.repeat(MAX_FILE_VIEW_SIZE - 3);
+        const { result } = renderHook(() => useFileContent({ key: 'a', read: vi.fn().mockResolvedValue(text(prefix + 'y')) }));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.isOversized).toBe(true);
+        expect(result.current.displayBlob?.content).toBe(prefix);
+    });
+
+    it.each([['é', 1], ['中', 2], ['😀', 3]] as const)('truncates before an incomplete %s and blocks writes', async (character, spareBytes) => {
+        const prefix = 'x'.repeat(MAX_FILE_VIEW_SIZE - spareBytes);
+        const content = prefix + character;
+        // UTF-16 character count alone would incorrectly allow this file.
+        expect(content.length).toBeLessThanOrEqual(MAX_FILE_VIEW_SIZE);
+        const write = vi.fn();
+        const { result } = renderHook(() => useFileContent({ key: 'a', read: vi.fn().mockResolvedValue(text(content)), write }));
+        await waitFor(() => expect(result.current.loading).toBe(false));
+        expect(result.current.isOversized).toBe(true);
+        expect(result.current.displayBlob?.content).toBe(prefix);
+        expect(result.current.blob?.content).toBe(content);
+        act(() => result.current.onChange('partial overwrite'));
+        expect(result.current.isDirty).toBe(false);
+        expect(result.current.editedContent).toBe(content);
+        await act(async () => { expect(await result.current.save()).toBe(false); });
+        expect(write).not.toHaveBeenCalled();
+    });
+
     it('does not seed or truncate the edit buffer for binary content', async () => {
         const read = vi.fn().mockResolvedValue({ content: 'AAAA', encoding: 'base64', mimeType: 'image/png' } as FileBlob);
         const { result } = renderHook(() => useFileContent({ key: 'a', read }));

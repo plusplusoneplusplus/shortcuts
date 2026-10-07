@@ -15,18 +15,19 @@
 
 const fs = require('fs');
 const http = require('http');
-const os = require('os');
 const path = require('path');
-const { app, BrowserWindow, session, shell } = require('electron');
+const { app, BrowserWindow, session, shell, webContents } = require('electron');
 
 const distDir = path.join(__dirname, '..', '..', 'dist');
-const { registerBrowserViewIpc, disposeBrowserViews } = require(path.join(distDir, 'browser-view-host.js'));
+const { registerBrowserViewIpc, registerBrowserEmbedder, disposeBrowserViews } = require(path.join(distDir, 'browser-view-host.js'));
+const { fixtureScript } = require('./webview-fixture.cjs');
+const { checkWebviewSecurity, checkDomCompositing } = require('./webview-security-checks.cjs');
 
 const restartCheck = process.argv.includes('--restart-check');
 if (process.env.COC_BROWSER_E2E_USER_DATA) {
     app.setPath('userData', process.env.COC_BROWSER_E2E_USER_DATA);
 }
-const downloadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-browser-e2e-dl-'));
+const downloadsDir = fs.mkdtempSync(path.join(process.env.COC_BROWSER_E2E_USER_DATA, 'downloads-'));
 app.setPath('downloads', downloadsDir);
 
 const emit = (step, data) => console.log('E2E::' + JSON.stringify({ step, ...data }));
@@ -97,7 +98,7 @@ const spaHtml = '<!doctype html><html><body style="margin:0">'
     + 'b.onCloseRequested(function (r) { window.__closeRequests.push(r); });'
     + 'window.__last = function (id) { var l = window.__states.filter(function (s) { return s.viewId === id; }); return l[l.length - 1] || null; };'
     + 'window.__place = function (id) { var r = document.getElementById("slot").getBoundingClientRect();'
-    + ' b.setBounds(id, { x: r.x, y: r.y, width: r.width, height: r.height }); };'
+    + ' window.__browser.setBounds(id, { x: r.x, y: r.y, width: r.width, height: r.height }); };'
     + '</script></body></html>';
 
 async function waitFor(fn, timeoutMs = 5000) {
@@ -124,23 +125,40 @@ app.whenReady().then(async () => {
             preload: path.join(distDir, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            webviewTag: true,
         },
     });
-    await main.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(spaHtml));
+    const spaUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(spaHtml);
+    registerBrowserEmbedder(main, spaUrl);
+    await main.loadURL(spaUrl);
+    await main.webContents.executeJavaScript(fixtureScript);
     await sleep(200);
-    const spa = (js) => main.webContents.executeJavaScript(js);
+    const spa = (js) => main.webContents.executeJavaScript(js.replaceAll('window.cocDesktop.browser.', 'window.__browser.'));
     const last = (id) => spa(`window.__last(${JSON.stringify(id)})`);
-    const viewFor = (id) => main.contentView.children.find((v) => v.webContents && v.webContents.__cocViewId === id);
-    const children = () => main.contentView.children.length;
+    const views = new Map();
+    const viewFor = id => views.get(id);
+    const children = () => [...views.values()].filter(view => !view.webContents.isDestroyed()).length;
     const settled = (id, pred) => waitFor(async () => {
         const s = await last(id);
         return s && !s.loading && pred(s) ? s : null;
     });
 
+    const open = async (id, url, key) => {
+        const result = await spa(`window.__browser.open(${JSON.stringify(id)}, ${JSON.stringify(url)}, ${JSON.stringify(key)})`);
+        if (result.ok) {
+            const guestId = await spa(`window.__webviews.get(${JSON.stringify(id)}).getWebContentsId()`);
+            views.set(id, {
+                webContents: webContents.fromId(guestId),
+                getBounds: () => spa(`(() => {const r=window.__webviews.get(${JSON.stringify(id)}).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`),
+                getVisible: () => spa(`window.__webviews.get(${JSON.stringify(id)}).style.visibility !== 'hidden'`),
+            });
+        }
+        return result;
+    };
     if (restartCheck) {
-        await spa(`window.cocDesktop.browser.open('r1', ${JSON.stringify(base + '/')}, 'ws-a')`);
+        await open('r1', base + '/', 'ws-a');
         const s = await settled('r1', (st) => st.title === 'Home');
-        const wc = main.contentView.children[0].webContents;
+        const wc = viewFor('r1').webContents;
         emit('restart', {
             title: s && s.title,
             cookie: await wc.executeJavaScript('document.cookie'),
@@ -152,14 +170,6 @@ app.whenReady().then(async () => {
         app.quit();
         return;
     }
-
-    const open = async (id, url, key) => {
-        const before = new Set(main.contentView.children);
-        const result = await spa(`window.cocDesktop.browser.open(${JSON.stringify(id)}, ${JSON.stringify(url)}, ${JSON.stringify(key)})`);
-        const view = main.contentView.children.find((v) => !before.has(v));
-        if (view) view.webContents.__cocViewId = id;
-        return result;
-    };
 
     // 1. Refused open requests create no view.
     emit('reject', {
@@ -181,11 +191,13 @@ app.whenReady().then(async () => {
         hasProcess: typeof process !== 'undefined',
     })`);
     emit('open', {
-        openResult, home, viewCount: children(), bounds: b1.getBounds(), visible: b1.getVisible(),
+        openResult, home, viewCount: children(), bounds: await b1.getBounds(), visible: await b1.getVisible(),
         partitionPersistent: b1.webContents.session.isPersistent(),
         userAgent: b1.webContents.getUserAgent(),
         ...probe,
     });
+    emit('dom-compositing', await checkDomCompositing(main, b1.webContents));
+    emit('webview-security', await checkWebviewSecurity(main, base));
 
     // Native page focus must forward through the real preload, never page DOM.
     const modifiers = [process.platform === 'darwin' ? 'meta' : 'control'];
@@ -331,13 +343,19 @@ app.whenReady().then(async () => {
     // 12. Visibility: hide(), null rect, and re-show; reopening the same id keeps history.
     await spa(`window.cocDesktop.browser.hide('b1')`);
     await sleep(100);
-    const hiddenByHide = !b1.getVisible();
+    const hiddenByHide = !await b1.getVisible();
     await spa(`window.__place('b1')`);
     await sleep(100);
-    const shownAgain = b1.getVisible();
+    const shownAgain = await b1.getVisible();
     await spa(`window.cocDesktop.browser.setBounds('b1', null)`);
     await sleep(100);
-    const hiddenByNull = !b1.getVisible();
+    const hiddenByNull = !await b1.getVisible();
+    await b1.webContents.executeJavaScript(`window.__retainedState={input:'draft text',workspace:'workspace-a'};document.body.style.height='2500px';window.scrollTo(0,350);`);
+    const beforeSwitch = { guestId: b1.webContents.id, url: b1.webContents.getURL(), history: b1.webContents.navigationHistory.length() };
+    await spa("window.__browser.setBounds('b2', {x:400,y:50,width:400,height:300})");
+    await sleep(150);
+    await spa("window.__browser.hide('b2');window.__place('b1')");
+    const retained = await b1.webContents.executeJavaScript('({state:window.__retainedState,scrollY})');
     const viewsBefore = children();
     const reopen = await spa(`window.cocDesktop.browser.open('b1', ${JSON.stringify(base + '/')}, 'ws-a')`);
     await sleep(200);
@@ -345,6 +363,7 @@ app.whenReady().then(async () => {
         hiddenByHide, shownAgain, hiddenByNull, reopen,
         sameViewCount: children() === viewsBefore,
         keptHistory: b1.webContents.navigationHistory.canGoBack(),
+        workspaceSwitch: { before: beforeSwitch, after: { guestId: b1.webContents.id, url: b1.webContents.getURL(), history: b1.webContents.navigationHistory.length() }, retained },
     });
 
     // 13. Closing a tab destroys its view and its pop-ups.

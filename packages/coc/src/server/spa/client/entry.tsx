@@ -21,6 +21,7 @@ import './react/shared/file-path/file-path-preview';
 import './react/features/repo-detail/explorer/monaco-setup';
 import { desktopBrowserBridge } from './react/shared/file-path/browser-bridge';
 import { closeBrowserPanelView } from './react/features/repo-detail/unified-right-panel/unifiedPanelStore';
+import { BrowserWebviewLayer } from './react/features/repo-detail/unified-right-panel/BrowserWebviewLayer';
 // Excalidraw ships its renderer styles in a separate CSS entry point. Without
 // importing it the React component mounts (we see the UI chrome) but the
 // canvas itself lacks the positioning / sizing styles needed to paint the
@@ -55,6 +56,6 @@ if (window.location.pathname.startsWith('/diagram/')) {
     // Load fresh feature flags from API before rendering the main app.
     // Non-fatal: falls back to bootstrap config embedded in HTML if API fails.
     loadRuntimeConfig().finally(() => {
-        root.render(<App />);
+        root.render(<><App /><BrowserWebviewLayer /></>);
     });
 }

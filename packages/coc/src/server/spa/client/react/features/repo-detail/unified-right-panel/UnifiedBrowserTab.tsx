@@ -3,6 +3,7 @@ import { BrowserToolbarMenu } from './BrowserToolbarMenu';
 import { isMacPlatform } from '../../../utils/composerKeyboardShortcuts';
 import { normalizeBrowserUrl } from './unifiedBrowserTabs';
 import { NativeViewNavButtons, NativeViewTab, nativeViewToolbarButton as toolbarButton } from './NativeViewTab';
+import { prepareBrowserWebview, useBrowserWebviewError } from './browserWebviewLayerStore';
 import {
     desktopBrowserBridge,
     openUrlInSystemBrowser,
@@ -22,8 +23,10 @@ export interface UnifiedBrowserTabProps {
     url?: string;
     relatedEngine?: BrowserEngine;
     active: boolean;
-    /** False while the panel is collapsed or a menu/dialog covers it. */
+    /** False while the panel is collapsed. DOM overlays do not hide webviews. */
     visible: boolean;
+    /** Explicit panel overlays that must cover native engines, never DOM guests. */
+    nativeCovered?: boolean;
     /** Record a new URL (and its provisional label) on the tab descriptor. */
     onNavigate: (id: string, url: string) => void;
     /** Follow the live page: its URL after redirects and its title. */
@@ -34,13 +37,12 @@ export interface UnifiedBrowserTabProps {
  * A general web browser tab. The address field accepts an http(s) URL or a
  * bare domain; anything else is rejected inline and never searched.
  *
- * In the desktop app the page lives in a sandboxed native view kept over this
- * tab's placeholder. The view survives unmounts (chat switches, panel
- * collapse) so live history is kept; only closing the tab destroys it. In the
- * web app the tab offers Open in system browser instead.
+ * Electron guests live in the app-level webview layer; native engines track
+ * this tab's placeholder. Both survive panel unmounts and close with the tab.
+ * The web app offers Open in system browser instead.
  */
 export function UnifiedBrowserTab({
-    tabId, viewId, sessionKey, url, relatedEngine, active, visible, onNavigate, onPageState,
+    tabId, viewId, sessionKey, url, relatedEngine, active, visible, nativeCovered, onNavigate, onPageState,
 }: UnifiedBrowserTabProps) {
     const bridge = desktopBrowserBridge();
     const [address, setAddress] = useState(url ?? '');
@@ -49,6 +51,8 @@ export function UnifiedBrowserTab({
     const [notice, setNotice] = useState<string | null>(null);
     const [opened, setOpened] = useState(false);
     const [engine, setEngine] = useState<BrowserEngine | undefined>();
+    const [embed, setEmbed] = useState<'webview'>();
+    const attachError = useBrowserWebviewError(viewId);
     const [startupError, setStartupError] = useState<{ reason: string; message: string } | null>(null);
     const [retry, setRetry] = useState(0);
     const [menuOpen, setMenuOpen] = useState(false);
@@ -94,10 +98,13 @@ export function UnifiedBrowserTab({
         });
         // Reopening a live view with the same session keeps its history and page.
         setStartupError(null);
+        const attach = prepareBrowserWebview(viewId);
         void bridge.open(viewId, latestUrl.current!, sessionKey, relatedEngine).then(result => {
+            attach(result, bridge);
             if (disposed) return;
             setEngine(result.engine);
             if (result.ok) {
+                setEmbed(result.embed);
                 setOpened(true);
             } else {
                 setStartupError({ reason: result.reason, message: result.message ?? `Could not open page: ${result.reason}` });
@@ -117,7 +124,7 @@ export function UnifiedBrowserTab({
         };
     }, [bridge, hasUrl, sessionKey, tabId, viewId, relatedEngine, retry]);
 
-    const failed = Boolean(startupError || (page?.error && !page?.loading));
+    const failed = Boolean(attachError || startupError || (page?.error && !page?.loading));
 
     const submit = (event: React.FormEvent) => {
         event.preventDefault();
@@ -200,22 +207,14 @@ export function UnifiedBrowserTab({
 
     return (
         <NativeViewTab
-            bridge={bridge}
+            bridge={opened ? bridge : undefined}
             viewId={viewId}
-            shown={opened && active && visible && !failed}
+            embed={embed}
+            shown={opened && active && visible && !failed && (embed === 'webview' || !nativeCovered)}
             surfaceHidden={failed || !url}
             placeholderTestId="browser-placeholder"
             toolbar={toolbar}
         >
-            {bridge && page?.title && (
-                <div
-                    className="flex-shrink-0 truncate border-b border-[#e5e5e5] px-3 py-0.5 text-[11px] text-[#616161] dark:border-[#333] dark:text-[#9d9d9d]"
-                    title={page.title}
-                    data-testid="browser-title"
-                >
-                    {page.loading ? 'Loading… ' : ''}{page.title}
-                </div>
-            )}
             {error && (
                 <div role="alert" className="px-3 py-1.5 text-[11px] text-[#a1260d] dark:text-[#f48771]" data-testid="browser-address-error">
                     {error}
@@ -230,8 +229,9 @@ export function UnifiedBrowserTab({
                 <>
                     {failed && (
                         <div role="alert" className="flex flex-col items-center gap-2 p-4 text-center text-xs" data-testid="browser-load-error">
-                            <p>{startupError?.message ?? `Could not load ${page?.url || url}: ${page?.error}`}</p>
-                            <button className={toolbarButton} type="button" onClick={() => startupError ? setRetry(value => value + 1) : nav('reload')}>Retry</button>
+                            <p>{attachError ?? startupError?.message ?? `Could not load ${page?.url || url}: ${page?.error}`}</p>
+                            {!attachError && <button className={toolbarButton} type="button" onClick={() => startupError ? setRetry(value => value + 1) : nav('reload')}>Retry</button>}
+                            {attachError && <p>Close this tab and open it again to retry.</p>}
                             <a className={toolbarButton} href={DESKTOP_BROWSER_PREFERENCES_HASH}>Desktop Preferences</a>
                             {(startupError?.reason === 'missing-runtime' || page?.errorCode === 'missing-runtime') && (
                                 <button className={toolbarButton} type="button" onClick={() => {
