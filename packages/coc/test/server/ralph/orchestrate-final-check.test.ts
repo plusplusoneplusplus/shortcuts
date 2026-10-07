@@ -80,7 +80,10 @@ function makeDeps(overrides?: Partial<OrchestrateFinalCheckDeps>): OrchestrateFi
         ],
     }));
 
+    const recordCompletion = vi.fn().mockImplementation(async (_workspace, _session, completion) =>
+        makeSession({ completion }));
     const store = {
+        recordCompletion,
         upsertFinalCheckRecord,
         appendFinalCheckSection,
         readSessionRecord: readSessionRecord as any,
@@ -449,4 +452,76 @@ describe('orchestrateFinalCheck', () => {
             expect(deps.store.startNewLoop).toHaveBeenCalledTimes(1);
         });
     });
+});
+
+
+describe('durable whole-session final-check publication', () => {
+    it.each([
+        ['clean', 'signal'], ['cap', 'cap'], ['parse failure', 'final-check-failed'],
+        ['repair rejection', 'final-check-failed'],
+        ['gap start failure', 'final-check-gap-loop-start-failed'],
+        ['gap enqueue failure', 'final-check-gap-enqueue-failed'],
+    ])('persists %s outcome before publishing even when check metadata cannot be written', async (scenario, reason) => {
+        const deps = makeDeps({ maxGapFixLoops: scenario === 'cap' ? 0 : 3 });
+        (deps.store.upsertFinalCheckRecord as Mock).mockRejectedValue(new Error('check write failed'));
+        if (scenario === 'parse failure') {
+            (deps.store.readSessionRecord as Mock).mockResolvedValue(makeSession({
+                finalChecks: [{ checkIndex: 1, loopIndex: 1, sourceIteration: SOURCE_ITERATION,
+                    startedAt: NOW, status: 'running', repairAttempted: true }],
+            }));
+        }
+        if (scenario === 'gap start failure') (deps.store.startNewLoop as Mock).mockRejectedValue(new Error('cannot start'));
+        if (scenario === 'gap enqueue failure') (deps.enqueueTask as Mock).mockImplementation(() => { throw new Error('cannot enqueue'); });
+        const response = scenario === 'clean' ? makeCleanResponse()
+            : ['parse failure', 'repair rejection'].includes(scenario) ? 'missing result' : makeGapsResponse('Fix it.');
+        await orchestrateFinalCheck(makeInput(response, deps));
+        expect(deps.store.recordCompletion).toHaveBeenCalledWith(WORKSPACE_ID, SESSION_ID, {
+            reason, processId: PROCESS_ID, totalIterations: SOURCE_ITERATION, completedAt: expect.any(String),
+        });
+        expect((deps.store.recordCompletion as Mock).mock.invocationCallOrder[0])
+            .toBeLessThan((deps.broadcastSessionComplete as Mock).mock.invocationCallOrder[0]);
+        expect(deps.broadcastSessionComplete).toHaveBeenCalledWith({
+            workspaceId: WORKSPACE_ID, sessionId: SESSION_ID, reason, processId: PROCESS_ID, totalIterations: SOURCE_ITERATION,
+        });
+    });
+
+    it('does not publish when the durable outcome write fails', async () => {
+        const deps = makeDeps();
+        (deps.store.recordCompletion as Mock).mockRejectedValue(new Error('disk unavailable'));
+        await expect(orchestrateFinalCheck(makeInput(makeCleanResponse(), deps))).rejects.toThrow('disk unavailable');
+        expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+    });
+
+    it.each(['gap loop', 'repair'])('does not record a terminal outcome for a continuing %s', async scenario => {
+        const deps = makeDeps({ requestRepairTurn: vi.fn().mockReturnValue(true) });
+        await orchestrateFinalCheck(makeInput(scenario === 'repair' ? 'missing result' : makeGapsResponse('Fix it.'), deps));
+        expect(deps.store.recordCompletion).not.toHaveBeenCalled();
+        expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+    });
+
+    it('publishes the first stored outcome when a conflicting terminal event is replayed', async () => {
+        const deps = makeDeps();
+        (deps.store.recordCompletion as Mock).mockResolvedValue(makeSession({ completion: {
+            reason: 'final-check-failed', processId: 'original-check', totalIterations: 2, completedAt: NOW,
+        } }));
+        await orchestrateFinalCheck(makeInput(makeCleanResponse(), deps));
+        expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(expect.objectContaining({
+            reason: 'final-check-failed', processId: 'original-check', totalIterations: 2,
+        }));
+    });
+});
+
+
+it('replays a stored terminal outcome without admitting another gap loop or repair', async () => {
+    const deps = makeDeps({ requestRepairTurn: vi.fn() });
+    (deps.store.readSessionRecord as Mock).mockResolvedValue(makeSession({ completion: {
+        reason: 'final-check-failed', processId: 'original-check', totalIterations: 2, completedAt: NOW,
+    } }));
+    await orchestrateFinalCheck(makeInput(makeGapsResponse('Fix it.'), deps));
+    expect(deps.store.upsertFinalCheckRecord).not.toHaveBeenCalled();
+    expect(deps.store.recordCompletion).not.toHaveBeenCalled();
+    expect(deps.store.startNewLoop).not.toHaveBeenCalled();
+    expect(deps.requestRepairTurn).not.toHaveBeenCalled();
+    expect(deps.enqueueTask).not.toHaveBeenCalled();
+    expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(expect.objectContaining({ reason: 'final-check-failed' }));
 });

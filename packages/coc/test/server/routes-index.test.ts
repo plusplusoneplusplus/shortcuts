@@ -21,6 +21,10 @@ import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/tea
 import { TeamsMessagingManager } from '../../src/server/messaging/teams-messaging-manager';
 import { CLITaskExecutor } from '../../src/server/queue/queue-executor-bridge';
 import { isChatPayload } from '../../src/server/tasks/task-types';
+import { MessagingJobNotices } from '../../src/server/messaging/job-notices';
+import { DelegatedJobResults } from '../../src/server/delegation/delegated-job-results';
+import { DelegatedJobStore } from '../../src/server/delegation/delegated-job-store';
+import { TeamsUserStateStore } from '../../src/server/messaging/teams-user-state';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import type { SendToConversationRuntimeOptions } from '../../src/server/llm-tools/send-to-conversation-tool';
@@ -355,7 +359,7 @@ describe('registerAllRoutes', () => {
         expect(routes.length).toBeGreaterThan(30);
     });
 
-    it('subscribes job notices and both messaging answer relays to queue terminal events', () => {
+    it('subscribes delegated results/reviews, job notices and both messaging answer relays to queue terminal events', () => {
         const queueFacade = makeQueueFacade();
         const opts = makeOpts({ queueFacade });
         registerAllRoutes([], opts);
@@ -364,8 +368,94 @@ describe('registerAllRoutes', () => {
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
             'taskCompleted', 'taskFailed', 'taskCancelled',
+            'ralphSessionComplete',
+            'taskCompleted', 'taskFailed', 'taskCancelled',
+            'taskCompleted', 'taskFailed', 'taskCancelled',
         ]);
         expect(opts.runtimeConfigService?.onChange).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it('restores outbound receipts before result recovery can schedule connector sends', async () => {
+        let finishNotices!: () => void;
+        const notices = vi.spyOn(MessagingJobNotices.prototype, 'restore').mockImplementation(() =>
+            new Promise<void>(resolve => { finishNotices = resolve; }));
+        const results = vi.spyOn(DelegatedJobResults.prototype, 'restore').mockResolvedValue(undefined);
+        registerAllRoutes([], makeOpts());
+        expect(notices).toHaveBeenCalledOnce();
+        expect(results).not.toHaveBeenCalled();
+        finishNotices();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(results).toHaveBeenCalledOnce();
+        expect(notices).toHaveBeenCalledOnce();
+    });
+
+    it('waits for delegated-result recovery before registering a new tool launch', async () => {
+        let finishRestore!: () => void;
+        vi.spyOn(DelegatedJobResults.prototype, 'restore').mockImplementation(() =>
+            new Promise<void>(resolve => { finishRestore = resolve; }));
+        const store = createMockProcessStore();
+        await store.addProcess({ id: 'queue_parent', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: 'Dispatch', metadata: { mode: 'sentinel', workspaceId: 'ws-parent' } });
+        const bridge = makeBridge();
+        const queue = { getStats: () => ({ isPaused: false, isAutopilotPaused: false }), enqueue: vi.fn(input => input.id) };
+        bridge.getOrCreateBridge = vi.fn();
+        bridge.getRepoIdForPath = vi.fn().mockReturnValue('ws-child');
+        bridge.registry.getQueueForRepo = vi.fn().mockReturnValue(queue);
+        let enqueueChat!: (input: CreateTaskInput) => Promise<string>;
+        registerAllRoutes([], makeOpts({ dataDir: tmpDir, store, bridge,
+            setEnqueueChat: value => { enqueueChat = value; } }));
+        const admitted = enqueueChat({ id: 'child', type: 'chat', priority: 'normal', config: {},
+            payload: { kind: 'chat', mode: 'autopilot', prompt: 'Fix it', workspaceId: 'ws-child',
+                context: { spawnedFromProcessId: 'queue_parent' } } });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(new DelegatedJobStore(tmpDir).list('ws-parent')).toEqual([]);
+        expect(queue.enqueue).not.toHaveBeenCalled();
+        finishRestore();
+        await expect(admitted).resolves.toBe('child');
+        expect(new DelegatedJobStore(tmpDir).list('ws-parent')).toHaveLength(1);
+        expect(queue.enqueue).toHaveBeenCalledOnce();
+    });
+
+    it('waits for recovery and registers a Teams command handoff before queue admission', async () => {
+        let finishRestore!: () => void;
+        vi.spyOn(DelegatedJobResults.prototype, 'restore').mockImplementation(() =>
+            new Promise<void>(resolve => { finishRestore = resolve; }));
+        const store = createMockProcessStore();
+        vi.mocked(store.getWorkspaces).mockResolvedValue([
+            { id: 'ws-parent', name: 'Parent', rootPath: path.join(tmpDir, 'parent') },
+        ]);
+        await store.addProcess({ id: 'queue_parent', type: 'chat', status: 'completed', startTime: new Date(),
+            promptPreview: 'Dispatch', metadata: { mode: 'sentinel', workspaceId: 'ws-parent' } });
+        new TeamsUserStateStore(tmpDir).update('sender', { selectedRepo: 'ws-parent', selectedTopic: 'queue_parent' });
+        const bridge = makeBridge();
+        bridge.enqueue.mockImplementation(async (input: CreateTaskInput) => {
+            expect(new DelegatedJobStore(tmpDir).list('ws-parent')[0]).toMatchObject({
+                parent: { workspaceId: 'ws-parent', processId: 'queue_parent' },
+                child: { workspaceId: 'ws-parent', processId: toQueueProcessId(input.id!) },
+            });
+            return input.id;
+        });
+        let inbound: Parameters<TeamsMessagingManager['setMessageHandler']>[0] | undefined;
+        vi.spyOn(TeamsMessagingManager.prototype, 'setMessageHandler').mockImplementation(handler => { inbound = handler; });
+        vi.spyOn(TeamsMessagingManager.prototype, 'getStatus').mockReturnValue({
+            enabled: true, status: 'connected', teamId: 'team', channelId: 'channel',
+            botName: 'CoC', error: null, serverUrl: null, authStatus: null,
+        });
+        vi.spyOn(TeamsMessagingManager.prototype, 'sendMessage').mockResolvedValue('reply-id');
+        const opts = makeOpts({ dataDir: tmpDir, store, bridge });
+        opts.runtimeConfigService!.config.features.teamsAiAnswerRelay = false;
+        registerAllRoutes([], opts);
+        const admitted = inbound!({ text: '/autopilot inspect', senderAadId: 'sender', messageId: 'command', channelId: 'channel' }, () => {});
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(bridge.enqueue).not.toHaveBeenCalled();
+        expect(new DelegatedJobStore(tmpDir).list('ws-parent')).toEqual([]);
+        finishRestore();
+        await admitted;
+        expect(bridge.enqueue).toHaveBeenCalledOnce();
+        expect(bridge.enqueue.mock.calls[0][0].payload.context).toMatchObject({
+            spawnedFromProcessId: 'queue_parent', messagingOrigin: { connector: 'teams', threadId: 'command' },
+        });
+        expect(new TeamsUserStateStore(tmpDir).get('sender').selectedTopic).toBe('queue_parent');
     });
 
     it('routes authorized Notes searches through the required scoped service', async () => {

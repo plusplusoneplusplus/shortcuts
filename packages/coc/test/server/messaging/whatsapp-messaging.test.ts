@@ -69,11 +69,12 @@ describe('WhatsAppMessagingManager', () => {
         await manager.updateConfig({ enabled: true, deviceName: 'Test device' });
         expect(new WhatsAppMessagingManager(dir).getStatus()).toMatchObject({ enabled: true, deviceName: 'Test device' });
         expect(fake.options().sessionDir).toBe(path.join(dir, 'messaging', 'whatsapp', 'auth'));
+        expect(fake.options().receiveImages).toBe(true);
         expect(manager.getStatus()).toMatchObject({ status: 'connected', qr: null });
         await vi.waitFor(() => expect(reconnected).toHaveBeenCalledOnce());
         const message = { chatJid: '123@g.us', senderJid: '123@g.us', fromMe: false, messageId: 'm1', text: 'hello' };
         await fake.options().onMessage(message);
-        expect(received).toHaveBeenCalledWith(message);
+        expect(received).toHaveBeenCalledWith(message, expect.any(AbortSignal));
         expect(await manager.sendTo('123@g.us', 'hello', 'm1')).toBe('sent-1');
         expect(fake.bot.send).toHaveBeenCalledWith('123@g.us', 'hello', { replyToId: 'm1' });
         await manager.reactTo('123@g.us', 'm1', '👍');
@@ -114,6 +115,78 @@ describe('WhatsAppMessagingManager', () => {
         expect(await manager.send('reply')).toBe('sent-1');
         await new Promise(resolve => setTimeout(resolve, 0));
         expect(reconnected).toHaveBeenCalledOnce();
+    });
+
+    it('resets retained images on reconnect, group changes and transport disconnect without resetting on group creation', async () => {
+        const fake = fakeBot();
+        const manager = new WhatsAppMessagingManager(directory(), { createBot: fake.createBot });
+        const reset = vi.fn();
+        manager.setConnectionResetHandler(reset);
+        await manager.updateConfig({ enabled: true, groupJid: 'group@g.us' });
+        reset.mockClear();
+        await manager.connect();
+        expect(reset).toHaveBeenCalledOnce();
+        reset.mockClear();
+        fake.options().onStatusChange?.('creating-group');
+        fake.options().onStatusChange?.('connected');
+        expect(reset).not.toHaveBeenCalled();
+        fake.options().onStatusChange?.('connecting');
+        expect(reset).toHaveBeenCalledOnce();
+        fake.options().onStatusChange?.('connected');
+        await manager.updateConfig({ groupJid: 'other@g.us' });
+        expect(reset).toHaveBeenCalledTimes(2);
+        await manager.updateConfig({ enabled: false });
+        expect(reset).toHaveBeenCalledTimes(3);
+    });
+
+    it('aborts an inbound message waiting for initialization when the connection resets', async () => {
+        const fake = fakeBot();
+        const manager = new WhatsAppMessagingManager(directory(), { createBot: fake.createBot });
+        let finish!: () => void;
+        const ready = new Promise<void>(resolve => { finish = resolve; });
+        const dispatch = vi.fn();
+        let originalSignal: AbortSignal | undefined;
+        manager.setMessageHandler(async (message, signal) => {
+            originalSignal = signal;
+            await ready;
+            if (!signal?.aborted) dispatch(message);
+        });
+        await manager.updateConfig({ enabled: true });
+        const handling = fake.options().onMessage({
+            chatJid: 'group@g.us', senderJid: 'group@g.us', fromMe: true, messageId: 'image', text: '',
+        });
+        await manager.disconnect();
+        expect(originalSignal?.aborted).toBe(true);
+        finish();
+        await handling;
+        expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('disposal drops pending state and ignores late inbound and deferred reconnect callbacks', async () => {
+        const fake = fakeBot();
+        const manager = new WhatsAppMessagingManager(directory(), { createBot: fake.createBot });
+        const received = vi.fn(async () => {});
+        const reset = vi.fn(), disposed = vi.fn(), reconnected = vi.fn();
+        manager.setMessageHandler(received);
+        manager.setConnectionResetHandler(reset);
+        manager.setDisposeHandler(disposed);
+        manager.setConnectedHandler(reconnected);
+        await manager.updateConfig({ enabled: true });
+        await vi.waitFor(() => expect(reconnected).toHaveBeenCalledOnce());
+        reset.mockClear();
+        reconnected.mockClear();
+        fake.options().onStatusChange?.('connecting');
+        fake.options().onStatusChange?.('connected');
+        manager.dispose();
+        await fake.options().onMessage({
+            chatJid: 'group@g.us', senderJid: 'group@g.us', fromMe: true, messageId: 'late', text: '',
+        });
+        await Promise.resolve();
+        expect(received).not.toHaveBeenCalled();
+        expect(reconnected).not.toHaveBeenCalled();
+        expect(reset).toHaveBeenCalledTimes(2);
+        expect(disposed).toHaveBeenCalledOnce();
+        await manager.disconnect();
     });
 
     it('exposes pairing QR only during the current connection and clears it on disable', async () => {

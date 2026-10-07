@@ -602,7 +602,7 @@ describe('Teams authoritative binding release', () => {
                 config: {}, priority: 'normal', payload: { kind: 'chat', workspaceId, prompt },
             }),
             executeFollowUp: vi.fn(),
-            admitRelayFollowUp: async (process, prompt, requestId, _mode, id, admissionHeld) => ({
+            admitRelayFollowUp: async (process, prompt, requestId, _mode, id, _images, admissionHeld) => ({
                 taskId: await (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, { id, repoId: process.metadata!.workspaceId as string,
                     type: 'chat', processId: process.id, config: {}, priority: 'normal',
                     payload: { kind: 'chat', processId: process.id, workspaceId: process.metadata!.workspaceId,

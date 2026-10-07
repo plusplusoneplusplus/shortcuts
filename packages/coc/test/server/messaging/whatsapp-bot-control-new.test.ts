@@ -38,7 +38,7 @@ describe('WhatsApp trusted new and pending conversation admission', () => {
             store, bindings, groupJid: () => 'test-group@g.us',
             getBotManagedConversationsEnabled: () => enabled === true,
             getTask: id => queue.getTask(id),
-            enqueue: vi.fn((workspaceId, prompt, mode, processId, id, botControl, admissionHeld) =>
+            enqueue: vi.fn((workspaceId, prompt, mode, processId, id, botControl, _images, admissionHeld) =>
                 (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                 id, processId, botControl, type: 'chat', repoId: workspaceId, priority: 'normal',
                 payload: { kind: 'chat', mode, workspaceId, prompt, relayRequestId: id,

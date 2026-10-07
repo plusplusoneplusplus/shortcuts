@@ -23,6 +23,15 @@ export interface GraphClientOptions {
     graphBaseUrl?: string;
 }
 
+/** Native Teams file/card metadata; thumbnails are not incoming image attachments. */
+export interface GraphMessageAttachment {
+    id?: string;
+    contentType: string;
+    contentUrl?: string | null;
+    name?: string | null;
+    thumbnailUrl?: string | null;
+}
+
 export interface GraphMessage {
     id: string;
     body: { content: string; contentType?: string };
@@ -30,6 +39,7 @@ export interface GraphMessage {
     createdDateTime: string;
     lastModifiedDateTime?: string;
     replyToId?: string;
+    attachments?: GraphMessageAttachment[] | null;
 }
 
 export interface GraphTeam {

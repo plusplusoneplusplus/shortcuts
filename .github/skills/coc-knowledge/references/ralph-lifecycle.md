@@ -4,6 +4,50 @@ What happens after a session starts: resuming a stuck one, continuing a complete
 submitting its commits as a PR, scheduled runs, and final-check automation. Creation is in
 [ralph-launch.md](ralph-launch.md); the journal format is in [ralph.md](ralph.md).
 
+### Delegated session results
+
+`delegation/delegated-job-results.ts` consumes `ralphSessionComplete` for registered local
+Sentinel delegations, keyed by child workspace/session rather than final process ID. Stable
+`ralph:<workspaceId>:<sessionId>:terminal` identity preserves the first outcome. Clean terminal
+completion and failures use the parent's existing review queue; `user-stopped` uses a passive
+cancellation notice. Caps explicitly leave goal completion unconfirmed. Result data includes a
+scoped final process summary, session API link and journal path; reviews retain authorization
+and Sentinel dispatcher constraints.
+
+Startup recovery prefers the registered session's durable `completion` outcome, including
+reason, final process and iteration count. Caps, missing signals, rejected admission and
+final-check terminal publication require this independent record even when step metadata
+writes fail. Outcome replay admits no further work. Explicit extension, new-loop,
+awaiting-input and admitted resume transitions clear the record; rejected resume restores it.
+Unavailable sessions retain their live failure and recover as unavailable children.
+
+The queue bridge settles failed or cancelled execution iterations and admitted final-check/
+format-repair tasks before returning their execution result. `iteration-failed` and
+`final-check-failed` request result reviews; `user-stopped` requests a passive notice.
+Persistence precedes publication; failed outcome writes withhold publication. Check metadata
+is best effort after the independent outcome write. The first completion wins.
+
+Late results cannot settle paused, stopped or newer iterations. Checker settlement requires
+the current queued/running check's index, source iteration, loop and process identity; the
+original task must match, or a repair must have its persisted attempt. Failed/cancelled
+repairs bypass result parsing, including when follow-up execution saves failure without
+throwing. Ordinary follow-ups, submit and grilling retain their own lifecycle. Interrupted
+sessions remain resumable; completion grants no retry.
+
+Queued execution-iteration, checker and format-repair cancellations settle through the registered
+result recorder because these tasks never enter the executor. It persists `user-stopped` before
+returning the passive notice and scans scoped queue history during startup. Only the next
+unfinished iteration or current admitted queued/running check qualifies. Checks match index,
+loop, source iteration and original task; repairs require the persisted attempt and checker
+process. A complete iteration phase may still await its check. Live admitted tasks take
+precedence over cancellation history; paused sessions, stale steps, grilling and submit stay silent.
+
+Awaiting-input, format repair and continuing gap loops remain silent. Journals without a
+completion record recover from clean/failed final checks, gap caps and terminal iteration caps.
+Successful iteration-loop `phase=complete` alone cannot settle a session because final-check
+admission follows it. Ambiguous admission crash windows remain pending; remote sessions use
+a separate return boundary.
+
 ## Resume Routes
 
 `packages/coc/src/server/routes/ralph-route-utils.ts` is shared by `/continue`, `/new-loop`,
@@ -153,8 +197,8 @@ context so the originating run stays active for the whole session.
 
 The queue bridge exposes an internal `ralphSessionComplete` callback alongside the dashboard
 WebSocket event. `ScheduleExecutor` uses it to finalize scheduled runs only at a terminal
-reason: queue failures and terminal final-check failure reasons mark the run failed; clean,
-capped, user-stopped, or normal terminal reasons complete it. An awaiting-input session
+reason: queue failures, missing signals and terminal iteration/final-check failure reasons
+mark the run failed; clean, capped, user-stopped, or normal terminal reasons complete it. An awaiting-input session
 emits no completion event, so its scheduled run stays active until the user submits or stops.
 
 ## Final Check Automation
@@ -221,7 +265,8 @@ The parser accepts the result block either after a bare `RALPH_FINAL_CHECK_RESUL
 or as any fenced ```json block whose `marker` field equals `RALPH_FINAL_CHECK_RESULT`.
 
 Terminal paths broadcast `ralph-session-complete` with `reason`: `signal` (clean), `cap`,
-`final-check-failed` (parse failure, after the repair attempt), `final-check-enqueue-failed`,
+`no-signal`, `iteration-failed`, `iteration-enqueue-failed`, `final-check-failed` (parse failure, after the repair attempt),
+`final-check-enqueue-failed`,
 `final-check-session-missing`, `final-check-gap-loop-start-failed`,
 `final-check-gap-enqueue-failed`. A successful gap-fix enqueue broadcasts nothing because the
 next loop continues the session.

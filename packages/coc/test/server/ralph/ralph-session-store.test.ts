@@ -702,3 +702,39 @@ describe('RalphSessionStore — appendResumeMarker', () => {
         expect(md).toContain('Session resumed at 2026-06-01T08:00:00Z');
     });
 });
+
+
+describe('RalphSessionStore — whole-session completion', () => {
+    const completion = { reason: 'final-check-failed' as const, processId: 'final-check',
+        totalIterations: 3, completedAt: '2026-01-01T00:00:00.000Z' };
+
+    it('persists first terminal outcome across restart and conflicting replay in the owning workspace', async () => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 10 });
+        await store.recordCompletion(WS, SID, completion);
+        const restarted = new RalphSessionStore({ dataDir });
+        await restarted.recordCompletion(WS, SID, { ...completion, reason: 'signal' });
+        expect((await restarted.readSessionRecord(WS, SID))?.completion).toEqual(completion);
+        expect(await restarted.readSessionRecord('other-workspace', SID)).toBeNull();
+    });
+
+    it('does not create a missing or mis-scoped session', async () => {
+        await expect(store.recordCompletion(WS, SID, completion)).rejects.toThrow('not found');
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 10 });
+        await store.updateSessionRecord(WS, SID, rec => ({ ...rec!, workspaceId: 'wrong' }));
+        await expect(store.recordCompletion(WS, SID, completion)).rejects.toThrow('not found');
+        expect((await store.readSessionRecord(WS, SID))?.completion).toBeUndefined();
+    });
+
+    it.each(['extend', 'new loop', 'pause'])('clears the outcome when explicitly entering %s', async action => {
+        await store.initSession(WS, SID, { originalGoal: 'g', maxIterations: 10 });
+        await store.updateSessionRecord(WS, SID, rec => ({ ...rec!, phase: 'complete', terminalReason: 'RALPH_COMPLETE' }));
+        await store.recordCompletion(WS, SID, completion);
+        if (action === 'extend') await store.extendSession(WS, SID, 3);
+        if (action === 'new loop') await store.startNewLoop(WS, SID, 'next goal', 3);
+        if (action === 'pause') await store.setPendingInput(WS, SID, {
+            iteration: 3, taskId: 'task', processId: 'process', requestedAt: completion.completedAt,
+            request: { context: 'Need a decision', questions: [{ question: 'Continue?', type: 'yes-no', recommendation: 'yes' }] },
+        });
+        expect((await store.readSessionRecord(WS, SID))?.completion).toBeUndefined();
+    });
+});

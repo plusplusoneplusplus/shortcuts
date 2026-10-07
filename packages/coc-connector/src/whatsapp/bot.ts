@@ -5,6 +5,7 @@
 import type { BotOptions, BotStatus, InboundWAMessage, WASocket } from './types';
 import type { ConnectorStatus, MessagingConnector, MessagingTarget, SendOptions } from '../core';
 import { createBaileysConnection } from './connection';
+import { createWhatsAppImage } from './inbound-image';
 
 const RECENT_MESSAGE_LIMIT = 500;
 
@@ -68,7 +69,10 @@ export class WhatsAppBot implements MessagingConnector {
                 // Update socket reference — on reconnect, Baileys creates a new socket
                 this.sock = newSock;
                 this.sock.ev.on('messages.upsert', (upsert: any) => {
-                    this.handleMessages(upsert);
+                    if (this.sock !== newSock || controller.signal.aborted) return;
+                    return this.handleMessages(upsert, controller.signal).catch(() => {
+                        console.error('[whatsapp-bot] Could not read incoming message');
+                    });
                 });
                 this._lastQR = null;
                 this._lastError = null;
@@ -218,8 +222,12 @@ export class WhatsAppBot implements MessagingConnector {
         }
     }
 
-    private handleMessages(upsert: { messages?: any[]; type?: string }): void {
+    private async handleMessages(upsert: { messages?: any[]; type?: string }, signal: AbortSignal): Promise<void> {
         if (upsert.type !== 'notify') return;
+        const normalizeContent = this.opts.receiveImages
+            ? (await import('@whiskeysockets/baileys')).normalizeMessageContent
+            : undefined;
+        if (signal.aborted) return;
         for (const msg of upsert.messages ?? []) {
             if (msg.key.remoteJid === 'status@broadcast') continue;
 
@@ -230,10 +238,13 @@ export class WhatsAppBot implements MessagingConnector {
                 continue;
             }
 
-            const text = msg.message?.conversation
-                ?? msg.message?.extendedTextMessage?.text
+            const content = normalizeContent ? normalizeContent(msg.message) : msg.message;
+            const image = this.opts.receiveImages ? content?.imageMessage : undefined;
+            const text = content?.conversation
+                ?? content?.extendedTextMessage?.text
+                ?? image?.caption
                 ?? '';
-            if (!text) continue;
+            if (!text && !image) continue;
             if (msgId) this.rememberMessage(msgId, msg.message);
 
             const inbound: InboundWAMessage = {
@@ -245,9 +256,10 @@ export class WhatsAppBot implements MessagingConnector {
                 text,
                 senderName: msg.pushName,
             };
+            if (image) inbound.images = [createWhatsAppImage(image, signal)];
 
             // Check for quoted message
-            const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+            const contextInfo = content?.extendedTextMessage?.contextInfo ?? image?.contextInfo;
             if (contextInfo?.stanzaId) {
                 inbound.quotedMessageId = contextInfo.stanzaId;
             }

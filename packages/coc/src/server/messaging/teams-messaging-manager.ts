@@ -99,6 +99,12 @@ export class TeamsMessagingManager {
     private answerRelay: TeamsAnswerRelay | null = null;
     private answerRelayUnsubscribe: (() => void) | null = null;
     private getAnswerRelayEnabled: () => boolean = () => false;
+    private imageLifecycle?: { start: () => void; stop: () => void };
+
+    setImageLifecycle(lifecycle: { start: () => void; stop: () => void }): void {
+        this.imageLifecycle?.stop();
+        this.imageLifecycle = lifecycle;
+    }
 
     setAnswerRelay(relay: TeamsAnswerRelay, unsubscribe?: () => void, isEnabled?: () => boolean): void {
         this.answerRelay = relay;
@@ -316,10 +322,12 @@ export class TeamsMessagingManager {
             // MCP owns discovery and IC3 routing; Graph owns authoritative channel reads.
             if (attemptId) history?.phase(attemptId, 'starting-polling');
             failureCategory = 'polling';
+            this.imageLifecycle?.start();
             const bot = new TeamsBot({
                 mode: 'mcp',
                 channelReadBackend: 'graph',
                 graphReadOptions: {},
+                receiveImages: true,
                 operationRoutes: {
                     chatSend: 'ic3',
                     ...((this.config.outboundBackend ?? 'graph') === 'graph'
@@ -349,7 +357,7 @@ export class TeamsMessagingManager {
                 isKnownChannelReply: msg => this.getAnswerRelayEnabled()
                     && (this.answerRelay?.hasSeenReply(resolved.teamId, msg) ?? false),
                 onMessage: async (msg) => {
-                    if (generation !== this.generation || !this.onInboundMessage) return;
+                    if (generation !== this.generation || terminal || !this.onInboundMessage) return;
                     await this.inboundContext.run({ generation, attemptId: attemptId ?? null },
                         () => this.onInboundMessage!(msg, (type) => this.recordEvent(type)));
                     if (msg.replyToMessageId && this.getAnswerRelayEnabled()
@@ -375,6 +383,7 @@ export class TeamsMessagingManager {
                             if (attemptId && this.attemptId === attemptId) history?.phase(attemptId, 'connected');
                         }
                     } else if (connectedRecorded && (s === 'disconnected' || s === 'error')) {
+                        this.imageLifecycle?.stop();
                         terminal = true;
                         if (attemptId && this.attemptId === attemptId) {
                             history?.finish(attemptId, s === 'error' ? 'failed' : 'disconnected',
@@ -473,6 +482,7 @@ export class TeamsMessagingManager {
     }
 
     async disconnect(result: TeamsAttemptResult = 'disconnected', category?: TeamsFailureCategory): Promise<void> {
+        this.imageLifecycle?.stop();
         this.oauthFlow?.cancel();
         this.generation++;
         const generation = this.generation;

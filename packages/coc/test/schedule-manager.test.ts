@@ -576,7 +576,7 @@ describe('ScheduleManager', () => {
             mgr.dispose();
         });
 
-        it('fails a scheduled Ralph run when the Ralph session terminal reason is a final-check failure', async () => {
+        it.each(['final-check-failed', 'iteration-enqueue-failed', 'iteration-failed', 'no-signal'])('fails a scheduled Ralph run for terminal reason %s', async reason => {
             const queue = createDeferredQueueManager();
             const mgr = new ScheduleManager(persistence, queue as any, null, dataDir);
             const events: any[] = [];
@@ -603,18 +603,18 @@ describe('ScheduleManager', () => {
                 sessionId,
                 processId: `queue_${taskId}`,
                 totalIterations: 1,
-                reason: 'final-check-failed',
+                reason,
             });
 
             const run = await runPromise;
             expect(run.status).toBe('failed');
-            expect(run.error).toContain('final-check-failed');
+            expect(run.error).toContain(reason);
             expect(mgr.getSchedule(REPO_ID, schedule.id)?.status).toBe('stopped');
             expect(events.some(e =>
                 e.type === 'schedule-run-complete'
                 && e.run?.id === run.id
                 && e.run?.status === 'failed'
-                && String(e.run?.error).includes('final-check-failed')
+                && String(e.run?.error).includes(reason)
             )).toBe(true);
 
             mgr.dispose();

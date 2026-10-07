@@ -968,6 +968,26 @@ describe('createSendToConversationTool — ralph mode (create only)', () => {
         });
     });
 
+    it.each([
+        { connector: 'whatsapp' as const, chatKey: 'original-group' },
+        { connector: 'teams' as const, chatKey: 'original-channel', threadId: 'original-thread' },
+    ])('captures local Ralph routing without tracking iteration notices (%j)', async origin => {
+        const launchRalph = makeLaunch();
+        const trackMessagingJob = vi.fn();
+        const { tool } = makeTool({ launchRalph, storeWorkspaces: ['ws-1', 'ws-2'], runtime: { messagingOrigin: () => origin, trackMessagingJob } });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph', workspaceId: 'ws-2' }, invocationStub));
+        expect(launchRalph.mock.calls[0][0]).toMatchObject({ workspaceId: 'ws-2', messagingOrigin: origin });
+        expect(trackMessagingJob).not.toHaveBeenCalled();
+    });
+
+    it('captures Ralph routing independently of ordinary notice tracking', async () => {
+        const launchRalph = makeLaunch();
+        const origin = { connector: 'teams' as const, chatKey: 'channel', threadId: 'thread' };
+        const { tool } = makeTool({ launchRalph, runtime: { messagingOrigin: () => origin } });
+        asSuccess(await tool.handler({ content: 'goal', mode: 'ralph' }, invocationStub));
+        expect(launchRalph.mock.calls[0][0].messagingOrigin).toEqual(origin);
+    });
+
     it('never requests a worktree or max iterations', async () => {
         const launchRalph = makeLaunch();
         const { tool } = makeTool({ launchRalph });
@@ -1116,6 +1136,7 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
         expect(captured.input?.workspaceId ?? payloadOf(captured.input!).workspaceId).toBe('ws-api');
         expect(result.openLink).toBe(`#/process/${result.processId}`);
         expect(directory.startRemoteChat).not.toHaveBeenCalled();
+        expect(result.resultDelivery).toBeUndefined();
     });
 
     it('resolves name@server to the remote repo and starts the chat remotely', async () => {
@@ -1125,11 +1146,40 @@ describe('createSendToConversationTool — workspace targets (names, remote clon
 
         expect(enqueueChat).not.toHaveBeenCalled();
         expect(directory.startRemoteChat).toHaveBeenCalledWith(expect.objectContaining({ serverId: 'srv-1', kind: 'queue' }));
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             processId: 'queue_remote-task',
             openLink: `#repos/${encodeURIComponent('remote:srv-1:w-api')}/chats/queue_remote-task`,
         });
     });
+
+    it.each(['ask', 'autopilot', 'ralph'] as const)(
+        'reports unavailable remote result return from a Sentinel for %s without duplicate admission', async mode => {
+            const trackMessagingJob = vi.fn();
+            const directory = makeDirectory();
+            directory.startRemoteChat.mockResolvedValue({ processId: 'queue_remote-task', sessionId: 'ralph-1' } as any);
+            const { tool, enqueueChat } = makeTool({
+                parentMeta: { provider: 'codex', mode: 'sentinel' } as ParentMeta & { mode?: string },
+                runtime: { workspaceDirectory: directory,
+                    messagingOrigin: () => ({ connector: 'teams', chatKey: 'channel', threadId: 'original-topic' }),
+                    trackMessagingJob },
+            });
+            const result = asSuccess(await tool.handler({ content: 'goal', workspaceId: 'web@dev-vm', mode }, invocationStub));
+            expect(tool.description).toContain('Do not promise an automatic return or start a duplicate job');
+            expect(result.resultDelivery?.status).toBe('unavailable');
+            expect(result.resultDelivery?.reason).toMatch(/remote job was started.*automatic result return.*unavailable/);
+            expect(result.resultDelivery?.reason).toContain('WhatsApp/Teams');
+            expect(result.resultDelivery?.reason).toContain('openLink');
+            expect(result.resultDelivery?.reason).toContain('do not launch a duplicate');
+            expect(result.openLink).toBe(`#repos/${encodeURIComponent('remote:srv-1:w-web')}/chats/queue_remote-task`);
+            expect(directory.startRemoteChat).toHaveBeenCalledTimes(1);
+            expect(enqueueChat).not.toHaveBeenCalled();
+            expect(trackMessagingJob).not.toHaveBeenCalled();
+            const body = directory.startRemoteChat.mock.calls[0][0].body as any;
+            expect(body.spawnedFromProcessId ?? body.payload?.context?.spawnedFromProcessId).toBeUndefined();
+            expect(body.messagingOrigin ?? body.payload?.context?.messagingOrigin).toBeUndefined();
+            if (mode === 'ralph') expect(result.sessionId).toBe('ralph-1');
+        },
+    );
 
     it('rejects an ambiguous name, listing candidate ids and servers', async () => {
         const { tool, enqueueChat } = makeTargetTool();
@@ -1260,6 +1310,7 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
         expect(init.method).toBe('POST');
         expect(JSON.parse(init.body)).toMatchObject({ type: 'chat', workspaceId: 'w1', payload: { prompt: 'hi', mode: 'ask' } });
         expect(result.processId).toBe('queue_t-9');
+        expect(result.resultDelivery?.status).toBe('unavailable');
     });
 
     it.each(['ask', 'autopilot', 'ralph'] as const)('POSTs Auto %s and explicit models to the target server API', async mode => {
@@ -1272,7 +1323,8 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
             fetchImpl,
         });
         const { tool, enqueueChat } = makeTool({ runtime: { workspaceDirectory } });
-        asSuccess(await tool.handler({ content: 'goal', workspaceId: 'remote:srv-1:w1', provider: 'auto', mode, model: 'opus' }, invocationStub));
+        const result = asSuccess(await tool.handler({ content: 'goal', workspaceId: 'remote:srv-1:w1', provider: 'auto', mode, model: 'opus' }, invocationStub));
+        expect(result.resultDelivery?.status).toBe('unavailable');
         const [url, init] = (fetchImpl as any).mock.calls[1];
         expect(url).toBe(`http://vm:4000/api/${mode === 'ralph' ? 'ralph-launch' : 'queue'}`);
         const body = JSON.parse(init.body);
@@ -1294,7 +1346,7 @@ describe('createSendToConversationTool — remote create over HTTP (real directo
 
         const result = await tool.handler({ content: 'hi', workspaceId: 'remote:srv-1:w1' }, invocationStub);
 
-        expect('error' in result && result.error).toBe('Remote server "vm" rejected the request: Unknown workspace. The chat was not started.');
+        expect(result).toEqual({ error: 'Remote server "vm" rejected the request: Unknown workspace. The chat was not started.' });
         expect(enqueueChat).not.toHaveBeenCalled();
     });
 });

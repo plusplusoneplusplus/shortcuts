@@ -7,6 +7,7 @@ import type { RoutedTeamsOperations, TeamsOperationRoutes, TeamsMessageRef } fro
 import type { TeamsTrouterOptions } from './trouter';
 import type { TeamsReadHints } from './notification-scheduler';
 import type { GraphOutboundOptions } from './graph/graph-credential';
+import type { InboundImage } from '../core/inbound-image';
 
 export interface InboundTeamsMessage {
     /** Exact reader/backend identity for subsequent typed operations. */
@@ -15,6 +16,8 @@ export interface InboundTeamsMessage {
     messageId: string;
     replyToMessageId?: string;
     text: string;
+    /** Lazy authenticated images, available when receiveImages is enabled. */
+    images?: InboundImage[];
     senderName?: string;
     senderAadId?: string;
     /** Teams identifies the sender as an application rather than a human user. */
@@ -34,6 +37,8 @@ export interface InboundTeamsMessage {
 export type TeamsTransportMode = 'graph' | 'mcp';
 
 export interface TeamsBotOptions {
+    /** Opt in to inline images on hybrid Graph channel reads; default consumers remain text-only. */
+    receiveImages?: boolean;
     /** Private-protocol notification wake hints, default off; reads remain authoritative.
      * DMs require an explicit reader chat target: no discovery probe or synthetic 48:notes wakes. */
     enableTrouter?: boolean;

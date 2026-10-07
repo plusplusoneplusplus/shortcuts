@@ -2,13 +2,15 @@ import type { InboundTeamsMessage } from '../types';
 import { GraphClient, GraphHttpError, GraphProtocolError, type GraphListResponse } from './graph-client';
 import { GraphCredentialStore, type GraphOutboundOptions } from './graph-credential';
 import { TeamsOperationError } from '../operations';
+import { decodeGraphHtmlEntities, graphChannelImages } from './inbound-image';
 
 /** Graph pages feed the same ID/thread admission scanner as MCP pages. */
 export class GraphChannelReader {
     private readonly credentials: GraphCredentialStore;
     private readonly lifetime = new AbortController();
 
-    constructor(account: { tenantId: string; objectId: string } | undefined, options: GraphOutboundOptions = {}) {
+    constructor(account: { tenantId: string; objectId: string } | undefined, options: GraphOutboundOptions = {},
+        private readonly receiveImages = false) {
         this.credentials = new GraphCredentialStore(account, options, 'read');
     }
 
@@ -56,17 +58,22 @@ export class GraphChannelReader {
         readSignal.throwIfAborted();
         return {
             nextLink: page['@odata.nextLink'],
-            messages: page.value.map(message => ({
-                channelId, messageId: message.id,
-                replyToMessageId: rootId,
-                text: (message.body?.content ?? '')
-                    .replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n')
-                    .replace(/<[^>]*>/g, '').trim(),
-                senderName: message.from?.user?.displayName,
-                senderAadId: message.from?.user?.id,
-                botAuthored: !!message.from?.application,
-                createdDateTime: message.createdDateTime,
-            })).sort((a, b) => (Date.parse(a.createdDateTime ?? '') || 0) - (Date.parse(b.createdDateTime ?? '') || 0)),
+            messages: page.value.map(message => {
+                const html = message.body?.content ?? '';
+                const text = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n')
+                    .replace(/<[^>]*>/g, '');
+                return {
+                    channelId, messageId: message.id,
+                    replyToMessageId: rootId,
+                    text: (this.receiveImages ? decodeGraphHtmlEntities(text) : text).trim(),
+                    ...(this.receiveImages ? { images: graphChannelImages(html,
+                        { teamId, channelId, messageId: message.id, rootId }, this.credentials, this.lifetime.signal, message.attachments) } : {}),
+                    senderName: message.from?.user?.displayName,
+                    senderAadId: message.from?.user?.id,
+                    botAuthored: !!message.from?.application,
+                    createdDateTime: message.createdDateTime,
+                };
+            }).sort((a, b) => (Date.parse(a.createdDateTime ?? '') || 0) - (Date.parse(b.createdDateTime ?? '') || 0)),
         };
     }
 }

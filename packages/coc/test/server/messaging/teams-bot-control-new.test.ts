@@ -80,7 +80,7 @@ describe('Teams trusted initial conversation admission', () => {
                 payload: { kind: 'chat', mode: mode ?? 'ask', workspaceId, prompt }, config: {},
             }));
         followUp = vi.fn(async () => {});
-        admitFollowUp = vi.fn(async (proc, prompt: string, requestId: string, _mode: string | undefined, id?: string, admissionHeld?: boolean) => ({
+        admitFollowUp = vi.fn(async (proc, prompt: string, requestId: string, _mode: string | undefined, id?: string, _images?: unknown, admissionHeld?: boolean) => ({
             taskId: await (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                 id, type: 'chat', repoId: proc.metadata.workspaceId, processId: proc.id, priority: 'normal',
                 payload: {
@@ -141,7 +141,7 @@ describe('Teams trusted initial conversation admission', () => {
         await handle(inbound('choose-existing', '/select topic existing-topic'));
         await handle(inbound('mode-adopted', '/autopilot adopted'));
         expect(admitFollowUp).toHaveBeenLastCalledWith(
-            expect.objectContaining({ id: 'existing-topic' }), 'adopted', expect.any(String), 'autopilot', expect.any(String), true,
+            expect.objectContaining({ id: 'existing-topic' }), 'adopted', expect.any(String), 'autopilot', expect.any(String), undefined, true,
         );
         expect((await store.getProcess('existing-topic'))?.metadata?.botControl).toEqual(createBotControlMetadata('teams'));
     });
@@ -351,7 +351,7 @@ describe('Teams trusted initial conversation admission', () => {
         expect(followUp).not.toHaveBeenCalled();
         expect(admitFollowUp).toHaveBeenCalledWith(
             expect.objectContaining({ id: toQueueProcessId(origin.id) }), 'later question',
-            expect.any(String), undefined, expect.any(String), true,
+            expect.any(String), undefined, expect.any(String), undefined, true,
         );
         expect((await store.getProcess(toQueueProcessId(origin.id)))?.metadata).toMatchObject({
             botControl: createBotControlMetadata('teams'), provider: 'claude',
@@ -653,7 +653,7 @@ describe('Teams trusted initial conversation admission', () => {
     it.each([true, false])('adopts an existing topic before durable follow-up admission (relay %s)', async relay => {
         relayEnabled = relay;
         await existing();
-        admitFollowUp.mockImplementationOnce(async (proc, prompt, requestId, _mode, id, admissionHeld) => {
+        admitFollowUp.mockImplementationOnce(async (proc, prompt, requestId, _mode, id, _images, admissionHeld) => {
             expect((await store.getProcess(proc.id))?.metadata?.botControl).toEqual(createBotControlMetadata('teams'));
             return { taskId: await (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                 id, type: 'chat', repoId: 'ws-b', processId: proc.id, priority: 'normal',

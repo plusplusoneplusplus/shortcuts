@@ -2,10 +2,12 @@
  * ProcessLifecycleRunner — selected-skills directive tests.
  */
 
+import * as path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { QueuedTask } from '@plusplusoneplusplus/forge';
 import { getLogger } from '@plusplusoneplusplus/forge';
 import { ProcessLifecycleRunner, asPlanFilePath } from '../../../src/server/executors/process-lifecycle-runner';
+import { cleanupTempDir } from '../../../src/server/executors/image-store';
 import type { LifecycleRunnerOptions } from '../../../src/server/executors/process-lifecycle-runner';
 import { createMockProcessStore } from '../helpers/mock-process-store';
 import { rehydrateImagesIfNeeded } from '../../../src/server/executors/image-store';
@@ -60,6 +62,30 @@ function makeOpts(overrides: Partial<LifecycleRunnerOptions> = {}): LifecycleRun
 // ============================================================================
 // Selected-skills directive in initial turn
 // ============================================================================
+
+describe('ProcessLifecycleRunner — admitted attachment cancellation', () => {
+    it.each([false, true])('cleans prepared images before execution (follow-up=%s)', async followUp => {
+        vi.clearAllMocks();
+        const store = createMockProcessStore();
+        if (followUp) {
+            await store.addProcess({
+                id: 'existing-chat', type: 'chat', status: 'running', startTime: new Date(),
+                promptPreview: '', fullPrompt: '', metadata: { workspaceId: 'ws-abc' },
+            });
+        }
+        const imageTempDir = path.join('test-attachments', 'incoming');
+        const task = makeTask({
+            payload: { kind: 'chat', mode: 'ask', prompt: 'Describe this image',
+                imageTempDir, ...(followUp ? { processId: 'existing-chat' } : {}) },
+        });
+        const options = makeOpts({ cancelledTasks: new Set([task.id]) });
+        const runner = new ProcessLifecycleRunner(store, 'test-data', vi.fn());
+        expect((await runner.run(task, options)).success).toBe(false);
+        expect(cleanupTempDir).toHaveBeenCalledExactlyOnceWith(imageTempDir);
+        expect(options.executeByTypeFn).not.toHaveBeenCalled();
+        expect(options.executeFollowUpFn).not.toHaveBeenCalled();
+    });
+});
 
 describe('ProcessLifecycleRunner — custom title seeding', () => {
     it.each(['cancelling', 'cancelled'] as const)('preserves %s when a cancelled follow-up reaches execution', async status => {
@@ -1498,7 +1524,7 @@ describe('ProcessLifecycleRunner — follow-up lifecycle status ordering', () =>
         runner = new ProcessLifecycleRunner(store as any, '/data-dir', vi.fn());
     });
 
-    it('persists a queued Teams user turn once before execution, including after retry', async () => {
+    it.each(['teams', 'whatsapp'])('persists a queued %s image turn once before execution, including after retry', async platform => {
         const processId = 'queue_existing';
         store.processes.set(processId, {
             id: processId, type: 'clarification', status: 'completed',
@@ -1510,15 +1536,19 @@ describe('ProcessLifecycleRunner — follow-up lifecycle status ordering', () =>
             ],
         } as any);
         const task = makeTask({
-            id: 'teams-follow-up',
+            id: `${platform}-follow-up`,
             processId,
             payload: { kind: 'chat', prompt: 'new request', processId, workspaceId: 'ws-abc',
-                relayRequestId: 'opaque-request' },
+                relayRequestId: 'opaque-request', images: ['data:image/png;base64,iVBORw0KGgoBAgM='],
+                attachments: [{ type: 'file', path: path.join(process.cwd(), 'incoming-image.png') }] },
         });
         const executeFollowUpFn = vi.fn().mockResolvedValue(undefined);
         await runner.run(task, makeOpts({ executeFollowUpFn }));
         expect((await store.getProcess(processId))?.conversationTurns?.filter(turn => turn.relayRequestId === 'opaque-request'))
-            .toEqual([expect.objectContaining({ role: 'user', content: 'new request', turnIndex: 2 })]);
+            .toEqual([expect.objectContaining({ role: 'user', content: 'new request', turnIndex: 2,
+                images: ['data:image/png;base64,iVBORw0KGgoBAgM='] })]);
+        expect(executeFollowUpFn.mock.calls[0][2]).toEqual(task.payload.attachments);
+        expect(executeFollowUpFn.mock.calls[0][5]).toEqual(task.payload.images);
         expect(executeFollowUpFn.mock.calls[0][11]).toMatchObject({ historyCutoffTurnIndex: 2 });
 
         await runner.run(task, makeOpts({ executeFollowUpFn }));

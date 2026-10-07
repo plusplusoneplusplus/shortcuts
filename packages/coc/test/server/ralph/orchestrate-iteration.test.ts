@@ -579,7 +579,7 @@ describe('orchestrateRalphIteration — NONE / no signal', () => {
         await fs.promises.rm(dataDir, { recursive: true, force: true });
     });
 
-    it('broadcasts session-complete (reason "cap") and does not enqueue on NONE signal', async () => {
+    it('broadcasts session-complete (reason "no-signal") and does not enqueue on NONE signal', async () => {
         const deps = makeDeps({ dataDir });
         await orchestrateRalphIteration({
             responseText: makeNoSignalResponse(),
@@ -594,7 +594,7 @@ describe('orchestrateRalphIteration — NONE / no signal', () => {
         });
 
         expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(
-            expect.objectContaining({ reason: 'cap' }),
+            expect.objectContaining({ reason: 'no-signal' }),
         );
         expect(deps.enqueueTask).not.toHaveBeenCalled();
     });
@@ -720,7 +720,7 @@ describe('orchestrateRalphIteration — journal signal recovery', () => {
 
         expect(deps.enqueueTask).not.toHaveBeenCalled();
         expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(
-            expect.objectContaining({ reason: 'cap' }),
+            expect.objectContaining({ reason: 'no-signal' }),
         );
         const record = await store.readSessionRecord(WS, SID);
         expect(record?.terminalReason).toBe('NO_SIGNAL');
@@ -945,5 +945,97 @@ describe('orchestrateRalphIteration — live maxIterations from session.json', (
         expect(deps.enqueueTask).toHaveBeenCalledTimes(1);
         const enqueuedTask = (deps.enqueueTask as ReturnType<typeof vi.fn>).mock.calls[0][0];
         expect(enqueuedTask.payload.context.ralph.maxIterations).toBe(5);
+    });
+});
+
+
+describe('orchestrateRalphIteration — durable terminal outcomes', () => {
+    let dataDir: string;
+    let store: RalphSessionStore;
+    beforeEach(async () => {
+        dataDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'orch-iter-terminal-'));
+        store = new RalphSessionStore({ dataDir });
+        await store.initSession(WS, SID, { originalGoal: 'Do the goal.', maxIterations: 5 });
+        _clearFinalCheckEnqueuedSet();
+    });
+    afterEach(async () => {
+        vi.restoreAllMocks();
+        _clearFinalCheckEnqueuedSet();
+        await fs.promises.rm(dataDir, { recursive: true, force: true });
+    });
+    function run(responseText: string, deps: OrchestrateRalphIterationDeps, currentIteration = 2) {
+        return orchestrateRalphIteration({ responseText, completedTaskId: TASK_ID, processId: PROCESS_ID,
+            workspaceId: WS, sessionId: SID, originalGoal: 'Do the goal.', currentIteration, maxIterations: 5, deps });
+    }
+
+    it.each([
+        ['next admission', makeNextResponse(), 2, 'iteration-enqueue-failed'],
+        ['check admission', makeCompleteResponse(), 2, 'final-check-enqueue-failed'],
+        ['cap', makeNextResponse(), 5, 'cap'],
+        ['missing signal', makeNoSignalResponse(), 2, 'no-signal'],
+    ])('persists %s before publication and replays without admitting more work', async (_, response, iteration, reason) => {
+        const deps = makeDeps({ dataDir, enqueueTask: vi.fn(() => { throw new Error('queue full'); }),
+            broadcastSessionComplete: vi.fn(() => { throw new Error('publication interrupted'); }) });
+        await expect(run(response, deps, iteration)).rejects.toThrow('publication interrupted');
+        const record = await new RalphSessionStore({ dataDir }).readSessionRecord(WS, SID);
+        expect(record?.completion).toMatchObject({ reason, processId: PROCESS_ID, totalIterations: iteration,
+            completedAt: expect.any(String) });
+        _clearFinalCheckEnqueuedSet();
+        const replay = makeDeps({ dataDir });
+        // A conflicting response cannot grant a fresh admission on replay.
+        await run(makeCompleteResponse(), replay, iteration);
+        expect(replay.enqueueTask).not.toHaveBeenCalled();
+        expect(replay.broadcastSessionComplete).toHaveBeenCalledWith({ workspaceId: WS, sessionId: SID,
+            processId: PROCESS_ID, reason, totalIterations: iteration });
+        expect((await store.readSessionRecord(WS, SID))?.completion).toEqual(record?.completion);
+    });
+
+    it.each([makeNextResponse(), makeCompleteResponse(), makeNoSignalResponse()])(
+        'withholds publication when terminal persistence fails: %s', async response => {
+            vi.spyOn(RalphSessionStore.prototype, 'recordCompletion').mockRejectedValue(new Error('outcome write failed'));
+            const deps = makeDeps({ dataDir, enqueueTask: vi.fn(() => { throw new Error('queue full'); }) });
+            await expect(run(response, deps)).rejects.toThrow('outcome write failed');
+            expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+            expect((await store.readSessionRecord(WS, SID))?.completion).toBeUndefined();
+        },
+    );
+
+    it('rejects a mis-scoped completion record without publishing or queueing work', async () => {
+        await store.updateSessionRecord(WS, SID, record => ({ ...record!, workspaceId: 'other-workspace',
+            completion: { reason: 'signal', processId: 'other-process', totalIterations: 2,
+                completedAt: new Date().toISOString() } }));
+        const deps = makeDeps({ dataDir });
+        await expect(run(makeNextResponse(), deps)).rejects.toThrow('does not belong to workspace');
+        expect(deps.enqueueTask).not.toHaveBeenCalled();
+        expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+    });
+
+    it('can record the failed check admission after a transient outcome-write failure', async () => {
+        vi.spyOn(RalphSessionStore.prototype, 'recordCompletion').mockRejectedValueOnce(new Error('disk full'));
+        const deps = makeDeps({ dataDir, enqueueTask: vi.fn(() => { throw new Error('queue full'); }) });
+        await expect(run(makeCompleteResponse(), deps)).rejects.toThrow('disk full');
+        await run(makeCompleteResponse(), deps);
+        expect(deps.enqueueTask).toHaveBeenCalledTimes(2);
+        expect(deps.broadcastSessionComplete).toHaveBeenCalledOnce();
+        expect((await store.readSessionRecord(WS, SID))?.completion?.reason).toBe('final-check-enqueue-failed');
+    });
+
+    it('records NO_SIGNAL independently when iteration metadata fails', async () => {
+        vi.spyOn(RalphSessionStore.prototype, 'appendProgressSection').mockRejectedValue(new Error('journal failed'));
+        const deps = makeDeps({ dataDir });
+        await run(makeNoSignalResponse(), deps);
+        const record = await store.readSessionRecord(WS, SID);
+        expect(record?.phase).toBe('executing');
+        expect(record?.terminalReason).toBeUndefined();
+        expect(record?.completion?.reason).toBe('no-signal');
+        expect(deps.broadcastSessionComplete).toHaveBeenCalledWith(expect.objectContaining({ reason: 'no-signal' }));
+    });
+
+    it.each([makeNextResponse(), makeCompleteResponse()])('continuing work has no terminal marker: %s', async response => {
+        const deps = makeDeps({ dataDir });
+        await run(response, deps);
+        expect(deps.enqueueTask).toHaveBeenCalledOnce();
+        expect(deps.broadcastSessionComplete).not.toHaveBeenCalled();
+        expect((await store.readSessionRecord(WS, SID))?.completion).toBeUndefined();
     });
 });

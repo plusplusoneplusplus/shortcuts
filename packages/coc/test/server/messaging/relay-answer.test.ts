@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { CHAT_IMAGE_FAILURE_TEXT } from '../../../src/server/executors/chat-image-policy';
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
 import {
     RELAY_ANSWER_TEXT,
@@ -73,6 +74,13 @@ describe('findRequestAnswer', () => {
 });
 
 describe('findRequestFailureText', () => {
+    it.each(Object.values(CHAT_IMAGE_FAILURE_TEXT))('relays only the exact safe image failure: %s', message => {
+        expect(findRequestFailureText([turn('user', 'q'), turn('assistant', `Error: ${message}`)], 0)).toBe(message);
+        expect(findRequestFailureText([turn('user', 'q')], 0, message)).toBe(message);
+        expect(findRequestFailureText([turn('user', 'q')], 0, `${message} secret-token`)).toBe(RELAY_ANSWER_TEXT.failed);
+        expect(findRequestFailureText([turn('user', 'q'), turn('user', 'later')], 0, message)).toBe(RELAY_ANSWER_TEXT.failed);
+    });
+
     const limit = "You've hit your session limit · resets 7:10pm (UTC)";
     const notice = 'Provider session limit reached. Resets at 7:10pm (UTC). Send a follow-up after the reset to retry.';
 

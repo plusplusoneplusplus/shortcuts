@@ -91,6 +91,7 @@ export class McpTransport implements TeamsTransport {
             graphOutboundOptions?: GraphOutboundOptions;
             channelReadBackend?: 'mcp' | 'graph';
             graphReadOptions?: GraphOutboundOptions;
+            receiveImages?: boolean;
         } = {},
     ) {
         this._connectionId = operationOptions.connectionId ?? randomUUID();
@@ -272,7 +273,8 @@ export class McpTransport implements TeamsTransport {
         await this.configureOperations(client, signal);
         signal.throwIfAborted();
         if (this.teamId && this.operationOptions.channelReadBackend === 'graph') {
-            const reader = new GraphChannelReader(this.account, this.operationOptions.graphReadOptions);
+            const reader = new GraphChannelReader(this.account, this.operationOptions.graphReadOptions,
+                this.operationOptions.receiveImages);
             this.graphReader = reader;
             await reader.initialize();
             signal.throwIfAborted();

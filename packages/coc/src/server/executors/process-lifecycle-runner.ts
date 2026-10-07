@@ -463,7 +463,6 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             if (isChatFollowUp(task.payload)) {
                 const payload = task.payload as unknown as ChatPayload;
                 task.processId = payload.processId;
-                const imageTempDir = payload.imageTempDir;
                 try {
                     const current = await this.store.getProcess(payload.processId!);
                     if (current?.status !== 'cancelling' && current?.status !== 'cancelled') {
@@ -472,8 +471,9 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 } catch (err) {
                     logger.debug(LogCategory.AI, `[QueueExecutor] Failed to update process status for cancelled task ${task.id}: ${err instanceof Error ? err.message : String(err)}`);
                 }
-                if (imageTempDir) { cleanupTempDir(imageTempDir); }
             }
+            const imageTempDir = isChatPayload(task.payload) ? task.payload.imageTempDir : undefined;
+            if (imageTempDir) { cleanupTempDir(imageTempDir); }
             return { success: false, error: new Error('Task cancelled'), durationMs: 0 };
         }
 
@@ -513,26 +513,29 @@ export class ProcessLifecycleRunner extends BaseExecutor {
             }
             try {
                 if (followUpPayload.relayRequestId) {
-                    const current = await this.store.getProcess(followUpPayload.processId!);
-                    if (!current) throw new Error('Follow-up process is unavailable');
-                    const existingUserTurn = current.conversationTurns?.find(turn => turn.role === 'user'
-                        && turn.relayRequestId === followUpPayload.relayRequestId);
-                    if (existingUserTurn) {
-                        followUpPayload.historyCutoffTurnIndex = existingUserTurn.turnIndex;
-                    } else {
-                        const appended = await this.store.appendConversationTurn(
-                            followUpPayload.processId!,
-                            index => ({
-                                role: 'user' as const,
-                                content: followUpPayload.prompt,
-                                timestamp: new Date(),
-                                turnIndex: index,
-                                relayRequestId: followUpPayload.relayRequestId,
-                                timeline: [],
-                            }),
-                        );
-                        followUpPayload.historyCutoffTurnIndex = appended?.turn.turnIndex;
-                    }
+                    await processOperationAdmission.runExclusive(followUpPayload.processId!, async () => {
+                        const current = await this.store.getProcess(followUpPayload.processId!);
+                        if (!current) throw new Error('Follow-up process is unavailable');
+                        const existingUserTurn = current.conversationTurns?.find(turn => turn.role === 'user'
+                            && turn.relayRequestId === followUpPayload.relayRequestId);
+                        if (existingUserTurn) {
+                            followUpPayload.historyCutoffTurnIndex = existingUserTurn.turnIndex;
+                        } else {
+                            const appended = await this.store.appendConversationTurn(
+                                followUpPayload.processId!,
+                                index => ({
+                                    role: 'user' as const,
+                                    content: followUpPayload.prompt,
+                                    timestamp: new Date(),
+                                    turnIndex: index,
+                                    relayRequestId: followUpPayload.relayRequestId,
+                                    ...(followUpPayload.images?.length ? { images: followUpPayload.images } : {}),
+                                    timeline: [],
+                                }),
+                            );
+                            followUpPayload.historyCutoffTurnIndex = appended?.turn.turnIndex;
+                        }
+                    });
                 }
                 // Per-turn reasoning effort flows in via the follow-up payload
                 // (see queue-shared.validateAndParseTask) but follow-up tasks
@@ -571,6 +574,7 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                         // that is already queued.
                         {
                             ...(task.payload.deferredMessage ? { userTurnPersisted: true } : {}),
+                            ...(imageTempDir ? { imageTempDir } : {}),
                             ...(followUpPayload.provider ? { requestedProvider: followUpPayload.provider } : {}),
                             ...(typeof followUpPayload.historyCutoffTurnIndex === 'number'
                                 ? { historyCutoffTurnIndex: followUpPayload.historyCutoffTurnIndex }
@@ -599,6 +603,11 @@ export class ProcessLifecycleRunner extends BaseExecutor {
                 if (opts.onRalphNext && isRalphFinalCheckRepairTurn(task.payload)) {
                     try {
                         const proc = await this.store.getProcess(followUpPayload.processId!);
+                        // Follow-up execution persists failures without throwing. Never
+                        // interpret an earlier checker response as a successful repair.
+                        if (proc?.status !== 'completed' || opts.cancelledTasks.has(task.id)) {
+                            return { success: false, error: new Error(proc?.error ?? 'Ralph final-check repair did not complete'), durationMs: duration };
+                        }
                         const lastAssistant = [...(proc?.conversationTurns ?? [])]
                             .reverse()
                             .find(turn => turn.role === 'assistant');

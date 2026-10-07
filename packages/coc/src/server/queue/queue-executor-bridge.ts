@@ -1,5 +1,5 @@
 import type { ChatPayload, ChatMode, ChatProvider } from '../tasks/task-types';
-import { isChatPayload, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
+import { isChatPayload, isRalphFinalCheckRepairTurn, TaskDefs, getTaskDef, normalizeChatMode, resolveChatProviderOrDefault, VALID_CHAT_PROVIDERS } from '../tasks/task-types';
 import { applyFollowUpToTask, truncateDisplayName } from '../shared/queue-utils';
 import { processToQueuedTask } from '../shared/process-history-mapper';
 import type { AIProcess, Attachment, ConversationTurn, ISDKService, ProcessStore, QueuedTask, QueueExecutor, StoredEffortTiersMap, TaskExecutionResult, TaskExecutor, TaskQueueManager, TurnSource } from '@plusplusoneplusplus/forge';
@@ -109,6 +109,8 @@ export interface QueueExecutorBridgeOptions extends CLITaskExecutorOptions {
     initialDelayMs?: number;
 }
 export interface QueueExecutorBridge {
+    /** Recover the head of an idle conversation's durable buffer through its queue. */
+    recoverPendingMessages?(workspaceId: string, processId: string): Promise<void>;
     executeFollowUp(processId: string, message: string, attachments?: Attachment[], mode?: string, deliveryMode?: string, images?: string[], selectedSkillNames?: string[], model?: string, turnSource?: TurnSource, reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh', strictResumeSessionId?: string, options?: FollowUpTurnOptions): Promise<void>;
     isSessionAlive(processId: string): Promise<boolean>;
     cancelProcess?(processId: string): Promise<void>;
@@ -683,16 +685,70 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                     return infra.manager.onActionComplete(triggerId, success);
                 },
             });
-            return await executeImplementPlanWithPrGate({
+            const result = await executeImplementPlanWithPrGate({
                 task,
                 queueManager: this.queueManager,
                 workingDirectory: this.executors.getWorkingDirectory(task),
                 processStore: this.store,
                 execute: runTask,
             });
+            await this.settleInterruptedRalphTask(task, result).catch(error => {
+                getLogger().warn(LogCategory.AI, `[Ralph] Failed to persist interrupted task outcome: ${error instanceof Error ? error.message : String(error)}`);
+            });
+            return result;
         } finally {
             this.cancelledTasks.delete(task.id);
         }
+    }
+
+    /** Failed/cancelled execution does not pass through successful Ralph orchestration. */
+    private async settleInterruptedRalphTask(task: QueuedTask, result: TaskExecutionResult): Promise<void> {
+        const payload = task.payload as unknown as ChatPayload;
+        const ctx = payload.context?.ralph;
+        const kind = getRalphTaskKind(ctx);
+        const repair = isRalphFinalCheckRepairTurn(task.payload);
+        // Ordinary follow-ups, submit and grilling keep their own lifecycle.
+        if (task.type !== 'chat' || payload.mode !== 'ralph' || (payload.processId && !repair)
+            || !ctx?.sessionId || kind === 'submit' || ctx.phase === 'grilling'
+            || !payload.workspaceId || !this.dataDir) return;
+        const processId = payload.processId ?? task.processId ?? toQueueProcessId(task.id);
+        const process = await this.store.getProcess(processId, payload.workspaceId);
+        const cancelled = this.cancelledTasks.has(task.id)
+            || (process?.metadata?.workspaceId === payload.workspaceId && process.status === 'cancelled');
+        if (result.success && !cancelled) return;
+        const journal = new RalphSessionStore({ dataDir: this.dataDir });
+        const session = await journal.readSessionRecord(payload.workspaceId, ctx.sessionId);
+        // A late step result cannot end a paused or explicitly stopped session.
+        if (session?.phase === 'awaiting-input' || session?.phase === 'grilling'
+            || session?.terminalReason === 'USER_STOPPED'
+            || (session && session.currentIteration > (ctx.currentIteration ?? 1))) return;
+        const check = ctx.finalCheck;
+        if (check && !session?.completion) {
+            const saved = session?.finalChecks?.find(item => item.checkIndex === check.checkIndex);
+            // Only the current admitted checker (or its one repair) can end the
+            // session. Completed checks and checks from an earlier loop are stale.
+            if (!saved || !['queued', 'running'].includes(saved.status)
+                || saved.sourceIteration !== check.sourceIteration || saved.loopIndex !== check.loopIndex
+                || (session?.finalChecks?.at(-1)?.checkIndex !== check.checkIndex)
+                || (saved.processId && saved.processId !== processId)
+                || (repair ? !saved.repairAttempted : saved.taskId !== task.id)) return;
+        }
+        const record = await journal.recordCompletion(payload.workspaceId, ctx.sessionId, {
+            reason: cancelled ? 'user-stopped' : check ? 'final-check-failed' : 'iteration-failed',
+            processId, totalIterations: check?.sourceIteration ?? ctx.currentIteration ?? 1,
+            completedAt: new Date().toISOString(),
+        });
+        if (check && !session?.completion) {
+            // Independent completion is authoritative even if step metadata fails.
+            await journal.upsertFinalCheckRecord(payload.workspaceId, ctx.sessionId, check.checkIndex, {
+                status: 'failed', completedAt: record.completion!.completedAt,
+            }).catch(error => {
+                getLogger().warn(LogCategory.AI, `[Ralph] Failed to persist interrupted check metadata: ${error instanceof Error ? error.message : String(error)}`);
+            });
+        }
+        const completion = record.completion!;
+        this.broadcastRalphSessionComplete(payload.workspaceId, ctx.sessionId, completion.processId,
+            completion.totalIterations, completion.reason);
     }
 
     cancel(taskId: string): void {
@@ -931,6 +987,27 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
         return this.executors.followUpExecutor.executeFollowUp(processId, message, attachments, mode, deliveryMode, images, selectedSkillNames, model, turnSource, reasoningEffort, strictResumeSessionId, options);
     }
 
+    /** Recover buffered work only when the recorded parent is idle and can continue. */
+    async recoverPendingMessages(workspaceId: string, processId: string): Promise<void> {
+        await processOperationAdmission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId);
+            if (!proc || proc.metadata?.workspaceId !== workspaceId || !this.queueManager
+                || !['completed', 'failed'].includes(proc.status)
+                || proc.pendingAskUser?.length || proc.pendingAskUserAnswer) return;
+            // Queue state wins over a stale terminal process snapshot. Recovery
+            // admits only the head; subsequent turns use the normal lifecycle drain.
+            if (this.queueManager.getAll().some(task => task.processId === processId
+                && ['queued', 'running', 'cancelling'].includes(task.status))) return;
+            // Terminal receipts may remain buffered after a failed removal.
+            // Reconcile those first, stopping as soon as one live task exists.
+            for (let remaining = proc.pendingMessages?.length ?? 0; remaining > 0; remaining--) {
+                await this.drainPendingMessageAdmitted(processId);
+                if (this.queueManager.getAll().some(task => task.processId === processId
+                    && ['queued', 'running', 'cancelling'].includes(task.status))) break;
+            }
+        });
+    }
+
     /**
      * Drain one pending message from the process store and enqueue it as a follow-up.
      * Called by the lifecycle runner after a task completes.
@@ -941,81 +1018,101 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
      * requeueFromHistory which fails for running tasks.
      */
     private async drainPendingMessages(processId: string, _taskId: string): Promise<void> {
-        await processOperationAdmission.runExclusive(processId, async () => {
-            const proc = await this.store.getProcess(processId);
-            if (!proc?.pendingMessages?.length) return;
-            if (!this.queueManager) return;
-            const nextMsg = proc.pendingMessages[0];
-            const deferred = pendingMessageTask(proc, nextMsg);
-            if (this.queueManager.getTask(deferred.id!)) return;
-            if (proc.metadata?.compaction?.state === 'queued' || proc.metadata?.compaction?.state === 'running'
-                || this.queueManager.getAll?.().some(task => task.processId === processId
-                    && task.payload.kind === 'compact' && ['queued', 'running'].includes(task.status))) {
-                this.queueManager.enqueue(deferred);
-                return;
-            }
-            // The provider captured on the message wins over the conversation's
-            // current metadata: a message accepted for one provider must drain on
-            // that provider even if the conversation moved on in the meantime.
-            const sessionProvider = resolveChatProviderOrDefault(
-                nextMsg.provider ?? proc.metadata?.provider,
-            );
-            const binding = readActiveProviderSession(proc);
-            const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
-            if (resolvedModel.coerced) {
-                getLogger().warn(
-                    LogCategory.AI,
-                    `[QueueExecutor] Dropping buffered model '${resolvedModel.requestedModel}' for process ${processId} because provider '${sessionProvider}' does not support it; using provider default.`,
-                );
-            }
+        await processOperationAdmission.runExclusive(processId, () => this.drainPendingMessageAdmitted(processId));
+    }
 
-            // Append the deferred user turn at the correct position (after the
-            // assistant response that just completed) before enqueuing the follow-up.
-            const turnContent = nextMsg.displayContent ?? nextMsg.content;
-            const appendedUserTurn = await this.store.appendConversationTurn(
-                processId,
-                (turnIndex) => ({
-                    role: 'user' as const,
-                    content: turnContent,
-                    timestamp: new Date(nextMsg.createdAt),
-                    turnIndex,
-                    ...(nextMsg.relayRequestId !== undefined ? { relayRequestId: nextMsg.relayRequestId } : {}),
-                    timeline: [],
-                    ...(nextMsg.images ? { images: nextMsg.images } : {}),
-                    ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
-                    ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
-                    ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
-                    // Attribute the turn to the provider the message was accepted
-                    // for. A message buffered before provider routing existed has
-                    // none; leave it unattributed rather than guessing from the
-                    // conversation's current metadata. Buffering is same-provider
-                    // only, so a matching provider means the turn belongs to the
-                    // segment that is already active.
-                    ...turnProviderAttribution(
-                        nextMsg.provider,
-                        nextMsg.provider === binding.provider ? binding.segmentId : undefined,
-                    ),
-                }),
+    private async drainPendingMessageAdmitted(processId: string): Promise<void> {
+        const proc = await this.store.getProcess(processId);
+        if (!proc?.pendingMessages?.length) return;
+        if (!this.queueManager) return;
+        const nextMsg = proc.pendingMessages[0];
+        // Server-owned reviews use the receipt as both pending-message and task
+        // ID. Reconcile a crash after enqueue but before pending-message removal.
+        const receiptId = nextMsg.id === nextMsg.relayRequestId ? nextMsg.id : undefined;
+        const accepted = receiptId ? this.queueManager.getTask(receiptId) : undefined;
+        if (accepted) {
+            if (accepted.processId !== processId || accepted.payload.relayRequestId !== receiptId
+                || accepted.payload.workspaceId !== proc.metadata?.workspaceId) {
+                throw new Error('Pending review receipt conflicts with another queue task');
+            }
+            await this.store.removePendingMessage(processId, nextMsg.id);
+            return;
+        }
+        const deferred = pendingMessageTask(proc, nextMsg);
+        if (this.queueManager.getTask(deferred.id!)) return;
+        if (proc.metadata?.compaction?.state === 'queued' || proc.metadata?.compaction?.state === 'running'
+            || this.queueManager.getAll?.().some(task => task.processId === processId
+                && task.payload.kind === 'compact' && ['queued', 'running'].includes(task.status))) {
+            this.queueManager.enqueue(deferred);
+            return;
+        }
+        // The provider captured on the message wins over the conversation's
+        // current metadata: a message accepted for one provider must drain on
+        // that provider even if the conversation moved on in the meantime.
+        const sessionProvider = resolveChatProviderOrDefault(
+            nextMsg.provider ?? proc.metadata?.provider,
+        );
+        const binding = readActiveProviderSession(proc);
+        const resolvedModel = resolveModelForProvider(sessionProvider, nextMsg.model);
+        if (resolvedModel.coerced) {
+            getLogger().warn(
+                LogCategory.AI,
+                `[QueueExecutor] Dropping buffered model '${resolvedModel.requestedModel}' for process ${processId} because provider '${sessionProvider}' does not support it; using provider default.`,
             );
+        }
 
-            // Enqueue follow-up first — only remove pending message after success
-            // to prevent data loss if enqueue fails. Per-turn reasoning-effort
-            // (captured when the message was buffered) is carried through to the
-            // replayed task so the follow-up executor honours it.
-            const pendingEffort = (nextMsg as { reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' }).reasoningEffort;
-            // Merge any carried follow-up context (e.g. trigger turnSource) with the
-            // skills context so an automated buffered message keeps its source tag.
-            const drainedContext: Record<string, unknown> = {
-                ...(nextMsg.context ?? {}),
-                ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { skills: nextMsg.skillNames } : {}),
-            };
+        // Append the deferred user turn at the correct position (after the
+        // assistant response that just completed) before enqueuing the follow-up.
+        const turnContent = nextMsg.displayContent ?? nextMsg.content;
+        const existingUserTurn = receiptId ? proc.conversationTurns?.find(turn => turn.role === 'user'
+            && turn.relayRequestId === receiptId) : undefined;
+        const appendedUserTurn = existingUserTurn ? { turn: existingUserTurn } : await this.store.appendConversationTurn(
+            processId,
+            (turnIndex) => ({
+                role: 'user' as const,
+                content: turnContent,
+                timestamp: new Date(nextMsg.createdAt),
+                turnIndex,
+                ...(nextMsg.relayRequestId !== undefined ? { relayRequestId: nextMsg.relayRequestId } : {}),
+                timeline: [],
+                ...(nextMsg.images ? { images: nextMsg.images } : {}),
+                ...(nextMsg.pasteExternalized ? { pasteExternalized: true } : {}),
+                ...(resolvedModel.model ? { model: resolvedModel.model } : {}),
+                ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
+                // Attribute the turn to the provider the message was accepted
+                // for. A message buffered before provider routing existed has
+                // none; leave it unattributed rather than guessing from the
+                // conversation's current metadata. Buffering is same-provider
+                // only, so a matching provider means the turn belongs to the
+                // segment that is already active.
+                ...turnProviderAttribution(
+                    nextMsg.provider,
+                    nextMsg.provider === binding.provider ? binding.segmentId : undefined,
+                ),
+            }),
+        );
+
+        // Enqueue follow-up first — only remove pending message after success
+        // to prevent data loss if enqueue fails. Per-turn reasoning-effort
+        // (captured when the message was buffered) is carried through to the
+        // replayed task so the follow-up executor honours it.
+        const pendingEffort = (nextMsg as { reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' }).reasoningEffort;
+        // Merge any carried follow-up context (e.g. trigger turnSource) with the
+        // skills context so an automated buffered message keeps its source tag.
+        const drainedContext: Record<string, unknown> = {
+            ...(nextMsg.context ?? {}),
+            ...(nextMsg.skillNames && nextMsg.skillNames.length > 0 ? { skills: nextMsg.skillNames } : {}),
+        };
+        try {
             this.queueManager.enqueue({
+                ...(receiptId ? { id: receiptId } : {}),
                 processId,
                 type: 'chat',
                 priority: 'normal',
                 payload: {
                     kind: 'chat' as const,
                     processId,
+                    ...(proc.metadata?.workspaceId ? { workspaceId: proc.metadata.workspaceId } : {}),
                     prompt: nextMsg.content,
                     ...(nextMsg.relayRequestId ? { relayRequestId: nextMsg.relayRequestId } : {}),
                     ...(normalizeChatMode(nextMsg.mode) ? { mode: normalizeChatMode(nextMsg.mode) } : {}),
@@ -1035,8 +1132,12 @@ export class CLITaskExecutor extends BaseExecutor implements TaskExecutor {
                 config: pendingEffort ? { reasoningEffort: pendingEffort } : {},
                 displayName: nextMsg.content.trim().substring(0, 57) + (nextMsg.content.trim().length > 57 ? '...' : ''),
             });
-            await this.store.removePendingMessage(processId, nextMsg.id);
-        });
+        } catch (error) {
+            const admitted = receiptId ? this.queueManager.getTask(receiptId) : undefined;
+            if (!admitted || admitted.processId !== processId || admitted.payload.relayRequestId !== receiptId
+                || admitted.payload.workspaceId !== proc.metadata?.workspaceId) throw error;
+        }
+        await this.store.removePendingMessage(processId, nextMsg.id);
     }
 }
 

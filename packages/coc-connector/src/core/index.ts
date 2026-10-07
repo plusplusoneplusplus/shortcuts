@@ -6,3 +6,5 @@ export type {
     MessagingConnectorOptions,
     MessagingConnector,
 } from './types';
+export { ImageDownloadError, downloadInboundImage } from './inbound-image';
+export type { ImageDownloadErrorCode, ImageDownloadOptions, InboundImage } from './inbound-image';

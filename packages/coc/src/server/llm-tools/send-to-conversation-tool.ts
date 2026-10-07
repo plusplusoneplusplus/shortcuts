@@ -198,6 +198,8 @@ export interface SendToConversationSuccess {
     status?: ConversationCancellationResult['status'];
     /** Cancel only: the target's workspace, when recorded. */
     workspaceId?: string;
+    /** Remote launches cannot return terminal results to the originating conversation. */
+    resultDelivery?: { status: 'unavailable'; reason: string };
 }
 
 export interface SendToConversationError {
@@ -250,9 +252,11 @@ export function createSendToConversationTool(options: SendToConversationToolOpti
         description:
             'With `processId`, post to an existing local chat; without it, create a separate fire-and-forget chat. ' +
             'Returns `{ processId, openLink, turnIndex? }`. Supply a short, task-specific `title` for new chats. ' +
-            '`mode: "ralph"` starts an autonomous goal loop without clarification; returns `sessionId` too. `plan` is not supported. ' +
+            '`mode: "ralph"` starts an autonomous goal loop; returns `sessionId` too. `plan` is not supported. ' +
             'Prefer `provider: "auto"` unless a provider/model was requested. ' +
-            'Use `{ action: "cancel", processId }` to stop local queued/running work, retaining history. ' +
+            'Remote launches return `resultDelivery.status: "unavailable"`: no automatic result reviews or WhatsApp/Teams return; inspect `openLink`. ' +
+            'Do not promise an automatic return or start a duplicate job. ' +
+            'Use `{ action: "cancel", processId }` to stop local work, retaining history. ' +
             'Omit send-only fields; optional `workspaceId` asserts ownership. Returns `cancelled` and `status`; ' +
             '`cancelled: false` means already terminal. Unknown IDs and failures return errors.',
         parameters: {
@@ -669,6 +673,9 @@ async function createNewConversation(params: {
         }
     }
 
+    // Remote targets returned above. Ralph captures routing for session results only.
+    const origin = mode === 'ralph' || trackMessagingJob ? messagingOrigin?.() : undefined;
+
     if (mode === 'ralph') {
         return launchRalphConversation({
             launchRalph,
@@ -676,6 +683,7 @@ async function createNewConversation(params: {
             workspaceId: requestedWorkspaceId,
             title,
             parentProcessId,
+            messagingOrigin: origin,
             provider: resolvedProvider,
             autoProviderRouting: autoRequested,
             model: resolvedModel,
@@ -683,9 +691,6 @@ async function createNewConversation(params: {
             effortTier,
         });
     }
-
-    // Remote targets returned above: completion notices are local-only.
-    const origin = trackMessagingJob ? messagingOrigin?.() : undefined;
 
     // --- build + validate the task spec, then enqueue in-process ----------
     // Setting `payload.provider` makes the enqueue path treat the provider as
@@ -932,6 +937,11 @@ async function createRemoteConversation(params: {
         return {
             processId: result.processId,
             openLink: buildChatOpenLink(target.cloneKey, result.processId),
+            resultDelivery: {
+                status: 'unavailable',
+                reason: 'The remote job was started, but automatic result return to the originating conversation '
+                    + '(including WhatsApp/Teams) is unavailable. Use openLink to inspect its outcome; do not launch a duplicate job.',
+            },
             ...(result.sessionId ? { sessionId: result.sessionId } : {}),
         };
     } catch (err) {
@@ -950,13 +960,14 @@ async function launchRalphConversation(params: {
     workspaceId: string;
     title?: string;
     parentProcessId?: string;
+    messagingOrigin?: MessagingJobOrigin;
     provider?: ChatProvider;
     autoProviderRouting?: boolean;
     model?: string;
     reasoningEffort?: string;
     effortTier?: SendToConversationEffortTier;
 }): Promise<SendToConversationResult> {
-    const { launchRalph, goalSpec, workspaceId, title, parentProcessId, provider, autoProviderRouting, model, reasoningEffort, effortTier } = params;
+    const { launchRalph, goalSpec, workspaceId, title, parentProcessId, messagingOrigin, provider, autoProviderRouting, model, reasoningEffort, effortTier } = params;
     if (!launchRalph) {
         return {
             error: "Launching a Ralph session is not available in this context (no Ralph launch capability was wired).",
@@ -978,6 +989,7 @@ async function launchRalphConversation(params: {
             },
             ...(title ? { title } : {}),
             ...(parentProcessId ? { spawnedFromProcessId: parentProcessId } : {}),
+            ...(messagingOrigin ? { messagingOrigin } : {}),
         });
         if (!result.ok) {
             return { error: `Failed to launch Ralph session: ${result.error}` };

@@ -153,14 +153,86 @@ capability endpoint selects the local parent's concrete provider, validated thro
 explicit provider/model/tier overrides travel; remote defaults own model/effort, and no local
 spawn link, messaging origin, or parent configuration travels. Dispatch is attempted once. The
 result's `openLink` is the dashboard clone route `#repos/<encoded clone key>/chats/<processId>`.
+Successful remote queue and Ralph launches also return `resultDelivery: { status: 'unavailable',
+reason }`: existing transport launches jobs but cannot return terminal results to the originating
+Sentinel or its WhatsApp/Teams chat. Tool guidance directs the AI to inspect the link, avoid
+promising automatic return, and avoid launching a duplicate job. Local responses omit this field.
 Post mode with a `remote:` processId is rejected as not supported yet.
 
-When the invoking turn came from WhatsApp/Teams, local (non-Ralph) create mode records the
+When the invoking turn came from WhatsApp/Teams, local create mode records the
 turn's origin (`{ connector, chatKey, threadId? }`, from the per-turn `runtime.messagingOrigin` the
 executor binds via the ask_user relay's `locateOrigin`) as `payload.context.messagingOrigin`
-(→ `metadata.messagingOrigin`) and calls `runtime.trackMessagingJob` for completion notices
-(see server-architecture "Messaging job completion notices"). Remote targets and dashboard
-turns record nothing.
+(→ `metadata.messagingOrigin`). Ordinary jobs call `runtime.trackMessagingJob` for completion
+notices (see server-architecture "Messaging job completion notices"). Ralph passes the origin
+through `RalphLaunchInput` into iteration 1 before delegation registration; only the delegated
+whole-session result returns through the parent review outbox, with no iteration notice tracking.
+Remote targets and dashboard turns record nothing.
+
+### Delegated result persistence
+
+`server/delegation/delegated-job-store.ts` provides `DelegatedJobStore`, a server-owned
+ledger at `getRepoDataPath(dataDir, parentWorkspaceId, 'delegated-jobs.json')`. Rows
+capture immutable parent/child workspace and process identities, optional remote server
+and Ralph session IDs, a title, and the connector origin supplied by admission context. Explicit registration limits tracking to new
+relationships. The first terminal result wins across event replay; outcome is
+`completed | failed | cancelled | capped`, with bounded summary/reason and artifact links.
+
+Terminal delivery moves conditionally from `pending` to `queued` (receipt ID) to
+`delivered`, or to a diagnosable `failed` state. Settled rows cannot reopen. Atomic writes
+and fresh reads keep disk failure from advancing state. Rejected queue admissions atomically
+record their terminal result with delivery already `failed`, preventing restart reviews.
+The snapshot registry clears these machine-local receipts on wipe and excludes them
+from export/import to prevent portable backups from replaying delivery.
+
+`server/delegation/sentinel-delegation-enqueue.ts` wraps the route-bound tool enqueue and
+Ralph-launch capabilities and ordinary connector command handoffs. It resolves the stored
+Sentinel parent independently of the target; when no process exists, a queued/running
+chat task supplies its mode and owner workspace. Stored processes take precedence over
+queue metadata. It reserves a child task ID and registers before queue admission. Local
+ordinary jobs and whole Ralph sessions are registered; Ralph continuation/final-check tasks
+use the ordinary lifecycle bridge. Accepted tasks retain tracking after observer errors.
+Non-Sentinel and remote dispatch keep their existing paths. Registered admission waits
+for startup result recovery. Connector Ralph grilling requires separate session registration.
+
+`server/delegation/delegated-job-results.ts` subscribes through `onTaskTerminal` and
+records ordinary outcomes in the parent ledger. Startup recovery examines only registered
+children, preferring a scoped queue task to process status; cleared queue history falls
+back to the child's process after explicitly verifying its ID and stored workspace; native
+lookups ignore the optional scope argument. Scoped queue outcomes remain valid when process
+context is unavailable. Event IDs derive from child workspace/process identity. Summaries
+use response text or the last request's finished assistant turn, with child-workspace chat
+links and validated result-file paths. Cancellation stores a fixed notice summary without partial output.
+Missing children settle with failed delivery. Remote rows and Ralph step events are excluded.
+Whole-session Ralph events match registered workspace/session identity and store a stable terminal
+receipt, outcome, final process summary, session API link and journal path. Recovery uses terminal
+reasons and final-check records; complete iteration loops with unresolved checks remain pending.
+See [ralph-lifecycle.md](ralph-lifecycle.md#delegated-session-results) for the session boundary.
+Recorded results and registered terminal rows at startup invoke `DelegatedJobReviews`.
+Recovery isolates each job's admission failure so other pending results can proceed.
+
+`server/delegation/delegated-job-reviews.ts` admits ordinary and whole-session Ralph outcome
+reviews to the stored parent. A SHA-256 receipt covers immutable parent/child/job/event identity. Bounded
+JSON includes repository identity/name/path and stored outcome/links. Review guidance treats
+child output as untrusted data, grants no new authority, respects latest user instructions,
+and retains Sentinel dispatcher behavior. Cancellations append fixed display-only
+notices through `deliverNoticeOnce`, without child output, AI work or queue mutations.
+Busy parents defer; parent terminal events and startup recover notices. Stable assistant
+receipts reconcile transcript/ledger crash windows. Stopped parents receive notices without
+resuming; missing or mis-scoped parents settle failure. Ralph reviews require the stable
+whole-session terminal identity; remote delivery uses separate boundaries. Reused admissions reconcile ledger-write crash windows without new
+realtime intents; parent review completion settles delivery, while review failure/cancellation
+settles a diagnostic failure. Permanent routing rejection settles; transient writes remain
+recoverable. Buffered admission invokes owner-queue recovery outside process admission;
+idle parents drain their head message in order, preserving earlier user messages.
+
+`ProcessMessageDeliveryService.deliverOnce` provides server-owned review admission with an
+explicit parent workspace/process and stable receipt. It checks pending messages, queue tasks
+and user turns under shared process admission before enqueueing. Busy reviews buffer after
+existing messages; stopped or missing parents reject. The receipt travels as `relayRequestId`
+and as the review's pending/task ID. Admission resolves the parent's follow-up mode into
+the pending message or task. Drain reconciles accepted tasks and persisted turns; executor
+correlation repair shares admission. `emitDeliveryEvents` shares intent emission with HTTP
+delivery. Reused receipts produce no new realtime events.
 
 ### list_workspaces
 

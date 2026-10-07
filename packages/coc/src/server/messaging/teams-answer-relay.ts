@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { toQueueProcessId, type AIProcess, type ProcessStore, type QueuedTask, type TaskQueueManager } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toTaskId, toQueueProcessId, type AIProcess, type ProcessStore, type QueuedTask, type TaskQueueManager } from '@plusplusoneplusplus/forge';
 import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import { TeamsMcpSendRejectedError, TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { getRepoDataPath } from '../paths';
@@ -291,7 +291,7 @@ export class TeamsAnswerRelay {
         return { taskId: taskId!, workspaceId };
     }
 
-    async selectThreadTarget(msg: InboundTeamsMessage, workspaceId: string, processId: string | null): Promise<void> {
+    async selectThreadTarget(msg: InboundTeamsMessage, workspaceId: string, processId: string | null, allowQueued = false): Promise<void> {
         if (this.disposed || !this.deps.isEnabled()) throw new Error('Teams thread selection is unavailable');
         const target = this.deps.target();
         if (!target.connected || !target.teamId || target.channelId !== msg.channelId || !msg.replyToMessageId) {
@@ -300,14 +300,22 @@ export class TeamsAnswerRelay {
         if (!(await this.deps.store.getWorkspaces()).some(ws => ws.id === workspaceId)) {
             throw new Error('Teams thread workspace is unavailable');
         }
+        let taskId: string | undefined;
         if (processId) {
             const process = await this.deps.store.getProcess(processId, workspaceId);
-            if (!process || process.id !== processId || process.metadata?.workspaceId !== workspaceId
+            const queued = !process && allowQueued && isQueueProcessId(processId)
+                ? this.deps.queue.getTask(toTaskId(processId)) : undefined;
+            if (queued?.repoId === workspaceId && queued.processId === processId
+                && queued.type === 'chat' && queued.payload.kind === 'chat'
+                && queued.payload.workspaceId === workspaceId && !queued.payload.processId
+                && ['queued', 'running'].includes(queued.status)) {
+                taskId = queued.id;
+            } else if (!process || process.id !== processId || process.metadata?.workspaceId !== workspaceId
                 || ['failed', 'cancelled'].includes(process.status)) {
                 throw new Error('Teams thread chat is unavailable');
             }
         }
-        this.saveThreadSelection(msg.channelId, msg.replyToMessageId!, workspaceId, processId, undefined, msg.messageId);
+        this.saveThreadSelection(msg.channelId, msg.replyToMessageId!, workspaceId, processId, taskId, msg.messageId);
     }
 
     private saveThreadSelection(channelId: string, rootId: string, workspaceId: string, processId: string | null, taskId?: string, commandId?: string): void {
@@ -585,7 +593,7 @@ export class TeamsAnswerRelay {
         workspaceId: string,
         enqueue: (taskId: string) => Promise<string>,
         reservedTaskId?: string,
-        admission?: { admissionOnly: true; prompt: string },
+        admission?: { admissionOnly: true; prompt: string; handOffParentProcessId?: string },
     ): Promise<{ taskId: string; duplicate: boolean }> {
         const taskId = reservedTaskId ?? `${Date.now()}-${randomUUID()}`;
         return this.withOwnerAdmission(workspaceId, toQueueProcessId(taskId), () =>
@@ -594,10 +602,10 @@ export class TeamsAnswerRelay {
 
     private async startNew(
         msg: InboundTeamsMessage, workspaceId: string, enqueue: (taskId: string) => Promise<string>,
-        reservedTaskId: string, admission?: { admissionOnly: true; prompt: string },
+        reservedTaskId: string, admission?: { admissionOnly: true; prompt: string; handOffParentProcessId?: string },
     ): Promise<{ taskId: string; duplicate: boolean }> {
         if (this.disposed || !(admission
-            ? this.deps.isBotManagedConversationsEnabled?.() === true : this.deps.isEnabled())) {
+            ? !!msg.images?.length || this.deps.isBotManagedConversationsEnabled?.() === true : this.deps.isEnabled())) {
             throw new Error('Teams conversation admission is unavailable');
         }
         const target = this.deps.target();
@@ -625,6 +633,11 @@ export class TeamsAnswerRelay {
             messageId: msg.messageId, rootId: msg.replyToMessageId || msg.messageId,
             taskId, processId: toQueueProcessId(taskId), status: 'admitting',
             ...(admission ? { admissionOnly: true as const } : {}),
+            ...(admission?.handOffParentProcessId ? {
+                selectedProcessId: admission.handOffParentProcessId,
+                ...(isQueueProcessId(admission.handOffParentProcessId)
+                    ? { selectedTaskId: toTaskId(admission.handOffParentProcessId) } : {}),
+            } : {}),
             createdAt: new Date().toISOString(),
         };
         atomicWriteJsonUnique(file, value);
@@ -639,7 +652,7 @@ export class TeamsAnswerRelay {
                 && task.payload?.kind === 'chat' && task.payload.workspaceId === workspaceId
                 && !task.payload.processId
                 && (!admission || (task.payload.prompt === admission.prompt
-                    && !task.payload.relayRequestId && task.botControl !== undefined))) {
+                    && !task.payload.relayRequestId && (!!msg.images?.length || task.botControl !== undefined)))) {
                 if (task.botControl !== undefined && validateBotControlMetadata(task.botControl).source !== 'teams') {
                     throw new Error('Teams admission has competing bot control');
                 }
@@ -683,7 +696,7 @@ export class TeamsAnswerRelay {
         reservedTaskId?: string, admissionOnly = false,
     ): Promise<{ duplicate: boolean; taskId: string }> {
         if (this.disposed || !(admissionOnly
-            ? this.deps.isBotManagedConversationsEnabled?.() === true : this.deps.isEnabled())) {
+            ? !!msg.images?.length || this.deps.isBotManagedConversationsEnabled?.() === true : this.deps.isEnabled())) {
             throw new Error('Teams conversation admission is unavailable');
         }
         const target = this.deps.target();
@@ -1271,16 +1284,26 @@ export class TeamsAnswerRelay {
             post: async (chatKey, notice) => {
                 if (!connected(chatKey)) return undefined;
                 const { line, detail } = formatJobNotice(notice);
-                let id: string;
+                let id: string | undefined;
                 try {
-                    const body = `<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`;
-                    id = notice.threadId ? await this.deps.send(body, notice.threadId) : await this.deps.send(body);
+                    const bodies = notice.body !== undefined ? formatTeamsAnswerChunks(notice.body, 'result', line)
+                        : [`<p>${escapeTeamsHtml(line)}</p>${detail ? `<p>${escapeTeamsHtml(detail)}</p>` : ''}`];
+                    for (const body of bodies) {
+                        if (!connected(chatKey)) {
+                            if (!id) return undefined;
+                            throw new Error('Teams route unavailable after partial result delivery');
+                        }
+                        const sent = notice.threadId ? await this.deps.send(body, notice.threadId) : await this.deps.send(body);
+                        if (!/^[A-Za-z0-9:_@.-]{1,256}$/.test(sent)) throw new Error('Teams send confirmation missing');
+                        id = sent;
+                        if (notice.operation !== 'compact' && !notice.threadId) {
+                            this.saveThreadSelection(this.deps.target().channelId!, id, notice.workspaceId, notice.processId);
+                        }
+                    }
                 } catch (error) {
-                    if (error instanceof TeamsMessageNotSentError || error instanceof TeamsMcpSendRejectedError) return undefined;
+                    if (!id && (error instanceof TeamsMessageNotSentError || error instanceof TeamsMcpSendRejectedError)) return undefined;
                     throw error;
                 }
-                if (!/^[A-Za-z0-9:_@.-]{1,256}$/.test(id)) throw new Error('Teams send confirmation missing');
-                if (notice.operation !== 'compact') this.saveThreadSelection(this.deps.target().channelId!, id, notice.workspaceId, notice.processId);
                 return id;
             },
         };

@@ -20,6 +20,7 @@ import {
 } from '@plusplusoneplusplus/coc-workflow/ralph';
 import { getLogger, LogCategory } from '@plusplusoneplusplus/forge';
 import type { ProcessStore } from '@plusplusoneplusplus/forge';
+import type { RalphSessionCompleteReason } from './types';
 import { setRalphProcessPhase } from './process-phase';
 import { RalphSessionStore } from './ralph-session-store';
 import { recordRalphIteration } from './record-iteration';
@@ -48,7 +49,7 @@ export interface OrchestrateRalphIterationDeps {
         sessionId?: string;
         processId: string;
         totalIterations: number;
-        reason: string;
+        reason: RalphSessionCompleteReason;
     }) => void;
     /**
      * Broadcast that a session paused on a RALPH_NEEDS_INPUT question batch.
@@ -112,8 +113,8 @@ export interface OrchestrateRalphIterationInput {
 /**
  * Orchestrate the outcome of one completed Ralph execution iteration.
  *
- * All errors from individual side-effect steps are logged and do not propagate,
- * matching the existing bridge error-tolerance contract.
+ * Journal updates are best-effort. Terminal outcome writes and publication errors
+ * propagate to the bridge; publication requires a durable outcome when configured.
  */
 export async function orchestrateRalphIteration(input: OrchestrateRalphIterationInput): Promise<void> {
     const {
@@ -131,6 +132,17 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
         deps,
     } = input;
     const logger = getLogger();
+    if (deps.dataDir && workspaceId && sessionId) {
+        const record = await new RalphSessionStore({ dataDir: deps.dataDir }).readSessionRecord(workspaceId, sessionId);
+        if (record && (record.workspaceId !== workspaceId || record.sessionId !== sessionId)) {
+            throw new Error(`Ralph session ${sessionId} does not belong to workspace ${workspaceId}`);
+        }
+        if (record?.completion) {
+            deps.broadcastSessionComplete({ workspaceId, sessionId, reason: record.completion.reason,
+                processId: record.completion.processId, totalIterations: record.completion.totalIterations });
+            return;
+        }
+    }
     const recentProgressSections = await readRecentProgressSections({
         dataDir: deps.dataDir,
         workspaceId,
@@ -231,6 +243,12 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                     });
                 } catch (err) {
                     logger.warn(LogCategory.AI, `[Ralph] Failed to enqueue next iteration for ${processId}: ${err instanceof Error ? err.message : String(err)}`);
+                    if (action.workspaceId) {
+                        await publishIterationCompletion(deps, {
+                            workspaceId: action.workspaceId, sessionId: effectiveSessionId, processId,
+                            totalIterations: decision.currentIteration, reason: 'iteration-enqueue-failed',
+                        });
+                    }
                 }
                 break;
             }
@@ -252,17 +270,6 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
                     processId,
                     ralphCtx,
                     deps,
-                }).catch(err => {
-                    logger.warn(LogCategory.AI, `[Ralph] enqueueFinalCheckForSession failed: ${err instanceof Error ? err.message : String(err)}`);
-                    if (action.workspaceId) {
-                        deps.broadcastSessionComplete({
-                            workspaceId: action.workspaceId,
-                            sessionId: action.sessionId,
-                            processId,
-                            totalIterations: action.sourceIteration,
-                            reason: 'final-check-enqueue-failed',
-                        });
-                    }
                 });
                 break;
 
@@ -308,12 +315,12 @@ export async function orchestrateRalphIteration(input: OrchestrateRalphIteration
             case 'completeSession':
                 logger.debug(LogCategory.AI, `[Ralph] Session complete for ${processId} (reason: ${action.completionReason}, iterations: ${action.totalIterations})`);
                 if (action.workspaceId) {
-                    deps.broadcastSessionComplete({
+                    await publishIterationCompletion(deps, {
                         workspaceId: action.workspaceId,
                         sessionId: action.sessionId,
                         processId: action.processId,
                         totalIterations: action.totalIterations,
-                        reason: action.completionReason,
+                        reason: action.terminalReason === 'NO_SIGNAL' ? 'no-signal' : action.completionReason,
                     });
                 }
                 break;
@@ -387,8 +394,6 @@ async function enqueueFinalCheckForSession(input: EnqueueFinalCheckInput): Promi
         return;
     }
 
-    markFinalCheckEnqueued(sessionId, sourceIteration);
-
     const checkIndex = nextCheckIndex(session);
     const loopIndex = (ralphCtx?.loopIndex as number | undefined)
         ?? (session.loops?.[session.loops.length - 1]?.loopIndex ?? 1);
@@ -417,15 +422,17 @@ async function enqueueFinalCheckForSession(input: EnqueueFinalCheckInput): Promi
         newTaskId = deps.enqueueTask(taskPayload);
     } catch (err) {
         logger.warn(LogCategory.AI, `[Ralph/FinalCheck] Enqueue failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`);
-        deps.broadcastSessionComplete({
+        await publishIterationCompletion(deps, {
             workspaceId,
             sessionId,
-            processId: completedTaskId,
+            processId,
             totalIterations: sourceIteration,
             reason: 'final-check-enqueue-failed',
         });
         return;
     }
+
+    markFinalCheckEnqueued(sessionId, sourceIteration);
 
     // Persist the queued-status record immediately so session observers see
     // the check is in progress before the AI response arrives.
@@ -437,6 +444,28 @@ async function enqueueFinalCheckForSession(input: EnqueueFinalCheckInput): Promi
     });
 
     logger.debug(LogCategory.AI, `[Ralph/FinalCheck] Enqueued final-check task ${newTaskId} (check ${checkIndex}) for session ${sessionId}`);
+}
+
+/** Save the first terminal outcome independently of best-effort iteration metadata. */
+async function publishIterationCompletion(
+    deps: OrchestrateRalphIterationDeps,
+    params: Parameters<OrchestrateRalphIterationDeps['broadcastSessionComplete']>[0],
+): Promise<void> {
+    if (!deps.dataDir || !params.sessionId) {
+        deps.broadcastSessionComplete(params);
+        return;
+    }
+    const record = await new RalphSessionStore({ dataDir: deps.dataDir }).recordCompletion(
+        params.workspaceId, params.sessionId, {
+            reason: params.reason, processId: params.processId, totalIterations: params.totalIterations,
+            completedAt: new Date().toISOString(),
+        },
+    );
+    const completion = record.completion!;
+    deps.broadcastSessionComplete({
+        workspaceId: params.workspaceId, sessionId: params.sessionId,
+        reason: completion.reason, processId: completion.processId, totalIterations: completion.totalIterations,
+    });
 }
 
 function isAutoProviderRoutingRequested(context: Record<string, unknown> | undefined): boolean {

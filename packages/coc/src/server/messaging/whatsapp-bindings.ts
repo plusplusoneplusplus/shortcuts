@@ -19,6 +19,8 @@ export interface WhatsAppBinding {
     header?: string;
     /** Relayed ask_user question message ids, so late quote-replies are recognized. */
     questionIds?: string[];
+    /** Captionless media and instruction-request IDs that quote this turn. */
+    sourceMessageIds?: string[];
     releaseState?: 'releasing' | 'released';
     /**
      * A completion notice for a handed-off job (`inboundId` is the notice's own
@@ -92,7 +94,8 @@ export class WhatsAppBindings {
     entries(): WhatsAppBinding[] { return [...this.receipts.values()].flat(); }
 
     findMessage(messageId: string): WhatsAppBinding | undefined {
-        return this.entries().find(binding => binding.inboundId === messageId || binding.outboundIds.includes(messageId));
+        return this.entries().find(binding => binding.inboundId === messageId || binding.outboundIds.includes(messageId)
+            || binding.sourceMessageIds?.includes(messageId));
     }
 
     /** Persist a relayed question id on its request receipt and the own-message guard. */
@@ -227,6 +230,8 @@ export class WhatsAppBindings {
             || row.outboundIds.some((id: unknown) => typeof id !== 'string')
             || (row.questionIds !== undefined && (!Array.isArray(row.questionIds)
                 || row.questionIds.some((id: unknown) => typeof id !== 'string')))
+            || (row.sourceMessageIds !== undefined && (!Array.isArray(row.sourceMessageIds)
+                || row.sourceMessageIds.some((id: unknown) => typeof id !== 'string')))
             || (row.notice !== undefined && row.notice !== true)
             || !Number.isSafeInteger(row.nextPart) || row.nextPart < 0
             || !['queued', 'sending', 'delivered'].includes(row.status)

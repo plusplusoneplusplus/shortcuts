@@ -150,7 +150,7 @@ describe('Teams answer relay through the real multi-repo queues', () => {
                 payload: { kind: 'chat', mode: 'ask', prompt, workspaceId: wsId },
                 config: {}, priority: 'normal',
             }),
-            admitRelayFollowUp: async (process, text, requestId, _mode, id, admissionHeld) => {
+            admitRelayFollowUp: async (process, text, requestId, _mode, id, _images, admissionHeld) => {
                 return { taskId: await (admissionHeld ? queue.enqueueAdmitted : queue.enqueue).call(queue, {
                     id, type: 'chat', repoId: process.metadata.workspaceId as string,
                     processId: process.id, priority: 'normal',

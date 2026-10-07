@@ -88,6 +88,11 @@ through queue events. `queue/queue-executor-bridge.ts` wires references before s
 
 `executors/executor-registry.ts` dispatches task types to chat, workflow, shell and
 specialized executors. `process-lifecycle-runner.ts` owns lifecycle and pending-message draining.
+Delegated review admission also invokes `MultiRepoQueueRouter.recoverPendingMessages` on the
+recorded parent workspace. The owning bridge serializes recovery with follow-up admission,
+reconciles terminal head receipts and admits one live head task. Completed/failed parents can
+recover; active tasks, stopped parents and pending questions/answers keep buffers untouched.
+Later messages drain through the normal lifecycle, preserving user-before-review ordering.
 Chat modes are Ask, Autopilot and Ralph; incoming `mode: 'plan'` normalizes to Ask.
 
 First turns (`ChatBaseExecutor.execute`) and follow-ups (`FollowUpExecutor.executeFollowUp`) share:
@@ -205,6 +210,35 @@ partial output and raw exceptions stay out of relay messages.
 Receipt files use `atomicWriteJsonUnique`; transport and delivery formatting
 remain connector-specific.
 
+`messaging/incoming-images.ts` prepares admitted images through `core/attachment-utils.ts`:
+five images, 10 MB decoded total and 30 seconds per batch. SDK files/history use
+`getRepoDataPath(dataDir, workspaceId, 'attachments')/incoming-*`; callers own cleanup
+until executor delivery. Download/storage failures reject whole batches and remove partial writes.
+`messaging/pending-images.ts` owns connection-scoped captionless descriptor retention:
+five per sender/conversation/thread, 256 contexts, 30 minutes from first arrival.
+Consumption is once-only and rejects expired or changed workspace/topic bindings.
+Explicit selections discard the sender's root batch or every sender in a shared thread.
+Controls do not consume; disconnect/restart requires resend. Consumption and failed/expired
+instruction IDs are deduplicated; download still applies dispatch-time byte/deadline limits.
+
+Teams/WhatsApp image preparation runs inside durable binding admission after
+workspace/topic/mode resolution. Teams uses relay receipts for initial, active and
+pending follow-ups; admission-only image receipts remain enabled when answer delivery
+and bot control are off. `incomingImageTaskPayload` carries SDK files, image history
+and temporary directories through queue payloads. Rejected admission cleans files;
+accepted tasks retain ownership through observer failures. The shared lifecycle persists
+follow-up image history before execution. Image captions bypass question-answer
+consumption and reject control commands. Normal managers enable image reception. Following
+instructions consume pending images in the same resolved context, with overflow preserving
+the retained batch. WhatsApp forwards a connection signal through route initialization;
+Teams pins per-arrival signals through serialized dispatch and receipt callbacks.
+Unsupported image transports fail before SDK execution; cancelled initial/follow-up
+tasks clean prepared directories.
+Captionless Teams roots seed an instruction thread without an AI task, retaining queued
+targets and linking grouped roots to the admitted chat. WhatsApp image/prompt references
+preserve captured routing and transfer `sourceMessageIds` into durable receipts;
+answer-part ordering stays independent.
+
 Teams and WhatsApp parse inbound text with the shared `parseMessagingCommand`
 grammar from `coc-connector` (slash optional, `help`, `quota`,
 `compact [instructions]`, `[chatid]`, `/ask`, `/autopilot`, `/ralph`, `/sentinel`; unknown `/word` → "Unknown
@@ -236,8 +270,16 @@ hand off instead: `messaging/job-handoff.ts` `createMessagingHandOff` (one insta
 `routes/index.ts`, passed to both routers) resolves the sentinel's workspace, enqueues a
 separate job with `context.spawnedFromProcessId` + `context.messagingOrigin`, and calls
 `MessagingJobNotices.track`, so it gets notices and `ask_user` relay like a model hand-off.
-No sentinel turn runs and selection is unchanged; `/sentinel` or no prefix reaches the
-sentinel. An empty mode prefix replies "Send a message to start a chat.".
+Ordinary `/ask` and `/autopilot` handoffs share `createSentinelDelegationEnqueue` with
+model delegation: after startup recovery, the parent-owned relationship is durable before
+queue admission. A queued/running first Sentinel task supplies parent identity when its
+process does not exist. Connector `/ralph` grilling keeps separate session admission.
+Image handoffs reserve a job id before workspace-scoped receipt admission and download.
+WhatsApp keeps a delivered notice receipt; Teams keeps an admission-only receipt whose
+selected target remains the sentinel (including its queued task id). Matching queue
+payloads retain files and notice tracking after observer failures; rejected admission
+cleans files and allows redelivery. No sentinel turn runs and selection is unchanged;
+`/sentinel` or no prefix reaches the sentinel. An empty mode prefix replies "Send a message to start a chat.".
 `list remotes` (servers numbered `n`, their repos `n.m`, offline servers bare) and
 `list topics <n.m|name@server> [-v]` (10 most recent remote chats, read-only footer) are
 answered by `messaging/remote-browse.ts` over the route-layer `WorkspaceDirectory`
@@ -287,6 +329,15 @@ Missing relay settings resolve on; explicit false stops reply polling and answer
 without restart/reconnect. Connectivity, Likes and Trouter require their own enablement.
 The connector's standalone defaults remain independent.
 
+Connector `receiveImages` exposes lazy inline/file image descriptors on hybrid
+Graph roots/replies. Scoped hosted content uses fixed v1.0 paths; HTTPS SharePoint
+image references encode into fixed beta `/shares/u!…/driveItem/contentStream` paths.
+Both use identity-pinned read credentials, one 401 refresh and no redirects.
+File reads require delegated `Files.Read` (or documented higher read consent) and
+SharePoint access; 403 yields safe permission feedback. MIME, raster signatures,
+byte/deadline limits, ordinary admission and stop cancellation apply. Normal managers
+opt in; standalone connector/container consumers retain their existing defaults.
+
 `teams-messaging.json` persists `outboundBackend: mcp | graph` (default `graph`, including missing saved settings);
 Graph fixes channel send/reply routes to `GraphOperations`; explicit MCP remains supported. Its separate Azure CLI
 credentials require Graph audience/expiry, delegated `ChannelMessage.Send` or an existing
@@ -330,23 +381,36 @@ errors. Azure CLI sign-in alone does not grant consent; failed reads never fall 
 
 ### Messaging job completion notices
 
-`messaging/job-notices.ts` (`MessagingJobNotices`) posts a direct notice (no AI turn)
-`<repo> · <title> · ✅|❌|⏹` to the originating group/channel each time a chat handed off
-by `send_to_conversation` from a connector turn ends a turn (first turn and every follow-up,
-matched by `onTaskTerminal` on the job's processId). Failures add `findRequestFailureText`
-(fixed text or a recognized usage-limit reset). The executor's per-turn
-`sendToConversationRuntimeFor(processId, relayRequestId | taskId)` resolves the origin through
-`AskUserQuestionRelayHub.locateOrigin`; the tool then calls `track`. The ledger is
-`repos/<workspaceId>/messaging-job-notices.json` (`atomicWriteJsonUnique`): terminal turns are
-`pending` before send, `sending` during it (a restart there marks it done, never resent),
-then `done` per queue task id. `restore()` at route setup also queues first turns that ended
-while the server was down; connector reconnects call `reconcile(platform)`. Transports:
+`messaging/job-notices.ts` (`MessagingJobNotices`) tracks connector-originated jobs by
+workspace/process and terminal task. Ordinary Sentinel first-turn notices wait for the
+matching parent-owned delegation, with the same connector/group/thread. A persisted parent
+result outbox receipt suppresses the child notice, including before ledger acknowledgement;
+failed parent delivery releases one safe child fallback. Review admission and settlement
+reconcile held notices. Later child turns and compaction retain direct notices. Non-Sentinel
+jobs use direct notices immediately. Failures use fixed text or a recognized usage-limit reset.
+
+The executor's per-turn `sendToConversationRuntimeFor` resolves the origin through
+`AskUserQuestionRelayHub.locateOrigin`; the tool calls `track`. The ledger lives at
+`repos/<workspaceId>/messaging-job-notices.json`: terminal turns persist as `pending`,
+sends persist as `sending`, and sent/suppressed tasks become `done`. Interrupted sends are
+quarantined. Restore recovers first-turn terminals; reconnect calls `reconcile(platform)`.
+Transports:
 `createWhatsAppNoticeTransport` sends unquoted plain text and binds the notice as a
 `WhatsAppBinding` with `notice: true`, so a quote-reply follows up the job (mode kept by the
 follow-up resolver) without `selectTopic`; `TeamsAnswerRelay.noticeTransport()` posts a
 top-level `CoC ·`-attributed safe-HTML message and saves a `teams-thread-roots` selection for it, so thread
 replies route to the job by root (a reply inside the dispatcher's thread would route to the
 dispatcher) and user selection is untouched.
+
+Parent Sentinel results use `MessagingJobNotices.queueResult` with the stable review receipt
+and the connector origin captured in `delegated-jobs.json` before admission. The owning
+parent workspace persists the bounded review answer or fixed cancellation notice before
+acknowledging result delivery. Completed review answers come from the matching parent user
+turn, bounded by the next user turn; failed/cancelled reviews do not forward partial output.
+Result rows replay on reconnect/restart and ignore unrelated parent terminal turns. WhatsApp
+binds each outbound part to the parent; Teams uses the saved thread without changing its
+selection, or binds a new top-level post to the parent. Multipart sends quarantine unknown
+or partially sent outcomes under the existing notice rules.
 
 ### Teams IC3 connection contract
 

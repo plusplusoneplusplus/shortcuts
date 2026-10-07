@@ -4,6 +4,7 @@
  */
 
 import type { ConversationTurn } from '@plusplusoneplusplus/forge';
+import { CHAT_IMAGE_FAILURE_TEXT } from '../executors/chat-image-policy';
 
 export type RelayTerminalStatus = 'completed' | 'failed' | 'cancelled';
 
@@ -35,6 +36,8 @@ export function findRequestFailureText(
     const error = last?.interruptionReason
         ?? (last?.content?.startsWith('Error: ') ? last.content.slice(7) : undefined)
         ?? (nextUser < 0 ? processError : undefined);
+    const imageFailure = Object.values(CHAT_IMAGE_FAILURE_TEXT).find(message => message === error);
+    if (imageFailure) return imageFailure;
     if (!error || !/\b(?:session|usage) limit\b/i.test(error)) return RELAY_ANSWER_TEXT.failed;
     // Only project a clock time and known timezone, never arbitrary exception text.
     const reset = /\bresets?\s+(?:at\s+)?((?:1[0-2]|[1-9])(?::[0-5]\d)?\s*[ap]m|(?:[01]?\d|2[0-3]):[0-5]\d)\s*\((UTC|GMT)\)/i.exec(error);

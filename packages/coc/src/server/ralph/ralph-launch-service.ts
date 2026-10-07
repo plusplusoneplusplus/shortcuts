@@ -17,6 +17,7 @@ import { parseRalphAiSelection } from '../routes/ralph-route-utils';
 import { parseWorktreeExecutionRequest } from '../worktree/worktree-request';
 import { createRalphLaunchWorktree, attachWorktreeToRalphSession } from './ralph-worktree-launch';
 import { captureRalphBaselineSha } from './capture-baseline-sha';
+import type { MessagingJobOrigin } from '../messaging/job-notices';
 import type { WorktreeMetadata } from '@plusplusoneplusplus/coc-client';
 
 export interface RalphLaunchDeps {
@@ -47,6 +48,8 @@ export interface RalphLaunchInput {
     title?: string;
     /** The chat that spawned this session; nests iteration 1 under it in the chat list. */
     spawnedFromProcessId?: string;
+    /** Captured connector route for the delegated whole-session result. */
+    messagingOrigin?: MessagingJobOrigin;
 }
 
 export type RalphLaunchResult =
@@ -170,7 +173,10 @@ export async function launchRalphSession(input: RalphLaunchInput, deps: RalphLau
         effortTier,
         autoProviderRouting,
         ...(input.title ? { displayName: input.title } : {}),
-        ...(input.spawnedFromProcessId ? { extraContext: { spawnedFromProcessId: input.spawnedFromProcessId } } : {}),
+        extraContext: {
+            ...(input.spawnedFromProcessId ? { spawnedFromProcessId: input.spawnedFromProcessId } : {}),
+            ...(input.messagingOrigin ? { messagingOrigin: input.messagingOrigin } : {}),
+        },
     });
     const taskId = await bridge.enqueue(
         input.title ? { ...task, payload: { ...task.payload, customTitle: input.title } } : task,

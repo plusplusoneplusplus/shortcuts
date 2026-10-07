@@ -68,6 +68,7 @@ import type { SendToConversationRuntimeOptions } from '../llm-tools/send-to-conv
 import { buildChatTurnSystemMessage } from './chat-turn-system-message';
 import { buildChatModeDirective, loadChatModeInstructions, persistChatModeContextOnUserTurn, prependChatModeDirective } from './chat-mode-directive';
 import { resolveChatTurnPolicy } from './chat-turn-policy-resolver';
+import { assertIncomingImageFiles, assertChatImageTransport, assertCopilotImageModel, getChatImageAttachments } from './chat-image-policy';
 import { buildChatTurnSendOptions, buildMcpOAuthHandler } from './chat-turn-runner';
 import { resolveChatMcpServersForWorkspace } from './mcp-tool-enforcement';
 import { resolveRepoGroupChatContext, appendRepoGroupContext, persistRepoGroupContextOnUserTurn } from '../workspaces/repo-group-chat-context';
@@ -460,6 +461,19 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             return this.getProviderReasoningModel(provider, service, modelId);
         }
         return undefined;
+    }
+
+    protected async assertChatImageModel(
+        provider: ChatProvider,
+        service: ISDKService,
+        modelId: string | undefined,
+        attachments: readonly Attachment[] | undefined,
+    ): Promise<void> {
+        if (provider !== 'copilot' || !getChatImageAttachments(attachments).length) return;
+        // Use this provider's service, never the shared default-provider cache:
+        // its catalog may belong to a different provider with the same model ID.
+        const model = modelId ? await this.getProviderReasoningModel(provider, service, modelId) : undefined;
+        assertCopilotImageModel(modelId, model);
     }
 
     private async getProviderReasoningModel(
@@ -1088,7 +1102,8 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             ? payloadRecord.imageTempDir as string
             : undefined;
 
-        if (preBuiltAttachments && preBuiltAttachments.length > 0) {
+        if (preBuiltAttachments?.length
+            || (preBuiltTempDir && path.basename(preBuiltTempDir).startsWith('incoming-'))) {
             attachments = preBuiltAttachments;
             imageTempDir = preBuiltTempDir;
         } else if (Array.isArray(payloadImages) && payloadImages.length > 0) {
@@ -1118,6 +1133,9 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
         // lifecycle runner can attribute the assistant turn it appends.
         let turnSegmentId: string | undefined;
         try {
+            await assertIncomingImageFiles(payloadRecord.attachments, payloadImages, preBuiltTempDir,
+                this.dataDir ?? path.join(os.homedir(), '.coc'), payload.workspaceId, turnAbort.signal);
+            assertChatImageTransport(taskProvider, attachments, workingDirectory);
             // Rewrite large prompts to file-path references
             const effectiveDataDir = this.dataDir ?? path.join(os.homedir(), '.coc');
             const wsId = payload.workspaceId;
@@ -1186,6 +1204,7 @@ export abstract class ChatBaseExecutor extends BaseExecutor {
             const effectiveModel = policy.resolvedModel;
             policyModelId = policy.modelId;
             policyReasoningEffort = policy.reasoningEffort;
+            await this.assertChatImageModel(taskProvider, effectiveAiService, policy.modelId, attachments);
 
             if (ralphGrillPlanning?.setup.enabled === true) {
                 this.emitRalphGrillPlanningProgress(

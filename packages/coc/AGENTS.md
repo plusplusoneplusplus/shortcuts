@@ -42,7 +42,9 @@ references before editing. Paths are package-relative.
 - `list_workspaces`, `send_to_conversation` remote targets and messaging `list remotes` share one route-layer
   `src/server/servers/workspace-directory.ts` (clone keys, per-server timeouts, last-known
   offline entries). Remote create mode posts to the remote's own queue/Ralph API with no
-  local fallback; output never carries paths, URLs, or credentials.
+  local fallback; output never carries paths, URLs, or credentials. Successful remote
+  launches expose unavailable automatic parent result return through `resultDelivery`
+  and retain the clone chat link for inspecting the outcome.
 - `send_to_conversation` create mode defaults to Medium when model/tier are omitted;
   resolve tiers on the destination server after provider selection. Post/cancel have no default tier.
 - Remote group selection uses a server-qualified clone key; decode the raw
@@ -96,6 +98,66 @@ references before editing. Paths are package-relative.
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config
   and invalidate on mutation; avoid per-conversation workspace/config refetches.
+- Delegated job ledgers (`src/server/delegation/delegated-job-store.ts`) belong to the
+  parent workspace. Preserve parent/child identities, first terminal result, and conditional
+  delivery state transitions; child output cannot change routing. Operational receipts are
+  wiped through the snapshot registry and excluded from export/import.
+  Tool-bound local Sentinel admission and ordinary connector command handoffs reserve
+  the child ID and persist the relationship before queue execution. A queued/running
+  first Sentinel task supplies mode/workspace only when its process is absent; stored
+  processes win over queue metadata. Ralph registration identifies the session at launch
+  only. Tool Ralph carries the captured connector origin into iteration 1 before registration
+  for parent session-result return, without tracking direct iteration notices; connector Ralph
+  grilling requires separate session registration.
+  Rejected admission settles delivery as failed; accepted observer errors retain tracking.
+  `delegated-job-results.ts` records ordinary terminal events and recovers registered jobs
+  from scoped queue/process records at startup. Verify child process ID and stored workspace
+  explicitly before borrowing summary/error/artifact data; native reads ignore optional scope.
+  Result chat links include the child workspace through `buildChatOpenLink`.
+  Registered admission waits for recovery. Ordinary
+  recording excludes Ralph steps and remote jobs; unavailable children settle with a diagnosable failed delivery.
+  Whole-session Ralph events match registered workspace/session identity, preserving the first
+  terminal outcome. Journal recovery prefers the durable session `completion` record, then
+  terminal reasons or final-check evidence. Iteration caps/missing signals, rejected follow-on
+  admission and final-check terminal publication persist this outcome before emitting. Replay
+  cannot admit further work. The bridge persists failed/cancelled execution iterations and
+  admitted check/repair tasks
+  before returning: failure reviews use `iteration-failed` or `final-check-failed`; cancellation
+  uses passive notices. Check identity must match the current queued/running record; failed
+  repair follow-ups bypass result parsing. Step metadata is best effort after outcome persistence.
+  Paused/stopped/newer sessions and ordinary follow-ups/submit/grilling keep their own lifecycle.
+  Explicit resume clears the outcome before admission and restores it on
+  rejection; the delegation ledger retains its first outcome. Complete
+  iteration loops with pending checks remain silent. Caps do not assert goal completion.
+  Queued iteration/check/repair cancellations persist `user-stopped` through the result recorder;
+  startup scans scoped queue history. Only the next unfinished iteration or current admitted
+  check qualifies; repairs require the persisted attempt and exact checker process. Complete
+  iteration phases may await checks. Live admitted tasks win over cancellation history.
+  Pauses, stale steps, grilling and submit retain their own lifecycle.
+  `ProcessMessageDeliveryService.deliverOnce` admits server-owned reviews with a stable
+  receipt in pending messages, queue tasks and user turns. It verifies the parent's workspace,
+  preserves queue ordering, rejects stopped parents and never steers. Review pending IDs equal
+  their request receipts; drain reuses those IDs and reconciles accepted tasks/turns before replay.
+  Correlation repair and drain share process admission with follow-up delivery. Active tasks take
+  precedence over history in process lookup. `delegated-job-reviews.ts` admits ordinary and
+  whole-session Ralph outcome reviews on recording/startup, using a stable parent/job/event receipt and
+  bounded untrusted result context. Resolve the parent's mode into pending/task payloads.
+  Reconcile receipt admission before ledger acknowledgement; reuse emits no realtime intents.
+  Review completion settles delivery; permanent routing rejection settles failure, while
+  transient storage errors remain recoverable. Buffered admission invokes owner-queue recovery
+  outside admission; idle completed/failed parents drain the head in order, reconciling terminal
+  receipts first. Active queues, stopped parents and pending questions/answers block recovery.
+  Cancellation uses `deliverNoticeOnce`: a stable display-only assistant receipt,
+  serialized with process admission, without AI work or queue changes. Busy parents defer;
+  parent terminal events/startup retry admission, and transcript receipts reconcile ledger
+  write failures. Stopped parents can receive notices without resuming. Missing/mis-scoped
+  parents settle delivery failure. Ralph uses session terminal receipts; remote delivery remains separate.
+  Child completion grants no additional action authority. Connector origins are immutable
+  delegation data captured before admission. Parent review answers and passive cancellation
+  notices enter `MessagingJobNotices.queueResult` in the parent workspace before ledger
+  acknowledgement. Extract only the receipt-correlated parent answer; connector output binds
+  to the parent and uses its captured group/thread independently of topic selection. Existing
+  notice persistence handles reconnect/restart and quarantines uncertain multipart sends.
 - Register persisted families in `src/server/storage/snapshot/`; pass
   `test/server/snapshot-domain-contract.test.ts` for export/import/wipe consistency.
 
@@ -228,6 +290,32 @@ references before editing. Paths are package-relative.
   include recognized UTC/GMT reset times; other failures use fixed text. Never
   relay raw exceptions or partial output, or borrow another request's error. Receipt files use
   `atomicWriteJsonUnique`; transport, reply wording and formatting stay per connector.
+- `src/server/messaging/incoming-images.ts` prepares admitted image batches only
+  after local workspace resolution. It reuses chat attachment processing, stores
+  temporary files via `getRepoDataPath(..., 'attachments')`, and rejects an entire
+  batch on failure. Limits are five images, 10 MB decoded total and 30 seconds total.
+  Callers own temporary-directory cleanup until delivery transfers it to executors. Teams/WhatsApp
+  image preparation runs inside durable binding admission; queue payloads
+  carry SDK attachments, image history and the temporary directory together. Teams prepares
+  initial, active and pending follow-ups inside relay receipts, including admission-only
+  receipts when answer delivery and bot control are disabled. Image captions bypass
+  question-answer consumption and reject control commands. Failed
+  queue admission removes prepared files. Normal managers opt into `receiveImages`;
+  connector defaults and container consumers remain text-only.
+- `src/server/messaging/pending-images.ts` owns lazy captionless-image retention:
+  five images per sender/conversation/thread, 30 minutes from the first arrival and
+  256 contexts maximum. Workspace/topic changes reject consumption; explicit root
+  selections discard their sender, shared Teams-thread selections discard all senders.
+  Controls do not consume; following instructions bypass `ask_user` answers and merge
+  pending/captioned images only within batch limits. Failed/expired instructional IDs
+  stay deduplicated, never replaying as text-only turns. Dispose on disconnect;
+  restart requires resend. WhatsApp forwards a connection signal through route
+  initialization; Teams pins per-arrival signals through serialized dispatch. Native
+  Copilot/Codex/Claude receive SDK files; unsupported image transports fail before SDK execution.
+  Captionless Teams roots bind their instruction thread without creating an AI turn;
+  grouped root references link to the admitted chat, including queued targets.
+  WhatsApp image/prompt quotes retain captured routing and transfer `sourceMessageIds`
+  to the durable receipt without changing answer-part ordering.
 - Teams/WhatsApp command grammar is one spec table in
   `coc-connector/src/shared/commands.ts` (`parseMessagingCommand`,
   `formatMessagingHelp`, plain-text `MESSAGING_HELP_TEXT`). Help uses native WhatsApp
@@ -257,7 +345,12 @@ references before editing. Paths are package-relative.
   enqueues a separate job in the sentinel's workspace with `spawnedFromProcessId` +
   `messagingOrigin` and tracks it in the notice ledger; selection is unchanged. WhatsApp
   reacts 👍 and records the inbound id against redelivery; Teams replies in the thread and
-  dedupes bound-thread replies like thread commands. An empty prefix replies
+  dedupes text bound-thread replies like thread commands. Image handoffs reserve a job
+  id and persist a workspace receipt before download; the job payload includes files,
+  history and temporary-directory ownership. WhatsApp uses delivered notice receipts;
+  Teams uses admission-only receipts with the sentinel as selectedProcessId/selectedTaskId.
+  Rejected admission cleans files and permits retry; matching accepted tasks retain
+  files/receipts after observer failures. An empty prefix replies
   "Send a message to start a chat."
   `list remotes` and `list topics <n.m|name@server>` browse remote servers read-only via
   `src/server/messaging/remote-browse.ts` over the shared `WorkspaceDirectory`
@@ -279,14 +372,14 @@ references before editing. Paths are package-relative.
   clears pending ones; approvals stay dashboard-only. Ordinary replies preserve
   recognized choice/boolean/array mappings and pass other non-empty text to the
   AI unchanged apart from trimming. Only exact `skip` skips; empty replies reject.
-- Chats handed off by `send_to_conversation` create mode from a WhatsApp/Teams turn
-  (origin via the ask_user relay's `locateOrigin`; local targets only, not Ralph) get
-  `metadata.messagingOrigin` and a direct notice `<repo> · <title> · ✅/❌/⏹` per
-  finished turn through `src/server/messaging/job-notices.ts` (per-repo
-  `messaging-job-notices.json`: pending → sending → done per task; interrupted sends are
-  never resent). WhatsApp binds the notice (`notice: true`) so a quote-reply follows up
-  the job; Teams posts it top-level and binds it as a thread root. Neither changes the
-  selected repo/topic; follow-up mode is kept.
+- Local ordinary connector handoffs carry `metadata.messagingOrigin` and use
+  `messaging/job-notices.ts` for direct completion notices. Sentinel first-turn notices
+  wait for matching parent delegation at the same connector/group/thread. Suppress only
+  with durable parent result outbox coverage; failed parent delivery releases a safe child
+  fallback. Review admission/settlement reconciles held notices. Later child turns and
+  compaction retain direct notices. Receipt states persist per workspace; interrupted sends
+  are quarantined. WhatsApp binds replies to the notice's chat; Teams uses the captured
+  parent thread for results or binds a top-level child notice. Selection remains unchanged.
 - Teams IC3 requires explicit `amer`/`emea`/`apac` and identity-pinned connection
   credentials. Missing region fails before credentials/network; automatic discovery
   is not implemented. Never guess, fail over, or replay IC3 writes.

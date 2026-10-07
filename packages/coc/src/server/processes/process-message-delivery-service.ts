@@ -27,6 +27,8 @@ import {
 } from './process-operation-admission';
 import { pendingMessageTask } from './queued-pending-message';
 import { truncateDisplayName } from '../shared/queue-utils';
+import { resolveFollowUpMode } from '../executors/follow-up-mode';
+import { emitMessageQueued, emitPendingMessageAdded, emitMessageSteering } from '../streaming/sse-handler';
 import { cleanupTempDir } from '../core/image-utils';
 import type { FileAttachmentMeta } from '../core/attachment-utils';
 
@@ -253,6 +255,8 @@ export type DeliveryEvent =
 
 export interface DeliveryResult {
     path: DeliveryPath;
+    /** A durable receipt already covers this server-owned message; no new events. */
+    reused?: boolean;
     /** Appended user-turn index, or -1 when the message was buffered. */
     turnIndex: number;
     /** Pending message identifier when the follow-up was buffered. */
@@ -262,6 +266,26 @@ export interface DeliveryResult {
     pasteExternalized: boolean;
     events: DeliveryEvent[];
 }
+
+/** Emit accepted admission intents; reused receipts contain no intents. */
+export function emitDeliveryEvents(store: ProcessStore, processId: string, events: DeliveryEvent[]): void {
+    for (const event of events) {
+        switch (event.kind) {
+            case 'pending-message-added':
+                emitPendingMessageAdded(store, processId, event.pendingMessage);
+                break;
+            case 'message-queued':
+                emitMessageQueued(store, processId, event);
+                break;
+            case 'message-steering':
+                emitMessageSteering(store, processId, event);
+                break;
+        }
+    }
+}
+
+/** A permanent routing/admission rejection; transient storage errors remain retryable. */
+export class ReviewDeliveryRejectedError extends Error {}
 
 /** Thrown when the underlying enqueue/dispatch fails; the route maps it to 500. */
 export class FollowUpDeliveryError extends Error {
@@ -329,7 +353,89 @@ export class ProcessMessageDeliveryService {
         });
     }
 
-    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput): Promise<DeliveryResult> {
+    /**
+     * Admit a server-owned review once, using a globally unique, stable receipt ID.
+     * The existing request correlation persists through pending-message drain and
+     * execution. This entry point always queues and never resumes a stopped parent.
+     */
+    async deliverOnce(
+        workspaceId: string,
+        processId: string,
+        receiptId: string,
+        input: Pick<FollowUpMessageInput, 'content' | 'displayContent'>,
+    ): Promise<DeliveryResult> {
+        if (!receiptId.trim()) throw new ReviewDeliveryRejectedError('A stable review receipt is required');
+        if (!this.bridge.enqueue || !this.bridge.getTask) {
+            throw new ReviewDeliveryRejectedError('Durable review delivery requires queue admission and lookup');
+        }
+        return this.admission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId, workspaceId);
+            if (!proc || proc.metadata?.workspaceId !== workspaceId) {
+                throw new ReviewDeliveryRejectedError('Review parent is unavailable in its originating workspace');
+            }
+            const pending = proc.pendingMessages?.find(message => message.relayRequestId === receiptId);
+            const turn = proc.conversationTurns?.find(message => message.role === 'user'
+                && message.relayRequestId === receiptId);
+            const task = this.bridge.getTask!(receiptId);
+            if (task && !this.isReviewTask(task, proc, receiptId)) {
+                throw new ReviewDeliveryRejectedError('Review receipt conflicts with another queue task');
+            }
+            if (pending || turn || task) {
+                return {
+                    path: pending ? 'buffered' : 'enqueued', reused: true,
+                    turnIndex: turn?.turnIndex ?? -1,
+                    ...(pending ? { pendingMessageId: pending.id } : {}),
+                    ...(task ? { taskId: task.id } : {}),
+                    pasteExternalized: false, events: [],
+                };
+            }
+            if (proc.status === 'cancelled' || proc.status === 'cancelling') {
+                throw new ReviewDeliveryRejectedError('Review parent has been stopped');
+            }
+            return this.deliverAdmitted(proc, {
+                ...input, relayRequestId: receiptId, deliveryMode: 'enqueue', pasteExternalized: false,
+                mode: await resolveFollowUpMode(this.store, processId),
+            }, receiptId);
+        });
+    }
+
+    /** Persist a server notice without an AI request or any change to queue state. */
+    async deliverNoticeOnce(
+        workspaceId: string, processId: string, receiptId: string, content: string,
+    ): Promise<'deferred' | 'delivered'> {
+        if (!receiptId.trim()) throw new ReviewDeliveryRejectedError('A stable notice receipt is required');
+        return this.admission.runExclusive(processId, async () => {
+            const proc = await this.store.getProcess(processId, workspaceId);
+            if (!proc || proc.metadata?.workspaceId !== workspaceId) {
+                throw new ReviewDeliveryRejectedError('Notice parent is unavailable in its originating workspace');
+            }
+            const existing = proc.conversationTurns?.find(turn => turn.relayRequestId === receiptId);
+            if (existing) {
+                if (existing.role !== 'assistant' || !existing.displayOnly) {
+                    throw new ReviewDeliveryRejectedError('Notice receipt conflicts with another conversation turn');
+                }
+                return 'delivered';
+            }
+            const task = this.bridge.findTaskByProcessId?.(processId);
+            if (NONTERMINAL_STATUSES.has(proc.status) || (task && NONTERMINAL_STATUSES.has(task.status))
+                || proc.pendingAskUser || proc.pendingAskUserAnswer) return 'deferred';
+            const appended = await this.store.appendConversationTurn(processId, turnIndex => ({
+                role: 'assistant', content, timestamp: this.now(), turnIndex,
+                timeline: [], displayOnly: true, relayRequestId: receiptId,
+            }));
+            if (!appended) throw new ReviewDeliveryRejectedError('Notice parent is unavailable');
+            return 'delivered';
+        });
+    }
+
+    private isReviewTask(task: import('@plusplusoneplusplus/forge').QueuedTask, proc: AIProcess, receiptId: string): boolean {
+        return task.type === 'chat' && task.processId === proc.id
+            && task.payload.processId === proc.id
+            && task.payload.workspaceId === proc.metadata?.workspaceId
+            && task.payload.relayRequestId === receiptId;
+    }
+
+    private async deliverAdmitted(proc: AIProcess, input: FollowUpMessageInput, reviewReceiptId?: string): Promise<DeliveryResult> {
         const id = proc.id;
         const priorStatus = proc.status;
         const compactionPending = proc.metadata?.compaction?.state === 'queued'
@@ -364,7 +470,7 @@ export class ProcessMessageDeliveryService {
             buffered = true;
             path = 'buffered';
             const pendingMessage = {
-                id: this.newId(),
+                id: reviewReceiptId ?? this.newId(),
                 ...requestCorrelation,
                 ...(input.resumeSessionId ? { resumeSessionId: input.resumeSessionId } : {}),
                 content: input.content,
@@ -409,6 +515,7 @@ export class ProcessMessageDeliveryService {
                     }
                 } else if (
                     (parentTask && (parentTask.status === 'running' || parentTask.status === 'queued')) ||
+                    (reviewReceiptId && (proc.pendingAskUser?.length || proc.pendingMessages?.length)) ||
                     (!parentTask && NONTERMINAL_STATUSES.has(priorStatus))
                 ) {
                     // Task running/queued, or task not found but process was non-terminal:
@@ -418,7 +525,7 @@ export class ProcessMessageDeliveryService {
                     // Terminal status (failed or resumable cancelled) or restart fallback → enqueue.
                     const enqueueWsId = (proc.metadata?.workspaceId as string) ?? undefined;
                     taskId = await (this.bridge.enqueueAdmitted ?? this.bridge.enqueue).call(this.bridge, {
-                        ...(isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
+                        ...(reviewReceiptId ? { id: reviewReceiptId } : isQueueProcessId(id) ? { id: toTaskId(id) } : {}),
                         processId: id,
                         type: 'chat',
                         priority: 'normal',
@@ -458,8 +565,15 @@ export class ProcessMessageDeliveryService {
                 path = 'direct-executed';
             }
         } catch (err) {
-            await this.store.updateProcess(id, { status: priorStatus as AIProcessStatus }).catch(() => {});
-            throw new FollowUpDeliveryError(err);
+            // taskAdded observers may throw after durable admission. Retain that
+            // exact receipt rather than rolling back accepted work or replaying it.
+            const accepted = reviewReceiptId ? this.bridge.getTask?.(reviewReceiptId) : undefined;
+            if (accepted && this.isReviewTask(accepted, proc, reviewReceiptId!)) {
+                taskId = accepted.id;
+            } else {
+                await this.store.updateProcess(id, { status: priorStatus as AIProcessStatus }).catch(() => {});
+                throw new FollowUpDeliveryError(err);
+            }
         }
 
         // Persist the user turn and mark the process running atomically. Skipped

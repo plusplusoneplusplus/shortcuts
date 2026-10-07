@@ -33,6 +33,9 @@ export type RalphSessionCompleteReason =
     | 'signal'
     | 'manual-verification-only'
     | 'cap'
+    | 'no-signal'
+    | 'iteration-enqueue-failed'
+    | 'iteration-failed'
     | 'user-stopped'
     | 'final-check-failed'
     | 'final-check-enqueue-failed'
@@ -122,6 +125,13 @@ export interface RalphSessionRecord {
     startedAt: string;
     completedAt?: string;
     terminalReason?: RalphTerminalReason;
+    /** Whole-session outcome persisted before terminal publication; absent during checks/repair/gap loops. */
+    completion?: {
+        reason: RalphSessionCompleteReason;
+        processId: string;
+        totalIterations: number;
+        completedAt: string;
+    };
     iterations: RalphIterationRecord[];
     /** Multi-loop history. Absent on pre-existing single-loop sessions. */
     loops?: RalphLoopRecord[];

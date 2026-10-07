@@ -24,6 +24,12 @@ import type { EnqueueChatFn, SendMessageFn, SendToConversationRuntimeOptions } f
 import { cancelConversation } from '../processes/cancel-conversation';
 import { coerceChatStyle } from '../executors/chat-style-prompt';
 import { createSendMessageCapability } from '../processes/send-message-capability';
+import { DelegatedJobStore } from '../delegation/delegated-job-store';
+import { RalphSessionStore } from '../ralph/ralph-session-store';
+import { DelegatedJobResults } from '../delegation/delegated-job-results';
+import { DelegatedJobReviews } from '../delegation/delegated-job-reviews';
+import { ProcessMessageDeliveryService } from '../processes/process-message-delivery-service';
+import { createSentinelDelegationEnqueue } from '../delegation/sentinel-delegation-enqueue';
 import { compactProcess } from '../processes/compact-process';
 import { registerTaskRoutes, registerTaskWriteRoutes } from '../tasks/tasks-handler';
 import { registerTaskGenerationRoutes } from '../tasks/task-generation-handler';
@@ -169,6 +175,7 @@ import { TeamsMessagingManager } from '../messaging/teams-messaging-manager';
 import { registerWhatsAppMessagingRoutes } from '../messaging/whatsapp-messaging-handler';
 import type { WhatsAppMessagingManager } from '../messaging/whatsapp-messaging-manager';
 import { WhatsAppBindings, WhatsAppBindingReleaseError } from '../messaging/whatsapp-bindings';
+import { incomingImageTaskPayload, type PreparedIncomingImages } from '../messaging/incoming-images';
 import { WhatsAppCommandRouter } from '../messaging/whatsapp-command-router';
 import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import { createMessagingChatModeResolver } from '../messaging/messaging-chat-mode';
@@ -476,12 +483,45 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // can offer the `send_to_conversation` tool. Reuses the exact machinery
     // `POST /api/queue` uses: provider/effort defaults resolution, then route +
     // enqueue via the per-repo queue manager.
+    const delegatedJobs = new DelegatedJobStore(dataDir);
+    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade, delegatedJobs });
+    const delegatedJobReviews = new DelegatedJobReviews({
+        jobs: delegatedJobs, store, queue: queueFacade,
+        queueMessagingResult: result => jobNotices.queueResult(result),
+        reconcileMessagingNotices: () => jobNotices.reconcile(),
+        delivery: new ProcessMessageDeliveryService({ store, bridge: bridgeWithResolvedDefaults }),
+        recoverPendingMessages: (workspaceId, processId) => bridge.recoverPendingMessages(workspaceId, processId),
+    });
+    const delegatedJobResults = new DelegatedJobResults({
+        jobs: delegatedJobs, store, queue: queueFacade, sessions: new RalphSessionStore({ dataDir }),
+        onResult: job => delegatedJobReviews.schedule(job),
+    });
+    // Quarantine interrupted outbound sends before recovered results can add new receipts.
+    const delegatedResultsRestored = jobNotices.restore().catch(error =>
+        console.error('[job-notices] Could not restore notices:', error))
+        .then(() => delegatedJobResults.restore()).catch(error =>
+        console.error('[delegated-job-results] Could not restore results:', error));
+    const registerSentinelDelegation = createSentinelDelegationEnqueue({
+        store, jobs: delegatedJobs, hasTask: taskId => !!bridge.getTask(taskId),
+        getTask: taskId => bridge.getTask(taskId),
+    });
+    const enqueueSentinelDelegation: ReturnType<typeof createSentinelDelegationEnqueue> = async (input, enqueue) => {
+        // Recovery must finish before a new registration can look like an interrupted launch.
+        await delegatedResultsRestored;
+        return registerSentinelDelegation(input, enqueue);
+    };
+    const delegatedRalphBridge = Object.create(bridgeWithResolvedDefaults) as MultiRepoQueueRouter;
+    Object.defineProperty(delegatedRalphBridge, 'enqueue', {
+        value: (task: CreateTaskInput) => enqueueSentinelDelegation(task,
+            prepared => bridgeWithResolvedDefaults.enqueue(prepared)),
+    });
     opts.setEnqueueChat?.(async (input: CreateTaskInput): Promise<string> => {
         await prepareEnqueueTask(input);
-        return enqueueViaBridge(input, bridge, queueGlobalState, globalWorkspaceRootPath, store);
+        return enqueueSentinelDelegation(input, task =>
+            enqueueViaBridge(task, bridge, queueGlobalState, globalWorkspaceRootPath, store));
     });
     opts.setLaunchRalph?.((input) => launchRalphSession(input, {
-        bridge: bridgeWithResolvedDefaults,
+        bridge: delegatedRalphBridge,
         dataDir,
         store,
         getGitWorktreeExecutionEnabled,
@@ -565,9 +605,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     // Local + remote repo directory behind `list_workspaces`, `send_to_conversation`
     // name / remote clone-key targets, and messaging `list remotes`.
     const workspaceDirectory = createWorkspaceDirectory({ store, dataDir, remoteServers: remoteServerRuntime });
-    // Completion notices for chats a WhatsApp/Teams turn hands off; connectors
-    // register their transports below.
-    const jobNotices = new MessagingJobNotices({ dataDir, store, queue: queueFacade });
+    // Connectors register their completion/result transports below.
     opts.setSendToConversationRuntime?.({
         cancelConversation: (processId, workspaceId) => cancelConversation(store, bridge, processId, workspaceId),
         isAutoProviderRoutingAvailable: () => isAutoProviderRoutingActive() && !!agentProvidersQuotaCache,
@@ -864,13 +902,22 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     const enqueueMessagingChat = (workspaceId: string, message: string, taskId?: string) =>
         bridge.enqueue(messagingChatInput(workspaceId, message, taskId));
     // Teams threads start new chats as the sentinel dispatcher unless a mode prefix says otherwise.
-    const enqueueTeamsChat = async (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl']) =>
-        enqueueWithResolvedDefaults({
-            ...messagingChatInput(workspaceId, message, taskId, true, await resolveMessagingChatMode(undefined, mode)),
-            botControl,
+    const enqueueTeamsChat = async (workspaceId: string, message: string, taskId?: string, mode?: MessagingChatMode, botControl?: CreateTaskInput['botControl'], images?: PreparedIncomingImages) => {
+        const input = messagingChatInput(workspaceId, message, taskId, true, await resolveMessagingChatMode(undefined, mode));
+        return enqueueWithResolvedDefaults({
+            ...input, botControl,
+            payload: { ...input.payload, ...incomingImageTaskPayload(images) },
         });
+    };
     // Mode-prefixed phone messages to a sentinel start a separate tracked job.
-    const messagingHandOff = createMessagingHandOff({ store, queue: queueFacade, enqueue: enqueueWithResolvedDefaults, jobNotices });
+    const messagingHandOff = createMessagingHandOff({
+        store, queue: queueFacade, jobNotices,
+        // Ordinary command handoffs share durable Sentinel admission. Ralph
+        // grilling needs session-aware registration, separate from this path.
+        enqueue: input => input.payload.mode === 'ralph'
+            ? enqueueWithResolvedDefaults(input)
+            : enqueueSentinelDelegation(input, enqueueWithResolvedDefaults),
+    });
     const getMessagingQuota = async () => agentProvidersQuotaCache?.get({ refreshIfStale: true });
 
     // Container default agent session routes (feature-flagged)
@@ -922,7 +969,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         onAnswerRelayConfigChanged: callback => opts.runtimeConfigService?.onChange(callback) ?? (() => {}),
         relayQueue: queueFacade,
         enqueueRelayChat: enqueueTeamsChat,
-        admitRelayFollowUp: async (proc, message, requestId, mode, taskId, admissionHeld = false) => {
+        admitRelayFollowUp: async (proc, message, requestId, mode, taskId, images, admissionHeld = false) => {
             const workspaceId = proc.metadata?.workspaceId;
             if (typeof workspaceId !== 'string' || !workspaceId) throw new Error('Teams conversation workspace is unavailable');
             return {
@@ -930,25 +977,25 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     id: taskId, type: 'chat', repoId: workspaceId, processId: proc.id, priority: 'normal',
                     payload: {
                         kind: 'chat', mode: await resolveMessagingChatMode(proc.id, mode), processId: proc.id, prompt: message,
-                        workspaceId, relayRequestId: requestId,
+                        workspaceId, relayRequestId: requestId, ...incomingImageTaskPayload(images),
                     },
                     config: {},
                 }),
             };
         },
-        enqueuePendingRelayFollowUp: async (workspaceId, processId, message, requestId, mode, taskId) => bridge.enqueue({
+        enqueuePendingRelayFollowUp: async (workspaceId, processId, message, requestId, mode, taskId, images) => bridge.enqueue({
             id: taskId, type: 'chat', repoId: workspaceId, processId, priority: 'normal',
             payload: {
                 kind: 'chat', mode: await resolveMessagingChatMode(processId, mode), processId, prompt: message,
-                workspaceId, relayRequestId: requestId,
+                workspaceId, relayRequestId: requestId, ...incomingImageTaskPayload(images),
             },
             config: {},
         }),
         store,
         oauthAvailable: !!opts.mcpOauthManager && typeof (resolvedAiService as { createClient?: unknown }).createClient === 'function',
         oauthManager: opts.mcpOauthManager,
-        enqueueChat: (workspaceId, message, mode, taskId, botControl) =>
-            enqueueTeamsChat(workspaceId, message, taskId, mode, botControl),
+        enqueueChat: (workspaceId, message, mode, taskId, botControl, images) =>
+            enqueueTeamsChat(workspaceId, message, taskId, mode, botControl, images),
         executeFollowUp: async (processId, message, mode) =>
             bridge.executeFollowUp(processId, message, undefined, await resolveMessagingChatMode(processId, mode)),
         getQuota: getMessagingQuota,
@@ -997,10 +1044,12 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         groupJid: () => whatsappMessagingManager.getStatus().groupJid,
         send: text => whatsappMessagingManager.send(text),
     }));
-    // Load notice ledgers, then post what a restart or disconnect left pending.
-    void jobNotices.restore().catch(error => console.error('[job-notices] Could not restore notices:', error));
+    // Registered transports can now drain restored notices and recovered result receipts.
+    void delegatedResultsRestored.then(() => jobNotices.reconcile()).catch(error =>
+        console.error('[job-notices] Could not reconcile notices:', error));
     const whatsappRouter = new WhatsAppCommandRouter({
         store,
+        dataDir,
         bindings: whatsappBindings,
         getBotManagedConversationsEnabled: () =>
             (opts.runtimeConfigService?.config ?? opts.resolvedConfig)?.features?.botManagedConversations === true,
@@ -1014,7 +1063,7 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
         questions: questionRelay,
         handOff: messagingHandOff,
         getTask: taskId => queueFacade.getTask(taskId),
-        enqueue: async (workspaceId, message, mode, processId, taskId, botControl, admissionHeld = false) => {
+        enqueue: async (workspaceId, message, mode, processId, taskId, botControl, images, admissionHeld = false) => {
             const followUp = processId !== toQueueProcessId(taskId);
             return enqueueWithResolvedDefaults({
                 ...messagingChatInput(workspaceId, message, taskId, true),
@@ -1026,15 +1075,18 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
                     prompt: message, workspaceId,
                     ...(followUp ? { processId } : {}),
                     relayRequestId: taskId,
+                    ...incomingImageTaskPayload(images),
                 },
             }, admissionHeld);
         },
         queued: binding => { void whatsappRelay.reconcileTask(binding.taskId).catch(error =>
             console.error('[whatsapp-answer-relay] Could not reconcile queued request:', error)); },
     });
-    whatsappMessagingManager.setMessageHandler(async message => {
+    whatsappMessagingManager.setConnectionResetHandler(() => whatsappRouter.resetPendingImages());
+    whatsappMessagingManager.setMessageHandler(async (message, signal) => {
         await restoreWhatsAppBindings();
-        await whatsappRouter.handle(message);
+        if (signal) await whatsappRouter.handle(message, signal);
+        else await whatsappRouter.handle(message);
     });
     whatsappMessagingManager.setConnectedHandler(async () => {
         await restoreWhatsAppBindings();
@@ -1043,8 +1095,11 @@ export function registerAllRoutes(routes: Route[], opts: RegisterRoutesOptions):
     });
     // Server shutdown: drop both queue subscriptions.
     whatsappMessagingManager.setDisposeHandler(() => {
+        whatsappRouter.dispose();
         whatsappRelay.dispose();
         jobNotices.dispose();
+        delegatedJobResults.dispose();
+        delegatedJobReviews.dispose();
     });
 
     // Opt-in Git worktree execution feature flag getter (live when a runtime

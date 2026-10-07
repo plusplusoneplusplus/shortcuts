@@ -385,6 +385,86 @@ describe('WhatsAppBot', () => {
         expect(receivedMessages).toHaveLength(0);
     });
 
+    it('delivers opted-in captioned and captionless images with sender and quote routing', async () => {
+        mockCreateConnection.mockImplementation(async opts => {
+            opts.onConnected(mockSocket);
+            return mockSocket;
+        });
+        const bot = new WhatsAppBot({
+            sessionDir: 'session', printQR: false, receiveImages: true,
+            onMessage: async msg => { receivedMessages.push(msg); },
+        });
+        await bot.start();
+        const imageMessage = {
+            mimetype: 'image/png', directPath: '/v/image.enc', mediaKey: Buffer.alloc(32),
+            caption: '[chat-123] /ask explain this', contextInfo: { stanzaId: 'answer-123' },
+        };
+        const upsert = mockSocket.handlers.get('messages.upsert')!;
+        await upsert({ type: 'notify', messages: [
+            { key: { remoteJid: 'group@g.us', participant: 'alice@s.whatsapp.net', id: 'image-1' },
+                message: { imageMessage }, pushName: 'Alice' },
+            { key: { remoteJid: 'group@g.us', id: 'image-2', fromMe: true },
+                message: { ephemeralMessage: { message: { imageMessage: { ...imageMessage, caption: '' } } } } },
+        ] });
+        expect(receivedMessages).toHaveLength(2);
+        expect(receivedMessages[0]).toMatchObject({
+            chatJid: 'group@g.us', senderJid: 'group@g.us', participantJid: 'alice@s.whatsapp.net',
+            fromMe: false, messageId: 'image-1', text: '[chat-123] /ask explain this',
+            senderName: 'Alice', quotedMessageId: 'answer-123',
+            images: [{ mimeType: 'image/png', download: expect.any(Function) }],
+        });
+        expect(receivedMessages[1]).toMatchObject({ text: '', fromMe: true, images: [{ mimeType: 'image/png' }] });
+        await bot.send('group@g.us', 'Reply', { replyToId: 'image-1' });
+        expect(vi.mocked(mockSocket.sendMessage).mock.calls[0][2]?.quoted?.message).toEqual({ imageMessage });
+
+        // A retained descriptor cannot download after stop or a new start.
+        await bot.stop();
+        await expect(receivedMessages[0].images![0].download({ maxBytes: 100 }))
+            .rejects.toMatchObject({ code: 'cancelled' });
+        await upsert({ type: 'notify', messages: [{ key: { remoteJid: 'group@g.us', id: 'late-image' },
+            message: { imageMessage } }] });
+        expect(receivedMessages).toHaveLength(2);
+    });
+
+    it('keeps replay, broadcast and own-message suppression ahead of image delivery', async () => {
+        mockCreateConnection.mockImplementation(async opts => { opts.onConnected(mockSocket); return mockSocket; });
+        const bot = new WhatsAppBot({
+            sessionDir: 'session', printQR: false, receiveImages: true,
+            onMessage: async msg => { receivedMessages.push(msg); },
+        });
+        await bot.start();
+        const sentId = await bot.send('group@g.us', 'sent');
+        const upsert = mockSocket.handlers.get('messages.upsert')!;
+        const message = { imageMessage: { mimetype: 'image/png', caption: 'instructions' } };
+        await upsert({ type: 'append', messages: [{ key: { remoteJid: 'group@g.us', id: 'history' }, message }] });
+        await upsert({ type: 'notify', messages: [
+            { key: { remoteJid: 'status@broadcast', id: 'status' }, message },
+            { key: { remoteJid: 'group@g.us', id: sentId, fromMe: true }, message },
+            { key: { remoteJid: 'group@g.us', id: 'audio' }, message: { audioMessage: {} } },
+            { key: { remoteJid: 'group@g.us', id: 'video' }, message: { videoMessage: { caption: 'video' } } },
+            { key: { remoteJid: 'group@g.us', id: 'document' }, message: { documentMessage: { caption: 'document' } } },
+        ] });
+        expect(receivedMessages).toHaveLength(0);
+        await bot.stop();
+    });
+
+    it('keeps images opt-in, including image captions, and leaves text unchanged', async () => {
+        mockCreateConnection.mockImplementation(async opts => { opts.onConnected(mockSocket); return mockSocket; });
+        const bot = new WhatsAppBot({
+            sessionDir: 'session', printQR: false,
+            onMessage: async msg => { receivedMessages.push(msg); },
+        });
+        await bot.start();
+        await mockSocket.handlers.get('messages.upsert')!({ type: 'notify', messages: [
+            { key: { remoteJid: 'group@g.us', id: 'caption' }, message: { imageMessage: { caption: 'caption' } } },
+            { key: { remoteJid: 'group@g.us', id: 'text' }, message: { conversation: '/ask ordinary text' } },
+        ] });
+        expect(receivedMessages).toHaveLength(1);
+        expect(receivedMessages[0].text).toBe('/ask ordinary text');
+        expect(receivedMessages[0]).not.toHaveProperty('images');
+        await bot.stop();
+    });
+
     it('should handle onMessage errors gracefully', async () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 

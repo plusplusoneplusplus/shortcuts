@@ -14,11 +14,11 @@
 import { sendJSON, sendError } from '../core/api-handler';
 import { parseBodyOrReject } from '../shared/handler-utils';
 import type { Route } from '../types';
-import { toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
+import { isQueueProcessId, toTaskId, toQueueProcessId, type ProcessStore, type AIProcess } from '@plusplusoneplusplus/forge';
 import type { McpOauthManager } from '../mcp-oauth/mcp-oauth-manager';
 import { TeamsMessagingManager } from './teams-messaging-manager';
 import { TeamsCommandRouter } from './teams-command-router';
-import type { MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
+import { ImageDownloadError, type MessagingChatMode } from '@plusplusoneplusplus/coc-connector';
 import type { MessagingCompactor, MessagingQuotaSource } from './messaging-commands';
 import type { MessagingRemoteDirectory } from './remote-browse';
 import { TeamsOAuthFlow } from './teams-oauth-flow';
@@ -28,11 +28,15 @@ import type { AskUserQuestionRelayHub } from './ask-user-relay';
 import { DEFAULT_CONFIG } from '../../config';
 import { TeamsOperationError } from '@plusplusoneplusplus/coc-connector/teams';
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { BotControlMetadata } from '@plusplusoneplusplus/forge/ai';
 import { createBotControlMetadata, validateBotControlMetadata } from './bot-control-metadata';
 import { admitBotControlledFollowUp } from './bot-control-admission';
 import type { MessagingJobNotices } from './job-notices';
 import type { MessagingHandOff } from './job-handoff';
+import { IncomingImagesError, prepareIncomingImages, type PreparedIncomingImages } from './incoming-images';
+import { cleanupTempDir } from '../core/image-utils';
+import type { InboundTeamsMessage } from '@plusplusoneplusplus/coc-connector/teams';
 import type { ScheduleQueueEventBus } from '../schedule/schedule-queue-await';
 
 function attemptSummary(attempt: TeamsAttempt) {
@@ -60,10 +64,10 @@ export interface TeamsMessagingRoutesOptions {
     /** ProcessStore for querying workspaces and processes. */
     store?: ProcessStore;
     /** Enqueue a new chat task. Returns the task ID. */
-    enqueueChat?: (workspaceId: string, message: string, mode?: MessagingChatMode, taskId?: string, botControl?: BotControlMetadata) => Promise<string>;
-    enqueueRelayChat?: (workspaceId: string, message: string, taskId: string, mode?: MessagingChatMode, botControl?: BotControlMetadata) => Promise<string>;
-    admitRelayFollowUp?: (process: AIProcess, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string, admissionHeld?: boolean) => Promise<{ taskId?: string }>;
-    enqueuePendingRelayFollowUp?: (workspaceId: string, processId: string, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string) => Promise<string>;
+    enqueueChat?: (workspaceId: string, message: string, mode?: MessagingChatMode, taskId?: string, botControl?: BotControlMetadata, images?: PreparedIncomingImages) => Promise<string>;
+    enqueueRelayChat?: (workspaceId: string, message: string, taskId: string, mode?: MessagingChatMode, botControl?: BotControlMetadata, images?: PreparedIncomingImages) => Promise<string>;
+    admitRelayFollowUp?: (process: AIProcess, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string, images?: PreparedIncomingImages, admissionHeld?: boolean) => Promise<{ taskId?: string }>;
+    enqueuePendingRelayFollowUp?: (workspaceId: string, processId: string, message: string, requestId: string, mode?: MessagingChatMode, taskId?: string, images?: PreparedIncomingImages) => Promise<string>;
     relayQueue?: TeamsAnswerRelayDeps['queue'];
     getAnswerRelayEnabled?: () => boolean;
     getBotManagedConversationsEnabled?: () => boolean;
@@ -124,8 +128,8 @@ export function registerTeamsMessagingRoutes(
                 throw error;
             }
         };
-        const enqueueRelayChat = (workspaceId: string, message: string, taskId: string, mode?: MessagingChatMode) =>
-            opts.enqueueRelayChat!(workspaceId, message, taskId, mode, initialControl());
+        const enqueueRelayChat = (workspaceId: string, message: string, taskId: string, mode?: MessagingChatMode, images?: PreparedIncomingImages) =>
+            opts.enqueueRelayChat!(workspaceId, message, taskId, mode, initialControl(), ...(images ? [images] : []));
         const relay = opts.relayQueue && (opts.enqueueRelayChat
             || opts.getBotManagedConversationsEnabled)
             ? new TeamsAnswerRelay({
@@ -163,9 +167,56 @@ export function registerTeamsMessagingRoutes(
             opts.questionRelay?.register(relay.questionTransport());
             opts.jobNotices?.register(relay.noticeTransport());
         }
+        // Execute only inside a persisted receipt's enqueue callback. An accepted
+        // task owns its files even when a post-admission observer throws.
+        let imageConnection = new AbortController();
+        const imageSignals = new AsyncLocalStorage<AbortSignal>();
+        const inboundDispatches = new Map<string, Promise<void>>();
+        const withImages = async <T>(msg: InboundTeamsMessage, workspaceId: string, taskId: string,
+            enqueue: (images?: PreparedIncomingImages) => Promise<T>): Promise<T> => {
+            if (!msg.images?.length) return enqueue();
+            if (!relay) throw new IncomingImagesError('storage');
+            const signal = imageSignals.getStore() ?? imageConnection.signal;
+            const images = await prepareIncomingImages(opts.dataDir, workspaceId, msg.images, signal);
+            try {
+                if (signal.aborted) throw new ImageDownloadError('cancelled');
+                return await enqueue(images);
+            } catch (error) {
+                const task = opts.relayQueue?.getTask(taskId);
+                if (task?.repoId !== workspaceId || task.payload?.imageTempDir !== images.imageTempDir) {
+                    cleanupTempDir(images.imageTempDir);
+                }
+                throw error;
+            }
+        };
         const router = new TeamsCommandRouter({
+            bindImageRoot: async (msg, workspaceId, processId) => {
+                if (relay && getAnswerRelayEnabled()) {
+                    await relay.selectThreadTarget({ ...msg, replyToMessageId: msg.messageId }, workspaceId, processId, true);
+                }
+            },
+            validateImageTarget: async (msg, workspaceId) => {
+                const status = manager.getStatus();
+                if (!relay) throw new IncomingImagesError('storage');
+                if ((imageSignals.getStore() ?? imageConnection.signal).aborted || !status.enabled || status.status !== 'connected'
+                    || !status.teamId || status.channelId !== msg.channelId) throw new ImageDownloadError('cancelled');
+                if (!(await opts.store!.getWorkspaces()).some(ws => ws.id === workspaceId)) throw new IncomingImagesError('workspace');
+            },
+            resolvePendingImageTarget: processId => {
+                const taskId = isQueueProcessId(processId) ? toTaskId(processId) : processId;
+                const normalized = toQueueProcessId(taskId);
+                const task = opts.relayQueue?.getTask(taskId);
+                return task?.repoId && task.processId === normalized
+                    && task.type === 'chat' && task.payload?.kind === 'chat' && !task.payload.processId
+                    && task.payload.workspaceId === task.repoId && ['queued', 'running'].includes(task.status)
+                    ? { workspaceId: task.repoId, chatId: normalized } : null;
+            },
             store: opts.store,
             enqueueChat: enqueueOrdinaryChat,
+            ...(!relay ? { admitNewChat: async (msg: InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) => {
+                if (msg.images?.length) throw new IncomingImagesError('storage');
+                return { taskId: await enqueueOrdinaryChat(workspaceId, message, mode), duplicate: false };
+            } } : {}),
             isAnswerRelayEnabled: () => !!relay && getAnswerRelayEnabled(),
             ...(relay ? { resolveThreadReply: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage) =>
                 relay.resolveThread(msg),
@@ -180,14 +231,16 @@ export function registerTeamsMessagingRoutes(
             ...(relay ? {
                 ...(opts.enqueueRelayChat ? {
                     admitThreadNew: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) =>
-                        relay.admitThreadNew(msg, workspaceId, taskId => enqueueRelayChat(workspaceId, message, taskId, mode)),
+                        relay.admitThreadNew(msg, workspaceId, taskId =>
+                            withImages(msg, workspaceId, taskId, images => enqueueRelayChat(workspaceId, message, taskId, mode, images))),
                 } : {}),
                 admitNewChat: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, workspaceId: string, message: string, mode?: MessagingChatMode) =>
                     opts.enqueueRelayChat && getAnswerRelayEnabled()
-                        ? relay.admitNew(msg, workspaceId, taskId => enqueueRelayChat(workspaceId, message, taskId, mode))
-                        : opts.getBotManagedConversationsEnabled?.() === true
+                        ? relay.admitNew(msg, workspaceId, taskId =>
+                            withImages(msg, workspaceId, taskId, images => enqueueRelayChat(workspaceId, message, taskId, mode, images)))
+                        : opts.getBotManagedConversationsEnabled?.() === true || msg.images?.length
                             ? relay.admitNew(msg, workspaceId, taskId =>
-                                opts.enqueueChat!(workspaceId, message, mode, taskId, createBotControlMetadata('teams')),
+                                withImages(msg, workspaceId, taskId, images => opts.enqueueChat!(workspaceId, message, mode, taskId, initialControl(), ...(images ? [images] : []))),
                             undefined, { admissionOnly: true, prompt: message })
                             : enqueueOrdinaryChat(workspaceId, message, mode).then(taskId => ({ taskId, duplicate: false })),
                 acknowledgeNewChat: (taskId: string) => relay.acknowledged(taskId),
@@ -196,7 +249,7 @@ export function registerTeamsMessagingRoutes(
                 admitFollowUp: async (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, proc: AIProcess, message: string, mode?: MessagingChatMode) => {
                     const controlled = opts.getBotManagedConversationsEnabled?.() === true;
                     const relayEnabled = !!relay && getAnswerRelayEnabled();
-                    if (!controlled && !relayEnabled) {
+                    if (!controlled && !relayEnabled && !msg.images?.length) {
                         await opts.executeFollowUp!(proc.id, message, mode);
                         return { duplicate: false };
                     }
@@ -205,11 +258,10 @@ export function registerTeamsMessagingRoutes(
                         throw new Error('Teams conversation workspace is unavailable');
                     }
                     const taskId = randomUUID();
-                    const admit = (requestId: string) => {
+                    const admit = (requestId: string) => withImages(msg, workspaceId, taskId, images => {
                         const enqueue = async (admissionHeld = false) => {
                             try {
-                                const result = admissionHeld ? await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId, true)
-                                    : await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId);
+                                const result = await opts.admitRelayFollowUp!(proc, message, requestId, mode, taskId, ...((images || admissionHeld ? [images, admissionHeld] : []) as [PreparedIncomingImages?, boolean?]));
                                 if (result.taskId !== taskId) throw new Error('Queue returned a different task ID');
                                 return result;
                             } catch (error) {
@@ -227,7 +279,7 @@ export function registerTeamsMessagingRoutes(
                         return controlled
                             ? admitBotControlledFollowUp(opts.store!, workspaceId, proc.id, 'teams', enqueue)
                             : enqueue();
-                    };
+                    });
                     return relay
                         ? relay.admitFollowUp(msg, proc, admit, taskId, !relayEnabled)
                         : admit(randomUUID()).then(() => ({ duplicate: false }));
@@ -238,7 +290,8 @@ export function registerTeamsMessagingRoutes(
             ...(relay && opts.enqueuePendingRelayFollowUp ? {
                 admitPendingFollowUp: (msg: import('@plusplusoneplusplus/coc-connector/teams').InboundTeamsMessage, taskId: string, message: string, mode?: MessagingChatMode) =>
                     relay.admitPendingFollowUp(msg, taskId, (workspaceId, processId, requestId, followUpTaskId) =>
-                        opts.enqueuePendingRelayFollowUp!(workspaceId, processId, message, requestId, mode, followUpTaskId),
+                        withImages(msg, workspaceId, followUpTaskId, images =>
+                            opts.enqueuePendingRelayFollowUp!(workspaceId, processId, message, requestId, mode, followUpTaskId, ...(images ? [images] : []))),
                     message, !getAnswerRelayEnabled()),
             } : {}),
             executeFollowUp: opts.executeFollowUp,
@@ -246,6 +299,14 @@ export function registerTeamsMessagingRoutes(
             compact: opts.compact,
             remotes: opts.remotes,
             handOff: opts.handOff,
+            ...(relay && opts.handOff ? {
+                admitImageHandOff: (msg, target, message, origin) => relay.admitNew(msg, target.workspaceId,
+                    taskId => withImages(msg, target.workspaceId, taskId, async images => {
+                        if (!images) throw new IncomingImagesError('storage');
+                        await opts.handOff!.start(target, message, origin, { taskId, images });
+                        return taskId;
+                    }), undefined, { admissionOnly: true, prompt: message, handOffParentProcessId: target.parentProcessId }),
+            } : {}),
             handOffOrigin: msg => {
                 const teamId = manager.getStatus().teamId;
                 return teamId ? {
@@ -264,9 +325,15 @@ export function registerTeamsMessagingRoutes(
             dataDir: opts.dataDir,
         });
 
-        manager.setMessageHandler(async (msg, observe) => {
+        manager.setImageLifecycle({
+            start: () => { imageConnection = new AbortController(); inboundDispatches.clear(); router.start(); },
+            stop: () => { imageConnection.abort(); inboundDispatches.clear(); router.stop(); },
+        });
+        const dispatch = async (msg: InboundTeamsMessage, observe: Parameters<TeamsCommandRouter['handle']>[1], connection: AbortController) => {
             await ready;
+            if (connection.signal.aborted) return;
             if (relay) await reconcileRelease(() => relay.reconcileReleases());
+            if (connection.signal.aborted) return;
             if (relay?.hasInbound(msg, getAnswerRelayEnabled())) return;
             const boundReply = !!msg.replyToMessageId && getAnswerRelayEnabled()
                 && !!relay?.threadRoots(manager.getStatus().teamId ?? '', msg.channelId).includes(msg.replyToMessageId);
@@ -283,7 +350,8 @@ export function registerTeamsMessagingRoutes(
                 });
             }
             if (relay && opts.questionRelay && getAnswerRelayEnabled() && msg.text.trim()
-                && !msg.botAuthored && !msg.initializationReplay && !msg.historicalSelectionReplay) {
+                && !router.hasPendingImageInstructions(msg)
+                && !msg.images?.length && !msg.botAuthored && !msg.initializationReplay && !msg.historicalSelectionReplay) {
                 const teamId = manager.getStatus().teamId ?? '';
                 const replyTo = msg.replyToMessageId || msg.messageId;
                 const answered = await opts.questionRelay.tryAnswer('teams', {
@@ -303,6 +371,20 @@ export function registerTeamsMessagingRoutes(
                 }
             }
             await router.handle(msg, observe);
+        };
+        manager.setMessageHandler(async (msg, observe) => {
+            const connection = imageConnection;
+            const key = JSON.stringify([msg.channelId, msg.replyToMessageId ?? null,
+                msg.replyToMessageId ? null : msg.senderAadId ?? msg.senderName]);
+            const previous = inboundDispatches.get(key);
+            const pending = (previous ?? Promise.resolve()).catch(() => undefined)
+                .then(() => imageSignals.run(connection.signal, () => dispatch(msg, observe, connection)));
+            inboundDispatches.set(key, pending);
+            try {
+                await pending;
+            } finally {
+                if (inboundDispatches.get(key) === pending) inboundDispatches.delete(key);
+            }
         });
     }
 
