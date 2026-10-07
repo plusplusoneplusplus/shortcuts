@@ -10,6 +10,15 @@ const mocks = vi.hoisted(() => ({
     revoke: vi.fn(),
     handlers: new Map<string, (...args: any[]) => void>(),
     owner: { id: 7, focus: vi.fn() },
+    profile: {
+        getUserAgent: () => 'Electron/42', setUserAgent: vi.fn(),
+        setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn(),
+        clearData: vi.fn().mockResolvedValue(undefined),
+        clearAuthCache: vi.fn().mockResolvedValue(undefined),
+        clearCodeCaches: vi.fn().mockResolvedValue(undefined),
+        cookies: { flushStore: vi.fn().mockResolvedValue(undefined) },
+        flushStorageData: vi.fn(),
+    },
     contents: {
         id: 8, on: vi.fn(), once: vi.fn(), setWindowOpenHandler: vi.fn(),
         isDestroyed: () => false, loadURL: vi.fn().mockResolvedValue(undefined),
@@ -40,10 +49,7 @@ vi.mock('electron', () => ({
         setBounds = vi.fn();
     },
     webContents: { fromId: () => mocks.owner },
-    session: { fromPath: () => ({
-        getUserAgent: () => 'Electron/42', setUserAgent: vi.fn(),
-        setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn(),
-    }) },
+    session: { fromPath: () => mocks.profile },
     shell: {},
 }));
 
@@ -53,6 +59,30 @@ beforeEach(() => {
     mocks.deferAttach = false;
     mocks.contents.on.mockImplementation((name: string, handler: (...args: any[]) => void) => {
         mocks.handlers.set(name, handler);
+    });
+});
+
+describe('Electron browser profile cleanup', () => {
+    it('waits for all browsing data to clear before flushing the persistent profile', async () => {
+        let finish!: () => void;
+        mocks.profile.clearData.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+        const clearing = new ElectronBrowserHost('profile').clearData();
+        expect(mocks.profile.clearData).toHaveBeenCalledWith();
+        expect(mocks.profile.cookies.flushStore).not.toHaveBeenCalled();
+        expect(mocks.profile.flushStorageData).not.toHaveBeenCalled();
+        finish();
+        await clearing;
+        expect(mocks.profile.clearAuthCache).toHaveBeenCalledOnce();
+        expect(mocks.profile.clearCodeCaches).toHaveBeenCalledWith({});
+        expect(mocks.profile.cookies.flushStore).toHaveBeenCalledOnce();
+        expect(mocks.profile.flushStorageData).toHaveBeenCalledOnce();
+    });
+
+    it('reports cleanup failures without flushing stale profile data', async () => {
+        mocks.profile.clearData.mockRejectedValueOnce(new Error('Cleanup failed'));
+        await expect(new ElectronBrowserHost('profile').clearData()).rejects.toThrow('Cleanup failed');
+        expect(mocks.profile.cookies.flushStore).not.toHaveBeenCalled();
+        expect(mocks.profile.flushStorageData).not.toHaveBeenCalled();
     });
 });
 
