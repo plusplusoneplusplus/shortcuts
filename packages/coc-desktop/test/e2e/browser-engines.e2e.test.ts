@@ -4,12 +4,17 @@ import { mkdtempSync, rmSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const skip = (!!process.env.CI && process.env.COC_DESKTOP_E2E !== '1') || (process.platform === 'linux' && !process.env.DISPLAY) || !existsSync(path.join(here, '..', '..', 'dist', 'browser-view-host.js'));
 const engines = process.platform === 'win32' && process.arch === 'x64' ? ['electron', 'webview2'] : ['electron'];
 const temporary: string[] = [];
+// The runner keeps the profile outside Electron's userData, so on macOS it must
+// sit under the system temp dir: the sandboxed network service may only write
+// there or under userData, else the cookie DB silently falls back to memory.
+const profileRoot = (prefix: string) => mkdtempSync(path.join(os.tmpdir(), prefix));
 
 async function scenario(engine: string, userData: string, ...args: string[]) {
     return new Promise<Map<string, Record<string, any>>>((resolve, reject) => {
@@ -61,7 +66,7 @@ afterEach(() => {
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
     it.skipIf(process.platform !== 'win32')('keeps native keyboard input in the composer after clicking away from the browser and updating layout', async () => {
-        const directory = mkdtempSync(path.join(here, '..', '..', '.e2e-browser-focus-'));
+        const directory = profileRoot('coc-browser-focus-');
         temporary.push(directory);
         const steps = await scenario(engine, directory, '--focus-check');
         expect(steps.get('browser-keyboard')?.value).toBe('/');
@@ -71,7 +76,7 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
     }, 90_000);
 
     it('supports navigation, popups, security policy, profiles, mixed engines and explicit cleanup', async () => {
-        const directory = mkdtempSync(path.join(here, '..', '..', '.e2e-browser-engines-'));
+        const directory = profileRoot('coc-browser-engines-');
         temporary.push(directory);
         const steps = await scenario(engine, directory);
         expect(steps.get('open')?.result).toMatchObject({ ok: true, engine, sourceKind: 'url', ...(engine === 'electron' ? { embed: 'webview' } : {}) });

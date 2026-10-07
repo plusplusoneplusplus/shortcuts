@@ -5,6 +5,16 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+/** Chromium can reject a capture before the compositor presents a frame (UnknownVizError under xvfb). */
+async function capturePage(contents, attempts = 5) {
+    for (let attempt = 1; ; attempt++) {
+        try { return await contents.capturePage(); } catch (error) {
+            if (attempt >= attempts) throw error;
+            await sleep(100 * attempt);
+        }
+    }
+}
+
 async function checkWebviewSecurity(main, base) {
     const renderer = source => main.webContents.executeJavaScript(source);
     let attachments = 0;
@@ -89,7 +99,7 @@ async function checkDomCompositing(main, guest) {
     }`);
     await sleep(200);
     const firstTicks = await guest.executeJavaScript('window.__liveTicks');
-    const image = await main.webContents.capturePage();
+    const image = await capturePage(main.webContents);
     const menuPixel = [...image.crop({ x: 460, y: 100, width: 1, height: 1 }).toBitmap()];
     const pagePixel = [...image.crop({ x: 650, y: 200, width: 1, height: 1 }).toBitmap()];
     assert.deepEqual(menuPixel, [0, 0, 255, 255]);
@@ -105,4 +115,4 @@ async function checkDomCompositing(main, guest) {
     return { menuPixel, pagePixel, clicked: true, pageStayedLive: true };
 }
 
-module.exports = { checkWebviewSecurity, checkDomCompositing };
+module.exports = { capturePage, checkWebviewSecurity, checkDomCompositing };

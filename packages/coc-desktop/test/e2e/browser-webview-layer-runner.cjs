@@ -6,6 +6,7 @@ const path = require('node:path');
 
 app.setPath('userData', process.env.COC_WEBVIEW_LAYER_DATA);
 const { registerBrowserViewIpc, registerBrowserEmbedder, disposeBrowserViews } = require('../../dist/browser-view-host');
+const { capturePage } = require('./webview-security-checks.cjs');
 const cocRoot = path.resolve(__dirname, '../../../coc');
 const renderer = buildSync({
     stdin: {
@@ -119,7 +120,7 @@ app.whenReady().then(async () => {
         await until(() => js(`!!document.getElementById('overlay')`), 'overlay mount');
         await pause(80);
         assert(await js(`document.querySelector('[data-browser-view-id]').style.visibility === 'visible'`), `${overlay} hid the guest`);
-        const image = await win.webContents.capturePage();
+        const image = await capturePage(win.webContents);
         assert(pixel(image, 190, 230).join() === '200,50,60', `${overlay} did not paint over the guest: ${pixel(image, 190, 230)}`);
         assert(pixel(image, 450, 300).join() === '20,170,90', `${overlay} blanked the page`);
         await js('window.overlayClicked = false');
@@ -135,7 +136,7 @@ app.whenReady().then(async () => {
     await until(() => js(`!!document.querySelector('[role="menu"]')`), 'toolbar dropdown');
     const menu = await js(`(() => {const r=document.querySelector('[role="menu"]').getBoundingClientRect();return {x:r.left+8,y:r.top+8};})()`);
     await pause(80);
-    const menuImage = await win.webContents.capturePage();
+    const menuImage = await capturePage(win.webContents);
     assert(pixel(menuImage, menu.x, menu.y).join() !== '20,170,90', 'Toolbar menu is behind the page');
     assert(pixel(menuImage, 180, 300).join() === '20,170,90', 'Toolbar dropdown hid the page');
     assert(await js(`document.querySelector('[data-browser-view-id]').style.height`) === pageHeight, 'Dropdown resized the page');
@@ -162,7 +163,7 @@ app.whenReady().then(async () => {
     await js(`window.fixture.setOverlay('+ menu')`);
     await until(() => js(`!!document.getElementById('overlay')`), 'HTML overlay');
     await pause(80);
-    const fileImage = await win.webContents.capturePage();
+    const fileImage = await capturePage(win.webContents);
     assert(pixel(fileImage, 190, 230).join() === '200,50,60', 'HTML menu did not paint above the page');
     assert(pixel(fileImage, 450, 300).join() === '20,170,90', 'HTML menu blanked the page');
     await js(`window.fixture.setOverlay(''); window.fixture.setMounted(false)`);
