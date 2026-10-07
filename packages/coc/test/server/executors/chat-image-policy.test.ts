@@ -170,4 +170,30 @@ describe('admitted incoming image storage policy', () => {
         attachments[0].path = linked;
         await expect(validate(attachments, images, tempDir, dataDir)).rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
     });
+
+    it.skipIf(process.platform === 'win32')('accepts a data directory reached through a symlinked ancestor', async () => {
+        // macOS tmpdir (/var -> /private/var) and symlinked home directories take this path.
+        const alias = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'image-policy-alias-')), 'data');
+        fs.symlinkSync(dataDir, alias);
+        try {
+            const aliasTempDir = path.join(alias, path.relative(dataDir, tempDir));
+            const aliasAttachments = [{ type: 'file' as const, path: path.join(aliasTempDir, 'image.png') }];
+            await validate(aliasAttachments, images, aliasTempDir, alias);
+        } finally {
+            fs.rmSync(path.dirname(alias), { recursive: true, force: true });
+        }
+    });
+
+    it.skipIf(process.platform === 'win32')('rejects a symlinked attachments directory below the data directory', async () => {
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'image-policy-outside-'));
+        const root = getRepoDataPath(dataDir, 'ws-a', 'attachments');
+        fs.renameSync(tempDir, path.join(outside, path.basename(tempDir)));
+        fs.rmSync(root, { recursive: true, force: true });
+        fs.symlinkSync(outside, root);
+        try {
+            await expect(validate(attachments, images, tempDir, dataDir)).rejects.toThrow(CHAT_IMAGE_FAILURE_TEXT.storage);
+        } finally {
+            fs.rmSync(outside, { recursive: true, force: true });
+        }
+    });
 });

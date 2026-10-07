@@ -74,9 +74,13 @@ export async function assertIncomingImageFiles(
         if (!workspaceId || !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workspaceId)
             || !Array.isArray(images) || !images.length || images.length > 5
             || !Array.isArray(attachments) || attachments.length !== images.length) throw new Error();
-        const root = getRepoDataPath(path.resolve(dataDir), workspaceId, 'attachments');
+        const resolvedDataDir = path.resolve(dataDir);
+        const root = getRepoDataPath(resolvedDataDir, workspaceId, 'attachments');
+        // Ancestors of dataDir may be symlinks (e.g. macOS /var); nothing below it may be.
+        const realTempDir = path.join(fs.realpathSync(resolvedDataDir),
+            path.relative(resolvedDataDir, root), path.basename(tempDir));
         if (path.dirname(path.resolve(tempDir)) !== root
-            || fs.realpathSync(tempDir) !== path.resolve(tempDir)) throw new Error();
+            || fs.realpathSync(tempDir) !== realTempDir) throw new Error();
         let remainingBytes = MAX_IMAGE_BYTES;
         const deadline = Date.now() + 30_000;
         for (let index = 0; index < images.length; index++) {
@@ -88,7 +92,7 @@ export async function assertIncomingImageFiles(
             if (!parsed || !parsed.buffer.length || parsed.buffer.length > remainingBytes
                 || !attachment || attachment.type !== 'file' || typeof attachment.path !== 'string'
                 || path.dirname(path.resolve(attachment.path)) !== path.resolve(tempDir)
-                || fs.realpathSync(attachment.path) !== path.resolve(attachment.path)) throw new Error();
+                || fs.realpathSync(attachment.path) !== path.join(realTempDir, path.basename(attachment.path))) throw new Error();
             const expectedExtension = path.extname(attachment.path).toLowerCase();
             if (expectedExtension !== `.${parsed.extension}`
                 && !(parsed.extension === 'jpg' && expectedExtension === '.jpeg')) throw new Error();
