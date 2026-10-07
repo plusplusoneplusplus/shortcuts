@@ -15,7 +15,10 @@ const restart = process.argv.includes('--restart-check');
 const afterClear = process.argv.includes('--after-clear');
 const focusCheck = process.argv.includes('--focus-check');
 const execFileAsync = promisify(execFile);
-app.setPath('userData', path.join(userData, 'shell'));
+// The profile (userData/coc/browser/electron) must sit inside Electron's userData:
+// macOS sandboxes the network service to userData and the user temp dir, and a
+// cookie DB anywhere else silently falls back to memory.
+app.setPath('userData', userData);
 const externalCalls = [];
 shell.openExternal = async url => { externalCalls.push(url); };
 let confirmation = 0;
