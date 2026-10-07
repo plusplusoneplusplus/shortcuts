@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +33,23 @@ async function scenario(engine: string, userData: string, ...args: string[]) {
             }
             resolve(records);
         });
+    });
+}
+
+/** On-disk Electron profile cookies, for persistence diagnostics. */
+function diskCookies(directory: string) {
+    const profile = path.join(directory, 'coc', 'browser', 'electron');
+    if (!existsSync(profile)) return null;
+    const files = readdirSync(profile, { recursive: true, encoding: 'utf8' }).filter(file => /cookies/i.test(file));
+    return files.map(file => {
+        const full = path.join(profile, file);
+        let rows: unknown;
+        try {
+            const db = new DatabaseSync(full, { readOnly: true });
+            rows = db.prepare('select host_key, name, length(value) as plain, length(encrypted_value) as encrypted, is_persistent from cookies').all();
+            db.close();
+        } catch (error) { rows = String(error); }
+        return { file, size: statSync(full).size, rows };
     });
 }
 
@@ -80,9 +98,10 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         expect(steps.get('cancel')?.result).toEqual({ ok: false, reason: 'cancelled' });
         expect(steps.get('cancel')?.tab).toEqual({ ok: true, engine });
         if (engine === 'webview2') expect(steps.get('profile-lock')?.result).toMatchObject({ ok: false, reason: 'profile-locked' });
+        const disk = diskCookies(directory);
         const restart = await scenario(engine, directory, '--restart-check');
         expect(restart.get('restart')).toMatchObject({ engine, history: false, preference: engine, report: { storage: 'stored' } });
-        const cookieTrail = JSON.stringify({ seeded: steps.get('seeded'), disposed: steps.get('disposed'), restart: restart.get('restart') });
+        const cookieTrail = JSON.stringify({ seeded: steps.get('seeded'), disposed: steps.get('disposed'), disk, restart: restart.get('restart') });
         expect(restart.get('restart')?.report.cookie, cookieTrail).toContain('fixture=remembered');
         expect(restart.get('clear')?.result).toEqual({ ok: true });
         expect(restart.get('clear')?.firstWindowClosed).toContainEqual({ viewId: 'main', engine });
