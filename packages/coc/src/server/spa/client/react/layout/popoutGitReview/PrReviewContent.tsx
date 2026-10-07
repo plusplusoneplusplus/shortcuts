@@ -7,6 +7,9 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { PrDescription } from '../../features/pull-requests/PrReviewSummaryPanel';
+import { getPullRequestReviewSummaryText } from '../../features/pull-requests/pr-detail-summary';
+import type { PullRequest } from '../../features/pull-requests/pr-utils';
 import { Spinner } from '../../ui';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { resolveCanonicalOriginId } from '../../repos/originScope';
@@ -33,14 +36,16 @@ export interface PrReviewContentProps {
     prId: string;
     originId?: string;
     attachmentDestinationId?: string;
+    detailsExpanded?: boolean;
     onTitleLoaded?: (title: string) => void;
 }
 
-export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded, attachmentDestinationId }: PrReviewContentProps) {
+export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLoaded, detailsExpanded = true, attachmentDestinationId }: PrReviewContentProps) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [fileList, setFileList] = useState<FileChange[]>([]);
     const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
+    const [pr, setPr] = useState<PullRequest | null>(null);
     const [headSha, setHeadSha] = useState<string | undefined>(undefined);
 
     const prChatTarget = useMemo<ReviewChatTarget>(() => ({
@@ -68,15 +73,22 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
     const model = usePopOutReviewModel({ files: fileList, progress, classification, diffIdentity: `${workspaceId}:${prId}:${headSha}` });
 
     useEffect(() => {
+        let cancelled = false;
         setLoading(true);
+        setPr(null);
+        setPrTitle(undefined);
+        setHeadSha(undefined);
+        setFileList([]);
         setError(null);
         const client = getCocClientForWorkspace(workspaceId);
 
         Promise.all([
-            client.pullRequests.getForOrigin(progressOriginId, prId, { workspaceId, repoId }) as Promise<{ title?: string; headSha?: string }>,
+            client.pullRequests.getForOrigin(progressOriginId, prId, { workspaceId, repoId }) as Promise<PullRequest>,
             client.pullRequests.getDiffForOrigin(progressOriginId, prId, { workspaceId, repoId }),
         ])
             .then(([prData, diffText]) => {
+                if (cancelled) return;
+                setPr(prData);
                 setPrTitle(prData.title);
                 if (prData.title) onTitleLoaded?.(prData.title);
                 setHeadSha(prData.headSha);
@@ -84,8 +96,9 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
                 // pop-out list shows real Added/Deleted/Renamed statuses.
                 setFileList(parseDiffFileList(diffText));
             })
-            .catch((err: Error) => setError(err.message))
-            .finally(() => setLoading(false));
+            .catch((err: Error) => { if (!cancelled) setError(err.message); })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
     }, [repoId, prId, progressOriginId, workspaceId]);
 
     const filePaths = fileList.map(f => f.path);
@@ -121,7 +134,17 @@ export function PrReviewContent({ workspaceId, repoId, prId, originId, onTitleLo
     );
 
     return (
-        <div className="flex flex-col flex-1 min-h-0">
+        <div className="flex flex-col flex-1 min-h-0 min-w-0">
+            {pr && detailsExpanded && (
+                <div className="shrink-0 min-w-0 max-h-[35vh] overflow-auto border-b border-[#e0e0e0] dark:border-[#3c3c3c] px-4 py-2" data-testid="popout-pr-details">
+                    <div className="flex flex-wrap items-center gap-2 mb-2 text-xs text-[#616161] dark:text-[#aaa]">
+                        {pr.author?.displayName && <span>{pr.author.displayName}</span>}
+                        {pr.sourceBranch && <span className="font-mono break-all">{pr.sourceBranch} → {pr.targetBranch}</span>}
+                        {pr.url && <a href={pr.url} target="_blank" rel="noopener noreferrer" className="text-[#0078d4] hover:underline">Open in browser</a>}
+                    </div>
+                    <PrDescription description={getPullRequestReviewSummaryText(pr) || 'No PR description provided.'} />
+                </div>
+            )}
             <PopOutClassificationToolbar
                 testIdPrefix="pr-popout"
                 classification={classification}

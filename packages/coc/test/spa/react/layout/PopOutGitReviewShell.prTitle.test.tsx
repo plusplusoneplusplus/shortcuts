@@ -156,7 +156,8 @@ describe('PopOutGitReviewShell PR title collapsible', () => {
             expect(screen.getByTestId('popout-pr-title-description')).toBeTruthy();
         });
         expect(screen.getByTestId('popout-pr-title-description').textContent).toBe('Fix the critical bug');
-        expect(screen.getByTestId('popout-git-review-title').textContent).toBe('PR #42');
+        expect(screen.getByTestId('popout-git-review-title').textContent).toBe('Fix the critical bug');
+        expect(screen.getByTestId('popout-git-review-identifier').textContent).toBe('PR #42');
     });
 
     it('does not show title row before PR data is fetched', async () => {

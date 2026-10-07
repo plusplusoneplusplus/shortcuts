@@ -5,8 +5,9 @@ detail/diff pane, and the commit-bound chat panels.
 
 ## CommitDetail
 
-`CommitDetail.tsx` keeps the title and copyable SHA available in expanded and
-collapsed headers. Collapsed metadata uses `hidden` so its controls leave the
+`CommitDetail.tsx` and the pop-out commit adapter share `CommitInfoHeader.tsx`
+for subject, body, author, date, parents, file count, and copyable SHA. Expanded
+metadata scrolls within a bounded height; collapsed headers retain subject and SHA. Collapsed metadata uses `hidden` so its controls leave the
 keyboard order. Header and classification-settings disclosures reset on
 `(workspaceId, hash)` changes. Settings reuse `ClassifyDiffAiControls` and the
 workspace-scoped `useModalJobAiSelection`; disable selectors during classification.

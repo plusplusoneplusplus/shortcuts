@@ -6,7 +6,9 @@
  * server persistence for commits.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useId } from 'react';
+import { CommitInfoHeader } from '../../features/git/commits/CommitInfoHeader';
+import { copyToClipboard } from '../../utils/format';
 import { Spinner } from '../../ui';
 import { getCocClientForWorkspace } from '../../repos/cloneRegistry';
 import { CommitChatPanel } from '../../features/git/commits/CommitChatPanel';
@@ -31,11 +33,15 @@ export interface CommitReviewContentProps {
     workspaceId: string;
     commitHash: string;
     attachmentDestinationId?: string;
+    onTitleLoaded?: (title: string | undefined) => void;
 }
 
-export function CommitReviewContent({ workspaceId, commitHash, attachmentDestinationId }: CommitReviewContentProps) {
+export function CommitReviewContent({ workspaceId, commitHash, attachmentDestinationId, onTitleLoaded }: CommitReviewContentProps) {
     const [commit, setCommit] = useState<GitCommitItem | null>(null);
     const [loading, setLoading] = useState(true);
+    const [headerCollapsed, setHeaderCollapsed] = useState(false);
+    const [hashCopied, setHashCopied] = useState(false);
+    const headerId = useId();
     const chat = useCommitChatPresentation({ workspaceId, commitHash });
 
     // Classification hook — uses commit hash as the identifier; session-scoped
@@ -50,14 +56,28 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
     const progress = usePrReviewProgress(commitHash);
 
     useEffect(() => {
+        let cancelled = false;
         setLoading(true);
+        setCommit(null);
+        setHeaderCollapsed(false);
+        setHashCopied(false);
+        onTitleLoaded?.(undefined);
         getCocClientForWorkspace(workspaceId).git.getCommit(workspaceId, commitHash)
             .then((data: GitCommitItem) => {
+                if (cancelled) return;
                 setCommit(data);
+                onTitleLoaded?.(data.subject);
             })
-            .catch(() => setCommit(null))
-            .finally(() => setLoading(false));
-    }, [workspaceId, commitHash]);
+            .catch(() => { if (!cancelled) setCommit(null); })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [workspaceId, commitHash, onTitleLoaded]);
+
+    useEffect(() => {
+        if (!hashCopied) return;
+        const timer = setTimeout(() => setHashCopied(false), 2000);
+        return () => clearTimeout(timer);
+    }, [hashCopied]);
 
     // Fetch the diff to extract file list (shares cache with CommitDetail)
     const diffUrl = getCocClientForWorkspace(workspaceId).git.commitDiffPath(workspaceId, commitHash);
@@ -77,7 +97,16 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
     }
 
     return (
-        <div className="relative flex flex-col flex-1 min-h-0">
+        <div className="relative flex flex-col flex-1 min-h-0 min-w-0">
+            {commit && <CommitInfoHeader
+                commit={commit}
+                fileCount={fileList.length}
+                headerCollapsed={headerCollapsed}
+                headerId={headerId}
+                hashCopied={hashCopied}
+                onToggle={() => setHeaderCollapsed(value => !value)}
+                onCopy={() => { void copyToClipboard(commit.hash).then(() => setHashCopied(true)); }}
+            />}
             <PopOutClassificationToolbar
                 testIdPrefix="commit-popout"
                 classification={classification}
@@ -108,12 +137,6 @@ export function CommitReviewContent({ workspaceId, commitHash, attachmentDestina
                 )}
                 overview={(
                     <div className="flex flex-col items-center justify-center flex-1 gap-2 text-xs text-[#848484]">
-                        {commit && (
-                            <div className="text-center max-w-xs px-4">
-                                <div className="text-sm font-medium text-[#1e1e1e] dark:text-[#ccc] mb-1 break-words">{commit.subject}</div>
-                                <div className="text-[10px] text-[#848484] mb-2">{commit.author} · {commit.hash.slice(0, 7)}</div>
-                            </div>
-                        )}
                         <span>Select a file to view its diff</span>
                         <span className="text-[10px]">{fileList.length} file{fileList.length !== 1 ? 's' : ''} changed</span>
                     </div>

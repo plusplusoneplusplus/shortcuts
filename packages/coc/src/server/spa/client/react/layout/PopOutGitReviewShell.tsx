@@ -38,23 +38,27 @@ export type { PopOutGitReviewParams };
 
 function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
     const { toasts, addToast, removeToast } = useToast();
+    const [commitTitle, setCommitTitle] = useState<string | undefined>(undefined);
     const [prTitle, setPrTitle] = useState<string | undefined>(undefined);
     const [titleExpanded, setTitleExpanded] = useState(true);
 
-    usePopOutReviewLifecycle({ params, prTitle });
+    usePopOutReviewLifecycle({ params, prTitle, commitTitle });
 
     return (
         <ToastProvider value={{ addToast, removeToast, toasts }}>
             <div className="flex flex-col h-screen bg-white dark:bg-[#1e1e1e]" data-testid="popout-git-review-shell">
                 {/* Minimal top bar */}
-                <div className="flex flex-col px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]">
+                <div className="shrink-0 flex flex-col px-4 border-b border-[#e0e0e0] dark:border-[#3c3c3c] bg-[#f8f8f8] dark:bg-[#252526]">
                     {/* Primary title row */}
                     <div className="flex items-center justify-between" style={{ minHeight: 44 }}>
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex flex-1 items-center gap-2 min-w-0">
                             <span className="text-sm">📝</span>
-                            <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate" data-testid="popout-git-review-title">
-                                {popOutGitReviewLabel(params)}
+                            <span className="text-sm font-semibold text-[#1e1e1e] dark:text-[#cccccc] truncate" title={commitTitle || prTitle || popOutGitReviewLabel(params)} data-testid="popout-git-review-title">
+                                {commitTitle || prTitle || popOutGitReviewLabel(params)}
                             </span>
+                            {(commitTitle || prTitle) && (
+                                <span className="shrink-0 text-xs text-[#848484]" data-testid="popout-git-review-identifier">{popOutGitReviewLabel(params)}</span>
+                            )}
                         </div>
                         {params.reviewType === 'pr' && prTitle && (
                             <button
@@ -86,9 +90,9 @@ function PopOutGitReviewContent({ params }: { params: PopOutGitReviewParams }) {
                 {/* Review content with file panel */}
                 <div className="flex flex-1 min-h-0 overflow-hidden">
                     {params.reviewType === 'commit' ? (
-                        <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} attachmentDestinationId={params.sourceSelectionId} />
+                        <CommitReviewContent workspaceId={params.workspaceId} commitHash={params.commitHash!} onTitleLoaded={setCommitTitle} attachmentDestinationId={params.sourceSelectionId} />
                     ) : params.reviewType === 'pr' ? (
-                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} originId={params.originId} onTitleLoaded={setPrTitle} attachmentDestinationId={params.sourceSelectionId} />
+                        <PrReviewContent workspaceId={params.workspaceId} repoId={params.repoId!} prId={params.prId!} originId={params.originId} onTitleLoaded={setPrTitle} detailsExpanded={titleExpanded} attachmentDestinationId={params.sourceSelectionId} />
                     ) : (
                         <BranchRangeReviewContent workspaceId={params.workspaceId} baseMode={params.baseMode} attachmentDestinationId={params.sourceSelectionId} />
                     )}
@@ -121,7 +125,7 @@ export function PopOutGitReviewShell() {
         <AppProvider>
             <QueueProvider>
                 <ThemeProvider>
-                    <PopOutGitReviewContent params={params} />
+                    <PopOutGitReviewContent key={`${params.workspaceId}:${params.reviewType}:${params.commitHash ?? params.prId ?? params.baseMode}:${params.repoId}:${params.originId}`} params={params} />
                 </ThemeProvider>
             </QueueProvider>
         </AppProvider>

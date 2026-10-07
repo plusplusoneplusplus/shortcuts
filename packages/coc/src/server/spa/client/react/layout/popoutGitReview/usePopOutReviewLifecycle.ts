@@ -25,6 +25,7 @@ export interface UsePopOutReviewLifecycleOptions {
     params: PopOutGitReviewParams;
     /** PR title once loaded; folded into the document title for PR reviews. */
     prTitle?: string;
+    commitTitle?: string;
 }
 
 export interface UsePopOutReviewLifecycleReturn {
@@ -34,6 +35,7 @@ export interface UsePopOutReviewLifecycleReturn {
 export function usePopOutReviewLifecycle({
     params,
     prTitle,
+    commitTitle,
 }: UsePopOutReviewLifecycleOptions): UsePopOutReviewLifecycleReturn {
     const hasNotifiedRef = useRef(false);
     const key = useMemo(() => popOutGitReviewChannelKey(params), [params]);
@@ -59,8 +61,8 @@ export function usePopOutReviewLifecycle({
     }, [key, postMessage]);
 
     useEffect(() => {
-        document.title = popOutGitReviewDocumentTitle(params, { hostname: getHostname(), prTitle });
-    }, [params, prTitle]);
+        document.title = popOutGitReviewDocumentTitle(params, { hostname: getHostname(), prTitle, commitTitle });
+    }, [params, prTitle, commitTitle]);
 
     return { channelKey: key };
 }

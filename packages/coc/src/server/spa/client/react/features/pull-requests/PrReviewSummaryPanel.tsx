@@ -33,10 +33,6 @@ interface PrReviewSummaryPanelProps {
 }
 
 export function PrReviewSummaryPanel({ summary, reviewers, labels, url }: PrReviewSummaryPanelProps) {
-    const summaryHtml = useMemo(
-        () => summary.summary ? String(summaryMarked.parse(summary.summary)) : '',
-        [summary.summary],
-    );
     const reviewerList = reviewers ?? [];
     const labelList = labels ?? [];
 
@@ -67,11 +63,7 @@ export function PrReviewSummaryPanel({ summary, reviewers, labels, url }: PrRevi
                 </div>
             </header>
             <div className="p-2">
-                <div
-                    className="markdown-body m-0 mb-1.5 text-[13px] leading-[1.38] text-gray-800 dark:text-gray-200"
-                    data-testid="pr-review-summary-copy"
-                    dangerouslySetInnerHTML={{ __html: summaryHtml }}
-                />
+                <PrDescription description={summary.summary} />
                 <ul className="m-0 grid list-none gap-1 p-0" data-testid="pr-review-findings">
                     {summary.findings.map((finding, idx) => (
                         <li
@@ -125,5 +117,19 @@ export function PrReviewSummaryPanel({ summary, reviewers, labels, url }: PrRevi
                 )}
             </div>
         </article>
+    );
+}
+
+export function PrDescription({ description }: { description: string }) {
+    const summaryHtml = useMemo(
+        () => description ? String(summaryMarked.parse(description)) : '',
+        [description],
+    );
+    return (
+        <div
+            className="markdown-body m-0 mb-1.5 min-w-0 overflow-x-auto break-words text-[13px] leading-[1.38] text-gray-800 dark:text-gray-200"
+            data-testid="pr-review-summary-copy"
+            dangerouslySetInnerHTML={{ __html: summaryHtml }}
+        />
     );
 }
