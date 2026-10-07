@@ -8,7 +8,7 @@
  * only the wiring: correct props, correct dispatches, correct layout decisions.
  *
  * Dropped tests (covered by per-component test files):
- * - ChatDetail behavior → ChatDetail.test.ts (46 tests)
+ * - ChatDetail behavior → ChatDetail.test.tsx
  * - ChatListPane rendering → ChatListPane.test.ts (52 tests)
  * - ChatDetailPane routing → ChatDetailPane.test.tsx
  * - useUnseenChat hook → hooks/useUnseenChat.test.ts (24 tests)
