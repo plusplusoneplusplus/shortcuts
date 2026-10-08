@@ -452,6 +452,7 @@ export class AdoPullRequestsService {
         filePath: string,
         commitId: string,
         project?: string,
+        strict = false,
     ): Promise<string> {
         const api = await this.getGitApi();
         try {
@@ -475,6 +476,7 @@ export class AdoPullRequestsService {
                 versionDescriptor,
             );
             if (!stream) {
+                if (strict) throw new Error('ADO returned no file content stream');
                 return '';
             }
             const chunks: string[] = [];
@@ -487,6 +489,7 @@ export class AdoPullRequestsService {
             });
             return chunks.join('');
         } catch (error) {
+            if (strict) throw error;
             // File may not exist at this commit (Add/Delete cases) — return empty string.
             getLogger().info(
                 LogCategory.ADO,

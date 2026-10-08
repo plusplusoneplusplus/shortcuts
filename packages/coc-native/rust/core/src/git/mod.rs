@@ -25,6 +25,7 @@ pub mod log;
 pub mod patch;
 pub mod range;
 pub mod remote;
+pub mod remote_patch;
 pub mod repo;
 pub mod status;
 

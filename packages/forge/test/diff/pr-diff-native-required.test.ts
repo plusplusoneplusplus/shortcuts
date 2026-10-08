@@ -27,3 +27,14 @@ describe.each(['pr', 'pr-iteration'] as const)('%s requires native processing', 
         expect(fetch).not.toHaveBeenCalled();
     });
 });
+
+// Production ADO patch construction must expose the same required-native failure.
+import { AdoPullRequestsAdapter } from '../../src/ado/ado-pull-requests-adapter';
+import type { AdoPullRequestsService } from '../../src/ado/pull-requests-service';
+
+it('ADO rejects missing native construction before authenticated transport', async () => {
+    const getPullRequestIterations = vi.fn();
+    const adapter = new AdoPullRequestsAdapter({ getPullRequestIterations } as unknown as AdoPullRequestsService);
+    await expect(adapter.getDiff('remote-repo', 42)).rejects.toThrow('npm run build:native');
+    expect(getPullRequestIterations).not.toHaveBeenCalled();
+});

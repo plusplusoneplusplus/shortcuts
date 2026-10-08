@@ -116,6 +116,9 @@ export declare class RepoFiles {
 /** Recursively build a complete immutable snapshot for one resolved Notes root. */
 export declare function buildNotesIndex(root: string, options?: NotesIndexBuildOptions | undefined | null): Promise<NotesIndex>
 
+/** Construct a batch of remote patches on a worker; authentication stays in transport. */
+export declare function buildRemoteGitPatch(files: Array<RemotePatchInput>): Promise<string>
+
 /**
  * Create a notebook, section, or page. `kind` is `notebook`, `section` or
  * `page`; a page gets `.md` appended when it is missing.
@@ -1235,6 +1238,18 @@ export interface PatchSummary {
   filesChanged: number
   additions: number
   deletions: number
+}
+
+export interface RemotePatchInput {
+  path: string
+  originalPath?: string
+  before: string
+  after: string
+  beforeExists: boolean
+  afterExists: boolean
+  beforeMode?: string
+  afterMode?: string
+  isBinary?: boolean
 }
 
 /** File content as the blob route returns it. */

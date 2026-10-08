@@ -32,7 +32,7 @@ import type {
 } from '../providers/types';
 import type { AdoPullRequestsService } from './pull-requests-service';
 import { GitStatusState, VersionControlChangeType } from './pull-requests-service';
-import { buildUnifiedDiff } from './diff-builder';
+import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import { getLogger, LogCategory } from '../logger';
 
 // ── mapping helpers ──────────────────────────────────────────
@@ -636,6 +636,7 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
         const logger = getLogger();
         const effectiveRepo = this.repo ?? repositoryId;
         logger.info(LogCategory.ADO, `getDiff: repo=${effectiveRepo} PR #${pullRequestId} project=${this.project ?? '(default)'}`);
+        const native = loadNativeGit();
         try {
             // Step 1: get iterations, pick last one
             const iterations = await this.service.getPullRequestIterations(
@@ -665,24 +666,28 @@ export class AdoPullRequestsAdapter implements IPullRequestsService {
             const fileDiffs = await Promise.all(
                 entries.map(async (entry) => {
                     const filePath = entry.item?.path ?? '';
-                    const originalPath = (entry.item as Record<string, unknown> | undefined)?.originalPath as string | undefined;
+                    const originalPath = entry.originalPath ?? (entry.item as Record<string, unknown> | undefined)?.originalPath as string | undefined;
                     const changeType = entry.changeType ?? 0;
 
                     const isAdd    = (changeType & VersionControlChangeType.Add)    !== 0;
                     const isDelete = (changeType & VersionControlChangeType.Delete) !== 0;
 
-                    const baseContent = isAdd
+                    const isBinary = entry.item?.contentMetadata?.isBinary;
+                    const baseContent = isAdd || isBinary
                         ? ''
-                        : await this.service.getFileContent(effectiveRepo, filePath, baseSha, this.project);
-                    const headContent = isDelete
+                        : await this.service.getFileContent(effectiveRepo, originalPath ?? filePath, baseSha, this.project, true);
+                    const headContent = isDelete || isBinary
                         ? ''
-                        : await this.service.getFileContent(effectiveRepo, filePath, headSha, this.project);
+                        : await this.service.getFileContent(effectiveRepo, filePath, headSha, this.project, true);
 
-                    return buildUnifiedDiff(filePath, originalPath, baseContent, headContent);
+                    return {
+                        path: filePath, originalPath, before: baseContent, after: headContent,
+                        beforeExists: !isAdd, afterExists: !isDelete, isBinary,
+                    };
                 }),
             );
 
-            return fileDiffs.filter(Boolean).join('\n');
+            return native.buildRemoteGitPatch(fileDiffs);
         } catch (err) {
             logger.warn(
                 LogCategory.ADO,
