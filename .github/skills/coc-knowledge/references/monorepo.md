@@ -111,8 +111,9 @@ supplied content; authenticated Forge transport reads rename bases at their orig
 paths and requires successful content reads. Empty existing files stay modified.
 Production PR per-file extraction and list statistics use Rust parsing and summaries;
 quoted Git paths and exact chunk bytes survive the HTTP adapter. Native-load failures
-are visible. Combined-patch/stat caches and local full-context PR Git planning retain
-separate migration boundaries. The commit/range/working-tree providers and production `GitRangeService` patches, file lists
+are visible. PR full-context patches use Forge `loadComparisonPatch` and Rust direct base/head
+planning/processing for host and WSL; TypeScript retains missing-commit fetch/retry
+and provider-hunk fallback. Combined-patch/stat caches retain a migration boundary. The commit/range/working-tree providers and production `GitRangeService` patches, file lists
 and statistics use `diff/local-patch.ts`: Rust plans/executes host Git and processes
 patches, while TypeScript executes the shared plan for WSL. Working-tree all scope combines HEAD-to-index and index-to-disk patches with unstaged metadata overriding shared paths; provider operations read fresh state and batch failures propagate. WorkingTreeService per-file patches and CoC working-tree patch routes also use
 this backend with full context; routes apply native truncation and expose native-load

@@ -1648,6 +1648,49 @@ pub fn parse_git_patch(
     }))
 }
 
+/// Rust-owned direct PR comparison command plan for external execution transports.
+#[napi(ts_return_type = "Promise<string[]>")]
+pub fn prepare_git_comparison_patch(
+    base: String,
+    head: String,
+    path: Option<String>,
+    context_lines: Option<u32>,
+) -> AsyncTask<crate::task::Blocking<Vec<String>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::patch::comparison_patch_args(
+            &base,
+            &head,
+            path.as_deref(),
+            context_lines,
+        ))
+    }))
+}
+
+/// Execute and process a direct PR comparison patch on a worker, with no result cache.
+#[napi(ts_return_type = "Promise<PatchResult>")]
+pub fn git_comparison_patch(
+    root: String,
+    base: String,
+    head: String,
+    path: Option<String>,
+    context_lines: Option<u32>,
+    max_lines: Option<i64>,
+    options: Option<GitExecOptions>,
+) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::patch::comparison_patch(
+            &PathBuf::from(root),
+            &base,
+            &head,
+            path.as_deref(),
+            context_lines,
+            max_lines,
+            &resolve_options(options),
+        )
+        .map_err(to_napi_error)
+    }))
+}
+
 /// Rust-owned branch-range command plan for external execution transports.
 #[napi(ts_return_type = "Promise<string[]>")]
 pub fn prepare_git_range_patch(

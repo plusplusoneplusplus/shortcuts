@@ -1,14 +1,4 @@
-/**
- * The PR full-context diff against real repositories, now that it runs git in
- * the native addon instead of spawning a child from Node.
- *
- * The route suite already drives this path end to end, including a real
- * `git fetch` from a local bare remote. What is pinned here is the one thing
- * the move changed: everything crossing the N-API boundary loses exactly one
- * trailing line ending, and this function decides "no full context available"
- * with a plain `stdout || null`. So the emptiness check and the diff's own
- * bytes are worth asserting against what the raw command prints.
- */
+/** Real-Git regressions for Rust-owned direct PR comparison planning. */
 
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
@@ -38,8 +28,10 @@ beforeAll(async () => {
     await execGitAsync(['init', '-q', '-b', 'main', '.'], repo);
     fs.writeFileSync(path.join(repo, 'a.ts'), ['one', 'two', 'three', ''].join('\n'), 'utf-8');
     fs.writeFileSync(path.join(repo, 'untouched.ts'), 'stable\n', 'utf-8');
+    for (const name of ['[ab].txt', 'a.txt', 'b.txt']) fs.writeFileSync(path.join(repo, name), 'old\n');
     baseSha = await commit('base');
     fs.writeFileSync(path.join(repo, 'a.ts'), ['one', 'two changed', 'three', ''].join('\n'), 'utf-8');
+    for (const name of ['[ab].txt', 'a.txt', 'b.txt']) fs.writeFileSync(path.join(repo, name), 'new\n');
     headSha = await commit('head');
 });
 
@@ -61,6 +53,52 @@ describe('getFullContextFileDiff on native', () => {
         // Full context: the unchanged lines are in the hunk too.
         expect(result.diff).toContain(' one');
         expect(result.diff).toContain(' three');
+    });
+
+
+    it('selects unusual paths literally rather than returning matching neighbours', async () => {
+        const old = await execGitAsync(['diff', '-U99999', baseSha, headSha, '--', '[ab].txt'], repo);
+        expect(old).toContain('diff --git a/a.txt b/a.txt');
+        const expected = await execGitAsync(['--literal-pathspecs', 'diff', '-U99999', baseSha, headSha, '--', '[ab].txt'], repo);
+        const result = await getFullContextFileDiff(repo, 'origin', '42', pr(), '[ab].txt');
+        expect(result.diff).toBe(expected);
+        expect(result.diff).not.toContain('diff --git a/a.txt b/a.txt');
+    });
+
+    it('keeps canonical patch bytes with configured colour and missing prefixes', async () => {
+        const expected = await getFullContextFileDiff(repo, 'origin', '42', pr(), 'a.ts');
+        await execGitAsync(['config', 'color.ui', 'always'], repo);
+        await execGitAsync(['config', 'diff.noprefix', 'true'], repo);
+        try {
+            const old = await execGitAsync(['diff', '-U99999', baseSha, headSha, '--', 'a.ts'], repo);
+            expect(old).toContain('\u001b[');
+            expect(old).not.toContain('diff --git a/a.ts b/a.ts');
+            expect(await getFullContextFileDiff(repo, 'origin', '42', pr(), 'a.ts')).toEqual(expected);
+        } finally {
+            await execGitAsync(['config', '--unset', 'color.ui'], repo);
+            await execGitAsync(['config', '--unset', 'diff.noprefix'], repo);
+        }
+    });
+
+    it('compares divergent endpoints directly and keeps concurrent clone roots isolated', async () => {
+        fs.writeFileSync(path.join(repo, 'base-only.txt'), 'base branch\n');
+        await execGitAsync(['add', 'base-only.txt'], repo);
+        const tree = (await execGitAsync(['write-tree'], repo)).trim();
+        const divergentBase = (await execGitAsync(['-c', 'user.email=t@example.com', '-c', 'user.name=Test', 'commit-tree', tree, '-p', baseSha, '-m', 'divergent base'], repo)).trim();
+        await execGitAsync(['read-tree', 'HEAD'], repo);
+        const comparison = { baseSha: divergentBase, headSha } as any;
+        const expected = await execGitAsync(['diff', '-U99999', divergentBase, headSha, '--', 'base-only.txt'], repo);
+        expect(expected).toContain('deleted file mode');
+        expect(await execGitAsync(['diff', `${divergentBase}...${headSha}`, '--', 'base-only.txt'], repo)).toBe('');
+        const clone = path.join(tmpDir, 'clone');
+        await execGitAsync(['clone', '-q', repo, clone], tmpDir);
+        const own = { baseSha, headSha: baseSha } as any;
+        const [one, two] = await Promise.all([
+            getFullContextFileDiff(repo, 'origin', '42', comparison, 'base-only.txt'),
+            getFullContextFileDiff(clone, 'origin', '42', own, 'a.ts'),
+        ]);
+        expect(one.diff).toBe(expected);
+        expect(two).toEqual({ diff: null, unavailableReason: 'git-diff-failed' });
     });
 
     it('reports git-diff-failed for a file the range does not touch', async () => {

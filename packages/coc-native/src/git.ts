@@ -146,6 +146,8 @@ export interface NativeGitAddon {
     gitShowPatch: typeof Bindings.gitShowPatch;
     prepareGitCommitPatch: typeof Bindings.prepareGitCommitPatch;
     gitCommitPatch: typeof Bindings.gitCommitPatch;
+    prepareGitComparisonPatch: typeof Bindings.prepareGitComparisonPatch;
+    gitComparisonPatch: typeof Bindings.gitComparisonPatch;
     prepareGitRangePatch: typeof Bindings.prepareGitRangePatch;
     buildRemoteGitPatch: typeof Bindings.buildRemoteGitPatch;
     processGitPatch: typeof Bindings.processGitPatch;
@@ -206,6 +208,8 @@ const GIT_EXPORTS = [
     'gitShowPatch',
     'prepareGitCommitPatch',
     'gitCommitPatch',
+    'prepareGitComparisonPatch',
+    'gitComparisonPatch',
     'prepareGitRangePatch',
     'buildRemoteGitPatch',
     'processGitPatch',

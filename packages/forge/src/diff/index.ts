@@ -28,4 +28,4 @@ export {
 
 export { parseFullDiffAsync } from './diff-utils';
 
-export { loadCommitShowPatch, loadCommitFiles, loadWorkingTreePatch } from './local-patch';
+export { loadComparisonPatch, loadCommitShowPatch, loadCommitFiles, loadWorkingTreePatch } from './local-patch';

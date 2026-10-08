@@ -232,6 +232,29 @@ pub fn range_patch_args(
     patch_args("diff", &[format!("{base}...{head}")], path, context_lines)
 }
 
+/// PR comparisons use the supplied endpoints directly, without a merge base.
+pub fn comparison_patch_args(
+    base: &str,
+    head: &str,
+    path: Option<&str>,
+    context_lines: Option<u32>,
+) -> Vec<String> {
+    patch_args("diff", &[base.into(), head.into()], path, context_lines)
+}
+
+pub fn comparison_patch(
+    root: &Path,
+    base: &str,
+    head: &str,
+    path: Option<&str>,
+    context_lines: Option<u32>,
+    max_lines: Option<i64>,
+    options: &GitCommandOptions,
+) -> Result<PatchResult, GitError> {
+    let raw = run_git(root, &comparison_patch_args(base, head, path, context_lines), options)?;
+    Ok(process_patch(raw, max_lines))
+}
+
 fn patch_args(
     command: &str,
     revisions: &[String],
