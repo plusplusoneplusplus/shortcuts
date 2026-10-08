@@ -11,7 +11,7 @@ import type { CopilotCompletionInput, CopilotCompletionResult, CopilotHttpConfig
 
 interface CatalogEntry { data?: unknown; expires: number; pending?: Promise<unknown> }
 
-/** Buffered HTTP inference; automatic credentials use the CLI without an agent session. */
+/** Buffered HTTP inference; default credentials read the active account from CLI config. */
 export class CopilotHttpClient {
     private readonly config: CopilotHttpConfig;
     private readonly active = new Set<AbortController>();
@@ -19,7 +19,7 @@ export class CopilotHttpClient {
     private identity?: string;
     private disposed = false;
 
-    constructor(config: CopilotHttpConfig = { credential: { source: 'copilot-cli' } }) {
+    constructor(config: CopilotHttpConfig = { credential: { source: 'cli-config', account: 'active-cli-account' } }) {
         this.config = config ? { ...config, credential: config.credential ? { ...config.credential,
                 ...(config.credential.source === 'cli-config' && typeof config.credential.account === 'object'
                     ? { account: Object.freeze({ ...config.credential.account }) } : {}) } : config.credential,

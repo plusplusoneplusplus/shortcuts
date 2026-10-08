@@ -90,9 +90,9 @@ Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-
 
 ### CLI credentials
 
-Direct HTTP defaults to `copilot-cli` credentials. A short-lived pinned CLI client reads `account.getCurrentAuth` and, for a stored user, the matching `account.getAllUsers` token. The CLI owns environment priority, active account, secure storage and GitHub CLI lookup. The client creates no agent session and stops on completion or cancellation. Credentials are read per request, remain on the executing server, and never enter Admin configuration. Missing or unsupported authentication fails without selecting another account.
+Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads `COPILOT_HOME/config.json` or `~/.copilot/config.json` using bounded JSONC reads, selects `lastLoggedInUser`, and retrieves its exact `host:login` entry from `copilotTokens`. Credentials remain on the executing server and never enter Admin configuration. Missing files, account records or supported tokens fail without selecting another account, ambient credentials or a CLI fallback. Keychain-only credentials require an explicit credential source.
 
-Typed embedding credentials also support explicit environment, config, gh and resolver sources. Config reads use `COPILOT_HOME` or `~/.copilot`, bounded JSONC reads, and an exact account key. Explicit keychain acquisition returns an unverified-platform error; automatic CLI acquisition uses the CLI's own secure storage.
+Typed embedding credentials support explicit environment, pinned config account, gh, resolver and `copilot-cli` sources. Explicit `copilot-cli` acquisition starts a short-lived pinned CLI client, reads `account.getCurrentAuth` and, for a stored user, the matching `account.getAllUsers` token. The CLI owns environment priority, active account, secure storage and GitHub CLI lookup; its client creates no agent session and stops on completion or cancellation. Explicit keychain acquisition returns an unverified-platform error.
 
 ### Direct HTTP
 
