@@ -717,11 +717,6 @@ function getPullRequestProviderId(pr: any): number | string | undefined {
     return pr?.number ?? pr?.id;
 }
 
-function normalizePullRequestHeadSha(pr: any): string | undefined {
-    const headSha = typeof pr?.headSha === 'string' ? pr.headSha.trim() : '';
-    return headSha || undefined;
-}
-
 async function enrichPullRequestsWithDiffStats(
     repoId: string,
     prs: any[],
@@ -801,39 +796,6 @@ export function clearPrDetailCache(): void {
     prCommitsCache.clear();
     prReviewersCache.clear();
     prChecksCache.clear();
-}
-
-// ============================================================================
-// PR diff cache (in-memory, no TTL)
-// ============================================================================
-
-// Provider combined diffs are fetched once per origin/PR/headSha and shared by
-// the full diff and per-file diff endpoints. When the current PR head SHA cannot be
-// resolved, the cache safely falls back to originId|prId and force-refresh
-// invalidation still removes that fallback. Diff contents are never persisted.
-const prDiffCache = new Map<string, string>();
-
-function makePrDiffCacheKey(cacheScopeId: string, prId: string, headSha?: string): string {
-    const baseKey = `${cacheScopeId}|${prId}`;
-    const normalizedHeadSha = headSha?.trim();
-    return normalizedHeadSha ? `${baseKey}|${normalizedHeadSha}` : baseKey;
-}
-
-/** Clear all cached PR diff entries. Exported for testing. */
-export function clearPrDiffCache(): void {
-    prDiffCache.clear();
-}
-
-/** Clear the cached diff for one specific PR (used by force-refresh). */
-function clearPrDiffCacheEntry(cacheScopeId: string, prId: string): void {
-    const fallbackKey = makePrDiffCacheKey(cacheScopeId, prId);
-    prDiffCache.delete(fallbackKey);
-    const headShaKeyPrefix = `${fallbackKey}|`;
-    for (const key of Array.from(prDiffCache.keys())) {
-        if (key.startsWith(headShaKeyPrefix)) {
-            prDiffCache.delete(key);
-        }
-    }
 }
 
 // ============================================================================
@@ -1148,32 +1110,7 @@ function warmFullContextCommits(repo: RepoInfo | undefined, prId: string, prData
     });
 }
 
-/**
- * Return the combined diff for a PR, fetching it once and caching the result.
- * Both the full-diff and per-file-diff endpoints call this so only one
- * provider round-trip occurs per PR per cache lifetime.
- */
-async function getCachedCombinedDiff(
-    cacheScopeId: string,
-    repoId: string,
-    prId: string,
-    headSha: string | undefined,
-    getDiff: (repoId: string, prId: string) => Promise<string>,
-): Promise<string> {
-    const key = makePrDiffCacheKey(cacheScopeId, prId, headSha);
-    const hit = prDiffCache.get(key);
-    if (hit !== undefined) {
-        console.debug(`[pr-diff-cache] hit key=${key}`);
-        return hit;
-    }
-    console.debug(`[pr-diff-cache] miss key=${key}`);
-    const diff = await getDiff(repoId, prId);
-    prDiffCache.set(key, diff);
-    console.debug(`[pr-diff-cache] set key=${key}`);
-    return diff;
-}
-
-async function resolvePullRequestDetailForDiffCache(
+async function resolvePullRequestDetailForFullContext(
     cacheScopeId: string,
     repoId: string,
     prId: string,
@@ -1187,7 +1124,7 @@ async function resolvePullRequestDetailForDiffCache(
         });
         return pr;
     } catch (err) {
-        console.warn(`[pr-diff-cache] failed to resolve PR head SHA for repo=${repoId} pr=${prId}: ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(`[pr-full-context] failed to resolve PR detail for repo=${repoId} pr=${prId}: ${err instanceof Error ? err.message : String(err)}`);
         return undefined;
     }
 }
@@ -1356,7 +1293,6 @@ export function registerPrRoutes(
 
         if (force) {
             prDetailCache.delete(cacheKey);
-            clearPrDiffCacheEntry(options.cacheScopeId, options.prId);
             clearPrSubCacheEntries(options.cacheScopeId, options.prId);
             console.debug(`[pr-detail-cache] bypass key=${cacheKey}`);
         }
@@ -1516,19 +1452,14 @@ export function registerPrRoutes(
             return sendJson(res, { diff: '' });
         }
 
-        const prData = await resolvePullRequestDetailForDiffCache(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            prSvc.getPullRequest.bind(prSvc),
-        );
-
-        // Full context = local git is the source of truth. When the repo has a
-        // local clone and we know the PR's SHAs, produce the diff from local git
-        // first and return without ever fetching the whole-PR combined diff from
-        // the provider. The combined diff is computed lazily only for the hunk
-        // view or the full-context fallback below.
+        // Full context uses local Git first; supplied hunks are fetched only for fallback.
         if (fullContext) {
+            const prData = await resolvePullRequestDetailForFullContext(
+                options.cacheScopeId,
+                options.repoId,
+                options.prId,
+                prSvc.getPullRequest.bind(prSvc),
+            );
             let unavailableReason: FullContextUnavailableReason;
             if (!prData) {
                 unavailableReason = 'pr-detail-unavailable';
@@ -1551,25 +1482,13 @@ export function registerPrRoutes(
             // Fallback: no local clone, no PR detail, or local git produced
             // nothing — serve the degraded hunk diff plus the unavailable reason.
             const fallbackDiff = await extractFileDiffFromCombined(
-                await getCachedCombinedDiff(
-                    options.cacheScopeId,
-                    options.repoId,
-                    options.prId,
-                    normalizePullRequestHeadSha(prData),
-                    prSvc.getDiff.bind(prSvc),
-                ),
+                await prSvc.getDiff(options.repoId, options.prId),
                 options.filePath,
             );
             return sendJson(res, { diff: fallbackDiff ?? '', fullContextUnavailable: true, fullContextUnavailableReason: unavailableReason });
         }
 
-        const combinedDiff = await getCachedCombinedDiff(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            normalizePullRequestHeadSha(prData),
-            prSvc.getDiff.bind(prSvc),
-        );
+        const combinedDiff = await prSvc.getDiff(options.repoId, options.prId);
         sendJson(res, { diff: await extractFileDiffFromCombined(combinedDiff, options.filePath) ?? '' });
     }
 
@@ -1584,19 +1503,7 @@ export function registerPrRoutes(
             return;
         }
 
-        const prData = await resolvePullRequestDetailForDiffCache(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            prSvc.getPullRequest.bind(prSvc),
-        );
-        const diff = await getCachedCombinedDiff(
-            options.cacheScopeId,
-            options.repoId,
-            options.prId,
-            normalizePullRequestHeadSha(prData),
-            prSvc.getDiff.bind(prSvc),
-        );
+        const diff = await prSvc.getDiff(options.repoId, options.prId);
         res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(diff);
     }

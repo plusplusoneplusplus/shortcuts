@@ -419,18 +419,18 @@ Only managed install sources are writable; extra/auto-detected folders are read-
 
 ## Pull Requests
 
-Follows [Origin scoping](#origin-scoping). TTLs are per origin/PR; head-dependent caches include `headSha`. See [spa/git-and-prs.md](spa/git-and-prs.md).
+Follows [Origin scoping](#origin-scoping). Detail and subresource TTLs are per origin/PR; patch requests fetch current bytes through the selected clone. See [spa/git-and-prs.md](spa/git-and-prs.md).
 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/origins/:originId/pull-requests` | Clone-backed list/diff stats; warmed 60-min cache. `scope=team` filters origin roster before pagination; gated Team auto-classification may enqueue missing results |
-| GET | `/api/origins/:originId/pull-requests/:prId` | Detail/base/head SHAs, 10-min cache; force refresh invalidates this PR's subresources/diffs |
+| GET | `/api/origins/:originId/pull-requests/:prId` | Detail/base/head SHAs, 10-min cache; force refresh invalidates this PR's cached subresources |
 | GET | `/api/origins/:originId/pull-requests/:prId/threads` | Comment threads; cached 10 min |
 | GET | `/api/origins/:originId/pull-requests/:prId/reviewers` | Reviewers; cached 30 min unless `force=true` |
 | GET | `/api/origins/:originId/pull-requests/:prId/commits` | PR commits; cached 30 min |
 | GET | `/api/origins/:originId/pull-requests/:prId/checks` | CI/check statuses; cached 10 min |
-| GET | `/api/origins/:originId/pull-requests/:prId/diff` | Plain-text unified diff; head-keyed cache, no TTL |
-| GET | `/api/origins/:originId/pull-requests/:prId/diff/files/:path` | File diff; `fullContext=true` tries selected checkout, reports unavailable fallback |
+| GET | `/api/origins/:originId/pull-requests/:prId/diff` | Plain-text unified diff; current authenticated provider bytes through selected clone |
+| GET | `/api/origins/:originId/pull-requests/:prId/diff/files/:path` | Rust-selected provider chunk; `fullContext=true` tries selected checkout, reports current-hunk fallback |
 | GET | `/api/origins/:originId/pull-requests/:prId/files/:path/content` | Base/head text from same-origin clone then authenticated provider fallback; rename-aware, binary/symlink/10 MB guards; typed unavailable → `502` |
 | GET | `/api/origins/:originId/pull-requests/recent-opened` | Recently opened PR entries for the origin |
 | POST | `/api/origins/:originId/pull-requests/recent-opened` | Record validated PR entry |

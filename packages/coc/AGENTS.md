@@ -323,7 +323,8 @@ references before editing. Paths are package-relative.
   direct base/head Rust planning and host/WSL execution; TypeScript orchestrates commit
   fetch/retry and provider-hunk fallback. List refreshes fetch current provider bytes
   and map Rust summaries directly to diffStats; only the list response cache retains
-  enriched rows. PR combined-patch caching remains a separate boundary. PR snapshot
+  enriched rows. Combined and per-file hunk routes fetch current provider bytes through
+  the selected clone; full-context fallback uses that same transport. PR snapshot
   fallback metadata uses Forge parseFullDiffAsync
   for decoded paths and file existence; full-text loading and its cache remain separate.
 

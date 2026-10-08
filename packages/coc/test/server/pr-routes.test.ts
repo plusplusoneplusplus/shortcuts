@@ -10,7 +10,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createRouter } from '../../src/server/shared/router';
-import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrDiffCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache, dedupePrFetch } from '../../src/server/repos/pr-routes';
+import { registerPrRoutes, clearPrListCache, clearPrDetailCache, clearPrThreadsCache, clearPrCommitsCache, clearPrReviewersCache, clearPrChecksCache, warmPullRequestWorkspaceCache, dedupePrFetch } from '../../src/server/repos/pr-routes';
 import { addPullRequestCoworkerToRoster } from '../../src/server/repos/pr-coworker-roster-store';
 import type { Route } from '../../src/server/types';
 import { resolveCanonicalOriginId, type IPullRequestsService } from '@plusplusoneplusplus/forge';
@@ -232,7 +232,6 @@ function makeAutoClassificationBridge(options?: { throwOnEnqueue?: boolean }) {
 beforeEach(async () => {
     clearPrListCache();
     clearPrDetailCache();
-    clearPrDiffCache();
     clearPrThreadsCache();
     clearPrCommitsCache();
     clearPrReviewersCache();
@@ -1389,7 +1388,7 @@ describe('GET /api/origins/:originId/pull-requests/:prId provider subresources',
         expect(mockSvc.getChecks).toHaveBeenCalledWith(REPO_ID, '42');
     });
 
-    it('serves combined and per-file diffs through origin routes using the same origin cache', async () => {
+    it('serves current combined and per-file diffs through origin routes', async () => {
         const combinedDiff = [
             'diff --git a/src/foo.ts b/src/foo.ts',
             '--- a/src/foo.ts',
@@ -1409,7 +1408,7 @@ describe('GET /api/origins/:originId/pull-requests/:prId provider subresources',
         expect(fileRes.status).toBe(200);
         const fileBody = await fileRes.json() as { diff: string };
         expect(fileBody.diff).toContain('diff --git a/src/foo.ts b/src/foo.ts');
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 
     it('rejects origin subresource requests without a concrete workspace', async () => {
@@ -2099,212 +2098,158 @@ describe('PR detail view-open warm-up', () => {
     });
 });
 
-// ── PR diff cache tests (AC-01) ───────────────────────────────────────────────
+// ── Current provider patch transport ──────────────────────────────────────────
 
-describe('PR diff cache (AC-01)', () => {
-    const combinedDiff = [
-        'diff --git a/src/foo.ts b/src/foo.ts',
-        '--- a/src/foo.ts',
-        '+++ b/src/foo.ts',
-        '@@ -1,3 +1,4 @@',
-        ' line1',
-        '+added',
-        'diff --git a/src/bar.ts b/src/bar.ts',
-        '--- a/src/bar.ts',
-        '+++ b/src/bar.ts',
+describe('PR patch freshness and workspace isolation', () => {
+    const patch = (value: string) => [
+        'diff --git a/file.txt b/file.txt',
+        '--- a/file.txt',
+        '+++ b/file.txt',
         '@@ -1 +1 @@',
         '-old',
-        '+new',
+        `+${value}`,
+        '',
     ].join('\n');
 
-    beforeEach(() => {
-        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
-    });
-
-    it('caches the combined diff so /diff endpoint hits once on second request', async () => {
-        const r1 = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(r1.status).toBe(200);
-
-        const r2 = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(r2.status).toBe(200);
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
-    });
-
-    it('caches the combined diff so /diff/files endpoint hits once on second request', async () => {
-        const r1 = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
-        expect(r1.status).toBe(200);
-
-        const r2 = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/bar.ts')}`, REPO_ID));
-        expect(r2.status).toBe(200);
-        // Both per-file requests share one upstream fetch
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
-    });
-
-    it('full /diff and /diff/files requests share the same cached combined diff', async () => {
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
-        // Second call should reuse the cache set by the first
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
-    });
-
-    it('keeps the provider combined diff cache without a TTL until invalidated', async () => {
-        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, headSha: 'stable-head' });
-        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
-
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
-
-        const realNow = Date.now;
-        Date.now = () => realNow() + 24 * 60 * 60 * 1000;
-        try {
-            const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
-            expect(res.status).toBe(200);
-            const body = await res.json() as { diff: string };
-            expect(body.diff).toContain('diff --git a/src/foo.ts b/src/foo.ts');
-            expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
-        } finally {
-            Date.now = realNow;
-        }
-    });
-
-    it('keys the combined diff by resolved PR head SHA so changed heads refetch', async () => {
-        const oldDiff = 'diff --git a/src/old.ts b/src/old.ts\n';
-        const newDiff = 'diff --git a/src/new.ts b/src/new.ts\n';
+    it('refreshes combined and per-file patches when the base moves with an unchanged head', async () => {
+        const repoPath = path.join(tmpDir, 'patch-base-change');
+        fs.mkdirSync(repoPath);
+        await initGitRepo(repoPath);
+        const oldBase = await writeAndCommitFile(repoPath, 'file.txt', 'base\n', 'base');
+        const newBase = await writeAndCommitFile(repoPath, 'file.txt', 'base\nfirst\n', 'advance base');
+        const head = await writeAndCommitFile(repoPath, 'file.txt', 'base\nfirst\nsecond\n', 'head');
+        const oldPatch = await git(repoPath, ['diff', oldBase, head]);
+        const newPatch = await git(repoPath, ['diff', newBase, head]);
         (mockSvc.getPullRequest as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce({ ...mockPr, headSha: 'old-head' })
-            .mockResolvedValueOnce({ ...mockPr, headSha: 'new-head' });
+            .mockResolvedValueOnce({ ...mockPr, baseSha: oldBase, headSha: head })
+            .mockResolvedValue({ ...mockPr, baseSha: newBase, headSha: head });
         (mockSvc.getDiff as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(oldDiff)
-            .mockResolvedValueOnce(newDiff);
+            .mockResolvedValueOnce(oldPatch).mockResolvedValue(newPatch);
 
-        const first = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(await first.text()).toContain('src/old.ts');
-
-        const second = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(await second.text()).toContain('src/new.ts');
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+        const first = await fetch(originPullRequestsUrl('/42/diff', REPO_ID));
+        expect(await first.text()).toBe(oldPatch);
+        const second = await fetch(originPullRequestsUrl('/42/diff', REPO_ID));
+        expect(await second.text()).toBe(newPatch);
+        const file = await fetch(originPullRequestsUrl('/42/diff/files/file.txt', REPO_ID));
+        expect(file.status).toBe(200);
+        expect((await file.json()).diff).toBe(newPatch);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(3);
     });
 
-    it('falls back to the origin/PR combined-diff key when PR head SHA is unavailable', async () => {
-        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, headSha: undefined });
-
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
-
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
-    });
-
-    it('force-refreshing PR detail clears the diff cache and the next diff request refetches', async () => {
-        // Warm the diff cache via /diff
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
-
-        // Force-refresh PR detail
-        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
-
-        // Next diff request must refetch from provider
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
-    });
-
-    it('force-refreshing PR detail clears head-keyed combined diffs for only that PR', async () => {
-        const firstDiff = 'diff --git a/src/first.ts b/src/first.ts\n';
-        const refreshedDiff = 'diff --git a/src/refreshed.ts b/src/refreshed.ts\n';
-        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue({ ...mockPr, headSha: 'same-head' });
+    it.each([
+        ['stable revisions', { ...mockPr, baseSha: 'base', headSha: 'head' }],
+        ['missing revisions', mockPr],
+    ])('reads current bytes with %s and preserves trailing newlines', async (_name, pr) => {
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockResolvedValue(pr);
         (mockSvc.getDiff as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(firstDiff)
-            .mockResolvedValueOnce(refreshedDiff);
-
-        const first = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(await first.text()).toContain('src/first.ts');
-
-        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
-
-        const refreshed = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(await refreshed.text()).toContain('src/refreshed.ts');
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+            .mockResolvedValueOnce(patch('first'))
+            .mockResolvedValueOnce(patch('second'))
+            .mockResolvedValueOnce('');
+        const first = await fetch(originPullRequestsUrl('/42/diff', REPO_ID));
+        expect(await first.text()).toBe(patch('first'));
+        const file = await fetch(originPullRequestsUrl('/42/diff/files/file.txt', REPO_ID));
+        expect((await file.json()).diff).toBe(patch('second'));
+        const empty = await fetch(originPullRequestsUrl('/42/diff', REPO_ID));
+        expect(await empty.text()).toBe('');
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(3);
+        expect(mockSvc.getPullRequest).not.toHaveBeenCalled();
     });
 
-    it('uses separate cache entries per PR so switching PRs does not cross-pollute', async () => {
-        const pr2Diff = 'diff --git a/other.ts b/other.ts\n';
+    it('exposes a provider failure after success and retries fresh data', async () => {
         (mockSvc.getDiff as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(combinedDiff)  // PR 42
-            .mockResolvedValueOnce(pr2Diff);        // PR 99
-
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        const r99 = await fetch(originPullRequestsUrl(`/99/diff`, REPO_ID));
-        const text99 = await r99.text();
-        expect(text99).toContain('other.ts');
-        expect(text99).not.toContain('src/foo.ts');
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+            .mockResolvedValueOnce(patch('first'))
+            .mockRejectedValueOnce(new Error('provider unavailable'))
+            .mockResolvedValueOnce(patch('recovered'));
+        const first = await fetch(originPullRequestsUrl('/42/diff', REPO_ID));
+        expect(await first.text()).toBe(patch('first'));
+        const failed = await fetch(originPullRequestsUrl('/42/diff/files/file.txt', REPO_ID));
+        expect(failed.status).toBe(500);
+        const recovered = await fetch(originPullRequestsUrl('/42/diff/files/file.txt', REPO_ID));
+        expect((await recovered.json()).diff).toBe(patch('recovered'));
     });
 
-    it('force-refreshing one PR does not invalidate another PR diff cache', async () => {
-        const pr2Diff = 'diff --git a/other.ts b/other.ts\n';
+    it('fetches current fallback hunks with unchanged revision metadata', async () => {
+        mockResolveRepo.mockResolvedValue({ ...mockRepoInfo, localPath: undefined });
+        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>)
+            .mockResolvedValue({ ...mockPr, baseSha: 'base', headSha: 'head' });
         (mockSvc.getDiff as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce(combinedDiff) // PR 42 initial
-            .mockResolvedValueOnce(pr2Diff);     // PR 99
-
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        await fetch(originPullRequestsUrl(`/99/diff`, REPO_ID));
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
-
-        // Force-refresh PR 42 detail only
-        await fetch(originPullRequestsUrl(`/42?force=true`, REPO_ID));
-
-        // PR 99 diff still cached
-        await fetch(originPullRequestsUrl(`/99/diff`, REPO_ID));
+            .mockResolvedValueOnce(patch('first')).mockResolvedValueOnce(patch('second'));
+        for (const value of ['first', 'second']) {
+            const res = await fetch(originPullRequestsUrl('/42/diff/files/file.txt?fullContext=true', REPO_ID));
+            expect(res.status).toBe(200);
+            expect(await res.json()).toEqual({
+                diff: patch(value),
+                fullContextUnavailable: true,
+                fullContextUnavailableReason: 'missing-local-path',
+            });
+        }
+        expect(mockSvc.getPullRequest).toHaveBeenCalledTimes(2);
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
     });
 
-    it('shares combined-diff cache entries across same-origin repo ids for the same PR and head', async () => {
-        const cloneRepoId = 'repo-clone-same-origin';
-        const repoDiff = 'diff --git a/src/repo.ts b/src/repo.ts\n';
-        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(repoId, REMOTE_URL));
-        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
-            ...mockPr,
-            repositoryId: repoId,
-            headSha: 'shared-head',
+    it('does not install an older pending transport result over newer bytes', async () => {
+        let release!: (value: string) => void;
+        let started!: () => void;
+        const pending = new Promise<string>(resolve => { release = resolve; });
+        const fetching = new Promise<void>(resolve => { started = resolve; });
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>)
+            .mockImplementationOnce(() => { started(); return pending; })
+            .mockResolvedValue(patch('current'));
+        const oldRequest = fetch(originPullRequestsUrl('/42/diff', REPO_ID));
+        await fetching;
+        try {
+            const current = await fetch(originPullRequestsUrl('/42/diff/files/file.txt', REPO_ID));
+            expect((await current.json()).diff).toBe(patch('current'));
+        } finally {
+            release(patch('old'));
+        }
+        expect(await (await oldRequest).text()).toBe(patch('old'));
+        const next = await fetch(originPullRequestsUrl('/42/diff', REPO_ID));
+        expect(await next.text()).toBe(patch('current'));
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not reuse an earlier per-file result when native loading fails', async () => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(patch('first'));
+        const first = await fetch(originPullRequestsUrl('/42/diff/files/file.txt', REPO_ID));
+        expect((await first.json()).diff).toBe(patch('first'));
+        vi.mocked(loadNativeGit).mockImplementationOnce(() => {
+            throw new NativeAddonLoadError('Rebuild with npm run build:native -w packages/coc-native');
+        });
+        const failed = await fetch(originPullRequestsUrl('/42/diff/files/file.txt', REPO_ID));
+        expect(failed.status).toBe(500);
+        expect(await failed.text()).toContain('npm run build:native');
+    });
+
+    it.each([
+        ['same-origin clones', REMOTE_URL],
+        ['distinct repositories', 'https://github.com/org/other.git'],
+        ['distinct hosts', 'https://enterprise.example/org/repo.git'],
+    ])('routes concurrent and later requests through their selected transport for %s', async (_name, remote) => {
+        const cloneId = 'repo-other';
+        const origin = resolveCanonicalOriginId({ workspaceId: cloneId, remoteUrl: remote });
+        mockResolveRepo.mockImplementation(async (repoId: string) => ({
+            ...makeMockRepoInfo(repoId, repoId === cloneId ? remote : REMOTE_URL),
+            localPath: path.join(tmpDir, repoId),
         }));
-        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(repoDiff);
-
-        const repoRes = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(await repoRes.text()).toContain('src/repo.ts');
-
-        const cloneRepoRes = await fetch(originPullRequestsUrl(`/42/diff`, cloneRepoId));
-        expect(await cloneRepoRes.text()).toContain('src/repo.ts');
-
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        await fetch(originPullRequestsUrl(`/42/diff`, cloneRepoId));
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
-    });
-
-    it('keeps combined-diff cache entries isolated for distinct origins', async () => {
-        const otherRepoId = 'repo-other-origin';
-        const repoDiff = 'diff --git a/src/repo.ts b/src/repo.ts\n';
-        const otherRepoDiff = 'diff --git a/src/other-repo.ts b/src/other-repo.ts\n';
-        mockResolveRepo.mockImplementation(async (repoId: string) => makeMockRepoInfo(
-            repoId,
-            repoId === otherRepoId ? 'https://github.com/org/other.git' : REMOTE_URL,
-        ));
-        (mockSvc.getPullRequest as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) => ({
-            ...mockPr,
-            repositoryId: repoId,
-            headSha: 'shared-head',
-        }));
-        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockImplementation(async (repoId: string) =>
-            repoId === otherRepoId ? otherRepoDiff : repoDiff,
-        );
-
-        const repoRes = await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        expect(await repoRes.text()).toContain('src/repo.ts');
-
-        const otherRepoRes = await fetch(originPullRequestsUrl(`/42/diff`, otherRepoId, 'gh_org_other'));
-        expect(await otherRepoRes.text()).toContain('src/other-repo.ts');
-
-        await fetch(originPullRequestsUrl(`/42/diff`, REPO_ID));
-        await fetch(originPullRequestsUrl(`/42/diff`, otherRepoId, 'gh_org_other'));
-        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+        (ProviderFactory.createPullRequestsService as ReturnType<typeof vi.fn>)
+            .mockImplementation(async (remoteUrl: string) => ({
+                ...mockSvc,
+                getDiff: async (repoId: string) => {
+                    expect(remoteUrl).toBe(repoId === cloneId ? remote : REMOTE_URL);
+                    return patch(repoId);
+                },
+            }));
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const [first, second] = await Promise.all([
+                fetch(originPullRequestsUrl('/42/diff', REPO_ID)),
+                fetch(originPullRequestsUrl('/42/diff/files/file.txt', cloneId, origin)),
+            ]);
+            expect(first.status).toBe(200);
+            expect(second.status).toBe(200);
+            expect(await first.text()).toBe(patch(REPO_ID));
+            expect((await second.json()).diff).toBe(patch(cloneId));
+        }
     });
 });
 
