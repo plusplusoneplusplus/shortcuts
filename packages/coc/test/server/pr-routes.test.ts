@@ -344,7 +344,34 @@ describe('GET /api/origins/:originId/pull-requests', () => {
         expect(await res.text()).toContain('npm run build:native');
     });
 
-    it('reuses cached diff stats for the same PR head across forced list refreshes', async () => {
+    it('refreshes Rust statistics when the base moves with an unchanged head', async () => {
+        const repoPath = path.join(tmpDir, 'stats-base-change');
+        fs.mkdirSync(repoPath);
+        await initGitRepo(repoPath);
+        const oldBase = await writeAndCommitFile(repoPath, 'file.txt', 'base\n', 'base');
+        const newBase = await writeAndCommitFile(repoPath, 'file.txt', 'base\nfirst\n', 'advance base');
+        const head = await writeAndCommitFile(repoPath, 'file.txt', 'base\nfirst\nsecond\n', 'head');
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce([{ ...mockPr, baseSha: oldBase, headSha: head }])
+            .mockResolvedValueOnce([{ ...mockPr, baseSha: newBase, headSha: head }]);
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>)
+            .mockResolvedValueOnce(await git(repoPath, ['diff', oldBase, head]))
+            .mockResolvedValueOnce(await git(repoPath, ['diff', newBase, head]));
+
+        const first = await fetch(originPullRequestsUrl('', REPO_ID));
+        expect(first.status).toBe(200);
+        expect((await first.json()).pullRequests[0].diffStats).toEqual({
+            additions: 2, deletions: 0, changedFiles: 1,
+        });
+        const refreshed = await fetch(originPullRequestsUrl('?force=true', REPO_ID));
+        expect(refreshed.status).toBe(200);
+        expect((await refreshed.json()).pullRequests[0].diffStats).toEqual({
+            additions: 1, deletions: 0, changedFiles: 1,
+        });
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+    });
+
+    it('reuses Rust statistics while the PR list cache is fresh', async () => {
         (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
             { ...mockPr, headSha: 'same-head' },
         ]);
@@ -358,16 +385,20 @@ describe('GET /api/origins/:originId/pull-requests', () => {
         ].join('\n'));
 
         await fetch(originPullRequestsUrl(``, REPO_ID));
-        await fetch(originPullRequestsUrl(`?force=true`, REPO_ID));
+        await fetch(originPullRequestsUrl(``, REPO_ID));
 
-        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(2);
+        expect(mockSvc.listPullRequests).toHaveBeenCalledTimes(1);
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(1);
     });
 
-    it('keys cached diff stats by PR head SHA so a changed head refetches stats', async () => {
+    it.each([
+        ['a changed head', { headSha: 'old-head' }, { headSha: 'new-head' }],
+        ['unchanged revisions', { baseSha: 'base', headSha: 'head' }, { baseSha: 'base', headSha: 'head' }],
+        ['missing revisions', {}, {}],
+    ])('reads current patch statistics on forced refresh with %s', async (_case, before, after) => {
         (mockSvc.listPullRequests as ReturnType<typeof vi.fn>)
-            .mockResolvedValueOnce([{ ...mockPr, headSha: 'old-head' }])
-            .mockResolvedValueOnce([{ ...mockPr, headSha: 'new-head' }]);
+            .mockResolvedValueOnce([{ ...mockPr, ...before }])
+            .mockResolvedValueOnce([{ ...mockPr, ...after }]);
         (mockSvc.getDiff as ReturnType<typeof vi.fn>)
             .mockResolvedValueOnce([
                 'diff --git a/src/foo.ts b/src/foo.ts',
@@ -407,6 +438,74 @@ describe('GET /api/origins/:originId/pull-requests', () => {
             changedFiles: 2,
         });
         expect(mockSvc.getDiff).toHaveBeenCalledTimes(2);
+    });
+
+    it('omits failed refreshed statistics and retries current provider data', async () => {
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, baseSha: 'base', headSha: 'head' },
+        ]);
+        const getDiff = mockSvc.getDiff as ReturnType<typeof vi.fn>;
+        getDiff.mockResolvedValueOnce('diff --git a/old b/old\n')
+            .mockRejectedValueOnce(new Error('provider unavailable'))
+            .mockResolvedValueOnce('');
+        await fetch(originPullRequestsUrl('', REPO_ID));
+
+        const failed = await fetch(originPullRequestsUrl('?force=true', REPO_ID));
+        expect(failed.status).toBe(200);
+        expect((await failed.json()).pullRequests[0].diffStats).toBeUndefined();
+        const retried = await fetch(originPullRequestsUrl('?force=true', REPO_ID));
+        expect(retried.status).toBe(200);
+        expect((await retried.json()).pullRequests[0].diffStats).toEqual({
+            additions: 0, deletions: 0, changedFiles: 0,
+        });
+        expect(getDiff).toHaveBeenCalledTimes(3);
+    });
+
+    it('reports native failure on refresh after an earlier successful summary', async () => {
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, baseSha: 'base', headSha: 'head' },
+        ]);
+        await fetch(originPullRequestsUrl('', REPO_ID));
+        vi.mocked(loadNativeGit).mockImplementationOnce(() => {
+            throw new NativeAddonLoadError('Rebuild with npm run build:native -w packages/coc-native');
+        });
+        const refreshed = await fetch(originPullRequestsUrl('?force=true', REPO_ID));
+        expect(refreshed.status).toBe(500);
+        expect(await refreshed.text()).toContain('npm run build:native');
+    });
+
+    it('refreshes concurrent same-origin clones through their selected transports', async () => {
+        const cloneId = 'same-origin-clone';
+        mockResolveRepo.mockImplementation(async (id: string) => makeMockRepoInfo(id));
+        (mockSvc.listPullRequests as ReturnType<typeof vi.fn>).mockResolvedValue([
+            { ...mockPr, baseSha: 'base', headSha: 'head' },
+        ]);
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockImplementation(async (id: string) => (
+            id === REPO_ID ? 'diff --git a/file.txt b/file.txt\n' : [
+                'diff --git a/file.txt b/file.txt',
+                '--- a/file.txt',
+                '+++ b/file.txt',
+                '@@ -1 +1 @@',
+                '-old',
+                '+new',
+                '',
+            ].join('\n')
+        ));
+        await fetch(originPullRequestsUrl('', REPO_ID));
+        const [first, clone] = await Promise.all([
+            fetch(originPullRequestsUrl('?force=true', REPO_ID)),
+            fetch(originPullRequestsUrl('?force=true', cloneId)),
+        ]);
+        expect(first.status).toBe(200);
+        expect(clone.status).toBe(200);
+        expect((await first.json()).pullRequests[0].diffStats).toEqual({
+            additions: 0, deletions: 0, changedFiles: 1,
+        });
+        expect((await clone.json()).pullRequests[0].diffStats).toEqual({
+            additions: 1, deletions: 1, changedFiles: 1,
+        });
+        expect(mockSvc.getDiff).toHaveBeenCalledWith(cloneId, 42);
+        expect(mockSvc.getDiff).toHaveBeenCalledTimes(3);
     });
 
     it('omits diff stats when the provider does not support pull request diffs', async () => {
