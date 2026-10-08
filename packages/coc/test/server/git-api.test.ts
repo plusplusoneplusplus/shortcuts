@@ -69,6 +69,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        loadCommitFiles: async (root: string, commit: string, timeout: number) =>
+            (await mockGitCommitFiles(root, commit, { timeout })).files,
         loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {
             const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
             const native = loadNativeGit();
@@ -933,6 +935,14 @@ describe('Git API endpoints', () => {
             const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
             expect(res.status).toBe(400);
             expect(res.json().error).toContain('Failed to get commit files');
+        });
+
+        it('surfaces a stale native capability with rebuild instructions', async () => {
+            const { NativeAddonLoadError } = await import('@plusplusoneplusplus/coc-native');
+            mockGitCommitFiles.mockRejectedValue(new NativeAddonLoadError('rebuild with npm run build:native -w packages/coc-native'));
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files`);
+            expect(res.status).toBe(500);
+            expect(res.json().error).toContain('npm run build:native -w packages/coc-native');
         });
 
         it('returns 404 for unknown workspace', async () => {

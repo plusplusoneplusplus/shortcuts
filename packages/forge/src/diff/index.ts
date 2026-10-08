@@ -40,4 +40,4 @@ export {
     countAdditionsDeletions,
 } from './diff-utils';
 
-export { loadCommitShowPatch } from './local-patch';
+export { loadCommitShowPatch, loadCommitFiles } from './local-patch';

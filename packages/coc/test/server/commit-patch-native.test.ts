@@ -29,6 +29,7 @@ function fixture(marker: string) {
     git(root, 'config', 'user.email', 'test@example.com');
     git(root, 'config', 'commit.gpgsign', 'false');
     git(root, 'config', 'core.autocrlf', 'false');
+    git(root, 'config', 'core.quotePath', 'true');
     fs.writeFileSync(path.join(root, '[ab].txt'), `${marker}\n`);
     fs.writeFileSync(path.join(root, 'a.txt'), 'glob\n');
     git(root, 'add', '.');
@@ -74,6 +75,40 @@ describe('production commit routes with real Rust/Git processing', () => {
             expect(result).toEqual({ status: 200, body: { diff: git(one.root, 'show', '--format=', '--patch', '-M', '-C', commit) } });
         }
         expect(git(one.root, 'show', '--format=', '--patch', merge)).toBe('');
+    });
+
+    it('lists root/merge metadata and literal rename paths without stale workspace caches', async () => {
+        const one = fixture('one'), two = fixture('two');
+        const request = await serve([{ id: 'one', rootPath: one.root }, { id: 'two', rootPath: two.root }]);
+        // Before: diff-tree without --root returned no files despite a nonempty patch.
+        expect(git(one.root, 'diff-tree', '--no-commit-id', '-r', '--name-status', one.head)).toBe('');
+        gitCache.set(`one:commit-files:${one.head}`, { files: [{ path: 'other clone' }] });
+        const initial = await Promise.all([one, two].map((repo, index) => request(`/api/workspaces/${index ? 'two' : 'one'}/git/commits/${repo.head}/files`)));
+        initial.forEach(result => expect(result).toEqual({ status: 200, body: { files: [
+            { status: 'A', path: '[ab].txt', additions: 1, deletions: 0 },
+            { status: 'A', path: 'a.txt', additions: 1, deletions: 0 },
+        ] } }));
+        const literal = process.platform === 'win32' ? 'café arrow => name.txt' : 'café\tline\n => name.txt';
+        fs.renameSync(path.join(one.root, '[ab].txt'), path.join(one.root, literal));
+        fs.writeFileSync(path.join(one.root, 'empty.txt'), '');
+        fs.writeFileSync(path.join(one.root, 'binary.bin'), Buffer.from([0, 1, 2]));
+        git(one.root, 'add', '.');
+        git(one.root, 'commit', '-qm', 'metadata');
+        const head = git(one.root, 'rev-parse', 'HEAD');
+        // Before: Git C quoting was sent as the path rather than decoded bytes.
+        expect(git(one.root, 'diff-tree', '--no-commit-id', '-r', '--name-status', '-M', '-C', head)).not.toContain(literal);
+        const side = git(one.root, 'commit-tree', 'HEAD^{tree}', '-p', one.head, '-m', 'side');
+        const merge = git(one.root, 'commit-tree', 'HEAD^{tree}', '-p', one.head, '-p', side, '-m', 'merge');
+        for (const commit of [head, merge]) {
+            const result = await request(`/api/workspaces/one/git/commits/${commit}/files`);
+            expect(result.status).toBe(200);
+            expect(result.body.files).toEqual([
+                { status: 'A', path: 'binary.bin' },
+                { status: 'R', path: literal, oldPath: '[ab].txt', additions: 0, deletions: 0 },
+                { status: 'A', path: 'empty.txt', additions: 0, deletions: 0 },
+            ]);
+        }
+        expect(git(one.root, 'diff-tree', '--no-commit-id', '-r', '--name-status', merge)).toBe('');
     });
 
     it('returns native truncation metadata and full patches with the existing wire shape', async () => {

@@ -151,144 +151,38 @@ fn a_merge_commit_takes_its_first_parent() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[test]
-fn empty_name_status_output_yields_no_files() {
-    assert!(parse_commit_files("", "1\t0\ta.txt").is_empty());
-    assert!(parse_commit_files("   \n  ", "1\t0\ta.txt").is_empty());
-}
-
-#[test]
-fn a_plain_change_carries_its_status_and_counts() {
-    let files = parse_commit_files("M\ta.txt", "3\t1\ta.txt");
-    assert_eq!(files.len(), 1);
-    assert_eq!(files[0].path, "a.txt");
-    assert_eq!(files[0].status, ChangeStatus::Modified);
-    assert_eq!(files[0].original_path, None);
-    assert_eq!(files[0].additions, Some(3));
-    assert_eq!(files[0].deletions, Some(1));
-}
-
-#[test]
-fn every_status_letter_maps_the_way_the_service_did() {
-    let files = parse_commit_files("A\tadd\nD\tdel\nU\tconflict\nX\tunknown", "");
-    let statuses: Vec<ChangeStatus> = files.iter().map(|file| file.status).collect();
-    assert_eq!(
-        statuses,
-        vec![
-            ChangeStatus::Added,
-            ChangeStatus::Deleted,
-            ChangeStatus::Conflict,
-            // An unrecognised letter is `modified`, not a dropped row.
-            ChangeStatus::Modified,
-        ]
-    );
-}
-
-#[test]
-fn a_rename_reports_both_ends() {
-    let files = parse_commit_files("R100\told.txt\tnew.txt", "0\t0\told.txt => new.txt");
-    assert_eq!(files.len(), 1);
-    assert_eq!(files[0].path, "new.txt");
-    assert_eq!(files[0].original_path.as_deref(), Some("old.txt"));
-    assert_eq!(files[0].status, ChangeStatus::Renamed);
-    assert_eq!(files[0].additions, Some(0));
-}
-
-#[test]
-fn a_copy_reports_both_ends() {
-    let files = parse_commit_files("C75\tsource.txt\tcopy.txt", "");
-    assert_eq!(files[0].path, "copy.txt");
-    assert_eq!(files[0].original_path.as_deref(), Some("source.txt"));
-    assert_eq!(files[0].status, ChangeStatus::Copied);
-}
-
-#[test]
-fn a_rename_with_only_two_columns_falls_back_to_the_single_path() {
-    // git always names both ends for an R, but the reader has never assumed it.
-    let files = parse_commit_files("R100\tonly.txt", "");
-    assert_eq!(files[0].path, "only.txt");
-    assert_eq!(files[0].original_path, None);
-    assert_eq!(files[0].status, ChangeStatus::Renamed);
-}
-
-#[test]
-fn a_line_with_one_column_is_skipped() {
-    let files = parse_commit_files("M\ta.txt\nnonsense\nA\tb.txt", "");
-    let paths: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
-    assert_eq!(paths, vec!["a.txt", "b.txt"]);
-}
-
-#[test]
-fn the_file_list_keeps_git_order() {
-    let files = parse_commit_files("M\tz.txt\nM\ta.txt\nM\tm.txt", "");
-    let paths: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
-    assert_eq!(paths, vec!["z.txt", "a.txt", "m.txt"]);
-}
-
-#[test]
-fn a_binary_file_keeps_absent_counts_rather_than_zero() {
-    let files = parse_commit_files("M\tlogo.png", "-\t-\tlogo.png");
-    assert_eq!(files[0].additions, None);
-    assert_eq!(files[0].deletions, None);
-}
-
-#[test]
-fn a_file_missing_from_numstat_keeps_its_real_status() {
-    // The range reader falls back to `modified` when numstat drives the join;
-    // here name-status drives, so the status survives a missing count.
-    let files = parse_commit_files("D\tgone.txt", "");
-    assert_eq!(files[0].status, ChangeStatus::Deleted);
-    assert_eq!(files[0].additions, None);
-}
-
-#[test]
-fn a_numstat_column_that_is_not_a_number_drops_the_counts() {
-    let files = parse_commit_files("M\ta.txt", "x\t1\ta.txt");
-    assert_eq!(files[0].additions, None);
-    assert_eq!(files[0].deletions, None);
-}
-
-#[test]
-fn the_brace_rename_form_joins_to_the_destination_path() {
-    let files = parse_commit_files("R100\tsrc/old.ts\tsrc/new.ts", "2\t1\tsrc/{old.ts => new.ts}");
-    assert_eq!(files[0].path, "src/new.ts");
-    assert_eq!(files[0].additions, Some(2));
-    assert_eq!(files[0].deletions, Some(1));
-}
-
-#[test]
-fn the_brace_rename_form_keeps_the_suffix_after_the_closing_brace() {
-    let files = parse_commit_files(
-        "R100\told/dir/file.ts\tnew/dir/file.ts",
-        "4\t0\t{old => new}/dir/file.ts",
-    );
-    assert_eq!(files[0].path, "new/dir/file.ts");
-    assert_eq!(files[0].additions, Some(4));
-}
-
-#[test]
-fn the_plain_rename_form_takes_everything_after_the_arrow() {
+fn metadata_preserves_literal_paths_and_git_order() {
     let files =
-        parse_commit_files("R100\tolddir/a.ts\tnewdir/a.ts", "1\t1\tolddir/a.ts => newdir/a.ts");
-    assert_eq!(files[0].path, "newdir/a.ts");
-    assert_eq!(files[0].additions, Some(1));
+        parse_commit_files("M\0z\0A\0café\t\n.txt\0D\0a => b\0", "3\t1\tz\02\t0\tcafé\t\n.txt\0");
+    assert_eq!(
+        files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+        vec!["z", "café\t\n.txt", "a => b"]
+    );
+    assert_eq!(files[0].additions, Some(3));
+    assert_eq!(files[1].additions, Some(2));
+    assert_eq!(files[2].status, ChangeStatus::Deleted);
+    assert_eq!(files[2].additions, None);
 }
 
 #[test]
-fn a_path_containing_an_arrow_but_no_rename_is_left_alone() {
-    // Nothing in numstat matches `a => b.txt` once the arrow is stripped, so
-    // the row keeps its status and loses only the counts.
-    let files = parse_commit_files("M\tliteral.txt", "1\t1\tliteral.txt");
-    assert_eq!(files[0].path, "literal.txt");
-    assert_eq!(files[0].additions, Some(1));
+fn metadata_joins_rename_and_copy_destinations_without_arrow_heuristics() {
+    let files = parse_commit_files(
+        "R100\0old\0src/{a => b}.txt\0C75\0source\0copy\0",
+        "2\t1\t\0old\0src/{a => b}.txt\00\t0\t\0source\0copy\0",
+    );
+    assert_eq!(files[0].original_path.as_deref(), Some("old"));
+    assert_eq!(files[0].status, ChangeStatus::Renamed);
+    assert_eq!(files[0].additions, Some(2));
+    assert_eq!(files[1].status, ChangeStatus::Copied);
+    assert_eq!(files[1].additions, Some(0));
 }
 
 #[test]
-fn a_path_holding_a_tab_is_rejoined() {
-    let files = parse_commit_files("M\twith\ttab.txt", "2\t2\twith\ttab.txt");
-    assert_eq!(files[0].path, "with");
-    // The name-status side splits the same way, so the join still lands: what
-    // this pins is that neither side invents a column.
-    assert_eq!(files[0].additions, None);
+fn binary_and_invalid_counts_remain_absent() {
+    let files = parse_commit_files("M\0binary\0M\0invalid\0", "-\t-\tbinary\0x\t1\tinvalid\0");
+    assert!(files.iter().all(|file| file.additions.is_none() && file.deletions.is_none()));
+    assert!(parse_commit_files("", "").is_empty());
+    assert!(parse_commit_files("R100\0old\0", "").is_empty());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -310,20 +204,19 @@ fn commit_files_reads_a_real_commit() {
 }
 
 #[test]
-fn a_root_commit_has_no_file_list_even_though_it_has_a_parent_hash() {
+fn a_root_commit_lists_files_against_the_empty_tree() {
     let (dir, first, _) = repo_with_history();
     let result = commit_files(dir.path(), &first, &options()).expect("files");
 
-    // `diff-tree` compares a commit against its *parents*, so a root commit
-    // prints nothing at all — the empty-tree fallback only ever reaches the
-    // diff, never this. The commit view has always shown an empty file list
-    // for the first commit in a repository, and the port keeps that.
+    // Before: omitting --root silently lost the initial commit file list.
     assert_eq!(
         git_stdout(dir.path(), &["diff-tree", "--no-commit-id", "--name-status", "-r", &first]),
         ""
     );
     assert_eq!(result.parent_hash, EMPTY_TREE_HASH);
-    assert!(result.files.is_empty());
+    assert_eq!(result.files.len(), 1);
+    assert_eq!(result.files[0].status, ChangeStatus::Added);
+    assert_eq!(result.files[0].additions, Some(1));
 }
 
 #[test]
@@ -346,7 +239,7 @@ fn commit_files_detects_a_rename_end_to_end() {
 fn commit_files_fails_for_a_path_that_is_not_a_repository() {
     let dir = TempDir::new().expect("temp dir");
     let error = commit_files(dir.path(), "HEAD", &options()).expect_err("not a repository");
-    assert!(error.to_string().starts_with("git diff-tree"), "{error}");
+    assert!(error.to_string().contains("diff-tree"), "{error}");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,7 +266,7 @@ fn commit_diff_of_a_root_commit_shows_the_whole_file() {
 fn commit_diff_fails_for_a_path_that_is_not_a_repository() {
     let dir = TempDir::new().expect("temp dir");
     let error = commit_diff(dir.path(), "HEAD", &options()).expect_err("not a repository");
-    assert!(error.to_string().starts_with("git diff"), "{error}");
+    assert!(error.to_string().contains("diff-tree"), "{error}");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

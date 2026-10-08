@@ -52,7 +52,7 @@ const COMPLETE_ADDON =
     'parseGitStatusPorcelain: async () => [], ' +
     'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
     'gitLogCommit: async () => null, ' +
-    'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
+    'prepareGitCommitFiles: async () => [], processGitCommitFiles: async () => [], gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
     "gitCommitDiff: async () => '', " +
     'gitFileContentAtCommit: async () => null, ' +
     'gitFileBytesAtCommit: async () => null, ' +
@@ -386,7 +386,7 @@ describe('when the capability is missing', () => {
                 'parseGitStatusPorcelain: async () => [], ' +
                 'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
                 'gitLogCommit: async () => null, ' +
-                'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
+                'prepareGitCommitFiles: async () => [], processGitCommitFiles: async () => [], gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
                 "gitCommitDiff: async () => '', " +
                 'gitFileContentAtCommit: async () => null, ' +
                 'gitFileExistsAtCommit: async () => false, ' +
@@ -423,7 +423,7 @@ describe('when the capability is missing', () => {
                 'parseGitStatusPorcelain: async () => [], ' +
                 'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
                 'gitLogCommit: async () => null, ' +
-                'gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
+                'prepareGitCommitFiles: async () => [], processGitCommitFiles: async () => [], gitCommitFiles: async () => ({ parentHash: \'\', files: [] }), ' +
                 "gitCommitDiff: async () => '', " +
                 'gitFileContentAtCommit: async () => null, ' +
                 'gitFileBytesAtCommit: async () => null, ' +
@@ -483,7 +483,7 @@ it('rejects an otherwise complete binary without patch parsing', () => {
     expect(nativeGitStatus().loaded).toBe(false);
 });
 
-it.each(['prepareGitShowPatch', 'gitShowPatch', 'prepareGitCommitPatch', 'gitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'gitRangePatch'])('rejects stale range capability missing %s', (name) => {
-    useAddon(COMPLETE_ADDON.replace(`${name}: async () => ${name.startsWith('prepare') ? '[]' : '({})'}, `, ''));
+it.each(['prepareGitCommitFiles', 'processGitCommitFiles', 'prepareGitShowPatch', 'gitShowPatch', 'prepareGitCommitPatch', 'gitCommitPatch', 'prepareGitRangePatch', 'processGitPatch', 'gitRangePatch'])('rejects stale patch/metadata capability missing %s', (name) => {
+    useAddon(COMPLETE_ADDON.replace(`${name}:`, 'omittedCapability:'));
     expect(() => loadNativeGit()).toThrow('npm run build:native');
 });
