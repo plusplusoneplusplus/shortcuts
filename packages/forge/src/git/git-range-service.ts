@@ -1,16 +1,7 @@
 /**
- * GitRangeService — the commit range between a feature branch and its base.
- *
- * Ref work runs in the native addon: finding the default branch, reading the
- * upstream, the merge base and the ahead count are `gix` reads now, so the
- * seven child processes `detectCommitRange` used to spawn for one answer are
- * down to the three `diff` runs Rust still shells out for. The diff parsers
- * live in Rust too, so the WSL path — which has to run git through `wsl.exe`
- * from here — hands its text to the same parser rather than to a second one.
- *
- * Every method that used to be synchronous is now async. The bodies changed;
- * what they return did not, down to the `localeCompare` ordering of the file
- * list, which stays in Node because it is not a byte comparison.
+ * Branch-range ref resolution and public metadata conversion.
+ * Rust owns patch planning, execution and processing; TypeScript runs the
+ * shared command plan through WSL and preserves localeCompare file ordering.
  */
 
 import * as fs from 'fs';
@@ -19,13 +10,12 @@ import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type {
     NativeGitAddon,
     NativeGitRangeDefaultBranch,
-    NativeGitRangeFile,
 } from '@plusplusoneplusplus/coc-native';
 import { getLogger, LogCategory } from '../logger';
 import { resolveWorkspaceExecutionContext } from '../utils/workspace-execution';
 import { execGitAsync } from './exec';
 import { loadRangePatch } from '../diff/local-patch';
-import { GitChangeStatus, GitCommitRange, GitCommitRangeFile, GitRangeBaseMode, GitRangeConfig } from './types';
+import { GitCommitRange, GitCommitRangeFile, GitRangeBaseMode, GitRangeConfig } from './types';
 
 /**
  * Options for {@link GitRangeService.detectCommitRange}.
@@ -237,67 +227,30 @@ export class GitRangeService {
         }
     }
 
-    /**
-     * Run the two `diff` commands through `wsl.exe` and parse them in Rust.
-     *
-     * The WSL twin of the addon's `gitRangeChangedFiles`: the commands run
-     * here, but the parser is still the single one in the codebase, so the two
-     * paths cannot drift.
-     */
-    private async changedFilesViaCli(
-        addon: NativeGitAddon,
-        repoRoot: string,
-        baseRef: string,
-        headRef: string
-    ): Promise<NativeGitRangeFile[]> {
-        const range = `${baseRef}...${headRef}`;
-        const numstat = await execGitAsync(['diff', '--numstat', range], repoRoot);
-        const nameStatus = await execGitAsync(['diff', '--name-status', '-M', '-C', range], repoRoot);
-        return addon.parseGitRangeChangedFiles(numstat, nameStatus);
-    }
-
-    /**
-     * Get files changed in a commit range.
-     */
+    /** Get files changed in a commit range through the shared patch backend. */
     async getChangedFiles(repoRoot: string, baseRef: string, headRef: string): Promise<GitCommitRangeFile[]> {
-        const { addon, wsl } = this.native(repoRoot);
+        loadNativeGit();
         try {
-            const files = wsl
-                ? await this.changedFilesViaCli(addon, repoRoot, baseRef, headRef)
-                : await addon.gitRangeChangedFiles(repoRoot, baseRef, headRef);
-
-            return files
-                .map(file => ({
-                    path: file.path,
-                    status: file.status as GitChangeStatus,
-                    additions: file.additions,
-                    deletions: file.deletions,
-                    oldPath: file.oldPath,
-                    repositoryRoot: repoRoot,
-                }))
-                // Sorting stays here: `localeCompare` puts `docs/x.md` before
-                // `README.md`, where the byte order Rust would sort by does the
-                // opposite. This is the order the range view already shows.
-                .sort((a, b) => a.path.localeCompare(b.path));
+            return (await loadRangePatch(repoRoot, baseRef, headRef)).files.map(file => ({
+                path: file.path,
+                status: file.status,
+                additions: file.additions ?? 0,
+                deletions: file.deletions ?? 0,
+                oldPath: file.originalPath,
+                repositoryRoot: repoRoot,
+            }));
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get changed files for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return [];
         }
     }
 
-    /**
-     * Get diff statistics for a commit range.
-     */
+    /** Get complete patch statistics, including files beyond the display cap. */
     async getDiffStats(repoRoot: string, baseRef: string, headRef: string): Promise<{ additions: number; deletions: number }> {
-        const { addon, wsl } = this.native(repoRoot);
+        loadNativeGit();
         try {
-            if (!wsl) {
-                const stats = await addon.gitRangeDiffStats(repoRoot, baseRef, headRef);
-                return { additions: stats.additions, deletions: stats.deletions };
-            }
-            const output = await execGitAsync(['diff', '--shortstat', `${baseRef}...${headRef}`], repoRoot);
-            const stats = await addon.parseGitDiffShortstat(output);
-            return { additions: stats.additions, deletions: stats.deletions };
+            const { additions, deletions } = (await loadRangePatch(repoRoot, baseRef, headRef)).summary;
+            return { additions, deletions };
         } catch (error) {
             getLogger().error(LogCategory.GIT, `Failed to get diff stats for ${baseRef}...${headRef}`, error instanceof Error ? error : undefined);
             return { additions: 0, deletions: 0 };

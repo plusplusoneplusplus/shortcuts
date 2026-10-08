@@ -100,8 +100,8 @@ Production server persistence/index capabilities require the addon and fail
 without it, rather than falling back to JavaScript. Supplied unified patches can
 be parsed on a libuv worker with `loadNativeGit().parseGitPatch`; Forge
 `parseFullDiffAsync` converts native metadata/chunks to public shapes through
-`nativePatchToDiff`. The range provider and production `GitRangeService` patch
-readers use `diff/local-patch.ts`: Rust plans/executes host Git and processes
+`nativePatchToDiff`. The range provider and production `GitRangeService` patches, file lists and
+statistics use `diff/local-patch.ts`: Rust plans/executes host Git and processes
 patches, while TypeScript executes the shared plan for WSL. Native contracts
 and migration boundaries belong in the native instructions below.
 

@@ -303,7 +303,7 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 
 `git::patch` owns unified-patch parsing, summaries and display truncation. `parseGitPatch` returns per-file metadata/raw chunks in source order; `processGitPatch` also returns combined content and summary. Both run on libuv workers, preserve supplied line endings, decode Git C quoting and count hunk content. Binary classification requires explicit markers; empty-file and mode-only changes remain text. Forge's `nativePatchToDiff` converts DTOs to public files and a content Map with localeCompare presentation order.
 
-`gitRangePatch` executes the shared three-dot `range_patch_args` plan on a worker. `prepareGitRangePatch` supplies the same argv to TypeScript's WSL transport, whose output goes through `processGitPatch`. Commands use literal pathspecs, explicit prefix/color settings, rename/copy detection and a revision option boundary. Forge's range provider delegates all five operations through `diff/local-patch.ts`; `GitRangeService` uses that boundary for production combined and per-file patches. These operations read fresh state per request and hold no patch cache. Commit/working-tree providers, range metadata services and synchronous remote utilities have separate implementations. Contracts live in core `git_patch` and Forge's range native/WSL tests.
+`gitRangePatch` executes the shared three-dot `range_patch_args` plan on a worker. `prepareGitRangePatch` supplies the same argv to TypeScript's WSL transport, whose output goes through `processGitPatch`. Commands use literal pathspecs, explicit prefix/color settings, rename/copy detection and a revision option boundary. Forge's range provider delegates all five operations through `diff/local-patch.ts`; `GitRangeService` uses that boundary for production combined/per-file patches, file lists and statistics. These operations read fresh state per request and hold no patch cache. Commit/working-tree providers and synchronous remote utilities have separate implementations. Contracts live in core `git_patch` and Forge's range native/WSL tests.
 
 `git::run_git` is why git no longer costs a Node child-process spawn per call: the work happens on a libuv worker, and a `Task` marshals the result back. Every non-WSL `execGitAsync` call lands here, and `execGitAsync` is the only git runner forge exports — the sync `execGit` was deleted, so nothing in the server can spawn git from the event-loop thread any more. It takes an argv array, an optional timeout and buffer cap, and environment overrides layered on the inherited environment.
 
@@ -365,14 +365,12 @@ The walk comes from `repo_index::walk::walk_builder`, shared with the path walk 
 
 ### Commit ranges
 
-`git::range` answers "what is on this branch that is not on its base". `detectCommitRange` cost seven child processes for one answer; four of them were ref reads and walks, so they are `gix` now and only the three `diff` runs still spawn.
+`git::range` resolves default branches, upstream refs, merge bases and ahead counts through `gix`. `GitRangeService` obtains file lists and statistics from the shared `git::patch` boundary described above. Its TypeScript adapter adds repository roots and maps original paths to `oldPath`.
 
-- **The split is refs versus diffs.** Default-branch detection, `@{upstream}`, merge-base and the ahead count are `gix`. `--numstat`, `--name-status` and `--shortstat` shell out from Rust, because their line counts follow git's own diff drivers, `.gitattributes` and binary detection — a reimplementation that is close but not identical would render as wrong numbers in a review UI.
-- **Base-mode fallback is reported, not silent.** Asking for `upstream` on a branch with no upstream resolves to the default branch *and* sets `baseModeFallback`, so the range view's toggle cannot claim to show unpushed commits while showing everything since `main`.
-- **Sorting stays in Node.** The file list comes back in git's order; `GitRangeService` sorts it with `localeCompare`, which puts `docs/x.md` before `README.md` where a byte comparison does the opposite. Rust must not sort it "for" the caller.
-- **`from_remote` on the default branch exists for the caller's cache.** `GitRangeService` memoises the three remote-derived answers and deliberately not the local `main`/`master` fallbacks — a local fallback means the remote refs have not arrived yet.
-- **The `{old => new}` reader is a ported bug, pinned on purpose.** The TypeScript regex's second alternative matches from position 0 whenever the first cannot, so `src/{old.ts => new.ts}` yields `new.ts}` — which then misses the status map and shows as `modified`. Renames under a shared directory have always rendered that way. `rust/core/tests/git_range.rs` pins it; changing it changes what the range view shows and belongs in its own change.
-- **One parser, two callers**, as with status: the WSL path runs the two `diff` commands through `wsl.exe` in TypeScript and hands the text to `parseGitRangeChangedFiles` / `parseGitDiffShortstat`.
+- **Base-mode fallback is explicit.** An `upstream` request without a configured upstream resolves to the default branch and sets `baseModeFallback`.
+- **Presentation order uses `localeCompare`.** Forge's shared native DTO adapter sorts files for the range view.
+- **Default-branch caching is remote-only.** `from_remote` identifies remote-derived answers; local `main`/`master` fallback answers are read fresh.
+- **Standalone metadata exports remain available.** `gitRangeChangedFiles`, `parseGitRangeChangedFiles`, `gitRangeDiffStats` and `parseGitDiffShortstat` retain their contracts for external callers. Production Forge range consumers use shared patch processing on both host and WSL.
 
 ### Branches
 
