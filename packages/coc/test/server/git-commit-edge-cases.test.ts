@@ -60,6 +60,13 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        loadCommitFiles: async (root: string, commit: string) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            const batch = await native.prepareGitCommitFiles(commit);
+            const [names, counts] = await Promise.all(batch.map(args => mockExecGit(args, root, {})));
+            return native.processGitCommitFiles(names, counts);
+        },
         loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {
             const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
             const native = loadNativeGit();
@@ -461,7 +468,7 @@ describe('Git Commit Edge Cases', () => {
             gitCache.clear();
         });
 
-        it('joins the two diff-tree runs itself for a WSL commit file list', async () => {
+        it('joins WSL metadata through the shared Rust backend', async () => {
             const WSL_ROOT = '\\\\wsl$\\Ubuntu\\home\\user\\repo';
             (store.getWorkspaces as any).mockResolvedValue([
                 { id: WORKSPACE_ID, name: 'WSL Repo', rootPath: WSL_ROOT },
@@ -470,8 +477,8 @@ describe('Git Commit Edge Cases', () => {
 
             mockExecGit.mockImplementation((args: string[]) =>
                 args.includes('--name-status')
-                    ? 'R100\told/path.ts\tnew/path.ts'
-                    : '5\t2\tsrc/{old => new}/path.ts');
+                    ? 'R100\0old/path.ts\0new/path.ts\0'
+                    : '5\t2\t\0old/path.ts\0new/path.ts\0');
 
             const res = await request(
                 `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc1234ef/files`,
@@ -479,7 +486,7 @@ describe('Git Commit Edge Cases', () => {
 
             expect(res.status).toBe(200);
             expect(res.json().files).toEqual([
-                { status: 'R', path: 'new/path.ts', oldPath: 'old/path.ts' },
+                { status: 'R', path: 'new/path.ts', oldPath: 'old/path.ts', additions: 5, deletions: 2 },
             ]);
             expect(mockExecGit).toHaveBeenCalledWith(
                 expect.arrayContaining(['diff-tree', '--name-status']),

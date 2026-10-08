@@ -5,7 +5,7 @@
  * process. The reads that only touch objects and refs — history, a commit's
  * parent, a file's content at a commit, whether a ref names a commit, the
  * branch names — are `gix`-backed and spawn nothing at all; the diffs and the
- * `diff-tree` runs still shell out, from Rust, because their rename detection
+ * `diff-tree` metadata/patch plans still shell out, from Rust, because their rename detection
  * and line counts follow git's own diff drivers.
  *
  * Unlike the rest of forge's git code this service never had a WSL branch — it
@@ -114,9 +114,8 @@ export class GitLogService {
     /**
      * Get files changed in a specific commit.
      *
-     * One crossing where there were three children: the parent comes from
-     * `gix`, and the `--name-status` and `--numstat` runs are joined in Rust
-     * rather than crossing the boundary as text.
+     * Rust joins NUL-delimited metadata using the shared first-parent/root
+     * patch plan. Binary counts stay absent; paths and Git ordering survive.
      */
     async getCommitFiles(repoRoot: string, commitHash: string): Promise<GitCommitFile[]> {
         const native = loadNativeGit();

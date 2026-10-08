@@ -18,6 +18,23 @@ describe('parseGitPatch worker boundary', () => {
         ]);
     });
 
+    it('shares a NUL metadata batch and worker join for literal rename paths', async () => {
+        const batch = await api.prepareGitCommitFiles('HEAD');
+        expect(batch).toHaveLength(2);
+        batch.forEach(args => {
+            expect(args).toEqual(expect.arrayContaining(['--root', '--first-parent', '-z', '--end-of-options']));
+            expect(args).not.toContain('-p');
+        });
+        expect(batch[0]).toContain('--name-status');
+        expect(batch[1]).toContain('--numstat');
+        const pending = api.processGitCommitFiles('R100\0old\0café\t\n.txt\0M\0bin\0', '2\t1\t\0old\0café\t\n.txt\0-\t-\tbin\0');
+        expect(typeof pending.then).toBe('function');
+        expect(await pending).toEqual([
+            { path: 'café\t\n.txt', originalPath: 'old', status: 'renamed', additions: 2, deletions: 1 },
+            { path: 'bin', status: 'modified' },
+        ]);
+    });
+
     it('decodes Git quoting, counts header-like content and preserves bytes', async () => {
         const pending = api.parseGitPatch(patch);
         expect(typeof pending.then).toBe('function');

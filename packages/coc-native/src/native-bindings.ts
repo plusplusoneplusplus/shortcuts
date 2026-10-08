@@ -272,9 +272,8 @@ export interface GitCommitFile {
  * Read the files a commit touched, with their line counts and its parent.
  *
  * Three children become one crossing: the parent comes from `gix`, and the
- * two `diff-tree` runs are joined in Rust rather than crossing as text. A root
- * commit has no file list at all — `diff-tree` compares against parents — but
- * still reports the empty tree as its parent.
+ * two NUL-delimited `diff-tree` runs are joined in Rust. Root commits compare
+ * against the empty tree; merges compare against the first parent.
  */
 export declare function gitCommitFiles(repoRoot: string, commit: string, options?: GitExecOptions | undefined | null): Promise<GitCommitFiles>
 
@@ -1041,6 +1040,9 @@ export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: s
  */
 export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
 
+/** Metadata batch for WSL, sharing the host plan. */
+export declare function prepareGitCommitFiles(commit: string): Promise<string[][]>
+
 /** First-parent/root commit plan shared with external WSL execution. */
 export declare function prepareGitCommitPatch(commit: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[]>
 
@@ -1049,6 +1051,9 @@ export declare function prepareGitRangePatch(base: string, head: string, path?: 
 
 /** Git-show route plan shared with external WSL execution. */
 export declare function prepareGitShowPatch(commit: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[]>
+
+/** Join transported NUL-delimited metadata on a worker. */
+export declare function processGitCommitFiles(nameStatus: string, numstat: string): Promise<GitCommitFile[]>
 
 /** Shared supplied-patch processing, including summaries and truncation. */
 export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>

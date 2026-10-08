@@ -425,9 +425,8 @@ impl Task for GitCommitFilesTask {
 /// Read the files a commit touched, with their line counts and its parent.
 ///
 /// Three children become one crossing: the parent comes from `gix`, and the
-/// two `diff-tree` runs are joined in Rust rather than crossing as text. A root
-/// commit has no file list at all — `diff-tree` compares against parents — but
-/// still reports the empty tree as its parent.
+/// two NUL-delimited `diff-tree` runs are joined in Rust. Root commits compare
+/// against the empty tree; merges compare against the first parent.
 #[napi(ts_return_type = "Promise<GitCommitFiles>")]
 pub fn git_commit_files(
     repo_root: String,
@@ -439,6 +438,30 @@ pub fn git_commit_files(
         commit,
         options: resolve_options(options),
     })
+}
+
+/// Metadata batch for WSL, sharing the host plan.
+#[napi(ts_return_type = "Promise<string[][]>")]
+pub fn prepare_git_commit_files(
+    commit: String,
+) -> AsyncTask<crate::task::Blocking<Vec<Vec<String>>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::commit::commit_files_args(&commit))
+    }))
+}
+
+/// Join transported NUL-delimited metadata on a worker.
+#[napi(ts_return_type = "Promise<GitCommitFile[]>")]
+pub fn process_git_commit_files(
+    name_status: String,
+    numstat: String,
+) -> AsyncTask<crate::task::Blocking<Vec<GitCommitFile>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::commit::parse_commit_files(&name_status, &numstat)
+            .into_iter()
+            .map(GitCommitFile::from)
+            .collect())
+    }))
 }
 
 pub struct GitCommitDiffTask {

@@ -2,12 +2,9 @@
 //! itself: the parent it is diffed against, the files it touched, its diff, and
 //! the blobs and refs a review view resolves.
 //!
-//! The split follows the same rule the range module settled on. Anything that
-//! only reads objects and refs — the parent, a file's content, whether a ref
-//! names a commit — goes through `gix` and spawns nothing. The two `diff-tree`
-//! runs and the `diff` stay on the CLI, because their rename detection and line
-//! counts follow git's own diff drivers and `.gitattributes`, and numbers that
-//! are close but not identical would show up as a wrong file list in the UI.
+//! Object/ref reads use `gix`. Metadata and patches share the first-parent/root
+//! Git CLI plan from `git::patch`; metadata uses NUL-delimited name-status and
+//! numstat output so literal paths survive transport and joins.
 //!
 //! One thing here is deliberately *not* a port. The TypeScript read file
 //! content with `git show <rev>:<path>` and handed back the child's stdout, so
@@ -43,7 +40,7 @@ pub struct CommitFile {
     pub original_path: Option<String>,
     pub status: ChangeStatus,
     /// `None` rather than zero when `--numstat` had nothing to say — a binary
-    /// file, or a path the two `diff-tree` runs spelled differently. The
+    /// file, or a missing numstat row. The
     /// TypeScript left the fields `undefined` there and the UI renders a blank
     /// column rather than a misleading `0`.
     pub additions: Option<u32>,
@@ -75,11 +72,6 @@ fn open(repo_root: &Path, args: &[&str]) -> Result<gix::Repository, GitError> {
     gix::discover(repo_root).map_err(|error| repo_error(args, error))
 }
 
-/// Borrowed argument list to the owned one [`run_git`] takes.
-fn to_args(args: &[&str]) -> Vec<String> {
-    args.iter().map(|arg| (*arg).to_string()).collect()
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // The parent a commit is diffed against
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,186 +97,87 @@ pub fn parent_hash(repo_root: &Path, rev: &str) -> String {
 // The files a commit touched
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Read a leading run of decimal digits the way JavaScript's `parseInt` does.
-///
-/// `parseInt('12abc', 10)` is 12 and `parseInt('abc', 10)` is `NaN`; Rust's
-/// `str::parse` rejects both. Only the second case matters in practice — a
-/// binary file's `-` is filtered before this — but a numstat column that is not
-/// a number has always dropped the row rather than counted as zero.
-fn parse_int_prefix(text: &str) -> Option<u32> {
-    let digits: String = text.trim_start().chars().take_while(char::is_ascii_digit).collect();
-    if digits.is_empty() {
-        return None;
-    }
-    digits.parse().ok()
-}
-
-/// `^(.*)\{.* => (.*)\}(.*)$` — the brace form of a `--numstat` rename path.
-///
-/// A literal port, backtracking order included: the leading `(.*)` is greedy so
-/// the *last* `{` that can work wins, then the arrow is taken as late as
-/// possible, then the closing brace as late as possible. `src/{a.ts => b.ts}`
-/// becomes `src/b.ts`, which is the destination path `--name-status` reports
-/// and therefore what the two outputs join on.
-fn match_brace_form(path: &str) -> Option<String> {
-    for open in (0..path.len()).rev() {
-        if !path.is_char_boundary(open) || !path[open..].starts_with('{') {
-            continue;
-        }
-        let prefix = &path[..open];
-        let rest = &path[open + 1..];
-
-        let mut arrow_limit = rest.len();
-        while let Some(arrow) = rest[..arrow_limit].rfind(" => ") {
-            let after = arrow + 4;
-            if let Some(offset) = rest[after..].rfind('}') {
-                let close = after + offset;
-                return Some(format!("{prefix}{}{}", &rest[after..close], &rest[close + 1..]));
-            }
-            arrow_limit = arrow;
-        }
-    }
-    None
-}
-
-/// `^.* => (.*)$` — the plain form, where the destination is simply everything
-/// after the last arrow.
-fn match_arrow_form(path: &str) -> Option<String> {
-    path.rfind(" => ").map(|arrow| path[arrow + 4..].to_string())
-}
-
-/// Pull the destination path out of a `--numstat` rename entry.
-///
-/// Unlike the range module's reader — which is a port of a regex that is
-/// genuinely broken, see `AGENTS.md` — this one is correct for both forms git
-/// emits, so it is written to stay that way rather than to preserve a bug.
-fn rename_destination(path: &str) -> Option<String> {
-    match_brace_form(path).or_else(|| match_arrow_form(path))
-}
-
-/// Index `git diff-tree --numstat` output by destination path.
-///
-/// Binary files report `-` for both counts and are left out entirely, so the
-/// file they belong to keeps `None` for both fields rather than claiming zero
-/// changed lines.
-fn parse_numstat(numstat: &str) -> HashMap<String, (u32, u32)> {
+/// Join NUL-delimited metadata without interpreting literal tabs, newlines,
+/// quotes or rename arrows inside paths. Name-status preserves Git ordering;
+/// binary and missing numstat rows keep absent counts.
+pub fn parse_commit_files(name_status: &str, numstat: &str) -> Vec<CommitFile> {
     let mut stats = HashMap::new();
-    if numstat.trim().is_empty() {
-        return stats;
-    }
-
-    for line in numstat.trim().split('\n') {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 3 {
-            continue;
-        }
-        if parts[0] == "-" || parts[1] == "-" {
-            continue;
-        }
-        let (Some(additions), Some(deletions)) =
-            (parse_int_prefix(parts[0]), parse_int_prefix(parts[1]))
+    let mut rows = numstat.split('\0');
+    while let Some(row) = rows.next() {
+        let mut columns = row.splitn(3, '\t');
+        let (Some(add), Some(del), Some(path)) = (columns.next(), columns.next(), columns.next())
         else {
             continue;
         };
-
-        // The path is the remaining columns rejoined: a path holding a tab was
-        // split by the same `split('\t')` that separated the counts.
-        let mut path = parts[2..].join("\t");
-        if path.contains(" => ") {
-            if let Some(destination) = rename_destination(&path) {
-                path = destination;
-            }
-        }
-        stats.insert(path, (additions, deletions));
-    }
-    stats
-}
-
-/// Join `--name-status` and `--numstat` output into a commit's file list.
-///
-/// `--name-status` drives the list — it is the one that reports every path and
-/// its rename source — and `--numstat` only decorates it. That is the opposite
-/// of the range module, where numstat drives, and it is why a file missing from
-/// numstat keeps its real status here instead of falling back to `modified`.
-///
-/// Order is git's, and the list is not sorted: what the commit view shows is
-/// `diff-tree`'s own ordering.
-pub fn parse_commit_files(name_status: &str, numstat: &str) -> Vec<CommitFile> {
-    if name_status.trim().is_empty() {
-        return Vec::new();
-    }
-    let stats = parse_numstat(numstat);
-
-    let mut files = Vec::new();
-    for line in name_status.trim().split('\n') {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() < 2 {
-            continue;
-        }
-
-        let code = parts[0];
-        let status = ChangeStatus::from_code(code);
-        // A rename or a copy names both ends; everything else names one path.
-        let (path, original_path) =
-            if (code.starts_with('R') || code.starts_with('C')) && parts.len() >= 3 {
-                (parts[2].to_string(), Some(parts[1].to_string()))
-            } else {
-                (parts[1].to_string(), None)
-            };
-
-        let (additions, deletions) = match stats.get(&path) {
-            Some((additions, deletions)) => (Some(*additions), Some(*deletions)),
-            None => (None, None),
+        let path = if path.is_empty() {
+            let (Some(_old), Some(new)) = (rows.next(), rows.next()) else { break };
+            new
+        } else {
+            path
         };
-        files.push(CommitFile { path, original_path, status, additions, deletions });
+        if let (Ok(add), Ok(del)) = (add.parse::<u32>(), del.parse::<u32>()) {
+            stats.insert(path, (add, del));
+        }
+    }
+    let mut rows = name_status.split('\0');
+    let mut files = Vec::new();
+    while let Some(code) = rows.next().filter(|code| !code.is_empty()) {
+        let Some(first) = rows.next().filter(|path| !path.is_empty()) else { break };
+        let (path, original_path) = if code.starts_with('R') || code.starts_with('C') {
+            let Some(new) = rows.next().filter(|path| !path.is_empty()) else { break };
+            (new, Some(first.to_string()))
+        } else {
+            (first, None)
+        };
+        let counts = stats.get(path);
+        files.push(CommitFile {
+            path: path.to_string(),
+            original_path,
+            status: ChangeStatus::from_code(code),
+            additions: counts.map(|counts| counts.0),
+            deletions: counts.map(|counts| counts.1),
+        });
     }
     files
 }
 
-/// Read the files a commit touched, with their line counts.
-///
-/// Two `diff-tree` runs, exactly as before. A failing `--numstat` is swallowed:
-/// the counts are decoration the TypeScript already treated as optional, and
-/// losing them is not worth losing the file list over.
+/// Metadata and patches share first-parent/root comparison and path options.
+/// The complete batch is also supplied to the external WSL transport.
+pub fn commit_files_args(commit: &str) -> Vec<Vec<String>> {
+    ["--name-status", "--numstat"]
+        .iter()
+        .map(|format| {
+            let mut args = super::patch::commit_patch_args(commit, None, None);
+            args.retain(|arg| arg != "-p");
+            args.splice(2..2, [format.to_string(), "-z".into()]);
+            args
+        })
+        .collect()
+}
+
 pub fn commit_files(
     repo_root: &Path,
     commit: &str,
     options: &GitCommandOptions,
 ) -> Result<CommitFiles, GitError> {
-    let name_status = run_git(
-        repo_root,
-        &to_args(&["diff-tree", "--no-commit-id", "--name-status", "-r", "-M", "-C", commit]),
-        options,
-    )?;
-    let numstat = run_git(
-        repo_root,
-        &to_args(&["diff-tree", "--no-commit-id", "--numstat", "-r", "-M", "-C", commit]),
-        options,
-    );
-
+    let args = commit_files_args(commit);
+    let name_status = run_git(repo_root, &args[0], options)?;
+    let numstat = run_git(repo_root, &args[1], options)?;
     Ok(CommitFiles {
         parent_hash: parent_hash(repo_root, commit),
-        files: parse_commit_files(&name_status, numstat.as_deref().unwrap_or("")),
+        files: parse_commit_files(&name_status, &numstat),
     })
 }
 
 /// Read a commit's diff against its parent.
 ///
-/// The parent comes from `gix`, so the two children the TypeScript spawned for
-/// this are down to one.
+/// Uses the same first-parent/root CLI plan as the patch backend.
 pub fn commit_diff(
     repo_root: &Path,
     commit: &str,
     options: &GitCommandOptions,
 ) -> Result<String, GitError> {
-    let parent = parent_hash(repo_root, commit);
-    run_git(repo_root, &to_args(&["diff", &parent, commit]), options)
+    run_git(repo_root, &super::patch::commit_patch_args(commit, None, None), options)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -95,11 +95,10 @@ describe('getCommitFiles', () => {
         expect(added?.deletions).toBe(0);
     });
 
-    // `diff-tree` compares a commit against its parents, so the first commit in
-    // a repository has always shown an empty file list.
-    it('reports the empty tree and no files for a root commit', async () => {
+    it('lists the initial commit files against the empty tree', async () => {
         const files = await service.getCommitFiles(repo, root);
-        expect(files).toEqual([]);
+        expect(files.map(file => file.path)).toEqual(['a file with spaces.md', 'keep.md', 'logo.bin', 'src/old.ts']);
+        expect(files.every(file => file.status === 'added')).toBe(true);
     });
 });
 

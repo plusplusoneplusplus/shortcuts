@@ -150,6 +150,8 @@ export interface NativeGitAddon {
     parseGitStatusPorcelain: typeof Bindings.parseGitStatusPorcelain;
     gitLogCommits: typeof Bindings.gitLogCommits;
     gitLogCommit: typeof Bindings.gitLogCommit;
+    prepareGitCommitFiles: typeof Bindings.prepareGitCommitFiles;
+    processGitCommitFiles: typeof Bindings.processGitCommitFiles;
     gitCommitFiles: typeof Bindings.gitCommitFiles;
     gitCommitDiff: typeof Bindings.gitCommitDiff;
     gitFileContentAtCommit: typeof Bindings.gitFileContentAtCommit;
@@ -202,6 +204,8 @@ const GIT_EXPORTS = [
     'parseGitStatusPorcelain',
     'gitLogCommits',
     'gitLogCommit',
+    'prepareGitCommitFiles',
+    'processGitCommitFiles',
     'gitCommitFiles',
     'gitCommitDiff',
     'gitFileContentAtCommit',
