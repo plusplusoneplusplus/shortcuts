@@ -100,9 +100,9 @@ Production server persistence/index capabilities require the addon and fail
 without it, rather than falling back to JavaScript. Supplied unified patches can
 be parsed on a libuv worker with `loadNativeGit().parseGitPatch`; Forge
 `parseFullDiffAsync` converts native metadata/chunks to public shapes through
-`nativePatchToDiff`. The commit/range providers and production `GitRangeService` patches, file lists
+`nativePatchToDiff`. The commit/range/working-tree providers and production `GitRangeService` patches, file lists
 and statistics use `diff/local-patch.ts`: Rust plans/executes host Git and processes
-patches, while TypeScript executes the shared plan for WSL. Production commit patch
+patches, while TypeScript executes the shared plan for WSL. Working-tree all scope combines HEAD-to-index and index-to-disk patches with unstaged metadata overriding shared paths; provider operations read fresh state and batch failures propagate. Production commit patch
 routes use its git-show plan and native truncation without a route patch cache;
 first-parent provider and combined-merge route semantics stay distinct. Commit metadata
 uses Forge `loadCommitFiles` with Rust NUL-delimited metadata planning/joins for

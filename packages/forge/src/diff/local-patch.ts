@@ -20,8 +20,12 @@ export function loadCommitShowPatch(root: string, commit: string, filePath?: str
     return loadLocalPatch(root, { commit, show: true }, filePath, options);
 }
 
+export function loadWorkingTreePatch(root: string, scope: 'all' | 'staged' | 'unstaged', filePath?: string, options?: GetFileDiffOptions) {
+    return loadLocalPatch(root, { scope }, filePath, options);
+}
+
 async function loadLocalPatch(
-    root: string, source: { commit: string; show?: boolean } | { base: string; head: string },
+    root: string, source: { commit: string; show?: boolean } | { base: string; head: string } | { scope: string },
     filePath?: string, options?: GetFileDiffOptions,
 ) {
     const addon = loadNativeGit();
@@ -29,13 +33,18 @@ async function loadLocalPatch(
     const maxLines = options?.maxLines == null ? undefined : Math.floor(options.maxLines);
     let result;
     if (resolveWorkspaceExecutionContext(root).kind === 'wsl') {
-        const args = 'commit' in source
-            ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
-            : await addon.prepareGitRangePatch(source.base, source.head, filePath, context);
-        result = await addon.processGitPatch(await execGitAsync(args, root), maxLines);
+        if ('scope' in source) {
+            const batch = await addon.prepareGitWorkingTreePatch(source.scope, filePath, context);
+            result = await addon.processGitWorkingTreePatch(await Promise.all(batch.map(args => execGitAsync(args, root))), maxLines);
+        } else {
+            const args = 'commit' in source
+                ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
+                : await addon.prepareGitRangePatch(source.base, source.head, filePath, context);
+            result = await addon.processGitPatch(await execGitAsync(args, root), maxLines);
+        }
     } else {
         await ensureGitSafeDirectoryAsync(root);
-        result = 'commit' in source
+        result = 'scope' in source ? await addon.gitWorkingTreePatch(root, source.scope, filePath, context, maxLines) : 'commit' in source
             ? await (source.show ? addon.gitShowPatch : addon.gitCommitPatch)(root, source.commit, filePath, context, maxLines)
             : await addon.gitRangePatch(root, source.base, source.head, filePath, context, maxLines);
     }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadCommitShowPatch, loadCommitFiles } from '../../src/diff/local-patch';
-import { createCommitDiffProvider } from '../../src/diff/git-diff-provider';
+import { createCommitDiffProvider, createWorkingTreeDiffProvider } from '../../src/diff/git-diff-provider';
 import { execFileAsync } from '../../src/utils/exec-utils';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 
@@ -82,4 +82,23 @@ describe('commit WSL transport using Rust planning and processing', () => {
         vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'WSL failed' });
         await expect(createCommitDiffProvider('\\\\wsl$\\Ubuntu\\home\\repo', 'HEAD').listFiles()).rejects.toThrow('WSL failed');
     });
+});
+
+
+it('routes working-tree batches by distro/root with Rust composition', async () => {
+    vi.mocked(execFileAsync).mockClear();
+    vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
+        stdout: raw.replace('+new', args?.includes('Debian') ? '+two' : '+one'), stderr: '',
+    }));
+    const roots = ['\\\\wsl$\\Ubuntu\\home\\one\\repo', '\\\\wsl$\\Debian\\home\\two\\repo'];
+    const results = await Promise.all(roots.map(root => createWorkingTreeDiffProvider(root).getFullDiff()));
+    expect(results[0].raw).toContain('+one');
+    expect(results[0].raw).not.toContain('+two');
+    expect(results[1].raw).toContain('+two');
+    for (const [index, distro] of ['Ubuntu', 'Debian'].entries()) {
+        const calls = vi.mocked(execFileAsync).mock.calls.filter(call => call[1]?.includes(distro) && call[1]?.includes('diff'));
+        expect(calls).toHaveLength(2);
+        calls.forEach(call => expect(call[1]).toEqual(expect.arrayContaining([`/home/${index === 0 ? 'one' : 'two'}/repo`, '--literal-pathspecs', 'diff'])));
+        expect(calls.filter(call => call[1]?.includes('--cached'))).toHaveLength(1);
+    }
 });

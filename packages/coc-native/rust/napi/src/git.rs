@@ -1765,3 +1765,45 @@ pub fn git_show_patch(
         .map_err(to_napi_error)
     }))
 }
+
+#[napi(ts_return_type = "Promise<string[][]>")]
+pub fn prepare_git_working_tree_patch(
+    scope: String,
+    path: Option<String>,
+    context: Option<u32>,
+) -> AsyncTask<crate::task::Blocking<Vec<Vec<String>>>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::patch::working_tree_patch_args(&scope, path.as_deref(), context)
+            .map_err(to_napi_error)
+    }))
+}
+
+#[napi(ts_return_type = "Promise<PatchResult>")]
+pub fn process_git_working_tree_patch(
+    outputs: Vec<String>,
+    max_lines: Option<i64>,
+) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        Ok(coc_native_core::git::patch::process_working_tree_patch(outputs, max_lines))
+    }))
+}
+
+#[napi(ts_return_type = "Promise<PatchResult>")]
+pub fn git_working_tree_patch(
+    root: String,
+    scope: String,
+    path: Option<String>,
+    context: Option<u32>,
+    max_lines: Option<i64>,
+) -> AsyncTask<crate::task::Blocking<coc_native_core::git::patch::PatchResult>> {
+    AsyncTask::new(crate::task::Blocking::new(move || {
+        coc_native_core::git::patch::working_tree_patch(
+            &PathBuf::from(root),
+            &scope,
+            path.as_deref(),
+            context,
+            max_lines,
+        )
+        .map_err(to_napi_error)
+    }))
+}

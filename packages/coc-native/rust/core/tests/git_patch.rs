@@ -273,3 +273,42 @@ fn commit_planning_matches_root_and_first_parent_without_switching_branches() {
     assert!(commit_patch(root, "--output=oops", None, None, None).is_err());
     assert!(!root.join("oops").exists());
 }
+
+#[test]
+fn working_tree_batch_preserves_comparisons_and_last_metadata() {
+    use coc_native_core::git::patch::{process_working_tree_patch, working_tree_patch_args};
+    let batch = working_tree_patch_args("all", Some("[ab].txt"), Some(0)).unwrap();
+    assert_eq!(batch.len(), 2);
+    assert!(batch[0].contains(&"--cached".into()));
+    assert!(!batch[1].contains(&"--cached".into()));
+    for args in batch {
+        assert_eq!(args[0], "--literal-pathspecs");
+        assert!(args.contains(&"-U0".into()));
+        assert_eq!(args.last().unwrap(), "[ab].txt");
+        assert!(!args.contains(&"HEAD".into()));
+    }
+    assert!(working_tree_patch_args("bad", None, None).is_err());
+    let staged = "diff --git a/same b/same\nnew file mode 100644\n@@ -0,0 +1 @@\n+stage";
+    let unstaged = "diff --git a/same b/same\n@@ -1 +1,2 @@\n-stage\n+disk\n+extra";
+    let result = process_working_tree_patch(vec![staged.into(), unstaged.into()], Some(2));
+    assert_eq!(result.files.len(), 1);
+    assert_eq!(result.files[0].status, "modified");
+    assert_eq!(result.files[0].raw, format!("{staged}\n{unstaged}"));
+    assert_eq!(result.summary.files_changed, 1);
+    assert_eq!((result.summary.additions, result.summary.deletions), (2, 1));
+    assert_eq!(result.content.raw, "diff --git a/same b/same\nnew file mode 100644");
+    assert!(result.content.truncated);
+    assert_eq!(process_working_tree_patch(vec![String::new()], None).content.total_lines, 0);
+}
+
+#[test]
+fn parses_combined_and_unmerged_headers_without_losing_paths() {
+    let raw = "diff --cc \"caf\\303\\251.txt\"\n@@@ -1 -1 +1,3 @@@\n++marker\n +ours\n+ theirs";
+    let file = &parse_patch(raw)[0];
+    assert_eq!(file.path, "café.txt");
+    assert_eq!(file.additions, 2);
+    assert!(!file.is_binary);
+    let file = &parse_patch("* Unmerged path same.txt\n")[0];
+    assert_eq!(file.status, "conflict");
+    assert_eq!(file.path, "same.txt");
+}
