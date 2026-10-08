@@ -315,6 +315,9 @@ references before editing. Paths are package-relative.
   uses owning-server committed objects, fails before queueing, performs no implicit
   network/branch switch, and removes without force/branch deletion.
   Git-tab Fetch/Pull uses the exact current-branch upstream; patch metadata is untrusted.
+  Working-tree per-file patch routes use Forge loadWorkingTreePatch for host/WSL
+  planning, Rust processing and truncation; native-load errors return HTTP 500
+  with rebuild instructions. Full-text snapshot loading remains separate.
 
 ## Messaging and Secrets
 

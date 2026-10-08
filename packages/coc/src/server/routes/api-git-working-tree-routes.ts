@@ -4,8 +4,9 @@
  * both full-text sides of a working-tree file.
  */
 
-import { WorkingTreeService, BranchService } from '@plusplusoneplusplus/forge';
-import { badRequest, handleAPIError, missingFields, notFound } from '../errors';
+import { WorkingTreeService, BranchService, loadWorkingTreePatch } from '@plusplusoneplusplus/forge';
+import { NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+import { internalError, badRequest, handleAPIError, missingFields, notFound } from '../errors';
 import { gitCache } from '../git/git-cache';
 import {
     WORKING_TREE_CONTENT_STAGES,
@@ -16,7 +17,7 @@ import {
 import type { WorkingTreeContentStage } from '../git/working-tree-file-content';
 import { resolveWorkspaceOrFail, parseBodyOrReject } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { truncateDiffIfNeeded } from './api-shared';
+import { DIFF_LINE_LIMIT } from './api-shared';
 import { createRoute, asBool } from './route-utils';
 
 export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
@@ -215,9 +216,17 @@ export function registerGitWorkingTreeRoutes(ctx: ApiRouteContext): void {
             const full = query.full;
 
             try {
-                const diff = await workingTreeService.getFileDiff(ws.rootPath, filePath, staged);
-                return { ...truncateDiffIfNeeded(diff, full), path: filePath };
-            } catch {
+                const { content } = await loadWorkingTreePatch(ws.rootPath, staged ? 'staged' : 'unstaged', filePath, {
+                    contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT,
+                });
+                return {
+                    diff: content.raw, path: filePath,
+                    ...(content.truncated ? { truncated: true, totalLines: content.totalLines } : {}),
+                };
+            } catch (error) {
+                if (error instanceof NativeAddonLoadError) {
+                    return void handleAPIError(res, internalError(error.message));
+                }
                 return { diff: '', path: filePath };
             }
         },
