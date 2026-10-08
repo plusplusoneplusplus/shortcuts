@@ -75,7 +75,7 @@ describe('commit WSL transport using Rust planning and processing', () => {
 
     it('routes metadata batches by distro and joins literal paths in Rust', async () => {
         vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
-            stdout: args?.includes('--name-status')
+            stdout: args?.includes('--format=%P') ? '' : args?.includes('--name-status')
                 ? 'R100\0old\0café\t\n.txt\0M\0bin\0'
                 : `${args?.includes('Debian') ? 2 : 1}\t0\t\0old\0café\t\n.txt\0-\t-\tbin\0`,
             stderr: '',
@@ -91,6 +91,37 @@ describe('commit WSL transport using Rust planning and processing', () => {
             expect(calls).toHaveLength(2);
             calls.forEach(call => expect(call[1]).toEqual(expect.arrayContaining(['--root', '--first-parent', '--literal-pathspecs'])));
         }
+    });
+
+    it('GitLogService attaches each WSL comparison parent and preserves literal metadata', async () => {
+        vi.mocked(execFileAsync).mockClear();
+        vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
+            stdout: args?.includes('--format=%P') ? (args.includes('Debian') ? '' : 'parent-one parent-two\n')
+                : args?.includes('--name-status') ? 'R100\0old\0café\t\n.txt\0M\0bin\0'
+                : '2\t1\t\0old\0café\t\n.txt\0-\t-\tbin\0',
+            stderr: '',
+        }));
+        const roots = ['\\\\wsl$\\Ubuntu\\home\\one\\repo', '\\\\wsl$\\Debian\\home\\two\\repo'];
+        await expect(loadNativeGit().gitCommitFiles(roots[0], 'HEAD')).rejects.toThrow();
+        const service = new GitLogService();
+        const results = await Promise.all(roots.map(root => service.getCommitFiles(root, 'HEAD')));
+        for (const [index, files] of results.entries()) {
+            expect(files).toEqual([
+                { path: 'café\t\n.txt', originalPath: 'old', status: 'renamed', additions: 2, deletions: 1,
+                    commitHash: 'HEAD', parentHash: index ? '4b825dc642cb6eb9a060e54bf8d69288fbee4904' : 'parent-one', repositoryRoot: roots[index] },
+                { path: 'bin', status: 'modified', commitHash: 'HEAD',
+                    parentHash: index ? '4b825dc642cb6eb9a060e54bf8d69288fbee4904' : 'parent-one', repositoryRoot: roots[index] },
+            ]);
+            const calls = vi.mocked(execFileAsync).mock.calls.filter(call => call[1]?.includes(index ? 'Debian' : 'Ubuntu'));
+            expect(calls).toHaveLength(3);
+            calls.forEach(call => expect(call[1]).toContain(`/home/${index ? 'two' : 'one'}/repo`));
+            expect(calls.find(call => call[1]?.includes('--format=%P'))?.[1]).toEqual(expect.arrayContaining(['--end-of-options', 'HEAD', '--']));
+        }
+        vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => {
+            if (args?.includes('--format=%P')) throw { stderr: 'parent transport failed' };
+            return { stdout: args?.includes('--name-status') ? 'A\0a\0' : '1\t0\ta\0', stderr: '' };
+        });
+        expect(await service.getCommitFiles(roots[0], 'HEAD')).toEqual([]);
     });
 
     it('does not report partial metadata after a numstat transport failure', async () => {

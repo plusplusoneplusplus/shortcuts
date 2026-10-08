@@ -159,7 +159,7 @@ export interface NativeGitAddon {
     gitLogCommits: typeof Bindings.gitLogCommits;
     gitLogCommit: typeof Bindings.gitLogCommit;
     prepareGitCommitFiles: typeof Bindings.prepareGitCommitFiles;
-    processGitCommitFiles: typeof Bindings.processGitCommitFiles;
+    processGitCommitMetadata: typeof Bindings.processGitCommitMetadata;
     gitCommitFiles: typeof Bindings.gitCommitFiles;
     gitCommitDiff: typeof Bindings.gitCommitDiff;
     gitFileContentAtCommit: typeof Bindings.gitFileContentAtCommit;
@@ -221,7 +221,7 @@ const GIT_EXPORTS = [
     'gitLogCommits',
     'gitLogCommit',
     'prepareGitCommitFiles',
-    'processGitCommitFiles',
+    'processGitCommitMetadata',
     'gitCommitFiles',
     'gitCommitDiff',
     'gitFileContentAtCommit',

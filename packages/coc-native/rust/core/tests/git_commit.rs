@@ -12,8 +12,9 @@ use std::path::Path;
 use std::process::Command;
 
 use coc_native_core::git::commit::{
-    commit_diff, commit_files, file_bytes_at_commit, file_content_at_commit, file_exists_at_commit,
-    parent_hash, parse_commit_files, validate_ref, EMPTY_TREE_HASH,
+    commit_diff, commit_files, commit_files_args, file_bytes_at_commit, file_content_at_commit,
+    file_exists_at_commit, parent_hash, parse_commit_files, process_commit_metadata, validate_ref,
+    EMPTY_TREE_HASH,
 };
 use coc_native_core::git::status::ChangeStatus;
 use coc_native_core::git::GitCommandOptions;
@@ -555,4 +556,26 @@ fn validate_ref_fails_for_a_path_that_is_not_a_repository() {
     let dir = TempDir::new().expect("temp dir");
     let error = validate_ref(dir.path(), "HEAD").expect_err("not a repository");
     assert!(error.to_string().starts_with("git rev-parse --verify"), "{error}");
+}
+
+#[test]
+fn transported_metadata_matches_host_for_root_ordinary_and_merge_commits() {
+    let (dir, first, second) = repo_with_history();
+    let tree = git_stdout(dir.path(), &["rev-parse", &format!("{second}^{{tree}}")]);
+    let merge =
+        git_stdout(dir.path(), &["commit-tree", &tree, "-p", &second, "-p", &first, "-m", "merge"]);
+    for (revision, expected_parent) in
+        [(&first, EMPTY_TREE_HASH), (&second, first.as_str()), (&merge, second.as_str())]
+    {
+        let batch = commit_files_args(revision);
+        let outputs: Vec<String> = batch
+            .iter()
+            .map(|args| coc_native_core::git::run_git(dir.path(), args, &options()).unwrap())
+            .collect();
+        let transported = process_commit_metadata(&outputs[0], &outputs[1], &outputs[2]);
+        assert_eq!(transported.parent_hash, expected_parent);
+        assert_eq!(transported, commit_files(dir.path(), revision, &options()).unwrap());
+    }
+    let batch = commit_files_args("--all");
+    assert!(coc_native_core::git::run_git(dir.path(), &batch[2], &options()).is_err());
 }

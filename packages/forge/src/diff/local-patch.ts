@@ -68,12 +68,16 @@ async function loadLocalPatch(
 
 /** Commit metadata retains Git ordering and absent binary counts. */
 export async function loadCommitFiles(root: string, commit: string, timeout = 30000) {
+    return (await loadCommitMetadata(root, commit, timeout)).files;
+}
+
+export async function loadCommitMetadata(root: string, commit: string, timeout = 30000) {
     const addon = loadNativeGit();
     if (resolveWorkspaceExecutionContext(root).kind === 'wsl') {
         const batch = await addon.prepareGitCommitFiles(commit);
-        const [names, counts] = await Promise.all(batch.map(args => execGitAsync(args, root, { timeout })));
-        return addon.processGitCommitFiles(names, counts);
+        const [names, counts, parents] = await Promise.all(batch.map(args => execGitAsync(args, root, { timeout })));
+        return addon.processGitCommitMetadata(names, counts, parents);
     }
     await ensureGitSafeDirectoryAsync(root);
-    return (await addon.gitCommitFiles(root, commit, { timeout })).files;
+    return addon.gitCommitFiles(root, commit, { timeout });
 }

@@ -274,7 +274,7 @@ export interface GitCommitFile {
 /**
  * Read the files a commit touched, with their line counts and its parent.
  *
- * Three children become one crossing: the parent comes from `gix`, and the
+ * Three children share one crossing: Git supplies the parent list and the
  * two NUL-delimited `diff-tree` runs are joined in Rust. Root commits compare
  * against the empty tree; merges compare against the first parent.
  */
@@ -1067,8 +1067,8 @@ export declare function prepareGitShowPatch(commit: string, path?: string | unde
 
 export declare function prepareGitWorkingTreePatch(scope: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[][]>
 
-/** Join transported NUL-delimited metadata on a worker. */
-export declare function processGitCommitFiles(nameStatus: string, numstat: string): Promise<GitCommitFile[]>
+/** Join transported NUL metadata and resolve its comparison parent on a worker. */
+export declare function processGitCommitMetadata(nameStatus: string, numstat: string, parents: string): Promise<GitCommitFiles>
 
 /** Shared supplied-patch processing, including summaries and truncation. */
 export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>

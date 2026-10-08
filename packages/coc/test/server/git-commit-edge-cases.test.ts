@@ -64,8 +64,8 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
             const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
             const native = loadNativeGit();
             const batch = await native.prepareGitCommitFiles(commit);
-            const [names, counts] = await Promise.all(batch.map(args => mockExecGit(args, root, {})));
-            return native.processGitCommitFiles(names, counts);
+            const [names, counts, parents] = await Promise.all(batch.map(args => mockExecGit(args, root, {})));
+            return (await native.processGitCommitMetadata(names, counts, parents ?? '')).files;
         },
         loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {
             const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
