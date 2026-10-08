@@ -19,6 +19,12 @@ import type { ProviderPullRequestCheck, ProviderPullRequestCommit } from '@plusp
 import { safeRm } from '../helpers/safe-rm';
 import { clearPullRequestFileContentCache, type PullRequestFileCliRunner } from '../../src/server/git/pull-request-file-content';
 
+vi.mock('@plusplusoneplusplus/coc-native', async importOriginal => {
+    const actual = await importOriginal<typeof import('@plusplusoneplusplus/coc-native')>();
+    return { ...actual, loadNativeGit: vi.fn(actual.loadNativeGit) };
+});
+import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
+
 // ── Mock ProviderFactory and RepoTreeService ─────────────────────────────────
 
 vi.mock('../../src/server/providers/provider-factory', function () { return ({
@@ -306,6 +312,36 @@ describe('GET /api/origins/:originId/pull-requests', () => {
             changedFiles: 2,
         });
         expect(mockSvc.getDiff).toHaveBeenCalledWith(REPO_ID, 42);
+    });
+
+    it('counts quoted paths, header-like hunk lines and metadata-only files through Rust', async () => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue([
+            'diff --git "a/tab\\tname.ts" "b/tab\\tname.ts"',
+            '--- "a/tab\\tname.ts"',
+            '+++ "b/tab\\tname.ts"',
+            '@@ -1 +1 @@',
+            '---removed text',
+            '+++added text',
+            'diff --git a/empty b/empty',
+            'new file mode 100644',
+            'diff --git a/image b/image',
+            'Binary files a/image and b/image differ',
+            '',
+        ].join('\n'));
+
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
+        expect(res.status).toBe(200);
+        const body = await res.json() as { pullRequests: Array<{ diffStats: unknown }> };
+        expect(body.pullRequests[0].diffStats).toEqual({ additions: 1, deletions: 1, changedFiles: 3 });
+    });
+
+    it('reports missing native processing rather than silently omitting diff stats', async () => {
+        vi.mocked(loadNativeGit).mockImplementationOnce(() => {
+            throw new NativeAddonLoadError('Rebuild with npm run build:native -w packages/coc-native');
+        });
+        const res = await fetch(originPullRequestsUrl(``, REPO_ID));
+        expect(res.status).toBe(500);
+        expect(await res.text()).toContain('npm run build:native');
     });
 
     it('reuses cached diff stats for the same PR head across forced list refreshes', async () => {
@@ -1555,6 +1591,52 @@ describe('GET /api/origins/:originId/pull-requests/:prId/diff/files/:filePath', 
         (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network'));
         const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('src/foo.ts')}`, REPO_ID));
         expect(res.status).toBe(500);
+    });
+
+    it.each([false, true])('returns exact quoted rename bytes with fullContext=%s', async fullContext => {
+        const quotedPatch = [
+            'diff --git "a/old\\tname.ts" "b/new\\tname.ts"',
+            'similarity index 80%',
+            'rename from "old\\tname.ts"',
+            'rename to "new\\tname.ts"',
+            '--- "a/old\\tname.ts"',
+            '+++ "b/new\\tname.ts"',
+            '@@ -1 +1 @@',
+            '-old',
+            '+new',
+            '',
+        ].join('\n');
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(quotedPatch + combinedDiff);
+        const suffix = fullContext ? '?fullContext=true' : '';
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('new\tname.ts')}${suffix}`, REPO_ID));
+        expect(res.status).toBe(200);
+        const body = await res.json() as { diff: string; fullContextUnavailable?: boolean };
+        expect(body.diff).toBe(quotedPatch);
+        expect(body.fullContextUnavailable).toBe(fullContext ? true : undefined);
+
+        const oldPath = await fetch(originPullRequestsUrl(`/42/diff/files/${encodeURIComponent('old\tname.ts')}`, REPO_ID));
+        expect(await oldPath.json()).toEqual({ diff: '' });
+    });
+
+    it('keeps binary and mode-only per-file patch bytes', async () => {
+        const binary = 'diff --git a/image b/image\nBinary files a/image and b/image differ\n';
+        const mode = 'diff --git a/script b/script\nold mode 100644\nnew mode 100755\n';
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(binary + mode);
+        for (const [file, diff] of [['image', binary], ['script', mode]]) {
+            const res = await fetch(originPullRequestsUrl(`/42/diff/files/${file}`, REPO_ID));
+            expect(res.status).toBe(200);
+            expect(await res.json()).toEqual({ diff });
+        }
+    });
+
+    it('reports missing native processing rather than returning an empty file patch', async () => {
+        (mockSvc.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue(combinedDiff);
+        vi.mocked(loadNativeGit).mockImplementationOnce(() => {
+            throw new NativeAddonLoadError('Rebuild with npm run build:native -w packages/coc-native');
+        });
+        const res = await fetch(originPullRequestsUrl(`/42/diff/files/src/foo.ts`, REPO_ID));
+        expect(res.status).toBe(500);
+        expect(await res.text()).toContain('npm run build:native');
     });
 
     it('decodes URL-encoded file paths', async () => {

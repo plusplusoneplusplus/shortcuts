@@ -54,7 +54,7 @@ import { sortPullRequestsByCreatedDesc } from '../spa/client/react/features/pull
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
-import { computeSummary, execGitAsync, parseFullDiff, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
+import { execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestAutoMerge, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
@@ -78,32 +78,10 @@ import {
 // Helpers
 // ============================================================================
 
-/**
- * Extract the diff text for a single file from a combined unified diff.
- * Returns the raw diff section (from `diff --git` to the next `diff --git` or EOF).
- */
-function extractFileDiffFromCombined(combinedDiff: string, filePath: string): string | null {
-    const lines = combinedDiff.split('\n');
-    let capturing = false;
-    const result: string[] = [];
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.startsWith('diff --git ')) {
-            if (capturing) break;
-            const body = line.slice('diff --git '.length);
-            const bIdx = body.lastIndexOf(' b/');
-            const path = bIdx !== -1 ? body.slice(bIdx + 3) : '';
-            if (path === filePath) {
-                capturing = true;
-                result.push(line);
-            }
-        } else if (capturing) {
-            result.push(line);
-        }
-    }
-
-    return result.length > 0 ? result.join('\n') : null;
+/** Rust decodes Git paths and retains the exact per-file patch bytes. */
+async function extractFileDiffFromCombined(combinedDiff: string, filePath: string): Promise<string | null> {
+    const files = await loadNativeGit().parseGitPatch(combinedDiff);
+    return files.find(file => file.path === filePath)?.raw ?? null;
 }
 
 /** Detect whether an error is an authentication/authorization failure. */
@@ -775,9 +753,8 @@ function clearPrDiffStatsCacheEntries(cacheScopeId: string, prId: string): void 
     }
 }
 
-function buildPullRequestDiffStats(diff: string): PullRequestDiffStats {
-    const { files } = parseFullDiff(diff);
-    const summary = computeSummary(files);
+async function buildPullRequestDiffStats(diff: string): Promise<PullRequestDiffStats> {
+    const { summary } = await loadNativeGit().processGitPatch(diff);
     return {
         additions: summary.additions,
         deletions: summary.deletions,
@@ -801,7 +778,7 @@ async function getPullRequestDiffStats(
     if (cached) return cached;
 
     const diff = await prSvc.getDiff(repoId, prId);
-    const stats = buildPullRequestDiffStats(diff);
+    const stats = await buildPullRequestDiffStats(diff);
     if (cacheKey) {
         prDiffStatsCache.set(cacheKey, stats);
     }
@@ -821,6 +798,7 @@ async function enrichPullRequestsWithDiffStats(
             const diffStats = await getPullRequestDiffStats(cacheScopeId, repoId, pr, prSvc);
             return diffStats ? { ...pr, diffStats } : pr;
         } catch (err) {
+            rethrowIfAddonUnavailable(err);
             const prId = getPullRequestProviderId(pr);
             console.warn(
                 `[pr-list] failed to load diff stats for repo=${repoId} pr=${prId ?? '(unknown)'}: ${err instanceof Error ? err.message : String(err)}`,
@@ -1629,7 +1607,7 @@ export function registerPrRoutes(
 
             // Fallback: no local clone, no PR detail, or local git produced
             // nothing — serve the degraded hunk diff plus the unavailable reason.
-            const fallbackDiff = extractFileDiffFromCombined(
+            const fallbackDiff = await extractFileDiffFromCombined(
                 await getCachedCombinedDiff(
                     options.cacheScopeId,
                     options.repoId,
@@ -1649,7 +1627,7 @@ export function registerPrRoutes(
             normalizePullRequestHeadSha(prData),
             prSvc.getDiff.bind(prSvc),
         );
-        sendJson(res, { diff: extractFileDiffFromCombined(combinedDiff, options.filePath) ?? '' });
+        sendJson(res, { diff: await extractFileDiffFromCombined(combinedDiff, options.filePath) ?? '' });
     }
 
     async function sendPullRequestUnifiedDiff(
