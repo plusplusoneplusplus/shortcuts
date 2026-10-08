@@ -22,6 +22,7 @@ pub mod commit;
 pub mod config;
 pub mod diff;
 pub mod log;
+pub mod patch;
 pub mod range;
 pub mod remote;
 pub mod repo;
