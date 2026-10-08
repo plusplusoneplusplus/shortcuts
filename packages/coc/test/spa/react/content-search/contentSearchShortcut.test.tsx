@@ -202,4 +202,20 @@ describe('useContentSearchShortcut', () => {
         expect(handlers.onOpen).not.toHaveBeenCalled();
         expect(event.defaultPrevented).toBe(false);
     });
+
+    it('does not handle a shortcut already claimed by another listener', () => {
+        const first = mountShortcut('repo');
+        const second = mountShortcut('repo');
+        document.dispatchEvent(key());
+        expect(first.handlers.onOpen).toHaveBeenCalledTimes(1);
+        expect(second.handlers.onOpen).not.toHaveBeenCalled();
+    });
+
+    it('leaves normal Monaco find untouched', () => {
+        const { handlers } = mountShortcut('repo');
+        const event = key({ shiftKey: false });
+        document.dispatchEvent(event);
+        expect(handlers.onOpen).not.toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(false);
+    });
 });

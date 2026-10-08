@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MonacoFileDiffViewer } from '../../../../../../src/server/spa/client/react/features/git/diff/MonacoFileDiffViewer';
 import { createMonacoDiffSelectionDragPayload } from '../../../../../../src/server/spa/client/react/features/git/diff/diffSelectionContext';
 import { createFakeDiffEditor, flush } from './fakeDiffEditorAdapter';
+import { focusedMonacoSelection } from '../../../../../../src/server/spa/client/react/shared/monaco/focusedSelection';
+import { useContentSearchShortcut } from '../../../../../../src/server/spa/client/react/features/repo-detail/content-search/useContentSearchShortcut';
 const state = vi.hoisted(() => ({ enabled: true, route: vi.fn() }));
 vi.mock('../../../../../../src/server/spa/client/react/layout/ThemeProvider', () => ({ useTheme: () => ({ theme: 'light' }) }));
 vi.mock('../../../../../../src/server/spa/client/react/utils/config', () => ({ isSessionContextAttachmentsEnabled: () => state.enabled }));
@@ -15,6 +17,8 @@ async function mount(viewMode: 'split' | 'unified' = 'split', destinationId?: st
     const fake = createFakeDiffEditor();
     const sides = Object.fromEntries(['original', 'modified'].map(side => {
         const host = document.createElement('div');
+        const buffer = document.createElement('textarea');
+        host.append(buffer);
         const events: Record<string, () => void> = {};
         const data = { empty: true, focused: false, snippet: side === 'original' ? 'old' : 'unsaved', top: 40 };
         const listen = (name: string, cb: () => void) => { events[name] = cb; return { dispose: vi.fn() }; };
@@ -23,6 +27,7 @@ async function mount(viewMode: 'split' | 'unified' = 'split', destinationId?: st
         const editor = {
             getDomNode: () => host, getSelection: () => selection,
             getModel: () => ({ getValueInRange: () => data.snippet }), hasWidgetFocus: () => data.focused,
+            hasTextFocus: () => document.activeElement === buffer,
             getScrolledVisiblePosition: () => ({ top: data.top, left: 90, height: 20 }),
             getLayoutInfo: () => ({ width: 400, height: 300, contentLeft: 40, contentWidth: 350 }),
             onDidChangeCursorSelection: (cb: () => void) => listen('selection', cb),
@@ -31,7 +36,7 @@ async function mount(viewMode: 'split' | 'unified' = 'split', destinationId?: st
             onDidChangeModel: (cb: () => void) => listen('model', cb),
             onDidBlurEditorWidget: (cb: () => void) => listen('blur', cb),
         };
-        return [side, { host, events, data, editor }];
+        return [side, { host, buffer, events, data, editor }];
     }));
     fake.adapter.getSelectionEditor = side => sides[side].editor as any;
     render(<MonacoFileDiffViewer workspaceId="repo-A" relativePath="src/a.ts" stage="unstaged"
@@ -70,6 +75,26 @@ it('hides on collapse, scroll out of view, model change, and blur in unified vie
 it('hides with the feature disabled', async () => {
     state.enabled = false; const h = await mount(); h.select('modified');
     expect(screen.queryByText('Attach as context')).toBeNull(); expect(state.route).not.toHaveBeenCalled();
+});
+
+it.each(['original', 'modified'])('exposes only the focused %s buffer selection for search', async side => {
+    const onOpen = vi.fn();
+    renderHook(() => useContentSearchShortcut({
+        scope: 'repo', overlayOpen: false, onOpen, onFocusExisting: vi.fn(),
+    }));
+    const h = await mount();
+    h.select('original');
+    h.select('modified');
+    h.sides[side].buffer.focus();
+    expect(focusedMonacoSelection()).toBe(h.sides[side].data.snippet);
+    fireEvent.keyDown(h.sides[side].buffer, { key: 'F', ctrlKey: true, shiftKey: true });
+    expect(onOpen).toHaveBeenLastCalledWith(h.sides[side].data.snippet);
+    h.sides[side].data.empty = true;
+    expect(focusedMonacoSelection()).toBeUndefined();
+    fireEvent.keyDown(h.sides[side].buffer, { key: 'F', metaKey: true, shiftKey: true });
+    expect(onOpen).toHaveBeenLastCalledWith(undefined);
+    h.sides[side].buffer.blur();
+    expect(focusedMonacoSelection()).toBeUndefined();
 });
 
 it.each(['repo-A', 'remote:one:repo-A', 'remote:two:repo-A'])('keeps destination %s separate from the diff payload workspace on both sides', async destinationId => {

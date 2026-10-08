@@ -8,6 +8,7 @@
  * terminal focus, whether the overlay is already up) and performs the outcome.
  */
 import { useEffect } from 'react';
+import { focusedMonacoSelection } from '../../../shared/monaco/focusedSelection';
 import {
     contentSearchOwner,
     contentSearchShortcut,
@@ -34,7 +35,7 @@ export interface ContentSearchShortcutOptions {
     /** The overlay is currently on screen. */
     overlayOpen: boolean;
     /** Open the overlay. The element that invoked it is captured by the caller. */
-    onOpen: () => void;
+    onOpen: (initialQuery?: string) => void;
     /** Re-focus and select the already-open overlay's query field. */
     onFocusExisting: () => void;
 }
@@ -44,6 +45,7 @@ export function useContentSearchShortcut(options: ContentSearchShortcutOptions):
     useEffect(() => {
         if (scope === null) return;
         const onKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented) return;
             if (contentSearchShortcut(event) === null) return;
             const outcome = contentSearchOwner({
                 scope,
@@ -53,7 +55,7 @@ export function useContentSearchShortcut(options: ContentSearchShortcutOptions):
             if (outcome === 'ignore') return;
             event.preventDefault();
             event.stopPropagation();
-            if (outcome === 'open') onOpen();
+            if (outcome === 'open') onOpen(focusedMonacoSelection());
             else onFocusExisting();
         };
         document.addEventListener('keydown', onKeyDown, true);

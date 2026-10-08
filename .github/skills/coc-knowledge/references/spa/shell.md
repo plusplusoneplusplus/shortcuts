@@ -323,7 +323,15 @@ a result-owned preview without changing the page-level group. Ordinary repos and
 Ctrl/Cmd+O retain target-scoped ownership.
 
 Ctrl/Cmd+Shift+F opens the page-level tracked-content overlay from any desktop
-repo or repo-group sub-tab. Single-click or arrows select a result and read the
+repo or repo-group sub-tab. The focused Git Monaco diff buffer seeds the query
+through `shared/monaco/focusedSelection`, which resolves the registered editor
+from DOM focus and reads its live model range only with Monaco text focus.
+Both diff sides register in `MonacoFileDiffViewer`, including right-panel hosts.
+Selected text stays literal and multiline: seeding disables regex, preserves
+other controls, and leaves execution to Enter. With no selection, saved controls
+remain intact. Repeated shortcuts focus the existing dialog; Ctrl/Cmd+F stays
+with Monaco. Git review popouts have no content-search host.
+Single-click or arrows select a result and read the
 file through its clone-qualified owner route into a cancellable, text-only source
 preview. Enter, double-click, or Open file preflights the owner and path before
 opening the matched line in the unified-panel preview slot. Group results keep

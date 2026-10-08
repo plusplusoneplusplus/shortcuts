@@ -82,7 +82,7 @@ describe('ContentSearchOverlayHost', () => {
     it('repeating the shortcut re-focuses the same dialog instead of stacking another', () => {
         render(<ContentSearchOverlayHost workspaceId="coc" />);
         pressShortcut();
-        const query = screen.getByTestId('content-search-overlay-query') as HTMLInputElement;
+        const query = screen.getByTestId('content-search-overlay-query') as HTMLTextAreaElement;
         fireEvent.change(query, { target: { value: 'needle' } });
         query.blur();
 
