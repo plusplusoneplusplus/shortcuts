@@ -636,9 +636,11 @@ same-origin clone. Classic pop-out views call the per-file diff endpoint with
 `fullContext=true`; the server tries a full-file-context git diff from PR `baseSha` to
 `headSha`, fetches missing commits into that checkout, then degrades to hunk-only data
 with `fullContextUnavailable: true`. Rust decodes supplied Git patch paths and selects
-per-file chunks with their exact bytes. Each list refresh fetches current provider
-patches and maps Rust summaries to diff statistics, including when the base moves
-with an unchanged head or revision metadata is missing. Fresh list-response cache
+per-file chunks with their exact bytes. Combined and per-file hunk requests fetch
+current provider bytes through the selected clone; full-context fallback uses the
+same transport. Each list refresh fetches current provider patches and maps Rust
+summaries to diff statistics, including when the base moves with an unchanged head
+or revision metadata is missing. Fresh list-response cache
 hits reuse enriched rows; there is no separate patch-statistics cache.
 The paired-content endpoint reads both snapshots
 from local objects first and falls back to the user's authenticated `gh api` or
