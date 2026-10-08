@@ -97,7 +97,9 @@ do not initialize WebView2.
 for stale binaries, and can provision Rust;
 `COC_NATIVE_AUTO_INSTALL_RUST=0` disables provisioning.
 Production server persistence/index capabilities require the addon and fail
-without it, rather than falling back to JavaScript.
+without it, rather than falling back to JavaScript. Supplied unified patches can
+be parsed on a libuv worker with `loadNativeGit().parseGitPatch`; Forge
+`parseFullDiffAsync` converts the native metadata and chunks to its public shapes.
 
 `packages/coc-native/rust/teams-cli` is a standalone Cargo workspace project providing
 the `teams-cli` chat CLI through `teams-sdk`. It shares the native lockfile and CI gates

@@ -48,7 +48,7 @@ const REPOSITORY_STATUS = {
 
 /** A stand-in exporting the whole git capability. */
 const COMPLETE_ADDON =
-    "module.exports = { execGit: async () => 'main', gitStatusEntries: async () => [], " +
+    "module.exports = { parseGitPatch: async () => [], execGit: async () => 'main', gitStatusEntries: async () => [], " +
     'parseGitStatusPorcelain: async () => [], ' +
     'gitLogCommits: async () => ({ commits: [], hasMore: false }), ' +
     'gitLogCommit: async () => null, ' +
@@ -475,4 +475,10 @@ it('never returns null — COC_NATIVE=0 is not an opt-out', () => {
     const file = useAddon(COMPLETE_ADDON);
     expect(loadNativeGit()).not.toBeNull();
     expect(nativeGitStatus()).toEqual({ loaded: true, binaryPath: file });
+});
+
+it('rejects an otherwise complete binary without patch parsing', () => {
+    useAddon(COMPLETE_ADDON.replace('parseGitPatch: async () => [], ', ''));
+    expect(() => loadNativeGit()).toThrow('does not export the git capability');
+    expect(nativeGitStatus().loaded).toBe(false);
 });

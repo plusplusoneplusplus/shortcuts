@@ -1007,6 +1007,12 @@ export declare function parseGitBranchStatus(output: string): Promise<GitReposit
 export declare function parseGitDiffShortstat(text: string): Promise<GitRangeDiffStats>
 
 /**
+ * Parse supplied host, WSL or remote unified-patch text on a libuv worker.
+ * No Git execution, repository lookup, authentication or cached state is involved.
+ */
+export declare function parseGitPatch(raw: string): Promise<PatchFile[]>
+
+/**
  * Join `--numstat` and `--name-status` text that was produced somewhere else.
  *
  * The WSL twin of {@link git_range_changed_files}, for the same reason
@@ -1163,6 +1169,17 @@ export interface ContentSearchResult {
    * for being larger than `max_file_size_bytes`.
    */
   truncated: boolean
+}
+
+export interface PatchFile {
+  path: string
+  originalPath?: string
+  status: string
+  additions: number
+  deletions: number
+  isBinary: boolean
+  raw: string
+  totalLines: number
 }
 
 /** File content as the blob route returns it. */

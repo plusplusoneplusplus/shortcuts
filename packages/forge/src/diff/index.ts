@@ -28,6 +28,7 @@ export {
 
 export {
     parseFullDiff,
+    parseFullDiffAsync,
     splitDiffByFile,
     makeDiffContent,
     computeSummary,
