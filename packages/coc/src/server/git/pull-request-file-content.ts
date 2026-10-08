@@ -1,6 +1,6 @@
 import * as childProcess from 'child_process';
 import * as path from 'path';
-import { execGitAsync, parseFullDiff, ProviderType } from '@plusplusoneplusplus/forge';
+import { execGitAsync, parseFullDiffAsync, ProviderType } from '@plusplusoneplusplus/forge';
 import type { ProviderPullRequest } from '@plusplusoneplusplus/forge';
 import { badRequest, notFound } from '../errors';
 import { ProviderFactory } from '../providers/provider-factory';
@@ -255,7 +255,7 @@ async function loadFromProvider(
             `Pull request file metadata is unavailable: ${error instanceof Error ? error.message : String(error)}`,
         );
     }
-    const file = parseFullDiff(diff).files.find(item => item.path === filePath);
+    const file = (await parseFullDiffAsync(diff)).files.find(item => item.path === filePath);
     if (!file) throw notFound('Changed pull-request file');
     const provider = ProviderFactory.detectProviderType(request.remoteUrl);
     if (!provider) {

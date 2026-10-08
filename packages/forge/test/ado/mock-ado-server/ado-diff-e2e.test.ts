@@ -3,7 +3,7 @@ import { WebApi, getPersonalAccessTokenHandler } from 'azure-devops-node-api';
 import type { GitPullRequestChange, GitPullRequestIteration } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { AdoPullRequestsAdapter } from '../../../src/ado/ado-pull-requests-adapter';
 import { AdoPullRequestsService, VersionControlChangeType } from '../../../src/ado/pull-requests-service';
-import { createPullRequestDiffProviderFromParams, parseFullDiff } from '../../../src/diff';
+import { createPullRequestDiffProviderFromParams, parseFullDiffAsync } from '../../../src/diff';
 import { nullLogger, setLogger } from '../../../src/logger';
 import { changesKey, fileKey, MockAdoServer } from './mock-ado-server';
 
@@ -59,7 +59,7 @@ describe('Mock ADO server diff integration', () => {
         await expect(adapter.getThreads(WORKSPACE_REPO, PR_ID)).resolves.toHaveLength(1);
 
         const diff = await adapter.getDiff(WORKSPACE_REPO, PR_ID);
-        const { files } = parseFullDiff(diff);
+        const { files } = await parseFullDiffAsync(diff);
 
         expect(files).toHaveLength(4);
         expect(files).toEqual(expect.arrayContaining([
@@ -154,7 +154,7 @@ describe('Mock ADO server diff integration', () => {
         });
 
         const diff = await makeAdapter(REAL_REPO).getDiff(WORKSPACE_REPO, PR_ID);
-        const { files } = parseFullDiff(diff);
+        const { files } = await parseFullDiffAsync(diff);
 
         expect(diff).toBe('');
         expect(files).toEqual([]);

@@ -639,7 +639,8 @@ with `fullContextUnavailable: true`. Rust decodes supplied Git patch paths and s
 per-file chunks with their exact bytes; list diff statistics use Rust summaries.
 The paired-content endpoint reads both snapshots
 from local objects first and falls back to the user's authenticated `gh api` or
-`az devops invoke`; binary, symlink, and over-10MB files return no text.
+`az devops invoke`; Rust parses supplied patch metadata for decoded original paths
+and file existence. Binary, symlink, and over-10MB files return no text.
 
 PR review suggestions sit behind `pullRequests.suggestions`. The For You filter's
 generate/refresh action first refreshes origin-scoped review history via

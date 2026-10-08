@@ -6,9 +6,9 @@ Unified abstraction for retrieving diffs from five source types, all behind a si
 
 | Kind | Factory | Backend |
 |------|---------|---------|
-| `commit` | `createCommitDiffProvider(repoRoot, commitHash)` | Local git CLI |
-| `range` | `createRangeDiffProvider(repoRoot, baseRef, headRef)` | Local git CLI |
-| `working-tree` | `createWorkingTreeDiffProvider(repoRoot, scope)` | Local git CLI |
+| `commit` | `createCommitDiffProvider(repoRoot, commitHash)` | Rust Git backend / WSL transport |
+| `range` | `createRangeDiffProvider(repoRoot, baseRef, headRef)` | Rust Git backend / WSL transport |
+| `working-tree` | `createWorkingTreeDiffProvider(repoRoot, scope)` | Rust Git backend / WSL transport |
 | `pr` | `createPullRequestDiffProvider(source, service)` | Remote provider (ADO/GitHub) via `IPullRequestsService` |
 | `pr-iteration` | `createPullRequestIterationDiffProvider(source, fetchDiff)` | Remote provider via callback |
 
@@ -37,25 +37,24 @@ interface IDiffProvider {
 }
 ```
 
-### Loading Strategy
+### Processing
 
-- **Hybrid:** `listFiles()` is cheap metadata; `getFileDiff()` fetches content on demand.
-- **Prefetch:** `prefetchAll()` loads everything in one git call (local) or batched parse (remote) for AI review scenarios.
-- **Truncation:** Pass `maxLines` in `GetFileDiffOptions` to cap diff output. `DiffContent.truncated` indicates if truncation occurred.
+All five operations use Rust-owned patch processing. Local requests execute Git
+through the native host backend or TypeScript WSL transport using the same Rust
+command plan. Remote providers supply authenticated patch data. Operations read
+current source data; TypeScript holds no parsed patch-result cache.
+
+Pass `maxLines` in `GetFileDiffOptions` to cap per-file output; Rust returns
+`DiffContent.truncated` and the original total line count. Supplied remote hunks
+cannot provide additional context.
 
 ## Utilities (`diff-utils.ts`)
 
-| Function | Purpose |
-|----------|---------|
-| `parseFullDiff(raw)` | Parse a full unified diff string into `DiffFileEntry[]` + per-file `DiffContent` map |
-| `splitDiffByFile(raw)` | Split combined diff into per-file chunks |
-| `makeDiffContent(raw)` | Wrap a raw diff string into `DiffContent` |
-| `computeSummary(files)` | Aggregate `DiffSummary` from file entries |
-| `truncateDiffContent(content, maxLines)` | Truncate a `DiffContent` to N lines |
-| `splitIntoChunks(diffChunk)` | Split a file diff into individual hunks |
-| `extractAPath(chunk)` / `extractBPath(chunk)` | Extract `a/` or `b/` path from diff header |
-| `inferStatusFromDiffChunk(chunk)` | Infer add/modify/delete from hunk content |
-| `countAdditionsDeletions(chunk)` | Count `+`/`-` lines in a chunk |
+`parseFullDiffAsync(raw)` parses supplied patch bytes on a native worker and
+returns `DiffFileEntry[]` plus a per-file `DiffContent` map. Git quoting, statuses,
+binary classification and hunk counts are Rust-owned. `nativePatchToDiff(entries)`
+is the internal wire conversion to public maps and locale-sorted file entries.
+Native-load failures propagate with rebuild instructions.
 
 ## Usage
 
@@ -82,13 +81,13 @@ const summary = await wtProvider.getSummary();
 
 ## Architecture
 
-```
-diff/
-├── types.ts              # IDiffProvider, DiffSource union, DiffFileEntry, DiffContent
-├── git-diff-provider.ts  # commit, range, working-tree factories (local git CLI)
-├── pr-diff-provider.ts   # PR, PR-iteration factories (remote providers)
-├── diff-utils.ts         # Shared parsing/splitting/truncation utilities
-└── index.ts              # Barrel re-exports
-```
+- `types.ts`: public provider/source/content contracts.
+- `git-diff-provider.ts`: commit, range and working-tree factories.
+- `local-patch.ts`: shared host/WSL transport and native wire conversion.
+- `pr-diff-provider.ts`: authenticated supplied PR and iteration transport.
+- `diff-utils.ts`: async native parsing adapter and public wire conversion.
+- `index.ts`: public exports.
 
-The diff module depends only on `../git/exec` (for `execGitAsync`) and `../providers/interfaces` (for `IPullRequestsService`). It has no editor-specific runtime dependencies.
+The module uses `coc-native` for patch processing, Git execution utilities for WSL
+transport and `IPullRequestsService` for authenticated remote data. It has no
+editor runtime dependencies.

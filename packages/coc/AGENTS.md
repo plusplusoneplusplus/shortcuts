@@ -320,7 +320,8 @@ references before editing. Paths are package-relative.
   with rebuild instructions. PR supplied per-file chunks and list statistics use
   Rust parsing/summaries, preserving quoted paths and raw bytes; required-native
   failures remain visible. PR combined/stat caches and full-context Git orchestration
-  are separate boundaries. Full-text snapshot loading remains separate.
+  are separate boundaries. PR snapshot fallback metadata uses Forge parseFullDiffAsync
+  for decoded paths and file existence; full-text loading and its cache remain separate.
 
 ## Messaging and Secrets
 
