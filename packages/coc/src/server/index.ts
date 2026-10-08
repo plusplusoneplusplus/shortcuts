@@ -338,12 +338,6 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
     // resolve OpenCode. Live config gates actual usage.
     registerOpenCodeSDKService();
 
-    // Configure the shared Copilot service before any one-shot consumers capture it.
-    const copilotService = options.aiService ?? sdkServiceRegistry.get(SDK_PROVIDER_COPILOT);
-    if (copilotService instanceof CopilotSDKService) {
-        copilotService.configureTransformTransport(resolvedConfig.copilot.transformTransport);
-    }
-
     const requestedProvider = resolvedConfig.defaultProvider === 'codex' ? 'codex'
         : resolvedConfig.defaultProvider === 'claude' ? 'claude'
         : resolvedConfig.defaultProvider === 'opencode' ? 'opencode'
@@ -419,8 +413,14 @@ export async function createExecutionServer(options: ExecutionServerOptions = {}
         }
     };
 
+    // Configure the same Copilot service resolved by one-shot consumers before they capture it.
+    const copilotService = resolveCopilotServiceOrUndefined();
+    if (copilotService instanceof CopilotSDKService) {
+        copilotService.configureTransformTransport(resolvedConfig.copilot.transformTransport);
+    }
+
     // Shared by the decision route and the `system_one` chat tool.
-    const decisionService = createDecisionService(resolveCopilotServiceOrUndefined());
+    const decisionService = createDecisionService(copilotService);
 
     const { registry, bridge, queuePersistence, queueFacade, activateQueueProcessing } = createQueueInfrastructure(
         store, dataDir, { ...options, aiService: resolvedAiService }, queueConfig,
