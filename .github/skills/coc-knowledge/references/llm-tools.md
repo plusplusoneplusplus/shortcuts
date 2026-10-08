@@ -355,7 +355,7 @@ prefix dropped. `system-one/source-resolver.ts` resolves refs against a per-proc
 stored turns, folded by `toolCall.id`, live wins, nested calls skipped, own call excluded via
 `invocation.toolCallId`), trims each source head+tail to 64 KB, and joins labeled
 `### [n] …` sections into `state` (200 KB cap). It then calls the shared `DecisionService` with
-`backend: 'copilot'` whatever the chat provider. Returns compact JSON `{ answers, sources, model,
+`backend: 'copilot'` and model `gpt-6-luna` whatever the chat provider. Returns compact JSON `{ answers, sources, model,
 durationMs }`; errors return `{ error, message, source? }` (`SOURCE_NOT_FOUND`, `SOURCE_PENDING`,
 `SOURCE_FAILED`, `SOURCE_OUTSIDE_WORKSPACE`, `SOURCE_UNSUPPORTED`, `STATE_TOO_LARGE`, or a
 passed-through `DECISION_*` code) instead of throwing. Provider failures retain their

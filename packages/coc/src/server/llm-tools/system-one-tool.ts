@@ -49,7 +49,7 @@ const DESCRIPTION = [
     'Call it after the referenced tool call finishes, not in the same parallel batch.',
     'Question types: `noul` (yes/no → value in [0,1]), `choice` (criteria keys are the options), `score` (criteria is an ordered list of levels).',
     'Confidence values come from the decision model itself and are not calibrated.',
-    'Runs on Copilot (gpt-5.4-mini) no matter which provider this chat uses, so referenced content is sent to Copilot.',
+    'Runs on Copilot (gpt-6-luna) no matter which provider this chat uses, so referenced content is sent to Copilot.',
 ].join(' ');
 
 function errorResult(error: SystemOneError & { details?: unknown }): string {

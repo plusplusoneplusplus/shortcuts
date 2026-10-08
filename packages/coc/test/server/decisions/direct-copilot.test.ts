@@ -12,7 +12,7 @@ import { createSystemOneTool } from '../../../src/server/llm-tools/system-one-to
 import { TitleGenerationService } from '../../../src/server/executors/title-generator';
 import { rankAndCacheSuggestions } from '../../../src/server/repos/pr-suggestions';
 
-const model = 'gpt-5.4-mini';
+const model = 'gpt-6-luna';
 const valid = JSON.stringify({ answers: { ok: { type: 'noul', value: 0.9 } } });
 const body = { state: 'workspace A source', questions: { ok: { type: 'noul', instructions: 'Is this safe?' } } };
 const context = { workspaceId: 'ws-A', workingDirectory: '/repo/A' };
@@ -22,7 +22,7 @@ let dir: string;
 let requests: { path: string; body: any }[];
 let complete: (data: any, res: ServerResponse) => void;
 function response(text: string, extra: Record<string, unknown> = {}) {
-    return { model: 'gpt-5.4-mini-2026-03-17', status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text }] }],
+    return { model, status: 'completed', output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text }] }],
         usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15, input_tokens_details: { cached_tokens: 2 } }, ...extra };
 }
 function json(res: ServerResponse, data: unknown) { res.end(JSON.stringify(data)); }
@@ -32,7 +32,7 @@ beforeEach(async () => {
     server = createServer(async (req, res) => {
         let text = ''; for await (const chunk of req) text += chunk;
         const data = text ? JSON.parse(text) : undefined; requests.push({ path: req.url!, body: data });
-        if (req.url === '/models') json(res, { data: [{ id: model, supported_endpoints: ['/responses'] }, { id: 'gpt-4.1', supported_endpoints: ['/chat/completions'] }] });
+        if (req.url === '/models') json(res, { data: [{ id: model, supported_endpoints: ['/responses'] }, { id: 'gpt-5.4-mini', supported_endpoints: ['/responses'] }, { id: 'gpt-4.1', supported_endpoints: ['/chat/completions'] }] });
         else complete(data, res);
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -50,7 +50,10 @@ describe('direct Copilot product integration', () => {
         const args = { sources: [{ text: 'workspace A source' }], questions: body.questions };
         const raw = await tool.handler!(args, { sessionId: 's', toolCallId: 't', toolName: 'system_one', arguments: args });
         expect(JSON.parse(raw as string)).toMatchObject({ model, answers: { ok: { type: 'noul', value: 0.9 } }, sources: [{ ref: 'text' }] });
-        expect(requests.map(r => r.path)).toEqual(['/models', '/responses']); expect(service.createClient).not.toHaveBeenCalled(); expect(service.isAvailable).not.toHaveBeenCalled();
+        expect(requests.map(r => r.path)).toEqual(['/models', '/responses']);
+        expect(requests[1].body.model).toBe('gpt-6-luna');
+        expect(tool.description).toContain('gpt-6-luna');
+        expect(service.createClient).not.toHaveBeenCalled(); expect(service.isAvailable).not.toHaveBeenCalled();
     });
     it('repairs only successful malformed decision text once, summing known usage without fabricating cache writes', async () => {
         let count = 0; complete = (_data, res) => json(res, response(++count === 1 ? 'not JSON' : valid));
@@ -61,7 +64,7 @@ describe('direct Copilot product integration', () => {
     it.each(['model', 'usage', 'auth', 'protocol'])('does not repair %s transport failures', async failure => {
         complete = (_data, res) => {
             if (failure === 'auth') { res.statusCode = 401; json(res, {}); }
-            else json(res, response(valid, failure === 'model' ? { model: 'gpt-5.4-mini-2099-01-01' }
+            else json(res, response(valid, failure === 'model' ? { model: 'gpt-6-luna-2099-01-01' }
                 : failure === 'usage' ? { usage: { input_tokens: 1, output_tokens: 2, total_tokens: 99 } } : { status: 'incomplete' }));
         };
         const error = await new CopilotDecisionBackend(service).evaluate(validateDecisionRequest(body), context).catch(e => e);

@@ -96,7 +96,7 @@ Typed embedding credentials also support explicit environment, config, gh and re
 
 ### Direct HTTP
 
-Exported `CopilotHttpClient.complete()` supports ordered text, both buffered wire APIs, and reviewed bindings: `gpt-5.4-mini` Responses and `gpt-4.1` Chat Completions, with listed dated identities. Catalog metadata validates bindings; absent endpoint metadata remains unknown. Known public/enterprise hosts are allowlisted. One deadline covers credentials, catalog waiting and inference; redirects and byte-limit violations fail. Embedders can inject bindings, endpoint policy, fetch and clock. Direct mode rejects ambient MCP, agent options, BYOK and offline configuration without retries or fallback.
+Exported `CopilotHttpClient.complete()` supports ordered text, both buffered wire APIs, and reviewed bindings: `gpt-6-luna` and `gpt-5.4-mini` Responses and `gpt-4.1` Chat Completions, with explicitly listed reported identities. Catalog metadata validates bindings; absent endpoint metadata remains unknown. Known public/enterprise hosts are allowlisted. One deadline covers credentials, catalog waiting and inference; redirects and byte-limit violations fail. Embedders can inject bindings, endpoint policy, fetch and clock. Direct mode rejects ambient MCP, agent options, BYOK and offline configuration without retries or fallback.
 
 ### Diagnostics and lifecycle
 
@@ -104,7 +104,7 @@ Exported `CopilotHttpClient.complete()` supports ordered text, both buffered wir
 
 ### Product policy
 
-Decision readiness uses `isTransformAvailable`; `system_one` retains validation, one semantic repair maximum and summed known usage. Provider/model/usage failures never trigger repair. Titles use `gpt-5.4-mini`, retain generation-based prewarm and reject model mismatches; PR ranking uses `gpt-4.1`. Text-only one-shot failures retain provider categories; attachments and agent/session work use established runtimes. Ordinary tests use local fixtures. Live tests require `COC_COPILOT_HTTP_LIVE=1` and the Copilot CLI login. Platform secure-store and packaged deployment behavior require independent verification.
+Decision readiness uses `isTransformAvailable`; `system_one` uses `gpt-6-luna` and retains validation, one semantic repair maximum and summed known usage. Provider/model/usage failures never trigger repair. Titles use `gpt-5.4-mini`, retain generation-based prewarm and reject model mismatches; PR ranking uses `gpt-4.1`. Text-only one-shot failures retain provider categories; attachments and agent/session work use established runtimes. Ordinary tests use local fixtures. Live tests require `COC_COPILOT_HTTP_LIVE=1` and the Copilot CLI login. Platform secure-store and packaged deployment behavior require independent verification.
 
 ## Strict session resume
 

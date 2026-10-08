@@ -47,12 +47,13 @@ describe('CopilotDecisionBackend', () => {
         const service = createService(async () => ok(validText, { tokenUsage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } }));
         const response = await new CopilotDecisionBackend(service).evaluate(request, context);
 
+        expect(service.isTransformAvailable).toHaveBeenCalledWith({ model: 'gpt-6-luna', loadDefaultMcpConfig: false });
         expect(service.transform).toHaveBeenCalledTimes(1);
         const [prompt, options] = service.transform.mock.calls[0];
         expect(prompt).toContain('"id": "greet"');
         expect(prompt).toContain('"id": "tone"');
         expect(options).toMatchObject({
-            model: 'gpt-5.4-mini',
+            model: 'gpt-6-luna',
             cwd: '/repo/one',
             timeoutMs: 120_000,
             loadDefaultMcpConfig: false,
@@ -61,7 +62,7 @@ describe('CopilotDecisionBackend', () => {
         expect(options.onPermissionRequest({ kind: 'shell' }, { sessionId: 's' })).toEqual({ kind: 'reject' });
 
         expect(response).toMatchObject({
-            model: 'gpt-5.4-mini',
+            model: 'gpt-6-luna',
             backend: 'copilot',
             usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
             metadata: { confidenceKind: 'self_reported', attempts: 1 },
@@ -87,7 +88,7 @@ describe('CopilotDecisionBackend', () => {
         expect(repairPrompt).toContain('{"answers":{"greet":{"type":"noul","value":0.9}}}');
         expect(repairPrompt).toContain("answers is missing question id 'tone'");
         expect(repairPrompt).toContain('REQUIRED OUTPUT SHAPE');
-        expect(service.transform.mock.calls[1][1]).toMatchObject({ model: 'gpt-5.4-mini', loadDefaultMcpConfig: false });
+        expect(service.transform.mock.calls[1][1]).toMatchObject({ model: 'gpt-6-luna', loadDefaultMcpConfig: false });
         expect(response.metadata.attempts).toBe(2);
         expect(response.usage).toEqual({ inputTokens: 4, outputTokens: 3, totalTokens: 7 });
     });
@@ -99,8 +100,8 @@ describe('CopilotDecisionBackend', () => {
         expect((error.details as { errors: string[] }).errors[0]).toContain('not valid JSON');
     });
 
-    it('rejects an effective-model mismatch without falling back or retrying', async () => {
-        const service = createService(async () => ok(validText, { effectiveModel: 'gpt-4.1' }));
+    it.each(['gpt-4.1', 'gpt-5.4-mini'])('rejects effective model %s without falling back or retrying', async effectiveModel => {
+        const service = createService(async () => ok(validText, { effectiveModel }));
         await expectDecisionError(new CopilotDecisionBackend(service).evaluate(request, context), 'DECISION_MODEL_MISMATCH', 502);
         expect(service.transform).toHaveBeenCalledTimes(1);
     });

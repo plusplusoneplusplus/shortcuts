@@ -735,7 +735,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
         key: 'LLMToolSystemOne.enabled', default: false, runtime: 'live', runtimeFlag: 'llmToolSystemOneEnabled',
         ui: {
             group: 'review', order: 64, label: 'System One tool', badge: 'experimental',
-            hint: 'Chat AI can call `system_one` for fast yes/no, choice, or score judgments over earlier tool output, files, or short text. Always runs on Copilot (gpt-5.4-mini), so in Claude, Codex, or OpenCode chats the referenced content is also sent to Copilot. Disabled by default.',
+            hint: 'Chat AI can call `system_one` for fast yes/no, choice, or score judgments over earlier tool output, files, or short text. Always runs on Copilot (gpt-6-luna), so in Claude, Codex, or OpenCode chats the referenced content is also sent to Copilot. Disabled by default.',
             testId: 'toggle-llm-tool-system-one-enabled',
         },
     }),

@@ -102,6 +102,7 @@ references before editing. Paths are package-relative.
   consumers stay derived. Non-admin leaves use `src/config/namespace-registry.ts`.
 - `copilot.transformTransport` is an installation-wide Admin setting (SDK default, restart required).
   Direct one-shot requests use the Copilot CLI account; never persist its token in Admin config.
+  System One and the shared Copilot decision backend use `gpt-6-luna`; titles use `gpt-5.4-mini`.
 - New experimental flags default off; gate server/tools and UI
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config

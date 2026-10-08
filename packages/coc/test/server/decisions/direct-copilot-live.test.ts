@@ -8,7 +8,7 @@ describe.skipIf(process.env.COC_COPILOT_HTTP_LIVE !== '1')('live direct Copilot 
     it('checks both wire APIs and strict schema output on the public host', async () => {
         const client = new CopilotHttpClient();
         try {
-            for (const [model, api] of [['gpt-5.4-mini', 'responses'], ['gpt-4.1', 'chat-completions']] as const) {
+            for (const [model, api] of [['gpt-6-luna', 'responses'], ['gpt-5.4-mini', 'responses'], ['gpt-4.1', 'chat-completions']] as const) {
                 const result = await client.complete({ model, api, messages: [{ role: 'user', content: 'Answer exactly: ready' }], timeoutMs: 30_000 });
                 expect(result.effectiveModel).toBe(model); expect(result.text.trim()).toBe('ready');
                 console.info(JSON.stringify({ experiment: 'direct-live', model, api, durationMs: result.diagnostics.durationMs, timings: result.diagnostics.timings }));
@@ -32,7 +32,7 @@ describe.skipIf(process.env.COC_COPILOT_HTTP_LIVE !== '1')('live direct Copilot 
             const started = performance.now();
             const raw = await tool.handler!(args, { sessionId: 'live-test', toolCallId: 'system-one', toolName: 'system_one', arguments: args });
             const output = JSON.parse(raw as string);
-            expect(output).not.toHaveProperty('error'); expect(Object.keys(output.answers)).toEqual(['safe', 'status', 'quality']);
+            expect(output).not.toHaveProperty('error'); expect(output.model).toBe('gpt-6-luna'); expect(Object.keys(output.answers)).toEqual(['safe', 'status', 'quality']);
             samples.push({ scenario, durationMs: Math.round(performance.now() - started) });
         }
         try {

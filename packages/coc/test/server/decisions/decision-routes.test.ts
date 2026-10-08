@@ -63,10 +63,10 @@ describe('decision routes', () => {
     it('resolves the workspace and uses its root as cwd with no MCP or permission approval', async () => {
         const res = await post('ws-one', body);
         expect(res.status).toBe(200);
-        expect(res.body).toMatchObject({ model: 'gpt-5.4-mini', backend: 'copilot', answers: { ok: { type: 'noul', value: 0.7 } } });
+        expect(res.body).toMatchObject({ model: 'gpt-6-luna', backend: 'copilot', answers: { ok: { type: 'noul', value: 0.7 } } });
         expect(transform).toHaveBeenCalledTimes(1);
         const options = transform.mock.calls[0][1];
-        expect(options).toMatchObject({ model: 'gpt-5.4-mini', cwd: '/repo/one', loadDefaultMcpConfig: false });
+        expect(options).toMatchObject({ model: 'gpt-6-luna', cwd: '/repo/one', loadDefaultMcpConfig: false });
         expect(options.onPermissionRequest({ kind: 'write' }, { sessionId: 's' })).toEqual({ kind: 'reject' });
     });
 

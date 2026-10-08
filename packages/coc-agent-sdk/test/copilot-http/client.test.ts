@@ -50,6 +50,23 @@ afterEach(async () => {
 });
 
 describe('real buffered HTTP', () => {
+    it('uses the default Luna Responses binding and verifies its reported identity', async () => {
+        const luna = 'gpt-6-luna';
+        handler = (req, res) => json(res, req.url === '/models'
+            ? { data: [{ id: luna, supported_endpoints: ['/responses'] }] }
+            : { ...answer(), model: luna });
+        const result = await client.complete({ ...input(), model: luna });
+        expect(result).toMatchObject({ effectiveModel: luna, diagnostics: { transport: 'direct', reportedModel: luna } });
+        expect(calls.map(c => c.path)).toEqual(['/models', '/responses']);
+        expect(calls[1].body.model).toBe(luna);
+    });
+    it.each(['gpt-5.4-mini', 'gpt-6-luna-2099-01-01'])('rejects unreviewed Luna response identity %s', async reportedModel => {
+        handler = (req, res) => json(res, req.url === '/models'
+            ? { data: [{ id: 'gpt-6-luna', supported_endpoints: ['/responses'] }] }
+            : { ...answer(), model: reportedModel });
+        await expect(client.complete({ ...input(), model: 'gpt-6-luna' })).rejects.toMatchObject({ code: 'DIRECT_MODEL_MISMATCH' });
+        expect(calls.filter(c => c.method === 'POST')).toHaveLength(1);
+    });
     it('uses Responses, verifies model identity, normalizes usage and preserves native billing units', async () => {
         handler = (req, res) => { res.setHeader('x-github-request-id', 'safe-id'); json(res, req.url === '/models' ? catalog : { ...answer(), copilot_usage: { total_nano_aiu: 123 } }); };
         const result = await client.complete({ ...input(), maxOutputTokens: 32, messages: [{ role: 'system', content: 'system' }, { role: 'user', content: 'hello' }],
