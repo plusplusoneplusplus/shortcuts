@@ -54,6 +54,23 @@ describe('explicit read-only credential acquisition', () => {
         await write(stored());
         expect(await readCopilotCredential({ source: 'cli-config', configPath: path, account: { host: 'github.com', login: 'other' } }, signal())).toMatchObject({ login: 'other', token: 'gho_wrong' });
     });
+    it.each(['active-cli-account', { host: 'https://github.com', login: 'active' }] as const)('reads URL-form CLI host with exact stored key for account %j', async account => {
+        await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' },
+            copilotTokens: { 'https://github.com:active': 'gho_right', 'github.com:active': 'gho_wrong' } });
+        expect(await readCopilotCredential({ ...config(), account }, signal())).toEqual({ host: 'github.com', login: 'active', token: 'gho_right' });
+        expect(exec).not.toHaveBeenCalled();
+    });
+    it('does not substitute a normalized account key when the exact URL-form key is missing', async () => {
+        await write({ lastLoggedInUser: { host: 'https://github.com', login: 'active' }, copilotTokens: { 'github.com:active': 'gho_wrong' } });
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+    });
+    it.each(['http://github.com', 'https://github.com:8443', 'https://user:pass@github.com', 'https://github.com/path',
+        'https://github.com?query', 'https://github.com#fragment'])('rejects unsafe CLI config host %s', async host => {
+        await write({ lastLoggedInUser: { host, login: 'active' }, copilotTokens: { [`${host}:active`]: 'gho_right' } });
+        await expect(readCopilotCredential(config(), signal())).rejects.toMatchObject({ code: 'DIRECT_CREDENTIAL_UNAVAILABLE' });
+        expect(() => validateCredentialConfig({ source: 'cli-config', account: { host, login: 'active' } })).toThrow();
+        expect(exec).not.toHaveBeenCalled();
+    });
     it('rereads active identity and produces immutable independent snapshots', async () => {
         await write(stored()); const first = await readCopilotCredential(config(), signal());
         await write({ ...stored(), lastLoggedInUser: { host: 'github.com', login: 'other' } });

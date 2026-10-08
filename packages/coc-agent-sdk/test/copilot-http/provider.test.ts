@@ -53,15 +53,15 @@ describe('Copilot transform routing', () => {
         const fetcher = vi.fn(async (url: any) => new Response(JSON.stringify(String(url).endsWith('/models') ? catalog : result)));
         vi.stubGlobal('fetch', fetcher);
         vi.stubEnv('GH_TOKEN', 'gho_ambient');
-        const stored = { lastLoggedInUser: { host: 'github.com', login: 'active' },
-            copilotTokens: { 'github.com:active': 'gho_active', 'github.com:other': 'gho_other' } };
+        const stored = { lastLoggedInUser: { host: 'https://github.com', login: 'active' },
+            copilotTokens: { 'https://github.com:active': 'gho_active', 'https://github.com:other': 'gho_other' } };
         await writeFile(join(credentialHome, 'config.json'), JSON.stringify(stored));
         service = new CopilotSDKService(route === 'constructor' ? { transformTransport: 'direct' } : undefined);
         if (route === 'configure') service.configureTransformTransport('direct');
         expect(await service.isTransformAvailable({ model: 'gpt-5.4-mini' })).toEqual({ available: true });
         expect(fetcher).not.toHaveBeenCalled();
         expect(await service.transform('prompt', { model: 'gpt-5.4-mini' })).toMatchObject({ success: true, text: 'yes' });
-        await writeFile(join(credentialHome, 'config.json'), JSON.stringify({ ...stored, lastLoggedInUser: { host: 'github.com', login: 'other' } }));
+        await writeFile(join(credentialHome, 'config.json'), JSON.stringify({ ...stored, lastLoggedInUser: { host: 'https://github.com', login: 'other' } }));
         expect(await service.transform('prompt', { model: 'gpt-5.4-mini' })).toMatchObject({ success: true, text: 'yes' });
         const headers = (fetcher.mock.calls as unknown as [string, RequestInit][]).map(([, init]) => init.headers as Record<string, string>);
         expect(headers.map(header => header.Authorization)).toEqual(['Bearer gho_active', 'Bearer gho_active', 'Bearer gho_other', 'Bearer gho_other']);

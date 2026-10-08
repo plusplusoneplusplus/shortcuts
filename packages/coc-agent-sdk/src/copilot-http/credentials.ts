@@ -19,6 +19,15 @@ function accountValid(account: { host: string; login: string }): boolean {
     return typeof account.host === 'string' && /^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(account.host)
         && typeof account.login === 'string' && /^[a-zA-Z0-9_-]+$/.test(account.login);
 }
+function normalizeCredentialHost(value: unknown): string | undefined {
+    if (typeof value !== 'string' || !value) return undefined;
+    try {
+        const host = new URL(value.includes('://') ? value : `https://${value}`);
+        if (host.protocol !== 'https:' || host.port || host.username || host.password
+            || host.pathname !== '/' || host.search || host.hash) return undefined;
+        return host.hostname;
+    } catch { return undefined; }
+}
 export function validateCredentialConfig(config: CopilotCredentialConfig): void {
     const invalid = () => { throw new CopilotDirectError('DIRECT_CONFIG_INVALID', 'Select a valid direct credential source and account policy.'); };
     if (!config || typeof config !== 'object') return invalid();
@@ -31,7 +40,8 @@ export function validateCredentialConfig(config: CopilotCredentialConfig): void 
             break;
         case 'resolver': if (typeof config.resolve !== 'function') invalid(); break;
         case 'cli-config':
-            if (config.account !== 'active-cli-account' && (!config.account || !accountValid(config.account))) invalid();
+            if (config.account !== 'active-cli-account' && (!config.account
+                || !accountValid({ ...config.account, host: normalizeCredentialHost(config.account.host) ?? '' }))) invalid();
             if (config.configPath !== undefined && (typeof config.configPath !== 'string' || !config.configPath)) invalid();
             break;
         case 'keychain': case 'gh-cli': if (!accountValid(config)) invalid(); break;
@@ -60,10 +70,9 @@ async function readCliCredential(signal: AbortSignal): Promise<CopilotCredential
                 && user.authInfo.host === authInfo.host
                 && 'login' in user.authInfo && user.authInfo.login === login)?.token;
         }
-        const host = new URL(authInfo.host.includes('://') ? authInfo.host : `https://${authInfo.host}`);
-        if (host.protocol !== 'https:' || host.port || host.username || host.password
-            || host.pathname !== '/' || host.search || host.hash) throw unavailable('Invalid Copilot CLI authentication host.');
-        return { host: host.hostname, login: login ?? 'cli-token', token: token ?? '' };
+        const host = normalizeCredentialHost(authInfo.host);
+        if (!host) throw unavailable('Invalid Copilot CLI authentication host.');
+        return { host, login: login ?? 'cli-token', token: token ?? '' };
     } finally {
         signal.removeEventListener('abort', stop);
         await client.stop();
@@ -121,8 +130,9 @@ export async function readCopilotCredential(config: CopilotCredentialConfig, sig
                 } finally { await file.close(); }
                 if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw unavailable('Invalid Copilot credential config.');
                 const account = config.account === 'active-cli-account' ? parsed.lastLoggedInUser : config.account;
-                if (!account || !accountValid(account)) throw unavailable('Selected Copilot account is missing.');
-                snapshot = { host: account.host, login: account.login, token: parsed.copilotTokens?.[`${account.host}:${account.login}`] };
+                const host = normalizeCredentialHost(account?.host);
+                if (!account || !host || !accountValid({ host, login: account.login })) throw unavailable('Selected Copilot account is missing.');
+                snapshot = { host, login: account.login, token: parsed.copilotTokens?.[`${account.host}:${account.login}`] };
                 break;
             }
         }

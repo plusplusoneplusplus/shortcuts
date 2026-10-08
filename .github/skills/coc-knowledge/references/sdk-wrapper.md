@@ -90,7 +90,7 @@ Copilot's `tool.execution_progress` maps to the optional provider-neutral `tool-
 
 ### CLI credentials
 
-Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads `COPILOT_HOME/config.json` or `~/.copilot/config.json` using bounded JSONC reads, selects `lastLoggedInUser`, and retrieves its exact `host:login` entry from `copilotTokens`. Credentials remain on the executing server and never enter Admin configuration. Missing files, account records or supported tokens fail without selecting another account, ambient credentials or a CLI fallback. Keychain-only credentials require an explicit credential source.
+Direct HTTP defaults to `cli-config` with `active-cli-account`. Each request reads `COPILOT_HOME/config.json` or `~/.copilot/config.json` using bounded JSONC reads, selects `lastLoggedInUser`, and retrieves its exact stored `host:login` key from `copilotTokens`. Bare and HTTPS URL hosts are accepted; snapshots normalize them to hostnames while token lookup preserves the stored host. Missing files, accounts or tokens fail without another account or source. Credentials stay server-side, outside Admin configuration. Keychain-only credentials require an explicit credential source.
 
 Typed embedding credentials support explicit environment, pinned config account, gh, resolver and `copilot-cli` sources. Explicit `copilot-cli` acquisition starts a short-lived pinned CLI client, reads `account.getCurrentAuth` and, for a stored user, the matching `account.getAllUsers` token. The CLI owns environment priority, active account, secure storage and GitHub CLI lookup; its client creates no agent session and stops on completion or cancellation. Explicit keychain acquisition returns an unverified-platform error.
 
