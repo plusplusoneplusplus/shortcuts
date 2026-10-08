@@ -69,6 +69,12 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            const args = await native.prepareGitShowPatch(commit, file, options?.contextLines);
+            return native.processGitPatch(await mockForgeExecGit(args, root, {}), options?.maxLines);
+        },
         BranchService: vi.fn().mockImplementation(function () { return ({
             getBranchStatus: vi.fn(async (...args: any[]) => mockGetBranchStatus(...args)),
             getRepositoryStatus: vi.fn(async (...args: any[]) => mockGetRepositoryStatus(...args)),
@@ -968,6 +974,14 @@ describe('Git API endpoints', () => {
             expect(data.error).toContain('Failed to get commit diff');
         });
 
+        it('reports a native capability failure with its rebuild instruction', async () => {
+            const { NativeAddonLoadError } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            mockForgeExecGit.mockRejectedValue(new NativeAddonLoadError('Rebuild with npm run build:native -w packages/coc-native'));
+            const res = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/diff`);
+            expect(res.status).toBe(500);
+            expect(res.json().error).toContain('npm run build:native');
+        });
+
         it('returns 404 for unknown workspace', async () => {
             const res = await request(`${base()}/api/workspaces/unknown-ws/git/commits/abc123def456/diff`);
             expect(res.status).toBe(404);
@@ -1001,20 +1015,12 @@ describe('Git API endpoints', () => {
             expect(res.status).toBe(404);
         });
 
-        it('returns cached result on second request', async () => {
-            const diffOutput = 'diff --git a/f.ts b/f.ts\n-old\n+new';
-            mockForgeExecGit.mockReturnValue(diffOutput);
-
-            const res1 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent('f.ts')}/diff`);
-            expect(res1.status).toBe(200);
-            expect(res1.json().diff).toBe(diffOutput);
-
-            mockForgeExecGit.mockReset();
-            const res2 = await request(`${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/${encodeURIComponent('f.ts')}/diff`);
-            expect(res2.status).toBe(200);
-            expect(res2.json().diff).toBe(diffOutput);
-            // execGit should not have been called again
-            expect(mockForgeExecGit).not.toHaveBeenCalled();
+        it('reads patch output again rather than using a route patch cache', async () => {
+            mockForgeExecGit.mockReturnValue('first patch');
+            const url = `${base()}/api/workspaces/${WORKSPACE_ID}/git/commits/abc123def456/files/f.ts/diff`;
+            expect((await request(url)).json()).toEqual({ diff: 'first patch' });
+            mockForgeExecGit.mockReturnValue('fresh patch');
+            expect((await request(url)).json()).toEqual({ diff: 'fresh patch' });
         });
 
         it('returns error on git failure', async () => {

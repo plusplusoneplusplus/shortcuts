@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { loadCommitShowPatch } from '../../src/diff/local-patch';
 import { createCommitDiffProvider } from '../../src/diff/git-diff-provider';
 import { execFileAsync } from '../../src/utils/exec-utils';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
@@ -38,7 +39,18 @@ describe('commit WSL transport using Rust planning and processing', () => {
         expect((await providers[1].getFullDiff()).raw).toContain('+two');
     });
 
-    it('propagates transport errors', async () => {
+    it('uses git-show semantics for routes with native truncation', async () => {
+        vi.mocked(execFileAsync).mockResolvedValue({ stdout: raw, stderr: '' });
+        const result = await loadCommitShowPatch('\\\\wsl$\\Ubuntu\\home\\repo', 'HEAD', 'café.txt', { contextLines: 99999, maxLines: 2 });
+        expect(result.content).toEqual((await loadNativeGit().processGitPatch(raw.slice(0, -1), 2)).content);
+        const args = vi.mocked(execFileAsync).mock.calls.at(-1)?.[1];
+        expect(args).toContain('show');
+        expect(args).toContain('--format=');
+        expect(args).toContain('-U99999');
+        expect(args).not.toContain('--first-parent');
+    });
+
+    it('propagates transport errors' , async () => {
         vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'WSL failed' });
         await expect(createCommitDiffProvider('\\\\wsl$\\Ubuntu\\home\\repo', 'HEAD').listFiles()).rejects.toThrow('WSL failed');
     });

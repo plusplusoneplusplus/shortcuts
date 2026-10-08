@@ -16,8 +16,12 @@ export function loadCommitPatch(root: string, commit: string, filePath?: string,
     return loadLocalPatch(root, { commit }, filePath, options);
 }
 
+export function loadCommitShowPatch(root: string, commit: string, filePath?: string, options?: GetFileDiffOptions) {
+    return loadLocalPatch(root, { commit, show: true }, filePath, options);
+}
+
 async function loadLocalPatch(
-    root: string, source: { commit: string } | { base: string; head: string },
+    root: string, source: { commit: string; show?: boolean } | { base: string; head: string },
     filePath?: string, options?: GetFileDiffOptions,
 ) {
     const addon = loadNativeGit();
@@ -26,13 +30,13 @@ async function loadLocalPatch(
     let result;
     if (resolveWorkspaceExecutionContext(root).kind === 'wsl') {
         const args = 'commit' in source
-            ? await addon.prepareGitCommitPatch(source.commit, filePath, context)
+            ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
             : await addon.prepareGitRangePatch(source.base, source.head, filePath, context);
         result = await addon.processGitPatch(await execGitAsync(args, root), maxLines);
     } else {
         await ensureGitSafeDirectoryAsync(root);
         result = 'commit' in source
-            ? await addon.gitCommitPatch(root, source.commit, filePath, context, maxLines)
+            ? await (source.show ? addon.gitShowPatch : addon.gitCommitPatch)(root, source.commit, filePath, context, maxLines)
             : await addon.gitRangePatch(root, source.base, source.head, filePath, context, maxLines);
     }
     return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };

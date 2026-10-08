@@ -5,7 +5,7 @@
 
 import * as path from 'path';
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
-import { BranchService, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
+import { BranchService, loadCommitShowPatch, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { execGitArgsAsync, readGitFileAtCommit } from '../core/api-handler';
 import { handleAPIError, notFound, badRequest, internalError } from '../errors';
 import type { APIError } from '../errors';
@@ -13,7 +13,7 @@ import { gitCache } from '../git/git-cache';
 import { loadCommitFileDiffContent } from '../git/ref-file-content';
 import { resolveWorkspaceOrFail } from '../shared/handler-utils';
 import type { ApiRouteContext } from './api-shared';
-import { truncateDiffIfNeeded } from './api-shared';
+import { DIFF_LINE_LIMIT } from './api-shared';
 import { createRoute, asString, asInt, asBool } from './route-utils';
 
 /**
@@ -325,22 +325,13 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
         handler: async ({ res, match }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
             const hash = match[2];
 
-            const cacheKey = `${id}:commit-diff:${hash}`;
-            const cached = gitCache.get<{ diff: string }>(cacheKey);
-            if (cached) {
-                return cached;
-            }
-
             try {
-                const diff = await execGitArgsAsync(['show', '--format=', '--patch', hash], ws.rootPath);
-                const result = { diff };
-                gitCache.set(cacheKey, result);
-                return result;
+                const { content } = await loadCommitShowPatch(ws.rootPath, hash);
+                return { diff: content.raw };
             } catch (err: any) {
-                return void handleAPIError(res, badRequest('Failed to get commit diff: ' + (err.message || 'unknown error')));
+                return void handleAPIError(res, asLoadFailure(err) ?? badRequest('Failed to get commit diff: ' + (err.message || 'unknown error')));
             }
         },
     }));
@@ -353,25 +344,21 @@ export function registerGitCommitRoutes(ctx: ApiRouteContext): void {
         handler: async ({ res, match, query }) => {
             const ws = await resolveWorkspaceOrFail(store, match, res);
             if (!ws) return;
-            const id = ws.id;
             const hash = match[2];
             const filePath = decodeURIComponent(match[3]);
 
             const full = query.full;
 
-            const cacheKey = `${id}:commit-file-diff:${hash}:${filePath}${full ? ':full' : ''}`;
-            const cached = gitCache.get<{ diff: string; truncated?: boolean; totalLines?: number }>(cacheKey);
-            if (cached) {
-                return cached;
-            }
-
             try {
-                const diff = await execGitArgsAsync(['show', '--format=', '--patch', '-U99999', hash, '--', filePath], ws.rootPath);
-                const result = truncateDiffIfNeeded(diff, full);
-                gitCache.set(cacheKey, result);
-                return result;
+                const { content } = await loadCommitShowPatch(ws.rootPath, hash, filePath, {
+                    contextLines: 99999, maxLines: full ? undefined : DIFF_LINE_LIMIT,
+                });
+                return {
+                    diff: content.raw,
+                    ...(content.truncated ? { truncated: true, totalLines: content.totalLines } : {}),
+                };
             } catch (err: any) {
-                return void handleAPIError(res, badRequest('Failed to get commit file diff: ' + (err.message || 'unknown error')));
+                return void handleAPIError(res, asLoadFailure(err) ?? badRequest('Failed to get commit file diff: ' + (err.message || 'unknown error')));
             }
         },
     }));
