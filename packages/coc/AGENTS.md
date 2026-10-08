@@ -100,9 +100,9 @@ references before editing. Paths are package-relative.
   CLI/tests inject fixed ports. Add admin settings once in
   `src/config/admin-setting-definitions.ts` plus config types/defaults; generated
   consumers stay derived. Non-admin leaves use `src/config/namespace-registry.ts`.
-- `copilot.transformTransport` is an installation-wide Admin setting (SDK default, restart required).
+- `copilot.transformTransport` is an installation-wide Admin setting (Direct HTTP default, restart required).
   Direct one-shot requests use the Copilot CLI account; never persist its token in Admin config.
-  System One and the shared Copilot decision backend use `gpt-6-luna`; titles use `gpt-5.4-mini`.
+  System One, the shared Copilot decision backend, and titles use `gpt-6-luna`.
 - New experimental flags default off; gate server/tools and UI
   boundaries; preserve existing defaults and live/restart semantics.
 - Use `src/server/cache/`, not new TTL Maps. Cache dashboard static config

@@ -20,7 +20,7 @@ export interface MockSDKServiceOptions {
     available?: boolean | IAvailabilityResult;
     /** Default sendMessage response */
     sendMessageResponse?: IInvocationResult;
-    /** Default transform result. Default: `{ success: true, text: 'Generated Title', effectiveModel: 'gpt-5.4-mini' }` */
+    /** Default transform result. Default: `{ success: true, text: 'Generated Title', effectiveModel: 'gpt-6-luna' }` */
     transformResult?: TransformResult;
     /** Default listModels result. Default: `[]` */
     listModelsResult?: IModelInfo[];
@@ -75,7 +75,7 @@ export function createMockSDKService(
     const transformResult: TransformResult = options?.transformResult ?? {
         success: true,
         text: 'Generated Title',
-        effectiveModel: 'gpt-5.4-mini',
+        effectiveModel: 'gpt-6-luna',
     };
     const listModelsResult = options?.listModelsResult ?? [];
 

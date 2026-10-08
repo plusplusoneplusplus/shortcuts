@@ -4,7 +4,7 @@
  * - Title generated after follow-up execution
  * - Idempotency: title not regenerated when already set
  * - Failure resilience: title generation errors don't abort the task
- * - Product policy: gpt-5.4-mini model, truncation/data-minimization, and the
+ * - Product policy: gpt-6-luna model, truncation/data-minimization, and the
  *   transform's safe isolation defaults (no MCP/tools, denied permissions)
  */
 
@@ -71,7 +71,7 @@ function delay(ms: number): Promise<void> {
 
 function mockChatAndTitleResponses(chatResponse = 'AI response text', titleResponse = 'Generated Title'): void {
     mockSendMessage.mockResolvedValue({ success: true, response: chatResponse, sessionId: 'session-123' });
-    mockTransform.mockResolvedValue({ success: true, text: titleResponse, effectiveModel: 'gpt-5.4-mini' });
+    mockTransform.mockResolvedValue({ success: true, text: titleResponse, effectiveModel: 'gpt-6-luna' });
 }
 
 /** Calls to the SDK transform boundary (each is `[prompt, options]`). */
@@ -148,9 +148,9 @@ describe('CLITaskExecutor — Title Generation', () => {
         // Should use conversation-style prompt when assistant content is present
         expect(promptArg).toContain('Focus on what was actually done or discussed');
 
-        // Product policy: gpt-5.4-mini via the transform boundary.
+        // Product policy: gpt-6-luna via the transform boundary.
         const titleOptions = getTitleOptions();
-        expect(titleOptions).toEqual(expect.objectContaining({ model: 'gpt-5.4-mini' }));
+        expect(titleOptions).toEqual(expect.objectContaining({ model: 'gpt-6-luna' }));
         // Data-minimization: the transform must not opt into MCP servers/tools
         // or relax permissions — it relies on the transform's safe defaults.
         expect(titleOptions.loadDefaultMcpConfig).not.toBe(true);
@@ -224,7 +224,7 @@ describe('CLITaskExecutor — Title Generation', () => {
         let finishTitle!: () => void;
         mockTransform.mockImplementation(async () => {
             await new Promise<void>(resolve => { finishTitle = resolve; });
-            return { success: true, text: 'Generated title', effectiveModel: 'gpt-5.4-mini' };
+            return { success: true, text: 'Generated title', effectiveModel: 'gpt-6-luna' };
         });
         const executor = new CLITaskExecutor(store, { aiService: sdkMocks.service });
         const updateTask = vi.fn();
@@ -534,7 +534,7 @@ describe('CLITaskExecutor — Title Generation', () => {
         // reusable client is ever created.
         expect(getTitleCalls()).toHaveLength(2);
         expect(mockCreateClient).not.toHaveBeenCalled();
-        expect(getTitleCalls().every(([, options]) => options?.model === 'gpt-5.4-mini')).toBe(true);
+        expect(getTitleCalls().every(([, options]) => options?.model === 'gpt-6-luna')).toBe(true);
     });
 
     it('should generate a title even when createClient is unavailable', async () => {
@@ -585,7 +585,7 @@ describe('CLITaskExecutor — Title Generation', () => {
 
         expect(getTitleCalls()).toHaveLength(1);
 
-        resolveTitle({ success: true, text: 'Transform Isolation', effectiveModel: 'gpt-5.4-mini' });
+        resolveTitle({ success: true, text: 'Transform Isolation', effectiveModel: 'gpt-6-luna' });
         await delay(50);
 
         expect(store.processes.get(processId)?.title).toBe('Transform Isolation');

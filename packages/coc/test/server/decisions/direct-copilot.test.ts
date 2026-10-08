@@ -12,6 +12,8 @@ import { createSystemOneTool } from '../../../src/server/llm-tools/system-one-to
 import { TitleGenerationService } from '../../../src/server/executors/title-generator';
 import { rankAndCacheSuggestions } from '../../../src/server/repos/pr-suggestions';
 
+import { DEFAULT_CONFIG } from '../../../src/config';
+
 const model = 'gpt-6-luna';
 const valid = JSON.stringify({ answers: { ok: { type: 'noul', value: 0.9 } } });
 const body = { state: 'workspace A source', questions: { ok: { type: 'noul', instructions: 'Is this safe?' } } };
@@ -37,7 +39,7 @@ beforeEach(async () => {
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    service = new CopilotSDKService({ transformTransport: 'direct', direct: { endpoint, endpointPolicy: url => url.origin === endpoint,
+    service = new CopilotSDKService({ transformTransport: DEFAULT_CONFIG.copilot.transformTransport, direct: { endpoint, endpointPolicy: url => url.origin === endpoint,
         credential: { source: 'resolver', resolve: async () => ({ host: 'github.com', login: 'test', token: 'gho_test' }) } } });
     vi.spyOn(service, 'isAvailable').mockImplementation(() => { throw new Error('Agent readiness must not run'); });
     vi.spyOn(service, 'createClient').mockImplementation(() => { throw new Error('Copilot must not spawn'); });
@@ -89,12 +91,17 @@ describe('direct Copilot product integration', () => {
         const prompts = requests.filter(r => r.path === '/responses').map(r => r.body.input[0].content);
         expect(prompts).toHaveLength(2); expect(prompts.some(p => p.includes('workspace A source') && p.includes('workspace B source'))).toBe(false);
     });
-    it.each(['gpt-5.4-mini', 'gpt-5.4-mini-2026-03-17'])('titles accept reviewed identity %s through the transport', async reportedModel => {
-        complete = (_data, res) => json(res, response('Useful Title', { model: reportedModel }));
+    it('titles and prewarm use Luna through the default HTTP transport without an agent client', async () => {
+        complete = (_data, res) => json(res, response('Useful Title'));
         const title = new TitleGenerationService({ store: {} as any, aiService: service });
+        await title.prewarm();
         expect(await (title as any).generateTitle('title prompt')).toBe('Useful Title');
+        const inference = requests.filter(r => r.path === '/responses');
+        expect(inference).toHaveLength(2);
+        expect(inference.every(r => r.body.model === 'gpt-6-luna')).toBe(true);
+        expect(service.createClient).not.toHaveBeenCalled();
     });
-    it.each([undefined, 'gpt-5.4-mini-2099-01-01', 'gpt-4.1'])('titles reject missing/unlisted/mismatched identity %s', async reportedModel => {
+    it.each([undefined, 'gpt-6-luna-2099-01-01', 'gpt-5.4-mini', 'gpt-4.1'])('titles reject missing/unlisted/mismatched identity %s', async reportedModel => {
         complete = (_data, res) => json(res, response('Useful Title', { model: reportedModel }));
         const title = new TitleGenerationService({ store: {} as any, aiService: service });
         await expect((title as any).generateTitle('title prompt')).rejects.toThrow('model identity');

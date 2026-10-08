@@ -123,7 +123,7 @@ The injection baseline stays `DEFAULT_CHAT_STYLE`, not the configured default: a
 
 ## Copilot One-Shot Transport
 
-Admin → Configure → AI & Execution exposes `copilot.transformTransport` as SDK / Direct HTTP. The default is `sdk`; changes require a server restart. The setting applies to `transform()` consumers such as System One, titles and PR ranking. Agent conversations use the SDK. Direct HTTP reads the Copilot CLI's selected credentials automatically; tokens and credential-source controls stay outside Admin configuration. See [SDK wrapper](sdk-wrapper.md#cli-credentials) for authentication and lifecycle.
+Admin → Configure → AI & Execution exposes `copilot.transformTransport` as SDK / Direct HTTP. The default is `direct`; changes require a server restart. The setting applies to `transform()` consumers such as System One, titles and PR ranking. Agent conversations use the SDK. Direct HTTP reads the Copilot CLI's selected credentials automatically; tokens and credential-source controls stay outside Admin configuration. See [SDK wrapper](sdk-wrapper.md#cli-credentials) for authentication and lifecycle.
 
 ## AI Provider Routing
 

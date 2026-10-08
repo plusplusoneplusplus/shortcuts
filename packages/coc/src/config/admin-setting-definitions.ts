@@ -762,7 +762,7 @@ export const ADMIN_SETTING_DEFINITIONS: readonly AdminSettingDefinition[] = [
     {
         key: 'copilot.transformTransport',
         value: { kind: 'enum', values: ['sdk', 'direct'] },
-        default: 'sdk',
+        default: 'direct',
         runtime: 'restartRequired',
         ui: { tab: 'ai', group: 'aiModes', order: 42, label: 'Copilot one-shot transport',
             hint: 'Used by System One, titles, and other one-shot requests. Direct HTTP uses the Copilot CLI login. Restart the server to apply.',

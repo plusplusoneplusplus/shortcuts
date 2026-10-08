@@ -52,8 +52,8 @@ describe('title-generator idempotency', () => {
         expect(source).not.toContain('getOrCreateWarmClient');
     });
 
-    it('requests the gpt-5.4-mini model for title generation', () => {
-        expect(source).toContain("export const TITLE_GENERATION_MODEL = 'gpt-5.4-mini'");
+    it('requests the gpt-6-luna model for title generation', () => {
+        expect(source).toContain("export const TITLE_GENERATION_MODEL = 'gpt-6-luna'");
         expect(source).toContain('model: TITLE_GENERATION_MODEL');
     });
 

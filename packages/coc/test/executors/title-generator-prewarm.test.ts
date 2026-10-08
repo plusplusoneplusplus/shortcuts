@@ -4,7 +4,7 @@
  * prewarm() best-effort warms the provider through the same provider-agnostic
  * SDK transform boundary used by real title generation. These tests lock the
  * migrated (AC-02) transform behavior:
- * - Routes through `transform` with the gpt-5.4-mini product-policy model.
+ * - Routes through `transform` with the gpt-6-luna product-policy model.
  * - Relies on the transform's safe isolation defaults — never opts into MCP
  *   servers/tools or relaxes permissions (data-minimization), and never reuses
  *   a client.
@@ -16,7 +16,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
     TitleGenerationService,
-    TITLE_GENERATION_MODEL,
 } from '../../src/server/executors/title-generator';
 import { createMockSDKService } from '../helpers/mock-sdk-service';
 import { createMockProcessStore } from '../helpers/mock-process-store';
@@ -45,7 +44,7 @@ describe('TitleGenerationService.prewarm', () => {
         expect(sdk.mockTransform).toHaveBeenCalledTimes(1);
         const [prompt, options] = sdk.mockTransform.mock.calls[0] as [string, any];
         expect(prompt).toContain('Generate a title for:');
-        expect(options).toEqual(expect.objectContaining({ model: TITLE_GENERATION_MODEL }));
+        expect(options).toEqual(expect.objectContaining({ model: 'gpt-6-luna' }));
         expect(options.cwd).toBe('/tmp/title-prewarm');
     });
 

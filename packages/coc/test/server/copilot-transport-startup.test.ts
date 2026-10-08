@@ -6,10 +6,10 @@ import { CopilotSDKService } from '@plusplusoneplusplus/forge';
 import { createExecutionServer } from '../../src/server/index';
 
 describe('Admin Copilot transport at server startup', () => {
-    it.each(['sdk', 'direct'] as const)('uses persisted %s configuration before one-shot consumers run', async transport => {
+    it.each([undefined, 'sdk', 'direct'] as const)('applies %s configuration before one-shot consumers run', async transport => {
         const dir = await mkdtemp(join(tmpdir(), 'copilot-transport-startup-'));
         const configPath = join(dir, 'config.yaml');
-        await writeFile(configPath, `copilot:\n  transformTransport: ${transport}\n`);
+        await writeFile(configPath, transport ? `copilot:\n  transformTransport: ${transport}\n` : '{}\n');
         const service = new CopilotSDKService();
         vi.spyOn(service, 'listModels').mockResolvedValue([]);
         vi.spyOn(service, 'isAvailable').mockResolvedValue({ available: false });
@@ -17,7 +17,7 @@ describe('Admin Copilot transport at server startup', () => {
         let server: Awaited<ReturnType<typeof createExecutionServer>> | undefined;
         try {
             server = await createExecutionServer({ port: 0, host: '127.0.0.1', dataDir: dir, configPath, aiService: service });
-            expect(configure).toHaveBeenCalledWith(transport);
+            expect(configure).toHaveBeenCalledWith(transport ?? 'direct');
             expect(server.server.listening).toBe(true);
         } finally {
             await server?.close();

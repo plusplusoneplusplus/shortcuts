@@ -982,7 +982,7 @@ export const DEFAULT_CONFIG: ResolvedCLIConfig = {
         enabled: false,
     },
     defaultProvider: 'copilot',
-    copilot: { transformTransport: 'sdk' },
+    copilot: { transformTransport: 'direct' },
     features: {
         autoMemoryPromotion: false,
         focusedDiff: false,

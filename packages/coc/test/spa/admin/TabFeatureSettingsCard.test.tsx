@@ -78,13 +78,13 @@ beforeEach(() => {
 });
 
 describe('TabFeatureSettingsCard', () => {
-    it('saves Direct HTTP as the Copilot transport without credential fields', async () => {
+    it('defaults to Direct HTTP and saves an explicit SDK choice without credential fields', async () => {
         render(<Harness tabs={['ai']} />);
         const select = screen.getByTestId('select-copilot-transform-transport') as HTMLSelectElement;
-        expect(select.value).toBe('sdk');
-        fireEvent.change(select, { target: { value: 'direct' } });
+        expect(select.value).toBe('direct');
+        fireEvent.change(select, { target: { value: 'sdk' } });
         await act(async () => { await controller.handleSaveTab('ai'); });
-        expect(updateConfig.mock.calls[0][0]).toMatchObject({ 'copilot.transformTransport': 'direct' });
+        expect(updateConfig.mock.calls[0][0]).toMatchObject({ 'copilot.transformTransport': 'sdk' });
         expect(Object.keys(updateConfig.mock.calls[0][0]).some(key => /credential|token/i.test(key))).toBe(false);
     });
     it.each(SECTION_TABS)('the %s tab lists only toggles placed on it', tab => {
