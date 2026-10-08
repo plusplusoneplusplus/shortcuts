@@ -326,6 +326,10 @@ export class ElectronBrowserHost implements BrowserEngineHost {
                 entry.authorization!.adopt(guestId);
                 pushState(entry);
             },
+            importCookies: async cookies => {
+                for (const cookie of cookies) { await this.profile().cookies.set(cookie); }
+                await this.profile().cookies.flushStore();
+            },
             snapshot: () => snapshot(entry),
             navigate: url => load(entry, url),
             nav: action => runNav(entry, action),

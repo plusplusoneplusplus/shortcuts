@@ -20,6 +20,31 @@ pub struct Command {
     pub url: Option<String>,
     pub bounds: Option<Bounds>,
     pub action: Option<String>,
+    pub cookies: Option<Vec<ImportCookie>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportCookie {
+    pub url: String,
+    pub name: String,
+    pub value: String,
+    pub domain: Option<String>,
+    pub path: String,
+    pub secure: bool,
+    pub http_only: bool,
+    pub same_site: SameSite,
+    pub expiration_date: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum SameSite {
+    #[serde(rename = "lax")]
+    Lax,
+    #[serde(rename = "strict")]
+    Strict,
+    #[serde(rename = "no_restriction")]
+    None,
 }
 
 pub fn close_shortcut(key: u32, key_down: bool, control: bool, alt: bool) -> bool {
@@ -77,6 +102,25 @@ pub fn failure(id: u64, reason: &str, message: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imports_cookie_attributes_independently_of_the_current_page() {
+        let command: Command = serde_json::from_str(r#"{"id":1,"op":"import-cookies","viewId":"7:tab:1","cookies":[{"url":"https://app.example.com/","name":"session","value":"token","domain":".example.com","path":"/","secure":true,"httpOnly":true,"sameSite":"no_restriction","expirationDate":2000000000}]}"#).unwrap();
+        let cookies = command.cookies.unwrap();
+        assert_eq!(cookies.len(), 1);
+        assert_eq!(cookies[0].url, "https://app.example.com/");
+        assert_eq!(cookies[0].domain.as_deref(), Some(".example.com"));
+        assert!(cookies[0].http_only);
+        assert!(matches!(cookies[0].same_site, SameSite::None));
+        assert_eq!(cookies[0].expiration_date, Some(2000000000.0));
+        for invalid in [
+            r#"{"id":1,"op":"import-cookies","cookies":[{"name":"a"}]}"#,
+            r#"{"id":1,"op":"import-cookies","cookies":"a=b"}"#,
+            r#"{"id":1,"op":"import-cookies","script":"unsafe"}"#,
+        ] {
+            assert!(serde_json::from_str::<Command>(invalid).is_err());
+        }
+    }
 
     #[test]
     fn close_shortcut_preserves_other_keys_and_modifiers() {

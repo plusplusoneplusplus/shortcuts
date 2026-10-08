@@ -209,3 +209,46 @@ describe('browser toolbar overflow', () => {
         expect(screen.queryByRole('menu')).toBeNull();
     });
 });
+
+describe('browser cookie import', () => {
+    it.each(['electron', 'webview2'])('imports for an editable original domain while on the %s login page', async engine => {
+        open.mockResolvedValue({ ok: true, engine });
+        mocks.bridge!.importCookies = vi.fn(async () => ({ ok: true }));
+        render(<UnifiedBrowserTab tabId="tab" viewId="view" sessionKey="remote-workspace" url="https://login.example.com/oauth" active visible onNavigate={vi.fn()} onPageState={vi.fn()} />);
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Import cookies…' }));
+        expect(screen.getByLabelText('Domain')).toHaveValue('login.example.com');
+        expect(screen.getByLabelText('Domain')).toHaveFocus();
+        fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'app.example.com' } });
+        fireEvent.change(screen.getByLabelText('Cookies'), { target: { value: 'session=token' } });
+        await userEvent.click(screen.getByRole('button', { name: 'Import', exact: true }));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Cookies imported for app.example.com'));
+        expect(mocks.bridge!.importCookies).toHaveBeenCalledWith('view', 'app.example.com', 'session=token');
+        expect(mocks.bridge!.navigate).not.toHaveBeenCalled();
+        expect(screen.queryByLabelText('Cookies')).toBeNull();
+    });
+    it('keeps the dialog open on failure and prevents closing or duplicate imports while pending', async () => {
+        let finish!: (reply: { ok: false; reason: string; message: string }) => void;
+        mocks.bridge!.importCookies = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Import cookies…' }));
+        fireEvent.change(screen.getByLabelText('Cookies'), { target: { value: 'a=b' } });
+        await userEvent.click(screen.getByRole('button', { name: 'Import', exact: true }));
+        expect(screen.getByRole('button', { name: 'Importing…' })).toBeDisabled();
+        await userEvent.keyboard('{Escape}');
+        expect(screen.getByLabelText('Cookies')).toBeInTheDocument();
+        act(() => finish({ ok: false, reason: 'invalid', message: 'Invalid cookies.' }));
+        await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid cookies.'));
+        expect(screen.getByLabelText('Cookies')).toHaveValue('a=b');
+        expect(mocks.bridge!.importCookies).toHaveBeenCalledOnce();
+    });
+    it('hides import for desktops without the cookie API', async () => {
+        tab();
+        await waitFor(() => expect(screen.getByLabelText('Reload')).not.toBeDisabled());
+        await userEvent.click(screen.getByRole('button', { name: 'Browser options' }));
+        expect(screen.queryByRole('menuitem', { name: 'Import cookies…' })).toBeNull();
+    });
+});

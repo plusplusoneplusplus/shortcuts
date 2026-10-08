@@ -152,7 +152,11 @@ do not start it. `build:native` and `ensure:native` include it only on Windows
 x64; other targets retain their native server artifacts without WebView2
 initialization. `--check` detects the runtime without opening a view. Hosted
 pages receive no host objects or CoC bridge; navigation is HTTP(S)-only, with
-`about:blank` allowed inside authentication popups.
+`about:blank` allowed inside authentication popups. Typed `import-cookies` commands
+target an existing view and use its profile cookie manager independently of the
+current page URL. The desktop main process validates domain, fields and batch
+limits before sending cookies; the helper prepares cookies before adding them
+and returns failures without cookie values.
 
 Windows-account SSO is enabled by default. The helper sets
 `AllowSingleSignOnUsingOSPrimaryAccount` before environment creation, without an

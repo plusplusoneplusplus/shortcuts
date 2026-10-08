@@ -508,6 +508,18 @@ fn dispatch(state: &State, command: Command) {
         protocol::failure(command.id, "not-found", "Browser view not found.");
         return;
     };
+    if command.op == "import-cookies" {
+        let result = import_cookies(&view, command.cookies.as_deref().unwrap_or_default());
+        match result {
+            Ok(()) => protocol::success(command.id),
+            Err(_) => protocol::failure(
+                command.id,
+                "invalid",
+                "Cookie import failed. Some cookies may have been added.",
+            ),
+        }
+        return;
+    }
     let result = unsafe {
         match command.op.as_str() {
             "navigate" => {
@@ -570,6 +582,47 @@ fn dispatch(state: &State, command: Command) {
             protocol::failure(command.id, "runtime-crashed", error);
         }
     }
+}
+
+fn import_cookies(view: &View, cookies: &[protocol::ImportCookie]) -> Result<()> {
+    if cookies.is_empty() || cookies.len() > 200 {
+        return Err(windows::core::Error::from(E_INVALIDARG));
+    }
+    unsafe {
+        let manager = view.webview.cast::<ICoreWebView2_2>()?.CookieManager()?;
+        // Prepare the whole batch before modifying the shared profile.
+        let mut prepared = Vec::with_capacity(cookies.len());
+        for item in cookies {
+            let url =
+                url::Url::parse(&item.url).map_err(|_| windows::core::Error::from(E_INVALIDARG))?;
+            let domain = item
+                .domain
+                .as_deref()
+                .or_else(|| url.host_str())
+                .ok_or_else(|| windows::core::Error::from(E_INVALIDARG))?;
+            let cookie = manager.CreateCookie(
+                &HSTRING::from(&item.name),
+                &HSTRING::from(&item.value),
+                &HSTRING::from(domain),
+                &HSTRING::from(&item.path),
+            )?;
+            cookie.SetIsSecure(item.secure)?;
+            cookie.SetIsHttpOnly(item.http_only)?;
+            cookie.SetSameSite(match item.same_site {
+                protocol::SameSite::Lax => COREWEBVIEW2_COOKIE_SAME_SITE_KIND_LAX,
+                protocol::SameSite::Strict => COREWEBVIEW2_COOKIE_SAME_SITE_KIND_STRICT,
+                protocol::SameSite::None => COREWEBVIEW2_COOKIE_SAME_SITE_KIND_NONE,
+            })?;
+            if let Some(expiry) = item.expiration_date {
+                cookie.SetExpires(expiry)?;
+            }
+            prepared.push(cookie);
+        }
+        for cookie in prepared {
+            manager.AddOrUpdateCookie(&cookie)?;
+        }
+    }
+    Ok(())
 }
 
 fn browser_environment_options() -> ICoreWebView2EnvironmentOptions {
@@ -1120,6 +1173,7 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     url: Some(url),
                     bounds: None,
                     action: None,
+                    cookies: None,
                 };
                 start_controller(
                     &callback_state,

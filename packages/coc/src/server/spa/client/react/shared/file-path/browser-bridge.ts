@@ -45,6 +45,7 @@ export interface BrowserDownloadEvent {
 export interface DesktopBrowserBridge {
     /** Source kinds `open` accepts; absent on desktops that only open URLs. */
     sources?: readonly string[];
+    importCookies?(viewId: string, domain: string, cookies: string): Promise<BrowserOperationResult>;
     open(viewId: string, source: string | BrowserSource, sessionKey: string, relatedEngine?: BrowserEngine): Promise<BrowserOpenResult>;
     adopt?(viewId: string, guestId: number): Promise<BrowserOperationResult>;
     navigate(viewId: string, url: string): Promise<BrowserOpenResult>;

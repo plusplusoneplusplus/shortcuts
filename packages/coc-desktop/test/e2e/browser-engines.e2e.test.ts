@@ -44,6 +44,19 @@ afterEach(() => {
 });
 
 describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine => {
+    it('imports an HttpOnly auth cookie for the original domain after a cross-domain login redirect', async () => {
+        const directory = profileRoot('cookie-import-');
+        temporary.push(directory);
+        const steps = await scenario(engine, directory, '--cookie-import-check');
+        const result = steps.get('cookie-import');
+        expect(result?.imported).toEqual({ ok: true });
+        expect(result?.redirected).toContain('127.0.0.1');
+        expect(result?.afterImport).toBe(result?.redirected);
+        expect(result?.authenticated).toContain('localhost');
+        expect(result?.report.authenticated).toBe(true);
+        expect(result?.report.cookie).not.toContain('imported=');
+    }, 90_000);
+
     it.skipIf(process.platform !== 'win32')('keeps native keyboard input in the composer after clicking away from the browser and updating layout', async () => {
         const directory = profileRoot('browser-focus-');
         temporary.push(directory);

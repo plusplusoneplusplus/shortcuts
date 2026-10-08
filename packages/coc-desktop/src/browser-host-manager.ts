@@ -5,6 +5,7 @@ import {
     type BrowserEngine, type BrowserFailureReason, type BrowserNavAction, type BrowserOpenResult, type BrowserOperationResult, type BrowserPreferences,
     type BrowserSourceKind, type BrowserViewState,
 } from './browser-view-policy';
+import { parseBrowserCookies } from './browser-cookie-import';
 import { validateHtmlPagePath, type HtmlPageBounds } from './html-page-policy';
 
 interface Entry {
@@ -40,6 +41,7 @@ export class BrowserHostManager {
     private readonly owners = new Map<number, Map<string, Entry>>();
     private readonly clearing = new Set<BrowserEngine>();
     private disposed = false;
+    private readonly imports = new Map<BrowserEngine, Set<Promise<BrowserOperationResult>>>();
 
     constructor(private readonly options: BrowserManagerOptions) {}
 
@@ -193,6 +195,32 @@ export class BrowserHostManager {
         } catch (error) { return this.failure(error, 'not-found'); }
     }
 
+    async importCookies(ownerId: number, viewId: unknown, domain: unknown, input: unknown): Promise<BrowserOperationResult> {
+        const entry = this.entry(ownerId, viewId);
+        if (!entry || entry.closed) return { ok: false, reason: 'not-found' };
+        if (entry.sourceKind !== 'url') return { ok: false, reason: 'unsupported' };
+        if (this.disposed || this.clearing.has(entry.engine)) return { ok: false, reason: 'busy' };
+        let cookies;
+        try { cookies = parseBrowserCookies(domain, input); }
+        catch (error) { return this.failure(error, 'invalid'); }
+        const operation = (async (): Promise<BrowserOperationResult> => {
+            try {
+                const view = await entry.ready;
+                if (entry.closed || this.disposed) return { ok: false, reason: 'not-found' };
+                if (!view.importCookies) return { ok: false, reason: 'unsupported' };
+                await view.importCookies(cookies);
+                return { ok: true };
+            } catch {
+                // Engine errors can contain cookie values. Never return them to the renderer or logs.
+                return { ok: false, reason: 'invalid', message: 'Cookie import failed. Some cookies may have been added. Check the fields and retry.' };
+            }
+        })();
+        const pending = this.imports.get(entry.engine) ?? new Set<Promise<BrowserOperationResult>>();
+        this.imports.set(entry.engine, pending);
+        pending.add(operation);
+        try { return await operation; } finally { pending.delete(operation); }
+    }
+
     async navigate(ownerId: number, viewId: unknown, url: unknown): Promise<BrowserOpenResult> {
         const entry = this.entry(ownerId, viewId);
         if (!entry || entry.closed) { return { ok: false, reason: 'not-found' }; }
@@ -276,6 +304,7 @@ export class BrowserHostManager {
         this.clearing.add(engine);
         this.options.changed();
         try {
+            await Promise.all([...this.imports.get(engine) ?? []]);
             const entries = [...this.owners.values()].flatMap(entries => [...entries.values()]).filter(entry => entry.engine === engine && entry.sourceKind === 'url');
             const results = await Promise.allSettled(entries.map(entry => this.close(entry.ownerId, entry.viewId, true)));
             throwRejected(results);

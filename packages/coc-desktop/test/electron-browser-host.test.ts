@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
         clearData: vi.fn().mockResolvedValue(undefined),
         clearAuthCache: vi.fn().mockResolvedValue(undefined),
         clearCodeCaches: vi.fn().mockResolvedValue(undefined),
-        cookies: { flushStore: vi.fn().mockResolvedValue(undefined) },
+        cookies: { set: vi.fn().mockResolvedValue(undefined), flushStore: vi.fn().mockResolvedValue(undefined) },
         flushStorageData: vi.fn(),
     },
     contents: {
@@ -181,4 +181,13 @@ describe('Electron browser add-menu forwarding', () => {
         expect(press().preventDefault).not.toHaveBeenCalled();
         await hosted.close();
     });
+});
+
+it('imports auth cookies into the persistent profile even while showing a different domain', async () => {
+    const { hosted } = await view();
+    const { parseBrowserCookies } = await import('../src/browser-cookie-import');
+    const cookies = parseBrowserCookies('original.example.com', 'session=token');
+    await hosted.importCookies!(cookies);
+    expect(mocks.profile.cookies.set).toHaveBeenCalledWith(cookies[0]);
+    expect(mocks.profile.cookies.flushStore).toHaveBeenCalled();
 });

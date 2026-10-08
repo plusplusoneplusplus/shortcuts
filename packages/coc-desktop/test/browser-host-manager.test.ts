@@ -326,6 +326,7 @@ describe('file previews', () => {
     it('routes bounds, focus, history and close through the shared manager paths', async () => {
         const h = harness();
         await h.manager.openFile(1, 'p', page, 'owner');
+        expect(await h.manager.importCookies(1, 'p', 'app.example.com', 'a=b')).toEqual({ ok: false, reason: 'unsupported' });
         const { view, sink } = h.files[0];
         await h.manager.bounds(1, 'p', { x: 1, y: 2, width: 3, height: 4 });
         await h.manager.bounds(1, 'p', null);
@@ -478,5 +479,44 @@ describe('htmlPage open result mapping', () => {
         }
         expect(toHtmlPageOpenResult({ ok: false, reason: 'busy' })).toEqual({ ok: false, reason: 'no-window' });
         expect(toHtmlPageOpenResult({ ok: false, reason: 'bad-session' })).toEqual({ ok: false, reason: 'no-window' });
+    });
+});
+
+describe.each<BrowserEngine>(['electron', 'webview2'])('%s cookie imports', engine => {
+    it('uses the owning tab engine after redirects or preference changes and rejects foreign owners', async () => {
+        const h = harness(engine);
+        await h.manager.open(1, 'view', 'https://login.example.com/', 'workspace-a');
+        await h.manager.select(engine === 'electron' ? 'webview2' : 'electron');
+        const view = h.created[0].view;
+        view.importCookies = vi.fn(async () => {});
+        expect(await h.manager.importCookies(2, 'view', 'app.example.com', 'session=token')).toMatchObject({ ok: false, reason: 'not-found' });
+        expect(await h.manager.importCookies(1, 'view', 'app.example.com', 'session=token')).toEqual({ ok: true });
+        expect(view.importCookies).toHaveBeenCalledWith([expect.objectContaining({ url: 'https://app.example.com/', name: 'session', value: 'token' })]);
+        expect(view.navigate).not.toHaveBeenCalled();
+        expect(await h.manager.importCookies(1, 'view', 'app.example.com', '[{"name":"a","value":"secret","domain":"evil.test"}]')).toMatchObject({ ok: false, reason: 'invalid' });
+        expect(view.importCookies).toHaveBeenCalledTimes(1);
+    });
+    it('waits for an import before clearing and rejects new imports during cleanup', async () => {
+        const h = harness(engine);
+        await h.manager.open(1, 'view', 'https://login.example.com/', 'workspace');
+        let finish!: () => void;
+        h.created[0].view.importCookies = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+        const importing = h.manager.importCookies(1, 'view', 'app.example.com', 'a=b');
+        await vi.waitFor(() => expect(h.created[0].view.importCookies).toHaveBeenCalled());
+        const clearing = h.manager.clear(engine);
+        expect(await h.manager.importCookies(1, 'view', 'app.example.com', 'a=b')).toEqual({ ok: false, reason: 'busy' });
+        expect(h.hosts[engine].clearData).not.toHaveBeenCalled();
+        finish();
+        expect(await importing).toEqual({ ok: true });
+        expect(await clearing).toEqual({ ok: true });
+        expect(h.hosts[engine].clearData).toHaveBeenCalled();
+    });
+    it('does not disclose engine error details', async () => {
+        const h = harness(engine);
+        await h.manager.open(1, 'view', 'https://login.example.com/', 'workspace');
+        h.created[0].view.importCookies = vi.fn(async () => { throw new Error('secret token'); });
+        const reply = await h.manager.importCookies(1, 'view', 'app.example.com', 'a=b');
+        expect(reply).toMatchObject({ ok: false, reason: 'invalid' });
+        expect(JSON.stringify(reply)).not.toContain('secret');
     });
 });

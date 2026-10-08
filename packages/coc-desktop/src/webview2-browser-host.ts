@@ -88,6 +88,7 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             throw error;
         }
         return {
+            importCookies: cookies => this.process.request('import-cookies', { viewId: id, cookies }),
             snapshot: () => ({ ...entry.state }),
             navigate: async url => {
                 entry.request.url = url;

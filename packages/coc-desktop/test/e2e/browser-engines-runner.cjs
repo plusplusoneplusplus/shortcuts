@@ -13,6 +13,7 @@ const userData = process.env.COC_BROWSER_E2E_USER_DATA;
 const engine = process.env.COC_BROWSER_E2E_ENGINE || 'electron';
 const restart = process.argv.includes('--restart-check');
 const afterClear = process.argv.includes('--after-clear');
+const cookieImportCheck = process.argv.includes('--cookie-import-check');
 const focusCheck = process.argv.includes('--focus-check');
 const execFileAsync = promisify(execFile);
 // The profile (userData/coc/browser/electron) must sit inside Electron's userData:
@@ -35,7 +36,7 @@ const script = `<script>
 const key = new URL(location.href).searchParams.get('tab') || 'main';
 async function report(extra = {}) {
     fetch('/report?tab='+encodeURIComponent(key), {method:'POST', body: JSON.stringify({
-        cookie:document.cookie, storage:localStorage.getItem('fixture'), bridge:typeof window.cocDesktop,
+        authenticated:window.cookieAuthenticated === true, cookie:document.cookie, storage:localStorage.getItem('fixture'), bridge:typeof window.cocDesktop,
         require:typeof require, title:document.title, focused:document.hasFocus(),
         input:document.getElementById('input').value, ...extra
     })});
@@ -72,12 +73,13 @@ function handle(req, res) {
         req.on('end', () => { reports.set(url.searchParams.get('tab'), JSON.parse(body)); res.end('ok'); });
         return;
     }
+    if (url.pathname === '/cookie-auth' && !req.headers.cookie?.split('; ').includes('imported=auth-token')) { res.writeHead(302, { Location: base + '/login?tab=main' }); res.end(); return; }
     if (url.pathname === '/redirect') { res.writeHead(302, { Location: '/second?tab=main' }); res.end(); return; }
     if (url.pathname === '/download') { res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="fixture.zip"' }); res.end('fixture'); return; }
     if (url.pathname === '/slow') { res.setHeader('Content-Type', 'text/html'); res.write('<html><head><title>Slow</title></head>'); return; }
     const title = url.pathname === '/second' ? 'Second' : url.pathname === '/login' ? 'Login' : 'Home';
     res.setHeader('Content-Type', 'text/html');
-    res.end(`<html><head><title>${title}</title></head><body><input id="input"><a href="/second?tab=main">Next</a>${script}
+    res.end(`<html><head><title>${title}</title></head><body><input id="input"><a href="/second?tab=main">Next</a><script>window.cookieAuthenticated=${url.pathname === "/cookie-auth"};</script>${script}
         ${url.pathname === '/login' ? '<script>window.opener.postMessage("authenticated","*");</script>' : ''}</body></html>`);
 }
 async function waitFor(predicate, description, timeout = 10000) {
@@ -128,7 +130,20 @@ app.whenReady().then(async () => {
     const home = await settled(main, 'main', s => s.title === 'Home');
     await call(main, 'setBounds', 'main', { x: 350, y: 70, width: 420, height: 320 });
     await waitFor(() => reports.get('main'), 'fixture page report');
-    if (focusCheck) {
+    if (cookieImportCheck) {
+        const original = base.replace('127.0.0.1', 'localhost') + '/cookie-auth?tab=main';
+        await call(main, 'navigate', 'main', original);
+        const redirected = await settled(main, 'main', s => s.title === 'Login' && s.url.startsWith(base));
+        const imported = await call(main, 'importCookies', 'main', 'localhost', JSON.stringify([
+            { name: 'imported', value: 'auth-token', path: '/', secure: false, httpOnly: true, sameSite: 'lax' },
+        ]));
+        const afterImport = await state(main, 'main');
+        reports.delete('main');
+        await call(main, 'navigate', 'main', original);
+        const authenticated = await settled(main, 'main', s => s.title === 'Home' && s.url === original);
+        const report = await waitFor(() => reports.get('main')?.authenticated && reports.get('main'), 'imported HttpOnly cookie authenticated original domain');
+        emit('cookie-import', { redirected: redirected.url, imported, afterImport: afterImport.url, authenticated: authenticated.url, report });
+    } else if (focusCheck) {
         main.focus();
         const handle = main.getNativeWindowHandle();
         const hwnd = handle.length === 8 ? handle.readBigUInt64LE().toString() : String(handle.readUInt32LE());

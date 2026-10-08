@@ -149,3 +149,13 @@ describe('WebView2 native focus handoff', () => {
         await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledExactlyOnceWith('focus-host', { viewId: '1:tab:1' }));
     });
 });
+
+it('imports cookies through the native tab regardless of its current URL', async () => {
+    const host = new WebView2BrowserHost('profile');
+    const sink: BrowserEventSink = { state: vi.fn(), newTab: vi.fn(), download: vi.fn(), closeRequested: vi.fn(), openMenuRequested: vi.fn() };
+    const view = await host.create({ ownerId: 7, viewId: 'import', sessionKey: 'workspace', url: 'https://login.example.com' }, sink);
+    const { parseBrowserCookies } = await import('../src/browser-cookie-import');
+    const cookies = parseBrowserCookies('original.example.com', 'session=token');
+    await view.importCookies!(cookies);
+    expect(mocks.request).toHaveBeenCalledWith('import-cookies', { viewId: '7:import:1', cookies });
+});
