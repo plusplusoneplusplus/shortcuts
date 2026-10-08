@@ -60,6 +60,12 @@ vi.mock('@plusplusoneplusplus/forge', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>();
     return {
         ...actual,
+        loadCommitShowPatch: async (root: string, commit: string, file?: string, options?: { contextLines?: number; maxLines?: number }) => {
+            const { loadNativeGit } = await vi.importActual<typeof import('@plusplusoneplusplus/coc-native')>('@plusplusoneplusplus/coc-native');
+            const native = loadNativeGit();
+            const args = await native.prepareGitShowPatch(commit, file, options?.contextLines);
+            return native.processGitPatch(await mockExecGit(args, root, {}), options?.maxLines);
+        },
         execGit: (...args: any[]) => mockExecGit(...args),
         // execGitArgsAsync / readGitFileAtCommit now delegate to forge execGitAsync.
         // Route it to the same mock; an async wrapper turns sync throws into rejections.

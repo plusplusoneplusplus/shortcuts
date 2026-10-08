@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { loadCommitShowPatch } from '../../src/diff/local-patch';
 import { createCommitDiffProvider } from '../../src/diff/git-diff-provider';
 
 const roots: string[] = [];
@@ -61,6 +62,11 @@ describe('Rust commit provider', () => {
             expect(await provider.getSummary()).toEqual({ filesChanged: 5, additions: 3, deletions: 1 });
         }
         expect(git(root, 'show', '--format=', '--patch', merge)).toBe('');
+        for (const commit of [initial, head, merge]) {
+            const result = await loadCommitShowPatch(root, commit);
+            expect(result.content.raw).toBe(git(root, 'show', '--format=', '--patch', '-M', '-C', commit));
+        }
+        expect((await loadCommitShowPatch(root, merge)).content.raw).toBe('');
     });
 
     it('handles roots, absent paths and invalid revisions', async () => {
@@ -92,6 +98,12 @@ describe('Rust commit provider', () => {
             raw: full.raw.split('\n').slice(0, 2).join('\n'), truncated: true, totalLines: full.totalLines,
         });
         expect((await provider.getFileDiff('[ab].txt', { maxLines: 0 })).raw).toBe('');
+        const shown = await loadCommitShowPatch(root, 'HEAD', '[ab].txt', { contextLines: 0 });
+        expect(shown.content.raw).toContain('+literal');
+        expect(shown.content.raw).not.toContain('+glob');
+        expect((await loadCommitShowPatch(root, 'HEAD', '[ab].txt', { contextLines: 0, maxLines: 2 })).content).toEqual({
+            raw: shown.content.raw.split('\n').slice(0, 2).join('\n'), truncated: true, totalLines: shown.content.totalLines,
+        });
         expect(await provider.getFileDiff('[ab].txt', { full: true })).toEqual(await provider.getFileDiff('[ab].txt'));
     });
 

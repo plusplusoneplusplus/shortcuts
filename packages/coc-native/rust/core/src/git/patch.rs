@@ -276,3 +276,22 @@ pub fn commit_patch(
         run_git(root, &commit_patch_args(commit, path, context), &GitCommandOptions::default())?;
     Ok(process_patch(raw, max_lines))
 }
+
+/// Route comparison uses git-show's combined merge behavior, not first parent.
+pub fn show_patch_args(commit: &str, path: Option<&str>, context: Option<u32>) -> Vec<String> {
+    let mut args = patch_args("show", &[commit.into()], path, context);
+    args.splice(2..2, ["--format=", "--patch"].map(String::from));
+    args
+}
+
+pub fn show_patch(
+    root: &Path,
+    commit: &str,
+    path: Option<&str>,
+    context: Option<u32>,
+    max_lines: Option<i64>,
+) -> Result<PatchResult, GitError> {
+    let raw =
+        run_git(root, &show_patch_args(commit, path, context), &GitCommandOptions::default())?;
+    Ok(process_patch(raw, max_lines))
+}

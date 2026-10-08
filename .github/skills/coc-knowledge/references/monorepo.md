@@ -102,7 +102,9 @@ be parsed on a libuv worker with `loadNativeGit().parseGitPatch`; Forge
 `parseFullDiffAsync` converts native metadata/chunks to public shapes through
 `nativePatchToDiff`. The commit/range providers and production `GitRangeService` patches, file lists
 and statistics use `diff/local-patch.ts`: Rust plans/executes host Git and processes
-patches, while TypeScript executes the shared plan for WSL. Native contracts
+patches, while TypeScript executes the shared plan for WSL. Production commit patch
+routes use its git-show plan and native truncation without a route patch cache;
+first-parent provider and combined-merge route semantics stay distinct. Native contracts
 and migration boundaries belong in the native instructions below.
 
 `packages/coc-native/rust/teams-cli` is a standalone Cargo workspace project providing

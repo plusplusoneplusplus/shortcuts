@@ -682,6 +682,9 @@ export interface GitRepositoryStatus {
  */
 export declare function gitResolvedGitDir(path: string): Promise<string | null>
 
+/** Execute and process a git-show route patch on a worker. */
+export declare function gitShowPatch(root: string, commit: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
+
 /**
  * Read the full working-tree change list for a repository.
  *
@@ -1043,6 +1046,9 @@ export declare function prepareGitCommitPatch(commit: string, path?: string | un
 
 /** Rust-owned branch-range command plan for external execution transports. */
 export declare function prepareGitRangePatch(base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
+
+/** Git-show route plan shared with external WSL execution. */
+export declare function prepareGitShowPatch(commit: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[]>
 
 /** Shared supplied-patch processing, including summaries and truncation. */
 export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>

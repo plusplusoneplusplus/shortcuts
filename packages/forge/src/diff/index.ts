@@ -39,3 +39,5 @@ export {
     inferStatusFromDiffChunk,
     countAdditionsDeletions,
 } from './diff-utils';
+
+export { loadCommitShowPatch } from './local-patch';

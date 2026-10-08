@@ -228,7 +228,7 @@ fn range_plan_keeps_context_revision_boundary_and_literal_path() {
 
 #[test]
 fn commit_planning_matches_root_and_first_parent_without_switching_branches() {
-    use coc_native_core::git::patch::{commit_patch, commit_patch_args};
+    use coc_native_core::git::patch::{commit_patch, commit_patch_args, show_patch};
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     git(root, &["init", "--initial-branch=main"]);
@@ -258,6 +258,11 @@ fn commit_planning_matches_root_and_first_parent_without_switching_branches() {
         let expected = git(root, &["diff", "-M", "-C", &initial, commit]);
         assert_eq!(result.content.raw, expected.trim_end_matches(['\r', '\n']));
         assert_eq!((result.summary.additions, result.summary.deletions), (1, 1));
+    }
+    for commit in [&initial, &head, &merge] {
+        let result = show_patch(root, commit, None, None, None).unwrap();
+        let expected = git(root, &["show", "--format=", "--patch", "-M", "-C", commit]);
+        assert_eq!(result.content.raw, expected.trim_end_matches(['\r', '\n']));
     }
     // git-show route semantics remain distinct: this merge's combined patch is empty.
     assert!(git(root, &["show", "--format=", "--patch", &merge]).is_empty());
