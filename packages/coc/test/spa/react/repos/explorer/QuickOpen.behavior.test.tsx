@@ -94,6 +94,48 @@ afterEach(() => {
 });
 
 describe('QuickOpen — server-side search', () => {
+    it('searches the filename and passes the current line to the keyboard-selected result', async () => {
+        const onFileSelect = vi.fn();
+        renderOpen({ onFileSelect, scope: { kind: 'repo', workspaceId: 'remote-ws', routingRef: 'remote:host:remote-ws' } });
+        typeQuery('repos:42');
+        await flushDebounce();
+        expect(searchSpy).toHaveBeenLastCalledWith('remote-ws', 'repos', expect.any(Object), 'remote:host:remote-ws');
+        const selected = serverSearch('repos').results[1].path;
+        fireEvent.keyDown(screen.getByTestId('quick-open-input'), { key: 'ArrowDown' });
+        // A suffix edit keeps the ranking and highlighted result, with no new request.
+        typeQuery('repos:57');
+        await flushDebounce();
+        expect(searchSpy).toHaveBeenCalledTimes(1);
+        await act(async () => fireEvent.keyDown(screen.getByTestId('quick-open-input'), { key: 'Enter' }));
+        expect(onFileSelect).toHaveBeenCalledWith(expect.objectContaining({ path: selected }), { line: 57, column: 1 });
+    });
+
+    it('does not attach a new query line to old rows, and clears the suffix for filename-only selection', async () => {
+        const onFileSelect = vi.fn();
+        renderOpen({ onFileSelect });
+        typeQuery('tree:42');
+        await flushDebounce();
+        typeQuery('readme:12');
+        await act(async () => fireEvent.click(screen.getByTestId('quick-open-item-0')));
+        expect(onFileSelect).not.toHaveBeenCalled();
+        await flushDebounce();
+        typeQuery('readme');
+        await act(async () => fireEvent.click(screen.getByTestId('quick-open-item-0')));
+        expect(onFileSelect).toHaveBeenCalledWith(expect.objectContaining({ path: 'README.md' }));
+    });
+
+    it('strips the suffix for remote group search and retains member identity on selection', async () => {
+        const result = { path: 'src/app.ts', workspaceId: 'member-b', repoName: 'Member B', score: 10, indices: [] };
+        groupSearchSpy.mockResolvedValue({ status: 'complete', results: [result] });
+        const onFileSelect = vi.fn();
+        renderOpen({ onFileSelect, scope: { kind: 'repo-group', groupId: 'group', groupName: 'Group', liveRepoCount: 2, baseUrl: 'http://remote.test' } });
+        typeQuery('app:42');
+        await flushDebounce();
+        expect(groupSearchSpy).toHaveBeenCalledWith('group', 'app', expect.any(Object), 'http://remote.test');
+        await act(async () => fireEvent.click(screen.getByTestId('quick-open-item-0')));
+        expect(onFileSelect).toHaveBeenCalledWith(result, { line: 42, column: 1 });
+    });
+
     it('fetches nothing when the dialog opens', async () => {
         renderOpen();
         await flushDebounce();

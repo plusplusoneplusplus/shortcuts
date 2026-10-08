@@ -55,6 +55,7 @@ const PREFIX_HINTS: ReadonlyArray<{ prefix: string; label: string }> = [
     { prefix: 't', label: 'types' },
     { prefix: 'm', label: 'members' },
     { prefix: ':42', label: 'line' },
+    { prefix: 'filename:42', label: 'file at line' },
 ];
 
 function PrefixHints({ testId }: { testId: string }) {
@@ -87,7 +88,10 @@ export interface QuickOpenProps {
     open: boolean;
     onClose: () => void;
     /** Return false to keep the dialog open without changing its selection. */
-    onFileSelect: (result: QuickOpenResult) => QuickOpenSelectionOutcome | Promise<QuickOpenSelectionOutcome>;
+    onFileSelect: (
+        result: QuickOpenResult,
+        position?: { line: number; column: number },
+    ) => QuickOpenSelectionOutcome | Promise<QuickOpenSelectionOutcome>;
     /** Which question the dialog opens on. A typed prefix can change it. */
     mode?: PaletteMode;
     /** Required for symbols mode; without it `Ctrl+,` has nowhere to navigate. */
@@ -233,6 +237,7 @@ export function QuickOpen({
 }: QuickOpenProps) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<QuickOpenResult[]>([]);
+    const [resultsTerm, setResultsTerm] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(0);
     const [groupStatus, setGroupStatus] = useState<'complete' | 'partial' | 'failed' | 'no-searchable-members' | null>(null);
@@ -285,6 +290,7 @@ export function QuickOpen({
         if (!open) return;
         setQuery('');
         setResults([]);
+        setResultsTerm(null);
         setHighlightIndex(0);
         highlightKeyRef.current = null;
         setGroupStatus(null);
@@ -342,6 +348,7 @@ export function QuickOpen({
                         }
                     }
                     setResults(data.results);
+                    setResultsTerm(trimmed);
                 })
                 .catch(() => {
                     if (abort.signal.aborted || requestId !== requestIdRef.current || !open) return;
@@ -401,9 +408,13 @@ export function QuickOpen({
     }, [highlightIndex]);
 
     const handleSelect = useCallback(async (result: QuickOpenResult | WorkspaceSymbolResult) => {
+        // Retain old rows while typing, but never navigate them with a new query's line.
+        if (!isSymbolResult(result) && resultsTerm !== parsed.term) return;
         const outcome = isSymbolResult(result)
             ? await onSymbolSelect?.(result)
-            : await onFileSelect(result);
+            : parsed.fileLineTarget === undefined
+                ? await onFileSelect(result)
+                : await onFileSelect(result, { line: parsed.fileLineTarget, column: 1 });
         if (outcome === false) return;
         if (typeof outcome === 'object') {
             setError(outcome.error);
@@ -411,7 +422,7 @@ export function QuickOpen({
             return;
         }
         onClose();
-    }, [onFileSelect, onSymbolSelect, onClose]);
+    }, [onFileSelect, onSymbolSelect, onClose, resultsTerm, parsed.term, parsed.fileLineTarget]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'ArrowDown') {

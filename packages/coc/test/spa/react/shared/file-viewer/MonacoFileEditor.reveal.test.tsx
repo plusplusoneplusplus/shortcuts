@@ -17,6 +17,8 @@ import { MonacoFileEditor } from '../../../../../src/server/spa/client/react/sha
 
 const stub = vi.hoisted(() => ({
     mounted: false,
+    deferMount: false,
+    mount: null as (() => void) | null,
     editor: {
         getModel: vi.fn(() => ({ id: 'model-1' })),
         createDecorationsCollection: vi.fn(() => ({ set: vi.fn(), clear: vi.fn() })),
@@ -33,11 +35,12 @@ vi.mock('@monaco-editor/react', () => ({
     default: ({ onMount }: any) => {
         if (!stub.mounted) {
             stub.mounted = true;
-            queueMicrotask(() => onMount?.(stub.editor, {
+            stub.mount = () => onMount?.(stub.editor, {
                 editor: { setModelMarkers: vi.fn() },
                 KeyMod: { CtrlCmd: 1 },
                 KeyCode: { KeyS: 2 },
-            }));
+            });
+            if (!stub.deferMount) queueMicrotask(stub.mount);
         }
         return <div data-testid="fake-monaco" />;
     },
@@ -59,9 +62,24 @@ function revealedLines(): number[] {
 beforeEach(() => {
     vi.clearAllMocks();
     stub.mounted = false;
+    stub.deferMount = false;
+    stub.mount = null;
 });
 
 describe('MonacoFileEditor — repeat reveal', () => {
+    it('reveals the latest target when navigation changes before the editor mounts', async () => {
+        stub.deferMount = true;
+        const { rerender } = render(<MonacoFileEditor value="" language="typescript" revealLine={12} revealColumn={8} />);
+        rerender(<MonacoFileEditor value="a\nb\nc" language="typescript" revealLine={42} revealColumn={1} />);
+        expect(revealedLines()).toEqual([]);
+        act(() => stub.mount?.());
+        expect(revealedLines()).toEqual([42]);
+        expect(stub.editor.setPosition).toHaveBeenLastCalledWith({ lineNumber: 42, column: 1 });
+        // A valid line past EOF is passed to Monaco, whose model clamps positions.
+        rerender(<MonacoFileEditor value="a\nb\nc" language="typescript" revealLine={9999} />);
+        expect(revealedLines()).toEqual([42, 9999]);
+    });
+
     it('reveals the same line again when only the nonce changes', async () => {
         const { rerender } = render(
             <MonacoFileEditor value="a\nb\nc" language="typescript" revealLine={42} revealColumn={8} revealNonce={1} />,

@@ -204,8 +204,13 @@ prop: `files` for Ctrl/Cmd+P and `symbols` for Ctrl/Cmd+, (Go To All). Typed
 prefixes move between them live — `explorer/paletteQuery.ts` is the pure
 grammar: `t ` types, `m ` members, `f ` files, `:N` line, and a bare prefix
 letter with no trailing space is a search term, so a symbol named `f` stays
-findable. Backspacing a prefix restores the mode the dialog was opened in. The
-footer names the active filter. Do not add a second palette component.
+findable. File queries accept `filename:line`; only a positive safe trailing
+integer is removed from the server search term, preserving Windows drive
+prefixes and invalid suffix text. The selected row receives the current line
+through the same pinned navigation path as symbols. Rows retained from an older
+filename query cannot be selected until the current search answers.
+Backspacing a prefix restores the mode the dialog was opened in. The footer
+names the active filter. Do not add a second palette component.
 
 Symbols are answered over the language-server bridge, never HTTP:
 `features/language-servers/useWorkspaceSymbols.ts` holds one workspace
@@ -476,10 +481,11 @@ because `@monaco-editor/react` defaults it to `true`. An inherited size observer
 would compete with the Peek widget's own `layout()` call over the same element
 and shrink the preview to its content height. `MonacoFileEditor` measures its
 wrapper and calls `editor.layout()` itself instead; the library never does.
-It also lays out at that measured size inside `onMount`, before the first
-`revealLine`: Monaco starts at a placeholder 0x0/5x5 size, and with word wrap
-on a reveal at that width lands far from the target line once the real width
-arrives.
+Its pinned mount callback reads the latest line/column from a ref, preserving
+navigation changed while the editor loads. It also lays out at that measured
+size inside `onMount`, before the first `revealLine`: Monaco starts at a
+placeholder 0x0/5x5 size, and with word wrap a reveal at that width lands far
+from the target line once the real width arrives.
 
 ## Tests
 

@@ -45,7 +45,7 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/Q
     QuickOpen: ({ scope, open, onFileSelect, onClose }: {
         scope: { kind: 'repo'; workspaceId: string } | { kind: 'repo-group'; groupId: string };
         open: boolean;
-        onFileSelect: (result: { path: string; workspaceId?: string; repoName?: string }) => unknown;
+        onFileSelect: (result: { path: string; workspaceId?: string; repoName?: string }, position?: { line: number; column: number }) => unknown;
         onClose: () => void;
     }) => (open ? (
         <div
@@ -62,6 +62,11 @@ vi.mock('../../../../src/server/spa/client/react/features/repo-detail/explorer/Q
             >
                 pick
             </button>
+            <button type="button" data-testid="quick-open-line-pick" onClick={() => onFileSelect(
+                scope.kind === 'repo' ? { path: 'src/deep/app.ts' }
+                    : { path: 'src/deep/app.ts', workspaceId: 'member-b', repoName: 'Member B' },
+                { line: 42, column: 1 },
+            )}>pick at line</button>
             <button type="button" data-testid="quick-open-cancel" onClick={onClose}>cancel</button>
         </div>
     ) : null),
@@ -205,6 +210,40 @@ describe('unified panel quick open', () => {
         clearUnifiedPanelState();
         clearUnifiedTreeState();
         clearExplorerQuickOpenRegistry();
+    });
+
+    it('navigates an already-open file and repeats the line jump with a fresh nonce', async () => {
+        openUnifiedPanelTab(WS, {
+            kind: 'file', ownerWorkspaceId: WS, chatId: null, resourceId: 'src/deep/app.ts', label: 'app.ts',
+        });
+        renderPanel();
+        press('p');
+        await act(async () => fireEvent.click(screen.getByTestId('quick-open-line-pick')));
+        const first = storedFileTab();
+        expect(first).toMatchObject({ line: 42, column: 1 });
+        press('p');
+        await act(async () => fireEvent.click(screen.getByTestId('quick-open-line-pick')));
+        expect(storedFileTab()).toMatchObject({ line: 42, column: 1 });
+        expect(storedFileTab()?.revealNonce).not.toBe(first?.revealNonce);
+        expect(fileTabs()).toHaveLength(1);
+    });
+
+    it('routes a group line selection to the remote member owner', async () => {
+        const setTarget = vi.fn().mockReturnValue(true);
+        renderPanel({
+            workspaceId: 'group-1', routingRef: 'remote:host:group-1',
+            dock: dockStub({ target: 'member-a', setTarget }),
+            repoGroup: { id: 'group-1', name: 'Group', liveRepoCount: 2, baseUrl: 'http://remote.test' },
+        });
+        press('p');
+        await act(async () => fireEvent.click(screen.getByTestId('quick-open-line-pick')));
+        expect(mockHasWorkspaceRoute).toHaveBeenCalledWith('member-b', 'http://remote.test');
+        expect(mockActivateWorkspaceRoute).toHaveBeenCalledWith('member-b', 'http://remote.test');
+        expect(setTarget).toHaveBeenCalledWith('member-b');
+        expect(storedFileTab('group-1')).toMatchObject({
+            ownerWorkspaceId: 'member-b', ownerRoutingRef: 'remote:host:member-b',
+            resourceId: 'src/deep/app.ts', line: 42, column: 1,
+        });
     });
 
     it('opens Quick Open with the tree column collapsed — the regression', () => {
