@@ -424,7 +424,7 @@ impl Task for GitCommitFilesTask {
 
 /// Read the files a commit touched, with their line counts and its parent.
 ///
-/// Three children become one crossing: the parent comes from `gix`, and the
+/// Three children share one crossing: Git supplies the parent list and the
 /// two NUL-delimited `diff-tree` runs are joined in Rust. Root commits compare
 /// against the empty tree; merges compare against the first parent.
 #[napi(ts_return_type = "Promise<GitCommitFiles>")]
@@ -450,17 +450,20 @@ pub fn prepare_git_commit_files(
     }))
 }
 
-/// Join transported NUL-delimited metadata on a worker.
-#[napi(ts_return_type = "Promise<GitCommitFile[]>")]
-pub fn process_git_commit_files(
+/// Join transported NUL metadata and resolve its comparison parent on a worker.
+#[napi(ts_return_type = "Promise<GitCommitFiles>")]
+pub fn process_git_commit_metadata(
     name_status: String,
     numstat: String,
-) -> AsyncTask<crate::task::Blocking<Vec<GitCommitFile>>> {
+    parents: String,
+) -> AsyncTask<crate::task::Blocking<GitCommitFiles>> {
     AsyncTask::new(crate::task::Blocking::new(move || {
-        Ok(coc_native_core::git::commit::parse_commit_files(&name_status, &numstat)
-            .into_iter()
-            .map(GitCommitFile::from)
-            .collect())
+        let result =
+            coc_native_core::git::commit::process_commit_metadata(&name_status, &numstat, &parents);
+        Ok(GitCommitFiles {
+            parent_hash: result.parent_hash,
+            files: result.files.into_iter().map(GitCommitFile::from).collect(),
+        })
     }))
 }
 

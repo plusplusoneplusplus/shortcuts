@@ -124,8 +124,9 @@ optional staged/unstaged headings, and ordinary Git failures return empty string
 Production commit patch
 routes use its git-show plan and native truncation without a route patch cache;
 first-parent provider and combined-merge route semantics stay distinct. Commit metadata
-uses Forge `loadCommitFiles` with Rust NUL-delimited metadata planning/joins for
-host and WSL, preserves Git ordering and absent binary counts, and reads fresh
+uses Forge `loadCommitMetadata` for GitLogService file details and `loadCommitFiles`
+for route rows. Rust plans/joins NUL-delimited metadata and ordered parent output
+for host and WSL, preserves Git ordering and absent binary counts, and reads fresh
 state without a route metadata cache. Root file lists include initial additions. Native contracts
 and migration boundaries belong in the native instructions below.
 

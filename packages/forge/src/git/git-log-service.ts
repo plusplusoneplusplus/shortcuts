@@ -5,7 +5,7 @@
  */
 
 import * as path from 'path';
-import { loadCommitPatch, loadPendingPatch, loadWorkingTreePatch } from '../diff/local-patch';
+import { loadCommitMetadata, loadCommitPatch, loadPendingPatch, loadWorkingTreePatch } from '../diff/local-patch';
 import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
 import type { NativeGitLogCommit } from '@plusplusoneplusplus/coc-native';
 import { getLogger, LogCategory } from '../logger';
@@ -103,11 +103,9 @@ export class GitLogService {
      * patch plan. Binary counts stay absent; paths and Git ordering survive.
      */
     async getCommitFiles(repoRoot: string, commitHash: string): Promise<GitCommitFile[]> {
-        const native = loadNativeGit();
+        loadNativeGit();
         try {
-            const { parentHash, files } = await native.gitCommitFiles(repoRoot, commitHash, {
-                timeout: GIT_COMMAND_TIMEOUT_MS,
-            });
+            const { parentHash, files } = await loadCommitMetadata(repoRoot, commitHash, GIT_COMMAND_TIMEOUT_MS);
             // The three repository-level fields are the caller's own values, so
             // they are attached here rather than rebuilt in Rust. `additions`
             // and `deletions` stay *absent* when numstat had nothing to say —

@@ -144,7 +144,7 @@ pub fn parse_commit_files(name_status: &str, numstat: &str) -> Vec<CommitFile> {
 /// Metadata and patches share first-parent/root comparison and path options.
 /// The complete batch is also supplied to the external WSL transport.
 pub fn commit_files_args(commit: &str) -> Vec<Vec<String>> {
-    ["--name-status", "--numstat"]
+    let mut batch: Vec<Vec<String>> = ["--name-status", "--numstat"]
         .iter()
         .map(|format| {
             let mut args = super::patch::commit_patch_args(commit, None, None);
@@ -152,7 +152,22 @@ pub fn commit_files_args(commit: &str) -> Vec<Vec<String>> {
             args.splice(2..2, [format.to_string(), "-z".into()]);
             args
         })
-        .collect()
+        .collect();
+    batch.push(
+        ["log", "-1", "--format=%P", "--no-show-signature", "--end-of-options", commit, "--"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+    );
+    batch
+}
+
+/// Parent output is empty for roots and ordered first-parent first for merges.
+pub fn process_commit_metadata(name_status: &str, numstat: &str, parents: &str) -> CommitFiles {
+    CommitFiles {
+        parent_hash: parents.split_whitespace().next().unwrap_or(EMPTY_TREE_HASH).to_string(),
+        files: parse_commit_files(name_status, numstat),
+    }
 }
 
 pub fn commit_files(
@@ -163,10 +178,8 @@ pub fn commit_files(
     let args = commit_files_args(commit);
     let name_status = run_git(repo_root, &args[0], options)?;
     let numstat = run_git(repo_root, &args[1], options)?;
-    Ok(CommitFiles {
-        parent_hash: parent_hash(repo_root, commit),
-        files: parse_commit_files(&name_status, &numstat),
-    })
+    let parents = run_git(repo_root, &args[2], options)?;
+    Ok(process_commit_metadata(&name_status, &numstat, &parents))
 }
 
 /// Read a commit's diff against its parent.
