@@ -251,11 +251,15 @@ describe('desktop browser history store', () => {
         });
         const first = store.recordVisit('electron', 'https://example.com/', 'First window');
         const second = store.recordVisit('webview2', 'https://example.com/', 'Second window');
+        let flushed = false;
+        const flush = store.flush().then(() => { flushed = true; });
         await started;
         expect(rename).toHaveBeenCalledTimes(1);
         expect(fs.existsSync(store.filename)).toBe(false);
+        expect(flushed).toBe(false);
         release();
-        await Promise.all([first, second]);
+        await Promise.all([first, second, flush]);
+        expect(flushed).toBe(true);
         expect(rename).toHaveBeenCalledTimes(2);
         expect((await new BrowserHistoryStore(path.dirname(path.dirname(store.filename))).query()).entries[0].visitCount).toBe(2);
     });

@@ -110,14 +110,19 @@ The Windows desktop helper enables OS-account SSO by default at environment crea
 
 ### Desktop history persistence
 
-`packages/coc-desktop/src/browser-history.ts` provides `BrowserHistoryStore` for one
-main-process instance shared across windows/workspaces. Its versioned
+`browser-view-host.ts` creates one `BrowserHistoryStore` from
+`packages/coc-desktop/src/browser-history.ts`, shared by the manager across
+windows/workspaces. Its versioned
 `<desktopDataDir>/browser/history.json` retains credential-free HTTP(S) URLs for
 90 days, capped at 10,000 unique URLs. Per-engine title/time/count contributions
 support independent cleanup. Atomic serialized saves publish only on success;
-queries expose storage errors. `recordVisit` accepts successful navigation events;
+queries expose storage errors. Host `visited`/`titleUpdated` callbacks write only
+URL sources; state snapshots, reattachment and file previews never record.
+Electron emits visits after main-document completion and committed same-document
+changes, including popup documents; failures/cancellation invalidate pending visits.
 `updateTitle` cannot create entries. Recording preferences, deletion and bounded
-URL/title search use the same store. Startup and `pruneExpired` maintain retention.
+URL/title search use the same store. Startup and `pruneExpired` maintain retention;
+manager shutdown calls `flush` to drain queued writes even when host cleanup fails.
 
 ### Browser adapters and lifecycle
 

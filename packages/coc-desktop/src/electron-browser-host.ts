@@ -9,9 +9,9 @@
  * installation-wide profile, isolated from the SPA and local HTML previews.
  * Ownership, engine selection and teardown orchestration belong to the manager.
  *
- * This module imports from `electron`, so it is exercised by the live Electron
- * harness (test/e2e/browser-view.e2e.test.ts) rather than unit tests; keep the
- * logic here thin and push everything testable into `browser-view-policy.ts`.
+ * Mocked Electron event tests cover recording and keyboard forwarding; the live
+ * harness (test/e2e/browser-view.e2e.test.ts) verifies browser event ordering,
+ * guest isolation and restart persistence against local HTTP fixtures.
  */
 
 import type { BrowserImportCookie } from './browser-cookie-import';
@@ -138,6 +138,7 @@ function webPreferences(): Electron.WebPreferences {
 
 /** Navigation + `window.open` routing shared by the tab view and its pop-ups. */
 function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
+    wireHistory(entry, wc);
     entryByContents.set(wc.id, entry);
     wc.once('destroyed', () => {
         if (entryByContents.get(wc.id) === entry) {
@@ -173,6 +174,49 @@ function wireNavigation(entry: BrowserEntry, wc: WebContents): void {
     };
     wc.on('will-navigate', guard);
     wc.on('will-redirect', guard);
+}
+
+/** Main and popup documents record independently; loading/state notifications never record. */
+function wireHistory(entry: BrowserEntry, wc: WebContents): void {
+    let pendingUrl: string | undefined;
+    let successfulUrl: string | undefined;
+    const live = () => !entry.closed && !wc.isDestroyed();
+    wc.on('did-start-navigation', (_event, _url, isInPlace, isMainFrame) => {
+        if (isMainFrame && !isInPlace) {
+            pendingUrl = undefined;
+            successfulUrl = undefined;
+        }
+    });
+    wc.on('did-navigate', (_event, url, responseCode) => {
+        // Error documents and non-HTTP navigations cannot arm a successful visit.
+        pendingUrl = responseCode >= 0 && validateBrowserUrl(url).ok ? url : undefined;
+    });
+    const failed = (_event: Electron.Event, _code: number, _description: string, url: string, isMainFrame: boolean) => {
+        if (isMainFrame && (!pendingUrl || !url || pendingUrl === url)) {
+            pendingUrl = undefined;
+            successfulUrl = undefined;
+        }
+    };
+    wc.on('did-fail-load', failed);
+    wc.on('did-fail-provisional-load', failed);
+    wc.on('render-process-gone', () => { pendingUrl = undefined; successfulUrl = undefined; });
+    wc.on('did-frame-finish-load', (_event, isMainFrame) => {
+        if (!live() || !isMainFrame || !pendingUrl) { return; }
+        successfulUrl = pendingUrl;
+        pendingUrl = undefined;
+        entry.sink.visited?.(successfulUrl, wc.getTitle());
+    });
+    wc.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+        if (!live() || !isMainFrame || !validateBrowserUrl(url).ok) { return; }
+        // An initial document may change its URL before onload; record its final URL once.
+        if (pendingUrl) { pendingUrl = url; return; }
+        if (!successfulUrl) { return; }
+        successfulUrl = url;
+        entry.sink.visited?.(url, wc.getTitle());
+    });
+    wc.on('page-title-updated', (_event, title) => {
+        if (live() && successfulUrl) { entry.sink.titleUpdated?.(successfulUrl, title); }
+    });
 }
 
 function wireView(entry: BrowserEntry): void {

@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain, shell, type WebContents } from 'electro
 import { defaultDataDir } from './server-controller';
 import { browserProfilePath, readBrowserEngine, writeBrowserEngine } from './browser-preferences';
 import { BrowserHostManager } from './browser-host-manager';
+import { BrowserHistoryStore } from './browser-history';
 import { ElectronBrowserHost } from './electron-browser-host';
 import { ElectronFilePreviewHost } from './file-preview-host';
 import { installBrowserWebviewGuard, isBrowserEmbedder } from './browser-webview-guard';
@@ -44,6 +45,7 @@ export function registerBrowserViewIpc(dataDir = defaultDataDir()): void {
     installBrowserWebviewGuard();
     const webview2 = new WebView2BrowserHost(browserProfilePath(dataDir, 'webview2'));
     manager = new BrowserHostManager({
+        history: new BrowserHistoryStore(dataDir),
         hosts: {
             electron: new ElectronBrowserHost(browserProfilePath(dataDir, 'electron')),
             webview2,

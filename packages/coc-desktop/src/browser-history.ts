@@ -125,6 +125,11 @@ export class BrowserHistoryStore {
             recording: this.data.recording, storageError: this.error };
     }
 
+    /** Drain queued saves before desktop shutdown. Failures stay visible through storageError. */
+    async flush(): Promise<void> {
+        await this.pending;
+    }
+
     recordVisit(engine: BrowserEngine, value: unknown, title: string): Promise<boolean> {
         this.validateVisit(engine, title);
         const url = sanitizeHistoryUrl(value);

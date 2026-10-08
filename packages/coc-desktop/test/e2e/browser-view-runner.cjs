@@ -41,6 +41,11 @@ shell.openExternal = (url) => {
 };
 
 const page = (title, body = '') => `<!doctype html><html><head><title>${title}</title></head><body>${body}</body></html>`;
+const historyFile = path.join(app.getPath('userData'), 'coc', 'browser', 'history.json');
+const readHistory = () => {
+    try { return JSON.parse(fs.readFileSync(historyFile, 'utf8')).entries; }
+    catch { return []; }
+};
 
 function handler(req, res) {
     const url = new URL(req.url, 'http://localhost');
@@ -156,10 +161,12 @@ app.whenReady().then(async () => {
         return result;
     };
     if (restartCheck) {
+        const retainedHistory = readHistory();
         await open('r1', base + '/', 'ws-a');
         const s = await settled('r1', (st) => st.title === 'Home');
         const wc = viewFor('r1').webContents;
         emit('restart', {
+            retainedHistory,
             title: s && s.title,
             cookie: await wc.executeJavaScript('document.cookie'),
             canGoBack: s && s.canGoBack,
@@ -239,6 +246,8 @@ app.whenReady().then(async () => {
         const s = await last('b1');
         return s && s.url.endsWith('/landed?tab=2') ? s : null;
     });
+    await b1.webContents.executeJavaScript('document.title = "History hash";');
+    await waitFor(() => readHistory().find(entry => entry.url === base + '/landed?tab=2' && entry.engines.electron.title === 'History hash'));
     emit('navigate', { second, landed, inPage });
 
     // 4. History: back, then forward.
@@ -383,6 +392,11 @@ app.whenReady().then(async () => {
     await main.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(spaHtml));
     await sleep(300);
     emit('owner-reload', { viewCount: children() });
+    const savedHistory = await waitFor(() => {
+        const entries = readHistory();
+        return entries.some(entry => entry.url === base + '/login') ? entries : null;
+    });
+    emit('persistent-history', { entries: savedHistory });
 
     await disposeBrowserViews();
     server.close();
