@@ -114,3 +114,12 @@ it('exposes working-tree batch planning and composition on workers', async () =>
     expect(result.content.truncated).toBe(true);
     await expect(api.prepareGitWorkingTreePatch('invalid')).rejects.toThrow('invalid working-tree scope');
 });
+
+it('composes pending headings on a worker without parsing them as file content', async () => {
+    const pending = api.processGitPendingPatch([patch, '']);
+    expect(typeof pending.then).toBe('function');
+    const result = await pending;
+    expect(result.content.raw).toBe(`# Staged Changes\n\n${patch}`);
+    expect(result.files[0].raw).toBe(patch);
+    expect(result.summary).toEqual((await api.processGitWorkingTreePatch([patch, ''])).summary);
+});

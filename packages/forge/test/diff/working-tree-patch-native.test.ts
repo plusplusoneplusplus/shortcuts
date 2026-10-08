@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { GitLogService } from '../../src/git/git-log-service';
 import { createWorkingTreeDiffProvider } from '../../src/diff/git-diff-provider';
 
 const roots: string[] = [];
@@ -109,4 +110,42 @@ describe('Rust working-tree provider with real Git', () => {
         expect((await providers[0].getFullDiff()).raw).toContain('+fresh');
         expect((await providers[1].getFullDiff()).raw).toContain('+two');
     });
+});
+
+it('GitLogService preserves headed pending bytes and reads fresh staged/index/disk state', async () => {
+    const one = fixture('one'), two = fixture('two');
+    const service = new GitLogService();
+    const expected = (root: string) => {
+        const staged = git(root, 'diff', '-M', '-C', '--cached');
+        const unstaged = git(root, 'diff', '-M', '-C');
+        return [staged && `# Staged Changes\n\n${staged}`, unstaged && `# Unstaged Changes\n\n${unstaged}`].filter(Boolean).join('\n\n');
+    };
+    expect(await Promise.all([one, two].map(root => service.getPendingChangesDiff(root)))).toEqual([expected(one), expected(two)]);
+    expect(await service.getStagedChangesDiff(one)).toBe(git(one, 'diff', '-M', '-C', '--cached'));
+    git(one, 'add', '.');
+    expect(await service.getPendingChangesDiff(one)).toBe(expected(one));
+    expect(await service.getPendingChangesDiff(one)).not.toContain('# Unstaged Changes');
+    git(one, 'commit', '-qm', 'clean');
+    expect(await service.getPendingChangesDiff(one)).toBe('');
+    expect(await service.getStagedChangesDiff(one)).toBe('');
+    fs.writeFileSync(path.join(one, 'same.txt'), 'fresh\n');
+    expect(await service.getPendingChangesDiff(one)).toBe(expected(one));
+    expect(await service.getPendingChangesDiff(one)).not.toContain('# Staged Changes');
+    expect(await service.getStagedChangesDiff(one)).toBe('');
+    const missing = path.join(one, 'missing');
+    expect(await service.getPendingChangesDiff(missing)).toBe('');
+    expect(await service.getStagedChangesDiff(missing)).toBe('');
+});
+
+it('GitLogService uses stable patch headers despite repository display settings', async () => {
+    const root = fixture();
+    const service = new GitLogService();
+    const staged = await service.getStagedChangesDiff(root);
+    const pending = await service.getPendingChangesDiff(root);
+    git(root, 'config', 'color.ui', 'always');
+    git(root, 'config', 'diff.noprefix', 'true');
+    expect(git(root, 'diff', '--cached')).toContain('\u001b[');
+    expect(git(root, 'diff', '--cached')).not.toContain('diff --git a/');
+    expect(await service.getStagedChangesDiff(root)).toBe(staged);
+    expect(await service.getPendingChangesDiff(root)).toBe(pending);
 });

@@ -105,7 +105,9 @@ and statistics use `diff/local-patch.ts`: Rust plans/executes host Git and proce
 patches, while TypeScript executes the shared plan for WSL. Working-tree all scope combines HEAD-to-index and index-to-disk patches with unstaged metadata overriding shared paths; provider operations read fresh state and batch failures propagate. WorkingTreeService per-file patches and CoC working-tree patch routes also use
 this backend with full context; routes apply native truncation and expose native-load
 failures as HTTP 500 while retaining empty patches for ordinary Git errors. Full-text
-snapshot loaders remain separate. Production commit patch
+snapshot loaders remain separate. GitLogService pending/staged patches share the
+backend; Rust composes optional staged/unstaged headings and TypeScript preserves
+empty answers for ordinary Git failures. Production commit patch
 routes use its git-show plan and native truncation without a route patch cache;
 first-parent provider and combined-merge route semantics stay distinct. Commit metadata
 uses Forge `loadCommitFiles` with Rust NUL-delimited metadata planning/joins for
