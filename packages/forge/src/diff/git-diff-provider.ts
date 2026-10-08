@@ -19,6 +19,7 @@ import type {
     RangeDiffSource,
     WorkingTreeDiffSource,
 } from './types';
+import { loadRangePatch } from './local-patch';
 import { makeDiffContent, computeSummary, splitDiffByFile, truncateDiffContent } from './diff-utils';
 
 // ── Shared helpers ───────────────────────────────────────────
@@ -240,44 +241,22 @@ export function createRangeDiffProvider(
         headRef,
     };
 
-    const rangeSpec = `${baseRef}...${headRef}`;
-    let cachedFiles: DiffFileEntry[] | undefined;
-
     return {
         source,
-
-        async listFiles(): Promise<DiffFileEntry[]> {
-            if (cachedFiles) return cachedFiles;
-            cachedFiles = await buildFileList(repositoryRoot, [rangeSpec]);
-            return cachedFiles;
+        async listFiles() {
+            return (await loadRangePatch(repositoryRoot, baseRef, headRef)).files;
         },
-
-        async getFileDiff(filePath: string, options?: GetFileDiffOptions): Promise<DiffContent> {
-            const contextFlag = contextLinesFlag(options?.contextLines);
-            const raw = await execGitAsync(
-                ['diff', ...contextFlag, rangeSpec, '--', filePath],
-                repositoryRoot,
-            );
-            const content = makeDiffContent(raw);
-            return options?.maxLines != null ? truncateDiffContent(content, options.maxLines) : content;
+        async getFileDiff(filePath, options) {
+            return (await loadRangePatch(repositoryRoot, baseRef, headRef, filePath, options)).content;
         },
-
-        async getFullDiff(): Promise<DiffContent> {
-            const raw = await execGitAsync(['diff', rangeSpec], repositoryRoot);
-            return makeDiffContent(raw);
+        async getFullDiff() {
+            return (await loadRangePatch(repositoryRoot, baseRef, headRef)).content;
         },
-
-        async prefetchAll(): Promise<Map<string, DiffContent>> {
-            const files = await this.listFiles();
-            const map = new Map<string, DiffContent>();
-            const fullRaw = await execGitAsync(['diff', rangeSpec], repositoryRoot);
-            splitDiffByFile(fullRaw, files, map);
-            return map;
+        async prefetchAll() {
+            return (await loadRangePatch(repositoryRoot, baseRef, headRef)).contentByPath;
         },
-
-        async getSummary(): Promise<DiffSummary> {
-            const files = await this.listFiles();
-            return computeSummary(files);
+        async getSummary() {
+            return (await loadRangePatch(repositoryRoot, baseRef, headRef)).summary;
         },
     };
 }

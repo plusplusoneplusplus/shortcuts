@@ -3,7 +3,7 @@
  * duplication of `makeDiffContent`, `computeSummary`, and diff-splitting logic.
  */
 
-import { loadNativeGit } from '@plusplusoneplusplus/coc-native';
+import { loadNativeGit, type NativeGitPatchFile } from '@plusplusoneplusplus/coc-native';
 import type { GitChangeStatus } from '../git/types';
 import type { DiffContent, DiffFileEntry, DiffSummary } from './types';
 
@@ -169,7 +169,11 @@ export function splitDiffByFile(
 
 /** Worker-backed parsing for asynchronous patch consumers. */
 export async function parseFullDiffAsync(fullDiff: string): Promise<ReturnType<typeof parseFullDiff>> {
-    const entries = await loadNativeGit().parseGitPatch(fullDiff);
+    return nativePatchToDiff(await loadNativeGit().parseGitPatch(fullDiff));
+}
+
+/** Native entry-array conversion shared by supplied and local patch consumers. */
+export function nativePatchToDiff(entries: NativeGitPatchFile[]): ReturnType<typeof parseFullDiff> {
     const contentByPath = new Map<string, DiffContent>();
     const files: DiffFileEntry[] = entries.map(({ raw, totalLines, status, ...metadata }) => {
         contentByPath.set(metadata.path, { raw, totalLines, truncated: false });

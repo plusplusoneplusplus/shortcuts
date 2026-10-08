@@ -168,3 +168,60 @@ fn crlf_headers_decode_quoted_paths_without_changing_raw_text() {
     assert_eq!(files[0].raw, raw);
     assert_eq!((files[0].additions, files[0].deletions), (1, 1));
 }
+
+#[test]
+fn processes_summary_before_display_truncation() {
+    use coc_native_core::git::patch::process_patch;
+    let raw = "diff --git a/x b/x\n@@ -1 +1 @@\n-old\n+new\n";
+    let result = process_patch(raw.into(), Some(2));
+    assert_eq!(result.content.raw, "diff --git a/x b/x\n@@ -1 +1 @@");
+    assert_eq!(result.content.total_lines, 5);
+    assert!(result.content.truncated);
+    assert_eq!(result.files[0].raw, raw);
+    assert_eq!(
+        (result.summary.files_changed, result.summary.additions, result.summary.deletions),
+        (1, 1, 1)
+    );
+    for limit in [0, -1] {
+        assert_eq!(process_patch(raw.into(), Some(limit)).content.raw, "");
+    }
+    assert_eq!(process_patch("".into(), None).content.total_lines, 0);
+    assert!(!process_patch(raw.into(), Some(5)).content.truncated);
+}
+
+#[test]
+fn range_plan_keeps_context_revision_boundary_and_literal_path() {
+    use coc_native_core::git::patch::range_patch_args;
+    assert_eq!(
+        range_patch_args("base", "head", Some("[abc].txt"), Some(0)),
+        [
+            "--literal-pathspecs",
+            "diff",
+            "-M",
+            "-C",
+            "--no-color",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "-U0",
+            "--end-of-options",
+            "base...head",
+            "--",
+            "[abc].txt"
+        ]
+    );
+    assert_eq!(
+        range_patch_args("base", "head", None, None),
+        [
+            "--literal-pathspecs",
+            "diff",
+            "-M",
+            "-C",
+            "--no-color",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+            "--end-of-options",
+            "base...head",
+            "--"
+        ]
+    );
+}

@@ -602,6 +602,9 @@ export interface GitRangeFile {
  */
 export declare function gitRangeMergeBase(repoRoot: string, one: string, two: string): Promise<string | null>
 
+/** Execute and process a branch-range patch on a worker, with no result cache. */
+export declare function gitRangePatch(root: string, base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
+
 /**
  * Resolve the ref a range should be measured against.
  *
@@ -1032,6 +1035,12 @@ export declare function parseGitRangeChangedFiles(numstat: string, nameStatus: s
  */
 export declare function parseGitStatusPorcelain(output: string): Promise<GitStatusEntry[]>
 
+/** Rust-owned branch-range command plan for external execution transports. */
+export declare function prepareGitRangePatch(base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
+
+/** Shared supplied-patch processing, including summaries and truncation. */
+export declare function processGitPatch(raw: string, maxLines?: number | undefined | null): Promise<PatchResult>
+
 /** A file match with the complete native ordering tuple. */
 export interface RankedFileMatch {
   path: string
@@ -1171,6 +1180,12 @@ export interface ContentSearchResult {
   truncated: boolean
 }
 
+export interface PatchContent {
+  raw: string
+  truncated: boolean
+  totalLines: number
+}
+
 export interface PatchFile {
   path: string
   originalPath?: string
@@ -1180,6 +1195,18 @@ export interface PatchFile {
   isBinary: boolean
   raw: string
   totalLines: number
+}
+
+export interface PatchResult {
+  files: Array<PatchFile>
+  content: PatchContent
+  summary: PatchSummary
+}
+
+export interface PatchSummary {
+  filesChanged: number
+  additions: number
+  deletions: number
 }
 
 /** File content as the blob route returns it. */
