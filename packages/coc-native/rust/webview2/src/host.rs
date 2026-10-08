@@ -1,4 +1,7 @@
-use crate::protocol::{self, allowed_url, allowed_view_id, Bounds, Command};
+use crate::{
+    history::HistoryNavigation,
+    protocol::{self, allowed_url, allowed_view_id, Bounds, Command},
+};
 use serde_json::json;
 use std::{
     cell::{Cell, RefCell},
@@ -52,6 +55,7 @@ struct View {
     controller: ICoreWebView2Controller,
     webview: ICoreWebView2,
     loading: Cell<bool>,
+    history: RefCell<HistoryNavigation>,
     closed: Cell<bool>,
     requested: RefCell<String>,
     error: RefCell<Option<(String, String)>>,
@@ -160,11 +164,33 @@ impl View {
         }
     }
 
+    fn push_history(&self, visit: bool) -> Result<()> {
+        if self.closed.get() {
+            return Ok(());
+        }
+        let mut url = PWSTR::null();
+        let mut title = PWSTR::null();
+        unsafe {
+            self.webview.Source(&mut url)?;
+        }
+        let url = CoTaskMemPWSTR::from(url).to_string();
+        unsafe {
+            self.webview.DocumentTitle(&mut title)?;
+        }
+        let title = CoTaskMemPWSTR::from(title).to_string();
+        // Popups report their own document through the owning tab, never its snapshot.
+        if let Some(message) = protocol::history_message(&self.root_id, &url, &title, visit) {
+            protocol::emit(message);
+        }
+        Ok(())
+    }
+
     fn fail(&self, code: &str, message: String) {
         if self.closed.get() {
             return;
         }
         self.loading.set(false);
+        self.history.borrow_mut().invalidate();
         *self.error.borrow_mut() = Some((code.to_string(), message.clone()));
         protocol::emit(json!({ "event": "state", "viewId": self.root_id, "state": {
             "viewId": self.root_id, "engine": "webview2", "url": self.requested.borrow().clone(), "title": "",
@@ -592,6 +618,7 @@ fn dispatch(state: &State, command: Command) {
                     })
                 }
                 Some("stop") => {
+                    view.history.borrow_mut().stop();
                     view.loading.set(false);
                     let result = view.webview.Stop();
                     view.push();
@@ -831,6 +858,7 @@ fn start_controller(state: &State, command: Command, popup: Option<PopupRequest>
                             controller,
                             webview,
                             loading: Cell::new(false),
+                            history: RefCell::new(HistoryNavigation::default()),
                             closed: Cell::new(false),
                             requested: RefCell::new(command.url.clone().unwrap_or_default()),
                             error: RefCell::new(None),
@@ -1005,6 +1033,9 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                     return Ok(());
                 }
                 let mut url = PWSTR::null();
+                let mut navigation_id = 0;
+                args.NavigationId(&mut navigation_id)?;
+                view.history.borrow_mut().started(navigation_id);
                 args.Uri(&mut url)?;
                 let url = CoTaskMemPWSTR::from(url).to_string();
                 if !allowed_url(&url, true) {
@@ -1028,9 +1059,15 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                 if view.closed.get() {
                     return Ok(());
                 }
-                view.loading.set(false);
+                let mut navigation_id = 0;
+                args.NavigationId(&mut navigation_id)?;
                 let mut success = BOOL(0);
                 args.IsSuccess(&mut success)?;
+                let visit = view.history.borrow_mut().completed(navigation_id, success.as_bool());
+                let Some(visit) = visit else {
+                    return Ok(());
+                };
+                view.loading.set(false);
                 if !success.as_bool() {
                     let mut status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
                     args.WebErrorStatus(&mut status)?;
@@ -1041,6 +1078,9 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
                         ));
                     }
                 }
+                if visit {
+                    view.push_history(true)?;
+                }
                 view.push();
                 Ok(())
             })),
@@ -1048,10 +1088,19 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
         )?;
         let weak = Rc::downgrade(view);
         view.webview.add_SourceChanged(
-            &SourceChangedEventHandler::create(Box::new(move |_, _| {
-                if let Some(view) = weak.upgrade() {
-                    view.push();
+            &SourceChangedEventHandler::create(Box::new(move |_, args| {
+                let (Some(view), Some(args)) = (weak.upgrade(), args) else {
+                    return Ok(());
+                };
+                if view.closed.get() {
+                    return Ok(());
                 }
+                let mut new_document = BOOL(0);
+                args.IsNewDocument(&mut new_document)?;
+                if view.history.borrow_mut().source_changed(new_document.as_bool()) {
+                    view.push_history(true)?;
+                }
+                view.push();
                 Ok(())
             })),
             &mut token,
@@ -1070,6 +1119,12 @@ fn wire_view(view: &Rc<View>, state: &State) -> Result<()> {
         view.webview.add_DocumentTitleChanged(
             &DocumentTitleChangedEventHandler::create(Box::new(move |_, _| {
                 if let Some(view) = weak.upgrade() {
+                    if view.closed.get() {
+                        return Ok(());
+                    }
+                    if view.history.borrow().title_changed() {
+                        view.push_history(false)?;
+                    }
                     if view.popup {
                         let mut title = PWSTR::null();
                         view.webview.DocumentTitle(&mut title)?;

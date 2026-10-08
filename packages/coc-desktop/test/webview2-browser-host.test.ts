@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebView2BrowserHost } from '../src/webview2-browser-host';
 import type { BrowserEventSink } from '../src/browser-host-contract';
+import { BrowserHistoryStore } from '../src/browser-history';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 const mocks = vi.hoisted(() => ({
     request: vi.fn().mockResolvedValue(undefined),
@@ -27,7 +31,8 @@ vi.mock('electron', () => ({
     shell: {},
 }));
 
-vi.mock('../src/webview2-process', () => ({
+vi.mock('../src/webview2-process', async importOriginal => ({
+    ...await importOriginal<typeof import('../src/webview2-process')>(),
     WebView2Process: class {
         constructor(_binary: () => string, _profile: string, onEvent: (message: Record<string, unknown>) => void) {
             mocks.onEvent.mockImplementation(onEvent);
@@ -215,4 +220,122 @@ it.each([false, true])('preserves quoted session values and auth-cookie parts th
     await target.importCookies!(cookies);
     expect(mocks.request).toHaveBeenCalledExactlyOnceWith(withPage ? 'import-cookies' : 'import-profile-cookies',
         { ...(withPage ? { viewId: '7:import:1' } : {}), cookies });
+});
+
+describe('WebView2 explicit history events', () => {
+    const historySink: BrowserEventSink = { ...sink, state: vi.fn(), visited: vi.fn(), titleUpdated: vi.fn() };
+    const state = { url: 'https://tab.test/', title: 'Tab', canGoBack: false, canGoForward: false, loading: false };
+
+    beforeEach(() => {
+        mocks.request.mockReset().mockResolvedValue(undefined);
+        mocks.running = true;
+        vi.mocked(historySink.visited!).mockClear();
+        vi.mocked(historySink.titleUpdated!).mockClear();
+        vi.mocked(historySink.state).mockClear();
+    });
+
+    it('records explicit final URLs while state replay, snapshots and placement do not record', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: state.url }, historySink);
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+        view.snapshot();
+        await view.setBounds(bounds);
+        await view.setBounds(null);
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+        expect(historySink.visited).not.toHaveBeenCalled();
+        expect(historySink.titleUpdated).not.toHaveBeenCalled();
+        const url = 'http://127.0.0.1/Final?Case=Keep#fragment';
+        mocks.onEvent({ event: 'visited', viewId: '7:tab:1', url, title: 'Final' });
+        mocks.onEvent({ event: 'title-updated', viewId: '7:tab:1', url, title: 'New title' });
+        expect(historySink.visited).toHaveBeenCalledExactlyOnceWith(url, 'Final');
+        expect(historySink.titleUpdated).toHaveBeenCalledExactlyOnceWith(url, 'New title');
+        expect(view.snapshot()).toMatchObject(state);
+        await view.close();
+    });
+
+    it('keeps popup documents independent from tab navigation state', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: state.url }, historySink);
+        mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+        mocks.onEvent({ event: 'visited', viewId: '7:tab:1', url: 'https://auth.test/login', title: 'Sign in' });
+        mocks.onEvent({ event: 'title-updated', viewId: '7:tab:1', url: 'https://auth.test/login', title: 'Signed in' });
+        expect(historySink.visited).toHaveBeenCalledExactlyOnceWith('https://auth.test/login', 'Sign in');
+        expect(historySink.titleUpdated).toHaveBeenCalledExactlyOnceWith('https://auth.test/login', 'Signed in');
+        expect(view.snapshot()).toMatchObject(state);
+        await view.close();
+    });
+
+    it('rejects malformed/non-HTTP events and callbacks for foreign or closed views', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: state.url }, historySink);
+        for (const event of ['visited', 'title-updated']) {
+            for (const fields of [
+                { url: 'file:///tmp/preview.html', title: 'Preview' },
+                { url: 'about:blank', title: 'Blank' },
+                { url: 'javascript:alert(1)', title: 'Script' },
+                { url: 'https://exa\nmple.test/', title: 'Invalid' },
+                { url: 'https://example.test/', title: 1 },
+                { url: 1, title: 'Invalid' },
+                { url: 'https://example.test/' },
+            ]) { mocks.onEvent({ event, viewId: '7:tab:1', ...fields }); }
+            mocks.onEvent({ event, viewId: '8:tab:1', url: state.url, title: state.title });
+        }
+        await view.close();
+        for (const event of ['visited', 'title-updated']) {
+            mocks.onEvent({ event, viewId: '7:tab:1', url: state.url, title: state.title });
+        }
+        expect(historySink.visited).not.toHaveBeenCalled();
+        expect(historySink.titleUpdated).not.toHaveBeenCalled();
+    });
+
+    it('routes events to their exact owner and rejects callbacks after same-tab recreation', async () => {
+        const host = new WebView2BrowserHost('profile');
+        const other: BrowserEventSink = { ...historySink, visited: vi.fn(), titleUpdated: vi.fn() };
+        const first = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace-a', url: state.url }, historySink);
+        const second = await host.create({ ownerId: 8, viewId: 'tab', sessionKey: 'workspace-b', url: state.url }, other);
+        mocks.onEvent({ event: 'visited', viewId: '8:tab:2', url: 'https://other.test/', title: 'Other' });
+        expect(other.visited).toHaveBeenCalledExactlyOnceWith('https://other.test/', 'Other');
+        expect(historySink.visited).not.toHaveBeenCalled();
+        await first.close();
+        const replacement = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace-a', url: state.url }, historySink);
+        mocks.onEvent({ event: 'visited', viewId: '7:tab:1', url: state.url, title: state.title });
+        mocks.onEvent({ event: 'title-updated', viewId: '7:tab:1', url: state.url, title: state.title });
+        expect(historySink.visited).not.toHaveBeenCalled();
+        expect(historySink.titleUpdated).not.toHaveBeenCalled();
+        mocks.onEvent({ event: 'visited', viewId: '7:tab:3', url: state.url, title: state.title });
+        expect(historySink.visited).toHaveBeenCalledOnce();
+        await replacement.close();
+        await second.close();
+    });
+
+    it('persists sanitized visits and titles without resurrecting deletions from state or title events', async () => {
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'coc-webview2-history-'));
+        const history = new BrowserHistoryStore(directory);
+        const pending: Promise<unknown>[] = [];
+        const persistentSink: BrowserEventSink = {
+            ...historySink,
+            visited: (url, title) => { pending.push(history.recordVisit('webview2', url, title)); },
+            titleUpdated: (url, title) => { pending.push(history.updateTitle('webview2', url, title)); },
+        };
+        try {
+            const host = new WebView2BrowserHost('profile');
+            const view = await host.create({ ownerId: 7, viewId: 'tab', sessionKey: 'workspace', url: state.url }, persistentSink);
+            const url = 'https://user:secret@final.test/Path?q=Case#Part';
+            for (let visit = 0; visit < 2; visit++) { mocks.onEvent({ event: 'visited', viewId: '7:tab:1', url, title: 'Final' }); }
+            mocks.onEvent({ event: 'title-updated', viewId: '7:tab:1', url, title: 'Updated' });
+            await Promise.all(pending);
+            const entries = (await history.query()).entries;
+            expect(entries).toEqual([expect.objectContaining({ url: 'https://final.test/Path?q=Case#Part', title: 'Updated', visitCount: 2 })]);
+            expect((await new BrowserHistoryStore(directory).query()).entries).toEqual(entries);
+            await history.delete(entries[0].url);
+            mocks.onEvent({ event: 'title-updated', viewId: '7:tab:1', url, title: 'Late title' });
+            mocks.onEvent({ event: 'state', viewId: '7:tab:1', state });
+            await Promise.all(pending);
+            expect((await history.query()).entries).toEqual([]);
+            mocks.onEvent({ event: 'visited', viewId: '7:tab:1', url, title: 'New visit' });
+            await Promise.all(pending);
+            expect((await history.query()).entries).toEqual([expect.objectContaining({ visitCount: 1, title: 'New visit' })]);
+            await view.close();
+        } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+    });
 });

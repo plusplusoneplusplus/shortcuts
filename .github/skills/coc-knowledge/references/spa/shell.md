@@ -118,8 +118,11 @@ windows/workspaces. Its versioned
 support independent cleanup. Atomic serialized saves publish only on success;
 queries expose storage errors. Host `visited`/`titleUpdated` callbacks write only
 URL sources; state snapshots, reattachment and file previews never record.
-Electron emits visits after main-document completion and committed same-document
-changes, including popup documents; failures/cancellation invalidate pending visits.
+Both engines emit visits after successful main-document completion and committed
+same-document changes, including popup documents. WebView2's native helper tracks
+navigation IDs and emits explicit `visited`/`title-updated` messages with each
+document's final URL/title through its root tab. Failures, stop and crashes
+invalidate pending visits; late or repeated completions never record.
 `updateTitle` cannot create entries. Recording preferences, deletion and bounded
 URL/title search use the same store. Startup and `pruneExpired` maintain retention;
 manager shutdown calls `flush` to drain queued writes even when host cleanup fails.

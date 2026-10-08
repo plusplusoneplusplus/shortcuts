@@ -135,9 +135,20 @@ describe.skipIf(skip).each(engines)('%s live desktop browser contract', engine =
         expect(steps.get('cancel')?.result).toEqual({ ok: false, reason: 'cancelled' });
         expect(steps.get('cancel')?.tab).toEqual({ ok: true, engine });
         if (engine === 'webview2') expect(steps.get('profile-lock')?.result).toMatchObject({ ok: false, reason: 'profile-locked' });
+        const saved = steps.get('saved-history')!;
+        const entries = new Map<string, any>(saved.history.entries.map((entry: any) => [entry.url, entry]));
+        expect(entries.get(saved.base + '/?tab=main')?.engines[engine]).toMatchObject({ title: 'Home', visitCount: 5 });
+        expect(entries.get(saved.base + '/second?tab=main')?.engines[engine]).toMatchObject({ title: 'Second', visitCount: 4 });
+        expect(entries.get(saved.base + '/second?tab=main&inpage=1')?.engines[engine]).toMatchObject({ title: 'Updated page', visitCount: 2 });
+        expect(entries.get(saved.base + '/login?tab=popup')?.engines[engine]).toMatchObject({ title: 'Login', visitCount: 1 });
+        expect(entries.get(saved.base + '/?tab=other')?.engines[engine]).toMatchObject({ title: 'Home', visitCount: 1 });
+        for (const url of [saved.base + '/redirect', saved.base + '/slow', saved.base + '/download', 'http://127.0.0.1:1/failed', saved.base + '/?tab=ignored']) {
+            expect(entries.has(url), url).toBe(false);
+        }
         const disk = diskCookies(directory);
         const restart = await scenario(engine, directory, '--restart-check');
         expect(restart.get('restart')).toMatchObject({ engine, history: false, preference: engine, report: { storage: 'stored' } });
+        expect(restart.get('restart')?.savedHistory).toEqual(saved.history);
         const cookieTrail = JSON.stringify({ seeded: steps.get('seeded'), disposed: steps.get('disposed'), disk, restart: restart.get('restart') });
         expect(restart.get('restart')?.report.cookie, cookieTrail).toContain('fixture=remembered');
         expect(restart.get('clear')?.result).toEqual({ ok: true });

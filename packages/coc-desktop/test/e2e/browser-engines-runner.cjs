@@ -83,6 +83,9 @@ function command(key, value) { commands.set(key, value); }
 app.whenReady().then(async () => {
     if (layoutCheck) Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'Fixture', submenu: [{ label: 'Item' }] }]));
     const dataDir = path.join(userData, 'coc');
+    const historyFile = path.join(dataDir, 'browser', 'history.json');
+    const readHistory = () => fs.existsSync(historyFile) ? JSON.parse(fs.readFileSync(historyFile, 'utf8')) : undefined;
+    const startupHistory = readHistory();
     registerBrowserViewIpc(dataDir);
     const portFile = path.join(userData, 'fixture-port');
     server = http.createServer(handle);
@@ -240,7 +243,7 @@ app.whenReady().then(async () => {
         }
         emit('composer-refocus', { value: await spa('document.getElementById("composer").value') });
     } else if (restart) {
-        emit('restart', { engine: home.engine, history: home.canGoBack, report: reports.get('main'), preference: pref.defaultEngine, jar: await jar() });
+        emit('restart', { engine: home.engine, history: home.canGoBack, report: reports.get('main'), preference: pref.defaultEngine, jar: await jar(), savedHistory: startupHistory });
         if (!afterClear) {
             const otherWindow = await makeWindow();
             await call(otherWindow, 'open', 'other', base + '/?tab=other', 'remote-workspace');
@@ -285,6 +288,13 @@ app.whenReady().then(async () => {
         const forward = await settled(main, 'main', s => s.title === 'Second');
         command('main', 'push');
         await settled(main, 'main', s => s.url.includes('inpage=1'));
+        const inpageUrl = base + '/second?tab=main&inpage=1';
+        await waitFor(() => readHistory()?.entries.find(e => e.url === inpageUrl)?.engines[engine]?.visitCount === 1, 'same-document history');
+        await call(main, 'nav', 'main', 'reload');
+        await waitFor(() => readHistory()?.entries.find(e => e.url === inpageUrl)?.engines[engine]?.visitCount === 2, 'reload history');
+        command('main', 'title');
+        await settled(main, 'main', s => s.title === 'Updated page');
+        await waitFor(() => readHistory()?.entries.find(e => e.url === inpageUrl)?.engines[engine]?.title === 'Updated page', 'history title update');
         emit('history', { second, back, forward });
         command('main', 'seed');
         await waitFor(() => reports.get('main')?.storage === 'stored', 'site data seeded');
@@ -324,6 +334,7 @@ app.whenReady().then(async () => {
         command('main', 'newtab');
         const newTab = await waitFor(() => spa('window.newTabs[0]'), 'new tab request');
         const related = await call(main, 'open', 'related', newTab.url, 'workspace-a', newTab.engine);
+        await settled(main, 'related', s => s.title === 'Second');
         emit('related', { newTab, result: related });
         command('main', 'download');
         const download = await waitFor(() => spa('window.downloads[0]'), 'download handoff');
@@ -348,6 +359,7 @@ app.whenReady().then(async () => {
     }
     const before = restart ? null : await jar();
     await disposeBrowserViews();
+    emit('saved-history', { base, history: readHistory() });
     if (!restart) emit('disposed', { before, after: await jar() });
     windows.forEach(win => win.destroy());
     server.closeAllConnections();

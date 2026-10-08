@@ -150,6 +150,14 @@ Visible embedded views forward Ctrl+T as `open-menu-requested` and Ctrl+L as
 host completes `focus-host` before the SPA opens the owning panel's add-tab menu
 or focuses and selects the active owning browser's editable address.
 
+`history.rs` tracks successful main-document navigation per controller, using
+navigation IDs to reject superseded, stopped and repeated completions.
+`NavigationCompleted(IsSuccess)` and committed same-document `SourceChanged`
+emit `visited`; `DocumentTitleChanged` emits `title-updated` only after successful
+completion. Events read the actual final Source/DocumentTitle, filter HTTP(S),
+and route popup documents through their root tab without replacing its state.
+Generic snapshots, history-stack notifications and layout never record visits.
+
 `src/webview2.ts` resolves `COC_WEBVIEW2_PATH`, the local executable, then the
 Windows x64 prebuilt, rewriting ASAR paths to unpacked paths. Server imports
 do not start it. `build:native` and `ensure:native` include it only on Windows
@@ -173,7 +181,7 @@ Access compliance or change organization policy. Clearing browser data does not
 disconnect Windows accounts; SSO can authenticate again.
 
 Run `cargo test --manifest-path packages/coc-native/rust/Cargo.toml -p coc-webview2`
-for protocol policy, default SSO, and Windows child-window positioning and stacking checks. Real desktop contracts require Windows x64 with
+for navigation-history/protocol policy, default SSO, and Windows child-window positioning and stacking checks. Real desktop contracts require Windows x64 with
 WebView2 installed, `npm run build:native -w packages/coc-native`,
 `npm run build -w packages/coc-native`, and
 `npm run build -w packages/coc-desktop`, then set `COC_DESKTOP_E2E=1` and run

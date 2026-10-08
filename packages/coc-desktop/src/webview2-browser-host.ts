@@ -158,6 +158,10 @@ export class WebView2BrowserHost implements BrowserEngineHost {
             };
             if (!entry.state.error && validateBrowserUrl(entry.state.url).ok) { entry.request.url = entry.state.url; }
             entry.sink.state(entry.state);
+        } else if (message.event === 'visited' || message.event === 'title-updated') {
+            if (typeof message.url !== 'string' || typeof message.title !== 'string' || !validateBrowserUrl(message.url).ok) { return; }
+            if (message.event === 'visited') { entry.sink.visited?.(message.url, message.title); }
+            else { entry.sink.titleUpdated?.(message.url, message.title); }
         } else if (message.event === 'new-tab' && typeof message.url === 'string') {
             entry.sink.newTab(message.url);
         } else if (message.event === 'download' && typeof message.url === 'string') {
