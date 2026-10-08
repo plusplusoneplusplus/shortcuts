@@ -108,6 +108,17 @@ partition is a single-use attachment token, not a new storage partition; existin
 sign-ins and session permission/download hooks remain shared.
 The Windows desktop helper enables OS-account SSO by default at environment creation without an environment flag. Profiles remain separate from Edge. SSO does not guarantee Conditional Access compliance; clearing site data does not disconnect Windows accounts.
 
+### Desktop history persistence
+
+`packages/coc-desktop/src/browser-history.ts` provides `BrowserHistoryStore` for one
+main-process instance shared across windows/workspaces. Its versioned
+`<desktopDataDir>/browser/history.json` retains credential-free HTTP(S) URLs for
+90 days, capped at 10,000 unique URLs. Per-engine title/time/count contributions
+support independent cleanup. Atomic serialized saves publish only on success;
+queries expose storage errors. `recordVisit` accepts successful navigation events;
+`updateTitle` cannot create entries. Recording preferences, deletion and bounded
+URL/title search use the same store. Startup and `pruneExpired` maintain retention.
+
 ### Browser adapters and lifecycle
 
 Electron browser tabs use sandboxed DOM `<webview>` guests; WebView2 uses a Windows x64 Rust STA helper ([native contracts](../../../../../packages/coc-native/AGENTS.md#desktop-webview2)).
