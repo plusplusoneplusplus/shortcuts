@@ -16,6 +16,8 @@
  * is the part with edge cases.
  */
 
+import { parseFilePathRef } from '../../../shared/file-path-utils';
+
 export type PaletteMode = 'files' | 'symbols';
 
 /** Which `SymbolKind`s survive the active prefix filter. */
@@ -26,6 +28,8 @@ export interface ParsedPaletteQuery {
     kindFilter?: SymbolKindFilter;
     /** One-based line the user asked to jump to, from a `:N` query. */
     lineTarget?: number;
+    /** One-based line to reveal in the selected file, separate from `:N`. */
+    fileLineTarget?: number;
     /** What to actually search for, with the prefix removed. */
     term: string;
     /** Footer text naming the active filter, so the mode is never invisible. */
@@ -68,17 +72,30 @@ export function parsePaletteQuery(raw: string, defaultMode: PaletteMode): Parsed
 
     const prefix = /^([tmf]) (.*)$/s.exec(raw);
     if (!prefix) {
-        return { mode: defaultMode, term: raw.trim() };
+        return parseFileQuery({ mode: defaultMode, term: raw.trim() });
     }
     const term = prefix[2].trim();
     switch (prefix[1]) {
         case 'f':
-            return { mode: 'files', term, filterLabel: 'Files' };
+            return parseFileQuery({ mode: 'files', term, filterLabel: 'Files' });
         case 't':
             return { mode: 'symbols', kindFilter: 'types', term, filterLabel: 'Types' };
         default:
             return { mode: 'symbols', kindFilter: 'members', term, filterLabel: 'Members' };
     }
+}
+
+/** Only file queries accept a positive, safe trailing line number. */
+function parseFileQuery(query: ParsedPaletteQuery): ParsedPaletteQuery {
+    // Keep drive-relative paths (C:42), ranges and other colon text as search terms.
+    if (query.mode !== 'files' || !/^.+:\d+$/.test(query.term) || /^[A-Za-z]:\d+$/.test(query.term)) {
+        return query;
+    }
+    const ref = parseFilePathRef(query.term);
+    if (ref.line === undefined || !Number.isSafeInteger(ref.line) || ref.line < 1 || ref.endLine !== undefined) {
+        return query;
+    }
+    return { ...query, term: ref.path, fileLineTarget: ref.line };
 }
 
 /** Whether a symbol survives the active kind filter. No filter keeps everything. */

@@ -35,7 +35,7 @@ vi.mock('../../../../../src/server/spa/client/react/features/language-servers/us
 vi.mock('../../../../../src/server/spa/client/react/features/repo-detail/explorer/explorerApi', () => ({
     explorerApi: {
         tree: async () => ({ entries: [{ name: 'src', type: 'dir', path: 'src' }] }),
-        searchFiles: async () => ({ results: [] }),
+        searchFiles: async () => ({ results: [{ path: 'src/render/canvas.cpp', score: 10, indices: [] }] }),
         reveal: async () => ({ entries: [] }),
         readBlob: async () => ({ content: 'x\n', encoding: 'utf-8', mimeType: 'text/plain' }),
     },
@@ -62,6 +62,8 @@ vi.mock('../../../../../src/server/spa/client/react/repos/repoGroupService', () 
 import { ExplorerPanel } from '../../../../../src/server/spa/client/react/features/repo-detail/explorer/ExplorerPanel';
 import { clearExplorerQuickOpenRegistry } from '../../../../../src/server/spa/client/react/features/repo-detail/unified-right-panel/quickOpenRouting';
 
+import { applyRuntimeConfigPatch } from '../../../../../src/server/spa/client/react/utils/config';
+
 const WS = 'ws-cpp';
 
 beforeEach(() => {
@@ -80,6 +82,31 @@ function pressGoto(target: Element) {
 }
 
 describe('Explorer sub-tab Go To All', () => {
+    it.each([false, true])('opens filename:line and retargets the existing file tab (Cmd=%s)', async metaKey => {
+        applyRuntimeConfigPatch({ explorerEditorTabsEnabled: true });
+        Element.prototype.scrollIntoView = vi.fn();
+        const { container } = render(<ExplorerPanel workspaceId={WS} mode="editor" />);
+        const root = container.querySelector('[data-testid="explorer-sidebar"]')?.parentElement ?? container;
+        async function pick(query: string) {
+            root.tabIndex = -1;
+            root.focus();
+            act(() => root.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'p', ctrlKey: !metaKey, metaKey, bubbles: true, cancelable: true,
+            })));
+            await waitFor(() => screen.getByTestId('quick-open-input'));
+            fireEvent.change(screen.getByTestId('quick-open-input'), { target: { value: query } });
+            await screen.findByTestId('quick-open-item-0');
+            await act(async () => fireEvent.keyDown(screen.getByTestId('quick-open-input'), { key: 'Enter' }));
+        }
+        await pick('canvas.cpp:42');
+        await waitFor(() => expect(screen.getByTestId('preview-pane')).toHaveAttribute('data-line', '42'));
+        await pick('canvas.cpp:57');
+        await waitFor(() => expect(screen.getByTestId('preview-pane')).toHaveAttribute('data-line', '57'));
+        expect(screen.getByTestId('preview-pane')).toHaveAttribute('data-path', 'src/render/canvas.cpp');
+        expect(screen.getByTestId('preview-pane')).toHaveAttribute('data-column', '1');
+        expect(screen.getAllByRole('tab', { name: /canvas.cpp/ })).toHaveLength(1);
+    });
+
     it('opens the picked symbol in the preview pane at its line and column', async () => {
         const { container } = render(<ExplorerPanel workspaceId={WS} mode="editor" />);
         const root = (container.querySelector('[data-testid="explorer-sidebar"]')?.parentElement

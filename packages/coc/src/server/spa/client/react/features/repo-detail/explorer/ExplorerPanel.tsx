@@ -1739,7 +1739,9 @@ export function ExplorerPanel({
                 open={quickOpenVisible}
                 mode={paletteMode}
                 onClose={() => setQuickOpenVisible(false)}
-                onFileSelect={result => handleQuickOpenSelect(result.path)}
+                onFileSelect={(result, position) => position
+                    ? navigateToFile({ path: result.path, name: exactFileName(result.path), ...position })
+                    : handleQuickOpenSelect(result.path)}
                 onSymbolSelect={handleSymbolSelect}
                 onLineSelect={openFilePath ? line => navigateToFile({
                     path: openFilePath,

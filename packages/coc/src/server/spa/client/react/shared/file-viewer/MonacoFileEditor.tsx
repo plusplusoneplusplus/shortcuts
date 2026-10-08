@@ -292,6 +292,10 @@ export function MonacoFileEditor({
 }: MonacoFileEditorProps) {
     const { theme } = useTheme();
     const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+    // The Monaco wrapper pins its first onMount callback; navigation can change
+    // while its lazy editor is still loading.
+    const revealPositionRef = useRef({ line: revealLine, column: revealColumn });
+    revealPositionRef.current = { line: revealLine, column: revealColumn };
     const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
     const decorationsRef = useRef<monacoEditor.IEditorDecorationsCollection | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -439,11 +443,12 @@ export function MonacoFileEditor({
         // width scrolls to where the line sits when every line wraps into dozens
         // of rows, which lands far from it once the real width arrives.
         if (dimensionsRef.current) editor.layout(dimensionsRef.current);
-        if (revealLine !== undefined) revealEditorLine(editor, revealLine, revealColumn);
+        const position = revealPositionRef.current;
+        if (position.line !== undefined) revealEditorLine(editor, position.line, position.column);
         applyHighlight(editor);
         applyMarkers();
 
-    }, [revealLine, revealColumn, applyHighlight, applyMarkers]);
+    }, [applyHighlight, applyMarkers]);
 
     // Register outside `handleMount`: the Monaco React wrapper pins its first
     // `onMount`, so an action created there would keep the initial save handler.

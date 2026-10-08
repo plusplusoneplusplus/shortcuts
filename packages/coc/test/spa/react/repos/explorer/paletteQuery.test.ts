@@ -17,6 +17,32 @@ describe('parsePaletteQuery', () => {
         expect(parsePaletteQuery('quick', 'symbols')).toEqual({ mode: 'symbols', term: 'quick' });
     });
 
+    it.each([
+        ['src/example.ts:42', 'src/example.ts', 42],
+        [' C:/repo/example.ts:42 ', 'C:/repo/example.ts', 42],
+        ['C:\\repo\\example.ts:0042', 'C:\\repo\\example.ts', 42],
+        ['src/colon:directory/example.ts:42', 'src/colon:directory/example.ts', 42],
+        ['example.ts:9007199254740991', 'example.ts', Number.MAX_SAFE_INTEGER],
+    ])('splits a valid file line target: %s', (raw, term, fileLineTarget) => {
+        expect(parsePaletteQuery(raw, 'files')).toEqual({ mode: 'files', term, fileLineTarget });
+    });
+
+    it.each([
+        'example.ts', 'C:/repo/example.ts', 'C:\\repo\\example.ts', 'C:', 'C:42',
+        'example.ts:0', 'example.ts:-1', 'example.ts:1.5', 'example.ts:abc',
+        'example.ts:', 'example.ts:9007199254740992', 'example.ts:12-20',
+    ])('keeps filename and invalid suffix text intact: %s', term => {
+        expect(parsePaletteQuery(term, 'files')).toEqual({ mode: 'files', term });
+    });
+
+    it('accepts a file suffix with f prefix but leaves symbol queries intact', () => {
+        expect(parsePaletteQuery('f example.ts:42', 'symbols')).toMatchObject({
+            mode: 'files', term: 'example.ts', fileLineTarget: 42,
+        });
+        expect(parsePaletteQuery('example.ts:42', 'symbols').term).toBe('example.ts:42');
+        expect(parsePaletteQuery('t example.ts:42', 'files').term).toBe('example.ts:42');
+    });
+
     it('switches to files on `f `, keeping the term', () => {
         expect(parsePaletteQuery('f quick', 'symbols')).toMatchObject({ mode: 'files', term: 'quick' });
     });
