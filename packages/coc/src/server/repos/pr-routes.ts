@@ -54,7 +54,7 @@ import { sortPullRequestsByCreatedDesc } from '../spa/client/react/features/pull
 import { ProviderFactory } from '../providers/provider-factory';
 import type { AdoNoCredentialsSentinel } from '../providers/provider-factory';
 import { readProvidersConfig } from '../providers/providers-config';
-import { execGitAsync, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
+import { execGitAsync, loadComparisonPatch, resolveWorkspaceExecutionContext } from '@plusplusoneplusplus/forge';
 import { loadNativeGit, NativeAddonLoadError } from '@plusplusoneplusplus/coc-native';
 import type { CreateTaskInput, IPullRequestsService, ISDKService, ProcessStore, ProviderPullRequest, ProviderPullRequestAutoMerge, ProviderPullRequestCheck, ProviderPullRequestStatus } from '@plusplusoneplusplus/forge';
 import { readReviewHistoryCache, fetchAndCacheReviewHistory, readSuggestionsCache, rankAndCacheSuggestions, toPrMetadata } from './pr-suggestions';
@@ -1166,7 +1166,7 @@ export async function getFullContextFileDiff(
     }
 
     try {
-        const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
+        const { content: { raw: stdout } } = await loadComparisonPatch(localPath, baseSha, headSha, filePath, { contextLines: 99999 });
         return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
     } catch (err) {
         rethrowIfAddonUnavailable(err);
@@ -1182,7 +1182,7 @@ export async function getFullContextFileDiff(
     }
 
     try {
-        const stdout = await runGit(localPath, ['diff', '-U99999', baseSha, headSha, '--', filePath]);
+        const { content: { raw: stdout } } = await loadComparisonPatch(localPath, baseSha, headSha, filePath, { contextLines: 99999 });
         return { diff: stdout || null, unavailableReason: stdout ? undefined : 'git-diff-failed' };
     } catch (err) {
         rethrowIfAddonUnavailable(err);

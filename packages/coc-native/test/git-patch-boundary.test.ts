@@ -123,3 +123,14 @@ it('composes pending headings on a worker without parsing them as file content',
     expect(result.files[0].raw).toBe(patch);
     expect(result.summary).toEqual((await api.processGitWorkingTreePatch([patch, ''])).summary);
 });
+
+it('plans direct comparisons separately from three-dot branch ranges on a worker', async () => {
+    const pending = api.prepareGitComparisonPatch('base', 'head', '[ab].txt', 99999);
+    expect(typeof pending.then).toBe('function');
+    const args = await pending;
+    expect(args).toEqual([
+        '--literal-pathspecs', 'diff', '-M', '-C', '--no-color', '--src-prefix=a/', '--dst-prefix=b/',
+        '-U99999', '--end-of-options', 'base', 'head', '--', '[ab].txt',
+    ]);
+    expect(await api.prepareGitRangePatch('base', 'head')).toContain('base...head');
+});

@@ -334,3 +334,39 @@ fn pending_headings_preserve_empty_sections_bytes_and_truncation() {
         );
     }
 }
+
+#[test]
+fn direct_comparison_keeps_literal_paths_summary_and_truncation() {
+    use coc_native_core::git::{patch::comparison_patch, GitCommandOptions};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    git(root, &["init", "--initial-branch=main"]);
+    git(root, &["config", "user.name", "Test"]);
+    git(root, &["config", "user.email", "test@example.com"]);
+    git(root, &["config", "commit.gpgsign", "false"]);
+    git(root, &["config", "core.autocrlf", "false"]);
+    for name in ["[ab].txt", "a.txt", "b.txt"] {
+        std::fs::write(root.join(name), "old\n").unwrap();
+    }
+    git(root, &["add", "."]);
+    git(root, &["commit", "-m", "base"]);
+    let base = git(root, &["rev-parse", "HEAD"]).trim().to_owned();
+    for name in ["[ab].txt", "a.txt", "b.txt"] {
+        std::fs::write(root.join(name), "new\n").unwrap();
+    }
+    git(root, &["add", "."]);
+    git(root, &["commit", "-m", "head"]);
+    let options = GitCommandOptions::default();
+    let result =
+        comparison_patch(root, &base, "HEAD", Some("[ab].txt"), Some(99999), Some(2), &options)
+            .unwrap();
+    assert_eq!(result.files.len(), 1);
+    assert_eq!(result.files[0].path, "[ab].txt");
+    assert_eq!((result.summary.additions, result.summary.deletions), (1, 1));
+    assert!(result.content.truncated);
+    let raw =
+        git(root, &["--literal-pathspecs", "diff", "-U99999", &base, "HEAD", "--", "[ab].txt"]);
+    assert_eq!(result.files[0].raw, raw.trim_end_matches('\n'));
+    assert!(comparison_patch(root, "--output=oops", "HEAD", None, None, None, &options).is_err());
+    assert!(!root.join("oops").exists());
+}

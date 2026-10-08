@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadCommitShowPatch, loadCommitFiles } from '../../src/diff/local-patch';
+import { loadComparisonPatch, loadCommitShowPatch, loadCommitFiles } from '../../src/diff/local-patch';
 import { createCommitDiffProvider, createWorkingTreeDiffProvider } from '../../src/diff/git-diff-provider';
 import { GitLogService } from '../../src/git/git-log-service';
 import { WorkingTreeService } from '../../src/git/working-tree-service';
@@ -164,4 +164,22 @@ it('GitLogService pending/staged patches route WSL batches and compose headings 
     expect(await service.getStagedChangesDiff(roots[0])).toBe(raw.slice(0, -1));
     vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'staged failed' });
     expect(await service.getStagedChangesDiff(roots[0])).toBe('');
+});
+
+it('routes direct PR comparison plans through WSL and processes exact bytes in Rust', async () => {
+    vi.mocked(execFileAsync).mockClear();
+    vi.mocked(execFileAsync).mockImplementation(async (_exec, args) => ({
+        stdout: raw.replace('+new', args?.includes('Debian') ? '+two' : '+one'), stderr: '',
+    }));
+    const roots = ['\\\\wsl$\\Ubuntu\\home\\one\\repo', '\\\\wsl$\\Debian\\home\\two\\repo'];
+    const results = await Promise.all(roots.map(root => loadComparisonPatch(root, 'base', 'head', '[ab].txt', { contextLines: 99999 })));
+    for (const [index, marker] of ['one', 'two'].entries()) {
+        expect(results[index].content.raw).toBe(raw.replace('+new', `+${marker}`).slice(0, -1));
+        const args = vi.mocked(execFileAsync).mock.calls[index][1];
+        expect(args).toEqual(expect.arrayContaining([index ? 'Debian' : 'Ubuntu', `/home/${marker}/repo`, '--literal-pathspecs', 'diff', '-U99999', '--end-of-options', 'base', 'head', '--', '[ab].txt']));
+        expect(args).not.toContain('base...head');
+        expect(results[index].summary).toEqual({ filesChanged: 1, additions: 1, deletions: 1 });
+    }
+    vi.mocked(execFileAsync).mockRejectedValue({ stderr: 'comparison failed' });
+    await expect(loadComparisonPatch(roots[0], 'base', 'head')).rejects.toThrow('comparison failed');
 });

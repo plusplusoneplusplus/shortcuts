@@ -12,6 +12,10 @@ export function loadRangePatch(
     return loadLocalPatch(root, { base, head }, filePath, options);
 }
 
+export function loadComparisonPatch(root: string, base: string, head: string, filePath?: string, options?: GetFileDiffOptions) {
+    return loadLocalPatch(root, { base, head, direct: true }, filePath, options);
+}
+
 export function loadCommitPatch(root: string, commit: string, filePath?: string, options?: GetFileDiffOptions) {
     return loadLocalPatch(root, { commit }, filePath, options);
 }
@@ -29,7 +33,7 @@ export function loadPendingPatch(root: string) {
 }
 
 async function loadLocalPatch(
-    root: string, source: { commit: string; show?: boolean } | { base: string; head: string } | { scope: string; headings?: boolean },
+    root: string, source: { commit: string; show?: boolean } | { base: string; head: string; direct?: boolean } | { scope: string; headings?: boolean },
     filePath?: string, options?: GetFileDiffOptions,
 ) {
     const addon = loadNativeGit();
@@ -44,8 +48,8 @@ async function loadLocalPatch(
         } else {
             const args = 'commit' in source
                 ? await (source.show ? addon.prepareGitShowPatch : addon.prepareGitCommitPatch)(source.commit, filePath, context)
-                : await addon.prepareGitRangePatch(source.base, source.head, filePath, context);
-            result = await addon.processGitPatch(await execGitAsync(args, root), maxLines);
+                : await (source.direct ? addon.prepareGitComparisonPatch : addon.prepareGitRangePatch)(source.base, source.head, filePath, context);
+            result = await addon.processGitPatch(await execGitAsync(args, root, { timeout: 'direct' in source && source.direct ? 10000 : undefined }), maxLines);
         }
     } else {
         await ensureGitSafeDirectoryAsync(root);
@@ -55,7 +59,8 @@ async function loadLocalPatch(
         } else {
             result = 'commit' in source
                 ? await (source.show ? addon.gitShowPatch : addon.gitCommitPatch)(root, source.commit, filePath, context, maxLines)
-                : await addon.gitRangePatch(root, source.base, source.head, filePath, context, maxLines);
+                : source.direct ? await addon.gitComparisonPatch(root, source.base, source.head, filePath, context, maxLines, { timeout: 10000 })
+                    : await addon.gitRangePatch(root, source.base, source.head, filePath, context, maxLines);
         }
     }
     return { ...nativePatchToDiff(result.files), content: result.content, summary: result.summary };

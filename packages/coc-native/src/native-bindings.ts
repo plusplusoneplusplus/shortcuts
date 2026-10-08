@@ -290,6 +290,9 @@ export interface GitCommitFiles {
 /** Execute and process a first-parent/root commit patch on a worker. */
 export declare function gitCommitPatch(root: string, commit: string, path?: string | undefined | null, context?: number | undefined | null, maxLines?: number | undefined | null): Promise<PatchResult>
 
+/** Execute and process a direct PR comparison patch on a worker, with no result cache. */
+export declare function gitComparisonPatch(root: string, base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null, maxLines?: number | undefined | null, options?: GitExecOptions | undefined | null): Promise<PatchResult>
+
 /**
  * The checked-out branch's short name — `rev-parse --abbrev-ref HEAD` without
  * the child process.
@@ -1052,6 +1055,9 @@ export declare function prepareGitCommitFiles(commit: string): Promise<string[][
 
 /** First-parent/root commit plan shared with external WSL execution. */
 export declare function prepareGitCommitPatch(commit: string, path?: string | undefined | null, context?: number | undefined | null): Promise<string[]>
+
+/** Rust-owned direct PR comparison command plan for external execution transports. */
+export declare function prepareGitComparisonPatch(base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
 
 /** Rust-owned branch-range command plan for external execution transports. */
 export declare function prepareGitRangePatch(base: string, head: string, path?: string | undefined | null, contextLines?: number | undefined | null): Promise<string[]>
