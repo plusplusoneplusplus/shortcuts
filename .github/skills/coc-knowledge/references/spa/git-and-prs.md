@@ -635,7 +635,9 @@ PR file data stays origin-scoped while `workspaceId` and optional `repoId` selec
 same-origin clone. Classic pop-out views call the per-file diff endpoint with
 `fullContext=true`; the server tries a full-file-context git diff from PR `baseSha` to
 `headSha`, fetches missing commits into that checkout, then degrades to hunk-only data
-with `fullContextUnavailable: true`. The paired-content endpoint reads both snapshots
+with `fullContextUnavailable: true`. Rust decodes supplied Git patch paths and selects
+per-file chunks with their exact bytes; list diff statistics use Rust summaries.
+The paired-content endpoint reads both snapshots
 from local objects first and falls back to the user's authenticated `gh api` or
 `az devops invoke`; binary, symlink, and over-10MB files return no text.
 

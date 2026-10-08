@@ -317,7 +317,10 @@ references before editing. Paths are package-relative.
   Git-tab Fetch/Pull uses the exact current-branch upstream; patch metadata is untrusted.
   Working-tree per-file patch routes use Forge loadWorkingTreePatch for host/WSL
   planning, Rust processing and truncation; native-load errors return HTTP 500
-  with rebuild instructions. Full-text snapshot loading remains separate.
+  with rebuild instructions. PR supplied per-file chunks and list statistics use
+  Rust parsing/summaries, preserving quoted paths and raw bytes; required-native
+  failures remain visible. PR combined/stat caches and full-context Git orchestration
+  are separate boundaries. Full-text snapshot loading remains separate.
 
 ## Messaging and Secrets
 
